@@ -617,6 +617,24 @@ async def test_state_can_skip_runtime_inspection():
 
 
 @pytest.mark.asyncio
+async def test_state_can_skip_workspace_snapshot(monkeypatch):
+    svc = WorkspaceRepoChangesetService(FakeDB(), uuid4(), repo=MemoryRepo({}))
+    svc.rows = MemoryRows()
+    snapshot = AsyncMock(side_effect=AssertionError("snapshot should be skipped"))
+    monkeypatch.setattr(svc, "_snapshot", snapshot)
+
+    state = await svc.state(
+        "features", include_runtime=False, include_snapshot=False
+    )
+
+    assert state.revision == ""
+    assert state.file_count == 0
+    assert state.file_hashes == {}
+    assert state.runtime is None
+    snapshot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_state_exposes_release_governance_for_requested_scope(monkeypatch):
     release_id = "sha256:" + "a" * 64
 
