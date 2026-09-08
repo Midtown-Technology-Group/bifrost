@@ -188,12 +188,15 @@ class WorkspaceRepoChangesetService:
         git_status: dict | None = None,
         workspace_dirty: bool = False,
         include_runtime: bool = True,
+        include_snapshot: bool = True,
     ) -> WorkspaceRepoStateResponse:
         scope = self.normalize_scope(scope)
-        revision, files = await self._snapshot(scope)
+        revision, files = (
+            await self._snapshot(scope) if include_snapshot else ("", {})
+        )
         generation, runtime_files = (
             await self.inspect_module_coherence(files)
-            if include_runtime
+            if include_runtime and include_snapshot
             else ("", [])
         )
         mismatches = [item for item in runtime_files if not item.coherent]
@@ -228,7 +231,9 @@ class WorkspaceRepoChangesetService:
                     coherent=not mismatches,
                     files=[item.to_dict() for item in mismatches],
                 )
-                if include_runtime and any(path.endswith(".py") for path in files)
+                if include_runtime
+                and include_snapshot
+                and any(path.endswith(".py") for path in files)
                 else None
             ),
         )

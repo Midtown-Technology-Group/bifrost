@@ -83,6 +83,7 @@ async def workspace_repo_state(
     user: CurrentSuperuser,
     scope: str = Query(..., min_length=1),
     include_runtime: bool = Query(True),
+    include_snapshot: bool = Query(True),
 ):
     try:
         from src.core.repo_dirty import get_repo_dirty_since
@@ -100,6 +101,7 @@ async def workspace_repo_state(
             git_status=git_status,
             workspace_dirty=dirty_since is not None,
             include_runtime=include_runtime,
+            include_snapshot=include_snapshot,
         )
     except Exception as exc:
         raise _translate(exc) from exc
