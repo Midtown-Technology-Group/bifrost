@@ -16579,6 +16579,14 @@ export interface components {
             updated_by?: string | null;
         };
         /**
+         * DocumentConflictResponse
+         * @description Conflict response for a failed document precondition.
+         */
+        DocumentConflictResponse: {
+            /** Detail */
+            detail: string;
+        };
+        /**
          * DocumentCountResponse
          * @description Response for document count.
          */
@@ -47254,7 +47262,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentConflictResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -47299,7 +47309,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentConflictResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -289,6 +289,12 @@ class ConditionalDocumentUpdate(DocumentUpdate):
     )
 
 
+class DocumentConflictResponse(BaseModel):
+    """Conflict response for a failed document precondition."""
+
+    detail: str
+
+
 class DocumentPublic(BaseModel):
     """Document output for API responses."""
 

@@ -43,6 +43,7 @@ from src.models.contracts.tables import (
     DocumentBatchCreateResponse,
     DocumentBatchDeleteRequest,
     DocumentBatchDeleteResponse,
+    DocumentConflictResponse,
     DocumentCountResponse,
     DocumentCreate,
     DocumentListResponse,
@@ -1241,7 +1242,7 @@ async def get_document(
     "/{table_id}/documents/{doc_id}",
     response_model=DocumentPublic,
     summary="Update a document",
-    responses={409: {"description": "Document changed; read back before retrying"}},
+    responses={409: {"model": DocumentConflictResponse, "description": "Document changed; read back before retrying"}},
 )
 async def update_document(
     table_id: str,
@@ -1295,7 +1296,7 @@ async def update_document(
     "/{table_id}/documents/{doc_id}/conditional",
     response_model=DocumentPublic,
     summary="Update a document only at the reviewed revision",
-    responses={409: {"description": "Document changed; read back before retrying"}},
+    responses={409: {"model": DocumentConflictResponse, "description": "Document changed; read back before retrying"}},
 )
 async def update_document_conditional(
     table_id: str,
