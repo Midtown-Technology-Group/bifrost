@@ -24,6 +24,13 @@ def _settings(**overrides):
     return SimpleNamespace(**values)
 
 
+def _owned_client(settings):
+    """Low-level adapter tests inject resources inside an operation owner."""
+    client = AzureBlobStorageClient(settings)
+    client._operation_owned = True
+    return client
+
+
 def _install_module(monkeypatch, name: str, **attrs):
     module = ModuleType(name)
     for attr_name, value in attrs.items():
@@ -44,7 +51,7 @@ def _install_azure_blob_aio(monkeypatch, blob_service_client):
 
 
 def test_parse_account_name_and_upload_headers() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     assert client._account_name == "acct"
     assert client._parse_account_name("not a url") == ""
@@ -72,7 +79,7 @@ async def test_ensure_client_builds_account_key_service_and_reuses_container(
 
     _install_azure_blob_aio(monkeypatch, FakeBlobServiceClient)
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     await client._ensure_client()
     first_container = client._container_client
@@ -114,39 +121,47 @@ async def test_ensure_client_uses_default_credential_and_close_closes_both(
         DefaultAzureCredential=FakeDefaultAzureCredential,
     )
 
-    client = AzureBlobStorageClient(_settings(azure_blob_auth="default_credential"))
+    client = _owned_client(_settings(azure_blob_auth="default_credential"))
 
     await client._ensure_client()
+    service = client._service_client
     await client.close()
 
     assert created["account_url"] == "https://acct.blob.core.windows.net"
     assert created["credential"] is credential
-    client._service_client.close.assert_awaited_once()
+    service.close.assert_awaited_once()
+    assert client._service_client is None
     credential.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_close_without_initialized_clients_is_noop() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     await client.close()
 
 
 @pytest.mark.asyncio
-async def test_get_client_context_ensures_and_yields_self() -> None:
+async def test_get_client_context_ensures_and_closes_owned_child(monkeypatch) -> None:
     client = AzureBlobStorageClient(_settings())
-    client._ensure_client = AsyncMock()
+    ensure = AsyncMock()
+    close = AsyncMock()
+    monkeypatch.setattr(AzureBlobStorageClient, "_ensure_client", ensure)
+    monkeypatch.setattr(AzureBlobStorageClient, "close", close)
 
     async with client.get_client() as yielded:
-        assert yielded is client
+        assert yielded is not client
+        assert yielded._operation_owned
+        close.assert_not_awaited()
 
-    client._ensure_client.assert_awaited_once()
+    ensure.assert_awaited_once()
+    close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_head_bucket_returns_container_properties() -> None:
     properties = {"lease": "available"}
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._ensure_client = AsyncMock()
     client._container_client = SimpleNamespace(
         get_container_properties=AsyncMock(return_value=properties)
@@ -158,7 +173,7 @@ async def test_head_bucket_returns_container_properties() -> None:
 
 
 def test_get_paginator_rejects_unsupported_operation() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     with pytest.raises(NotImplementedError, match="Unsupported paginator"):
         client.get_paginator("delete_objects")
@@ -188,7 +203,7 @@ async def test_list_objects_paginator_yields_s3_shaped_pages() -> None:
                 ]
             )
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     pages = [
@@ -207,7 +222,7 @@ async def test_list_objects_paginator_yields_s3_shaped_pages() -> None:
 
 @pytest.mark.asyncio
 async def test_list_objects_v2_shapes_contents_prefixes_and_continuation_token() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     class FakePager:
         def __init__(self):
@@ -275,7 +290,7 @@ async def test_list_objects_v2_shapes_contents_prefixes_and_continuation_token()
 
 @pytest.mark.asyncio
 async def test_list_objects_v2_returns_empty_page_without_continuation() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     class EmptyPager:
         continuation_token = None
@@ -304,12 +319,12 @@ async def test_list_objects_v2_returns_empty_page_without_continuation() -> None
 
 @pytest.mark.asyncio
 async def test_ensure_client_rejects_unconfigured_or_unknown_auth_mode() -> None:
-    client = AzureBlobStorageClient(_settings(azure_blob_configured=False))
+    client = _owned_client(_settings(azure_blob_configured=False))
 
     with pytest.raises(RuntimeError, match="not configured"):
         await client._ensure_client()
 
-    client = AzureBlobStorageClient(_settings(azure_blob_auth="managed_identity"))
+    client = _owned_client(_settings(azure_blob_auth="managed_identity"))
 
     with pytest.raises(RuntimeError, match="Unsupported Azure Blob auth mode"):
         await client._ensure_client()
@@ -337,7 +352,7 @@ async def test_get_and_head_object_translate_resource_not_found(monkeypatch) -> 
         def get_blob_client(self, key):
             return FakeBlobClient()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     with pytest.raises(client.exceptions.NoSuchKey, match="missing.txt"):
@@ -364,7 +379,7 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
             assert key == "docs/readme.txt"
             return FakeStream()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     response = await client.get_object(Bucket="ignored", Key="docs/readme.txt")
@@ -393,7 +408,7 @@ async def test_head_object_returns_s3_shaped_properties(monkeypatch) -> None:
             assert key == "docs/readme.txt"
             return FakeBlobClient()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     result = await client.head_object(Bucket="ignored", Key="docs/readme.txt")
@@ -433,7 +448,7 @@ async def test_copy_object_polls_until_success(monkeypatch) -> None:
             assert key == "dest.txt"
             return dest_blob
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
     client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
 
@@ -465,7 +480,7 @@ async def test_copy_object_returns_immediately_when_start_reports_success(monkey
             assert key == "dest.txt"
             return FakeDestBlob()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
     client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
 
@@ -494,7 +509,7 @@ async def test_copy_object_raises_on_failed_copy(monkeypatch) -> None:
         def get_blob_client(self, key):
             return FakeDestBlob()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
     client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
 
@@ -521,7 +536,7 @@ async def test_copy_object_raises_on_aborted_copy(monkeypatch) -> None:
         def get_blob_client(self, key):
             return FakeDestBlob()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
     client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
 
@@ -560,7 +575,7 @@ async def test_put_and_delete_object_use_blob_content_settings(monkeypatch) -> N
         async def delete_blob(self, key):
             deleted.append(key)
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     await client.put_object(
@@ -611,7 +626,7 @@ async def test_chunked_object_round_trip_is_streamed_and_hashed(monkeypatch) -> 
         yield b""
         yield b"cdef"
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     digest, size = await client.put_object_from_chunks(
@@ -636,7 +651,7 @@ async def test_chunked_object_round_trip_is_streamed_and_hashed(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_chunked_object_operations_reject_nonpositive_chunk_sizes() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._ensure_client = AsyncMock()
 
     async def source_chunks():
@@ -674,7 +689,7 @@ async def test_delete_object_ignores_missing_blob(monkeypatch) -> None:
         async def delete_blob(self, key):
             raise ResourceNotFoundError(key)
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
 
     await client.delete_object(Bucket="ignored", Key="already-gone.txt")
@@ -696,7 +711,7 @@ async def test_copy_object_times_out_when_copy_never_finishes(monkeypatch) -> No
         def get_blob_client(self, key):
             return FakeDestBlob()
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
     client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
 
@@ -724,7 +739,7 @@ async def test_generate_blob_sas_uses_account_key_and_content_type(monkeypatch) 
         SimpleNamespace(generate_blob_sas=generate_blob_sas),
     )
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
 
     assert await client._generate_blob_sas(
         "uploads/file.txt",
@@ -759,7 +774,7 @@ async def test_generate_blob_sas_uses_user_delegation_key_for_default_credential
     service_client = SimpleNamespace(
         get_user_delegation_key=AsyncMock(return_value="delegation-key")
     )
-    client = AzureBlobStorageClient(_settings(azure_blob_auth="default_credential"))
+    client = _owned_client(_settings(azure_blob_auth="default_credential"))
     client._service_client = service_client
 
     sas = await client._generate_blob_sas(
@@ -790,7 +805,7 @@ async def test_presigned_urls_use_container_blob_urls_and_sas(monkeypatch) -> No
         def get_blob_client(self, path):
             return SimpleNamespace(url=f"https://acct.blob.core.windows.net/files/{path}")
 
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client._container_client = FakeContainer()
     client._generate_blob_sas = AsyncMock(side_effect=["upload-sas", "download-sas"])
 
@@ -818,7 +833,7 @@ async def test_presigned_urls_use_container_blob_urls_and_sas(monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_read_uploaded_file_maps_missing_blob_to_file_not_found() -> None:
-    client = AzureBlobStorageClient(_settings())
+    client = _owned_client(_settings())
     client.get_object = AsyncMock(side_effect=client.exceptions.NoSuchKey("upload.bin"))
 
     with pytest.raises(FileNotFoundError, match="Uploaded file not found: upload.bin"):
