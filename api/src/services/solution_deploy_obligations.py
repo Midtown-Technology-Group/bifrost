@@ -441,6 +441,45 @@ def verify_solution_artifact(
     )
 
 
+async def _effective_entity_id_map(
+    db: AsyncSession,
+    *,
+    model: type[Any],
+    solution_id: UUID,
+    entries: list[dict[str, Any]],
+    preserve_owned_ids: bool,
+) -> dict[UUID, UUID]:
+    """Resolve manifest ids exactly as Solution deployment does.
+
+    Captured entities retain their original ids when the row is already owned
+    by this install. New entities and file policies receive install-scoped
+    uuid5 ids.
+    """
+    from src.services.solutions.deploy import solution_entity_id
+
+    manifest_ids = [UUID(str(entry["id"])) for entry in entries]
+    owned_manifest_ids: set[UUID] = set()
+    if preserve_owned_ids and manifest_ids:
+        owned_manifest_ids = set(
+            (
+                await db.scalars(
+                    select(model.id).where(
+                        model.id.in_(manifest_ids),
+                        model.solution_id == solution_id,
+                    )
+                )
+            ).all()
+        )
+    return {
+        manifest_id: (
+            manifest_id
+            if manifest_id in owned_manifest_ids
+            else solution_entity_id(solution_id, manifest_id)
+        )
+        for manifest_id in manifest_ids
+    }
+
+
 async def _runtime_and_registration_readback(
     db: AsyncSession,
     *,
@@ -456,28 +495,33 @@ async def _runtime_and_registration_readback(
     from src.models.orm.solution_config_schema import SolutionConfigSchema
     from src.models.orm.tables import Table
     from src.models.orm.workflows import Workflow
-    from src.services.solutions.deploy import solution_entity_id
     from src.services.solutions.storage import SolutionStorage
     from src.services.solutions.zip_install import _safe_extract, preview_zip
 
     preview = preview_zip(artifact)
     entity_specs = {
-        "workflows": (Workflow, preview.workflows),
-        "tables": (Table, preview.tables),
-        "apps": (Application, preview.apps),
-        "forms": (Form, preview.forms),
-        "agents": (Agent, preview.agents),
-        "claims": (CustomClaim, preview.claims),
-        "config_schemas": (SolutionConfigSchema, preview.config_schemas),
-        "events": (EventSource, preview.events),
-        "file_policies": (FilePolicy, preview.file_policies),
+        "workflows": (Workflow, preview.workflows, True),
+        "tables": (Table, preview.tables, True),
+        "apps": (Application, preview.apps, True),
+        "forms": (Form, preview.forms, True),
+        "agents": (Agent, preview.agents, True),
+        "claims": (CustomClaim, preview.claims, True),
+        "config_schemas": (SolutionConfigSchema, preview.config_schemas, True),
+        "events": (EventSource, preview.events, True),
+        "file_policies": (FilePolicy, preview.file_policies, False),
     }
     entity_readback: dict[str, list[str]] = {}
-    for name, (model, entries) in entity_specs.items():
-        expected = sorted(
-            str(solution_entity_id(solution_id, UUID(str(entry["id"]))))
-            for entry in entries
+    effective_ids: dict[str, dict[UUID, UUID]] = {}
+    for name, (model, entries, preserve_owned_ids) in entity_specs.items():
+        id_map = await _effective_entity_id_map(
+            db,
+            model=model,
+            solution_id=solution_id,
+            entries=entries,
+            preserve_owned_ids=preserve_owned_ids,
         )
+        effective_ids[name] = id_map
+        expected = sorted(str(item) for item in id_map.values())
         actual = sorted(
             str(item)
             for item in (
@@ -500,7 +544,7 @@ async def _runtime_and_registration_readback(
 
     expected_workflows = sorted(
         (
-            str(solution_entity_id(solution_id, UUID(str(entry["id"])))),
+            str(effective_ids["workflows"][UUID(str(entry["id"]))]),
             str(entry["path"]),
             str(entry["function_name"]),
             str(entry.get("name") or entry["id"]),

@@ -2,8 +2,8 @@ import hashlib
 import io
 import json
 import zipfile
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -17,13 +17,16 @@ from src.models.contracts.workspace_promotions import (
     WorkspaceSourceReleaseDeclareRequest,
 )
 from src.models.orm.workspace_promotions import SolutionDeployObligation
+from src.models.orm.workflows import Workflow
 from src.services.solution_deploy_obligations import (
     SolutionDeployObligationService,
+    _effective_entity_id_map,
     reconcile_solution_deploy_obligation,
     solution_deploy_obligation_response,
     solution_source_content_id,
     verify_solution_artifact,
 )
+from src.services.solutions.deploy import solution_entity_id
 from src.services.workspace_source_releases import (
     WorkspaceSourceReleaseConflict,
     WorkspaceSourceReleaseService,
@@ -330,6 +333,49 @@ def test_attention_only_obligation_remains_readable_without_source_identity() ->
 
     assert response.source_content_id is None
     assert response.requires_attention is True
+
+
+@pytest.mark.asyncio
+async def test_accountability_preserves_captured_solution_entity_ids() -> None:
+    solution_id = uuid4()
+    captured_id = uuid4()
+    new_manifest_id = uuid4()
+    database = SimpleNamespace(
+        scalars=AsyncMock(
+            return_value=SimpleNamespace(all=lambda: [captured_id])
+        )
+    )
+
+    result = await _effective_entity_id_map(
+        database,
+        model=Workflow,
+        solution_id=solution_id,
+        entries=[{"id": str(captured_id)}, {"id": str(new_manifest_id)}],
+        preserve_owned_ids=True,
+    )
+
+    assert result == {
+        captured_id: captured_id,
+        new_manifest_id: solution_entity_id(solution_id, new_manifest_id),
+    }
+
+
+@pytest.mark.asyncio
+async def test_accountability_always_scopes_non_preserved_entity_ids() -> None:
+    solution_id = uuid4()
+    manifest_id = uuid4()
+    database = SimpleNamespace(scalars=AsyncMock())
+
+    result = await _effective_entity_id_map(
+        database,
+        model=Workflow,
+        solution_id=solution_id,
+        entries=[{"id": str(manifest_id)}],
+        preserve_owned_ids=False,
+    )
+
+    assert result == {manifest_id: solution_entity_id(solution_id, manifest_id)}
+    database.scalars.assert_not_awaited()
 
 
 @pytest.mark.asyncio
