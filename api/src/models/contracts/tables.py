@@ -11,6 +11,7 @@ from uuid import UUID
 
 from pydantic import (
     AliasChoices,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -263,6 +264,28 @@ class DocumentUpdate(BaseModel):
             "any other caller that sends this field receives 403. When omitted, defaults to "
             "the calling user."
         ),
+    )
+
+    expected_updated_at: AwareDatetime | None = Field(
+        default=None, description="Exact reviewed document revision; mismatch returns 409."
+    )
+    expected_data: dict[str, Any] | None = Field(
+        default=None, description="Optional exact reviewed JSON data, requires expected_updated_at."
+    )
+
+    @model_validator(mode="after")
+    def validate_precondition(self) -> "DocumentUpdate":
+        if self.expected_data is not None and self.expected_updated_at is None:
+            raise ValueError("expected_data requires expected_updated_at")
+        return self
+
+
+class ConditionalDocumentUpdate(DocumentUpdate):
+    """Conditional-only endpoint, absent on servers without CAS support."""
+
+    # Pydantic intentionally strengthens the optional base field to a required one.
+    expected_updated_at: AwareDatetime = Field(  # pyright: ignore[reportGeneralTypeIssues]
+        ..., description="Exact reviewed document revision; mismatch returns 409."
     )
 
 

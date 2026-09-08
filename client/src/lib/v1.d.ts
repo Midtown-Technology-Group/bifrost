@@ -8983,6 +8983,26 @@ export interface paths {
         patch: operations["update_document_api_tables__table_id__documents__doc_id__patch"];
         trace?: never;
     };
+    "/api/tables/{table_id}/documents/{doc_id}/conditional": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a document only at the reviewed revision
+         * @description Fail closed on older servers and use the same scope/ownership/policy checks.
+         */
+        patch: operations["update_document_conditional_api_tables__table_id__documents__doc_id__conditional_patch"];
+        trace?: never;
+    };
     "/api/tables/{table_id}/documents/query": {
         parameters: {
             query?: never;
@@ -15317,6 +15337,37 @@ export interface components {
             git?: components["schemas"]["DeploymentGitProvenance"];
         };
         /**
+         * ConditionalDocumentUpdate
+         * @description Conditional-only endpoint, absent on servers without CAS support.
+         */
+        ConditionalDocumentUpdate: {
+            /**
+             * Data
+             * @description Fields to update (merged with existing data)
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Updated By
+             * @description Override attribution for updated_by. Engine and platform-admin callers only; any other caller that sends this field receives 403. When omitted, defaults to the calling user.
+             */
+            updated_by?: string | null;
+            /**
+             * Expected Updated At
+             * Format: date-time
+             * @description Exact reviewed document revision; mismatch returns 409.
+             */
+            expected_updated_at: string;
+            /**
+             * Expected Data
+             * @description Optional exact reviewed JSON data, requires expected_updated_at.
+             */
+            expected_data?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * ConfigResponse
          * @description Configuration entity response (global or org-specific)
          */
@@ -16713,6 +16764,18 @@ export interface components {
              * @description Override attribution for updated_by. Engine and platform-admin callers only; any other caller that sends this field receives 403. When omitted, defaults to the calling user.
              */
             updated_by?: string | null;
+            /**
+             * Expected Updated At
+             * @description Exact reviewed document revision; mismatch returns 409.
+             */
+            expected_updated_at?: string | null;
+            /**
+             * Expected Data
+             * @description Optional exact reviewed JSON data, requires expected_updated_at.
+             */
+            expected_data?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * DocumentUpsert
@@ -47185,6 +47248,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentPublic"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_document_conditional_api_tables__table_id__documents__doc_id__conditional_patch: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                table_id: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConditionalDocumentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPublic"];
+                };
+            };
+            /** @description Document changed; read back before retrying */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
