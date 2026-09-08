@@ -262,6 +262,7 @@ class ProcessHandle:
     # removed through timeout/cancellation/crash cleanup.
     result_reader_fd: int | None = None
     result_callback_failed: bool = False
+    result_callback_diagnostics: dict[str, Any] | None = None
 
     @property
     def is_alive(self) -> bool:
@@ -1586,6 +1587,10 @@ class ProcessPoolManager:
                 "error_type": error_type,
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
+                "logs": handle.result_callback_failed,
+                "execution_context": {
+                    "result_persistence_failure": handle.result_callback_diagnostics
+                } if handle.result_callback_failed and handle.result_callback_diagnostics else None,
             }
         )
 
@@ -1623,7 +1628,9 @@ class ProcessPoolManager:
             }
         )
 
-    async def _deliver_result(self, result: dict[str, Any]) -> bool:
+    async def _deliver_result(
+        self, result: dict[str, Any], *, handle: ProcessHandle | None = None,
+    ) -> bool:
         """Persist a terminal callback before relinquishing local ownership.
 
         Result callbacks are normally fast PostgreSQL transactions. Brief
@@ -1637,8 +1644,16 @@ class ProcessPoolManager:
         for attempt in range(3):
             try:
                 await self.on_result(result)
+                if handle is not None:
+                    handle.result_callback_diagnostics = None
                 return True
             except Exception as exc:
+                if handle is not None:
+                    handle.result_callback_diagnostics = {
+                        "exception_class": type(exc).__name__[:80],
+                        "phase": "terminal_callback",
+                        "attempt_count": attempt + 1,
+                    }
                 logger.exception(
                     "Result callback attempt %s/3 failed: %s", attempt + 1, exc
                 )
@@ -1729,7 +1744,7 @@ class ProcessPoolManager:
 
         # Do not relinquish ownership until the authoritative callback commits.
         self._unregister_result_reader(handle)
-        handle.result_reported = await self._deliver_result(result)
+        handle.result_reported = await self._deliver_result(result, handle=handle)
         if not handle.result_reported:
             handle.state = ProcessState.KILLED
             handle.killed_at = datetime.now(timezone.utc)

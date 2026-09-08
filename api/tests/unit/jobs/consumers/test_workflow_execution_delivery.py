@@ -1029,7 +1029,7 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
         {"duration_ms": 123},
     )
     publish_history_update.assert_awaited_once()
-    cleanup_cache.assert_awaited_once_with(execution_id)
+    cleanup_cache.assert_awaited_once_with(execution_id, preserve_logs=True)
     consumer._redis_client.delete_pending_execution.assert_awaited_once_with(execution_id)
     consumer._redis_client.push_result.assert_awaited_once_with(
         execution_id=execution_id,
@@ -1062,7 +1062,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
     }
     consumer._redis_client.get_pending_execution.return_value = pending
     consumer._redis_client.delete_pending_execution = AsyncMock(
-        side_effect=lambda _execution_id: call_order.append("delete_pending")
+        side_effect=lambda _execution_id, **_kwargs: call_order.append("delete_pending")
     )
     consumer._redis_client.push_result = AsyncMock(
         side_effect=lambda **_kwargs: call_order.append("push_result")
@@ -1093,7 +1093,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         patch(
             "src.core.cache.cleanup_execution_cache",
             new_callable=AsyncMock,
-            side_effect=lambda _execution_id: call_order.append("cleanup_cache"),
+            side_effect=lambda _execution_id, **_kwargs: call_order.append("cleanup_cache"),
         ) as cleanup_cache,
         patch("src.services.events.builtins.emit_workflow_failure_events", new_callable=AsyncMock) as emit_failure,
     ):
@@ -1139,7 +1139,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         {"error": "cancelled", "errorType": "CancelledError"},
     )
     publish_history_update.assert_awaited_once()
-    cleanup_cache.assert_awaited_once_with(execution_id)
+    cleanup_cache.assert_awaited_once_with(execution_id, preserve_logs=True)
     consumer._redis_client.delete_pending_execution.assert_awaited_once_with(execution_id)
     consumer._redis_client.push_result.assert_awaited_once_with(
         execution_id=execution_id,
@@ -1150,3 +1150,34 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
     )
     emit_failure.assert_awaited_once()
     assert emit_failure.await_args.kwargs["trigger_event"] == {"type": "demo"}
+
+
+@pytest.mark.asyncio
+async def test_persistence_diagnostics_merge_existing_context_after_execution_lock():
+    from src.models.enums import ExecutionStatus
+
+    consumer = make_consumer()
+    consumer._redis_client.get_pending_execution.return_value = {"workflow_id": "wf", "sync": False}
+    consumer._lock_execution = AsyncMock()
+    session = _Session()
+    session.scalar.return_value = {"trigger": {"kind": "schedule"}}
+    diagnostics = {"exception_class": "TimeoutError", "phase": "terminal_callback", "attempt_count": 3}
+    with (
+        patch("src.services.execution.attempts.has_recorded_attempt", new_callable=AsyncMock, return_value=False),
+        patch("src.core.database.get_session_factory", return_value=_session_factory(session)),
+        patch.object(workflow_execution, "update_execution", new_callable=AsyncMock,
+                     return_value=ExecutionStatus.FAILED) as update,
+        patch("src.services.events.processor.update_delivery_from_execution", new_callable=AsyncMock),
+        patch("src.core.metrics.update_daily_metrics", new_callable=AsyncMock),
+        patch.object(consumer, "_run_derived_step", new_callable=AsyncMock),
+        patch("src.core.cache.cleanup_execution_cache", new_callable=AsyncMock),
+    ):
+        await consumer._process_failure(str(uuid4()), {
+            "success": False, "error_type": "ResultPersistenceError", "error": "result callback failed",
+            "execution_context": {"result_persistence_failure": diagnostics},
+        })
+    consumer._lock_execution.assert_awaited_once()
+    assert update.await_args.kwargs["execution_context"] == {
+        "trigger": {"kind": "schedule"}, "result_persistence_failure": diagnostics,
+    }
+    session.commit.assert_awaited_once()

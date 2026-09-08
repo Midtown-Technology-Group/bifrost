@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from pathlib import Path
 from uuid import UUID
 
@@ -62,12 +63,13 @@ class SolutionDeployJobStorage:
         digest = hashlib.sha256()
         size = 0
         async with await open_file(path, "wb") as destination:
-            async for chunk in self._storage.iter_object_chunks(
+            async with aclosing(self._storage.iter_object_chunks(
                 self.key, chunk_size=CHUNK_SIZE
-            ):
-                await destination.write(chunk)
-                digest.update(chunk)
-                size += len(chunk)
+            )) as chunks:
+                async for chunk in chunks:
+                    await destination.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
         if digest.hexdigest() != expected_sha256:
             path.unlink(missing_ok=True)
             raise DeployJobInputIntegrityError(

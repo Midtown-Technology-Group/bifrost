@@ -9,14 +9,30 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from collections.abc import AsyncIterator, Iterable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from contextlib import aclosing, asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from functools import wraps
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Concatenate, ParamSpec, TypeVar, cast
 from urllib.parse import urlparse
 
 from src.config import Settings
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _owned_operation(
+    method: Callable[Concatenate["AzureBlobStorageClient", _P], Awaitable[_R]],
+) -> Callable[Concatenate["AzureBlobStorageClient", _P], Awaitable[_R]]:
+    """Give each top-level call its own transport; nested calls share that owner."""
+    @wraps(method)
+    async def run(self: "AzureBlobStorageClient", *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        async with self.get_client() as client:
+            return await method(client, *args, **kwargs)
+    return run
 
 
 class _AsyncBody:
@@ -56,6 +72,7 @@ class AzureBlobStorageClient:
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        self._operation_owned = False
         self._credential = None
         self._service_client = None
         self._container_client = None
@@ -69,11 +86,15 @@ class AzureBlobStorageClient:
         return host.split(".", 1)[0]
 
     async def close(self) -> None:
-        if self._service_client is not None:
-            await self._service_client.close()
-        close_credential = getattr(self._credential, "close", None)
-        if close_credential is not None:
-            await close_credential()
+        service, credential = self._service_client, self._credential
+        self._service_client = self._container_client = self._credential = None
+        try:
+            if service is not None:
+                await service.close()
+        finally:
+            close_credential = getattr(credential, "close", None)
+            if close_credential is not None:
+                await close_credential()
 
     async def _ensure_client(self) -> None:
         if self._container_client is not None:
@@ -105,21 +126,31 @@ class AzureBlobStorageClient:
         )
 
     @asynccontextmanager
-    async def get_client(self):
-        await self._ensure_client()
-        yield self
+    async def get_client(self) -> AsyncIterator["AzureBlobStorageClient"]:
+        if self._operation_owned:
+            yield self
+            return
+        client = AzureBlobStorageClient(self.settings)
+        client._operation_owned = True
+        try:
+            await client._ensure_client()
+            yield client
+        finally:
+            await client.close()
 
     def get_paginator(self, operation_name: str):
         if operation_name != "list_objects_v2":
             raise NotImplementedError(f"Unsupported paginator: {operation_name}")
         return _ListObjectsV2Paginator(self)
 
+    @_owned_operation
     async def head_bucket(self, *, Bucket: str):
         """S3-compatible container availability check used by health probes."""
         del Bucket
         await self._ensure_client()
         return await self._container_client.get_container_properties()
 
+    @_owned_operation
     async def list_objects_v2(
         self,
         *,
@@ -184,6 +215,7 @@ class AzureBlobStorageClient:
             response["NextContinuationToken"] = next_token
         return response
 
+    @_owned_operation
     async def put_object(
         self,
         *,
@@ -204,6 +236,7 @@ class AzureBlobStorageClient:
             content_settings=ContentSettings(content_type=ContentType),
         )
 
+    @_owned_operation
     async def put_object_from_chunks(
         self,
         path: str,
@@ -251,6 +284,18 @@ class AzureBlobStorageClient:
         *,
         chunk_size: int = 8 * 1024 * 1024,
     ) -> AsyncIterator[bytes]:
+        """Keep the owned transport alive until stream consumption or closure."""
+        async with self.get_client() as client:
+            async with aclosing(client._iter_object_chunks(path, chunk_size=chunk_size)) as chunks:
+                async for chunk in chunks:
+                    yield chunk
+
+    async def _iter_object_chunks(
+        self,
+        path: str,
+        *,
+        chunk_size: int = 8 * 1024 * 1024,
+    ) -> AsyncIterator[bytes]:
         """Yield one Azure Blob object in bounded chunks."""
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than zero")
@@ -267,6 +312,7 @@ class AzureBlobStorageClient:
             for offset in range(0, len(chunk), chunk_size):
                 yield chunk[offset : offset + chunk_size]
 
+    @_owned_operation
     async def get_object(self, *, Bucket: str, Key: str) -> dict[str, _AsyncBody]:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
@@ -278,6 +324,7 @@ class AzureBlobStorageClient:
         except ResourceNotFoundError as exc:
             raise self.exceptions.NoSuchKey(Key) from exc
 
+    @_owned_operation
     async def delete_object(self, *, Bucket: str, Key: str) -> None:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
@@ -288,6 +335,7 @@ class AzureBlobStorageClient:
         except ResourceNotFoundError:
             return
 
+    @_owned_operation
     async def head_object(self, *, Bucket: str, Key: str):
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
@@ -306,6 +354,7 @@ class AzureBlobStorageClient:
             etag=str(properties.etag or "").strip('"'),
         )
 
+    @_owned_operation
     async def copy_object(self, *, Bucket: str, CopySource: dict, Key: str) -> None:
         del Bucket
         await self._ensure_client()
@@ -359,6 +408,7 @@ class AzureBlobStorageClient:
 
         return generate_blob_sas(**sas_args)
 
+    @_owned_operation
     async def generate_presigned_upload_url(
         self,
         path: str,
@@ -382,6 +432,7 @@ class AzureBlobStorageClient:
             "x-ms-blob-type": "BlockBlob",
         }
 
+    @_owned_operation
     async def generate_presigned_download_url(
         self,
         path: str,
@@ -397,6 +448,7 @@ class AzureBlobStorageClient:
         )
         return f"{self._container_client.get_blob_client(path).url}?{sas}"
 
+    @_owned_operation
     async def read_uploaded_file(self, path: str) -> bytes:
         try:
             response = await self.get_object(Bucket="", Key=path)

@@ -327,6 +327,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         # DB operations + flush — single short-lived session
         # (flush functions do Redis reads internally but DB writes share the session)
+        log_acknowledgements: list[tuple[str, list[str]]] = []
         session_factory = get_session_factory()
         async with session_factory() as session:
             await self._lock_execution(session, execution_id)
@@ -430,7 +431,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 try:
                     from bifrost._logging import flush_logs_to_postgres
                     logs_count = await flush_logs_to_postgres(
-                        execution_id, session=session
+                        execution_id, session=session,
+                        pending_acknowledgements=log_acknowledgements,
                     )
                     if logs_count > 0:
                         logger.debug(
@@ -511,10 +513,16 @@ class WorkflowExecutionConsumer(BaseConsumer):
             ),
         )
 
+        from bifrost._logging import acknowledge_persisted_logs
+        await self._run_derived_step(
+            "log-acknowledgement",
+            lambda: acknowledge_persisted_logs(log_acknowledgements),
+        )
+
         # Redis cleanup — no DB connection held
         try:
             from src.core.cache import cleanup_execution_cache
-            await cleanup_execution_cache(execution_id)
+            await cleanup_execution_cache(execution_id, preserve_logs=True)
         except Exception as e:
             logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
 
@@ -595,6 +603,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             status = ExecutionStatus.FAILED
 
         # DB operations + flush — single short-lived session
+        log_acknowledgements: list[tuple[str, list[str]]] = []
         session_factory = get_session_factory()
         async with session_factory() as session:
             await self._lock_execution(session, execution_id)
@@ -688,12 +697,24 @@ class WorkflowExecutionConsumer(BaseConsumer):
                             execution_id,
                         )
                         return
+            failure_context: dict[str, Any] | None = None
+            if error_type == "ResultPersistenceError" and result.get("execution_context"):
+                from src.models.orm.executions import Execution
+
+                existing_context = await session.scalar(
+                    select(Execution.execution_context).where(Execution.id == UUID(execution_id))
+                )
+                failure_context = {
+                    **(existing_context or {}),
+                    **result["execution_context"],
+                }
             status = await update_execution(
                 execution_id=execution_id,
                 status=status,
                 error_message=error,
                 error_type=error_type,
                 duration_ms=duration_ms,
+                **({"execution_context": failure_context} if failure_context is not None else {}),
                 session=session,
             )
 
@@ -723,7 +744,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 try:
                     from bifrost._logging import flush_logs_to_postgres
                     logs_count = await flush_logs_to_postgres(
-                        execution_id, session=session
+                        execution_id, session=session,
+                        pending_acknowledgements=log_acknowledgements,
                     )
                     if logs_count > 0:
                         logger.debug(
@@ -789,10 +811,16 @@ class WorkflowExecutionConsumer(BaseConsumer):
             ),
         )
 
+        from bifrost._logging import acknowledge_persisted_logs
+        await self._run_derived_step(
+            "log-acknowledgement",
+            lambda: acknowledge_persisted_logs(log_acknowledgements),
+        )
+
         # Redis cleanup — no DB connection held
         try:
             from src.core.cache import cleanup_execution_cache
-            await cleanup_execution_cache(execution_id)
+            await cleanup_execution_cache(execution_id, preserve_logs=True)
         except Exception as e:
             logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
 

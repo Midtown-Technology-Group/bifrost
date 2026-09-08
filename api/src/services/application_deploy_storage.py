@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from pathlib import Path
 from uuid import UUID
 
@@ -48,12 +49,13 @@ class ApplicationDeployStorage:
         size = 0
         with path.open("wb") as destination:  # NOSONAR
             # Object storage is streamed into bounded local chunks.
-            async for chunk in self._storage.iter_object_chunks(
+            async with aclosing(self._storage.iter_object_chunks(
                 self.key, chunk_size=CHUNK_SIZE
-            ):
-                destination.write(chunk)
-                digest.update(chunk)
-                size += len(chunk)
+            )) as chunks:
+                async for chunk in chunks:
+                    destination.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
         if digest.hexdigest() != expected_sha256:
             path.unlink(missing_ok=True)
             raise ApplicationDeployInputIntegrityError(

@@ -433,6 +433,8 @@ def close_thread_redis() -> None:
 async def flush_logs_to_postgres(
     execution_id: str | UUID,
     session: "AsyncSession | None" = None,
+    *,
+    pending_acknowledgements: list[tuple[str, list[str]]] | None = None,
 ) -> int:
     """
     Flush all logs from Redis Stream to Postgres.
@@ -444,6 +446,9 @@ async def flush_logs_to_postgres(
         execution_id: Execution UUID
         session: Optional database session. If provided, uses it and
                  caller is responsible for commit. If None, creates own session.
+        pending_acknowledgements: Collector for exact Redis IDs. With a caller
+                 session, invoke acknowledge_persisted_logs only after commit.
+                 Omitting the collector preserves the source stream until TTL.
 
     Returns:
         Number of logs persisted
@@ -466,6 +471,7 @@ async def flush_logs_to_postgres(
 
             # Parse entries - enumerate to preserve insertion order
             logs_to_insert = []
+            consumed_ids = []
             for seq, (entry_id, data) in enumerate(entries):
                 try:
                     # Parse timestamp and strip timezone (DB uses TIMESTAMP WITHOUT TIME ZONE)
@@ -483,6 +489,7 @@ async def flush_logs_to_postgres(
                         sequence=seq,
                     )
                     logs_to_insert.append(log_entry)
+                    consumed_ids.append(entry_id)
                 except Exception as e:
                     logger.warning(f"Failed to parse log entry {entry_id}: {e}")
                     continue
@@ -503,8 +510,12 @@ async def flush_logs_to_postgres(
                     db.add_all(logs_to_insert)
                     await db.commit()
 
-            # Clear the stream after successful persistence
-            await r.delete(stream_key)
+            # Caller-owned transactions must commit before acknowledging Redis.
+            # Delete only consumed entries, preserving logs appended during commit.
+            if session is None:
+                await r.xdel(stream_key, *consumed_ids)
+            elif pending_acknowledgements is not None:
+                pending_acknowledgements.append((stream_key, consumed_ids))
 
             logger.debug(f"Flushed {len(logs_to_insert)} logs to Postgres for {log_safe(exec_id)}")
             return len(logs_to_insert)
@@ -512,3 +523,17 @@ async def flush_logs_to_postgres(
     except Exception as e:
         logger.error(f"Failed to flush logs to Postgres: {e}")
         return 0
+
+
+async def acknowledge_persisted_logs(
+    pending_acknowledgements: list[tuple[str, list[str]]],
+) -> None:
+    """Acknowledge exactly the rows from an already committed log transaction."""
+    if not pending_acknowledgements:
+        return
+    from src.core.cache import get_redis
+
+    async with get_redis() as redis:
+        for stream_key, entry_ids in pending_acknowledgements:
+            if entry_ids:
+                await redis.xdel(stream_key, *entry_ids)
