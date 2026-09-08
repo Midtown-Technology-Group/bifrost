@@ -1,0 +1,241 @@
+{
+  "review_date": "2026-09-08",
+  "imported_upstream_base": "67859ed158409b215ab8d030620917bec31d7ef6",
+  "fork_head": "cebcf40d0dd080f66ed8e60560210677f692fa2d",
+  "upstream_head": "0598020e32ea6367ecda69f548a53c00bb77bb6c",
+  "last_integration_commit": "57b43e023289a8d883dd7e1bbb3c1b17237dd84a",
+  "actual_merge_base": "7fbda650359c9bdbacb0b4cc373cd4c3b3ff6ff3",
+  "upstream_delta": "61 files changed, 2683 insertions(+), 585 deletions(-)",
+  "commits": [
+    {
+      "sha": "18507cfec09268911ffe453d8df17bc65f5cdc58",
+      "subject": "fix(chat): preserve null results and hide internal errors (#704)",
+      "files": [
+        "api/src/core/pubsub.py",
+        "api/src/jobs/consumers/agent_run.py",
+        "api/src/jobs/schedulers/execution_cleanup.py",
+        "api/src/services/chat_errors.py",
+        "api/src/services/chat_runs.py",
+        "api/tests/unit/jobs/schedulers/test_execution_cleanup.py",
+        "api/tests/unit/services/test_agent_run_consumer.py",
+        "api/tests/unit/services/test_chat_runs.py",
+        "api/tests/unit/test_chat_run_pubsub.py",
+        "api/tests/unit/test_chat_stream_serialization.py",
+        "client/src/lib/chat-runtime.test.ts",
+        "client/src/lib/chat-runtime.ts"
+      ]
+    },
+    {
+      "sha": "82e9949a99ad0272cac31719cc719a173c50cfb5",
+      "subject": "Fix production execution diagnostics and tool contracts (#706)",
+      "files": [
+        ".claude/skills/bifrost-build/generated/python-sdk-signatures.md",
+        "api/bifrost/decorators.py",
+        "api/bifrost/executions.py",
+        "api/src/core/error_messages.py",
+        "api/src/models/contracts/workflows.py",
+        "api/src/routers/agent_runs.py",
+        "api/src/routers/events.py",
+        "api/src/routers/executions.py",
+        "api/src/sdk/decorators.py",
+        "api/src/services/agent_runtime/toolset.py",
+        "api/src/services/events/processor.py",
+        "api/src/services/execution/engine.py",
+        "api/src/services/execution/module_loader.py",
+        "api/src/services/execution/type_inference.py",
+        "api/src/services/file_storage/indexers/workflow.py",
+        "api/src/services/mcp_server/gateway.py",
+        "api/src/services/mcp_server/server.py",
+        "api/src/services/openapi_endpoints.py",
+        "api/src/services/solutions/deploy.py",
+        "api/src/services/tool_registry.py",
+        "api/src/services/tool_schema.py",
+        "api/tests/e2e/api/test_agent_runs_pagination.py",
+        "api/tests/e2e/api/test_executions_query_params.py",
+        "api/tests/unit/engine/test_workflow_parameters.py",
+        "api/tests/unit/sdk/test_sdk_executions_pagination.py",
+        "api/tests/unit/services/test_agent_runtime.py",
+        "api/tests/unit/services/test_event_processor_agents.py",
+        "api/tests/unit/services/test_openapi_endpoints.py",
+        "api/tests/unit/services/test_tool_registry.py",
+        "api/tests/unit/services/test_type_inference.py",
+        "api/tests/unit/services/test_workflow_indexer_enrich.py",
+        "api/tests/unit/test_contract_version.py",
+        "api/tests/unit/test_error_message_fallback.py",
+        "api/tests/unit/test_solution_deploy_reconcile.py",
+        "plugins/bifrost/skills/bifrost-build/generated/python-sdk-signatures.md"
+      ]
+    },
+    {
+      "sha": "50597d159a66a4115c236d40b6384bff14d6e28b",
+      "subject": "chore(deps): bump node from `4ebb5ac` to `c075312` in /client (#676)",
+      "files": [
+        "client/Dockerfile",
+        "client/Dockerfile.dev",
+        "client/Dockerfile.playwright"
+      ]
+    },
+    {
+      "sha": "f5e0fce545cd9a34c051be2e8206b7bd0b0814ee",
+      "subject": "chore(deps): bump python from `ce40764` to `cae66f2` in /api (#677)",
+      "files": [
+        "api/Dockerfile",
+        "api/Dockerfile.dev"
+      ]
+    },
+    {
+      "sha": "d1929a048d5fa2dcc233c8ed58e637f5932027db",
+      "subject": "chore(deps): bump @atlaskit/pragmatic-drag-and-drop from 2.0.1 to 3.0.0 in /client (#681)",
+      "files": [
+        "client/package-lock.json",
+        "client/package.json"
+      ]
+    },
+    {
+      "sha": "58d67f442628c48be2007bbdb9b0154bb9737042",
+      "subject": "chore(deps-dev): bump js-yaml from 4.3.0 to 5.4.1 in /client (#696)",
+      "files": [
+        "client/package-lock.json"
+      ]
+    },
+    {
+      "sha": "493ea6c7d95bf01e468f2bdecf8feeb1f434092a",
+      "subject": "chore(deps): bump the python-minor-and-patch group with 2 updates (#678)",
+      "files": [
+        "pyproject.toml",
+        "requirements.lock"
+      ]
+    },
+    {
+      "sha": "8f00326520a5229e4cd8c7239ae0844d5515edf2",
+      "subject": "chore(deps): bump the actions-minor-and-patch group with 3 updates (#680)",
+      "files": [
+        ".github/workflows/codeql.yml",
+        ".github/workflows/scorecard.yml"
+      ]
+    },
+    {
+      "sha": "5e79257a6f96242f45652357215a097d45bde9a9",
+      "subject": "chore(deps): bump the npm-minor-and-patch group in /client with 14 updates (#679)",
+      "files": [
+        "client/package-lock.json",
+        "client/package.json"
+      ]
+    },
+    {
+      "sha": "0598020e32ea6367ecda69f548a53c00bb77bb6c",
+      "subject": "Validate generic workflow MCP execution (#707)",
+      "files": [
+        "api/src/services/mcp_server/tools/workflow.py",
+        "api/tests/unit/services/mcp_server/test_gateway.py",
+        "api/tests/unit/services/test_mcp_tools.py"
+      ]
+    }
+  ],
+  "explicit_base_conflicts": [
+    "api/Dockerfile",
+    "api/Dockerfile.dev",
+    "api/bifrost/executions.py",
+    "api/src/routers/events.py",
+    "api/src/routers/executions.py",
+    "api/src/services/execution/engine.py",
+    "api/src/services/file_storage/indexers/workflow.py",
+    "api/src/services/mcp_server/gateway.py",
+    "api/src/services/mcp_server/server.py",
+    "api/src/services/mcp_server/tools/workflow.py",
+    "api/src/services/tool_registry.py",
+    "api/tests/unit/jobs/schedulers/test_execution_cleanup.py",
+    "api/tests/unit/services/test_event_processor_agents.py",
+    "api/tests/unit/services/test_openapi_endpoints.py",
+    "api/tests/unit/test_contract_version.py",
+    "client/package-lock.json",
+    "client/package.json"
+  ],
+  "natural_merge_conflicts": [
+    ".claude-plugin/plugin.json",
+    ".claude/skills/bifrost-build/generated/cli-reference.md",
+    ".claude/skills/bifrost-build/generated/python-sdk-signatures.md",
+    ".claude/skills/bifrost-build/references/web-sdk-v2.md",
+    ".codex-plugin/plugin.json",
+    ".github/workflows/ci.yml",
+    "api/Dockerfile",
+    "api/Dockerfile.dev",
+    "api/bifrost/cli.py",
+    "api/bifrost/commands/app.py",
+    "api/bifrost/executions.py",
+    "api/src/core/pubsub.py",
+    "api/src/jobs/consumers/agent_run.py",
+    "api/src/jobs/platform/application_deploy.py",
+    "api/src/jobs/platform/registry.py",
+    "api/src/jobs/schedulers/execution_cleanup.py",
+    "api/src/jobs/schedulers/webhook_renewal.py",
+    "api/src/models/contracts/events.py",
+    "api/src/models/orm/executions.py",
+    "api/src/repositories/events.py",
+    "api/src/routers/app_code_files.py",
+    "api/src/routers/applications.py",
+    "api/src/routers/events.py",
+    "api/src/routers/executions.py",
+    "api/src/routers/files.py",
+    "api/src/routers/websocket.py",
+    "api/src/services/agent_executor.py",
+    "api/src/services/agent_runtime/model_factory.py",
+    "api/src/services/application_deploy_storage.py",
+    "api/src/services/chat_runs.py",
+    "api/src/services/events/processor.py",
+    "api/src/services/execution/agent_run_service.py",
+    "api/src/services/execution/autonomous_agent_executor.py",
+    "api/src/services/execution/engine.py",
+    "api/src/services/file_storage/indexers/workflow.py",
+    "api/src/services/mcp_server/gateway.py",
+    "api/src/services/mcp_server/middleware.py",
+    "api/src/services/mcp_server/server.py",
+    "api/src/services/mcp_server/tool_access.py",
+    "api/src/services/mcp_server/tools/agents.py",
+    "api/src/services/mcp_server/tools/workflow.py",
+    "api/src/services/solutions/app_build.py",
+    "api/src/services/tool_registry.py",
+    "api/tests/e2e/api/test_agent_workflow_tool_execution.py",
+    "api/tests/e2e/mcp/test_mcp_tool_access_matrix.py",
+    "api/tests/e2e/platform/test_event_subscription_filters.py",
+    "api/tests/unit/jobs/schedulers/test_execution_cleanup.py",
+    "api/tests/unit/repositories/test_event_delivery_repository.py",
+    "api/tests/unit/routers/test_files_signed_url.py",
+    "api/tests/unit/services/events/test_emit_topic.py",
+    "api/tests/unit/services/mcp_server/test_auth_provider_claims.py",
+    "api/tests/unit/services/mcp_server/test_gateway.py",
+    "api/tests/unit/services/mcp_server/test_tool_access.py",
+    "api/tests/unit/services/test_agent_run_consumer.py",
+    "api/tests/unit/services/test_agent_run_service.py",
+    "api/tests/unit/services/test_agent_runtime.py",
+    "api/tests/unit/services/test_event_processor_agents.py",
+    "api/tests/unit/services/test_openapi_endpoints.py",
+    "api/tests/unit/services/test_user_invite_service.py",
+    "api/tests/unit/test_chat_run_pubsub.py",
+    "api/tests/unit/test_ci_workflow_contract.py",
+    "api/tests/unit/test_contract_version.py",
+    "api/tests/unit/test_files_sdk_solution_scope.py",
+    "api/tests/unit/test_solution_dev_proxy.py",
+    "client/e2e/chat-attachments.admin.spec.ts",
+    "client/package-lock.json",
+    "client/package.json",
+    "client/src/components/agents/AgentRunsPanel.tsx",
+    "client/src/components/users/UserEmailCell.test.tsx",
+    "client/src/lib/chat-runtime.test.ts",
+    "client/src/lib/chat-runtime.ts",
+    "client/src/lib/chat-utils.ts",
+    "client/src/lib/v1.d.ts",
+    "client/src/pages/Chat.test.tsx",
+    "client/src/pages/Roles.tsx",
+    "client/src/pages/Users.tsx",
+    "client/src/services/websocket.ts",
+    "plugins/bifrost/.codex-plugin/plugin.json",
+    "plugins/bifrost/skills/bifrost-build/generated/cli-reference.md",
+    "plugins/bifrost/skills/bifrost-build/generated/python-sdk-signatures.md",
+    "plugins/bifrost/skills/bifrost-build/references/web-sdk-v2.md",
+    "scripts/compute-dev-version.sh",
+    "scripts/test-compute-dev-version.sh"
+  ],
+  "method": "git merge-tree --write-tree in a temporary bare repository using the fork object store as a read-only alternate; explicit-base run adds --merge-base=<imported_upstream_base>; exit 1 indicates conflicts, not a tested integration candidate",
+  "runtime_tests_run": false
+}
