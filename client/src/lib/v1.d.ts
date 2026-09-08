@@ -29758,6 +29758,12 @@ export interface components {
             options?: {
                 [key: string]: string;
             }[] | null;
+            /** Python Type */
+            python_type?: string | null;
+            /** Json Schema */
+            json_schema?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * WorkflowROIEntry
@@ -30978,6 +30984,16 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             runtime?: components["schemas"]["WorkspaceRepoRuntimeState"] | null;
+            /**
+             * Source Authority
+             * @default repo-v1
+             * @enum {string}
+             */
+            source_authority: "repo-v1" | "workspace-release-v1";
+            /** Workspace Release Id */
+            workspace_release_id?: string | null;
+            /** Governed Paths */
+            governed_paths?: string[];
         };
         /** WorkspaceRepoValidationResponse */
         WorkspaceRepoValidationResponse: {
@@ -37036,6 +37052,8 @@ export interface operations {
         parameters: {
             query: {
                 scope: string;
+                include_runtime?: boolean;
+                include_snapshot?: boolean;
             };
             header?: never;
             path?: never;
@@ -42306,6 +42324,8 @@ export interface operations {
                 metadata_filter?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description Opaque page position returned as next_cursor; offset remains supported. */
+                cursor?: string | null;
             };
             header?: never;
             path?: never;

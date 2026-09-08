@@ -1,5 +1,6 @@
 """Test WorkflowIndexer enrich-only behavior."""
 
+import ast
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -121,3 +122,86 @@ async def test_indexer_reactivates_inactive_workflow():
             assert params.get("is_active") is True, "Should set is_active=True"
             assert params.get("is_orphaned") is False, "Should set is_orphaned=False"
             break
+
+
+def test_ast_parameter_extraction_preserves_nested_schema_and_literals():
+    from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+    indexer = WorkflowIndexer(MagicMock())
+    tree = ast.parse(
+        """
+from typing import Literal
+from bifrost import workflow
+
+@workflow
+def demo(payload_items: list[dict[str, int]], status: Literal["open", "closed"]):
+    pass
+"""
+    )
+    func_node = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+    params = indexer._extract_parameters_from_ast(func_node)
+    assert params["properties"]["payload_items"] == {
+        "title": "Payload Items", "type": "array",
+        "items": {"type": "object", "additionalProperties": {"type": "integer"}},
+    }
+    assert params["properties"]["status"] == {
+        "title": "Status", "enum": ["open", "closed"], "type": "string",
+    }
+    assert params["required"] == ["payload_items", "status"]
+
+
+def test_ast_parameter_extraction_treats_any_as_unconstrained():
+    from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+    indexer = WorkflowIndexer(MagicMock())
+    params = indexer.extract_parameters_from_source(
+        "from typing import Any\ndef demo(items: list[dict[str, Any]]): pass\n",
+        "demo",
+        path="workflows/demo.py",
+    )
+
+    assert params is not None
+    assert params["properties"]["items"] == {
+        "type": "array",
+        "title": "Items",
+        "items": {"type": "object", "additionalProperties": {}},
+    }
+
+
+def test_ast_parameter_extraction_preserves_local_enum_values():
+    from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+    indexer = WorkflowIndexer(MagicMock())
+    params = indexer.extract_parameters_from_source(
+        """
+from enum import Enum, IntEnum
+
+class Action(str, Enum):
+    CREATE = "create"
+    DISABLE = "disable"
+
+class Priority(IntEnum):
+    LOW = 1
+    HIGH = 2
+
+def demo(action: Action, priority: Priority | None = None):
+    pass
+""",
+        "demo",
+        path="workflows/demo.py",
+    )
+
+    assert params is not None
+    assert params["properties"]["action"] == {
+        "title": "Action", "enum": ["create", "disable"], "type": "string",
+    }
+    assert params["properties"]["priority"] == {
+        "title": "Priority", "default": None,
+        "anyOf": [{"enum": [1, 2], "type": "integer"}, {"type": "null"}],
+    }
+    assert params["required"] == ["action"]

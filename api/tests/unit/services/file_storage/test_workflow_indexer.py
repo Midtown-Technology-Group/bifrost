@@ -247,7 +247,7 @@ def test_extract_parameters_maps_list_optional_and_numeric_literal_types() -> No
             "unknown": {"title": "Unknown", "default": None},
         },
         "additionalProperties": False,
-        "required": ["items"],
+        "required": ["items", "amount"],
     }
 
 
@@ -278,7 +278,7 @@ def test_annotation_helpers_cover_attributes_and_non_literal_options() -> None:
     assert indexer._annotation_to_json_schema(annotations[5].annotation) == {}
     assert indexer._annotation_to_json_schema(
         ast.Attribute(value=ast.Name(id="typing"), attr="Literal")
-    ) == {"type": "object"}
+    ) == {}
     assert indexer._annotation_to_json_schema(
         ast.Subscript(
             value=ast.Attribute(value=ast.Name(id="typing"), attr="Literal"),

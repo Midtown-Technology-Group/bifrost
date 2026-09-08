@@ -11,6 +11,8 @@ Tests cover:
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from src.services.tool_schema import parameter_json_schema
+
 import pytest
 
 
@@ -18,7 +20,6 @@ from src.services.tool_registry import (
     RegisteredTool,
     ToolDefinition,
     ToolRegistry,
-    _map_workflow_type_to_json_schema,
     _normalize_tool_name,
     format_tools_for_openai,
     format_tools_for_anthropic,
@@ -213,39 +214,39 @@ class TestToolDefinitionCategory:
 
 class TestMapTypeToJsonSchema:
     def test_string(self):
-        assert _map_workflow_type_to_json_schema("string") == "string"
+        assert parameter_json_schema({"type": "string"})["type"] == "string"
 
     def test_str(self):
-        assert _map_workflow_type_to_json_schema("str") == "string"
+        assert parameter_json_schema({"type": "str"})["type"] == "string"
 
     def test_int(self):
-        assert _map_workflow_type_to_json_schema("int") == "integer"
+        assert parameter_json_schema({"type": "int"})["type"] == "integer"
 
     def test_integer(self):
-        assert _map_workflow_type_to_json_schema("integer") == "integer"
+        assert parameter_json_schema({"type": "integer"})["type"] == "integer"
 
     def test_float(self):
-        assert _map_workflow_type_to_json_schema("float") == "number"
+        assert parameter_json_schema({"type": "float"})["type"] == "number"
 
     def test_bool(self):
-        assert _map_workflow_type_to_json_schema("bool") == "boolean"
+        assert parameter_json_schema({"type": "bool"})["type"] == "boolean"
 
     def test_json(self):
-        assert _map_workflow_type_to_json_schema("json") == "object"
+        assert parameter_json_schema({"type": "json"})["type"] == "object"
 
     def test_dict(self):
-        assert _map_workflow_type_to_json_schema("dict") == "object"
+        assert parameter_json_schema({"type": "dict"})["type"] == "object"
 
     def test_list(self):
-        assert _map_workflow_type_to_json_schema("list") == "array"
+        assert parameter_json_schema({"type": "list"})["type"] == "array"
 
     def test_unknown_falls_back_to_string(self):
-        assert _map_workflow_type_to_json_schema("unknown_type") == "string"
+        assert parameter_json_schema({"type": "unknown_type"})["type"] == "string"
 
     def test_case_insensitive(self):
-        assert _map_workflow_type_to_json_schema("STRING") == "string"
-        assert _map_workflow_type_to_json_schema("Int") == "integer"
-        assert _map_workflow_type_to_json_schema("BOOL") == "boolean"
+        assert parameter_json_schema({"type": "STRING"})["type"] == "string"
+        assert parameter_json_schema({"type": "Int"})["type"] == "integer"
+        assert parameter_json_schema({"type": "BOOL"})["type"] == "boolean"
 
 
 # ── ToolRegistry._to_tool_definition ──────────────────────────────────
@@ -334,7 +335,14 @@ class TestToToolDefinition:
 
         result = self.registry._to_tool_definition(tool)
 
-        assert result.parameters == {"type": "object", "properties": {}, "additionalProperties": False}
+        # Legacy Solution rows used [] for both zero-argument tools and tools
+        # whose signatures were never indexed. Keep them callable until the
+        # next Solution deploy backfills the real contract from source.
+        assert result.parameters == {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": True,
+        }
 
     def test_array_type_includes_items(self):
         tool = _make_registered_tool(
@@ -372,6 +380,35 @@ class TestToToolDefinition:
         prop = result.parameters["properties"]["fields"]
         assert prop["type"] == "object"
         assert prop["additionalProperties"] is True
+
+    def test_json_schema_field_is_preserved_when_present(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {
+                    "name": "payload_items",
+                    "type": "list",
+                    "label": "Payload Items",
+                    "json_schema": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {"type": "integer"},
+                        },
+                    },
+                },
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        assert result.parameters["properties"]["payload_items"] == {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": {"type": "integer"},
+            },
+            "description": "Payload Items",
+        }
 
     def test_non_array_type_has_no_items(self):
         tool = _make_registered_tool(
@@ -414,6 +451,22 @@ class TestToToolDefinition:
         result = self.registry._to_tool_definition(tool)
 
         assert "enum" not in result.parameters["properties"]["name"]
+
+    def test_options_list_supports_plain_values_for_backwards_compatibility(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {
+                    "name": "status",
+                    "type": "string",
+                    "label": "Status",
+                    "options": ["open", "closed"],
+                },
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        assert result.parameters["properties"]["status"]["enum"] == ["open", "closed"]
 
     def test_label_falls_back_to_name(self):
         tool = _make_registered_tool(

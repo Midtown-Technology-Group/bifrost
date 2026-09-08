@@ -23,6 +23,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from src.core.error_messages import format_exception_message
 from src.core.log_safety import log_safe
 from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus
 from src.models.orm.events import (
@@ -268,12 +269,15 @@ class EventProcessor:
             await self.queue_event_deliveries(delivery.event_id)
             return "Delivery queued for retry"
         except Exception as exc:
-            logger.error("Failed to queue retry: %s", exc, exc_info=True)
+            error_message = format_exception_message(
+                exc, context="queueing event delivery retry"
+            )
+            logger.error("Failed to queue retry: %s", error_message, exc_info=True)
             delivery.status = EventDeliveryStatus.FAILED
-            delivery.error_message = str(exc)
+            delivery.error_message = error_message
             delivery.completed_at = datetime.now(timezone.utc)
             await self.session.flush()
-            return f"Failed to queue retry: {exc}"
+            return f"Failed to queue retry: {error_message}"
 
     async def process_webhook(
         self,
@@ -670,12 +674,16 @@ class EventProcessor:
                 delivery.status = EventDeliveryStatus.QUEUED
                 queued += 1
             except Exception as e:
+                error_message = format_exception_message(
+                    e,
+                    context="queueing event delivery",
+                )
                 logger.error(
-                    f"Failed to queue delivery {delivery.id}: {e}",
+                    f"Failed to queue delivery {delivery.id}: {error_message}",
                     exc_info=True,
                 )
                 delivery.status = EventDeliveryStatus.FAILED
-                delivery.error_message = str(e)
+                delivery.error_message = error_message
 
         await self.session.flush()
         await self._delivery_repo.update_event_status(event_id)

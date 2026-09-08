@@ -241,8 +241,8 @@ class TestSignatureBasedParameters:
         assert metadata.parameters[0].label == "First Name"
         assert metadata.parameters[1].label == "Email Address"
 
-    def test_optional_type_makes_not_required(self):
-        """Test that Optional types are not required"""
+    def test_nullable_argument_without_default_remains_required(self):
+        """Nullable parameters must still be supplied unless they have a default"""
         @workflow
         def test_func(name: str | None):
             """Test."""
@@ -250,7 +250,7 @@ class TestSignatureBasedParameters:
 
         metadata = test_func._executable_metadata
         assert len(metadata.parameters) == 1
-        assert metadata.parameters[0].required is False
+        assert metadata.parameters[0].required is True
 
     def test_list_type_mapping(self):
         """Test list type maps correctly"""

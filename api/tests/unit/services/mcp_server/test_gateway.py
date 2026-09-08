@@ -569,6 +569,47 @@ async def test_execute_validates_before_dispatch():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stored_schema, accepted", [
+    ([], True),
+    ({"type": "object", "properties": {}, "additionalProperties": False}, False),
+])
+async def test_execute_distinguishes_legacy_and_explicit_empty_schemas(
+    stored_schema, accepted
+):
+    from src.services.tool_registry import workflow_parameters_to_json_schema
+
+    service = MCPAgentGatewayService(_context())
+    agent = _agent()
+    tool = _resolved_tool(parameters=workflow_parameters_to_json_schema(
+        stored_schema, allow_unknown_when_empty=True
+    ))
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+    arguments = {"existing_solution_argument": "still accepted"}
+
+    with patch.object(
+        service, "_dispatch", new=AsyncMock(return_value={"output": "ok"})
+    ) as dispatch:
+        if accepted:
+            result = await service.execute_tool(
+                snapshot, tool, arguments, operation_id="empty-schema-operation"
+            )
+            assert result["result"] == {"output": "ok"}
+            dispatch.assert_awaited_once_with(
+                agent, tool, arguments,
+                operation_id="empty-schema-operation",
+                task_requested=False,
+                async_execution=False,
+            )
+        else:
+            with pytest.raises(GatewayError) as exc_info:
+                await service.execute_tool(
+                    snapshot, tool, arguments, operation_id="empty-schema-operation"
+                )
+            assert exc_info.value.code == "INVALID_ARGUMENTS"
+            dispatch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_execute_returns_auditable_envelope():
     service = MCPAgentGatewayService(_context())
     agent = _agent()
@@ -800,6 +841,12 @@ async def test_operation_receipt_replays_every_gateway_source_once(
             OperationReceiptDisposition.SUCCEEDED,
             response=first,
         )
+        # An already completed operation must replay even after the live
+        # contract changes to reject its original arguments.
+        tool.definition.parameters.clear()
+        tool.definition.parameters.update({
+            "type": "object", "properties": {}, "additionalProperties": False,
+        })
         second = await service.execute_agent_tool(
             str(agent.id),
             tool.tool_ref,

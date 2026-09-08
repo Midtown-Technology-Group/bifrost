@@ -1,8 +1,9 @@
 # Integrate upstream through 0598020e3
 
-Date: 2026-09-08. Status: reviewed implementation plan; integration source has not
-been changed or tested. The operator requested review and planning for these ten
-commits. This document does not authorize a production rollout.
+Date: 2026-09-08. Status: implemented; final validation and delivery evidence belong to the integration PR. The operator
+authorized implementation after reviewing this plan. Baseline evidence below
+records the original review; implementation validation will be recorded with the
+integration PR. Production rollout remains a separate operation.
 
 ## Scope and decision
 
@@ -276,8 +277,45 @@ Suggested production notes for the implementation PR:
 
 ## Evidence limits
 
-Completed: fresh upstream/fork fetch, commit and source review, dependency target
+At the original planning checkpoint: fresh upstream/fork fetch, commit and source review, dependency target
 comparison, PR/settings readback, isolated merge-tree rehearsals, and conflict
 inventory. No production reads/writes, application source changes, dependency
-installation, browser exercise, or test suite execution were performed for this
-plan. The frontend modernization remains outside scope.
+installation, browser exercise, or test suite execution were performed for that
+planning checkpoint. The frontend modernization remains outside scope.
+
+
+## Implementation disposition
+
+The source is integrated as one atomic two-parent change after the planning
+commit. This keeps the schema representation and all invocation consumers
+coherent together while preserving upstream ancestry. The PR diff separates
+history/diagnostics, Chat, schema validation, and dependency reconciliation by
+file; superseded upstream dependencies do not receive manufactured edits.
+
+The eight remaining npm constraints already had matching resolved versions in
+the fork lockfile. Only manifest/root-lock constraints changed; resolved package
+entries and the newer Atlaskit version were preserved. Node/Python image pins
+and the paired AI/harness libraries were updated as selected.
+
+Regression coverage distinguishes legacy empty registrations from explicit
+zero-argument schemas, preserves nullable-required and keyword-only semantics,
+checks AST/runtime parity, and proves receipt replay after a live schema change
+cannot redispatch. The legacy omission of null defaults remains unchanged.
+Generated client types also include recent fork API additions that were absent
+from the prior checked-in output. The API fingerprint update is additive and
+leaves the CLI/server contract version unchanged.
+
+During implementation, fork main advanced to `a8e04360d` (#701). The integration
+was rebased onto that revision, preserving its metadata-only Workspace state
+read and regenerating the client contract for `include_snapshot`. The original
+review evidence remains pinned to the planning checkpoint above.
+
+The full gate exposed overlapping execution-log pages when logs arrive between
+requests. This blocking repair replaces new offset tokens with timestamp/ID
+boundaries and deterministic ordering, retaining numeric-token compatibility.
+A database regression inserts tied and newer logs between pages and verifies
+that every original row is returned exactly once.
+
+The local full-repository type checker also reached Node's default 2 GiB heap
+limit. Its quality script now defaults to a bounded 4 GiB heap, while preserving
+explicit operator Node settings. This affects validation tooling only.

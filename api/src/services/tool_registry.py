@@ -78,26 +78,6 @@ class RegisteredTool:
     function_name: str
 
 
-def _map_workflow_type_to_json_schema(param_type: str) -> str:
-    """Map Bifrost's stored workflow parameter types to JSON Schema types."""
-    type_map = {
-        "string": "string",
-        "str": "string",
-        "int": "integer",
-        "integer": "integer",
-        "float": "number",
-        "number": "number",
-        "bool": "boolean",
-        "boolean": "boolean",
-        "json": "object",
-        "dict": "object",
-        "object": "object",
-        "list": "array",
-        "array": "array",
-    }
-    return type_map.get(param_type.lower(), "string")
-
-
 def _parameter_record_to_property(
     param: dict[str, Any],
 ) -> tuple[str, dict[str, Any], bool] | None:
@@ -106,34 +86,19 @@ def _parameter_record_to_property(
     if not param_name:
         return None
 
-    json_type = _map_workflow_type_to_json_schema(
-        str(param.get("type", "string"))
-    )
-    property_schema: dict[str, Any] = {
-        "type": json_type,
-        "description": (
-            param.get("label") or param.get("description") or param_name
-        ),
-    }
-    if json_type == "array":
-        property_schema["items"] = {"type": "string"}
-    elif json_type == "object":
-        property_schema["additionalProperties"] = True
+    from src.services.tool_schema import parameter_json_schema
 
-    options = param.get("options")
-    if options:
-        property_schema["enum"] = [
-            deepcopy(option["value"])
-            for option in options
-            if "value" in option
-        ]
-    if "default_value" in param and param["default_value"] is not None:
-        property_schema["default"] = deepcopy(param["default_value"])
+    property_schema = parameter_json_schema(param)
+    property_schema.setdefault(
+        "description", param.get("label") or param.get("description") or param_name
+    )
     return str(param_name), property_schema, bool(param.get("required", False))
 
 
 def workflow_parameters_to_json_schema(
     parameters_schema: list[dict[str, Any]] | dict[str, Any] | None,
+    *,
+    allow_unknown_when_empty: bool = False,
 ) -> dict[str, Any]:
     """Return the complete JSON Schema exposed for a workflow tool.
 
@@ -163,7 +128,7 @@ def workflow_parameters_to_json_schema(
     result: dict[str, Any] = {
         "type": "object",
         "properties": properties,
-        "additionalProperties": False,
+        "additionalProperties": allow_unknown_when_empty and not parameters_schema,
     }
     if required:
         result["required"] = required
@@ -380,7 +345,9 @@ class ToolRegistry:
             id=tool.id,
             name=_normalize_tool_name(tool.name, category=tool.category),
             description=tool.description,
-            parameters=workflow_parameters_to_json_schema(tool.parameters_schema),
+            parameters=workflow_parameters_to_json_schema(
+                tool.parameters_schema, allow_unknown_when_empty=True
+            ),
             workflow_name=tool.name,  # Keep original for execution lookup
             category=tool.category,
         )
