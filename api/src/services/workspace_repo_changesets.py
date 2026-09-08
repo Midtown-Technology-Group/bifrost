@@ -62,6 +62,7 @@ from src.services.workflow_registration import (
 )
 from src.services.workspace_release_files import (
     WorkspaceReleasePathGoverned,
+    global_active_workspace_release_descriptor,
     reject_release_governed_paths,
 )
 
@@ -189,6 +190,17 @@ class WorkspaceRepoChangesetService:
         generation, runtime_files = await self.inspect_module_coherence(files)
         mismatches = [item for item in runtime_files if not item.coherent]
         count = await self.rows.count_open(scope, self.organization_id)
+        release = await global_active_workspace_release_descriptor(self.db)
+        scope_prefix = f"{scope}/"
+        governed_paths = (
+            sorted(
+                path
+                for path in release.governed_paths
+                if path == scope or path.startswith(scope_prefix)
+            )
+            if release is not None
+            else []
+        )
         return WorkspaceRepoStateResponse(
             scope=scope,
             revision=revision,
@@ -197,6 +209,11 @@ class WorkspaceRepoChangesetService:
             dirty=workspace_dirty or count > 0,
             open_changesets=count,
             git_status=git_status,
+            source_authority=(
+                "workspace-release-v1" if release is not None else "repo-v1"
+            ),
+            workspace_release_id=(release.release_id if release is not None else None),
+            governed_paths=governed_paths,
             runtime=(
                 WorkspaceRepoRuntimeState(
                     generation=generation,
