@@ -108,7 +108,8 @@ def test_conditional_document_denies_foreign_scope(
                 "expected_data": original["data"],
             },
         )
-        assert denied.status_code == 403, denied.text
+        # Scoped UUID lookup hides tables outside the caller's accessible scope.
+        assert denied.status_code == 404, denied.text
         readback = e2e_client.get(path + f"?scope={org2['id']}", headers=headers)
         assert readback.status_code == 200
         assert readback.json() == original
