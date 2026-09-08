@@ -58,9 +58,10 @@ async def test_direct_read_and_nested_methods_close_one_owner(clients):
 
 @pytest.mark.asyncio
 async def test_context_error_closes_both_resources(clients):
-    with pytest.raises(RuntimeError):
+    operation = AsyncMock(side_effect=RuntimeError("operation failed"))
+    with pytest.raises(RuntimeError, match="operation failed"):
         async with adapter().get_client():
-            raise RuntimeError("operation failed")
+            await operation()
     assert_closed(clients)
 
 
@@ -116,7 +117,7 @@ async def test_stream_cancellation_closes_client(clients):
     await received.wait()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=1)
     assert_closed(clients)
 
 

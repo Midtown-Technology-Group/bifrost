@@ -50,7 +50,8 @@ async def test_original_callback_class_survives_synthetic_failure_without_messag
             "attempt_count": 3,
         }
     }
-    assert "secret" not in str(terminal) and "business" not in str(terminal)
+    assert "secret" not in str(terminal)
+    assert "business" not in str(terminal)
     assert callback.await_count == 4
 
 
