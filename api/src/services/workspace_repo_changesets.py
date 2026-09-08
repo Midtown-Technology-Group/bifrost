@@ -183,11 +183,19 @@ class WorkspaceRepoChangesetService:
         return digest.hexdigest(), files
 
     async def state(
-        self, scope: str, git_status: dict | None = None, workspace_dirty: bool = False
+        self,
+        scope: str,
+        git_status: dict | None = None,
+        workspace_dirty: bool = False,
+        include_runtime: bool = True,
     ) -> WorkspaceRepoStateResponse:
         scope = self.normalize_scope(scope)
         revision, files = await self._snapshot(scope)
-        generation, runtime_files = await self.inspect_module_coherence(files)
+        generation, runtime_files = (
+            await self.inspect_module_coherence(files)
+            if include_runtime
+            else ("", [])
+        )
         mismatches = [item for item in runtime_files if not item.coherent]
         count = await self.rows.count_open(scope, self.organization_id)
         release = await global_active_workspace_release_descriptor(self.db)
@@ -220,7 +228,7 @@ class WorkspaceRepoChangesetService:
                     coherent=not mismatches,
                     files=[item.to_dict() for item in mismatches],
                 )
-                if any(path.endswith(".py") for path in files)
+                if include_runtime and any(path.endswith(".py") for path in files)
                 else None
             ),
         )

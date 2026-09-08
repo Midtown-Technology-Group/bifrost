@@ -597,6 +597,26 @@ async def test_state_exposes_runtime_drift_separately_from_durable_hashes():
 
 
 @pytest.mark.asyncio
+async def test_state_can_skip_runtime_inspection():
+    inspector = AsyncMock(
+        side_effect=AssertionError("runtime inspection should be skipped")
+    )
+    svc = WorkspaceRepoChangesetService(
+        FakeDB(),
+        uuid4(),
+        repo=MemoryRepo({"features/a.py": b"one"}),
+        module_coherence_inspector=inspector,
+    )
+    svc.rows = MemoryRows()
+
+    state = await svc.state("features", include_runtime=False)
+
+    assert state.file_count == 1
+    assert state.runtime is None
+    inspector.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_state_exposes_release_governance_for_requested_scope(monkeypatch):
     release_id = "sha256:" + "a" * 64
 
