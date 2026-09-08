@@ -73,24 +73,31 @@ def _is_transient_5xx(status_code: int) -> bool:
 async def _send_with_5xx_retry(
     method: str,
     do_send: Callable[[], Awaitable[httpx.Response]],
+    *,
+    retry_connect_timeout: bool = False,
 ) -> httpx.Response:
-    """Retry transient 5xx on idempotent methods.
+    """Retry transient 5xx and explicitly safe read connection timeouts.
 
-    The do_send callable must be safe to invoke multiple times; it should
-    re-issue the request fresh each call (httpx Request objects with bodies
-    are single-use, so callers either pass simple methods or rebuild the
-    request inside the closure).
+    Connection timeouts share the existing six-attempt budget with 5xx retries.
+    They are opt-in independently of HTTP method idempotency: ordinary writes,
+    including conditional PATCH, never gain transport retries. The callback must
+    rebuild a fresh request on every call; it must not reuse a consumed body.
     """
-    response = await do_send()
-    if not _is_idempotent(method):
-        return response
-
-    for delay in SDK_RETRY_BACKOFF_SECONDS:
-        if not _is_transient_5xx(response.status_code):
-            return response
-        await asyncio.sleep(delay)
-        response = await do_send()
-    return response
+    for attempt in range(len(SDK_RETRY_BACKOFF_SECONDS) + 1):
+        try:
+            response = await do_send()
+        except httpx.ConnectTimeout:
+            if not retry_connect_timeout or attempt == len(SDK_RETRY_BACKOFF_SECONDS):
+                raise
+        else:
+            if (
+                not _is_idempotent(method)
+                or not _is_transient_5xx(response.status_code)
+                or attempt == len(SDK_RETRY_BACKOFF_SECONDS)
+            ):
+                return response
+        await asyncio.sleep(SDK_RETRY_BACKOFF_SECONDS[attempt])
+    raise AssertionError("Retry loop must return a response or raise")
 
 
 def _send_sync_with_5xx_retry(
@@ -800,7 +807,9 @@ class BifrostClient:
             return response
 
         retry_method = "GET" if retry_safe else method
-        return await _send_with_5xx_retry(retry_method, _send)
+        return await _send_with_5xx_retry(
+            retry_method, _send, retry_connect_timeout=retry_safe
+        )
 
     async def get(self, path: str, **kwargs) -> httpx.Response:
         """Make GET request."""
@@ -861,7 +870,9 @@ class BifrostClient:
             return response
 
         retry_method = "GET" if retry_safe else method
-        return await _send_with_5xx_retry(retry_method, _send)
+        return await _send_with_5xx_retry(
+            retry_method, _send, retry_connect_timeout=retry_safe
+        )
 
     def stream(self, method: str, path: str, **kwargs):
         """
