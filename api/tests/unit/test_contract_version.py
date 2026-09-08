@@ -70,7 +70,7 @@ from src.models.contracts.solutions import (  # noqa: E402
     SolutionDeployJobStatus,
 )
 from src.models.contracts.policy_rule import PolicyRuleCreate, PolicyRuleUpdate  # noqa: E402
-from src.models.contracts.tables import TableCreate, TableUpdate  # noqa: E402
+from src.models.contracts.tables import ConditionalDocumentUpdate, DocumentUpdate, TableCreate, TableUpdate  # noqa: E402
 from src.models.contracts.users import RoleCreate, RoleUpdate  # noqa: E402
 from src.models.contracts.workflows import WorkflowUpdateRequest  # noqa: E402
 from src.models.contracts.workspace_promotions import (  # noqa: E402
@@ -160,7 +160,7 @@ _SDK_DTOS: list[type] = [
 #: `workflows execute`) plus EVERY SDK DTO (pulled in programmatically, so new
 #: ones are auto-covered). A field removed/renamed/retyped here is exactly what
 #: silently corrupts a stale CLI, and it is caught completely and automatically.
-CONTRACT_FINGERPRINT_MODELS: list[type] = _COMMAND_DTOS + _SDK_DTOS
+CONTRACT_FINGERPRINT_MODELS: list[type] = _COMMAND_DTOS + _SDK_DTOS + [DocumentUpdate, ConditionalDocumentUpdate]
 
 #: We deliberately do NOT fingerprint the full route list. Route strings are a
 #: weak, noisy proxy: hand-listing ~100 `/api/*` paths is perpetually incomplete
@@ -174,6 +174,7 @@ CLI_ROUTES: tuple[str, ...] = ("/api/version",)
 #: the live fingerprint, this test fails — update this value, and bump both
 #: contract-version mirrors if the change breaks older CLIs. See module docstring.
 EXPECTED_CONTRACT_FINGERPRINT = (
+    # Additive conditional document update DTOs; dedicated route fails closed on old servers.
     # ApplicationCreate.app_model default flipped inline_v1 → standalone_v2
     # (2026-06-13). CONTRACT_VERSION bumped to 3: an old CLI would default a new
     # `apps create` to v1 against a v2-default server, so old clients are gated.
@@ -261,7 +262,7 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # (2026-08-31). ADDITIVE: old clients ignore the extra response fields.
     # Workflow updates gained an optional execution retry policy (2026-09-03).
     # ADDITIVE: old clients omit it and workflows remain non-retryable by default.
-    "ebf146c7cc6134873024300ab2bfaffec2ad0c441d15492cec666dc4dc03512a"
+    "f61248521a1c74a6727ebd9b2b61ad0b2a79d30061670e85ffbed7652e50fa35"
 )
 
 

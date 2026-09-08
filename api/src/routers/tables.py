@@ -10,13 +10,13 @@ Tables follow the same scoping pattern as configs:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -38,10 +38,12 @@ from src.models.contracts.policies import (
     TablePolicies,
 )
 from src.models.contracts.tables import (
+    ConditionalDocumentUpdate,
     DocumentBatchCreate,
     DocumentBatchCreateResponse,
     DocumentBatchDeleteRequest,
     DocumentBatchDeleteResponse,
+    DocumentConflictResponse,
     DocumentCountResponse,
     DocumentCreate,
     DocumentListResponse,
@@ -327,8 +329,36 @@ class DocumentRepository:
         doc_id: str,
         data: dict[str, Any],
         updated_by: str | None,
+        *,
+        expected_updated_at: datetime | None = None,
+        expected_data: dict[str, Any] | None = None,
+        authorized_data: dict[str, Any] | None = None,
     ) -> Document | None:
-        """Update a document (partial update, merges with existing)."""
+        """Merge data, optionally with an atomic revision/data precondition."""
+        if expected_updated_at is not None:
+            predicates = [
+                Document.id == doc_id,
+                Document.table_id == self.table.id,
+                Document.updated_at == expected_updated_at,
+            ]
+            if expected_data is not None:
+                predicates.append(Document.data == expected_data)
+            if authorized_data is not None:
+                predicates.append(Document.data == authorized_data)
+            stmt = (
+                update(Document)
+                .where(*predicates)
+                .values(
+                    data=Document.data.op("||")(data),
+                    updated_by=updated_by,
+                    updated_at=max(datetime.now(timezone.utc), expected_updated_at + timedelta(microseconds=1)),
+                )
+                .returning(Document)
+                .execution_options(populate_existing=True, synchronize_session=False)
+            )
+            result = await self.session.execute(stmt)
+            return result.scalar_one_or_none()
+
         doc = await self.get(doc_id)
         if not doc:
             return None
@@ -1212,6 +1242,7 @@ async def get_document(
     "/{table_id}/documents/{doc_id}",
     response_model=DocumentPublic,
     summary="Update a document",
+    responses={409: {"model": DocumentConflictResponse, "description": "Document changed; read back before retrying"}},
 )
 async def update_document(
     table_id: str,
@@ -1233,7 +1264,21 @@ async def update_document(
         raise HTTPException(status_code=404, detail="Document not found")
     old_row = _row_from_doc(existing)
     await _check_action_or_403("update", table, old_row, ctx.user, db=ctx.db)
-    doc = await repo.update(doc_id, body.data, updated_by=updated_by)
+    if body.expected_updated_at is not None:
+        if existing.updated_at != body.expected_updated_at or (
+            body.expected_data is not None and existing.data != body.expected_data
+        ):
+            raise HTTPException(status_code=409, detail="Document precondition failed; read back before retrying")
+        # Pin the row used for authorization as well as the caller's revision.
+        doc = await repo.update(
+            doc_id, body.data, updated_by=updated_by,
+            expected_updated_at=body.expected_updated_at, expected_data=body.expected_data,
+            authorized_data=existing.data,
+        )
+        if doc is None:
+            raise HTTPException(status_code=409, detail="Document precondition failed; read back before retrying")
+    else:
+        doc = await repo.update(doc_id, body.data, updated_by=updated_by)
     if doc is None:
         # Lost a race with a concurrent delete after we fetched + access-checked.
         raise HTTPException(status_code=404, detail="Document not found")
@@ -1245,6 +1290,23 @@ async def update_document(
         new_row=_row_from_doc(doc),
     )
     return DocumentPublic.model_validate(doc)
+
+
+@router.patch(
+    "/{table_id}/documents/{doc_id}/conditional",
+    response_model=DocumentPublic,
+    summary="Update a document only at the reviewed revision",
+    responses={409: {"model": DocumentConflictResponse, "description": "Document changed; read back before retrying"}},
+)
+async def update_document_conditional(
+    table_id: str,
+    doc_id: str,
+    body: ConditionalDocumentUpdate,
+    ctx: Context,
+    scope: str | None = Query(None),
+) -> DocumentPublic:
+    """Fail closed on older servers and use the same scope/ownership/policy checks."""
+    return await update_document(table_id, doc_id, body, ctx, scope)
 
 
 @router.delete(

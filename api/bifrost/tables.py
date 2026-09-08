@@ -8,6 +8,7 @@ All methods are async and must be awaited.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -358,6 +359,9 @@ class tables:
         data: dict[str, Any],
         scope: str | None = None,
         updated_by: str | None = None,
+        *,
+        expected_updated_at: datetime | str | None = None,
+        expected_data: dict[str, Any] | None = None,
     ) -> DocumentData | None:
         """
         Update a document (partial update, merges with existing data).
@@ -368,6 +372,12 @@ class tables:
             data: Fields to update (merged with the existing JSONB data).
             scope: Organization scope.
             updated_by: Override attribution. Engine and platform-admin only.
+            expected_updated_at: Exact timezone-aware revision from the reviewed document.
+            expected_data: Optional exact reviewed data; requires expected_updated_at.
+
+        Conditional updates raise on stale revisions (409) and unsupported servers.
+        They never retry transport errors or 5xx; read back after an uncertain result
+        before deciding whether another update is safe.
 
         Returns:
             DocumentData if updated, None if not found.
@@ -384,11 +394,26 @@ class tables:
         body: dict[str, Any] = {"data": data}
         if updated_by is not None:
             body["updated_by"] = updated_by
+        conditional = expected_updated_at is not None
+        if expected_data is not None and not conditional:
+            raise ValueError("expected_data requires expected_updated_at")
+        if conditional:
+            revision = (
+                datetime.fromisoformat(expected_updated_at.replace("Z", "+00:00"))
+                if isinstance(expected_updated_at, str) else expected_updated_at
+            )
+            if revision is None or revision.utcoffset() is None:
+                raise ValueError("expected_updated_at must be timezone-aware")
+            body["expected_updated_at"] = revision.isoformat()
+            if expected_data is not None:
+                body["expected_data"] = expected_data
+        suffix = "/conditional" if conditional else ""
         response = await client.patch(
-            f"/api/tables/{table}/documents/{doc_id}{_scope_query(effective_scope)}",
+            f"/api/tables/{table}/documents/{doc_id}{suffix}{_scope_query(effective_scope)}",
             json=body,
+            **({"retry_safe": False} if conditional else {}),
         )
-        if response.status_code == 404:
+        if response.status_code == 404 and not conditional:
             return None
         raise_for_status_with_detail(response)
         result = response.json()

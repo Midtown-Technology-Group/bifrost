@@ -220,7 +220,7 @@ Event publishing operations (async).
 
 **`tables.query(table: str, where: dict[str, Any] | None = None, order_by: str | None = None, order_dir: str = 'asc', limit: int = 100, offset: int = 0, scope: str | None = None) -> DocumentList`**
 
-**`tables.update(table: str, doc_id: str, data: dict[str, Any], scope: str | None = None, updated_by: str | None = None) -> DocumentData | None`**
+**`tables.update(table: str, doc_id: str, data: dict[str, Any], scope: str | None = None, updated_by: str | None = None, expected_updated_at: datetime | str | None = None, expected_data: dict[str, Any] | None = None) -> DocumentData | None`**
 
 **`tables.upsert(table: str, id: str, data: dict[str, Any], scope: str | None = None, created_by: str | None = None, updated_by: str | None = None) -> DocumentData`**
 

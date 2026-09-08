@@ -543,6 +543,7 @@
 | DELETE | `/api/tables/{table_id}/documents/{doc_id}` |
 | GET | `/api/tables/{table_id}/documents/{doc_id}` |
 | PATCH | `/api/tables/{table_id}/documents/{doc_id}` |
+| PATCH | `/api/tables/{table_id}/documents/{doc_id}/conditional` |
 | GET | `/api/tools` |
 | GET | `/api/tools/system` |
 | GET | `/api/users` |
