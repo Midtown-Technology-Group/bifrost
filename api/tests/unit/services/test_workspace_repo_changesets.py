@@ -41,6 +41,10 @@ def _no_active_workspace_release(monkeypatch):
         mutable,
     )
     monkeypatch.setattr(
+        "src.services.workspace_repo_changesets.global_active_workspace_release_descriptor",
+        mutable,
+    )
+    monkeypatch.setattr(
         "src.services.workflow_registration.guard_workspace_registration_mutation",
         mutable,
     )
@@ -590,6 +594,42 @@ async def test_state_exposes_runtime_drift_separately_from_durable_hashes():
     assert state.runtime.generation == "generation-2"
     assert state.runtime.files[0].state == "stale_content"
     assert state.runtime.files[0].cache_sha256 == "9" * 64
+
+
+@pytest.mark.asyncio
+async def test_state_exposes_release_governance_for_requested_scope(monkeypatch):
+    release_id = "sha256:" + "a" * 64
+
+    async def active_release(_db):
+        return SimpleNamespace(
+            release_id=release_id,
+            governed_paths=(
+                "features/a.py",
+                "features/nested/b.py",
+                "modules/a.py",
+            ),
+        )
+
+    monkeypatch.setattr(
+        "src.services.workspace_repo_changesets.global_active_workspace_release_descriptor",
+        active_release,
+    )
+    svc = service({"features/a.py": b"one"})
+
+    state = await svc.state("features")
+
+    assert state.source_authority == "workspace-release-v1"
+    assert state.workspace_release_id == release_id
+    assert state.governed_paths == ["features/a.py", "features/nested/b.py"]
+
+
+@pytest.mark.asyncio
+async def test_state_defaults_to_mutable_repo_authority():
+    state = await service({"features/a.py": b"one"}).state("features")
+
+    assert state.source_authority == "repo-v1"
+    assert state.workspace_release_id is None
+    assert state.governed_paths == []
 
 @pytest.mark.asyncio
 async def test_stage_is_scope_bounded_and_diff_does_not_mutate_workspace():

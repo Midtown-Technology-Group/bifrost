@@ -57,6 +57,9 @@ class WorkspaceRepoStateResponse(BaseModel):
     open_changesets: int
     git_status: dict | None = None
     runtime: WorkspaceRepoRuntimeState | None = None
+    source_authority: Literal["repo-v1", "workspace-release-v1"] = "repo-v1"
+    workspace_release_id: str | None = None
+    governed_paths: list[str] = Field(default_factory=list)
 
 
 class WorkspaceRepoChangesetBegin(BaseModel):
