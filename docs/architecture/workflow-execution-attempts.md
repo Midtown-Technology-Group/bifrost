@@ -133,3 +133,23 @@ for the active heartbeat scan. Focused backend, workflow E2E, generated-client
 typecheck, and attempt-history component tests passed. Production-cardinality
 `EXPLAIN (ANALYZE, BUFFERS)` and post-deployment failure counts remain rollout
 observability tasks because the isolated VM contains synthetic test data only.
+
+## Terminal callback evidence
+
+The parent process retries terminal-result persistence three times with 100 ms
+and 200 ms pauses. It does not rerun workflow code. If all callbacks fail, the
+attempt remains classified as `result_persist_failed`; the synthetic failure
+records `execution_context.result_persistence_failure` with only the exception
+class, callback phase, and attempt count. Existing trigger context is retained.
+Exception messages, SQL, and result payloads are not included in this diagnostic.
+
+Logs flushed in the callback transaction remain in Redis until PostgreSQL
+commit. Acknowledgement deletes only the exact consumed stream IDs, so rollback
+and concurrent appends do not erase evidence. If acknowledgement fails, the
+source stream remains until its existing TTL; this is not an indefinite archive.
+
+The original result payload is still lost after all three callback attempts
+fail. These diagnostics and log preservation do not guarantee recovery of the
+business outcome. Do not replay a workflow with external effects to reconstruct
+it. Longer retries require review of pending-write consumption and ambiguous
+commit behavior, in addition to the existing attempt fence.

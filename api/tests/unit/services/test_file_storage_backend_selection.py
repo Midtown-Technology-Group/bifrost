@@ -91,6 +91,7 @@ def _client_with_blob_names(names, *, next_token=None):
                 blobs = blobs[:results_per_page]
             return FakePaged(blobs)
 
+    client._operation_owned = True
     client._container_client = FakeContainer()
     return client
 

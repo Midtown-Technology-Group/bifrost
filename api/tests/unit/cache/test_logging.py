@@ -486,7 +486,7 @@ class TestFlushLogsToPostgres:
                 assert count == 2
                 mock_db.add_all.assert_called_once()
                 mock_db.commit.assert_called_once()
-                mock_redis.delete.assert_called_once()
+                mock_redis.xdel.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_flush_logs_with_provided_session_skips_bad_entries(self):
@@ -525,7 +525,7 @@ class TestFlushLogsToPostgres:
         assert len(added) == 1
         assert added[0].message == "Good log"
         assert added[0].timestamp.tzinfo is None
-        mock_redis.delete.assert_awaited_once()
+        mock_redis.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_flush_logs_returns_zero_when_all_entries_fail_to_parse(self):

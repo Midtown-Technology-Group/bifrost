@@ -151,7 +151,7 @@ class TestSuccessfulExecutionCompletionOrder:
                 lambda **_kwargs: call_order.append("push_result")
             )
             consumer._redis_client.delete_pending_execution.side_effect = (
-                lambda _execution_id: call_order.append("delete_pending")
+                lambda _execution_id, **_kwargs: call_order.append("delete_pending")
             )
 
             publish_execution = AsyncMock(
@@ -163,7 +163,7 @@ class TestSuccessfulExecutionCompletionOrder:
                 side_effect=lambda **_kwargs: call_order.append("publish_history")
             )
             cleanup_cache = AsyncMock(
-                side_effect=lambda _execution_id: call_order.append("cleanup_cache")
+                side_effect=lambda _execution_id, **_kwargs: call_order.append("cleanup_cache")
             )
             flush_logs = AsyncMock(return_value=0)
 
@@ -290,7 +290,7 @@ class TestFailedExecutionCompletionOrder:
                 lambda **_kwargs: call_order.append("push_result")
             )
             consumer._redis_client.delete_pending_execution.side_effect = (
-                lambda _execution_id: call_order.append("delete_pending")
+                lambda _execution_id, **_kwargs: call_order.append("delete_pending")
             )
 
             update_delivery = AsyncMock()
@@ -350,7 +350,7 @@ class TestFailedExecutionCompletionOrder:
                 patch(
                     "src.core.cache.cleanup_execution_cache",
                     new=AsyncMock(
-                        side_effect=lambda _execution_id: call_order.append(
+                        side_effect=lambda _execution_id, **_kwargs: call_order.append(
                             "cleanup_cache"
                         )
                     ),
@@ -482,6 +482,7 @@ class TestFailedExecutionCompletionOrder:
         flush_logs.assert_awaited_once_with(
             "00000000-0000-0000-0000-000000000004",
             session=session,
+            pending_acknowledgements=[],
         )
 
 

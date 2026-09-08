@@ -353,7 +353,7 @@ async def invalidate_all_orgs() -> None:
 # =============================================================================
 
 
-async def cleanup_execution_cache(execution_id: str) -> None:
+async def cleanup_execution_cache(execution_id: str, *, preserve_logs: bool = False) -> None:
     """
     Clean up all execution-scoped cache entries.
 
@@ -370,7 +370,8 @@ async def cleanup_execution_cache(execution_id: str) -> None:
     try:
         r = await get_shared_redis()
         await r.delete(pending_changes_key(execution_id))
-        await r.delete(execution_logs_stream_key(execution_id))
+        if not preserve_logs:
+            await r.delete(execution_logs_stream_key(execution_id))
         logger.debug(f"Cleaned up execution cache: execution_id={execution_id}")
     except Exception as e:
         logger.warning(f"Failed to cleanup execution cache: {e}")

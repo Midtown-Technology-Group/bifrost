@@ -49,6 +49,7 @@ class _ContainerClient:
 async def test_list_objects_v2_passes_page_size_to_list_blobs_not_by_page():
     """Azure async paging accepts results_per_page on list_blobs, not by_page."""
     client = object.__new__(AzureBlobStorageClient)
+    client._operation_owned = True
     container = _ContainerClient()
     client._container_client = container
     client._ensure_client = AsyncMock()
