@@ -47249,6 +47249,13 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentPublic"];
                 };
             };
+            /** @description Document changed; read back before retrying */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {

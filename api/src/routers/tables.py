@@ -1241,6 +1241,7 @@ async def get_document(
     "/{table_id}/documents/{doc_id}",
     response_model=DocumentPublic,
     summary="Update a document",
+    responses={409: {"description": "Document changed; read back before retrying"}},
 )
 async def update_document(
     table_id: str,
