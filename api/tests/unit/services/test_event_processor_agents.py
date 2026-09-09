@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.models.enums import EventDeliveryStatus
@@ -323,3 +324,49 @@ async def test_queue_workflow_execution_defaults_to_provider_org():
 
         mock_enqueue.assert_awaited_once()
         assert mock_enqueue.call_args.kwargs["org_id"] == "00000000-0000-0000-0000-000000000002"
+
+
+@pytest.mark.asyncio
+async def test_queue_deliveries_uses_fallback_message_for_empty_exception():
+    """Queueing failures must persist a useful error_message even when str(exc) is empty."""
+    processor = _create_processor()
+
+    event_id = uuid.uuid4()
+    event = _make_event(event_id=event_id)
+    delivery = _make_delivery(target_type="workflow")
+
+    processor._delivery_repo.get_by_event = AsyncMock(return_value=[delivery])
+    processor._event_repo.get_by_id = AsyncMock(return_value=event)
+    processor._queue_agent_run = AsyncMock()
+    processor._queue_workflow_execution = AsyncMock(
+        side_effect=httpx.ReadError(
+            "",
+            request=httpx.Request("POST", "https://example.com/webhook"),
+        )
+    )
+    processor._broadcast_event_update = AsyncMock()
+
+    count = await processor.queue_event_deliveries(event_id)
+
+    assert count == 0
+    assert delivery.status == EventDeliveryStatus.FAILED
+    assert delivery.error_message == "ReadError while queueing event delivery"
+
+
+@pytest.mark.asyncio
+async def test_retry_delivery_preserves_attempt_timing_and_nonblank_failure():
+    processor = _create_processor()
+    delivery = _make_delivery(status=EventDeliveryStatus.FAILED)
+    delivery.execution_id = uuid.uuid4()
+    delivery.completed_at = datetime.now(timezone.utc)
+    processor.queue_event_deliveries = AsyncMock(side_effect=TimeoutError())
+
+    message = await processor.retry_delivery(delivery)
+
+    assert message == "Failed to queue retry: TimeoutError while queueing event delivery retry"
+    assert delivery.error_message == "TimeoutError while queueing event delivery retry"
+    assert delivery.status == EventDeliveryStatus.FAILED
+    assert delivery.execution_id is None
+    assert delivery.attempt_started_at is not None
+    assert delivery.completed_at >= delivery.attempt_started_at
+    assert processor.session.flush.await_count == 2

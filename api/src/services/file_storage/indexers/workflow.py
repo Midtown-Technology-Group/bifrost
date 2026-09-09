@@ -126,6 +126,7 @@ class WorkflowIndexer:
                 return
 
         now = datetime.now(timezone.utc)
+        enum_definitions = self._collect_enum_definitions(tree)
 
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -186,7 +187,9 @@ class WorkflowIndexer:
 
                     is_tool = kwargs.get("is_tool", False)
                     workflow_type = "tool" if is_tool else "workflow"
-                    parameters_schema = self._extract_parameters_from_ast(node)
+                    parameters_schema = self._extract_parameters_from_ast(
+                        node, enum_definitions=enum_definitions
+                    )
 
                     # Only update code-derived fields and valid decorator params.
                     # Operational settings (execution_mode, timeout_seconds,
@@ -290,7 +293,9 @@ class WorkflowIndexer:
                         )
                         continue
 
-                    parameters_schema = self._extract_parameters_from_ast(node)
+                    parameters_schema = self._extract_parameters_from_ast(
+                        node, enum_definitions=enum_definitions
+                    )
 
                     if not existing_dp.is_active:
                         logger.info(f"Reactivating data provider: {log_safe(provider_name)} ({log_safe(function_name)}) from {log_safe(path)}")
@@ -423,68 +428,113 @@ class WorkflowIndexer:
                 return None
         return None
 
+    def extract_parameters_from_source(
+        self, source: str | bytes, function_name: str, *, path: str = "<workflow>"
+    ) -> dict[str, Any] | None:
+        """Infer a carried source contract without registering or writing rows."""
+        content = source.decode("utf-8", errors="replace") if isinstance(source, bytes) else source
+        try:
+            tree = ast.parse(content, filename=path)
+        except SyntaxError as exc:
+            logger.warning("Cannot infer parameters from %s: %s", log_safe(path), log_safe(exc))
+            return None
+        enums = self._collect_enum_definitions(tree)
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name:
+                return self._extract_parameters_from_ast(node, enum_definitions=enums)
+        return None
+
+    def _collect_enum_definitions(self, tree: ast.Module) -> dict[str, ast.AST]:
+        """Resolve only complete, literal local enums; dynamic enums stay unknown."""
+        definitions: dict[str, ast.AST] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef) or not any(
+                self._annotation_base_name(base) in {"Enum", "IntEnum", "StrEnum"}
+                for base in node.bases
+            ):
+                continue
+            values: list[ast.expr] = []
+            complete = True
+            for statement in node.body:
+                if isinstance(statement, ast.Assign):
+                    targets = statement.targets
+                    value = statement.value
+                elif isinstance(statement, ast.AnnAssign):
+                    targets = [statement.target]
+                    value = statement.value
+                else:
+                    continue
+                if any(isinstance(target, ast.Name) and target.id == "_ignore_" for target in targets):
+                    complete = False
+                    break
+                if not any(isinstance(target, ast.Name) and not (target.id.startswith("_") and target.id.endswith("_")) for target in targets):
+                    continue
+                try:
+                    literal = ast.literal_eval(value) if value is not None else None
+                    if value is None or not isinstance(literal, (str, int, float, bool, type(None))):
+                        complete = False
+                        break
+                except (ValueError, TypeError):
+                    complete = False
+                    break
+                values.append(ast.Constant(value=literal))
+            if values and complete:
+                definitions[node.name] = ast.Subscript(
+                    value=ast.Name(id="Literal", ctx=ast.Load()),
+                    slice=ast.Tuple(elts=values, ctx=ast.Load()), ctx=ast.Load(),
+                )
+        return definitions
+
     def _extract_parameters_from_ast(
-        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef, *,
+        enum_definitions: dict[str, ast.AST] | None = None,
     ) -> dict[str, Any]:
-        """Extract the complete JSON Schema for a function's inputs."""
+        """Extract a complete schema; nullability never makes an argument omittable."""
+        from copy import deepcopy
+
+        definitions = enum_definitions or {}
+
+        class ResolveEnum(ast.NodeTransformer):
+            def visit_Name(self, node: ast.Name) -> ast.AST:
+                return deepcopy(definitions.get(node.id, node))
+
         properties: dict[str, Any] = {}
         required: list[str] = []
         args = func_node.args
-
-        # Get defaults - they align with the end of the args list
-        defaults = args.defaults
-        num_defaults = len(defaults)
-        num_args = len(args.args)
-
-        for i, arg in enumerate(args.args):
-            param_name = arg.arg
-
-            # Skip 'self', 'cls', and context parameters
-            if param_name in ("self", "cls", "context"):
-                continue
-
-            # Skip ExecutionContext parameter (by annotation)
-            if arg.annotation:
-                annotation_str = self._annotation_to_string(arg.annotation)
-                if "ExecutionContext" in annotation_str:
-                    continue
-
-            # Determine if parameter has a default
-            default_index = i - (num_args - num_defaults)
-            has_default = default_index >= 0
-
-            property_schema = (
-                self._annotation_to_json_schema(arg.annotation)
-                if arg.annotation
-                else {}
-            )
-            label = re.sub(r"([a-z])([A-Z])", r"\1 \2", param_name.replace("_", " ")).title()
-            property_schema["title"] = label
-
-            if has_default:
-                default_node = defaults[default_index]
-                try:
-                    property_schema["default"] = ast.literal_eval(default_node)
-                except (ValueError, TypeError):
-                    # Non-literal defaults cannot be represented by static JSON Schema.
-                    pass
-
-            properties[param_name] = property_schema
-            if not has_default and not (
-                arg.annotation
-                and self._is_optional_annotation(arg.annotation)
+        positional = [*args.posonlyargs, *args.args]
+        defaults: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults)) + list(args.defaults)
+        parameters = list(zip(positional, defaults)) + list(zip(args.kwonlyargs, args.kw_defaults))
+        for arg, default_node in parameters:
+            name = arg.arg
+            if name in ("self", "cls") or (name == "context" and arg.annotation is None) or (
+                arg.annotation and "ExecutionContext" in self._annotation_to_string(arg.annotation)
             ):
-                required.append(param_name)
-
-        schema: dict[str, Any] = {
+                continue
+            annotation = arg.annotation
+            if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+                try:
+                    annotation = ast.parse(annotation.value, mode="eval").body
+                except SyntaxError:
+                    annotation = None
+            schema = self._annotation_to_json_schema(ResolveEnum().visit(deepcopy(annotation))) if annotation else {}
+            schema["title"] = re.sub(r"([a-z])([A-Z])", r"\1 \2", name.replace("_", " ")).title()
+            if default_node is not None:
+                try:
+                    schema["default"] = ast.literal_eval(default_node)
+                except (ValueError, TypeError):
+                    pass
+            else:
+                required.append(name)
+            properties[name] = schema
+        result: dict[str, Any] = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "object",
-            "properties": properties,
-            "additionalProperties": False,
+            "type": "object", "properties": properties,
+            # **kwargs is an explicit opt-in to arbitrary keyword arguments.
+            "additionalProperties": args.kwarg is not None,
         }
         if required:
-            schema["required"] = required
-        return schema
+            result["required"] = required
+        return result
 
     def _annotation_to_string(self, annotation: ast.AST) -> str:
         """Convert annotation AST to string representation."""
@@ -551,7 +601,7 @@ class WorkflowIndexer:
                 return {"type": "object", "additionalProperties": True}
             if name in {"Any", "object"}:
                 return {}
-            return {"type": "object"}
+            return {}
 
         if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
             return {
@@ -616,6 +666,8 @@ class WorkflowIndexer:
             return self._annotation_to_json_schema(slice_items[0])
 
         if base_name in {"tuple", "Tuple"}:
+            if len(slice_items) == 2 and isinstance(slice_items[1], ast.Constant) and slice_items[1].value is Ellipsis:
+                return {"type": "array", "items": self._annotation_to_json_schema(slice_items[0])}
             return {
                 "type": "array",
                 "prefixItems": [
@@ -626,7 +678,7 @@ class WorkflowIndexer:
                 "maxItems": len(slice_items),
             }
 
-        return {"type": "object"}
+        return {}
 
     def _literal_items_to_json_schema(
         self,

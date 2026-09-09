@@ -18,6 +18,7 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     SystemPromptPart,
     TextPart,
     ToolCallPart,
@@ -711,6 +712,34 @@ async def test_direct_openai_complete_and_stream_disable_storage() -> None:
 
 
 @pytest.mark.asyncio
+async def test_toolset_recovers_from_non_object_arguments_before_dispatch() -> None:
+    executor = AsyncMock(return_value={"ok": True})
+    toolset = BifrostToolset(
+        [ToolDefinition(name="lookup", description="Lookup", parameters={"type": "object"})],
+        executor,
+    )
+    responses = iter([
+        ModelResponse(parts=[ToolCallPart("lookup", args="[]", tool_call_id="invalid")]),
+        ModelResponse(parts=[ToolCallPart("lookup", args="{}", tool_call_id="corrected")]),
+        ModelResponse(parts=[TextPart("Recovered")]),
+    ])
+
+    class RecoveryModel(TestModel):
+        async def request(self, messages, model_settings, model_request_parameters):
+            return next(responses)
+
+    result = await PydanticAgent(RecoveryModel(), toolsets=[toolset]).run("Lookup")
+
+    assert result.output == "Recovered"
+    executor.assert_awaited_once_with("lookup", {}, "corrected")
+    assert any(
+        isinstance(part, RetryPromptPart)
+        for message in result.all_messages()
+        for part in message.parts
+    )
+
+
+@pytest.mark.asyncio
 async def test_toolset_preserves_stored_json_schema_and_emits_lifecycle_events() -> None:
     calls: list[tuple[str, dict]] = []
     events = []
@@ -749,6 +778,49 @@ async def test_toolset_preserves_stored_json_schema_and_emits_lifecycle_events()
     assert calls == [("get_ticket", {"ticket_id": 42})]
     assert result == {"ticket": 42}
     assert [event.type for event in events] == ["tool_call", "tool_result"]
+
+
+@pytest.mark.asyncio
+async def test_toolset_rejects_missing_and_unknown_args_before_executor() -> None:
+    calls: list[tuple[str, dict]] = []
+    events = []
+
+    async def execute(name: str, arguments: dict, tool_call_id: str) -> dict:
+        calls.append((name, arguments))
+        return {"ok": True}
+
+    async def observe(event) -> None:
+        events.append(event)
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
+    toolset = BifrostToolset(
+        [ToolDefinition(name="search_records", description="Search", parameters=schema)],
+        execute,
+        event_handler=observe,
+    )
+    ctx = MagicMock(tool_call_id="call-1")
+    tools = await toolset.get_tools(ctx)
+
+    result = await toolset.call_tool(
+        "search_records",
+        {"sql": "SELECT * FROM tickets"},
+        ctx,
+        tools["search_records"],
+    )
+
+    assert calls == []
+    assert result.startswith("Error: Arguments do not match the live tool schema.")
+    assert "required" in result
+    assert "unexpected" in result or "unexpected" in result.lower()
+    assert [event.type for event in events] == ["tool_call", "tool_error"]
+    assert events[-1].error is not None
 
 
 @pytest.mark.asyncio

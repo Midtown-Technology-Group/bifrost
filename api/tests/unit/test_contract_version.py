@@ -174,6 +174,11 @@ CLI_ROUTES: tuple[str, ...] = ("/api/version",)
 #: the live fingerprint, this test fails — update this value, and bump both
 #: contract-version mirrors if the change breaks older CLIs. See module docstring.
 EXPECTED_CONTRACT_FINGERPRINT = (
+    # Upstream integration (2026-09-08): optional python_type/json_schema metadata
+    # and AgentRun cursor are additive. Existing supported query spellings remain
+    # accepted; malformed/unknown filters now fail explicitly. No CLI version bump.
+    # Nullable parameters without defaults are required in runtime/AST inference;
+    # WorkflowParameter required markers and client validation reflect that rule.
     # Additive conditional document update DTOs; dedicated route fails closed on old servers.
     # ApplicationCreate.app_model default flipped inline_v1 → standalone_v2
     # (2026-06-13). CONTRACT_VERSION bumped to 3: an old CLI would default a new
@@ -262,7 +267,7 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # (2026-08-31). ADDITIVE: old clients ignore the extra response fields.
     # Workflow updates gained an optional execution retry policy (2026-09-03).
     # ADDITIVE: old clients omit it and workflows remain non-retryable by default.
-    "f61248521a1c74a6727ebd9b2b61ad0b2a79d30061670e85ffbed7652e50fa35"
+    "6b72423a6063205816614108bf4a3def034740a2327cf19e92a65fe9acbe480f"
 )
 
 

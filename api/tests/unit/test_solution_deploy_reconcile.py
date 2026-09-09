@@ -119,6 +119,53 @@ class TestSolutionDeployReconcile:
         await db.flush()
         assert await _active_wf_names(db, sol.id) == {"w1"}
 
+    async def test_solution_workflow_parameters_are_inferred_from_source(
+        self, db_session
+    ) -> None:
+        """Solution tools must advertise the same rich signature as _repo tools."""
+        db = db_session
+        sol = await self._make_install(db, f"params-{uuid4().hex[:8]}")
+        manifest_id = uuid4()
+        await SolutionDeployer(db).deploy(
+            SolutionBundle(
+                solution=sol,
+                python_files={
+                    "workflows/admin.py": (
+                        "from typing import Any, Literal\n\n"
+                        "async def run(\n"
+                        "    appointment_id: int,\n"
+                        "    payload_items: list[dict[str, Any]],\n"
+                        "    mode: Literal['preview', 'apply'] = 'preview',\n"
+                        "):\n"
+                        "    return None\n"
+                    )
+                },
+                workflows=[
+                    {
+                        "id": str(manifest_id),
+                        "name": "admin",
+                        "function_name": "run",
+                        "path": "workflows/admin.py",
+                        "type": "tool",
+                    }
+                ],
+            )
+        )
+
+        row = await db.get(Workflow, solution_entity_id(sol.id, manifest_id))
+        assert row is not None
+        properties = row.parameters_schema["properties"]
+        assert properties["appointment_id"] == {"type": "integer", "title": "Appointment Id"}
+        assert properties["payload_items"] == {
+            "title": "Payload Items", "type": "array",
+            "items": {"type": "object", "additionalProperties": {}},
+        }
+        assert row.parameters_schema["required"] == ["appointment_id", "payload_items"]
+        assert properties["mode"] == {
+            "title": "Mode", "enum": ["preview", "apply"],
+            "type": "string", "default": "preview",
+        }
+
     async def test_repo_and_other_install_untouched(self, db_session) -> None:
         db = db_session
 

@@ -380,7 +380,7 @@ class TestExecutionCleanupAgentRuns:
         assert kwargs["run_id"] == str(run.id)
         assert kwargs["kind"] == "error"
         assert kwargs["status"] == "timeout"
-        assert kwargs["payload"]["run_status"] == "timeout"
+        assert kwargs["payload"].run_status == "timeout"
 
 
 def test_execution_age_anchor_uses_scheduled_then_created_for_null_start() -> None:

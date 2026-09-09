@@ -70,7 +70,8 @@ class TestExecutionLogRepositoryListLogs:
 
         # Assert
         assert len(logs) == 1  # Should only return limit, not limit+1
-        assert next_token == "1"  # Next offset
+        assert next_token is not None
+        assert execution_logs.decode_log_cursor(next_token) == (mock_log.timestamp, mock_log.id)
         assert logs[0]["workflow_name"] == "test-workflow"
         assert logs[0]["organization_name"] == "Test Org"
         assert logs[0]["level"] == "ERROR"

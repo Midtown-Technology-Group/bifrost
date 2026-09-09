@@ -21,7 +21,9 @@ Usage:
 import inspect
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Literal, Union, get_args, get_origin, get_type_hints
+from collections.abc import Mapping, Sequence
+from enum import Enum
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Union, get_args, get_origin, get_type_hints
 
 if TYPE_CHECKING:
     pass  # ExecutionContext type only needed for type hints, not runtime
@@ -68,6 +70,13 @@ TYPE_MAPPING: dict[type, str] = {
 # Valid UI type strings for parameter validation
 VALID_PARAM_TYPES: set[str] = {"string", "int", "bool", "float", "json", "list"}
 
+_JSON_TYPE_MAPPING: dict[type, str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+}
+
 
 def get_ui_type(python_type: Any) -> str:
     """
@@ -91,8 +100,11 @@ def get_ui_type(python_type: Any) -> str:
     if python_type is type(None):
         return "string"
 
+    if get_origin(python_type) is Annotated:
+        return get_ui_type(get_args(python_type)[0])
+
     # Direct mapping
-    if python_type in TYPE_MAPPING:
+    if isinstance(python_type, type) and python_type in TYPE_MAPPING:
         return TYPE_MAPPING[python_type]
 
     # Handle generic types (list[str], dict[str, Any], etc.)
@@ -113,6 +125,19 @@ def get_ui_type(python_type: Any) -> str:
             elif isinstance(first_val, float):
                 return "float"
         return "string"  # Default for empty Literal
+    if isinstance(python_type, type) and issubclass(python_type, Enum):
+        member_values = [member.value for member in python_type]
+        if member_values:
+            first_val = member_values[0]
+            if isinstance(first_val, str):
+                return "string"
+            if isinstance(first_val, bool):
+                return "bool"
+            if isinstance(first_val, int):
+                return "int"
+            if isinstance(first_val, float):
+                return "float"
+        return "string"
     if origin is list:
         return "list"
     if origin is dict:
@@ -193,6 +218,12 @@ def get_literal_options(python_type: Any) -> list[dict[str, str]] | None:
         args = get_args(python_type)
         return [{"label": str(v), "value": str(v)} for v in args]
 
+    if isinstance(python_type, type) and issubclass(python_type, Enum):
+        return [
+            {"label": str(member.value), "value": str(member.value)}
+            for member in python_type
+        ]
+
     # Handle Union types that contain Literal (e.g., Literal["a", "b"] | None)
     if origin is Union:
         args = get_args(python_type)
@@ -213,6 +244,74 @@ def get_literal_options(python_type: Any) -> list[dict[str, str]] | None:
                     return options
 
     return None
+
+
+def get_python_type_name(python_type: Any) -> str:
+    """Render a human-readable Python annotation string."""
+    if python_type is inspect.Parameter.empty:
+        return "Any"
+    if python_type is type(None):
+        return "None"
+    if python_type is Any:
+        return "Any"
+    if isinstance(python_type, type):
+        if issubclass(python_type, Enum):
+            return python_type.__name__
+        return python_type.__name__
+
+    origin = get_origin(python_type)
+    args = get_args(python_type)
+
+    if origin is Literal:
+        return "Literal[" + ", ".join(repr(arg) for arg in args) + "]"
+    if origin is Union:
+        return " | ".join(get_python_type_name(arg) for arg in args)
+    if type(python_type).__name__ == "UnionType":
+        return " | ".join(get_python_type_name(arg) for arg in args)
+    if origin in {list, dict, tuple, set}:
+        inner = ", ".join(get_python_type_name(arg) for arg in args)
+        return f"{getattr(origin, '__name__', str(origin))}[{inner}]" if inner else getattr(origin, "__name__", str(origin))
+    return str(python_type).replace("typing.", "")
+
+
+def _literal_schema_from_values(values: list[Any]) -> dict[str, Any]:
+    # An enum already describes mixed JSON types without narrowing to its first member.
+    if not values:
+        return {}
+    schema: dict[str, Any] = {"enum": values}
+    types = {_JSON_TYPE_MAPPING.get(type(value), "null" if value is None else None) for value in values}
+    if len(types) == 1 and None not in types:
+        schema["type"] = next(iter(types))
+    return schema
+
+
+def build_json_schema(python_type: Any) -> dict[str, Any]:
+    """Infer validation without narrowing null unions or unknown annotations."""
+    if python_type is inspect.Parameter.empty or python_type is Any or python_type is object:
+        return {}
+    if python_type is type(None):
+        return {"type": "null"}
+    if isinstance(python_type, type) and issubclass(python_type, Enum):
+        return _literal_schema_from_values([member.value for member in python_type])
+    if isinstance(python_type, type) and python_type in _JSON_TYPE_MAPPING:
+        return {"type": _JSON_TYPE_MAPPING[python_type]}
+    origin = get_origin(python_type)
+    args = get_args(python_type)
+    if origin is Literal:
+        return _literal_schema_from_values(list(args))
+    if origin is Annotated:
+        return build_json_schema(args[0]) if args else {}
+    if origin in {list, Sequence} or (python_type is list or python_type is Sequence):
+        return {"type": "array", "items": build_json_schema(args[0]) if args else {}}
+    if origin in {dict, Mapping} or (python_type is dict or python_type is Mapping):
+        return {"type": "object", "additionalProperties": (build_json_schema(args[1]) or True) if len(args) >= 2 else True}
+    if origin is tuple:
+        if len(args) == 2 and args[1] is Ellipsis:
+            return {"type": "array", "items": build_json_schema(args[0])}
+        return {"type": "array", "prefixItems": [build_json_schema(arg) for arg in args], "minItems": len(args), "maxItems": len(args)}
+    if origin is Union or type(python_type).__name__ == "UnionType":
+        return {"anyOf": [build_json_schema(arg) for arg in args]}
+    return {}
 
 
 def generate_label(param_name: str) -> str:
@@ -257,7 +356,7 @@ def extract_parameters_from_signature(func: Any) -> list[dict[str, Any]]:
     Note:
         - ExecutionContext parameters are excluded
         - *args and **kwargs are excluded
-        - Parameters without type hints default to "string"
+        - Parameters without type hints keep the legacy string UI but accept any JSON value
         - Literal types are converted to options list for dropdown UI
     """
     parameters: list[dict[str, Any]] = []
@@ -267,7 +366,7 @@ def extract_parameters_from_signature(func: Any) -> list[dict[str, Any]]:
 
         # Try to get type hints (handles forward references)
         try:
-            type_hints = get_type_hints(func)
+            type_hints = get_type_hints(func, include_extras=True)
         except Exception:
             type_hints = {}
 
@@ -297,23 +396,23 @@ def extract_parameters_from_signature(func: Any) -> list[dict[str, Any]]:
             # Determine UI type from annotation
             if param_type is inspect.Parameter.empty:
                 ui_type = "string"  # Default for untyped parameters
-                is_optional = has_default
             else:
                 ui_type = get_ui_type(param_type)
-                is_optional = is_optional_type(param_type) or has_default
 
             # Build parameter metadata
             param_meta: dict[str, Any] = {
                 "name": param_name,
                 "type": ui_type,
-                "required": not is_optional,
+                "required": not has_default,
                 "label": generate_label(param_name),
+                "python_type": get_python_type_name(param_type),
+                "json_schema": build_json_schema(param_type),
             }
 
             # Add default_value only if it exists and is serializable
             if has_default and default_value is not None:
                 # Only include primitive default values that can be serialized
-                if isinstance(default_value, (str, int, float, bool, list, dict)):
+                if isinstance(default_value, (str, int, float, bool, list, dict, type(None))):
                     param_meta["default_value"] = default_value
 
             # Add options for Literal types (enables dropdown UI)

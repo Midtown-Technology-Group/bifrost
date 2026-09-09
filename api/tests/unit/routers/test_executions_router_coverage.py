@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from src.models.enums import ExecutionStatus
 from src.core.org_filter import OrgFilterType
@@ -98,7 +98,13 @@ def test_to_pydantic_includes_admin_only_fields_for_superuser_and_global_name():
 
 
 @pytest.mark.asyncio
-async def test_list_logs_parses_filters_and_invalid_continuation_defaults_to_zero():
+@pytest.mark.parametrize("token, expected_offset, expected_cursor", [
+    ("not-an-int", 0, None),
+    ("25", 25, None),
+    ("log1:eyJ0IjogIjIwMjYtMDktMDhUMDA6MDA6MDArMDA6MDAiLCAiaSI6IDQyfQ==",
+     0, (datetime(2026, 9, 8, tzinfo=UTC), 42)),
+])
+async def test_list_logs_parses_filters_and_legacy_or_keyset_tokens(token, expected_offset, expected_cursor):
     logs = [
         {
             "id": 1,
@@ -125,13 +131,14 @@ async def test_list_logs_parses_filters_and_invalid_continuation_defaults_to_zer
             start_date="2026-07-05T10:00:00Z",
             end_date="2026-07-05T11:00:00Z",
             limit=25,
-            continuation_token="not-an-int",
+            continuation_token=token,
         )
 
     assert response.continuation_token == "50"
     assert response.logs[0].message == "failed"
     assert repo.list_logs.await_args.kwargs["levels"] == ["ERROR", "WARNING"]
-    assert repo.list_logs.await_args.kwargs["offset"] == 0
+    assert repo.list_logs.await_args.kwargs["offset"] == expected_offset
+    assert repo.list_logs.await_args.kwargs["cursor"] == expected_cursor
     assert repo.list_logs.await_args.kwargs["start_date"].tzinfo is None
 
 
@@ -158,6 +165,7 @@ async def test_list_executions_resolves_org_scope_and_parses_filters():
 
         response = await executions.list_executions(
             _ctx(user=user),
+            Request({"type": "http", "query_string": b""}),
             scope=str(org_id),
             workflowName="Sync Tickets",
             workflowId=str(workflow_id),
@@ -214,7 +222,10 @@ async def test_list_executions_maps_invalid_scope_to_422():
         side_effect=ValueError("invalid scope"),
     ):
         with pytest.raises(HTTPException) as exc:
-            await executions.list_executions(_ctx(), scope="not-a-scope")
+            await executions.list_executions(
+                _ctx(), Request({"type": "http", "query_string": b""}),
+                scope="not-a-scope",
+            )
 
     assert exc.value.status_code == 422
     assert exc.value.detail == "invalid scope"
