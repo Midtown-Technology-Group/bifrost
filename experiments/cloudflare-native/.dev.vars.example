@@ -1,0 +1,3 @@
+# Copy to .dev.vars for local development only. Never use real tenant credentials.
+LAB_ENABLED="true"
+LAB_PRINCIPALS='{"local-demo-token-not-for-deployment-0001":{"org_id":"demo-org-a","subject":"demo-user-a"},"local-demo-token-not-for-deployment-0002":{"org_id":"demo-org-b","subject":"demo-user-b"}}'

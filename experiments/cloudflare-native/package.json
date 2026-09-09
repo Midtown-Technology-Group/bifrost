@@ -1,0 +1,22 @@
+{
+  "name": "@bifrost/cloudflare-native-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/contracts.test.mjs test/admission.test.mjs test/http.test.mjs test/orchestration.test.mjs",
+    "typecheck:core": "tsc -p tsconfig.core.json",
+    "types": "wrangler types --config wrangler.local.jsonc",
+    "typecheck": "npm run types && tsc -p tsconfig.json",
+    "dev": "wrangler dev --local --config wrangler.local.jsonc",
+    "test:runtime": "node scripts/runtime-smoke.mjs",
+    "deploy": "node -e \"console.error('Deployment intentionally disabled. Read HANDOFF.md.'); process.exit(1)\""
+  },
+  "devDependencies": {
+    "typescript": "5.8.3",
+    "wrangler": "4.82.1"
+  }
+}
