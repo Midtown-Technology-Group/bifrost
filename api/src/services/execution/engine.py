@@ -531,7 +531,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logger_output.append({
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'level': 'error',
-                'message': str(original_exc),
+                'message': error_message,
                 'source': 'workflow'
             })
         else:
@@ -647,7 +647,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logger_output.append({
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'level': 'error',
-                'message': str(e),
+                'message': error_message,
                 'source': 'script' if request.code else 'workflow'
             })
         else:

@@ -18,6 +18,7 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     SystemPromptPart,
     TextPart,
     ToolCallPart,
@@ -708,6 +709,34 @@ async def test_direct_openai_complete_and_stream_disable_storage() -> None:
     assert request_stream.call_count == 2
     for call in request_stream.call_args_list:
         assert call.kwargs["model_settings"]["openai_store"] is False
+
+
+@pytest.mark.asyncio
+async def test_toolset_recovers_from_non_object_arguments_before_dispatch() -> None:
+    executor = AsyncMock(return_value={"ok": True})
+    toolset = BifrostToolset(
+        [ToolDefinition(name="lookup", description="Lookup", parameters={"type": "object"})],
+        executor,
+    )
+    responses = iter([
+        ModelResponse(parts=[ToolCallPart("lookup", args="[]", tool_call_id="invalid")]),
+        ModelResponse(parts=[ToolCallPart("lookup", args="{}", tool_call_id="corrected")]),
+        ModelResponse(parts=[TextPart("Recovered")]),
+    ])
+
+    class RecoveryModel(TestModel):
+        async def request(self, messages, model_settings, model_request_parameters):
+            return next(responses)
+
+    result = await PydanticAgent(RecoveryModel(), toolsets=[toolset]).run("Lookup")
+
+    assert result.output == "Recovered"
+    executor.assert_awaited_once_with("lookup", {}, "corrected")
+    assert any(
+        isinstance(part, RetryPromptPart)
+        for message in result.all_messages()
+        for part in message.parts
+    )
 
 
 @pytest.mark.asyncio

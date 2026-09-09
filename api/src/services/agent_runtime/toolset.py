@@ -99,7 +99,7 @@ class BifrostToolset(AbstractToolset[object]):
                     parameters_json_schema=definition.parameters,
                     sequential=True,
                 ),
-                max_retries=0,
+                max_retries=1,
                 args_validator=_ARGS_VALIDATOR,
             )
             for definition in self._definitions

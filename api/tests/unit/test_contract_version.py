@@ -177,6 +177,8 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # Upstream integration (2026-09-08): optional python_type/json_schema metadata
     # and AgentRun cursor are additive. Existing supported query spellings remain
     # accepted; malformed/unknown filters now fail explicitly. No CLI version bump.
+    # Nullable parameters without defaults are required in runtime/AST inference;
+    # WorkflowParameter required markers and client validation reflect that rule.
     # Additive conditional document update DTOs; dedicated route fails closed on old servers.
     # ApplicationCreate.app_model default flipped inline_v1 → standalone_v2
     # (2026-06-13). CONTRACT_VERSION bumped to 3: an old CLI would default a new
