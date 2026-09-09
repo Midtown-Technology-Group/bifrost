@@ -1,0 +1,22 @@
+{
+  "name": "@bifrost/cloudflare-native-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "build:core": "tsc -p tsconfig.core.json",
+    "test": "npm run build:core && node --test test/*.test.mjs",
+    "types": "wrangler types",
+    "check": "npm run types && tsc -p tsconfig.json",
+    "setup:local": "node scripts/setup-local.mjs",
+    "dev": "wrangler dev --local --ip 127.0.0.1 --port 8787",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3",
+    "wrangler": "4.130.0"
+  }
+}

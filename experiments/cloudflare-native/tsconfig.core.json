@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmitOnError": true,
+    "verbatimModuleSyntax": true,
+    "rootDir": "src",
+    "outDir": ".build"
+  },
+  "include": ["src/errors.ts", "src/scope.ts", "src/domain.ts", "src/coordinator.ts", "src/http.ts"]
+}
