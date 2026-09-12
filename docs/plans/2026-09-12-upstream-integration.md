@@ -1,7 +1,7 @@
-# Upstream integration through 0428e0fb8
+# Upstream integration through de6dc3c64
 
 The source integration starts at fork `fb3e1b154` and targets upstream
-`0428e0fb8d4ecfc1ca0feabffd0780aea94e5d3d`. The existing cross-repository
+`de6dc3c648fb2122a5bd49dcab0ad1188c74d277`. The existing cross-repository
 PR #706 includes 1,406 files. Its common ancestor with the fork is
 `0598020e32ea6367ecda69f548a53c00bb77bb6c`, preserved by integration PR #702.
 
@@ -10,7 +10,8 @@ PR #706 includes 1,406 files. Its common ancestor with the fork is
 1. Backend changes through `8af322ac05e6234039d76f376a6bed38deab01e4`.
    Each upstream commit has its own two-parent integration commit.
 2. Workspace modernization, upstream `3c6590a45` and PR #732.
-3. Table batch-write consolidation, upstream `0428e0fb8` and PR #735.
+3. Table batch-write consolidation, upstream `0428e0fb8` and PR #735, followed
+   by retired image-namespace cleanup `de6dc3c64` and PR #736.
 
 Each batch must contain current fork main and pass its candidate checks before
 merging. Final acceptance requires both the starting fork head and the pinned
@@ -134,3 +135,12 @@ would otherwise have its `write_mode` ignored and insert instead of replacing.
 Include the REST batch request and responses in the contract fingerprint because
 these SDK calls do not use the automatically discovered `/api/sdk/*` DTOs.
 Generated types and live batch/policy tests remain required before publication.
+
+## Retired image publishing
+
+Upstream advanced to `de6dc3c64` during validation. Its merge removes the three
+transitional publishing steps for the retired `jackmusick` registry namespace.
+Keep Midtown image names, exact-candidate promotion and attestations, and the
+`gobifrost/bifrost` guard on DigitalOcean deployment. The MTG CI boundary check
+passes, and no legacy image variables or publishing-token references remain in
+that workflow.
