@@ -6,7 +6,7 @@ Provides Pydantic models for API request/response handling.
 
 import warnings
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -216,6 +216,32 @@ class DocumentBatchCreate(BaseModel):
     )
 
 
+class DocumentBulkUpsertItem(BaseModel):
+    """A single explicit-id document for the privileged bulk upsert endpoint."""
+
+    id: str = Field(..., min_length=1, max_length=255, description="Document ID to upsert")
+    data: dict[str, Any] = Field(..., description="Replacement document data")
+    created_by: str | None = Field(
+        default=None,
+        description="Override attribution for inserted rows. Platform-admin callers only.",
+    )
+    updated_by: str | None = Field(
+        default=None,
+        description="Override attribution for inserted and updated rows. Platform-admin callers only.",
+    )
+
+
+class DocumentBulkUpsertRequest(BaseModel):
+    """Input for set-based, explicit-id bulk upsert."""
+
+    documents: list[DocumentBulkUpsertItem] = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Documents to upsert. Maximum 1000 rows per request.",
+    )
+
+
 class DocumentBatchCreateResponse(BaseModel):
     """Response for a batch insert or upsert."""
 
@@ -235,6 +261,12 @@ class DocumentBatchUpsertResponse(BaseModel):
 
     upserted: int
     errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DocumentBulkUpsertResponse(BaseModel):
+    """Count-only response for privileged bulk upsert."""
+
+    count: int
 
 
 class DocumentBatchDeleteRequest(BaseModel):
@@ -372,6 +404,19 @@ class DocumentQuery(BaseModel):
         - Has field: {"field": {"has_key": true}}
         """,
     )
+    document_ids: list[
+        Annotated[str, Field(min_length=1, max_length=255)]
+    ] | None = Field(
+        default=None,
+        max_length=1000,
+        description=(
+            "Filter by actual document IDs using the table's physical primary key. "
+            "At most 1000 IDs may be supplied. Duplicates have set semantics, "
+            "and an empty list matches no documents. This filter is ANDed with "
+            "where, document-ID pagination, and row policies. Results use the "
+            "normal query ordering and pagination, not input order."
+        ),
+    )
     order_by: str | None = Field(
         default=None,
         description="Field to order by (data field name)",
@@ -395,6 +440,24 @@ class DocumentQuery(BaseModel):
         default=False,
         description="Skip the total count query (returns total=-1). Use for faster paginated fetches after the first page.",
     )
+    after_document_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "Return documents whose actual document ID is greater than this "
+            "exclusive cursor, ordered by document ID. Use an empty string "
+            "to begin an unbounded document-ID scan."
+        ),
+    )
+    document_id_prefix: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Return only documents whose actual document ID starts with this "
+            "prefix, ordered by document ID."
+        ),
+    )
 
     @field_validator("order_by")
     @classmethod
@@ -405,6 +468,25 @@ class DocumentQuery(BaseModel):
             if not v.replace(".", "").replace("_", "").isalnum():
                 raise ValueError("order_by must be alphanumeric with dots and underscores")
         return v
+
+    @model_validator(mode="after")
+    def validate_document_id_pagination(self) -> "DocumentQuery":
+        """Keep document-ID keyset pagination unambiguous and index-friendly."""
+        if self.after_document_id is None and self.document_id_prefix is None:
+            return self
+        if self.order_by is not None:
+            raise ValueError(
+                "order_by cannot be combined with document-ID pagination"
+            )
+        if self.order_dir != "asc":
+            raise ValueError(
+                "document-ID pagination only supports ascending order"
+            )
+        if self.offset != 0:
+            raise ValueError(
+                "offset cannot be combined with document-ID pagination"
+            )
+        return self
 
 
 class DocumentListResponse(BaseModel):

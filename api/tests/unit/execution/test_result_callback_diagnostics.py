@@ -13,6 +13,20 @@ from src.services.execution.process_pool import (
 )
 
 
+def _active_execution(execution_id: str, *, sync: bool = False) -> dict:
+    return {
+        "execution_id": execution_id,
+        "workflow_id": "workflow-1",
+        "workflow_name": "long_scan",
+        "org_id": "org-1",
+        "user_id": "user-1",
+        "user_name": "Operator",
+        "user_email": "operator@example.com",
+        "sync": sync,
+        "event": None,
+    }
+
+
 @pytest.mark.asyncio
 async def test_original_callback_class_survives_synthetic_failure_without_message():
     callback = AsyncMock(side_effect=[TimeoutError("secret SQL payload")] * 3 + [None])
@@ -29,6 +43,7 @@ async def test_original_callback_class_survives_synthetic_failure_without_messag
             execution_id="exec",
             started_at=datetime.now(timezone.utc),
             timeout_seconds=300,
+            active_execution=_active_execution("exec"),
         ),
     )
     pool.processes[handle.id] = handle

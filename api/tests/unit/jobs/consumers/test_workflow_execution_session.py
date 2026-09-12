@@ -7,6 +7,82 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+from uuid import UUID
+
+
+class TestCompletionMetadataRecovery:
+    """PostgreSQL must recover terminal bookkeeping after Redis data loss."""
+
+    @pytest.mark.asyncio
+    async def test_missing_active_lease_reconstructs_metadata_from_execution_row(self):
+        from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
+
+        execution = MagicMock()
+        execution.id = UUID("00000000-0000-0000-0000-000000000004")
+        execution.workflow_id = UUID("00000000-0000-0000-0000-000000000001")
+        execution.workflow_name = "long_scan"
+        execution.organization_id = UUID("00000000-0000-0000-0000-000000000002")
+        execution.executed_by = UUID("00000000-0000-0000-0000-000000000003")
+        execution.executed_by_name = "Test User"
+
+        query_result = MagicMock()
+        query_result.one_or_none.return_value = (execution, "test@example.com")
+        session = AsyncMock()
+        session.execute.return_value = query_result
+
+        with patch.object(WorkflowExecutionConsumer, "__init__", lambda self: None):
+            consumer = WorkflowExecutionConsumer()
+            consumer._redis_client = AsyncMock()
+            consumer._redis_client.get_active_execution.return_value = None
+
+            metadata, recovered = await consumer._load_completion_metadata(
+                str(execution.id), session
+            )
+
+        assert recovered is True
+        assert metadata == {
+            "execution_id": str(execution.id),
+            "workflow_id": str(execution.workflow_id),
+            "workflow_name": "long_scan",
+            "org_id": str(execution.organization_id),
+            "user_id": str(execution.executed_by),
+            "user_name": "Test User",
+            "user_email": "test@example.com",
+            "sync": False,
+            "event": None,
+        }
+        statement = str(session.execute.await_args.args[0])
+        assert "executions.status IN" in statement
+
+    @pytest.mark.asyncio
+    async def test_active_lease_avoids_database_lookup(self):
+        from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
+
+        active = {
+            "execution_id": "00000000-0000-0000-0000-000000000004",
+            "workflow_id": "00000000-0000-0000-0000-000000000001",
+            "workflow_name": "long_scan",
+            "org_id": "00000000-0000-0000-0000-000000000002",
+            "user_id": "00000000-0000-0000-0000-000000000003",
+            "user_name": "Test User",
+            "user_email": "test@example.com",
+            "sync": False,
+            "event": None,
+        }
+        session = AsyncMock()
+
+        with patch.object(WorkflowExecutionConsumer, "__init__", lambda self: None):
+            consumer = WorkflowExecutionConsumer()
+            consumer._redis_client = AsyncMock()
+            consumer._redis_client.get_active_execution.return_value = active
+
+            metadata, recovered = await consumer._load_completion_metadata(
+                active["execution_id"], session
+            )
+
+        assert metadata == active
+        assert recovered is False
+        session.execute.assert_not_awaited()
 
 
 class TestConsumerSessionLifecycle:
@@ -139,7 +215,7 @@ class TestSuccessfulExecutionCompletionOrder:
         with patch.object(WorkflowExecutionConsumer, "__init__", lambda self: None):
             consumer = WorkflowExecutionConsumer()
             consumer._redis_client = AsyncMock()
-            consumer._redis_client.get_pending_execution.return_value = {
+            consumer._redis_client.get_active_execution.return_value = {
                 "workflow_id": "00000000-0000-0000-0000-000000000001",
                 "workflow_name": "large_result_workflow",
                 "org_id": "00000000-0000-0000-0000-000000000002",
@@ -175,8 +251,9 @@ class TestSuccessfulExecutionCompletionOrder:
                     return_value=session_factory,
                 ),
                 patch(
-                    "src.repositories.executions.update_execution",
+                    "src.jobs.consumers.workflow_execution.update_execution",
                     new_callable=AsyncMock,
+                    side_effect=lambda **kwargs: kwargs["status"],
                 ),
                 patch(
                     "src.services.execution.attempts.finalize_attempt",
@@ -230,6 +307,7 @@ class TestSuccessfulExecutionCompletionOrder:
                         "result": {"rows": [{"value": "x" * 1000}]},
                         "duration_ms": 123,
                         "attempt_token": str(uuid4()),
+                        "sync": True,
                     },
                 )
 
@@ -277,7 +355,7 @@ class TestFailedExecutionCompletionOrder:
         with patch.object(WorkflowExecutionConsumer, "__init__", lambda self: None):
             consumer = WorkflowExecutionConsumer()
             consumer._redis_client = AsyncMock()
-            consumer._redis_client.get_pending_execution.return_value = {
+            consumer._redis_client.get_active_execution.return_value = {
                 "workflow_id": "00000000-0000-0000-0000-000000000001",
                 "workflow_name": "failed_workflow",
                 "org_id": "00000000-0000-0000-0000-000000000002",
@@ -302,8 +380,9 @@ class TestFailedExecutionCompletionOrder:
                     return_value=session_factory,
                 ),
                 patch(
-                    "src.repositories.executions.update_execution",
+                    "src.jobs.consumers.workflow_execution.update_execution",
                     new_callable=AsyncMock,
+                    side_effect=lambda **kwargs: kwargs["status"],
                 ),
                 patch(
                     "src.services.execution.attempts.finalize_attempt",
@@ -369,6 +448,7 @@ class TestFailedExecutionCompletionOrder:
                         "error_type": "RuntimeError",
                         "duration_ms": 123,
                         "attempt_token": str(uuid4()),
+                        "sync": True,
                     },
                 )
 
@@ -402,7 +482,7 @@ class TestFailedExecutionCompletionOrder:
         with patch.object(WorkflowExecutionConsumer, "__init__", lambda self: None):
             consumer = WorkflowExecutionConsumer()
             consumer._redis_client = AsyncMock()
-            consumer._redis_client.get_pending_execution.return_value = {
+            consumer._redis_client.get_active_execution.return_value = {
                 "workflow_id": "00000000-0000-0000-0000-000000000001",
                 "workflow_name": "event_workflow",
                 "org_id": "00000000-0000-0000-0000-000000000002",
@@ -419,8 +499,9 @@ class TestFailedExecutionCompletionOrder:
                     return_value=session_factory,
                 ),
                 patch(
-                    "src.repositories.executions.update_execution",
+                    "src.jobs.consumers.workflow_execution.update_execution",
                     new_callable=AsyncMock,
+                    side_effect=lambda **kwargs: kwargs["status"],
                 ),
                 patch(
                     "src.services.execution.attempts.finalize_attempt",
@@ -468,6 +549,7 @@ class TestFailedExecutionCompletionOrder:
                         "error": "boom",
                         "error_type": "RuntimeError",
                         "duration_ms": 123,
+                        "sync": False,
                         "logs": [{"message": "captured failure log"}],
                         "attempt_token": str(uuid4()),
                     },
@@ -503,7 +585,7 @@ async def test_late_fenced_success_cannot_change_execution_or_run_callbacks():
     with patch.object(WorkflowExecutionConsumer, "__init__", lambda self: None):
         consumer = WorkflowExecutionConsumer()
         consumer._redis_client = AsyncMock()
-        consumer._redis_client.get_pending_execution.return_value = {
+        consumer._redis_client.get_active_execution.return_value = {
             "workflow_id": "00000000-0000-0000-0000-000000000001",
             "workflow_name": "fenced_workflow",
             "org_id": "00000000-0000-0000-0000-000000000002",
@@ -538,6 +620,7 @@ async def test_late_fenced_success_cannot_change_execution_or_run_callbacks():
                     "success": True,
                     "status": "Success",
                     "result": {"late": True},
+                    "sync": False,
                     "duration_ms": 10,
                     "attempt_token": str(uuid4()),
                 },

@@ -11,6 +11,7 @@ NOTE: These tests use mocks to avoid spawning real processes.
 import asyncio
 import signal
 import subprocess
+import json
 from datetime import datetime, timedelta, timezone
 from queue import Empty
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -29,6 +30,20 @@ from src.services.execution.simple_worker import (
     FailedPackage,
     RequirementsInstallResult,
 )
+
+
+def _active_execution(execution_id: str, *, sync: bool = False) -> dict:
+    return {
+        "execution_id": execution_id,
+        "workflow_id": "workflow-1",
+        "workflow_name": "long_scan",
+        "org_id": "org-1",
+        "user_id": "user-1",
+        "user_name": "Operator",
+        "user_email": "operator@example.com",
+        "sync": sync,
+        "event": None,
+    }
 
 
 class TestProcessState:
@@ -56,6 +71,7 @@ class TestExecutionInfo:
             execution_id="exec-123",
             started_at=now,
             timeout_seconds=300,
+            active_execution=_active_execution("exec-123"),
         )
 
         assert info.execution_id == "exec-123"
@@ -70,6 +86,7 @@ class TestExecutionInfo:
             execution_id="exec-123",
             started_at=past,
             timeout_seconds=300,
+            active_execution=_active_execution("exec-123"),
         )
 
         elapsed = info.elapsed_seconds
@@ -83,6 +100,7 @@ class TestExecutionInfo:
             execution_id="exec-123",
             started_at=now,
             timeout_seconds=300,
+            active_execution=_active_execution("exec-123"),
         )
 
         assert info.is_timed_out is False
@@ -95,6 +113,7 @@ class TestExecutionInfo:
             execution_id="exec-123",
             started_at=past,
             timeout_seconds=5,
+            active_execution=_active_execution("exec-123"),
         )
 
         assert info.is_timed_out is True
@@ -255,6 +274,7 @@ class TestProcessPoolManagerStart:
         assert spawned == [], "start() must not pre-spawn workers in on-demand mode"
         assert len(pool.processes) == 0
         assert pool._started is True
+        assert pool._last_active_execution_refresh is not None
 
         # Cleanup
         pool._shutdown = True
@@ -303,7 +323,11 @@ class TestProcessPoolManagerRouting:
         with patch.object(pool, "_write_context_to_redis", new_callable=AsyncMock), \
              patch.object(pool, "_register_result_reader"), \
              patch("src.services.execution.process_pool.has_sufficient_memory_cgroup", return_value=True):
-            await pool.route_execution("exec-123", {"timeout_seconds": 300})
+            await pool.route_execution(
+                "exec-123",
+                {"timeout_seconds": 300},
+                _active_execution("exec-123"),
+            )
 
         assert len(forked) == 1
         h = forked[0]
@@ -351,7 +375,11 @@ class TestProcessPoolManagerRouting:
                  return_value=True,
              ):
             route_task = asyncio.create_task(
-                pool.route_execution("exec-during-restart", {"timeout_seconds": 300})
+                pool.route_execution(
+                    "exec-during-restart",
+                    {"timeout_seconds": 300},
+                    _active_execution("exec-during-restart"),
+                )
             )
             await context_write_started.wait()
 
@@ -415,7 +443,11 @@ class TestProcessPoolManagerRouting:
              patch("src.services.execution.process_pool.has_sufficient_memory_cgroup", return_value=True):
             # Kick off the route — it should park on _slot_condition.
             route_task = asyncio.create_task(
-                pool.route_execution("exec-456", {"timeout_seconds": 300})
+                pool.route_execution(
+                    "exec-456",
+                    {"timeout_seconds": 300},
+                    _active_execution("exec-456"),
+                )
             )
             await asyncio.sleep(0.1)
             assert not route_task.done(), "route should be parked while pool full"
@@ -430,6 +462,49 @@ class TestProcessPoolManagerRouting:
         assert len(forked) == 1
         assert forked[0].current_execution is not None
         assert forked[0].current_execution.execution_id == "exec-456"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_failure_removes_active_lease_and_context(self):
+        pool = ProcessPoolManager(max_workers=1)
+        pool._started = True
+        pool._template = MagicMock(is_alive=MagicMock(return_value=True))
+        redis = AsyncMock()
+        pool._redis = redis
+        handle = ProcessHandle(
+            id="process-1",
+            process=MagicMock(),
+            pid=12345,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+        )
+        handle.work_queue.put_nowait.side_effect = BrokenPipeError("closed")
+
+        def fork_process():
+            pool.processes[handle.id] = handle
+            return handle
+
+        with (
+            patch.object(pool, "_fork_process", side_effect=fork_process),
+            patch.object(pool, "_register_result_reader"),
+            patch.object(pool, "_unregister_result_reader"),
+        ):
+            with pytest.raises(BrokenPipeError, match="closed"):
+                await pool._dispatch_to_child(
+                    "exec-failed-dispatch",
+                    {"timeout_seconds": 300},
+                    300,
+                    0.0,
+                    _active_execution("exec-failed-dispatch"),
+                    attempt_token=None,
+                )
+
+        redis.delete.assert_awaited_once_with(
+            "bifrost:exec:exec-failed-dispatch:active",
+            "bifrost:exec:exec-failed-dispatch:context",
+        )
+        assert handle.id not in pool.processes
 
 
 
@@ -449,6 +524,7 @@ class TestProcessPoolManagerTimeouts:
             execution_id="exec-timeout",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=400),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-timeout"),
         )
 
         handle = ProcessHandle(
@@ -520,6 +596,7 @@ class TestProcessPoolManagerCrashDetection:
             execution_id="exec-crash",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-crash"),
         )
 
         handle = ProcessHandle(
@@ -596,6 +673,7 @@ class TestProcessPoolManagerHeartbeat:
                 execution_id="exec-busy",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-busy"),
             ),
             executions_completed=10,
         )
@@ -620,6 +698,81 @@ class TestProcessPoolManagerHeartbeat:
         assert busy_info["state"] == "busy"
         assert "execution" in busy_info
         assert busy_info["execution"]["execution_id"] == "exec-busy"
+
+    @pytest.mark.asyncio
+    async def test_refresh_active_execution_leases_recreates_compact_records_in_one_pipeline(
+        self,
+    ):
+        from src.core.cache.keys import TTL_ACTIVE_EXECUTION, active_execution_key
+
+        pool = ProcessPoolManager()
+        pipeline = MagicMock()
+        pipeline.execute = AsyncMock()
+        redis = AsyncMock()
+        redis.pipeline = MagicMock(return_value=pipeline)
+        pool._redis = redis
+
+        for number in (1, 2):
+            execution_id = f"exec-{number}"
+            pool.processes[f"process-{number}"] = ProcessHandle(
+                id=f"process-{number}",
+                process=MagicMock(),
+                pid=12340 + number,
+                state=ProcessState.BUSY,
+                work_queue=MagicMock(),
+                result_queue=MagicMock(),
+                started_at=datetime.now(timezone.utc),
+                current_execution=ExecutionInfo(
+                    execution_id=execution_id,
+                    started_at=datetime.now(timezone.utc),
+                    timeout_seconds=14400,
+                    active_execution=_active_execution(execution_id),
+                ),
+            )
+        pool.processes["process-killed"] = ProcessHandle(
+            id="process-killed",
+            process=MagicMock(),
+            pid=12999,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-killed",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=14400,
+                active_execution=_active_execution("exec-killed"),
+            ),
+        )
+
+        await pool._refresh_active_execution_leases()
+
+        redis.pipeline.assert_called_once_with(transaction=False)
+        assert pipeline.setex.call_count == 2
+        pipeline.setex.assert_any_call(
+            active_execution_key("exec-1"),
+            TTL_ACTIVE_EXECUTION,
+            json.dumps(_active_execution("exec-1")),
+        )
+        pipeline.setex.assert_any_call(
+            active_execution_key("exec-2"),
+            TTL_ACTIVE_EXECUTION,
+            json.dumps(_active_execution("exec-2")),
+        )
+        pipeline.execute.assert_awaited_once_with()
+        serialized = pipeline.setex.call_args_list[0].args[2]
+        assert not ({"parameters", "startup", "form_inputs", "embed"} & json.loads(serialized).keys())
+
+    @pytest.mark.asyncio
+    async def test_active_execution_lease_refresh_has_sparse_cadence(self):
+        pool = ProcessPoolManager()
+        pool._refresh_active_execution_leases = AsyncMock()
+
+        await pool._refresh_active_execution_leases_if_due(1000.0)
+        await pool._refresh_active_execution_leases_if_due(1599.0)
+        await pool._refresh_active_execution_leases_if_due(1600.0)
+
+        assert pool._refresh_active_execution_leases.await_count == 2
 
 
 class TestProcessPoolManagerResultHandling:
@@ -694,6 +847,7 @@ class TestProcessPoolManagerResultHandling:
                 execution_id="exec-123",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-123", sync=True),
             ),
         )
         pool.processes["process-1"] = handle
@@ -732,6 +886,7 @@ class TestProcessPoolManagerResultHandling:
                 execution_id="exec-123",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-123"),
             ),
         )
         pool.processes["process-1"] = handle
@@ -767,6 +922,7 @@ class TestProcessPoolManagerResultHandling:
                 execution_id="exec-123",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-123", sync=True),
             ),
         )
         pool.processes["process-1"] = handle
@@ -780,7 +936,48 @@ class TestProcessPoolManagerResultHandling:
 
         await pool._handle_result(handle, result_data)
 
-        callback.assert_called_once_with(result_data)
+        callback.assert_called_once_with({**result_data, "sync": True})
+
+
+class TestResultTransportMetadata:
+    """Every terminal path carries parent-owned sync routing metadata."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("report_method", "error_type"),
+        [
+            ("_report_timeout", "TimeoutError"),
+            ("_report_cancellation", "CancelledError"),
+            ("_report_crash", "ProcessCrashError"),
+            ("_report_orphan", "OrphanedExecution"),
+        ],
+    )
+    async def test_synthetic_results_carry_sync_flag(
+        self, report_method: str, error_type: str
+    ):
+        callback = AsyncMock()
+        pool = ProcessPoolManager(on_result=callback)
+        handle = ProcessHandle(
+            id="process-1",
+            process=MagicMock(exitcode=1),
+            pid=12345,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-123",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=300,
+                active_execution=_active_execution("exec-123", sync=True),
+            ),
+        )
+
+        await getattr(pool, report_method)(handle)
+
+        terminal_result = callback.await_args.args[0]
+        assert terminal_result["sync"] is True
+        assert terminal_result["error_type"] == error_type
 
 
 class TestProcessPoolManagerStatus:
@@ -854,7 +1051,11 @@ class TestProcessPoolManagerIntegration:
         with patch.object(pool, "_write_context_to_redis", new_callable=AsyncMock), \
              patch.object(pool, "_register_result_reader"), \
              patch("src.services.execution.process_pool.has_sufficient_memory_cgroup", return_value=True):
-            await pool.route_execution("exec-123", {"timeout_seconds": 300})
+            await pool.route_execution(
+                "exec-123",
+                {"timeout_seconds": 300},
+                _active_execution("exec-123"),
+            )
 
         handle = pool.processes["process-1"]
         assert handle.state == ProcessState.BUSY
@@ -873,7 +1074,7 @@ class TestProcessPoolManagerIntegration:
 
         # One-shot worker: handle is removed after completion.
         assert "process-1" not in pool.processes
-        callback.assert_called_once_with(result_data)
+        callback.assert_called_once_with({**result_data, "sync": False})
 
 
 class TestAdmissionControl:
@@ -893,7 +1094,7 @@ class TestAdmissionControl:
             with patch.object(pool, '_write_context_to_redis', new_callable=AsyncMock):
                 with patch.object(pool, "_get_redis", new_callable=AsyncMock, return_value=fake_redis):
                     with pytest.raises(MemoryError, match="memory pressure"):
-                        await pool.route_execution("exec-123", {"timeout_seconds": 300})
+                        await pool.route_execution("exec-123", {"timeout_seconds": 300}, active_execution=_active_execution("exec-123"))
 
             fake_redis.delete.assert_awaited_once_with("bifrost:exec:exec-123:context")
 
@@ -916,7 +1117,7 @@ class TestAdmissionControl:
             patch.object(pool, "_wait_for_slot", new_callable=AsyncMock, return_value=False),
         ):
             with pytest.raises(ProcessPoolAdmissionRejected, match="No worker slot"):
-                await pool.route_execution("exec-123", {"timeout_seconds": 300})
+                await pool.route_execution("exec-123", {"timeout_seconds": 300}, active_execution=_active_execution("exec-123"))
 
         assert pool._admission_attempts == 1
         assert pool._admission_successes == 0
@@ -961,6 +1162,7 @@ class TestAdmissionControl:
                         execution_id,
                         {"timeout_seconds": 300},
                         attempt_token="a91abfe2-1e2b-4ba7-a940-712245a12e8d",
+                        active_execution=_active_execution(execution_id),
                     )
                     assert mock_handle.state == ProcessState.BUSY
                     assert mock_handle.current_execution is not None
@@ -989,6 +1191,7 @@ class TestOrphanedKilledHandleSweep:
             started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
             timeout_seconds=300,
             attempt_token="a91abfe2-1e2b-4ba7-a940-712245a12e8d",
+            active_execution=_active_execution("exec-orphan-123"),
         )
 
         handle = ProcessHandle(
@@ -1049,6 +1252,7 @@ class TestOrphanedKilledHandleSweep:
             execution_id="exec-already-reported",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-already-reported"),
         )
 
         handle = ProcessHandle(
@@ -1100,6 +1304,7 @@ class TestOrphanedKilledHandleSweep:
                 execution_id="exec-mid-cancel",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-mid-cancel"),
             ),
             result_reported=False,
             killed_at=datetime.now(timezone.utc),  # JUST killed — inside grace window
@@ -1143,6 +1348,7 @@ class TestCrashedProcessReport:
             execution_id="exec-sigkill-789",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=3),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-sigkill-789"),
         )
 
         handle = ProcessHandle(
@@ -1189,6 +1395,7 @@ class TestCrashedProcessReport:
             execution_id="exec-already-done",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=1),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-already-done"),
         )
 
         handle = ProcessHandle(
@@ -1242,6 +1449,7 @@ class TestCrashedProcessReport:
                 execution_id="exec-clean",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-clean"),
             ),
         )
         pool.processes[handle.id] = handle
@@ -1256,7 +1464,7 @@ class TestCrashedProcessReport:
         result_queue.get_nowait.return_value = result
         await pool._check_process_health()
 
-        callback.assert_awaited_once_with(result)
+        callback.assert_awaited_once_with({**result, "sync": False})
         assert handle.id not in pool.processes
 
     @pytest.mark.asyncio
@@ -1282,6 +1490,7 @@ class TestCrashedProcessReport:
                 execution_id="exec-clean-no-result",
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-clean-no-result"),
             ),
             clean_exit_observed_at=(
                 datetime.now(timezone.utc) - timedelta(seconds=3)
@@ -1485,6 +1694,7 @@ class TestBurstRaceRegression:
             execution_id="exec-race",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=1),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-race"),
         )
         handle = ProcessHandle(
             id="process-race",
@@ -1541,6 +1751,7 @@ class TestBurstRaceRegression:
             execution_id="exec-race-2",
             started_at=datetime.now(timezone.utc) - timedelta(seconds=1),
             timeout_seconds=300,
+            active_execution=_active_execution("exec-race-2"),
         )
         handle = ProcessHandle(
             id="process-race-2",
@@ -1616,7 +1827,7 @@ class TestProcessPoolCoverageBranches:
                  return_value=False,
              ):
             with pytest.raises(MemoryError) as exc:
-                await pool.route_execution("exec-memory", {"timeout_seconds": 10})
+                await pool.route_execution("exec-memory", {"timeout_seconds": 10}, active_execution=_active_execution("exec-memory"))
 
         assert "memory pressure" in str(exc.value)
         redis.delete.assert_awaited_once_with("bifrost:exec:exec-memory:context")
@@ -1635,7 +1846,7 @@ class TestProcessPoolCoverageBranches:
             return_value=True,
         ):
             with pytest.raises(ProcessPoolAdmissionRejected):
-                await pool.route_execution("exec-timeout", {})
+                await pool.route_execution("exec-timeout", {}, active_execution=_active_execution("exec-timeout"))
 
         assert pool._admission_rejections["slot_timeout"] == 1
         pool._wait_for_slot.assert_awaited_once()
@@ -1729,6 +1940,7 @@ class TestProcessPoolCoverageBranches:
                 execution_id="exec-cancel",
                 started_at=datetime.now(timezone.utc) - timedelta(seconds=2),
                 timeout_seconds=300,
+                active_execution=_active_execution("exec-cancel"),
             ),
         )
         pool.processes[handle.id] = handle
@@ -1765,6 +1977,7 @@ class TestProcessPoolCoverageBranches:
             execution_id="exec-error",
             started_at=datetime.now(timezone.utc),
             timeout_seconds=10,
+            active_execution=_active_execution("exec-error"),
         )
 
         await pool._report_cancellation(handle)
@@ -1793,6 +2006,7 @@ class TestProcessPoolCoverageBranches:
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
                 attempt_token="attempt-token",
+                active_execution=_active_execution("exec-shutdown"),
             ),
         )
         pool.processes[handle.id] = handle
@@ -1827,6 +2041,7 @@ class TestProcessPoolCoverageBranches:
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
                 attempt_token="attempt-token",
+                active_execution=_active_execution("exec-retry-shutdown"),
             ),
         )
         pool.processes[handle.id] = handle

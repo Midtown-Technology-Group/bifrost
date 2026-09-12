@@ -97,7 +97,7 @@ async def test_run_execution_emits_worker_span(monkeypatch):
         patch("src.core.module_cache_sync.set_solution_context"),
         patch("src.core.module_cache_sync.clear_solution_context"),
         patch(
-            "src.services.execution.simple_worker._clear_workspace_modules",
+            "src.services.execution.workspace_modules.clear_workspace_modules",
             return_value=workspace_refresh,
         ) as clear_workspace_modules,
         patch(
@@ -152,7 +152,7 @@ async def test_run_execution_clears_contexts_when_workspace_refresh_fails():
             "src.core.module_cache_sync.clear_workspace_generation_context"
         ) as clear_generation,
         patch(
-            "src.services.execution.simple_worker._clear_workspace_modules",
+            "src.services.execution.workspace_modules.clear_workspace_modules",
             side_effect=refresh_error,
         ),
     ):

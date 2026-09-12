@@ -8928,6 +8928,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/{table_id}/documents/bulk-upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk upsert documents by explicit id
+         * @description Set-based privileged ingestion path for explicit-id full replacements.
+         *
+         *     This route enforces normal table resolution, solution ownership, and table
+         *     row policies before issuing one guarded upsert statement. It intentionally
+         *     skips per-row realtime publishing; callers that need progress events
+         *     publish them separately.
+         */
+        post: operations["bulk_upsert_documents_api_tables__table_id__documents_bulk_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}/documents/count": {
         parameters: {
             query?: never;
@@ -16579,6 +16604,53 @@ export interface components {
             updated_by?: string | null;
         };
         /**
+         * DocumentBulkUpsertItem
+         * @description A single explicit-id document for the privileged bulk upsert endpoint.
+         */
+        DocumentBulkUpsertItem: {
+            /**
+             * Id
+             * @description Document ID to upsert
+             */
+            id: string;
+            /**
+             * Data
+             * @description Replacement document data
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @description Override attribution for inserted rows. Platform-admin callers only.
+             */
+            created_by?: string | null;
+            /**
+             * Updated By
+             * @description Override attribution for inserted and updated rows. Platform-admin callers only.
+             */
+            updated_by?: string | null;
+        };
+        /**
+         * DocumentBulkUpsertRequest
+         * @description Input for set-based, explicit-id bulk upsert.
+         */
+        DocumentBulkUpsertRequest: {
+            /**
+             * Documents
+             * @description Documents to upsert. Maximum 1000 rows per request.
+             */
+            documents: components["schemas"]["DocumentBulkUpsertItem"][];
+        };
+        /**
+         * DocumentBulkUpsertResponse
+         * @description Count-only response for privileged bulk upsert.
+         */
+        DocumentBulkUpsertResponse: {
+            /** Count */
+            count: number;
+        };
+        /**
          * DocumentConflictResponse
          * @description Conflict response for a failed document precondition.
          */
@@ -16710,6 +16782,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * Document Ids
+             * @description Filter by actual document IDs using the table's physical primary key. At most 1000 IDs may be supplied. Duplicates have set semantics, and an empty list matches no documents. This filter is ANDed with where, document-ID pagination, and row policies. Results use the normal query ordering and pagination, not input order.
+             */
+            document_ids?: string[] | null;
+            /**
              * Order By
              * @description Field to order by (data field name)
              */
@@ -16739,6 +16816,16 @@ export interface components {
              * @default false
              */
             skip_count: boolean;
+            /**
+             * After Document Id
+             * @description Return documents whose actual document ID is greater than this exclusive cursor, ordered by document ID. Use an empty string to begin an unbounded document-ID scan.
+             */
+            after_document_id?: string | null;
+            /**
+             * Document Id Prefix
+             * @description Return only documents whose actual document ID starts with this prefix, ordered by document ID.
+             */
+            document_id_prefix?: string | null;
         };
         /**
          * DocumentSection
@@ -47134,6 +47221,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_upsert_documents_api_tables__table_id__documents_bulk_upsert_post: {
+        parameters: {
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBulkUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBulkUpsertResponse"];
                 };
             };
             /** @description Validation Error */

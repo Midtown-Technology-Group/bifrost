@@ -25,6 +25,7 @@ from .keys import (
     CONFIG_GLOBAL_VERSION_KEY,
     TTL_CONFIG,
     TTL_ORGS,
+    active_execution_key,
     config_hash_key,
     config_hash_key_versioned,
     config_key,
@@ -36,6 +37,8 @@ from .keys import (
     role_key,
     role_users_key,
     roles_hash_key,
+    execution_logs_stream_key,
+    pending_changes_key,
 )
 from src.core.log_safety import log_safe
 
@@ -360,18 +363,18 @@ async def cleanup_execution_cache(execution_id: str, *, preserve_logs: bool = Fa
     Called after execution completes to remove:
     - Pending changes (should already be flushed)
     - Log stream (if using Redis streams)
-    - Any other execution-scoped data
+    - Active execution lease
 
     Args:
         execution_id: Execution ID to clean up
     """
-    from .keys import execution_logs_stream_key, pending_changes_key
-
     try:
         r = await get_shared_redis()
-        await r.delete(pending_changes_key(execution_id))
+        keys = [pending_changes_key(execution_id)]
         if not preserve_logs:
-            await r.delete(execution_logs_stream_key(execution_id))
+            keys.append(execution_logs_stream_key(execution_id))
+        keys.append(active_execution_key(execution_id))
+        await r.delete(*keys)
         logger.debug(f"Cleaned up execution cache: execution_id={execution_id}")
     except Exception as e:
         logger.warning(f"Failed to cleanup execution cache: {e}")

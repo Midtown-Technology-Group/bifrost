@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.services.execution import workspace_modules
+
 import subprocess
 import sys
 import types
@@ -67,7 +69,7 @@ def test_workspace_module_maps_strip_immutable_release_prefix(monkeypatch):
         lambda: SimpleNamespace(runtime_storage_prefix=prefix),
     )
 
-    names, paths = simple_worker._workspace_module_maps(
+    names, paths = workspace_modules._workspace_module_maps(
         {
             f"{prefix}modules/helper.py",
             f"{prefix}features/demo/__init__.py",
@@ -176,7 +178,7 @@ async def test_execute_async_success_shapes_engine_result_and_pss_delta(monkeypa
     )
     def clear_modules():
         calls.append(("clear", None))
-        return simple_worker.WorkspaceModuleRefresh(
+        return workspace_modules.WorkspaceModuleRefresh(
             generation="generation-1",
             cleared=2,
             kept=3,
@@ -225,7 +227,7 @@ async def test_execute_async_engine_exception_shapes_failure(monkeypatch):
     monkeypatch.setattr(
         simple_worker,
         "_clear_workspace_modules",
-        lambda: simple_worker.WorkspaceModuleRefresh(
+        lambda: workspace_modules.WorkspaceModuleRefresh(
             generation="generation-1",
             cleared=0,
             kept=0,
@@ -300,7 +302,7 @@ def test_clear_workspace_modules_purges_entire_closure_on_generation_change(
     finally:
         sys.modules.pop(module_name, None)
 
-    assert refresh == simple_worker.WorkspaceModuleRefresh(
+    assert refresh == workspace_modules.WorkspaceModuleRefresh(
         generation="generation-2",
         cleared=1,
         kept=0,
