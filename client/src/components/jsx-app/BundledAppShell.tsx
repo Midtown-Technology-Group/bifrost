@@ -103,7 +103,7 @@ function registerUserDepImportMap(dependencies: Record<string, string>): void {
 		"react-dom/client": "/__bifrost_modules/react-dom-client.js",
 		"react/jsx-runtime": "/__bifrost_modules/react-jsx-runtime.js",
 		"react/jsx-dev-runtime": "/__bifrost_modules/react-jsx-dev-runtime.js",
-		"react-router": "/__bifrost_modules/react-router-dom.js",
+		"react-router-dom": "/__bifrost_modules/react-router-dom.js",
 		"lucide-react": "/__bifrost_modules/lucide-react.js",
 	};
 	for (const [name, version] of Object.entries(dependencies)) {

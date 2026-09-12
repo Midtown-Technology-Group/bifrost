@@ -78,7 +78,10 @@ The fork's existing execution and source-governance behavior remains required.
 
 Conflict decisions:
 
-- Keep the consolidated `react-router` package already used by the fork.
+- Keep the consolidated `react-router` package for the host SPA. Preserve the
+  app-facing `react-router-dom` name in native and user-dependency import maps,
+  and in embedded app fixtures. Standalone app dependencies retain their own
+  router contract.
 - Keep immutable-source mutation guards, execution attempt history, browser
   WebMCP tools, and conditional event criteria. Integrate those controls into
   upstream's new layouts rather than removing them with their old containers.
@@ -108,6 +111,11 @@ Conflict decisions:
 - Keep the fork's CI deployment boundary and browser artifact path. Adopt
   upstream's test-stack command lock and skill-mirror checker.
 
-The redesigned candidate still requires generated types against its running
-API, backend/live-boundary tests, browser verification, and the clean pre-PR
-gate before publication. Focused component checks are iteration evidence.
+Regenerating types against the running modernization API produced no diff.
+All 370 focused backend, live endpoint, contract and Tailwind compilation checks
+passed without skips. Python quality checks and TypeScript passed. Browser
+checks cover collections, logos, event criteria, MCP management and per-mapping
+OAuth. A Home launch failure exposed an app import-contract mismatch; the
+restored contract passed Home launch and preview-to-publish browser checks.
+A component regression also covers the map used by apps with extra dependencies.
+The clean pre-PR gate remains required before publication.

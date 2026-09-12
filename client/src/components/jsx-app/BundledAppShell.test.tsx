@@ -370,3 +370,28 @@ describe("BundledAppShell — app_model render branch", () => {
 		);
 	});
 });
+
+describe("BundledAppShell app import contract", () => {
+	it("keeps the app router specifier when loading user dependencies", async () => {
+		vi.stubGlobal(
+			"importShim",
+			vi.fn().mockResolvedValue({ default: () => <div>Dependency app</div> }),
+		);
+		mockManifestOk({ dependencies: { "fixture-dependency": "1.0.0" } });
+		try {
+			await renderShell();
+			expect(await screen.findByText("Dependency app")).toBeInTheDocument();
+			const map = document.querySelector('script[type="importmap-shim"]');
+			expect(map).not.toBeNull();
+			const imports = JSON.parse(map!.textContent!).imports;
+			expect(imports["react-router-dom"]).toBe(
+				"/__bifrost_modules/react-router-dom.js",
+			);
+		} finally {
+			vi.unstubAllGlobals();
+			document
+				.querySelectorAll('script[type="importmap-shim"]')
+				.forEach((el) => el.remove());
+		}
+	});
+});
