@@ -466,6 +466,8 @@ class TestProcessPoolManagerRouting:
     @pytest.mark.asyncio
     async def test_dispatch_failure_removes_active_lease_and_context(self):
         pool = ProcessPoolManager(max_workers=1)
+        pool._started = True
+        pool._template = MagicMock(is_alive=MagicMock(return_value=True))
         redis = AsyncMock()
         pool._redis = redis
         handle = ProcessHandle(
@@ -1160,7 +1162,8 @@ class TestAdmissionControl:
                         execution_id,
                         {"timeout_seconds": 300},
                         attempt_token="a91abfe2-1e2b-4ba7-a940-712245a12e8d",
-                     active_execution=_active_execution(execution_id))
+                        active_execution=_active_execution(execution_id),
+                    )
                     assert mock_handle.state == ProcessState.BUSY
                     assert mock_handle.current_execution is not None
                     assert mock_handle.current_execution.execution_id == execution_id
@@ -1937,7 +1940,8 @@ class TestProcessPoolCoverageBranches:
                 execution_id="exec-cancel",
                 started_at=datetime.now(timezone.utc) - timedelta(seconds=2),
                 timeout_seconds=300,
-             active_execution=_active_execution("exec-cancel")),
+                active_execution=_active_execution("exec-cancel"),
+            ),
         )
         pool.processes[handle.id] = handle
 
@@ -1973,7 +1977,8 @@ class TestProcessPoolCoverageBranches:
             execution_id="exec-error",
             started_at=datetime.now(timezone.utc),
             timeout_seconds=10,
-         active_execution=_active_execution("exec-error"))
+            active_execution=_active_execution("exec-error"),
+        )
 
         await pool._report_cancellation(handle)
 
@@ -2001,7 +2006,8 @@ class TestProcessPoolCoverageBranches:
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
                 attempt_token="attempt-token",
-             active_execution=_active_execution("exec-shutdown")),
+                active_execution=_active_execution("exec-shutdown"),
+            ),
         )
         pool.processes[handle.id] = handle
 
@@ -2035,7 +2041,8 @@ class TestProcessPoolCoverageBranches:
                 started_at=datetime.now(timezone.utc),
                 timeout_seconds=300,
                 attempt_token="attempt-token",
-             active_execution=_active_execution("exec-retry-shutdown")),
+                active_execution=_active_execution("exec-retry-shutdown"),
+            ),
         )
         pool.processes[handle.id] = handle
 

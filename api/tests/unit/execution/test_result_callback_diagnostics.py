@@ -43,7 +43,8 @@ async def test_original_callback_class_survives_synthetic_failure_without_messag
             execution_id="exec",
             started_at=datetime.now(timezone.utc),
             timeout_seconds=300,
-         active_execution=_active_execution("exec")),
+            active_execution=_active_execution("exec"),
+        ),
     )
     pool.processes[handle.id] = handle
     with patch("asyncio.sleep", new_callable=AsyncMock):

@@ -66,7 +66,8 @@ def _handle(
             execution_id=execution_id,
             started_at=datetime.now(timezone.utc) - timedelta(seconds=2),
             timeout_seconds=1,
-         active_execution=_active_execution(execution_id))
+            active_execution=_active_execution(execution_id),
+        )
     return ProcessHandle(
         id=process_id,
         process=SimpleNamespace(is_alive=lambda: alive, exitcode=exitcode),
@@ -317,7 +318,8 @@ def test_build_heartbeat_includes_admission_and_capacity(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_route_execution_records_success_and_sends_execution_id(monkeypatch):
+@pytest.mark.parametrize("runtime_mode, expected_timeout", [("legacy", 12), ("workspace-release-v1", 5)])
+async def test_route_execution_records_success_and_sends_execution_id(monkeypatch, runtime_mode, expected_timeout):
     pool = ProcessPoolManager(max_workers=2, execution_timeout_seconds=33)
     pool._started = True
     pool._template = SimpleNamespace(is_alive=lambda: True)
@@ -335,16 +337,17 @@ async def test_route_execution_records_success_and_sends_execution_id(monkeypatc
     pool._fork_process = lambda: handle
     pool._register_result_reader = Mock()
 
-    await pool.route_execution("exec-route", {"timeout_seconds": 12}, active_execution=_active_execution("exec-route"))
+    context = {"timeout_seconds": 12, "runtime_mode": runtime_mode, "runtime_max_duration_seconds": 5}
+    await pool.route_execution("exec-route", context, active_execution=_active_execution("exec-route"))
 
     pool._write_context_to_redis.assert_awaited_once_with(
         "exec-route",
-        {"timeout_seconds": 12},
+        context,
     )
-    assert sent == [("exec-route", {"timeout_seconds": 12})]
+    assert sent == [("exec-route", context)]
     assert handle.current_execution is not None
     assert handle.current_execution.execution_id == "exec-route"
-    assert handle.current_execution.timeout_seconds == 12
+    assert handle.current_execution.timeout_seconds == expected_timeout
     assert pool._admission_attempts == 1
     assert pool._admission_successes == 1
     assert pool._admission_rejections == {"slot_timeout": 0, "memory_pressure": 0}
