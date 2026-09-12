@@ -165,3 +165,16 @@ Keep Midtown image names, exact-candidate promotion and attestations, and the
 `gobifrost/bifrost` guard on DigitalOcean deployment. The MTG CI boundary check
 passes, and no legacy image variables or publishing-token references remain in
 that workflow.
+
+## Logo rendering and locale-aware document prefixes
+
+Upstream advanced to `c25daca1df730ee4dea4bc5b7ecb48fc771cdc23` during
+validation. Preserve the uploaded-logo cache regression alongside upstream's
+placeholder loading/error coverage. Document prefix filtering and ordering now
+use the same C collation and matching concurrent index, while ordinary keyset
+pagination retains its existing ordering. Keep the fork's conditional-update
+SQL import and tests. A new merge migration joins the index with the already
+recorded Midtown modernization chain; neither existing migration is rewritten.
+The test database explicitly uses the upstream locale so live pagination checks
+exercise the original failure condition. These additions require focused tests
+and the final exact-commit pre-PR gate before publication.
