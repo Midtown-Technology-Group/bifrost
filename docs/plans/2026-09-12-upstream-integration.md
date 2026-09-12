@@ -42,6 +42,11 @@ At inspection, active ruleset 22240877 requires a merge queue configured with
 `merge_method: SQUASH`. This conflicts with ancestry preservation. Resolve that
 policy conflict before landing any integration batch; do not silently squash.
 
+The fork owner approved changing the queue method to `MERGE` on 2026-09-12.
+The ruleset was updated and read back to verify that its merge method was the
+only policy change. Queue limits, conditions, enforcement and bypass actors
+remain unchanged.
+
 ## Validation status
 
 The first two integrations passed 56 focused unit tests. Subsequent combined
