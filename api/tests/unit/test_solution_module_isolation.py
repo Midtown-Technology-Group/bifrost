@@ -10,6 +10,8 @@ loaded it.
 """
 from __future__ import annotations
 
+from src.services.execution import workspace_modules
+
 import sys
 import types
 import uuid
@@ -127,7 +129,7 @@ async def test_execute_async_sets_solution_context_before_clearing_modules(monke
 
     def _fake_clear():
         calls.append(("clear_modules", None))
-        return sw.WorkspaceModuleRefresh(
+        return workspace_modules.WorkspaceModuleRefresh(
             generation="generation-1",
             cleared=0,
             kept=0,

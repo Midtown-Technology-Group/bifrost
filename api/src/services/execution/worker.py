@@ -260,10 +260,10 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     # direct worker executions must evict inherited workspace modules too.
     # Otherwise a newly pinned immutable release can execute its entry module
     # while resolving dependencies from an older release in ``sys.modules``.
-    from src.services.execution.simple_worker import _clear_workspace_modules
+    from src.services.execution.workspace_modules import clear_workspace_modules
 
     try:
-        workspace_refresh = _clear_workspace_modules()
+        workspace_refresh = clear_workspace_modules()
     except BaseException:
         clear_solution_context()
         clear_workspace_release_context()
