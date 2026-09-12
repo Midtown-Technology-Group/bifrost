@@ -16710,6 +16710,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * Document Ids
+             * @description Filter by actual document IDs using the table's physical primary key. Duplicates have set semantics. An empty list matches no documents.
+             */
+            document_ids?: string[] | null;
+            /**
              * Order By
              * @description Field to order by (data field name)
              */
@@ -16741,7 +16746,7 @@ export interface components {
             skip_count: boolean;
             /**
              * After Document Id
-             * @description Return documents whose actual document ID is greater than this exclusive cursor, ordered by document ID.
+             * @description Return documents whose actual document ID is greater than this exclusive cursor, ordered by document ID. Use an empty string to begin an unbounded document-ID scan.
              */
             after_document_id?: string | null;
             /**
