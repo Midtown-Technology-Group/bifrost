@@ -1320,5 +1320,5 @@ function hasScopeOrAccessMismatch(
 }
 
 function normalizedRoleSignature(roleIds: string[]) {
-	return [...roleIds].sort().join("\u0000");
+	return [...roleIds].sort((left, right) => left.localeCompare(right)).join("\u0000");
 }

@@ -108,17 +108,13 @@ function SubscriptionActiveControl({
 	return (
 		<div
 			className="inline-flex min-h-11 items-center gap-2"
+			role="presentation"
 			onClick={(event) => event.stopPropagation()}
 		>
 			<label
 				id={labelId}
 				htmlFor={switchId}
 				className="inline-flex min-h-11 cursor-pointer select-none items-center text-xs font-medium uppercase tracking-wide text-muted-foreground"
-				onClick={(event) => {
-					if (pending) return;
-					event.preventDefault();
-					onToggleActive(subscription);
-				}}
 			>
 				<span className="sr-only">Subscription status</span>
 				<span aria-hidden="true">
