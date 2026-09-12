@@ -47,6 +47,14 @@ describe("paginated query retention guards", () => {
 		).toBe(false);
 	});
 
+	it("keeps canonically equivalent Unicode keys distinct while ignoring insertion order", () => {
+		const previousQuery = {
+			queryKey: ["get", "/api/audit", { params: { query: { "é": 1, "e\u0301": 2 } } }],
+		};
+		expect(sameQueryParamsExcept({ "e\u0301": 2, "é": 1 }, previousQuery, [])).toBe(true);
+		expect(sameQueryParamsExcept({ "e\u0301": 1, "é": 2 }, previousQuery, [])).toBe(false);
+	});
+
 	it("requires the same path and same non-offset body for document pages", () => {
 		const previousQuery = {
 			queryKey: [

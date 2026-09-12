@@ -227,6 +227,7 @@ export function FormListSurface({
 												<TooltipTrigger asChild>
 													<div
 														className="w-fit"
+														role="presentation"
 														onClick={(event) =>
 															event.stopPropagation()
 														}

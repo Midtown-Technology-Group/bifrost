@@ -225,9 +225,7 @@ export function FilePolicyEditor({
 			})),
 		[rules],
 	);
-	const editorClassName = compact
-		? "flex min-h-0 flex-1 flex-col gap-3"
-		: "flex min-h-0 flex-1 flex-col gap-3";
+	const editorClassName = "flex min-h-0 flex-1 flex-col gap-3";
 	const scrollClassName = compact
 		? "space-y-3"
 		: "min-h-0 flex-1 space-y-3 overflow-y-auto pr-1";

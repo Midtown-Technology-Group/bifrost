@@ -20,8 +20,9 @@ function stableStringify(value: unknown): string {
 	}
 	if (value && typeof value === "object") {
 		const record = value as Record<string, unknown>;
+		// Cache identity uses a locale-independent total ordering of keys.
 		return `{${Object.keys(record)
-			.sort()
+			.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
 			.map(
 				(key) =>
 					`${JSON.stringify(key)}:${stableStringify(record[key])}`,

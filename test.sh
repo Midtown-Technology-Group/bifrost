@@ -61,6 +61,12 @@ mkdir -p "$SCRIPT_DIR/client/playwright-results"
 chmod 777 "$SCRIPT_DIR/client/playwright-results" 2>/dev/null || true
 export LOG_DIR
 
+# Host command locks must not live in the container-writable results directory.
+# Reliability/reporting lanes change that directory's mode and container users
+# can own its files; the worktree's Git metadata stays owned by the host caller.
+TEST_LOCK_DIR="$(git rev-parse --path-format=absolute --git-path bifrost-test-locks)"
+mkdir -p "$TEST_LOCK_DIR"
+
 # Load .env.test for optional secrets (GitHub PAT, LLM keys, etc.). Since the
 # file is intentionally ignored, linked worktrees do not receive it from Git;
 # fall back to the primary checkout's copy when the worktree has none.
@@ -313,7 +319,7 @@ run_pytest() {
     # produce order-impossible failures.  The flock covers the normal case; the
     # stable container name is a second guard when the parent shell is killed and
     # Docker leaves the already-running one-off container behind.
-    exec {runner_lock_fd}>"$LOG_DIR/test-runner.lock"
+    exec {runner_lock_fd}>"$TEST_LOCK_DIR/test-runner.lock"
     if ! flock -n "$runner_lock_fd"; then
         echo "ERROR: another pytest run is already using this worktree's test stack." >&2
         echo "Wait for it to finish before starting another test command." >&2
@@ -829,7 +835,7 @@ cmd_pre_pr() {
 case "${1:-}:${2:-}" in
     help:*|-h:*|--help:*|stack:status|client:unit) ;;
     *)
-        exec {test_command_lock_fd}>"$LOG_DIR/test-stack.lock"
+        exec {test_command_lock_fd}>"$TEST_LOCK_DIR/test-stack.lock"
         if ! flock -n "$test_command_lock_fd"; then
             echo "ERROR: another test command owns this worktree's test stack." >&2
             echo "Wait for it to finish before starting tests or changing the stack." >&2

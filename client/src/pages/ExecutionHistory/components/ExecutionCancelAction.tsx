@@ -83,6 +83,7 @@ export function ExecutionCancelAction({
 	return (
 		<div
 			className="min-w-0 space-y-2"
+			role="presentation"
 			onClick={(event) => event.stopPropagation()}
 		>
 			{cancellable && (

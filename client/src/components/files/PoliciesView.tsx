@@ -169,7 +169,7 @@ export function PoliciesView({
 							No rules
 						</span>
 					) : (
-						policy.policies.policies.map(renderRule)
+						policy.policies.policies.map((rule, index) => renderRule(rule, index))
 					)}
 				</div>
 				<div className="col-start-2 row-start-1 shrink-0 justify-self-end">

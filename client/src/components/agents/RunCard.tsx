@@ -98,7 +98,6 @@ export function RunCard({
 			</div>
 			<div
 				className="flex min-w-0 items-center justify-end border-t px-4 py-3"
-				onClick={(e) => e.stopPropagation()}
 			>
 				{canVerdict && onVerdict ? (
 					<div className="flex gap-1">

@@ -652,9 +652,7 @@ export function ExecutionHistory() {
 											? isDesktop
 												? "Search log messages..."
 												: "Search logs…"
-											: isDesktop
-												? "Search runs…"
-												: "Search runs…"
+											: "Search runs…"
 									}
 									aria-label={
 										viewMode === "logs"
