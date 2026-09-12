@@ -1,9 +1,9 @@
-"""NinjaOne public-IP site-move tracker.
+"""Read-only NinjaOne public-IP site-move preview.
 
 Detects when a managed device has moved to a *different known managed site* (or
 has been off all known sites for too long), using the NinjaOne public (WAN
 egress) IP as the location signal. Designed to be embedded in another app — these
-workflows only compute + persist; they do not deliver (no ticket/email/UI).
+workflows only compute a preview; they do not persist or deliver.
 
 Why public IP: `list_devices_detaileds` reports a `publicIP` for ~99% of devices.
 Ninja's `locationId` is a *static registration*, not where the device currently
@@ -21,9 +21,9 @@ Signal design (low-noise):
     sit off all known sites past a threshold — never on mere "left home", which
     is normal laptop roaming.
 
-State persists in the global `ninja_device_site_state` table (one row per Ninja
-device id) so the temporal signals — actual moves, dwell-based stationarity, and
-long absence — work across scheduled runs.
+Existing state is read from the global `ninja_device_site_state` table. This
+undeployed audit example refuses writes: overlapping scans need durable
+serialization or revision fencing before a write path can be designed.
 """
 
 from __future__ import annotations
@@ -49,19 +49,7 @@ CLOUD_ADAPTER_MARKERS = (
     "gvnic",
     "gce ",
 )
-PERSISTED_STATE_FIELDS = {
-    "system_name",
-    "node_class",
-    "ninja_org_id",
-    "home_location_id",
-    "current_ip",
-    "current_ip_since",
-    "prev_ip",
-    "baseline_ip",
-    "off_all_sites_since",
-    "last_seen",
-    "last_classification",
-}
+
 
 
 # --------------------------------------------------------------- io resilience
@@ -120,10 +108,7 @@ async def _load_devices():
 
 async def _cloud_device_ids():
     """Ninja device ids whose active adapters look cloud-hosted (excluded from anchoring)."""
-    try:
-        ni = await _retry(lambda: ninjaone.list_network_interfaces())
-    except Exception:
-        return set()
+    ni = await _retry(lambda: ninjaone.list_network_interfaces())
     rows = ni.get("results") if isinstance(ni, dict) else ni
     cloud = set()
     for r in rows or []:
@@ -388,7 +373,7 @@ async def ninja_build_site_fingerprints(
 @workflow
 async def ninja_scan_device_site_moves(
     org_ids=None,
-    dry_run=False,
+    dry_run=True,
     stationary_days=14,
     absence_days=14,
     dwell_days=7,
@@ -397,13 +382,16 @@ async def ninja_scan_device_site_moves(
     detect_cloud=True,
     **kwargs,
 ):
-    """Scan all devices, classify each vs. the known-site registry, persist state.
+    """Preview device classifications against the known-site registry.
 
     Classifications: home / moved_same_client / moved_different_client /
-    roaming_unknown / off_all_sites_over_threshold. Upserts one row per device to
-    `ninja_device_site_state` unless dry_run=True. Returns a summary + the notable
-    (actionable) devices for the consuming app to render/deliver.
+    roaming_unknown / off_all_sites_over_threshold. Returns a summary and notable
+    devices without changing persisted state. Write mode is intentionally refused
+    until a separately reviewed implementation fences overlapping scans.
     """
+    if not dry_run:
+        raise ValueError("This audit preview is read-only; scan writes require concurrency fencing")
+
     workflow_started = perf_counter()
     now_iso = _now_iso()
 
@@ -435,7 +423,7 @@ async def ninja_scan_device_site_moves(
 
     summary: dict[str, int] = {}
     notable: list[dict] = []
-    upserts: list[dict] = []
+    devices_scanned = 0
 
     phase_started = perf_counter()
     for d in devices:
@@ -449,12 +437,7 @@ async def ninja_scan_device_site_moves(
             d, prior, registry, now_iso, stationary_days, absence_days
         )
         summary[classification] = summary.get(classification, 0) + 1
-        upserts.append(
-            {
-                "id": str(d.get("id")),
-                "data": {key: row[key] for key in PERSISTED_STATE_FIELDS},
-            }
-        )
+        devices_scanned += 1
 
         is_move = classification in (
             "moved_same_client",
@@ -482,12 +465,7 @@ async def ninja_scan_device_site_moves(
             )
     classify_devices_ms = round((perf_counter() - phase_started) * 1000)
 
-    phase_started = perf_counter()
-    if not dry_run and upserts:
-        for i in range(0, len(upserts), 1000):
-            chunk = upserts[i : i + 1000]
-            await _retry(lambda c=chunk: tables.bulk_upsert(STATE_TABLE, c))
-    persist_state_ms = round((perf_counter() - phase_started) * 1000)
+
 
     notable.sort(
         key=lambda n: (
@@ -499,7 +477,7 @@ async def ninja_scan_device_site_moves(
     return {
         "generated_at": now_iso,
         "dry_run": dry_run,
-        "devices_scanned": len(upserts),
+        "devices_scanned": devices_scanned,
         "known_site_ip_count": len(registry),
         "excluded_shared_ip_count": len(fp["excluded_shared_ips"]),
         "cloud_hosted_device_count": len(cloud_ids),
@@ -514,7 +492,6 @@ async def ninja_scan_device_site_moves(
             "load_network_interfaces": load_network_interfaces_ms,
             "build_fingerprints": build_fingerprints_ms,
             "classify_devices": classify_devices_ms,
-            "persist_state": persist_state_ms,
             "workflow": round((perf_counter() - workflow_started) * 1000),
         },
     }

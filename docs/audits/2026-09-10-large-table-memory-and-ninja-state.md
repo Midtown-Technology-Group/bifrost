@@ -134,12 +134,12 @@ The guarded proposal removes per-page payload re-serialization and verbose page
 attempt structures from returned timings. It retains the small fingerprint
 registry because inspecting that registry is the workflow's stated purpose.
 
-## Guarded, undeployed Ninja proposal
+## Read-only, undeployed Ninja preview
 
-Proposed source:
+Read-only preview source:
 [`721-ninja-site-tracker.proposed.py`](fixtures/721-ninja-site-tracker.proposed.py)
 
-Changes in the proposal:
+Requirements for a future write implementation:
 
 - persist only the eleven fields marked Keep above;
 - derive dwell qualification from `baseline_ip` rather than persisted
@@ -151,23 +151,20 @@ Changes in the proposal:
   publication, and echoed document collections;
 - return compact state row/query counts instead of per-page payload diagnostics.
 
-The observed execution actors (`jack@gocovi.com` and `michael@gocovi.com`) are
-active superusers, satisfying the current `tables.bulk_upsert()` privilege
-boundary. Before any approved deployment, verify that this remains true, then
-re-read the source version and deploy only with the current opaque version:
+The prior audit confirmed that its runtime actor had the required write
+privilege. Before any separately approved write implementation is deployed,
+verify the target actor's `tables.bulk_upsert()` privilege again.
 
-```bash
-BIFROST_API_URL=https://bifrost.gocovi.com \
-  bifrost files stat workflows/ninja_site_tracker.py --json
+The checked-in example is now a read-only preview. It rejects `dry_run=False`
+before reading devices and contains no state-write path. Cloud-interface lookup
+failures propagate rather than silently enabling cloud servers as site anchors.
 
-BIFROST_API_URL=https://bifrost.gocovi.com \
-  bifrost files write workflows/ninja_site_tracker.py \
-  --from-file docs/audits/fixtures/721-ninja-site-tracker.proposed.py \
-  --expected-version sha256:1191c1e9a2cb7efa798fa949c5d56c470f29484895aa47ded93dc39dd3e444a0
-```
-
-The second command is documented for a future explicitly approved deployment;
-it was not run during this audit.
+A deployable write implementation must serialize all scans, including manually
+triggered runs, or reject stale generations atomically. Row locks inside a bulk
+request alone do not prevent an older scan from overwriting newer state. That
+workflow design is outside this platform integration. The previous deployment
+command has been removed so this audit cannot be mistaken for an approved
+write-enabled workflow. No customer workflow was deployed or changed.
 
 ## Sales Hunter: separate contributing load
 
