@@ -846,36 +846,41 @@ async def test_vite_proxy_serves_branded_auth_expired_page_before_the_app():
 
 
 async def test_vite_proxy_refuses_to_render_app_when_auth_preflight_cannot_reach_api():
-    vite_port, dev_port = _free_port(), _free_port()
+    # Reserve the unreachable port without listening. Releasing it before
+    # starting the proxy can let the proxy bind that same port and recurse
+    # into itself instead of receiving a connection refusal.
+    with socket.socket() as unreachable:
+        unreachable.bind(("127.0.0.1", 0))
+        vite_port, dev_port = _free_port(), _free_port()
 
-    async def index(_request):
-        return web.Response(text="<html><body>Vite app</body></html>", content_type="text/html")
+        async def index(_request):
+            return web.Response(text="<html><body>Vite app</body></html>", content_type="text/html")
 
-    vite = web.Application()
-    vite.router.add_get("/", index)
-    vite_runner = await _serve(vite, vite_port)
-    cfg = DevProxyConfig(
-        upstream_url=f"http://127.0.0.1:{_free_port()}",
-        token="token",
-        app_id="A",
-        org_id="O",
-    )
-    dev_runner = await _serve(
-        build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"),
-        dev_port,
-    )
-    try:
-        async with httpx.AsyncClient() as c:
-            page = await c.get(
-                f"http://127.0.0.1:{dev_port}/",
-                headers={"Accept": "text/html"},
-            )
-        assert page.status_code == 502
-        assert "Dev API unreachable" in page.json()["detail"]
-        assert "Vite app" not in page.text
-    finally:
-        await dev_runner.cleanup()
-        await vite_runner.cleanup()
+        vite = web.Application()
+        vite.router.add_get("/", index)
+        vite_runner = await _serve(vite, vite_port)
+        cfg = DevProxyConfig(
+            upstream_url=f"http://127.0.0.1:{unreachable.getsockname()[1]}",
+            token="token",
+            app_id="A",
+            org_id="O",
+        )
+        dev_runner = await _serve(
+            build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"),
+            dev_port,
+        )
+        try:
+            async with httpx.AsyncClient() as c:
+                page = await c.get(
+                    f"http://127.0.0.1:{dev_port}/",
+                    headers={"Accept": "text/html"},
+                )
+            assert page.status_code == 502
+            assert "Dev API unreachable" in page.json()["detail"]
+            assert "Vite app" not in page.text
+        finally:
+            await dev_runner.cleanup()
+            await vite_runner.cleanup()
 
 
 async def test_ws_upgrade_replaces_baked_token_with_live_cli_token():
