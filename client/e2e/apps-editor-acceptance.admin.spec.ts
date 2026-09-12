@@ -26,7 +26,7 @@ const UNIQUE = () => `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
 const layoutSource = (
 	marker: string,
-) => `import { Outlet } from "react-router";
+) => `import { Outlet } from "react-router-dom";
 
 export default function Layout() {
 	return (

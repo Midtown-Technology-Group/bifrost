@@ -34,7 +34,7 @@ describe("PLATFORM_MODULES registry", () => {
 
 	it("maps the legacy app router specifier to the patched host package", () => {
 		expect(PLATFORM_MODULES).toContainEqual({
-			specifier: "react-router",
+			specifier: "react-router-dom",
 			hostSpecifier: "react-router",
 			globalKey: "__bifrost_react_router_dom",
 		});

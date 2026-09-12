@@ -24,7 +24,7 @@ async def ${WORKFLOW_FN}(summary: str):
     return {"summary": summary}
 `;
 
-const LAYOUT_TSX = `import { Outlet } from "react-router";
+const LAYOUT_TSX = `import { Outlet } from "react-router-dom";
 
 export default function Layout() {
 	return <Outlet />;
