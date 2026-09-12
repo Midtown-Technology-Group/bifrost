@@ -39,12 +39,8 @@ test.describe("Agent Settings — Budget Visibility (non-admin user)", () => {
 	test("budget fields are not visible to non-admin users", async ({
 		page,
 	}) => {
-		const seededAgent = await seedAgentViaPage(page, {
-			namePrefix: "Budget Vis Spec",
-			accessLevel: "private",
-		});
-
-		await page.goto(`/agents/${seededAgent.id}`);
+		expect(seededAgentId).toBeTruthy();
+		await page.goto(`/agents/${seededAgentId}`);
 		await page.getByRole("tab", { name: /settings/i }).click();
 		await expect(
 			page.getByRole("textbox", { name: /name/i }).first(),

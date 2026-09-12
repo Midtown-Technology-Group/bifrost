@@ -27,7 +27,7 @@ function createLocalOrigin(port) {
 				...target,
 				method: request.method,
 				path: request.url,
-				headers: { ...request.headers, host: target.host },
+				headers: request.headers,
 			},
 			(upstreamResponse) => {
 				response.writeHead(
@@ -58,7 +58,7 @@ function createLocalOrigin(port) {
 			for (const [name, value] of Object.entries(request.headers)) {
 				if (value !== undefined) {
 					upstream.write(
-						`${name}: ${name === "host" ? target.host : value}\r\n`,
+						`${name}: ${value}\r\n`,
 					);
 				}
 			}

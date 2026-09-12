@@ -89,6 +89,7 @@ async function createMcpServer(api: AuthedApi): Promise<MCPServer> {
 				audience: null,
 			},
 			discovery_metadata: {
+				issuer: FIXTURE_ORIGIN,
 				token_endpoint: `${FIXTURE_ORIGIN}/oauth/token`,
 				scopes_supported: [FIXTURE_SCOPE],
 				grant_types_supported: ["client_credentials"],

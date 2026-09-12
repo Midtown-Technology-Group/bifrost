@@ -11,40 +11,37 @@
 
 import { test, expect, type AuthedApi } from "./fixtures/api-fixture";
 
-const SUFFIX = crypto.randomUUID().slice(0, 8);
-const ROLE_NAME = `RoleDetail ${SUFFIX}`;
-const USER_EMAIL = `roledetail-${SUFFIX}@e2e.gobifrost.dev`;
-const FORM_NAME = `RoleDetail Form ${SUFFIX}`;
-const WORKFLOW_PATH = `e2e_role_detail_form_${SUFFIX}.py`;
-const WORKFLOW_FN = `e2e_role_detail_form_${SUFFIX}`;
-const WORKFLOW_SOURCE = `from bifrost import workflow
-
-@workflow(name="${WORKFLOW_FN}")
-async def ${WORKFLOW_FN}(summary: str):
-    return {"summary": summary}
-`;
+let SUFFIX: string;
+let ROLE_NAME: string;
+let USER_EMAIL: string;
+let FORM_NAME: string;
+let WORKFLOW_PATH: string;
+let WORKFLOW_FN: string;
+let WORKFLOW_SOURCE: string;
 
 type RoleFormsResponse = { form_ids: string[] };
 
 type StatusResponse = {
 	ok(): boolean;
 	status(): number;
+	text(): Promise<string>;
 };
 
-async function expectOk(
-	response: StatusResponse,
-	label: string,
-) {
-	expect(response.ok(), `${label}: ${response.status()}`).toBe(true);
+async function expectOk(response: StatusResponse, label: string) {
+	expect(
+		response.ok(),
+		`${label}: ${response.status()} ${response.ok() ? "" : await response.text()}`,
+	).toBe(true);
 }
 
 async function expectDeleted(
 	response: Awaited<ReturnType<AuthedApi["delete"]>>,
 	label: string,
 ) {
-	expect([200, 204, 404], `${label}: ${response.status()}`).toContain(
-		response.status(),
-	);
+	expect(
+		[200, 204, 404],
+		`${label}: ${response.status()} ${await response.text()}`,
+	).toContain(response.status());
 }
 
 async function readRoleForms(
@@ -62,6 +59,20 @@ test.describe("Roles detail", () => {
 	let formId: string;
 
 	test.beforeAll(async ({ api }) => {
+		// Playwright can re-enter this hook in a reused worker; own a fresh workflow identity.
+		SUFFIX = crypto.randomUUID().slice(0, 8);
+		ROLE_NAME = `RoleDetail ${SUFFIX}`;
+		USER_EMAIL = `roledetail-${SUFFIX}@e2e.gobifrost.dev`;
+		FORM_NAME = `RoleDetail Form ${SUFFIX}`;
+		WORKFLOW_PATH = `e2e_role_detail_form_${SUFFIX}.py`;
+		WORKFLOW_FN = `e2e_role_detail_form_${SUFFIX}`;
+		WORKFLOW_SOURCE = `from bifrost import workflow
+
+@workflow(name="${WORKFLOW_FN}")
+async def ${WORKFLOW_FN}(summary: str):
+    return {"summary": summary}
+`;
+
 		// Create a fresh role.
 		const r = await api.post("/api/roles", {
 			data: { name: ROLE_NAME, description: "e2e detail page" },

@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 type EmbeddingConfig = {
@@ -6,23 +7,95 @@ type EmbeddingConfig = {
 	is_configured: boolean;
 };
 
+async function authorizeMcp(page: Page): Promise<string> {
+	const origin = new URL(page.url()).origin;
+	const csrf = (await page.context().cookies(origin)).find(
+		(cookie) => cookie.name === "csrf_token",
+	);
+	expect(csrf).toBeTruthy();
+	const headers = { "X-CSRF-Token": csrf!.value };
+	const redirectUri = `${origin}/e2e-mcp-callback`;
+	const resource = `${origin}/mcp`;
+	const discovery = await page.request.get(
+		`${origin}/.well-known/oauth-authorization-server/mcp`,
+	);
+	expect(discovery.status()).toBe(200);
+	const metadata = await discovery.json();
+	const verifier = randomBytes(32).toString("base64url");
+	const challenge = createHash("sha256").update(verifier).digest("base64url");
+	const state = randomBytes(16).toString("hex");
+	const registration = await page.request.post(
+		metadata.registration_endpoint,
+		{
+			headers,
+			data: {
+				client_name: "Memory acceptance",
+				redirect_uris: [redirectUri],
+			},
+		},
+	);
+	expect(registration.status()).toBe(201);
+	const { client_id: clientId } = await registration.json();
+	const authorization = await page.request.get(
+		metadata.authorization_endpoint,
+		{
+			params: {
+				response_type: "code",
+				client_id: clientId,
+				redirect_uri: redirectUri,
+				state,
+				code_challenge: challenge,
+				code_challenge_method: "S256",
+				scope: "mcp:access",
+				resource,
+			},
+			maxRedirects: 0,
+		},
+	);
+	expect(authorization.status()).toBe(302);
+	const login = new URL(authorization.headers().location);
+	const callback = login.searchParams.get("return_to");
+	expect(callback).toBeTruthy();
+	const completed = await page.request.get(callback!, { maxRedirects: 0 });
+	expect(completed.status()).toBe(302);
+	const redirect = new URL(completed.headers().location);
+	expect(redirect.searchParams.get("state")).toBe(state);
+	const code = redirect.searchParams.get("code");
+	expect(code).toBeTruthy();
+	const token = await page.request.post(metadata.token_endpoint, {
+		headers,
+		form: {
+			grant_type: "authorization_code",
+			client_id: clientId,
+			redirect_uri: redirectUri,
+			code: code!,
+			code_verifier: verifier,
+			resource,
+		},
+	});
+	expect(token.status()).toBe(200);
+	return (await token.json()).access_token;
+}
+
 async function authenticatedJson(
 	page: Page,
 	path: string,
 	options: {
 		method?: string;
+		mcp?: string;
 		body?: Record<string, unknown>;
 	} = {},
 ) {
 	return page.evaluate(
-		async ({ path, method, body }) => {
-			const token = localStorage.getItem("bifrost_access_token");
+		async ({ path, method, body, mcp }) => {
+			const token = mcp ?? localStorage.getItem("bifrost_access_token");
 			const csrf = document.cookie.match(
 				/(?:^|;\s*)csrf_token=([^;]+)/,
 			)?.[1];
 			const headers: Record<string, string> = {
 				"Content-Type": "application/json",
 			};
+			if (mcp) headers.Accept = "application/json, text/event-stream";
 			if (token) headers.Authorization = `Bearer ${token}`;
 			if (csrf) headers["X-CSRF-Token"] = csrf;
 
@@ -41,6 +114,7 @@ async function authenticatedJson(
 		{
 			path,
 			method: options.method,
+			mcp: options.mcp,
 			body: options.body,
 		},
 	);
@@ -59,6 +133,7 @@ async function expectOk(
 test.describe("Private memory", () => {
 	test("enables and manages private memory", async ({ page }, testInfo) => {
 		await page.goto("/settings/ai-memory");
+		const mcpToken = await authorizeMcp(page);
 		const currentUser = await authenticatedJson(page, "/api/auth/me");
 		const organizationId = (currentUser.body as { organization_id: string })
 			.organization_id;
@@ -222,7 +297,7 @@ test.describe("Private memory", () => {
 
 			const requiredInstructions = await authenticatedJson(page, "/mcp", {
 				method: "POST",
-				mcp: true,
+				mcp: mcpToken,
 				body: {
 					jsonrpc: "2.0",
 					id: 2,
@@ -296,6 +371,7 @@ test.describe("Private memory", () => {
 			).toBeVisible();
 			const saved = await authenticatedJson(page, "/mcp", {
 				method: "POST",
+				mcp: mcpToken,
 				body: {
 					jsonrpc: "2.0",
 					id: 1,
@@ -309,12 +385,18 @@ test.describe("Private memory", () => {
 					},
 				},
 			});
-			expect(saved.status).toBe(201);
-			memoryId = (
+			expect(saved.status).toBe(200);
+			const savedResult = (
 				saved.body as {
-					id: string;
+					result: {
+						isError?: boolean;
+						structuredContent: { id: string };
+					};
 				}
-			).id;
+			).result;
+			expect(savedResult.isError).not.toBe(true);
+			memoryId = savedResult.structuredContent.id;
+			expect(memoryId).toBeTruthy();
 
 			await page.reload();
 			await expect(page.getByText(memoryTitle)).toBeVisible();

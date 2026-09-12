@@ -182,9 +182,9 @@ export function EventSourceDetail({
 	}, [refetch, queryClient]);
 	const deleteMutation = useDeleteEventSource();
 
-	// Build full webhook URL from path
+	// Resolve both API-provided absolute URLs and relative callback paths.
 	const webhookUrl = source?.webhook?.callback_url
-		? `${window.location.origin}${source.webhook.callback_url}`
+		? new URL(source.webhook.callback_url, window.location.origin).href
 		: null;
 
 	const handleCopyUrl = async () => {

@@ -393,7 +393,7 @@ Before marking work complete, select verification from the actual change surface
 
 The selected tests must cover the changed behavior, known consumers, and contract tripwires. During iteration, do not run `./test.sh all`, the full Vitest suite, or the full Playwright suite by default; use targeted coverage to get fast, relevant feedback.
 
-Before opening or queueing a PR, the worktree must be clean and based on current `origin/main`, and `./test.sh pre-pr` must pass for the exact `HEAD`. This is separate from scoped completion verification: it runs every locally reproducible required PR/merge-queue check, including the full backend E2E and critical browser-smoke suites. GitHub still owns non-local boundaries such as the synthetic merge ref, registry publication, signing, and attestation.
+Before opening or queueing a PR, the worktree must be clean and based on current `origin/main`, and `./test.sh pre-pr` must pass for the exact `HEAD`. This is separate from scoped completion verification: it runs every locally reproducible required PR/merge-queue check, including the full backend E2E and comprehensive browser suites. GitHub still owns non-local boundaries such as the synthetic merge ref, registry publication, signing, and attestation.
 
 In the final handoff, list the exact checks and tests run, state which broader suites were not run, and disclose any known failure. A known out-of-scope failure must be permanently fixed in the current change or split into a dedicated blocking repair change; it cannot be waived as flaky or left as an unowned follow-up.
 

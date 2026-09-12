@@ -241,3 +241,13 @@ def test_api_quality_script_runs_pyright_without_ci_venv_config():
         "./api/pyrightconfig.docker.json:/app/pyrightconfig.docker.json:ro"
         in compose["services"]["test-runner"]["volumes"]
     )
+
+
+def test_pre_pr_covers_the_comprehensive_ci_browser_lane():
+    """The local gate must catch failures outside the browser smoke selection."""
+    script = _find_repo_file("test.sh").read_text()
+    gate = script.split("cmd_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
+    workflow = _find_repo_file(".github/workflows/ci.yml").read_text()
+    assert './test.sh client e2e\n' in workflow
+    assert "\n    client_e2e\n" in gate
+    assert "\n    client_smoke\n" not in gate

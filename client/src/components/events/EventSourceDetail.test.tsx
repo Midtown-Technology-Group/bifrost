@@ -193,6 +193,33 @@ describe("EventSourceDetail — populated", () => {
 		).not.toBeInTheDocument();
 	});
 
+	it.each([
+		["/api/hooks/src-1", `${window.location.origin}/api/hooks/src-1`],
+		[
+			"https://hooks.example.com/api/hooks/src-1",
+			"https://hooks.example.com/api/hooks/src-1",
+		],
+	])(
+		"displays the callback URL %s without duplicating the origin",
+		(callbackUrl, expectedUrl) => {
+			const source = makeSource();
+			useEventSourceMock.mockReturnValue({
+				data: {
+					...source,
+					webhook: { ...source.webhook, callback_url: callbackUrl },
+				},
+				isLoading: false,
+				refetch: vi.fn(),
+			});
+			renderWithProviders(
+				<EventSourceDetail sourceId="src-1" onClose={() => {}} />,
+			);
+			expect(
+				screen.getByText(expectedUrl, { exact: true }),
+			).toBeVisible();
+		},
+	);
+
 	it("shows Graph identity and recreates the provider subscription", async () => {
 		useEventSourceMock.mockReturnValue({
 			data: makeSource({
