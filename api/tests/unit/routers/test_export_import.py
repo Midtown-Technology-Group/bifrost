@@ -1002,6 +1002,7 @@ class TestExportBuilders:
         integration = SimpleNamespace(
             id=integration_id,
             name="Microsoft Partner",
+            description="Partner tenant management",
             entity_id="tenant_id",
             entity_id_name="Tenant ID",
             default_entity_id="default-tenant",
@@ -1070,6 +1071,7 @@ class TestExportBuilders:
         assert export.item_count == 1
         item = export.items[0]
         assert item.name == "Microsoft Partner"
+        assert item.description == "Partner tenant management"
         assert item.list_entities_data_provider_name == "List Tenants"
         assert [schema.key for schema in item.config_schema] == ["api_url", "api_key"]
         assert item.mappings[0].organization_name == "Contoso"
