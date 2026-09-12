@@ -16,7 +16,7 @@ COPY --from=node-runtime /usr/local/ /usr/local/
 WORKDIR /app
 
 # Copy package files and install dependencies
-RUN chown pwuser:pwuser /app
+RUN mkdir -p /opt/monaco-cdn && chown pwuser:pwuser /app /opt/monaco-cdn
 USER pwuser
 
 COPY --chown=pwuser:pwuser package*.json ./

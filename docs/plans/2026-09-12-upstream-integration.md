@@ -136,3 +136,13 @@ OAuth fixture supplies its issuer in metadata and callback responses, preserving
 the fork's issuer binding. All 213 affected backend checks and four browser
 checks passed after repair, including personal consent/persistence/disconnect.
 The clean pre-PR gate remains required before publication.
+
+## Browser runner image freshness
+
+The modernization gate passed 3,041 client tests, 9,982 backend unit tests,
+and 1,876 backend E2E tests. Browser smoke exposed a stale shared runner image
+missing the editor's pinned Monaco assets; 13 other checks passed. Browser
+lanes now build both the client and runner from the current worktree. The
+runner Dockerfile creates its asset directory with ownership for `pwuser`
+before installing the pinned package. Focused editor validation and a fresh
+exact-commit gate are required before publication.
