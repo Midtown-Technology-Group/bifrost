@@ -176,8 +176,12 @@ pagination retains its existing ordering. Keep the fork's conditional-update
 SQL import and tests. A new merge migration joins the index with the already
 recorded Midtown modernization chain; neither existing migration is rewritten.
 The test database explicitly uses the upstream locale so live pagination checks
-exercise the original failure condition. These additions require focused tests
-and the final exact-commit pre-PR gate before publication.
+exercise the original failure condition. All 71 focused prefix-migration,
+pagination, table API, batch and conditional-update tests passed against the
+locale-configured stack; only the separately marked two-million-row scale case
+was deselected. Latest logo coverage and the final exact-commit gate remain
+required before publication.
+
 ## Browser runner image freshness
 
 The modernization gate passed 3,041 client tests, 9,982 backend unit tests,
@@ -188,3 +192,11 @@ runner Dockerfile creates its asset directory with ownership for `pwuser`
 before installing the pinned package. Desktop and mobile editor save/file
 switching checks both passed against the rebuilt runner (three checks including
 authentication setup). A fresh exact-commit gate is required before publication.
+
+
+## Comprehensive browser gate
+
+The final batch includes the modernization browser repairs and the comprehensive
+local browser gate from `70df80d72`. The complete failure dispositions and focused
+verification are in `2026-09-12-upstream-review.md`. This batch still needs its
+own exact-commit gate after modernization lands on fork main.
