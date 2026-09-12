@@ -99,7 +99,6 @@ def test_to_pydantic_includes_admin_only_fields_for_superuser_and_global_name():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("token, expected_offset, expected_cursor", [
-    ("not-an-int", 0, None),
     ("25", 25, None),
     ("log1:eyJ0IjogIjIwMjYtMDktMDhUMDA6MDA6MDArMDA6MDAiLCAiaSI6IDQyfQ==",
      0, (datetime(2026, 9, 8, tzinfo=UTC), 42)),
@@ -140,6 +139,17 @@ async def test_list_logs_parses_filters_and_legacy_or_keyset_tokens(token, expec
     assert repo.list_logs.await_args.kwargs["offset"] == expected_offset
     assert repo.list_logs.await_args.kwargs["cursor"] == expected_cursor
     assert repo.list_logs.await_args.kwargs["start_date"].tzinfo is None
+
+
+@pytest.mark.asyncio
+async def test_list_logs_rejects_malformed_cursor_before_querying():
+    with patch.object(executions, "ExecutionLogRepository") as repo_cls:
+        repo_cls.return_value.list_logs = AsyncMock()
+        with pytest.raises(HTTPException) as exc:
+            await executions.list_logs(_ctx(), continuation_token="not-an-int")
+
+    assert exc.value.status_code == 422
+    repo_cls.return_value.list_logs.assert_not_awaited()
 
 
 @pytest.mark.asyncio

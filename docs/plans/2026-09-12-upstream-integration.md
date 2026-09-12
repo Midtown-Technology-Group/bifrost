@@ -123,4 +123,9 @@ OAuth and MCP callbacks needed branding context for the shared auth transition,
 and the message-ID test still expected the old timestamp-only fallback. The
 callback fixtures now supply branding, and the ID test verifies distinct IDs
 within one millisecond. All seven tests in those three files pass after repair.
+The first pre-PR run then passed all 3,041 client tests. Its backend unit run
+passed 9,976 tests and found six stale fixtures: integration descriptions,
+portable dependency lookups and malformed log cursors. Updated fixtures verify
+description serialization, portable-reference resolution and rejection before
+querying for invalid cursors. All 105 tests in those four files pass after repair.
 The clean pre-PR gate remains required before publication.
