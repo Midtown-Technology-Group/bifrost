@@ -701,6 +701,9 @@ class tables:
         limit: int = 100,
         offset: int = 0,
         scope: str | None = None,
+        after_document_id: str | None = None,
+        document_id_prefix: str | None = None,
+        skip_count: bool = False,
     ) -> DocumentList:
         """
         Query documents with filtering and pagination.
@@ -720,6 +723,12 @@ class tables:
             limit: Maximum documents to return (default 100).
             offset: Number of documents to skip.
             scope: Organization scope.
+            after_document_id: Exclusive cursor over the actual document ID.
+                Activates ascending document-ID ordering. Pass an empty string
+                to begin an unbounded document-ID scan.
+            document_id_prefix: Restrict results to actual document IDs with
+                this prefix. Activates ascending document-ID ordering.
+            skip_count: Skip the matching count query and return ``total=-1``.
 
         Returns:
             DocumentList: Query results with documents, total count, and
@@ -738,6 +747,9 @@ class tables:
                 "order_dir": order_dir,
                 "limit": limit,
                 "offset": offset,
+                "after_document_id": after_document_id,
+                "document_id_prefix": document_id_prefix,
+                "skip_count": skip_count,
             },
             retry_safe=True,
         )
