@@ -7,6 +7,14 @@ import { AuthCallback } from "./AuthCallback";
 const loginWithOAuth = vi.fn();
 const navigate = vi.fn();
 
+vi.mock("@/contexts/OrgScopeContext", () => ({
+	useOrgScope: () => ({
+		applicationName: "Bifrost",
+		brandingLoaded: true,
+		logoLoaded: true,
+	}),
+}));
+
 vi.mock("react-router", async () => {
 	const actual =
 		await vi.importActual<typeof import("react-router")>(

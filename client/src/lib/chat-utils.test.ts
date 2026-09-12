@@ -54,13 +54,15 @@ describe("chat-utils ids", () => {
 		);
 	});
 
-	it("uses a timestamp fallback only when no browser crypto API exists", () => {
+	it("distinguishes IDs within one millisecond when no browser crypto API exists", () => {
 		Object.defineProperty(globalThis, "crypto", {
 			configurable: true,
 			value: undefined,
 		});
 		vi.spyOn(Date, "now").mockReturnValue(1790000000000);
+		vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
 
-		expect(generateMessageId()).toBe("fallback-mubbs7i8");
+		expect(generateMessageId()).toBe("fallback-mubbs7i8-i");
+		expect(generateMessageId()).toBe("fallback-mubbs7i8-9");
 	});
 });
