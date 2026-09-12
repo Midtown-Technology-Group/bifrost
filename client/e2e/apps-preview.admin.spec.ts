@@ -26,7 +26,7 @@ const APP_SLUG = `e2e-preview-${UNIQUE}`;
 const APP_NAME = `E2E Preview ${UNIQUE}`;
 
 const LAYOUT_TSX = `import { useRef } from "react";
-import { Outlet } from "react-router";
+import { Outlet } from "react-router-dom";
 export default function Layout() {
 	const instanceId = useRef(crypto.randomUUID());
 	return (
@@ -47,7 +47,7 @@ const STYLES_CSS = `.route-style-sentinel {
 }`;
 
 const indexTsx = (heading: string) => `import { Link } from "bifrost";
-import { useLocation } from "react-router";
+import { useLocation } from "react-router-dom";
 export default function Home() {
 	const location = useLocation();
 	return (
@@ -61,7 +61,7 @@ export default function Home() {
 `;
 
 const OTHER_TSX = `import { Link } from "bifrost";
-import { useLocation } from "react-router";
+import { useLocation } from "react-router-dom";
 export default function Other() {
 	const location = useLocation();
 	return (

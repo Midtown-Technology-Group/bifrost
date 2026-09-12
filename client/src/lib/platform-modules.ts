@@ -44,7 +44,7 @@ export const PLATFORM_MODULES: PlatformModule[] = [
 	{ specifier: "react/jsx-runtime", globalKey: "__bifrost_react_jsx_runtime" },
 	{ specifier: "react/jsx-dev-runtime", globalKey: "__bifrost_react_jsx_dev_runtime" },
 	{
-		specifier: "react-router",
+		specifier: "react-router-dom",
 		hostSpecifier: "react-router",
 		globalKey: "__bifrost_react_router_dom",
 	},
