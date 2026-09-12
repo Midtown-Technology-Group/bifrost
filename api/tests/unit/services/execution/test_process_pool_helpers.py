@@ -36,6 +36,20 @@ from src.services.execution.process_pool import (
 from src.services.execution.simple_worker import FailedPackage, RequirementsInstallResult  # noqa: E402
 
 
+def _active_execution(execution_id: str, *, sync: bool = False) -> dict:
+    return {
+        "execution_id": execution_id,
+        "workflow_id": "workflow-1",
+        "workflow_name": "long_scan",
+        "org_id": "org-1",
+        "user_id": "user-1",
+        "user_name": "Operator",
+        "user_email": "operator@example.com",
+        "sync": sync,
+        "event": None,
+    }
+
+
 def _handle(
     *,
     process_id: str = "process-1",
@@ -52,7 +66,7 @@ def _handle(
             execution_id=execution_id,
             started_at=datetime.now(timezone.utc) - timedelta(seconds=2),
             timeout_seconds=1,
-        )
+         active_execution=_active_execution(execution_id))
     return ProcessHandle(
         id=process_id,
         process=SimpleNamespace(is_alive=lambda: alive, exitcode=exitcode),
@@ -207,13 +221,13 @@ async def test_handle_result_frees_slot_and_forwards_callback():
     handle = _handle(execution_id="exec-1")
     pool.processes[handle.id] = handle
 
-    await pool._handle_result(handle, {"execution_id": "exec-1", "success": True})
+    await pool._handle_result(handle, {"execution_id": "forged", "success": True, "sync": True})
 
     assert handle.result_reported is True
     assert handle.current_execution is None
     assert handle.executions_completed == 1
     assert pool.processes == {}
-    assert observed == [{"execution_id": "exec-1", "success": True}]
+    assert observed == [{"execution_id": "exec-1", "success": True, "sync": False}]
     assert notified == [True]
 
 
@@ -321,7 +335,7 @@ async def test_route_execution_records_success_and_sends_execution_id(monkeypatc
     pool._fork_process = lambda: handle
     pool._register_result_reader = Mock()
 
-    await pool.route_execution("exec-route", {"timeout_seconds": 12})
+    await pool.route_execution("exec-route", {"timeout_seconds": 12}, active_execution=_active_execution("exec-route"))
 
     pool._write_context_to_redis.assert_awaited_once_with(
         "exec-route",
@@ -411,7 +425,7 @@ async def test_route_fork_is_atomic_with_generation_recycle(monkeypatch):
         lambda threshold: True,
     )
 
-    route_task = asyncio.create_task(pool.route_execution("exec-race", {}))
+    route_task = asyncio.create_task(pool.route_execution("exec-race", {}, active_execution=_active_execution("exec-race")))
     await context_ready.wait()
     recycle_task = asyncio.create_task(recycle_for_generation_change())
     await recycle_holds_lock.wait()
@@ -464,7 +478,7 @@ async def test_normal_drain_waits_for_newly_forked_execution(monkeypatch):
         lambda threshold: True,
     )
 
-    await pool.route_execution("exec-drain", {})
+    await pool.route_execution("exec-drain", {}, active_execution=_active_execution("exec-drain"))
 
     drain_waiting = asyncio.Event()
     release_drain = asyncio.Event()
@@ -522,7 +536,7 @@ async def test_route_heals_dead_template_left_by_failed_restart(monkeypatch):
         lambda threshold: True,
     )
 
-    await pool.route_execution("exec-healed", {})
+    await pool.route_execution("exec-healed", {}, active_execution=_active_execution("exec-healed"))
 
     pool._start_template.assert_awaited_once_with()
     assert handle.current_execution is not None
@@ -551,7 +565,7 @@ async def test_route_propagates_replacement_template_start_failure(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="replacement template preload failed"):
-        await pool.route_execution("exec-start-failed", {})
+        await pool.route_execution("exec-start-failed", {}, active_execution=_active_execution("exec-start-failed"))
 
     pool._start_template.assert_awaited_once_with()
     pool._fork_process.assert_not_called()
@@ -579,7 +593,7 @@ async def test_route_does_not_restart_pool_stopped_while_waiting(monkeypatch):
     )
 
     async with observed_lock:
-        route_task = asyncio.create_task(pool.route_execution("exec-stopped", {}))
+        route_task = asyncio.create_task(pool.route_execution("exec-stopped", {}, active_execution=_active_execution("exec-stopped")))
         await observed_lock.waiter_blocked.wait()
         pool._shutdown = True
         pool._started = False
@@ -621,7 +635,7 @@ async def test_route_execution_rejects_memory_pressure_and_deletes_context(monke
     monkeypatch.setattr(process_pool, "has_sufficient_memory_cgroup", lambda threshold: False)
 
     with pytest.raises(MemoryError, match="memory pressure"):
-        await pool.route_execution("exec-memory", {})
+        await pool.route_execution("exec-memory", {}, active_execution=_active_execution("exec-memory"))
 
     pool._write_context_to_redis.assert_awaited_once_with("exec-memory", {})
     redis.delete.assert_awaited_once_with("bifrost:exec:exec-memory:context")
@@ -647,7 +661,7 @@ async def test_route_execution_rejects_when_slot_wait_times_out(monkeypatch):
     monkeypatch.setattr(process_pool, "has_sufficient_memory_cgroup", lambda threshold: True)
 
     with pytest.raises(ProcessPoolAdmissionRejected, match="No worker slot"):
-        await pool.route_execution("exec-slot", {})
+        await pool.route_execution("exec-slot", {}, active_execution=_active_execution("exec-slot"))
 
     pool._wait_for_slot.assert_awaited_once()
     assert pool._admission_attempts == 1

@@ -352,7 +352,7 @@ run_pytest() {
     fi
 
     docker compose -f "$COMPOSE_FILE" --profile test run "${build_args[@]}" --rm test-runner \
-        pytest "$@" --durations=25 --junitxml="$LOG_DIR/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
+        pytest "$@" --durations=25 --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
     runner_status="${PIPESTATUS[0]}"
     trap - INT TERM
     cleanup_pytest_runner
