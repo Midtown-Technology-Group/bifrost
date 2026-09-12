@@ -8,9 +8,37 @@ test("AGENT-REVIEW-01 saves a note and resolves a flagged run after reload", asy
 }) => {
 	const name = `Review acceptance ${randomUUID()}`;
 	const note = "Reviewed the persisted answer against the requested outcome.";
+	let connectionId: string | undefined;
+	let profileId: string | undefined;
 	let agentId: string | undefined;
 	let conversationId: string | undefined;
 	try {
+		const connection = await api.post("/api/admin/ai/connections", {
+			data: {
+				name: `${name} connection`,
+				provider: "openai_compatible",
+				api_key: "fixture-key",
+				endpoint: "http://scheduler-fixtures:8080/v1",
+			},
+		});
+		expect(connection.ok(), await connection.text()).toBe(true);
+		connectionId = (await connection.json()).id;
+		const profile = await api.post("/api/admin/ai/profiles", {
+			data: {
+				name: `${name} profile`,
+				connection_id: connectionId,
+				model: "fixture-chat",
+				capabilities: {
+					tool_calling: false,
+					image_input: false,
+					pdf_input: false,
+					source: "manual",
+				},
+				enabled_for_chat: true,
+			},
+		});
+		expect(profile.ok(), await profile.text()).toBe(true);
+		profileId = (await profile.json()).id;
 		const agentResponse = await api.post("/api/agents", {
 			data: {
 				name,
@@ -18,6 +46,7 @@ test("AGENT-REVIEW-01 saves a note and resolves a flagged run after reload", asy
 				channels: ["chat"],
 				access_level: "private",
 				system_tools: [],
+				llm_profile_id: profileId,
 			},
 		});
 		expect(
@@ -34,6 +63,24 @@ test("AGENT-REVIEW-01 saves a note and resolves a flagged run after reload", asy
 		});
 		expect(conversation.ok()).toBe(true);
 		conversationId = (await conversation.json()).id;
+		// Observe the durable terminal event before asserting persisted review state.
+		// Worker cold initialization is operation time, not an assertion-ready state.
+		const socketPromise = page.waitForEvent("websocket");
+		await page.goto(`/chat/${conversationId}`);
+		const socket = await socketPromise;
+		await expect(
+			page.getByRole("textbox", { name: "Chat input" }),
+		).toBeVisible();
+		const terminalFrame = socket.waitForEvent("framereceived", {
+			predicate: ({ payload }) => {
+				const event = JSON.parse(payload.toString());
+				return (
+					event.type === "chat_run_event" &&
+					event.conversation_id === conversationId &&
+					["done", "error", "cancelled"].includes(event.payload?.type)
+				);
+			},
+		});
 		const started = await api.post("/api/chat/runs", {
 			data: {
 				conversation_id: conversationId,
@@ -42,6 +89,8 @@ test("AGENT-REVIEW-01 saves a note and resolves a flagged run after reload", asy
 			},
 		});
 		expect(started.ok()).toBe(true);
+		const terminal = JSON.parse((await terminalFrame).payload.toString());
+		expect(terminal.payload.type, JSON.stringify(terminal)).toBe("done");
 		let runId = "";
 		await expect
 			.poll(async () => {
@@ -105,6 +154,20 @@ test("AGENT-REVIEW-01 saves a note and resolves a flagged run after reload", asy
 		if (agentId)
 			expect([200, 204, 404]).toContain(
 				(await api.delete(`/api/agents/${agentId}`)).status(),
+			);
+		if (profileId)
+			expect([200, 204, 404]).toContain(
+				(
+					await api.delete(`/api/admin/ai/profiles/${profileId}`)
+				).status(),
+			);
+		if (connectionId)
+			expect([200, 204, 404]).toContain(
+				(
+					await api.delete(
+						`/api/admin/ai/connections/${connectionId}`,
+					)
+				).status(),
 			);
 	}
 });

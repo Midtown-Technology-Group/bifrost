@@ -523,8 +523,11 @@ test.describe("Execution History", () => {
 			page.getByText("Cancelled", { exact: true }),
 		).toBeVisible();
 		await expect(
-			page.getByText("This run was cancelled", { exact: true }),
+			page.getByRole("region", { name: "Execution attempts" }),
 		).toBeVisible();
+		await expect(
+			page.getByText("This run failed", { exact: true }),
+		).toHaveCount(0);
 		await expectNoHorizontalOverflow(page);
 	});
 });

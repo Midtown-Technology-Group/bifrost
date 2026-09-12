@@ -809,7 +809,8 @@ cmd_pre_pr() {
     quality_api
     cmd_unit
     cmd_e2e
-    client_smoke
+    # Match comprehensive PR CI: smoke alone misses affected browser journeys.
+    client_e2e
     build_local_api_candidate
 
     if [ "$(git rev-parse HEAD)" != "$head_sha" ] || \

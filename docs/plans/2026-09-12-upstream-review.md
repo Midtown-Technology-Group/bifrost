@@ -47,3 +47,45 @@ and all genuine CI failures still gate the merge.
 Focused validation: 86 client tests passed across the nine affected test files.
 The shell regression passed both mutual exclusion and results-permission cases.
 The full exact-commit pre-PR gate remains required after these repairs.
+
+
+## Comprehensive browser failures
+
+CI run 34724417793 passed every backend shard but found twelve browser failures.
+The previous local gate selected only fourteen smoke cases. `pre-pr` now calls
+the same comprehensive browser lane as CI; its harness regression and both
+agent guides record that boundary. The interrupted `f2600a72` local gate is not
+a passing result.
+
+- Agent review now owns its local model profile and observes the durable chat
+  completion event before asserting stored review state. Worker logs showed
+  cold initialization outlasting the old assertion, followed by teardown
+  deleting the still-running record. The test timeout is unchanged.
+- Agent navigation, workflow actions, subscription filter cells, table settings,
+  and file-policy editing use the current accessible controls. Cancellation
+  checks the persisted cancelled outcome and attempts without requiring an
+  optional error-message banner. The member-budget test uses its already-owned
+  agent instead of an undefined duplicate fixture helper.
+- Service MCP discovery includes the required issuer. Private-memory MCP calls
+  obtain an audience-bound token through real authorization-code/PKCE flow,
+  retaining CSRF headers and JSON/SSE negotiation. Browser session tokens remain
+  rejected by MCP. Neither issuer nor audience validation is weakened.
+- Both local-origin proxy transports preserve the incoming Host header, and the
+  production MCP nginx route preserves its port. The original harness rewrote
+  localhost to the internal container name; nginx also stripped the port.
+- Roles setup creates a fresh workflow identity on each hook entry. A reused
+  Playwright worker reran the hook with a cached module-level name: rewriting
+  its deleted source automatically reactivated the workflow, so the subsequent
+  register call correctly returned 409. Failed responses retain diagnostics;
+  successful browser responses are not read after navigation.
+- The event detail artifact exposed duplicated origins in absolute callback
+  URLs. URL resolution now handles the API's absolute URLs and relative paths;
+  component coverage checks both forms.
+
+Focused runs now cover every formerly failing journey; the last repairs were
+verified with CI's two-worker concurrency. The two harness files passed all 18
+tests, EventSourceDetail passed all 11 component tests, and lint passed for the
+edited browser/component files. The initial new harness test called its path
+helper incorrectly; that test defect was corrected before the passing run.
+A new exact-commit full gate, including the comprehensive browser suite, remains
+required before queueing this PR.
