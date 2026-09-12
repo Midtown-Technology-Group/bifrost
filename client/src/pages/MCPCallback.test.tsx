@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import { MCPCallback } from "./MCPCallback";
 
+vi.mock("@/contexts/OrgScopeContext", () => ({
+	useOrgScope: () => ({
+		applicationName: "Bifrost",
+		brandingLoaded: true,
+		logoLoaded: true,
+	}),
+}));
+
 describe("MCPCallback", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();

@@ -119,6 +119,11 @@ checks cover collections, logos, event criteria, MCP management and per-mapping
 OAuth. A Home launch failure exposed an app import-contract mismatch; the
 restored contract passed Home launch and preview-to-publish browser checks.
 A component regression also covers the map used by apps with extra dependencies.
+The first full client run passed 3,036 tests and exposed five fixture failures:
+OAuth and MCP callbacks needed branding context for the shared auth transition,
+and the message-ID test still expected the old timestamp-only fallback. The
+callback fixtures now supply branding, and the ID test verifies distinct IDs
+within one millisecond. All seven tests in those three files pass after repair.
 The clean pre-PR gate remains required before publication.
 
 ## Canonical table batch writes
