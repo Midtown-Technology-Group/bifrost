@@ -21,6 +21,7 @@ WORK_REPO = ROOT / "solution-update-work"
 BARE_REPO = ROOT / "solution-update.git"
 
 FIXTURE_OAUTH_CLIENT_ID = "scheduler-fixture-client"
+FIXTURE_OAUTH_ISSUER = "http://scheduler-fixtures:8080"
 FIXTURE_OAUTH_CLIENT_SECRET = "scheduler-fixture-secret"
 FIXTURE_OAUTH_REFRESH_TOKEN = "scheduler-fixture-refresh"
 FIXTURE_OAUTH_CODE = "scheduler-fixture-code"
@@ -246,7 +247,11 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._redirect(
                 redirect_uri
                 + "?"
-                + urlencode({"code": FIXTURE_OAUTH_CODE, "state": state})
+                + urlencode({
+                    "code": FIXTURE_OAUTH_CODE,
+                    "state": state,
+                    "iss": FIXTURE_OAUTH_ISSUER,
+                })
             )
             return
 

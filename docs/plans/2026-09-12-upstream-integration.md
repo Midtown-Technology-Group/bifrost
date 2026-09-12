@@ -129,6 +129,13 @@ passed 9,976 tests and found six stale fixtures: integration descriptions,
 portable dependency lookups and malformed log cursors. Updated fixtures verify
 description serialization, portable-reference resolution and rejection before
 querying for invalid cursors. All 105 tests in those four files pass after repair.
+The next gate passed all 9,982 backend unit tests. Live MCP failures exposed an
+upstream test-stack public-URL change that conflicted with the fork's Host and
+token-audience checks. Backend tests now use `api:8000`; browser lanes select
+`localhost:3000`, and state reset applies the lane's Compose environment. The
+OAuth fixture supplies its issuer in metadata and callback responses, preserving
+the fork's issuer binding. All 213 affected backend checks and four browser
+checks passed after repair, including personal consent/persistence/disconnect.
 The clean pre-PR gate remains required before publication.
 
 ## Canonical table batch writes

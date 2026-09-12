@@ -76,6 +76,7 @@ def test_authorize_redirect_requires_fixture_client_and_pkce():
         assert final_url.startswith(redirect_uri)
         assert query["code"] == ["scheduler-fixture-code"]
         assert query["state"] == ["opaque-state"]
+        assert query["iss"] == ["http://scheduler-fixtures:8080"]
 
 
 def test_authorize_rejects_wrong_client():

@@ -147,7 +147,9 @@ reset_state() {
 
     docker compose -f "$COMPOSE_FILE" start pgbouncer > /dev/null
     wait_for_service "$COMPOSE_FILE" pgbouncer pg_isready -h localhost -p 5432 -U bifrost
-    docker compose -f "$COMPOSE_FILE" --profile e2e start \
+    # Apply lane-specific environment changes when returning from browser tests
+    # or entering them; `start` would retain the previous public URL.
+    docker compose -f "$COMPOSE_FILE" --profile e2e up -d --no-build --no-deps \
         api api-replica worker scheduler scheduler-fixtures > /dev/null
     wait_for_api_ready "$COMPOSE_FILE"
     wait_for_api_service_ready "$COMPOSE_FILE" api-replica
@@ -665,6 +667,7 @@ start_test_client() {
 
 client_e2e() {
     require_stack_up
+    local -x BIFROST_TEST_PUBLIC_URL=http://localhost:3000
     local screenshots_all=false
     local passthrough=()
     for a in "$@"; do
@@ -673,7 +676,9 @@ client_e2e() {
         fi
     done
 
-    prepare_test_state
+    # Browser callbacks need a different public authority from backend MCP
+    # tests, so reconcile it even when a backend clean-boot shortcut is enabled.
+    reset_state
 
     start_test_client
 
@@ -715,6 +720,7 @@ client_nightly() {
 
 client_docs() {
     require_stack_up
+    local -x BIFROST_TEST_PUBLIC_URL=http://localhost:3000
     if [ -z "${DOCS_REPO_PATH:-}" ]; then
         echo "DOCS_REPO_PATH must be set to the absolute path of the gobifrost checkout." >&2
         exit 2
