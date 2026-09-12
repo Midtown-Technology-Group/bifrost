@@ -19,7 +19,7 @@ const APP_SLUG = `e2e-policies-direct-${UNIQUE}`;
 const APP_NAME = `E2E Policies Direct ${UNIQUE}`;
 const TABLE_NAME = `e2e_policies_direct_${UNIQUE}`;
 
-const LAYOUT_TSX = `import { Outlet } from "react-router-dom";
+const LAYOUT_TSX = `import { Outlet } from "react-router";
 export default function Layout() { return <Outlet />; }
 `;
 

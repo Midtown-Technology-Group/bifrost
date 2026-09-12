@@ -21,12 +21,7 @@ import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import * as yaml from "js-yaml";
 
 import { CodeEditor } from "@/components/tables/CodeEditor";
-import {
-	Tabs,
-	TabsContent,
-	TabsList,
-	TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type JsonYamlFormat = "json" | "yaml";
 
@@ -61,6 +56,7 @@ export interface JsonYamlEditorProps<T> {
 	 *  becomes valid (or is cleared). Used by consumers that need to
 	 *  disable AST-driven mutations while a buffer is broken. */
 	onParseErrorChange?: (error: string | null) => void;
+	readOnly?: boolean;
 	className?: string;
 }
 
@@ -110,6 +106,7 @@ export function JsonYamlEditor<T>({
 	paths,
 	hideParseError = false,
 	onParseErrorChange,
+	readOnly = false,
 	className,
 }: JsonYamlEditorProps<T>): JSX.Element {
 	const schemaConfigured = _schema != null;
@@ -280,6 +277,7 @@ export function JsonYamlEditor<T>({
 
 				<TabsContent value="json" className="min-h-[320px]">
 					<CodeEditor
+						readOnly={readOnly}
 						mode="json"
 						text={jsonText}
 						onChange={handleJsonText}
@@ -290,6 +288,7 @@ export function JsonYamlEditor<T>({
 
 				<TabsContent value="yaml" className="min-h-[320px]">
 					<CodeEditor
+						readOnly={readOnly}
 						mode="yaml"
 						text={yamlText}
 						onChange={handleYamlText}

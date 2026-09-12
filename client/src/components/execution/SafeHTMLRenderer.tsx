@@ -1,17 +1,7 @@
-/**
- * SafeHTMLRenderer - Sanitized HTML display component
- *
- * Renders untrusted HTML content safely using DOMPurify sanitization.
- * This prevents:
- * - XSS attacks via malicious scripts
- * - Dangerous event handlers
- * - Malicious navigation
- * - Form submission to external sites
- *
- * Note: Allows inline styles/classes for rich formatting, but strips executable
- * scripts and event handlers before rendering or exporting to a new window.
- */
+/** Renders sanitized report HTML inside an opaque-origin sandbox. */
 
+import { useState } from "react";
+import { cn } from "@/lib/utils";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
@@ -49,8 +39,10 @@ function stripExecutableAttributes(markup: string) {
 
 export function SafeHTMLRenderer({
 	html,
+	title = "Execution result",
 	className = "",
 }: SafeHTMLRendererProps) {
+	const [popupError, setPopupError] = useState(false);
 	// Sanitize HTML to remove executable elements before inline rendering or export.
 	const sanitizedHTML = stripExecutableAttributes(
 		DOMPurify.sanitize(html, {
@@ -208,59 +200,56 @@ export function SafeHTMLRenderer({
 		}),
 	);
 
-	// Process HTML to extract head content and body content separately
-	const processedHTML = (() => {
-		const parser = new DOMParser();
-		const doc = parser.parseFromString(sanitizedHTML, "text/html");
 
-		// Check if this is a full HTML document
-		const hasHtmlTag =
-			sanitizedHTML.trim().toLowerCase().startsWith("<!doctype") ||
-			sanitizedHTML.trim().toLowerCase().startsWith("<html");
-
-		if (hasHtmlTag) {
-			// Extract head content (styles, links, and meta tags)
-			const headContent = Array.from(doc.head.children)
-				.map((el) => el.outerHTML)
-				.join("\n");
-
-			// Extract body content
-			const bodyContent = doc.body.innerHTML;
-
-			// Combine them for rendering after sanitization.
-			return headContent + bodyContent;
+	const documentHTML = (() => {
+		const doc = new DOMParser().parseFromString(sanitizedHTML, "text/html");
+		if (!doc.querySelector('meta[name="viewport"]')) {
+			const viewport = doc.createElement("meta");
+			viewport.name = "viewport";
+			viewport.content = "width=device-width, initial-scale=1";
+			doc.head.prepend(viewport);
 		}
-
-		// Not a full document, return as-is
-		return sanitizedHTML;
+		// Report-specific styles follow these low-specificity defaults.
+		const defaults = doc.createElement("style");
+		defaults.textContent = ":where(body){margin:16px;font-family:system-ui,sans-serif;line-height:1.5;overflow-wrap:anywhere}:where(img,svg,video){max-width:100%;height:auto}";
+		doc.head.prepend(defaults);
+		return "<!doctype html>" + doc.documentElement.outerHTML;
 	})();
 
 	const openInNewWindow = () => {
-		const newWindow = window.open("", "_blank", "noopener,noreferrer");
+		setPopupError(false);
+		const newWindow = window.open("", "_blank");
 		if (newWindow) {
 			newWindow.opener = null;
-			newWindow.document.write(sanitizedHTML);
-			newWindow.document.close();
+			newWindow.document.title = title;
+			const frame = newWindow.document.createElement("iframe");
+			frame.title = title;
+			frame.setAttribute("sandbox", "");
+			frame.referrerPolicy = "no-referrer";
+			frame.srcdoc = documentHTML;
+			frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;background:white";
+			newWindow.document.body.replaceChildren(frame);
+		} else {
+			setPopupError(true);
 		}
 	};
 
 	return (
-		<div className={className}>
-			<div className="flex items-center justify-end gap-2 mb-2">
+		<div className={cn("min-w-0 space-y-3", className)}>
+			<div className="flex flex-wrap items-center justify-end gap-2">
 				<Button
 					variant="outline"
-					size="sm"
+					className="min-h-11"
 					onClick={openInNewWindow}
 					title="Open in new window"
 				>
 					<ExternalLink className="h-4 w-4" />
-					<span className="ml-2 hidden sm:inline">Open</span>
+					<span>Open full result</span>
 				</Button>
 			</div>
 
-			<div className="relative overflow-auto">
-				<div dangerouslySetInnerHTML={{ __html: processedHTML }} />
-			</div>
+			{popupError && <p role="alert" className="rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm">The new window was blocked. Allow popups for this site and try again, or continue reading below.</p>}
+			<iframe title={title} sandbox="" referrerPolicy="no-referrer" srcDoc={documentHTML} className="block h-[min(70vh,700px)] w-full min-w-0 rounded-[var(--bf-radius-surface)] border bg-white" />
 		</div>
 	);
 }

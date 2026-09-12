@@ -72,7 +72,7 @@ async function postAs(
 	return { ok: res.ok(), status: res.status(), text, json };
 }
 
-const LAYOUT_TSX = `import { Outlet } from "react-router-dom";
+const LAYOUT_TSX = `import { Outlet } from "react-router";
 export default function Layout() { return <Outlet />; }
 `;
 

@@ -62,3 +62,47 @@ ancestors of the integration branch.
 The delivery PR must record client checks and the full pre-PR result for its exact
 clean candidate. Final acceptance still requires the modernization and batch-write
 consolidation integrations and ancestry verification on fork main.
+
+## Redesign reconciliation
+
+The next merge records upstream `3c6590a45` as a parent. This upstream commit
+combines the shared visual system, responsive page layouts, Home collections,
+entity logos, dependency availability, and browser acceptance coverage. Review
+its backend contracts and shared components separately from page presentation.
+The fork's existing execution and source-governance behavior remains required.
+
+Conflict decisions:
+
+- Keep the consolidated `react-router` package already used by the fork.
+- Keep immutable-source mutation guards, execution attempt history, browser
+  WebMCP tools, and conditional event criteria. Integrate those controls into
+  upstream's new layouts rather than removing them with their old containers.
+- Keep the `log1:` cursor format and numeric-offset compatibility. Adopt the
+  upstream workflow/global filters and stricter malformed-cursor rejection.
+- Keep report script and event-handler stripping. Adopt the isolated report
+  iframe and blocked-popup feedback with an empty sandbox policy. Both inline
+  and popup tests inspect the sanitized frame content.
+- Preserve explicit MCP authorization-server issuer metadata, manual issuer
+  entry, and rejection of OAuth configuration without an issuer. The upstream
+  discovery test must supply valid issuer metadata.
+- Preserve worker runtime labels and configured capacity across partial
+  heartbeats. A runtime change clears the previous label. Focused component
+  tests cover both transitions.
+- Preserve the JSON/YAML editor's blank-buffer and validator semantics while
+  adopting the shared editor layout.
+- Adopt upstream's explicit new-conversation draft transition in the route
+  reveal key. Ordinary conversation navigation receives its own pathname key;
+  Settings, account settings, and app runners retain their shared shells.
+- Retain upstream's rewritten per-mapping OAuth browser test: it now creates
+  deterministic fixtures and replaces the old opportunistic test removed by
+  the fork in `297d2bea8`.
+- Join the independent migration branches with
+  `20260912_merge_mtg_redesign`; neither existing migration chain is rewritten.
+- The CLI contract changes are additive metadata. Refresh the fingerprint
+  without changing the compatibility version.
+- Keep the fork's CI deployment boundary and browser artifact path. Adopt
+  upstream's test-stack command lock and skill-mirror checker.
+
+The redesigned candidate still requires generated types against its running
+API, backend/live-boundary tests, browser verification, and the clean pre-PR
+gate before publication. Focused component checks are iteration evidence.

@@ -93,6 +93,8 @@ from src.models.orm.workspace_promotions import (
 )
 
 __all__ = [
+    "HomeCollection",
+    "HomeResourcePreference",
     # Base
     "Base",
     # Organizations
@@ -231,3 +233,5 @@ __all__ = [
     # Custom Claims
     "CustomClaim",
 ]
+
+from src.models.orm.home import HomeCollection, HomeResourcePreference

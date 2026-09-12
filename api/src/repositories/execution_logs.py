@@ -34,9 +34,9 @@ def decode_log_cursor(token: str) -> tuple[datetime, int] | None:
         payload = json.loads(base64.urlsafe_b64decode(token[5:]))
         timestamp = datetime.fromisoformat(payload["t"])
         log_id = payload["i"]
-        if timestamp.tzinfo is None or type(log_id) is not int or log_id < 1:
+        if timestamp.tzinfo is None or type(log_id) is not int or not 0 < log_id <= 2147483647:
             return None
-        return timestamp, log_id
+        return timestamp.astimezone(timezone.utc), log_id
     except (ValueError, KeyError, TypeError):
         return None
 
@@ -251,6 +251,8 @@ class ExecutionLogRepository:
         limit: int = 50,
         offset: int = 0,
         cursor: tuple[datetime, int] | None = None,
+        workflow_id: UUID | None = None,
+        global_only: bool = False,
     ) -> tuple[list[dict[str, Any]], str | None]:
         """
         List logs across all executions with filtering and pagination.
@@ -258,17 +260,20 @@ class ExecutionLogRepository:
         Args:
             organization_id: Filter by organization
             workflow_name: Filter by workflow name (partial match)
+            workflow_id: Filter by exact workflow identity
+            global_only: Include only executions without an organization
             levels: Filter by log levels (e.g., ["ERROR", "WARNING"])
             message_search: Search in log messages (partial match)
             start_date: Filter logs from this date
             end_date: Filter logs until this date
             limit: Maximum number of logs to return
-            offset: Number of logs to skip
-            cursor: Stable page boundary; takes precedence over legacy offset
+            offset: Number of logs to skip for legacy numeric tokens
+            cursor: Stable keyset cursor as (timestamp, log id)
 
         Returns:
             Tuple of (logs_list, next_continuation_token).
-            Token is the last row's timestamp/id, or None if no more results.
+            Token is a keyset cursor for the last returned row, or None if no
+            more results.
         """
         # Build query with joins
         query = (
@@ -285,6 +290,12 @@ class ExecutionLogRepository:
         if organization_id:
             query = query.where(Execution.organization_id == organization_id)
 
+        if global_only:
+            query = query.where(Execution.organization_id.is_(None))
+
+        if workflow_id:
+            query = query.where(Execution.workflow_id == workflow_id)
+
         if workflow_name:
             query = query.where(Execution.workflow_name.ilike(f"%{workflow_name}%"))
 
@@ -300,15 +311,21 @@ class ExecutionLogRepository:
         if end_date:
             query = query.where(ExecutionLog.timestamp <= end_date)
 
-        # Fetch limit+1 to check if there are more results
         if cursor is not None:
-            timestamp, log_id = cursor
-            query = query.where(or_(
-                ExecutionLog.timestamp < timestamp,
-                and_(ExecutionLog.timestamp == timestamp, ExecutionLog.id < log_id),
-            ))
-        else:
+            cursor_timestamp, cursor_id = cursor
+            query = query.where(
+                or_(
+                    ExecutionLog.timestamp < cursor_timestamp,
+                    and_(
+                        ExecutionLog.timestamp == cursor_timestamp,
+                        ExecutionLog.id < cursor_id,
+                    ),
+                )
+            )
+        elif offset:
             query = query.offset(offset)
+
+        # Fetch limit+1 to check if there are more results
         query = query.limit(limit + 1)
 
         result = await self.session.execute(query)
@@ -319,8 +336,14 @@ class ExecutionLogRepository:
         if has_more:
             logs = list(logs)[:limit]
 
-        # Calculate next token
-        next_token = encode_log_cursor(logs[-1].timestamp, logs[-1].id) if has_more else None
+        # Calculate next token from the last emitted row. A keyset token is
+        # stable when new logs arrive before the next page and when multiple
+        # rows share the same timestamp.
+        next_token = (
+            encode_log_cursor(logs[-1].timestamp, logs[-1].id)
+            if has_more and logs
+            else None
+        )
 
         # Convert to dicts with joined data
         return [

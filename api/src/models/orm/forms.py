@@ -9,7 +9,7 @@ Represents forms, form fields, and form role associations.
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Integer, String, Text, text
+from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Integer, LargeBinary, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -89,6 +89,11 @@ class Form(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, default=None)
+    logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    logo_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
+    logo_thumbnail_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    logo_thumbnail_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
+    logo_thumbnail_version: Mapped[str | None] = mapped_column(String(64), default=None)
     confirmation_markdown: Mapped[str] = mapped_column(
         Text,
         nullable=False,

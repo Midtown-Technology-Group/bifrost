@@ -33,7 +33,7 @@ const FILE_PREFIX = `shared/gallery/app-files/${UNIQUE}`;
 const FILE_PATH = `${FILE_PREFIX}/browser.txt`;
 const FILE_CONTENT = `browser-upload-${UNIQUE}`;
 
-const LAYOUT_TSX = `import { Outlet } from "react-router-dom";
+const LAYOUT_TSX = `import { Outlet } from "react-router";
 export default function Layout() { return <Outlet />; }
 `;
 

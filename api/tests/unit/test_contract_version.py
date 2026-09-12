@@ -267,7 +267,9 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # (2026-08-31). ADDITIVE: old clients ignore the extra response fields.
     # Workflow updates gained an optional execution retry policy (2026-09-03).
     # ADDITIVE: old clients omit it and workflows remain non-retryable by default.
-    "6b72423a6063205816614108bf4a3def034740a2327cf19e92a65fe9acbe480f"
+    # Redesign integration adds optional logo/description and role metadata.
+    # Existing CLI request and response fields remain compatible.
+    "91f5f6eb5a91348b8f57f98db418be9b13f22e85b12856bd89cd5b36d7b6490b"
 )
 
 

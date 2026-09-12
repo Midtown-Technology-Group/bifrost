@@ -26,3 +26,4 @@ export type {
 	ExecutionAttemptHistoryView,
 	ExecutionAttemptView,
 } from "./ExecutionAttemptHistory";
+export { ExecutionActivityTrace } from "./ExecutionActivityTrace";
