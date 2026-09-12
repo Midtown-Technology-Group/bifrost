@@ -185,5 +185,6 @@ and 1,876 backend E2E tests. Browser smoke exposed a stale shared runner image
 missing the editor's pinned Monaco assets; 13 other checks passed. Browser
 lanes now build both the client and runner from the current worktree. The
 runner Dockerfile creates its asset directory with ownership for `pwuser`
-before installing the pinned package. Focused editor validation and a fresh
-exact-commit gate are required before publication.
+before installing the pinned package. Desktop and mobile editor save/file
+switching checks both passed against the rebuilt runner (three checks including
+authentication setup). A fresh exact-commit gate is required before publication.
