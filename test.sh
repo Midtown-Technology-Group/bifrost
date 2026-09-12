@@ -637,7 +637,9 @@ start_test_client() {
     # Always rebuild it here, even when BIFROST_SKIP_BUILD=1 asks backend lanes
     # to reuse cached API/test-runner images, so one worktree cannot silently
     # run browser tests against another worktree's previously tagged client.
-    docker compose -f "$COMPOSE_FILE" build client
+    # The runner also has a shared tag and contains versioned browser assets.
+    # Reconcile both images with this worktree before any browser lane.
+    docker compose -f "$COMPOSE_FILE" build client playwright-runner
     # reset_state stops and starts the API, which can change its container IP.
     # Nginx resolves the `api` upstream when it starts, so retaining a client
     # from a previous browser run can pin it to a dead address and make every
