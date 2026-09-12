@@ -602,23 +602,21 @@ async def test_handle_result_dispatches_success_and_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_success_and_failure_ignore_results_without_pending_context() -> None:
+async def test_process_results_without_metadata_use_orphan_terminalization() -> None:
     consumer = make_consumer()
-    consumer._redis_client.get_pending_execution.return_value = None
-    consumer._redis_client.delete_pending_execution = AsyncMock()
+    consumer._load_completion_metadata = AsyncMock(return_value=(None, False))
+    consumer._terminalize_result_without_pending = AsyncMock()
     consumer._redis_client.push_result = AsyncMock()
 
-    await consumer._process_success(
-        "missing-success",
-        {"success": True, "result": {"ok": True}, "duration_ms": 12},
-    )
-    await consumer._process_failure(
-        "missing-failure",
-        {"success": False, "error": "boom", "error_type": "ExecutionError"},
-    )
+    success = {"execution_id": str(uuid4()), "sync": False, "success": True, "result": {"ok": True}}
+    failure = {"execution_id": str(uuid4()), "sync": False, "success": False, "error": "boom"}
+    await consumer._process_success(success["execution_id"], success)
+    await consumer._process_failure(failure["execution_id"], failure)
 
-    assert consumer._redis_client.get_pending_execution.await_count == 2
-    consumer._redis_client.delete_pending_execution.assert_not_called()
+    assert consumer._load_completion_metadata.await_count == 2
+    assert consumer._terminalize_result_without_pending.await_count == 2
+    assert consumer._terminalize_result_without_pending.await_args_list[0].args == (success,)
+    assert consumer._terminalize_result_without_pending.await_args_list[1].args == (failure,)
     consumer._redis_client.push_result.assert_not_called()
 
 
@@ -968,7 +966,7 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
         "user_name": "User One",
         "sync": True,
     }
-    consumer._redis_client.get_pending_execution.return_value = pending
+    consumer._redis_client.get_active_execution.return_value = pending
     consumer._redis_client.delete_pending_execution = AsyncMock()
     consumer._redis_client.push_result = AsyncMock()
 
@@ -992,6 +990,7 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
         await consumer._process_success(
             execution_id,
             {
+                "sync": True,
                 "success": True,
                 "status": "Success",
                 "result": {"ok": True},
@@ -1060,7 +1059,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         "sync": True,
         "event": {"type": "demo"},
     }
-    consumer._redis_client.get_pending_execution.return_value = pending
+    consumer._redis_client.get_active_execution.return_value = pending
     consumer._redis_client.delete_pending_execution = AsyncMock(
         side_effect=lambda _execution_id, **_kwargs: call_order.append("delete_pending")
     )
@@ -1100,7 +1099,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         await consumer._process_failure(
             execution_id,
             {
-                "success": False,
+                "sync": True, "success": False,
                 "error": "cancelled",
                 "error_type": "CancelledError",
                 "duration_ms": 50,
@@ -1157,7 +1156,7 @@ async def test_persistence_diagnostics_merge_existing_context_after_execution_lo
     from src.models.enums import ExecutionStatus
 
     consumer = make_consumer()
-    consumer._redis_client.get_pending_execution.return_value = {"workflow_id": "wf", "sync": False}
+    consumer._redis_client.get_active_execution.return_value = {"workflow_id": "wf", "sync": False}
     consumer._lock_execution = AsyncMock()
     session = _Session()
     session.scalar.return_value = {"trigger": {"kind": "schedule"}}
@@ -1173,7 +1172,7 @@ async def test_persistence_diagnostics_merge_existing_context_after_execution_lo
         patch("src.core.cache.cleanup_execution_cache", new_callable=AsyncMock),
     ):
         await consumer._process_failure(str(uuid4()), {
-            "success": False, "error_type": "ResultPersistenceError", "error": "result callback failed",
+            "sync": False, "success": False, "error_type": "ResultPersistenceError", "error": "result callback failed",
             "execution_context": {"result_persistence_failure": diagnostics},
         })
     consumer._lock_execution.assert_awaited_once()

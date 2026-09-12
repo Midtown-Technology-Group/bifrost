@@ -5,6 +5,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -2033,13 +2034,15 @@ async def test_delete_file_editor_deletes_folder_children_and_markers(monkeypatc
     monkeypatch.setattr(files, "FileStorageService", FakeStorage)
     monkeypatch.setattr("src.services.repo_storage.RepoStorage", FakeRepo)
 
+    db = SimpleNamespace(commit=AsyncMock())
     await files.delete_file_editor(
         _ctx(is_superuser=True),
         SimpleNamespace(user_id=USER_ID),
         path="folder",
-        db=SimpleNamespace(),
+        db=db,
     )
 
+    db.commit.assert_awaited_once_with()
     assert storage_deletes == ["folder/a.txt"]
     assert repo_deletes == ["folder/marker/", "folder", "folder/"]
     assert list_calls == ["folder/", "folder/"]
@@ -2065,12 +2068,15 @@ async def test_delete_file_editor_deletes_single_file_and_maps_missing(monkeypat
     monkeypatch.setattr(files, "FileStorageService", FakeStorage)
     monkeypatch.setattr("src.services.repo_storage.RepoStorage", FakeRepo)
 
+    db = SimpleNamespace(commit=AsyncMock())
     await files.delete_file_editor(
         _ctx(is_superuser=True),
         SimpleNamespace(user_id=USER_ID),
         path="file.txt",
-        db=SimpleNamespace(),
+        db=db,
     )
+    db.commit.assert_awaited_once_with()
+    db.commit.reset_mock()
     assert deletes == ["file.txt"]
 
     with pytest.raises(HTTPException) as exc_info:
@@ -2078,9 +2084,10 @@ async def test_delete_file_editor_deletes_single_file_and_maps_missing(monkeypat
             _ctx(is_superuser=True),
             SimpleNamespace(user_id=USER_ID),
             path="missing.txt",
-            db=SimpleNamespace(),
+            db=db,
         )
 
+    db.commit.assert_not_awaited()
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Not found: missing.txt"
 
