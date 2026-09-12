@@ -70,7 +70,15 @@ from src.models.contracts.solutions import (  # noqa: E402
     SolutionDeployJobStatus,
 )
 from src.models.contracts.policy_rule import PolicyRuleCreate, PolicyRuleUpdate  # noqa: E402
-from src.models.contracts.tables import ConditionalDocumentUpdate, DocumentUpdate, TableCreate, TableUpdate  # noqa: E402
+from src.models.contracts.tables import (  # noqa: E402
+    ConditionalDocumentUpdate,
+    DocumentBatchCreate,
+    DocumentBatchCreateResponse,
+    DocumentBatchUpsertResponse,
+    DocumentUpdate,
+    TableCreate,
+    TableUpdate,
+)
 from src.models.contracts.users import RoleCreate, RoleUpdate  # noqa: E402
 from src.models.contracts.workflows import WorkflowUpdateRequest  # noqa: E402
 from src.models.contracts.workspace_promotions import (  # noqa: E402
@@ -160,7 +168,14 @@ _SDK_DTOS: list[type] = [
 #: `workflows execute`) plus EVERY SDK DTO (pulled in programmatically, so new
 #: ones are auto-covered). A field removed/renamed/retyped here is exactly what
 #: silently corrupts a stale CLI, and it is caught completely and automatically.
-CONTRACT_FINGERPRINT_MODELS: list[type] = _COMMAND_DTOS + _SDK_DTOS + [DocumentUpdate, ConditionalDocumentUpdate]
+CONTRACT_FINGERPRINT_MODELS: list[type] = _COMMAND_DTOS + _SDK_DTOS + [
+    DocumentUpdate,
+    ConditionalDocumentUpdate,
+    # Table SDK calls use the REST batch endpoint, outside /api/sdk/*.
+    DocumentBatchCreate,
+    DocumentBatchCreateResponse,
+    DocumentBatchUpsertResponse,
+]
 
 #: We deliberately do NOT fingerprint the full route list. Route strings are a
 #: weak, noisy proxy: hand-listing ~100 `/api/*` paths is perpetually incomplete
@@ -174,6 +189,8 @@ CLI_ROUTES: tuple[str, ...] = ("/api/version",)
 #: the live fingerprint, this test fails — update this value, and bump both
 #: contract-version mirrors if the change breaks older CLIs. See module docstring.
 EXPECTED_CONTRACT_FINGERPRINT = (
+    # Canonical table batch modes/count-only responses require contract 12.
+    # Older servers ignore write_mode and would insert instead of replace.
     # Upstream integration (2026-09-08): optional python_type/json_schema metadata
     # and AgentRun cursor are additive. Existing supported query spellings remain
     # accepted; malformed/unknown filters now fail explicitly. No CLI version bump.
@@ -269,7 +286,7 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # ADDITIVE: old clients omit it and workflows remain non-retryable by default.
     # Redesign integration adds optional logo/description and role metadata.
     # Existing CLI request and response fields remain compatible.
-    "91f5f6eb5a91348b8f57f98db418be9b13f22e85b12856bd89cd5b36d7b6490b"
+    "1bad1ec20e7ed5cf9c2987ed2763801a2d48ee0a859bf8dde45d572ad50214f5"
 )
 
 

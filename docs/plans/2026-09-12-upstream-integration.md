@@ -106,3 +106,18 @@ Conflict decisions:
 The redesigned candidate still requires generated types against its running
 API, backend/live-boundary tests, browser verification, and the clean pre-PR
 gate before publication. Focused component checks are iteration evidence.
+
+## Canonical table batch writes
+
+The final merge records upstream `0428e0fb8` as a parent. The SDK's
+`bulk_upsert` now uses the shared batch endpoint with explicit replacement mode
+and a count-only response. Insert, merge-upsert and replacement-upsert share
+policy checks and row locking. Preserve the fork's conditional-update regression
+on the replacement batch route; the removed bulk route's test is migrated rather
+than discarded.
+
+Bump both CLI compatibility versions to 12. A new SDK against an older server
+would otherwise have its `write_mode` ignored and insert instead of replacing.
+Include the REST batch request and responses in the contract fingerprint because
+these SDK calls do not use the automatically discovered `/api/sdk/*` DTOs.
+Generated types and live batch/policy tests remain required before publication.
