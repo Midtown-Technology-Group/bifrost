@@ -139,7 +139,11 @@ Bump both CLI compatibility versions to 12. A new SDK against an older server
 would otherwise have its `write_mode` ignored and insert instead of replacing.
 Include the REST batch request and responses in the contract fingerprint because
 these SDK calls do not use the automatically discovered `/api/sdk/*` DTOs.
-Generated types and live batch/policy tests remain required before publication.
+Types were regenerated from this worktree's running API. All 182 focused tests
+passed, covering batch contracts, the SDK, atomic writes, conditional-update
+invalidation, DTO parity, compatibility fingerprints, policy enforcement and
+large-table response memory. The clean pre-PR gate remains required before
+publication.
 
 ## Retired image publishing
 
