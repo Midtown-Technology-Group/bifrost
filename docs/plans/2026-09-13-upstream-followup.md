@@ -35,3 +35,9 @@ repair. Both conflicts were additive test changes and were retained.
 
 The final candidate requires focused artifact/scheduler verification and its own
 clean-commit `./test.sh pre-pr` gate before publication and queueing.
+
+PR #710 review found that the shared download service also forwards response
+overrides to Midtown's Azure adapter. Its download method must accept those
+options and sign the corresponding SAS response headers. The repair covers both
+account-key and user-delegation signing, including the no-override call path,
+with real SDK signing behind the shared service boundary.

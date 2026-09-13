@@ -383,6 +383,7 @@ class AzureBlobStorageClient:
         permissions,
         expires_in: int,
         content_type: str | None = None,
+        content_disposition: str | None = None,
     ) -> str:
         from azure.storage.blob import generate_blob_sas
 
@@ -396,6 +397,8 @@ class AzureBlobStorageClient:
         }
         if content_type is not None:
             sas_args["content_type"] = content_type
+        if content_disposition is not None:
+            sas_args["content_disposition"] = content_disposition
 
         if self.settings.azure_blob_auth == "account_key":
             sas_args["account_key"] = self.settings.azure_blob_account_key
@@ -437,6 +440,9 @@ class AzureBlobStorageClient:
         self,
         path: str,
         expires_in: int = 600,
+        *,
+        response_content_type: str | None = None,
+        response_content_disposition: str | None = None,
     ) -> str:
         from azure.storage.blob import BlobSasPermissions
 
@@ -445,6 +451,8 @@ class AzureBlobStorageClient:
             path,
             permissions=BlobSasPermissions(read=True),
             expires_in=expires_in,
+            content_type=response_content_type,
+            content_disposition=response_content_disposition,
         )
         return f"{self._container_client.get_blob_client(path).url}?{sas}"
 
