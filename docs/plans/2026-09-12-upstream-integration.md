@@ -226,3 +226,9 @@ consumers start. A project-dependency regression preserves this ordering in both
 local pre-PR and CI gates. All 16 focused client tests and edited-file lint passed;
 the targeted browser run passed setup, settings restoration, and memory in order.
 A fresh exact-commit full gate is required before queueing the repaired PR.
+
+The first repaired gate caught a client check-image packaging gap: its Docker
+ignore list excluded the Playwright configuration imported by the new ordering
+regression. Include that configuration in the build context so container checks
+exercise the same regression as host Vitest. It remains absent from the final
+nginx runtime, which copies only built client assets.

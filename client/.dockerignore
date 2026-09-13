@@ -45,7 +45,6 @@ playwright-report/
 test-results/
 playwright-results/
 e2e/
-playwright.config.ts
 Dockerfile.playwright
 
 # Misc
