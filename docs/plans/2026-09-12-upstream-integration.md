@@ -1,7 +1,7 @@
-# Upstream integration through 0428e0fb8
+# Upstream integration through c25daca1
 
 The source integration starts at fork `fb3e1b154` and targets upstream
-`0428e0fb8d4ecfc1ca0feabffd0780aea94e5d3d`. The existing cross-repository
+`c25daca1df730ee4dea4bc5b7ecb48fc771cdc23`. The existing cross-repository
 PR #706 includes 1,406 files. Its common ancestor with the fork is
 `0598020e32ea6367ecda69f548a53c00bb77bb6c`, preserved by integration PR #702.
 
@@ -10,7 +10,8 @@ PR #706 includes 1,406 files. Its common ancestor with the fork is
 1. Backend changes through `8af322ac05e6234039d76f376a6bed38deab01e4`.
    Each upstream commit has its own two-parent integration commit.
 2. Workspace modernization, upstream `3c6590a45` and PR #732.
-3. Table batch-write consolidation, upstream `0428e0fb8` and PR #735.
+3. Table batch-write consolidation, upstream `0428e0fb8` and PR #735, followed
+   by retired image-namespace cleanup `de6dc3c64` and PR #736.
 
 Each batch must contain current fork main and pass its candidate checks before
 merging. Final acceptance requires both the starting fork head and the pinned
@@ -137,6 +138,51 @@ the fork's issuer binding. All 213 affected backend checks and four browser
 checks passed after repair, including personal consent/persistence/disconnect.
 The clean pre-PR gate remains required before publication.
 
+## Canonical table batch writes
+
+The final merge records upstream `0428e0fb8` as a parent. The SDK's
+`bulk_upsert` now uses the shared batch endpoint with explicit replacement mode
+and a count-only response. Insert, merge-upsert and replacement-upsert share
+policy checks and row locking. Preserve the fork's conditional-update regression
+on the replacement batch route; the removed bulk route's test is migrated rather
+than discarded.
+
+Bump both CLI compatibility versions to 12. A new SDK against an older server
+would otherwise have its `write_mode` ignored and insert instead of replacing.
+Include the REST batch request and responses in the contract fingerprint because
+these SDK calls do not use the automatically discovered `/api/sdk/*` DTOs.
+Types were regenerated from this worktree's running API. All 182 focused tests
+passed, covering batch contracts, the SDK, atomic writes, conditional-update
+invalidation, DTO parity, compatibility fingerprints, policy enforcement and
+large-table response memory. The clean pre-PR gate remains required before
+publication.
+
+## Retired image publishing
+
+Upstream advanced to `de6dc3c64` during validation. Its merge removes the three
+transitional publishing steps for the retired `jackmusick` registry namespace.
+Keep Midtown image names, exact-candidate promotion and attestations, and the
+`gobifrost/bifrost` guard on DigitalOcean deployment. The MTG CI boundary check
+passes, and no legacy image variables or publishing-token references remain in
+that workflow.
+
+## Logo rendering and locale-aware document prefixes
+
+Upstream advanced to `c25daca1df730ee4dea4bc5b7ecb48fc771cdc23` during
+validation. Preserve the uploaded-logo cache regression alongside upstream's
+placeholder loading/error coverage. Document prefix filtering and ordering now
+use the same C collation and matching concurrent index, while ordinary keyset
+pagination retains its existing ordering. Keep the fork's conditional-update
+SQL import and tests. A new merge migration joins the index with the already
+recorded Midtown modernization chain; neither existing migration is rewritten.
+The test database explicitly uses the upstream locale so live pagination checks
+exercise the original failure condition. All 71 focused prefix-migration,
+pagination, table API, batch and conditional-update tests passed against the
+locale-configured stack; only the separately marked two-million-row scale case
+was deselected in that run. The separate two-million-row scale case also
+passed against the locale-configured database, and all 14 logo component tests
+passed. The final exact-commit gate remains required before publication.
+
 ## Browser runner image freshness
 
 The modernization gate passed 3,041 client tests, 9,982 backend unit tests,
@@ -147,3 +193,57 @@ runner Dockerfile creates its asset directory with ownership for `pwuser`
 before installing the pinned package. Desktop and mobile editor save/file
 switching checks both passed against the rebuilt runner (three checks including
 authentication setup). A fresh exact-commit gate is required before publication.
+
+
+## Comprehensive browser gate
+
+The final batch includes the modernization browser repairs and the comprehensive
+local browser gate from `70df80d72`. The complete failure dispositions and focused
+verification are in `2026-09-12-upstream-review.md`. This batch still needs its
+own exact-commit gate after modernization lands on fork main.
+
+## Final review repairs
+
+PR #709 review identified a logo state transition that could hide its placeholder
+when returning to a previously loaded URL. A regression reproduced that failure;
+source changes now reset both loaded and error state. All 15 logo tests pass.
+
+Pagination decoys now satisfy the tenant, policy and requested-ID filters, so only
+the intended prefix and table boundaries exclude them. EXPLAIN statements compile
+with the active database dialect and execute directly through its driver. This
+removes the extra percent and backslash escaping introduced by recompiling a
+psycopg-formatted string through SQLAlchemy text. Assertions now require the full
+literal prefix. The other 48 focused pagination/table tests passed, and the
+corrected two-million-row case passed separately in 89.73 seconds.
+
+The initial exact-commit local gate passed every suite, but CI exposed concurrent
+global state mutation: the MCP settings browser test disabled external MCP while
+the memory browser test authorized. The retained trace reports `External MCP
+access is disabled`; CI timestamps place both tests in that same window. No
+production authorization change is needed. The settings test now runs in a
+prerequisite Playwright project and restores configuration before parallel
+consumers start. A project-dependency regression preserves this ordering in both
+local pre-PR and CI gates. All 16 focused client tests and edited-file lint passed;
+the targeted browser run passed setup, settings restoration, and memory in order.
+A fresh exact-commit full gate is required before queueing the repaired PR.
+
+The first repaired gate caught a client check-image packaging gap: its Docker
+ignore list excluded the Playwright configuration imported by the new ordering
+regression. Include that configuration in the build context so container checks
+exercise the same regression as host Vitest. It remains absent from the final
+nginx runtime, which copies only built client assets.
+
+## Concurrent authentication redirects
+
+CI on `4549a6cbd` passed 158 browser tests but exposed a real client race in the
+unauthenticated redirect case. Its trace contains three login document requests,
+one aborted, while concurrent protected requests failed token refresh. Each API
+client path independently assigned `location.href` before the first navigation
+committed. A deterministic unit regression reproduced four competing assignments
+across the standard client, raw auth fetch, user-context client, and a late failure.
+The shared auth failure handler now initiates only one pending login navigation.
+The browser assertion also bounds login document navigations for that route.
+All 22 API-client tests, edited-file lint, and nine focused auth browser checks
+passed, including MFA and return-path preservation. The superseded local gate was
+stopped after its client/unit phases passed; its partial E2E result is not a full
+gate pass. A new exact-commit full gate is required before queueing.
