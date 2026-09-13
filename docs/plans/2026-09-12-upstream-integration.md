@@ -232,3 +232,18 @@ ignore list excluded the Playwright configuration imported by the new ordering
 regression. Include that configuration in the build context so container checks
 exercise the same regression as host Vitest. It remains absent from the final
 nginx runtime, which copies only built client assets.
+
+## Concurrent authentication redirects
+
+CI on `4549a6cbd` passed 158 browser tests but exposed a real client race in the
+unauthenticated redirect case. Its trace contains three login document requests,
+one aborted, while concurrent protected requests failed token refresh. Each API
+client path independently assigned `location.href` before the first navigation
+committed. A deterministic unit regression reproduced four competing assignments
+across the standard client, raw auth fetch, user-context client, and a late failure.
+The shared auth failure handler now initiates only one pending login navigation.
+The browser assertion also bounds login document navigations for that route.
+All 22 API-client tests, edited-file lint, and nine focused auth browser checks
+passed, including MFA and return-path preservation. The superseded local gate was
+stopped after its client/unit phases passed; its partial E2E result is not a full
+gate pass. A new exact-commit full gate is required before queueing.
