@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import UUID
 
+from anyio import open_file
 from botocore.exceptions import ClientError
 
 from src.config import Settings, get_settings
@@ -38,8 +39,8 @@ class ApplicationSourceArtifactStorage:
         self, app_id: UUID | str, deployment_id: UUID | str, path: Path
     ) -> tuple[str, int]:
         async def chunks() -> AsyncIterator[bytes]:
-            with path.open("rb") as source:
-                while chunk := source.read(CHUNK_SIZE):
+            async with await open_file(path, "rb") as source:
+                while chunk := await source.read(CHUNK_SIZE):
                     yield chunk
 
         return await self._storage.put_object_from_chunks(
@@ -52,12 +53,12 @@ class ApplicationSourceArtifactStorage:
         self, app_id: UUID | str, deployment_id: UUID | str, path: Path
     ) -> int:
         size = 0
-        with path.open("wb") as destination:
+        async with await open_file(path, "wb") as destination:
             async for chunk in self._storage.iter_object_chunks(
                 self.deployment_source_key(app_id, deployment_id),
                 chunk_size=CHUNK_SIZE,
             ):
-                destination.write(chunk)
+                await destination.write(chunk)
                 size += len(chunk)
         return size
 

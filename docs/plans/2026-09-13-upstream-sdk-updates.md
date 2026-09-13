@@ -52,3 +52,13 @@ The first full gate exposed a missing execution-operations inventory entry for
 single-attempt, single-concurrency, 512 MiB-headroom policy. The registry
 inventory regression remains enabled; the corrected commit requires a new
 exact-commit gate.
+
+The corrected `3d5da4511` passed the complete local gate: 3,099 client tests,
+10,103 backend unit tests, 1,898 backend E2E tests, 163 browser checks, quality
+checks, and production image/runtime validation. PR #711's Sonar analysis then
+identified synchronous file operations in async retained-source streaming.
+Those paths now use AnyIO's async file API, matching solution source storage.
+A regression verifies archive opening, reading, writing, and closing occur off
+the event-loop thread. All 28 focused storage, CLI, job, and live SDK-update
+tests passed, as did API Pyright and Ruff. The repaired commit requires its own
+complete gate.

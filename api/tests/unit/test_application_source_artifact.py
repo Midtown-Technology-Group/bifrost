@@ -1,3 +1,6 @@
+import builtins
+import io
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -143,6 +146,58 @@ async def test_source_artifact_writes_reads_and_deletes_exact_deployment_key(
     await storage.delete_deployment_source(app_id, deployment_id)
     assert memory.deleted == [key]
     assert memory.objects == {}
+
+
+@pytest.mark.asyncio
+async def test_source_artifact_disk_io_runs_off_event_loop(
+    tmp_path: Path, source_storage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    storage, _memory = source_storage
+    source = tmp_path / "source.zip"
+    copied = tmp_path / "copied.zip"
+    source.write_bytes(b"retained-source")
+    event_loop_thread = threading.get_ident()
+    original_open = builtins.open
+    operations: set[str] = set()
+
+    class CheckedFile:
+        def __init__(self, file):
+            self.file = file
+
+        def __getattr__(self, name):
+            return getattr(self.file, name)
+
+        def read(self, size):
+            assert threading.get_ident() != event_loop_thread
+            operations.add("read")
+            return self.file.read(size)
+
+        def write(self, data):
+            assert threading.get_ident() != event_loop_thread
+            operations.add("write")
+            return self.file.write(data)
+
+        def close(self):
+            assert threading.get_ident() != event_loop_thread
+            operations.add("close")
+            return self.file.close()
+
+    def checked_open(file, *args, **kwargs):
+        if str(file) not in {str(source), str(copied)}:
+            return original_open(file, *args, **kwargs)
+        assert threading.get_ident() != event_loop_thread
+        operations.add("open")
+        return CheckedFile(original_open(file, *args, **kwargs))
+
+    app_id, deployment_id = uuid4(), uuid4()
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "open", checked_open)
+        patch.setattr(io, "open", checked_open)
+        await storage.write_deployment_source(app_id, deployment_id, source)
+        await storage.copy_deployment_source_to_path(app_id, deployment_id, copied)
+
+    assert copied.read_bytes() == b"retained-source"
+    assert operations == {"open", "read", "write", "close"}
 
 
 @pytest.mark.asyncio

@@ -47,6 +47,7 @@ from uuid import UUID
 
 import click
 import httpx
+from anyio import open_file
 
 from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
@@ -677,7 +678,7 @@ async def source_export(
     tmp_path = Path(tmp_name)
     bytes_written = 0
     try:
-        with os.fdopen(fd, "wb") as tmp_file:
+        async with await open_file(fd, "wb") as tmp_file:
             async with client.stream(
                 "GET", f"/api/applications/{app_uuid}/source"
             ) as response:
@@ -685,7 +686,7 @@ async def source_export(
                 async for chunk in response.aiter_bytes():
                     if not chunk:
                         continue
-                    tmp_file.write(chunk)
+                    await tmp_file.write(chunk)
                     bytes_written += len(chunk)
         tmp_path.replace(destination)
     except Exception:
