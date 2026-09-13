@@ -46,3 +46,9 @@ E2E tests exercise the live durable job boundary.
 The exact clean-commit full gate remains pending. Run the full gate after incorporating
 the preceding batch's final merge into main; only one heavy local suite may
 run at a time on this shared host.
+
+The first full gate exposed a missing execution-operations inventory entry for
+`application.sdk_update`. The inventory now records its actual 20-minute,
+single-attempt, single-concurrency, 512 MiB-headroom policy. The registry
+inventory regression remains enabled; the corrected commit requires a new
+exact-commit gate.
