@@ -118,6 +118,7 @@ from src.services.application_sdk_status import (
     application_sdk_status,
     load_current_sdk_metadata,
     sdk_source_available,
+    load_sdk_source_availability,
 )
 from src.services.platform_job_memory_profiles import build_solution_memory_profile_key
 from src.services.solutions.deploy_job_storage import SolutionDeployJobStorage
@@ -210,39 +211,6 @@ async def _enqueue_solution_deploy_job(
     """Stage one validated input and atomically expose its central job row."""
     if (input_path is None) == (input_bytes is None):
         raise ValueError("exactly one staged input is required")
-    if install_id is not None:
-        await db.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtext('bifrost:solution-operation:' || :solution_id))"
-            ),
-            {"solution_id": str(install_id)},
-        )
-        app_ids = [
-            str(app_id)
-            for app_id in (
-                await db.execute(
-                    select(Application.id).where(Application.solution_id == install_id)
-                )
-            ).scalars().all()
-        ]
-        if app_ids:
-            active_app_update = (
-                await db.execute(
-                    select(PlatformJob.id)
-                    .where(
-                        PlatformJob.job_type == "application.sdk_update",
-                        PlatformJob.resource_id.in_(app_ids),
-                        PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES),
-                    )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if active_app_update is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="An App SDK update is already in progress for this Solution.",
-                )
     job_id = uuid4()
     storage = SolutionDeployJobStorage(job_id)
     if input_path is not None:
@@ -270,6 +238,39 @@ async def _enqueue_solution_deploy_job(
     )
     db.add(projection)
     try:
+        if install_id is not None:
+            await db.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtext('bifrost:solution-operation:' || :solution_id))"
+                ),
+                {"solution_id": str(install_id)},
+            )
+            app_ids = [
+                str(app_id)
+                for app_id in (
+                    await db.execute(
+                        select(Application.id).where(Application.solution_id == install_id)
+                    )
+                ).scalars().all()
+            ]
+            if app_ids:
+                active_app_update = (
+                    await db.execute(
+                        select(PlatformJob.id)
+                        .where(
+                            PlatformJob.job_type == "application.sdk_update",
+                            PlatformJob.resource_id.in_(app_ids),
+                            PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES),
+                        )
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if active_app_update is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="An App SDK update is already in progress for this Solution.",
+                    )
         platform_job, _ = await enqueue_platform_job(
             db,
             SOLUTION_DEPLOY_DEFINITION,
@@ -381,13 +382,17 @@ def _solution_sdk_status_from_apps(
     solution_status: str,
     apps: list[Application],
     current_sdk: CurrentApplicationSdkMetadata,
+    source_availability: dict[UUID, bool] | None = None,
 ) -> tuple[SolutionSdkStatus, list[Application]]:
     summaries: list[SolutionAppSdkStatus] = []
     actionable_apps: list[Application] = []
     solution_is_active = solution_status == "active"
     for app in apps:
         status_value = application_sdk_status(app, current_sdk)
-        source_available = sdk_source_available(app)
+        source_available = (
+            source_availability[app.id] if source_availability is not None
+            else sdk_source_available(app)
+        )
         actionable = (
             solution_is_active
             and app.app_model == "standalone_v2"
@@ -459,12 +464,14 @@ async def _solution_sdk_statuses_for_rows(
         if app.solution_id is not None:
             apps_by_solution.setdefault(app.solution_id, []).append(app)
     current_sdk = await load_current_sdk_metadata()
+    source_availability = await load_sdk_source_availability(apps)
     return {
         row.id: _solution_sdk_status_from_apps(
             solution_id=row.id,
             solution_status=row.status,
             apps=apps_by_solution.get(row.id, []),
             current_sdk=current_sdk,
+            source_availability=source_availability,
         )[0]
         for row in rows
     }
@@ -570,6 +577,7 @@ async def _solution_sdk_status(
         solution_status=row.status,
         apps=list(apps),
         current_sdk=current_sdk,
+        source_availability=await load_sdk_source_availability(apps),
     )
 
 

@@ -172,6 +172,28 @@ describe("useInfiniteTable", () => {
     expect(fetchMock.mock.calls[2][0]).toMatch(/scope=org-a$/);
   });
 
+  it("ignores an older loadMore response after an invalidation refresh", async () => {
+    const oldPage = deferredPage(["stale-c", "stale-d"], 4);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(makePage(["a", "b"], 4))
+      .mockReturnValueOnce(oldPage.promise)
+      .mockResolvedValueOnce(makePage(["fresh-a", "fresh-b"], 3))
+      .mockResolvedValueOnce(makePage(["fresh-c"], 3));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useInfiniteTable("t1", { pageSize: 2 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.loadMore(); });
+    act(() => lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" }));
+    await waitFor(() => expect(result.current.rows.map((row) => row.id)).toEqual(["fresh-a", "fresh-b"]));
+    await act(async () => { oldPage.resolve(); await pending; });
+    expect(result.current.rows.map((row) => row.id)).toEqual(["fresh-a", "fresh-b"]);
+    await act(async () => result.current.loadMore());
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body).offset).toBe(2);
+    expect(result.current.rows.map((row) => row.id)).toEqual(["fresh-a", "fresh-b", "fresh-c"]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
   it("coalesces an invalidation burst during one pass into one subsequent refresh", async () => {
     const firstRefresh = deferredPage(["first"], 1);
     const trailingRefresh = deferredPage(["trailing"], 1);

@@ -57,38 +57,46 @@ export function useInfiniteTable(
   const offsetRef = useRef(0);
   const tableIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
+  const generationRef = useRef(0);
+  const refreshingRef = useRef(false);
+  const loadingMoreRef = useRef(false);
 
   const loadMore = useCallback(async () => {
-    if (cancelledRef.current) return;
+    if (cancelledRef.current || refreshingRef.current || loadingMoreRef.current) return;
     if (!hasMore && offsetRef.current > 0) return;
+    const generation = generationRef.current;
+    const offset = offsetRef.current;
+    loadingMoreRef.current = true;
     try {
       const snap = await tables.query(
         name,
         {
           where,
           limit: pageSize,
-          offset: offsetRef.current,
+          offset,
           order_by,
           order_dir,
           // After the first page, skip the count query for speed. The
           // hasMore signal comes from the page-size check below.
-          skip_count: offsetRef.current > 0 ? true : undefined,
+          skip_count: offset > 0 ? true : undefined,
         },
         scope,
       );
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || generation !== generationRef.current) return;
       tableIdRef.current = snap.table_id;
       const newRows = snap.documents.map(flattenDocument);
       setRows((prev) =>
-        offsetRef.current === 0 ? newRows : [...prev, ...newRows],
+        offset === 0 ? newRows : [...prev, ...newRows],
       );
-      offsetRef.current += newRows.length;
+      offsetRef.current = offset + newRows.length;
       setHasMore(newRows.length === pageSize);
       setLoading(false);
     } catch (e) {
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || generation !== generationRef.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
       setLoading(false);
+    } finally {
+      if (generation === generationRef.current) loadingMoreRef.current = false;
     }
     // pageSize/where/scope/order_by/order_dir are captured intentionally; if
     // they change the parent effect resets state and re-invokes from offset 0.
@@ -98,6 +106,9 @@ export function useInfiniteTable(
   useEffect(() => {
     let effectCancelled = false;
     cancelledRef.current = false;
+    generationRef.current += 1;
+    refreshingRef.current = false;
+    loadingMoreRef.current = false;
     offsetRef.current = 0;
     tableIdRef.current = null;
 
@@ -175,6 +186,9 @@ export function useInfiniteTable(
       }
 
       refreshInFlight = true;
+      generationRef.current += 1;
+      loadingMoreRef.current = false;
+      refreshingRef.current = true;
       void (async () => {
         try {
           do {
@@ -189,6 +203,7 @@ export function useInfiniteTable(
           } while (refreshDirty && !effectCancelled);
         } finally {
           refreshInFlight = false;
+          if (!effectCancelled) refreshingRef.current = false;
         }
       })();
     }
@@ -225,6 +240,7 @@ export function useInfiniteTable(
                 refreshAuthoritativeSnapshot();
                 return;
               }
+              if (refreshInFlight) refreshDirty = true;
               applyEvent(evt, setRows);
             },
             () => {

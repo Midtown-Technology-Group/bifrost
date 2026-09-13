@@ -22,6 +22,7 @@ async def test_solution_sdk_list_aggregate_loads_current_metadata_once(monkeypat
             solution_id=solution_a.id,
             repo_path="apps/needs-update",
             app_model="standalone_v2",
+            published_snapshot={"sdk_source_available": True},
             active_deployment_id=uuid4(),
             sdk_package_version="0.0.1",
             sdk_fingerprint="old",
@@ -34,6 +35,7 @@ async def test_solution_sdk_list_aggregate_loads_current_metadata_once(monkeypat
             solution_id=solution_b.id,
             repo_path="apps/current",
             app_model="standalone_v2",
+            published_snapshot={"sdk_source_available": True},
             active_deployment_id=uuid4(),
             sdk_package_version="1.0.0",
             sdk_fingerprint="current",
@@ -102,6 +104,7 @@ def test_solution_sdk_aggregate_precedence_treats_update_required_as_actionable(
             solution_id=solution_id,
             repo_path=f"apps/{slug}",
             app_model="standalone_v2",
+            published_snapshot={"sdk_source_available": True},
             active_deployment_id=uuid4(),
             sdk_built_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )

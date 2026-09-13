@@ -62,3 +62,32 @@ A regression verifies archive opening, reading, writing, and closing occur off
 the event-loop thread. All 28 focused storage, CLI, job, and live SDK-update
 tests passed, as did API Pyright and Ruff. The repaired commit requires its own
 complete gate.
+
+PR #711 review repairs:
+
+- Bound CLI references reject apps owned by another Solution; deployed SDK
+  updates report partial results before returning a failure.
+- Incompatible web SDK contracts report `update_required`. Solution activation
+  records availability from actual retained source entries, including prebuilt
+  bundles that also carry source. Older archives are inspected once per Solution
+  per request when this metadata is absent, preserving SDK-only rebuilds.
+- Solution deploy staging precedes the shared advisory lock; the conflict check
+  and enqueue remain atomic, and conflicts remove the staged artifact.
+- Independent activation retains superseded sanitized source archives. Failed
+  new builds and application deletion still clean their respective artifacts.
+- Internal batch invalidations carry old/new row context for the existing
+  policy and subscription-filter checks. Only visible changes produce a compact
+  browser signal; hidden rows and their mutation timing are not broadcast.
+- Table hooks reject stale pagination responses and perform a trailing refresh
+  after overlapping document events. Solution detail shares one SDK-job tracker
+  across individual and bulk controls; unavailable actions cannot be invoked.
+- Provenance guidance distinguishes source-backed builds from prebuilt-only
+  deployments, and deployed Solution CLI examples include their required ref.
+
+Focused verification passed: 39 table-hook tests, 55 UI tests, 49 backend
+CLI/status/pubsub tests, nine live subscription tests, 74 deployment/SDK tests,
+and 43 source-resolution/status tests including legacy archive availability.
+The intermediate `da4fe3ab6` full gate was deliberately stopped when the review
+arrived; it is not completion evidence. The combined repairs require a new
+clean-commit full gate before queueing.
+API Pyright/Ruff and client TypeScript/ESLint passed for the combined repairs.

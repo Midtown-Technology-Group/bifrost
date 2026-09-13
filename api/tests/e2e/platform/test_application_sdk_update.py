@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import io
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,44 @@ from src.models.orm.solutions import Solution
 from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 
 pytestmark = pytest.mark.e2e
+
+
+async def test_legacy_solution_archive_remains_actionable_without_activation_metadata(
+    e2e_client, platform_admin, db_session
+):
+    from src.services.solutions.deploy import solution_entity_id
+    from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
+
+    solution = Solution(id=uuid4(), slug=f"legacy-sdk-{uuid4().hex[:8]}", name="Legacy SDK", status="active")
+    db_session.add(solution)
+    await db_session.flush()
+    manifest_id = uuid4()
+    app = Application(
+        id=solution_entity_id(solution.id, manifest_id), slug=f"legacy-app-{uuid4().hex[:8]}",
+        name="Legacy App", solution_id=solution.id, app_model="standalone_v2",
+        published_snapshot={"deployed_by": "solution"}, repo_path="apps/legacy",
+    )
+    db_session.add(app)
+    await db_session.commit()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("bifrost.solution.yaml", "slug: legacy\nname: Legacy\nversion: 1.0.0\n")
+        archive.writestr(".bifrost/apps.yaml", f"apps:\n  {manifest_id}:\n    id: {manifest_id}\n    slug: legacy\n    name: Legacy\n    path: apps/legacy\n    app_model: standalone_v2\n")
+        archive.writestr("apps/legacy/package.json", "{}")
+        archive.writestr("apps/legacy/index.html", "<div></div>")
+    storage = SolutionSourceArtifactStorage(solution.id)
+    await storage.write(buffer.getvalue())
+    try:
+        response = e2e_client.get(f"/api/solutions/{solution.id}/sdk/status", headers=platform_admin.headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["actionable_count"] == 1
+        listed = e2e_client.get("/api/applications", headers=platform_admin.headers)
+        assert listed.status_code == 200, listed.text
+        public_app = next(item for item in listed.json()["applications"] if item["id"] == str(app.id))
+        assert public_app["sdk_status"] == "unknown"
+        assert public_app["sdk_source_available"] is True
+    finally:
+        await storage.delete()
 
 
 async def _seed_app(
@@ -34,6 +73,7 @@ async def _seed_app(
         slug=slug,
         repo_path=f"apps/{slug}" if solution_id and has_repo_source else None,
         solution_id=solution_id,
+        published_snapshot={"sdk_source_available": has_repo_source} if solution_id else None,
         app_model=app_model,
         active_deployment_id=active_deployment_id,
         deployed_at=sdk_built_at,
@@ -82,7 +122,7 @@ async def test_app_status_source_export_and_single_update_enqueue(
     assert listed.status_code == 200, listed.text
     listed_app = next(a for a in listed.json()["applications"] if a["id"] == str(app.id))
     assert listed_app["sdk_fingerprint"] == "old-fingerprint"
-    assert listed_app["sdk_status"] == "update_available"
+    assert listed_app["sdk_status"] == "update_required"
     assert listed_app["sdk_source_available"] is True
 
     got = e2e_client.get(f"/api/applications/{app.slug}", headers=platform_admin.headers)
@@ -205,7 +245,7 @@ async def test_solution_sdk_status_and_update_enqueue_app_jobs(
     )
     assert status.status_code == 200, status.text
     assert status.json()["actionable_count"] == 1
-    assert status.json()["sdk_status"] == "update_available"
+    assert status.json()["sdk_status"] == "update_required"
 
     update = e2e_client.post(
         f"/api/solutions/{solution.id}/sdk/update", headers=platform_admin.headers
@@ -381,7 +421,7 @@ async def test_solution_list_and_get_include_sdk_aggregates(
 
     assert listed.status_code == 200, listed.text
     by_id = {item["id"]: item for item in listed.json()["solutions"]}
-    assert by_id[str(actionable_solution.id)]["sdk_status"] == "update_available"
+    assert by_id[str(actionable_solution.id)]["sdk_status"] == "update_required"
     assert by_id[str(actionable_solution.id)]["sdk_actionable_count"] == 1
     assert by_id[str(no_app_solution.id)]["sdk_status"] == "not_applicable"
     assert by_id[str(no_app_solution.id)]["sdk_actionable_count"] == 0
@@ -393,7 +433,7 @@ async def test_solution_list_and_get_include_sdk_aggregates(
     )
 
     assert got.status_code == 200, got.text
-    assert got.json()["sdk_status"] == "update_available"
+    assert got.json()["sdk_status"] == "update_required"
     assert got.json()["sdk_actionable_count"] == 1
     assert actionable_app.solution_id == actionable_solution.id
 

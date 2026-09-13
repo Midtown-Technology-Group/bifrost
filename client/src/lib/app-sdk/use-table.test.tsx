@@ -187,6 +187,22 @@ describe("useTable", () => {
     expect(fetchMock.mock.calls[1][0]).toMatch(/scope=org-a$/);
   });
 
+  it("refreshes again when a document event overlaps an older snapshot", async () => {
+    const oldSnapshot = deferredPage(["old"], 1);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(makePage(["initial"], 1))
+      .mockReturnValueOnce(oldSnapshot.promise)
+      .mockResolvedValueOnce(makePage(["latest"], 1));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useTable("t1"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" }));
+    act(() => lastOnEvent?.({ type: "document_change", action: "insert", table_id: "tbl-uuid", row: { id: "latest" } }));
+    await act(async () => { oldSnapshot.resolve(); await oldSnapshot.promise; });
+    await waitFor(() => expect(result.current.rows.map((row) => row.id)).toEqual(["latest"]));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("coalesces an invalidation burst during one pass into one subsequent refresh", async () => {
     const firstRefresh = deferredPage(["first"], 1);
     const trailingRefresh = deferredPage(["trailing"], 1);

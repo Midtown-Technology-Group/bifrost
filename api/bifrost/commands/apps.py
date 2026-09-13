@@ -137,7 +137,7 @@ def _select_bound_app(
 
     matches = [i for i in items if _matches(i)]
     own = [i for i in matches if str(i.get("solution_id") or "") == solution_id]
-    foreign = [i for i in matches if i.get("solution_id") is None]
+    foreign = [i for i in matches if str(i.get("solution_id") or "") != solution_id]
     return (own[0] if own else None), foreign
 
 

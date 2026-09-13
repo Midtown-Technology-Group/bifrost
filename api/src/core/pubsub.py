@@ -1165,12 +1165,14 @@ async def publish_policy_changed(table_id: str) -> None:
     await publisher.publish(channel, payload={"type": "policy_changed", "table_id": table_id})
 
 
-async def publish_table_invalidated(table_id: str) -> None:
-    """Notify subscribers to reload table-backed views after a batch mutation."""
+async def publish_table_invalidated(
+    table_id: str, *, mutations: list[dict[str, Any]]
+) -> None:
+    """Carry row context internally so each subscriber gets a visibility-safe signal."""
     channel = f"table:{table_id}"
     await publisher.publish(
         channel,
-        payload={"type": "table_invalidated", "table_id": table_id},
+        payload={"type": "table_invalidated", "table_id": table_id, "mutations": mutations},
     )
 
 

@@ -159,7 +159,11 @@ async def test_batch_documents_invalidates_table_once_after_commit(monkeypatch):
             insert_conflicts=[],
         )
 
-    async def fake_publish_table_invalidated(table_id: str):
+    async def fake_publish_table_invalidated(table_id: str, *, mutations):
+        assert mutations[0]["old_row"] is None
+        assert mutations[0]["new_row"]["id"] == "alpha"
+        assert mutations[1]["old_row"] == {"id": "beta", "value": "old"}
+        assert mutations[1]["new_row"]["value"] == "beta"
         db.calls.append("publish:invalidate")
         invalidated.append(table_id)
 
@@ -231,7 +235,7 @@ async def test_batch_documents_does_not_invalidate_for_conflict_only_no_change(m
             insert_conflicts=[SimpleNamespace(id="alpha")],
         )
 
-    async def fake_publish_table_invalidated(table_id: str):
+    async def fake_publish_table_invalidated(table_id: str, *, mutations):
         invalidated.append(table_id)
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
@@ -325,7 +329,9 @@ async def test_batch_delete_documents_invalidates_table_once_after_commit(monkey
     async def fake_preresolve(*args, **kwargs):
         return None
 
-    async def fake_publish_table_invalidated(table_id: str):
+    async def fake_publish_table_invalidated(table_id: str, *, mutations):
+        assert [mutation["old_row"]["id"] for mutation in mutations] == ["alpha", "beta"]
+        assert all(mutation["new_row"] is None for mutation in mutations)
         db.calls.append("publish:invalidate")
         invalidated.append(table_id)
 
@@ -402,7 +408,7 @@ async def test_batch_delete_documents_does_not_invalidate_noop(monkeypatch):
     async def fake_preresolve(*args, **kwargs):
         return None
 
-    async def fake_publish_table_invalidated(table_id: str):
+    async def fake_publish_table_invalidated(table_id: str, *, mutations):
         invalidated.append(table_id)
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)

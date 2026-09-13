@@ -69,6 +69,10 @@ function renderSurface(
 }
 
 describe("ApplicationListSurface SDK update affordances", () => {
+	it("omits an empty actions menu when SDK updates have no callback", () => {
+		renderSurface({ apps: [makeApp({ is_published: false, published_at: null, deployed_at: null })], onUpdateSdk: undefined });
+		expect(screen.queryByRole("button", { name: "Dispatch Board actions" })).not.toBeInTheDocument();
+	});
 	it("toggles actionable cards as whole-card controls in selection mode", async () => {
 		const user = userEvent.setup();
 		const onToggleSelection = vi.fn();

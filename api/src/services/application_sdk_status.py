@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
@@ -33,9 +34,11 @@ class CurrentApplicationSdkMetadata:
 
 
 class ApplicationSdkStatusInput(Protocol):
+    id: UUID
     app_model: str
     solution_id: UUID | None
     repo_path: str | None
+    published_snapshot: dict | None
     active_deployment_id: UUID | None
     sdk_package_version: str | None
     sdk_fingerprint: str | None
@@ -80,6 +83,8 @@ def application_sdk_status(
         or current.contract_version is None
     ):
         return "unknown"
+    if application.sdk_contract_version != current.contract_version:
+        return "update_required"
     if application.sdk_fingerprint == current.fingerprint:
         return "current"
     return "update_available"
@@ -89,8 +94,36 @@ def sdk_source_available(application: ApplicationSdkStatusInput) -> bool:
     if application.app_model == "inline_v1":
         return False
     if application.solution_id is not None:
-        return application.repo_path is not None
+        return (application.published_snapshot or {}).get("sdk_source_available") is True
     return (
         application.active_deployment_id is not None
         and application.sdk_built_at is not None
     )
+
+
+async def load_sdk_source_availability(
+    applications: Sequence[ApplicationSdkStatusInput],
+) -> dict[UUID, bool]:
+    """Use activation metadata, inspecting each unindexed Solution archive once."""
+    from src.services.application_source_resolver import (
+        ApplicationSourceUnavailable,
+        load_solution_rebuildable_app_ids,
+    )
+
+    available = {app.id: sdk_source_available(app) for app in applications}
+    unindexed: dict[UUID, list[ApplicationSdkStatusInput]] = {}
+    for app in applications:
+        if (
+            app.app_model == "standalone_v2"
+            and app.solution_id is not None
+            and "sdk_source_available" not in (app.published_snapshot or {})
+        ):
+            unindexed.setdefault(app.solution_id, []).append(app)
+    for solution_id, apps in unindexed.items():
+        try:
+            source_app_ids = await load_solution_rebuildable_app_ids(solution_id)
+        except ApplicationSourceUnavailable:
+            source_app_ids = set()
+        for app in apps:
+            available[app.id] = app.id in source_app_ids
+    return available

@@ -127,7 +127,7 @@ def test_deploy_source_translates_member_read_errors(
 
 
 @pytest.mark.asyncio
-async def test_deploy_atomically_activates_then_removes_old_artifact(
+async def test_deploy_atomically_activates_and_preserves_superseded_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = _zip(
@@ -246,7 +246,7 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
     assert app.sdk_contract_version == 7
     assert app.sdk_built_at is not None
     assert ("delete_artifact", (app_id, old_id)) in events
-    assert ("delete_retained_source", (app_id, old_id)) in events
+    assert ("delete_retained_source", (app_id, old_id)) not in events
     assert ("delete_artifact", (app_id, new_id)) not in events
     assert ("delete_retained_source", (app_id, new_id)) not in events
     assert events[-1] == ("delete_source", None)

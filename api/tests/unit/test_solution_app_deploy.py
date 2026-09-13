@@ -128,16 +128,20 @@ class TestSolutionAppDeploy:
         await db.flush()
         return sol
 
+    @pytest.mark.parametrize("source_files,source_available", [
+        ({}, False),
+        ({"package.json": "{}"}, False),
+        ({"package.json": "{}", "index.html": "<div></div>"}, True),
+    ])
     async def test_deploy_v2_app_stamps_model_and_scope(
-        self, db_session, _stub_app_build, monkeypatch
+        self, db_session, _stub_app_build, monkeypatch, source_files, source_available
     ):
         db = db_session
         sol = await self._install(db)
         app_id = str(uuid.uuid4())
 
-        result = await SolutionDeployer(db).deploy(
-            SolutionBundle(solution=sol, apps=[_app_entry(app_id, "dash")])
-        )
+        entry = {**_app_entry(app_id, "dash"), "src_files": source_files}
+        result = await SolutionDeployer(db).deploy(SolutionBundle(solution=sol, apps=[entry]))
         await db.flush()
         # S3 phase is deferred until after commit (P1-c); run it explicitly.
         await result.finalize_s3()
@@ -154,6 +158,9 @@ class TestSolutionAppDeploy:
         assert str(expected_id) in _stub_app_build
         assert app.active_deployment_id == _stub_app_build[str(expected_id)]["deployment_id"]
         assert app.deployed_at is not None
+        assert app.repo_path is not None
+        assert app.published_snapshot["sdk_source_available"] is source_available
+        assert app.sdk_fingerprint is None
 
     async def test_source_build_uploads_versioned_dist_and_stamps_sdk_after_upload(
         self, db_session, monkeypatch

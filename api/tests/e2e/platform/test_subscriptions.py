@@ -64,6 +64,50 @@ async def _policy_deny_rows(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+async def test_batch_invalidations_preserve_row_visibility_and_filter(platform_admin, alice_user):
+    async with httpx.AsyncClient(base_url=TEST_API_URL) as client:
+        response = await client.post("/api/tables", headers=platform_admin.headers, json={
+            "name": f"batch_visibility_{uuid.uuid4().hex[:8]}", "organization_id": None,
+            "policies": {"policies": [
+                {"name": "admin", "actions": ["read", "create", "update", "delete"], "when": {"user": "is_platform_admin"}},
+                {"name": "own", "actions": ["read"], "when": {"eq": [{"row": "owner"}, {"user": "email"}]}},
+            ]},
+        })
+        assert response.status_code == 201, response.text
+        table_id = response.json()["id"]
+        ws, ack = await _ws_subscribe(alice_user.access_token, [{
+            "name": f"table:{table_id}", "filter": {"eq": [{"row": "selected"}, True]},
+        }])
+        try:
+            assert ack["type"] == "subscribed"
+            for owner, selected, visible in [
+                ("hidden@example.com", True, False),
+                (alice_user.email, False, False),
+                (alice_user.email, True, True),
+                ("hidden@example.com", True, True),
+            ]:
+                response = await client.post(f"/api/tables/{table_id}/documents/batch", headers=platform_admin.headers, json={
+                    "write_mode": "replace_upsert", "documents": [{"id": "row", "data": {"owner": owner, "selected": selected}}],
+                })
+                assert response.status_code == 200, response.text
+                if visible:
+                    message = json.loads(await asyncio.wait_for(ws.recv(), timeout=3.0))
+                    assert message == {"type": "table_invalidated", "table_id": table_id}
+                else:
+                    with pytest.raises(TimeoutError):
+                        await asyncio.wait_for(ws.recv(), timeout=0.5)
+            response = await client.post(f"/api/tables/{table_id}/documents/batch-delete", headers=platform_admin.headers, json={"ids": ["row"]})
+            assert response.status_code == 200, response.text
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(ws.recv(), timeout=0.5)
+        finally:
+            await ws.close()
+            response = await client.delete(f"/api/tables/{table_id}", headers=platform_admin.headers)
+            assert response.status_code == 204, response.text
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
 async def test_subscribe_with_read_accepted(platform_admin, alice_user):
     """Alice subscribes; everyone-read policy permits."""
     async with httpx.AsyncClient(base_url=TEST_API_URL) as client:

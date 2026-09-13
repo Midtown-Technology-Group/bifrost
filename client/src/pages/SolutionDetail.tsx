@@ -974,6 +974,7 @@ function EntityTabContent({
 	solutionName,
 	fileCount,
 	sdkStatus,
+	sdkUpdateJobs,
 }: {
 	kind: EntityKind;
 	items: EntitySummary[];
@@ -982,11 +983,11 @@ function EntityTabContent({
 	/** Actual file count from SolutionEntities.files (files kind only). */
 	fileCount?: number;
 	sdkStatus?: SolutionSdkStatus;
+	sdkUpdateJobs: ReturnType<typeof useApplicationSdkUpdateJobs>;
 }) {
 	const navigate = useNavigate();
 	const isMobile = useMediaQuery("(max-width: 1023px)");
 	const updateApplicationSdk = useUpdateApplicationSdk();
-	const sdkUpdateJobs = useApplicationSdkUpdateJobs({ solutionId });
 	const [search, setSearch] = useState("");
 	const [shareForm, setShareForm] = useState<{
 		id: string;
@@ -3047,6 +3048,7 @@ export function SolutionDetail() {
 										solutionName={sol.name}
 										fileCount={entityCounts.files}
 										sdkStatus={solutionSdkStatus}
+										sdkUpdateJobs={sdkUpdateJobs}
 									/>
 								) : (
 									<ContentsSummary

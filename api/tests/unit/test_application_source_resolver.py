@@ -75,6 +75,42 @@ def _assert_unavailable(exc: BaseException, code: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_legacy_sdk_availability_inspects_one_archive_for_solution_apps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from src.services import application_source_resolver as resolver
+    from src.services.application_sdk_status import load_sdk_source_availability
+
+    solution_id = uuid4()
+    manifest_ids = [uuid4(), uuid4()]
+    archive = _workspace_zip(tmp_path / "legacy.zip", app_ids=manifest_ids)
+    apps = [
+        _app(app_id=solution_entity_id(solution_id, manifest_id), solution_id=solution_id)
+        for manifest_id in manifest_ids
+    ]
+    missing = _app(solution_id=solution_id)
+    missing.repo_path = "apps/does-not-exist"
+    indexed_prebuilt = _app(solution_id=solution_id)
+    indexed_prebuilt.published_snapshot = {"sdk_source_available": False}
+    copies = []
+
+    class Storage:
+        def __init__(self, requested_solution):
+            assert requested_solution == solution_id
+
+        async def copy_to_path(self, path):
+            copies.append(path)
+            path.write_bytes(archive)
+            return True
+
+    monkeypatch.setattr(resolver, "SolutionSourceArtifactStorage", Storage)
+    available = await load_sdk_source_availability([*apps, missing, indexed_prebuilt])
+
+    assert available == {apps[0].id: True, apps[1].id: True, missing.id: False, indexed_prebuilt.id: False}
+    assert len(copies) == 1
+
+
+@pytest.mark.asyncio
 async def test_independent_success_reads_active_artifact_and_returns_exact_files(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

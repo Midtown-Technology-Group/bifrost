@@ -119,7 +119,7 @@ function ApplicationActions({
 		!showPreview &&
 		!onOpenSettings &&
 		(!onOpenCode || isV2App(app)) &&
-		!sdkStatusNeedsMenu &&
+		!(sdkStatusNeedsMenu && onUpdateSdk) &&
 		!onDelete
 	)
 		return null;

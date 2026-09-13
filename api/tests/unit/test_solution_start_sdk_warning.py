@@ -146,6 +146,34 @@ def test_solution_sdk_deployed_update_polls_app_jobs_without_repurposing_local_u
         None,
     ) in fake.calls
     assert "job-solution" in result.output
+    assert ("GET", "/api/platform-jobs/job-solution", None) in fake.calls
+    assert fake.jobs == []
+
+
+def test_solution_sdk_deployed_update_preserves_partial_results(monkeypatch):
+    fake = _SolutionSdkClient()
+    fake.jobs = [
+        {"status": "failed", "error": {"message": "build failed"}},
+        {"status": "succeeded", "result": {"deployment_id": "successful-deployment"}},
+    ]
+
+    async def accept_jobs(_path, **_kwargs):
+        return _SdkResponse({
+            "accepted": [{"job_id": "failed-job"}, {"job_id": "successful-job"}],
+            "skipped": [{"application_id": "skipped-app", "reason": "current"}],
+        })
+
+    monkeypatch.setattr(fake, "post", accept_jobs)
+    monkeypatch.setattr(
+        client_mod.BifrostClient, "get_instance", staticmethod(lambda **_kwargs: fake)
+    )
+    result = CliRunner().invoke(solution_group, ["sdk", "deployed-update", "s"])
+
+    assert result.exit_code == 1
+    assert "successful-deployment" in result.output
+    assert "skipped-app" in result.output
+    assert "1 Solution App SDK update job(s) failed" in result.output
+    assert fake.jobs == []
 
 
 class TestSdkStalenessWarningHelper:

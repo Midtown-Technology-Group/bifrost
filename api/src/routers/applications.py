@@ -74,6 +74,7 @@ from src.services.application_sdk_status import (
     application_sdk_status,
     load_current_sdk_metadata,
     sdk_source_available,
+    load_sdk_source_availability,
 )
 from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
@@ -158,9 +159,12 @@ async def application_to_public(
     *,
     current_sdk: CurrentApplicationSdkMetadata,
     include_inline_logo: bool = True,
+    source_available: bool | None = None,
 ) -> ApplicationPublic:
     """Convert Application ORM to ApplicationPublic with role_ids."""
     role_ids = await repo.get_role_ids(application.id)
+    if source_available is None:
+        source_available = (await load_sdk_source_availability([application]))[application.id]
     return ApplicationPublic(
         id=application.id,
         name=application.name,
@@ -200,7 +204,7 @@ async def application_to_public(
         sdk_contract_version=application.sdk_contract_version,
         sdk_built_at=application.sdk_built_at,
         sdk_status=application_sdk_status(application, current_sdk),
-        sdk_source_available=sdk_source_available(application),
+        sdk_source_available=source_available,
     )
 
 
@@ -208,10 +212,11 @@ def _sdk_update_action_skip_reason(
     application: Application,
     *,
     current_sdk: CurrentApplicationSdkMetadata,
+    source_available: bool | None = None,
 ) -> str | None:
     if application.app_model != "standalone_v2":
         return "not_applicable"
-    if not sdk_source_available(application):
+    if not (sdk_source_available(application) if source_available is None else source_available):
         return "source_unavailable"
     sdk_status = application_sdk_status(application, current_sdk)
     if sdk_status in ("current", "not_applicable"):
@@ -535,12 +540,14 @@ async def list_applications(
 
     current_sdk = await load_current_sdk_metadata()
     # Convert each application with role_ids
+    source_availability = await load_sdk_source_availability(applications)
     public_apps = [
         await application_to_public(
             app,
             repo,
             current_sdk=current_sdk,
             include_inline_logo=False,
+            source_available=source_availability[app.id],
         )
         for app in applications
     ]
@@ -579,8 +586,11 @@ async def batch_update_application_sdks(
     accepted: list[ApplicationSdkUpdateAccepted] = []
     skipped: list[ApplicationSdkUpdateSkipped] = []
     jobs: list[PlatformJob] = []
+    source_availability = await load_sdk_source_availability(applications)
     for application in applications:
-        reason = _sdk_update_action_skip_reason(application, current_sdk=current_sdk)
+        reason = _sdk_update_action_skip_reason(
+            application, current_sdk=current_sdk, source_available=source_availability[application.id]
+        )
         if reason is not None:
             skipped.append(
                 ApplicationSdkUpdateSkipped(
@@ -1013,7 +1023,10 @@ async def update_application_sdk(
 ) -> PlatformJobAccepted:
     application = await get_application_by_id_or_404(ctx, app_id)
     current_sdk = await load_current_sdk_metadata()
-    reason = _sdk_update_action_skip_reason(application, current_sdk=current_sdk)
+    source_availability = await load_sdk_source_availability([application])
+    reason = _sdk_update_action_skip_reason(
+        application, current_sdk=current_sdk, source_available=source_availability[application.id]
+    )
     if reason is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

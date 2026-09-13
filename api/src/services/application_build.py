@@ -144,17 +144,6 @@ async def rebuild_application_from_source(
                     old_deployment_id,
                     exc_info=True,
                 )
-            if source.source_kind == "independent":
-                try:
-                    await source_artifacts.delete_deployment_source(
-                        app_id, old_deployment_id
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to remove superseded App source %s",
-                        old_deployment_id,
-                        exc_info=True,
-                    )
 
         return {
             "application_id": str(app_id),

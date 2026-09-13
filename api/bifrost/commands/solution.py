@@ -3798,7 +3798,7 @@ def sdk_deployed_status_cmd(ctx: click.Context, solution_ref: str) -> None:
 def sdk_deployed_update_cmd(ctx: click.Context, solution_ref: str) -> None:
     """Queue deployed SDK update jobs for Apps owned by a Solution install."""
 
-    async def run() -> dict[str, Any]:
+    async def run() -> tuple[dict[str, Any], list[str]]:
         client = BifrostClient.get_instance(require_auth=True)
         solution_id = await RefResolver(client).resolve("solution", solution_ref)
         response = await client.post(f"/api/solutions/{solution_id}/sdk/update")
@@ -3831,14 +3831,15 @@ def sdk_deployed_update_cmd(ctx: click.Context, solution_ref: str) -> None:
 
         result = dict(body)
         result["jobs"] = completed_jobs
-        if failed_jobs:
-            raise click.ClickException(
-                f"{len(failed_jobs)} Solution App SDK update job(s) failed: "
-                + "; ".join(failed_jobs)
-            )
-        return result
+        return result, failed_jobs
 
-    output_result(asyncio.run(run()), ctx=ctx)
+    outcome, failed_jobs = asyncio.run(run())
+    output_result(outcome, ctx=ctx)
+    if failed_jobs:
+        raise click.ClickException(
+            f"{len(failed_jobs)} Solution App SDK update job(s) failed: "
+            + "; ".join(failed_jobs)
+        )
 
 
 def _ensure_port_free(port: int) -> None:

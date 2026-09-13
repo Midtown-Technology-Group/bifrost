@@ -59,14 +59,16 @@ async def test_publish_delete_carries_old_row_only():
 
 @pytest.mark.asyncio
 async def test_publish_table_invalidated_uses_table_channel():
+    mutations = [{"old_row": None, "new_row": {"id": "r1"}}]
     with patch("src.core.pubsub.publisher.publish", new=AsyncMock()) as mock_pub:
-        await publish_table_invalidated("table-id")
+        await publish_table_invalidated("table-id", mutations=mutations)
 
         mock_pub.assert_awaited_once_with(
             "table:table-id",
             payload={
                 "type": "table_invalidated",
                 "table_id": "table-id",
+                "mutations": mutations,
             },
         )
 

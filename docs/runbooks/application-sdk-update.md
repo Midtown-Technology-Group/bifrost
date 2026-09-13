@@ -7,7 +7,7 @@ but does not change a deployed App until an administrator starts one.
 
 ## Provenance and status
 
-Every successful V2 build records four values on the App:
+Every successful source-backed V2 build records four values on the App:
 
 - `sdk_package_version`: npm-safe Bifrost release version.
 - `sdk_fingerprint`: the first 16 hex characters of SHA-256 over the bundled
@@ -20,10 +20,15 @@ Every successful V2 build records four values on the App:
 
 The status contract is `current`, `update_available`, `update_required`,
 `unknown`, or `not_applicable`. Missing provenance on an older V2 deployment is
-`unknown`; V1 inline Apps are `not_applicable`. App list responses include
+`unknown`; prebuilt-only deployments also remain `unknown`. V1 inline Apps are `not_applicable`. App list responses include
 whether rebuild source is available. Solution list/get responses provide a
 server-computed aggregate and actionable App count, using one bounded App query
-rather than fetching every App in the browser.
+rather than fetching every App in the browser. Solution activation records source
+availability from the retained entry’s `package.json` and `index.html`, independently
+of whether the deployment used a prebuilt bundle. A repository path alone is not
+evidence of retained source. For older Solution deployments without this metadata, status and update actions
+inspect the retained archive once per Solution in the request. Existing usable
+source remains eligible for an SDK-only rebuild; prebuilt-only archives do not.
 
 ## Rebuild behavior
 
@@ -68,11 +73,11 @@ bifrost apps sdk status [APP]
 bifrost apps sdk update APP
 bifrost apps sdk update --all
 bifrost apps source export APP ./app-source.zip
-bifrost solution sdk deployed-status
-bifrost solution sdk deployed-update
+bifrost solution sdk deployed-status SOLUTION_REF
+bifrost solution sdk deployed-update SOLUTION_REF
 ```
 
-The last two commands operate on Apps belonging to the bound deployed Solution.
+The last two commands operate on Apps belonging to the explicitly referenced deployed Solution.
 `bifrost solution sdk update` remains the local-development command that updates
 an App workspace's installed SDK.
 

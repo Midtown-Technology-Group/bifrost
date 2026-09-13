@@ -8,6 +8,7 @@ def _app(
     app_model: str = "standalone_v2",
     solution_id=None,
     repo_path: str | None = None,
+    published_snapshot: dict | None = None,
     active_deployment_id=None,
     sdk_package_version: str | None = "1.2.3",
     sdk_fingerprint: str | None = None,
@@ -18,6 +19,7 @@ def _app(
         app_model=app_model,
         solution_id=solution_id,
         repo_path=repo_path,
+        published_snapshot=published_snapshot,
         active_deployment_id=active_deployment_id,
         sdk_package_version=sdk_package_version,
         sdk_fingerprint=sdk_fingerprint,
@@ -106,6 +108,22 @@ def test_sdk_status_is_unknown_when_current_fingerprint_is_missing() -> None:
     assert application_sdk_status(_app(sdk_fingerprint="app-fp"), current) == "unknown"
 
 
+def test_incompatible_contract_requires_update_even_when_fingerprint_matches() -> None:
+    from src.services.application_sdk_status import (
+        CurrentApplicationSdkMetadata,
+        application_sdk_status,
+    )
+
+    current = CurrentApplicationSdkMetadata("1.2.3", "current-fp", 7)
+    for fingerprint in ("current-fp", "older-fp"):
+        app = _app(
+            sdk_fingerprint=fingerprint,
+            sdk_contract_version=6,
+            sdk_built_at=datetime(2026, 9, 12, tzinfo=timezone.utc),
+        )
+        assert application_sdk_status(app, current) == "update_required"
+
+
 async def test_load_current_sdk_metadata_degrades_when_build_toolchain_fails(monkeypatch) -> None:
     from src.services import application_sdk_status as status
 
@@ -135,7 +153,9 @@ def test_sdk_source_available_is_cheap_capability_hint() -> None:
     built_at = datetime(2026, 9, 12, tzinfo=timezone.utc)
 
     assert sdk_source_available(_app(app_model="inline_v1")) is False
-    assert sdk_source_available(_app(solution_id=uuid4(), repo_path="apps/example")) is True
+    assert sdk_source_available(_app(solution_id=uuid4(), repo_path="apps/example")) is False
+    assert sdk_source_available(_app(solution_id=uuid4(), published_snapshot={"sdk_source_available": True})) is True
+    assert sdk_source_available(_app(solution_id=uuid4(), repo_path="apps/prebuilt", published_snapshot={"sdk_source_available": False})) is False
     assert sdk_source_available(_app(solution_id=uuid4(), repo_path=None)) is False
     assert (
         sdk_source_available(

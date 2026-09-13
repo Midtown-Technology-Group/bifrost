@@ -847,6 +847,8 @@ describe("SolutionDetail", () => {
 		});
 		const { user } = await renderPage();
 		await screen.findByTestId("solution-detail");
+		await user.click(screen.getByTestId("tab-contents"));
+		await user.click(screen.getByTestId("chip-apps"));
 
 		await user.click(screen.getByTestId("solution-actions"));
 		await user.click(screen.getByTestId("update-solution-app-sdks"));
@@ -858,6 +860,11 @@ describe("SolutionDetail", () => {
 			"aria-disabled",
 			"true",
 		);
+		await user.keyboard("{Escape}");
+		await user.click(screen.getByRole("button", { name: "Solution App actions" }));
+		expect(screen.getByRole("menuitem", { name: "SDK update queued…" })).toHaveAttribute("aria-disabled", "true");
+		await user.keyboard("{Escape}");
+		await user.click(screen.getByTestId("solution-actions"));
 
 		act(() => {
 			wsMocks.platformJobCallback?.({

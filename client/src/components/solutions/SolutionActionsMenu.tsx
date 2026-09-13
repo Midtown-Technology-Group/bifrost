@@ -94,8 +94,8 @@ export function SolutionActionsMenu({
 				</DropdownMenuItem>
 				{onUpdateAppSdks && (
 					<DropdownMenuItem
-						onClick={onUpdateAppSdks}
-						disabled={busy || appSdkUpdateDisabled || appSdkUpdating}
+						onSelect={onUpdateAppSdks}
+						disabled={busy || isInactive || appSdkUpdateDisabled || appSdkUpdating}
 						className="min-h-11 whitespace-normal"
 						data-testid="update-solution-app-sdks"
 					>

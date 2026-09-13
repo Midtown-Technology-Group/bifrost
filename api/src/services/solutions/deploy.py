@@ -230,6 +230,7 @@ class CompiledSolutionAppDeployment:
     dist: dict[str, bytes]
     sdk_metadata: CurrentApplicationSdkMetadata | None = None
     source_built: bool = False
+    source_available: bool = False
 
 
 @dataclass
@@ -1305,6 +1306,7 @@ class SolutionDeployer:
                     dist=dist,
                     sdk_metadata=current_metadata if source_built else None,
                     source_built=source_built,
+                    source_available={"package.json", "index.html"}.issubset(src_bytes),
                 )
             )
         return out
@@ -1416,6 +1418,11 @@ class SolutionDeployer:
                     "sdk_fingerprint": meta.fingerprint if meta else None,
                     "sdk_contract_version": meta.contract_version if meta else None,
                     "sdk_built_at": now if meta else None,
+                    "published_snapshot": {
+                        "deployed_by": "solution",
+                        "app_model": "standalone_v2",
+                        "sdk_source_available": item.source_available,
+                    },
                 }
                 result = await db.execute(
                     update(Application)

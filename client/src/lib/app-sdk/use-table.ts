@@ -362,6 +362,7 @@ export function useTable(
               refreshAuthoritativeSnapshot();
               return;
             }
+            if (refreshInFlight) refreshDirty = true;
             applyPagedEvent(evt, pageSize, setRows, setTotal);
           },
           () => {

@@ -104,6 +104,43 @@ async def _resolve_solution_source(application: Application) -> ResolvedApplicat
             "Solution-managed App is missing its owning Solution id.",
         )
 
+    entries = await _load_solution_source_entries(solution_id)
+
+    for manifest_app in entries:
+        manifest_id = _parse_manifest_id(manifest_app)
+        if manifest_id is None:
+            continue
+        if solution_entity_id(solution_id, manifest_id) != application.id:
+            continue
+
+        files = _solution_app_files(manifest_app)
+        if "package.json" not in files or "index.html" not in files:
+            raise ApplicationSourceUnavailable(
+                "source_unavailable",
+                "Solution App source is missing package.json or index.html.",
+            )
+        try:
+            require_vite_source_files(files)
+            enforce_application_source_budget(
+                files, max_expanded_bytes=APP_SOURCE_MAX_EXPANDED_BYTES
+            )
+        except InvalidApplicationSource as exc:
+            raise ApplicationSourceUnavailable(
+                _resolver_code(exc.code), exc.message
+            ) from exc
+        return ResolvedApplicationSource(
+            files=files,
+            dependencies=dict(manifest_app.get("dependencies") or {}),
+            source_kind="solution",
+        )
+
+    raise ApplicationSourceUnavailable(
+        "source_unavailable",
+        "No retained Solution manifest entry maps to this App.",
+    )
+
+
+async def _load_solution_source_entries(solution_id: UUID) -> list[dict]:
     storage = SolutionSourceArtifactStorage(solution_id)
     with tempfile.TemporaryDirectory(prefix="bifrost-solution-source-") as tmp:
         source_zip = Path(tmp) / "source.zip"
@@ -138,38 +175,25 @@ async def _resolve_solution_source(application: Application) -> ResolvedApplicat
                 f"Retained Solution source artifact is invalid: {exc}",
             ) from exc
 
-    for manifest_app in preview.apps:
-        manifest_id = _parse_manifest_id(manifest_app)
+    return preview.apps
+
+
+async def load_solution_rebuildable_app_ids(solution_id: UUID) -> set[UUID]:
+    """Inspect one retained archive for legacy Apps without availability metadata."""
+    entries = await _load_solution_source_entries(solution_id)
+    available: set[UUID] = set()
+    for entry in entries:
+        manifest_id = _parse_manifest_id(entry)
         if manifest_id is None:
             continue
-        if solution_entity_id(solution_id, manifest_id) != application.id:
-            continue
-
-        files = _solution_app_files(manifest_app)
-        if "package.json" not in files or "index.html" not in files:
-            raise ApplicationSourceUnavailable(
-                "source_unavailable",
-                "Solution App source is missing package.json or index.html.",
-            )
         try:
+            files = _solution_app_files(entry)
             require_vite_source_files(files)
-            enforce_application_source_budget(
-                files, max_expanded_bytes=APP_SOURCE_MAX_EXPANDED_BYTES
-            )
-        except InvalidApplicationSource as exc:
-            raise ApplicationSourceUnavailable(
-                _resolver_code(exc.code), exc.message
-            ) from exc
-        return ResolvedApplicationSource(
-            files=files,
-            dependencies=dict(manifest_app.get("dependencies") or {}),
-            source_kind="solution",
-        )
-
-    raise ApplicationSourceUnavailable(
-        "source_unavailable",
-        "No retained Solution manifest entry maps to this App.",
-    )
+            enforce_application_source_budget(files, max_expanded_bytes=APP_SOURCE_MAX_EXPANDED_BYTES)
+        except (InvalidApplicationSource, ApplicationSourceUnavailable):
+            continue
+        available.add(solution_entity_id(solution_id, manifest_id))
+    return available
 
 
 def _parse_manifest_id(manifest_app: dict) -> UUID | None:

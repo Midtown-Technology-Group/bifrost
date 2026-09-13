@@ -317,3 +317,25 @@ def test_app_ref_commands_prefer_bound_solution_app_over_same_slug_foreign_app(
         assert ("POST", f"/api/applications/{own['id']}/sdk/update", None) in fake.calls
     if expected_call == "GET":
         assert fake.streamed_paths == [f"/api/applications/{own['id']}/source"]
+
+
+@pytest.mark.parametrize("command", ["status", "update", "export"])
+def test_app_ref_commands_reject_app_owned_only_by_another_solution(
+    monkeypatch, tmp_path: Path, command: str
+) -> None:
+    foreign = _solution_app(str(uuid4()), solution_id="solution-foreign")
+    fake = _FakeClient(app=foreign)
+    _install_client(monkeypatch, fake)
+    monkeypatch.setenv("BIFROST_SOLUTION_ID", "solution-bound")
+    resolve = AsyncMock(side_effect=AssertionError("must reject before generic resolution"))
+    monkeypatch.setattr("bifrost.commands.apps.RefResolver.resolve", resolve)
+    args = (["source", "export", "portal", str(tmp_path / "source.zip")]
+            if command == "export" else ["sdk", command, "portal"])
+
+    result = CliRunner().invoke(apps_group, args)
+
+    assert result.exit_code == 1
+    assert "outside this bound Solution" in result.output
+    resolve.assert_not_called()
+    assert fake.calls == [("GET", "/api/applications", None)]
+    assert fake.streamed_paths == []
