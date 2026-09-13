@@ -64,21 +64,22 @@ describe("EntityLogo", () => {
 		expect(img.getAttribute("src")).toBe(dataUrl);
 	});
 
-	it("crossfades a fetched logo over its fallback", () => {
+	it.each(["app", "agent", "solution", "integration", "form"] as const)("replaces the %s placeholder after its logo loads", (entityType) => {
 		render(
 			<EntityLogo
-				entityType="app"
+				entityType={entityType}
 				entityId="11111111-1111-1111-1111-111111111111"
 				logo="/images/app-logo.png"
-				fallback={<span data-testid="fallback">F</span>}
+				fallback={<span>F</span>}
 				size={32}
 			/>,
 		);
-		const img = screen.getByTestId("entity-logo");
+		const img = screen.getByRole("presentation");
 		expect(img).toHaveClass("opacity-0");
-		expect(screen.getByTestId("fallback")).toBeInTheDocument();
+		expect(screen.getByText("F")).toBeInTheDocument();
 		fireEvent.load(img);
 		expect(img).toHaveClass("opacity-100");
+		expect(screen.queryByText("F")).not.toBeInTheDocument();
 	});
 
 	it("falls back when a list-provided logo URL fails", () => {
@@ -127,6 +128,37 @@ describe("EntityLogo", () => {
 				/^\/api\/agents\/33333333-3333-3333-3333-333333333333\/logo\?v=\d+$/,
 			),
 		);
+	});
+
+	it("restores the placeholder while a replacement loads and when it fails", () => {
+		const props = { entityType: "app" as const, entityId: "app-1", size: 32, fallback: <span>App placeholder</span> };
+		const { rerender } = render(<EntityLogo {...props} logo="/first.svg" />);
+		fireEvent.load(screen.getByRole("presentation"));
+		expect(screen.queryByText("App placeholder")).not.toBeInTheDocument();
+		rerender(<EntityLogo {...props} logo="/replacement.svg" />);
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+		fireEvent.error(screen.getByRole("presentation"));
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+		expect(screen.queryByRole("presentation")).not.toBeInTheDocument();
+		rerender(<EntityLogo {...props} logo="/third.svg" />);
+		fireEvent.load(screen.getByRole("presentation"));
+		expect(screen.queryByText("App placeholder")).not.toBeInTheDocument();
+		rerender(<EntityLogo {...props} logo={null} />);
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+	});
+
+	it("shows the placeholder when returning to a previously loaded source", () => {
+		const props = { entityType: "app" as const, entityId: "revisited-logo", size: 32, fallback: <span>App placeholder</span> };
+		const { rerender } = render(<EntityLogo {...props} logo="/first.svg" />);
+		fireEvent.load(screen.getByRole("presentation"));
+		rerender(<EntityLogo {...props} logo="/replacement.svg" />);
+		fireEvent.error(screen.getByRole("presentation"));
+		rerender(<EntityLogo {...props} logo="/first.svg" />);
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+		expect(screen.getByRole("presentation")).toHaveClass("opacity-0");
+		fireEvent.error(screen.getByRole("presentation"));
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+		expect(screen.queryByRole("presentation")).not.toBeInTheDocument();
 	});
 
 	it("appends cacheKey to bust browser cache", () => {

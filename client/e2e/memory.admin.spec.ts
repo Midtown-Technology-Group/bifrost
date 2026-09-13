@@ -57,7 +57,7 @@ async function authorizeMcp(page: Page): Promise<string> {
 	const callback = login.searchParams.get("return_to");
 	expect(callback).toBeTruthy();
 	const completed = await page.request.get(callback!, { maxRedirects: 0 });
-	expect(completed.status()).toBe(302);
+	expect(completed.status(), await completed.text()).toBe(302);
 	const redirect = new URL(completed.headers().location);
 	expect(redirect.searchParams.get("state")).toBe(state);
 	const code = redirect.searchParams.get("code");

@@ -84,9 +84,16 @@ test.describe("Login Flow", () => {
 			});
 			observer.observe(document, { subtree: true, childList: true });
 		});
+		const loginNavigations: string[] = [];
+		page.on("request", (request) => {
+			if (request.isNavigationRequest() && request.frame() === page.mainFrame() && new URL(request.url()).pathname === "/login") {
+				loginNavigations.push(request.url());
+			}
+		});
 		await page.goto("/event-sources");
 		await page.waitForURL(/\/login/);
 		await expect(page.getByLabel("Email")).toBeVisible();
+		expect(loginNavigations.length).toBeLessThanOrEqual(1);
 		expect(
 			await page.evaluate(() =>
 				sessionStorage.getItem("test-access-denial-seen"),

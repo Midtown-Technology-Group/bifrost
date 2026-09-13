@@ -33,7 +33,11 @@ upgrade notice.
 #      emits an immutable authorization challenge, and activation accepts only
 #      its tagged canary or exact risk-acknowledgement authorization
 #      (2026-08-19)
-CONTRACT_VERSION: int = 11
+# v12: Canonical table batch writes add explicit replacement modes and
+#      count-only responses. New SDKs must not send these requests to an old
+#      server that could ignore the mode; the separate bulk-upsert route is
+#      removed (2026-09-12).
+CONTRACT_VERSION: int = 12
 
 
 def get_contract_version() -> int:
