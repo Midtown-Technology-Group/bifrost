@@ -1,4 +1,4 @@
-# Upstream follow-up through 7764ccb7a
+# Upstream follow-up through 88c4627bd
 
 Upstream added three commits while the preceding integration batch (#709)
 completed verification. Each fix was already present in the Midtown fork:
@@ -23,3 +23,15 @@ The preceding candidate `c495bfacb67e29811b77557b38bdfd516738121a` passed
 1,890 backend E2E tests (40 skipped), 159 browser tests, lint/type checks, and
 the production API runtime check. This follow-up still requires its own
 clean-commit gate against the actual merged main before publication and queueing.
+
+That gate passed for `0c26ce3e1040651fdb255b6204df93d1eb9db286` with the
+same test counts. During validation, upstream added `88c4627bd` (#743).
+The original browser-active artifact hardening was already in the fork; the
+additional changes force attachment/octet-stream response metadata on presigned
+SDK and MCP download URLs, including URLs for previously stored artifacts.
+Safe artifact metadata remains unchanged. The merge retains the upstream unit,
+live SDK, and MCP regression coverage and its scheduler leadership test-isolation
+repair. Both conflicts were additive test changes and were retained.
+
+The final candidate requires focused artifact/scheduler verification and its own
+clean-commit `./test.sh pre-pr` gate before publication and queueing.
