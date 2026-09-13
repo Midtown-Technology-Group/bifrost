@@ -626,9 +626,6 @@ if HAS_FASTMCP:
                             ArtifactAccessError,
                             ArtifactService,
                         )
-                        from src.services.file_storage.service import (
-                            get_file_storage_service,
-                        )
 
                         content_blocks: list[Any] = [
                             TextContent(
@@ -637,7 +634,6 @@ if HAS_FASTMCP:
                             )
                         ]
                         async with get_db_context() as db:
-                            storage = get_file_storage_service(db)
                             artifact_service = ArtifactService(db)
                             for ref in artifact_refs:
                                 try:
@@ -666,8 +662,8 @@ if HAS_FASTMCP:
                                         )
                                     )
                                 else:
-                                    url = await storage.generate_presigned_download_url(
-                                        artifact.s3_key
+                                    url = await artifact_service.generate_download_url(
+                                        artifact
                                     )
                                     content_blocks.append(
                                         ResourceLink(
