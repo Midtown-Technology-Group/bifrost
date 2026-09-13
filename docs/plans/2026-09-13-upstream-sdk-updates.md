@@ -25,13 +25,16 @@ builds, platform jobs, realtime invalidation, live application updates, solution
 counts and round trips, and CLI contract/DTO/skill tripwires. API type generation
 against this worktree's running API reproduced the merged generated types
 without changes. API type checking and linting passed, as did scoped client
-linting and migration-graph inspection.
+linting and migration-graph inspection. Client `npm run tsc` and `npm run lint`
+also passed. The focused client run passed all 208 tests in 13 changed test
+files with `./test.sh client unit <changed-test-files> --maxWorkers=1`, covering
+SDK status and job handling, application/solution UI, and table realtime hooks.
 
 Merge `f89f88a5` also brings in the preceding batch's Azure download-header
 repair. Its 60 focused Azure, artifact, MCP, and chat-attachment tests passed
 against this combined tree.
 
-Client type checking, focused component/browser verification, and the exact
+Focused browser verification and the exact
 clean-commit full gate remain pending. Run the full gate after incorporating
 the preceding batch's final merge into main; only one heavy local suite may
 run at a time on this shared host.
