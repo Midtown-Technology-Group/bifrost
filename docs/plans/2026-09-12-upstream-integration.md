@@ -179,8 +179,9 @@ The test database explicitly uses the upstream locale so live pagination checks
 exercise the original failure condition. All 71 focused prefix-migration,
 pagination, table API, batch and conditional-update tests passed against the
 locale-configured stack; only the separately marked two-million-row scale case
-was deselected. Latest logo coverage and the final exact-commit gate remain
-required before publication.
+was deselected in that run. The separate two-million-row scale case also
+passed against the locale-configured database, and all 14 logo component tests
+passed. The final exact-commit gate remains required before publication.
 
 ## Browser runner image freshness
 
