@@ -40,8 +40,6 @@ export function EntityLogo({
 	"aria-hidden": ariaHidden,
 	logo,
 }: EntityLogoProps) {
-	const [erroredSource, setErroredSource] = useState<string | null>(null);
-	const [loadedSource, setLoadedSource] = useState<string | null>(null);
 	const globalVersion = useEntityLogoVersion(entityType, entityId);
 	const base = `${PATHS[entityType]}/${entityId}/logo`;
 	const effectiveKey = cacheKey ?? globalVersion?.toString() ?? null;
@@ -52,8 +50,12 @@ export function EntityLogo({
 		logo === null && globalVersion === undefined
 			? null
 			: (logo ?? endpointSource);
-	const hasUsableSource = src !== null && erroredSource !== src;
-	const imageLoaded = src !== null && loadedSource === src;
+	const [imageState, setImageState] = useState({ src, loaded: false, errored: false });
+	if (imageState.src !== src) {
+		setImageState({ src, loaded: false, errored: false });
+	}
+	const hasUsableSource = src !== null && !imageState.errored;
+	const imageLoaded = src !== null && imageState.loaded;
 
 	return (
 		<span
@@ -75,8 +77,8 @@ export function EntityLogo({
 					width={size}
 					height={size}
 					className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 motion-reduce:transition-none ${imageClassName ?? ""} ${imageLoaded ? "opacity-100" : "opacity-0"}`}
-					onLoad={() => setLoadedSource(src)}
-					onError={() => setErroredSource(src)}
+					onLoad={() => setImageState({ src, loaded: true, errored: false })}
+					onError={() => setImageState({ src, loaded: false, errored: true })}
 				/>
 			) : null}
 		</span>

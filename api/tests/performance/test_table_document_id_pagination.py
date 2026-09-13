@@ -60,7 +60,6 @@ def _assert_prefix_index_plan(
     plan: dict,
     *,
     prefix: str,
-    like_lower: str | None = None,
     max_shared_blocks: int = 3_000,
     max_index_rows: int = 25_000,
 ) -> None:
@@ -75,10 +74,7 @@ def _assert_prefix_index_plan(
     index_conditions = "\n".join(
         node.get("Index Cond", "") for node in index_nodes
     )
-    rendered_prefix = prefix.replace("\\", "\\\\").replace("%", "%%")
-    rendered_like_lower = (like_lower or prefix).replace("\\", "\\\\")
-    assert f"(id)::text >= '{rendered_prefix}'::text" in index_conditions
-    assert f"(id)::text >= '{rendered_like_lower}'::text" in index_conditions
+    assert f"(id)::text >= '{prefix}'::text" in index_conditions
     assert re.search(r"\(id\)::text < '[^']+'::text", index_conditions)
     assert all(node["Actual Rows"] <= max_index_rows for node in index_nodes)
 
@@ -98,12 +94,11 @@ def _assert_legacy_plan(plan: dict, *, max_shared_blocks: int = 5_000) -> None:
 async def _explain_analyze_json(
     db_session: AsyncSession,
     sql: str,
-    params: dict[str, object],
 ) -> dict:
     await db_session.execute(text("SET LOCAL statement_timeout = '2500ms'"))
-    result = await db_session.execute(
-        text(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}"),
-        params,
+    connection = await db_session.connection()
+    result = await connection.exec_driver_sql(
+        f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}"
     )
     return result.scalar_one()[0]
 
@@ -129,11 +124,11 @@ async def _explain_repository_prefix_query(
     assert len(captured) == 1
     sql = str(
         captured[0].compile(
-            dialect=postgresql.dialect(),
+            dialect=(await db_session.connection()).dialect,
             compile_kwargs={"literal_binds": True},
         )
     )
-    explained = await _explain_analyze_json(db_session, sql, {})
+    explained = await _explain_analyze_json(db_session, sql)
     return [document.id for document in documents], explained
 
 
@@ -155,12 +150,12 @@ async def _explain_legacy_prefix_query(
         FROM documents
         WHERE table_id = '{table.id}'::uuid
             AND id >= '{prefix}'
-            AND id LIKE '{prefix}%%' ESCAPE '/'
+            AND id LIKE '{prefix}%' ESCAPE '/'
             {cursor_predicate}
         ORDER BY id
         LIMIT {limit} OFFSET 0
     """
-    return await _explain_analyze_json(db_session, sql, {})
+    return await _explain_analyze_json(db_session, sql)
 
 
 async def _fetch_page(
@@ -436,12 +431,11 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
     ) == []
 
     plan_cases = [
-        ("first", None, target_prefix, None, 500, 500),
+        ("first", None, target_prefix, 500, 500),
         (
             "middle",
             f"{target_prefix}item-09999",
             target_prefix,
-            None,
             500,
             500,
         ),
@@ -449,7 +443,6 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             "deep",
             f"{target_prefix}item-19499",
             target_prefix,
-            None,
             500,
             500,
         ),
@@ -457,16 +450,14 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             "final-empty",
             f"{target_prefix}item-19999",
             target_prefix,
-            None,
             500,
             0,
         ),
-        ("nonexistent", None, missing_prefix, None, 500, 0),
+        ("nonexistent", None, missing_prefix, 500, 0),
         (
             "escaped-composed",
             None,
             "tenant%_A/folder\\caf\u00e9/",
-            "tenant%",
             20,
             12,
         ),
@@ -474,12 +465,11 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             "escaped-decomposed",
             None,
             "tenant%_A/folder\\cafe\u0301/",
-            "tenant%",
             20,
             12,
         ),
     ]
-    for _name, cursor, prefix, like_lower, limit, expected_count in plan_cases:
+    for _name, cursor, prefix, limit, expected_count in plan_cases:
         document_ids, explained = await _explain_repository_prefix_query(
             db_session,
             large_table,
@@ -494,7 +484,6 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
         _assert_prefix_index_plan(
             explained["Plan"],
             prefix=prefix,
-            like_lower=like_lower,
         )
 
     legacy_first = await _explain_legacy_prefix_query(
@@ -831,11 +820,13 @@ async def test_document_id_keyset_query_can_use_ordered_c_collated_index_scan(
     statement = captured[-1]
     sql = str(
         statement.compile(
-            dialect=postgresql.dialect(),
+            dialect=(await db_session.connection()).dialect,
             compile_kwargs={"literal_binds": True},
         )
     )
-    result = await db_session.execute(text(f"EXPLAIN (FORMAT JSON) {sql}"))
+    result = await (await db_session.connection()).exec_driver_sql(
+        f"EXPLAIN (FORMAT JSON) {sql}"
+    )
     plan = result.scalar_one()[0]["Plan"]
     nodes = list(_plan_nodes(plan))
 
@@ -916,11 +907,13 @@ async def test_document_id_batch_query_uses_composite_index(
     assert len(captured) == 1
     sql = str(
         captured[0].compile(
-            dialect=postgresql.dialect(),
+            dialect=(await db_session.connection()).dialect,
             compile_kwargs={"literal_binds": True},
         )
     )
-    result = await db_session.execute(text(f"EXPLAIN (FORMAT JSON) {sql}"))
+    result = await (await db_session.connection()).exec_driver_sql(
+        f"EXPLAIN (FORMAT JSON) {sql}"
+    )
     nodes = list(_plan_nodes(result.scalar_one()[0]["Plan"]))
 
     assert any(

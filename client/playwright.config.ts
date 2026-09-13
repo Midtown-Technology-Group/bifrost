@@ -71,6 +71,18 @@ export default defineConfig({
 			retries: 0,
 		},
 
+		// This test temporarily disables global MCP access and filters tools.
+		// Restore its settings before parallel tests authorize or call MCP.
+		{
+			name: "mcp-settings",
+			use: {
+				...devices["Desktop Chrome"],
+				storageState: "e2e/.auth/platform_admin.json",
+			},
+			dependencies: ["setup"],
+			testMatch: /mcp-settings-acceptance\.admin\.spec\.ts$/,
+		},
+
 		// =============================================================
 		// Platform admin tests (.admin.spec.ts files)
 		// Uses platform_admin auth state for full system access
@@ -81,7 +93,8 @@ export default defineConfig({
 				...devices["Desktop Chrome"],
 				storageState: "e2e/.auth/platform_admin.json",
 			},
-			dependencies: ["setup"],
+			dependencies: ["setup", "mcp-settings"],
+			testIgnore: /mcp-settings-acceptance\.admin\.spec\.ts$/,
 			testMatch: /.*\.admin\.spec\.ts$/,
 		},
 
@@ -95,7 +108,7 @@ export default defineConfig({
 				...devices["Desktop Chrome"],
 				storageState: "e2e/.auth/org1_user.json",
 			},
-			dependencies: ["setup"],
+			dependencies: ["setup", "mcp-settings"],
 			testMatch: /.*\.user\.spec\.ts$/,
 		},
 
@@ -109,7 +122,7 @@ export default defineConfig({
 				...devices["Desktop Chrome"],
 				// No storageState - starts with clean browser
 			},
-			dependencies: ["setup"],
+			dependencies: ["setup", "mcp-settings"],
 			testMatch: /.*\.unauth\.spec\.ts$/,
 		},
 
@@ -123,7 +136,7 @@ export default defineConfig({
 				...devices["Desktop Chrome"],
 				storageState: "e2e/.auth/platform_admin.json",
 			},
-			dependencies: ["setup"],
+			dependencies: ["setup", "mcp-settings"],
 			// Match all .spec.ts files EXCEPT .admin, .user, .unauth, .docs patterns
 			testMatch:
 				/^(?!.*\.(admin|user|unauth|docs)\.spec\.ts$).*\.spec\.ts$/,
@@ -143,7 +156,7 @@ export default defineConfig({
 				...devices["Desktop Chrome"],
 				viewport: { width: 1440, height: 900 },
 			},
-			dependencies: ["setup"],
+			dependencies: ["setup", "mcp-settings"],
 			testMatch: /.*\.docs\.spec\.ts$/,
 			retries: 0,
 			workers: 1,

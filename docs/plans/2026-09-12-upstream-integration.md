@@ -1,7 +1,7 @@
-# Upstream integration through de6dc3c64
+# Upstream integration through c25daca1
 
 The source integration starts at fork `fb3e1b154` and targets upstream
-`de6dc3c648fb2122a5bd49dcab0ad1188c74d277`. The existing cross-repository
+`c25daca1df730ee4dea4bc5b7ecb48fc771cdc23`. The existing cross-repository
 PR #706 includes 1,406 files. Its common ancestor with the fork is
 `0598020e32ea6367ecda69f548a53c00bb77bb6c`, preserved by integration PR #702.
 
@@ -201,3 +201,28 @@ The final batch includes the modernization browser repairs and the comprehensive
 local browser gate from `70df80d72`. The complete failure dispositions and focused
 verification are in `2026-09-12-upstream-review.md`. This batch still needs its
 own exact-commit gate after modernization lands on fork main.
+
+## Final review repairs
+
+PR #709 review identified a logo state transition that could hide its placeholder
+when returning to a previously loaded URL. A regression reproduced that failure;
+source changes now reset both loaded and error state. All 15 logo tests pass.
+
+Pagination decoys now satisfy the tenant, policy and requested-ID filters, so only
+the intended prefix and table boundaries exclude them. EXPLAIN statements compile
+with the active database dialect and execute directly through its driver. This
+removes the extra percent and backslash escaping introduced by recompiling a
+psycopg-formatted string through SQLAlchemy text. Assertions now require the full
+literal prefix. The other 48 focused pagination/table tests passed, and the
+corrected two-million-row case passed separately in 89.73 seconds.
+
+The initial exact-commit local gate passed every suite, but CI exposed concurrent
+global state mutation: the MCP settings browser test disabled external MCP while
+the memory browser test authorized. The retained trace reports `External MCP
+access is disabled`; CI timestamps place both tests in that same window. No
+production authorization change is needed. The settings test now runs in a
+prerequisite Playwright project and restores configuration before parallel
+consumers start. A project-dependency regression preserves this ordering in both
+local pre-PR and CI gates. All 16 focused client tests and edited-file lint passed;
+the targeted browser run passed setup, settings restoration, and memory in order.
+A fresh exact-commit full gate is required before queueing the repaired PR.

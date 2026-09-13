@@ -147,6 +147,20 @@ describe("EntityLogo", () => {
 		expect(screen.getByText("App placeholder")).toBeInTheDocument();
 	});
 
+	it("shows the placeholder when returning to a previously loaded source", () => {
+		const props = { entityType: "app" as const, entityId: "revisited-logo", size: 32, fallback: <span>App placeholder</span> };
+		const { rerender } = render(<EntityLogo {...props} logo="/first.svg" />);
+		fireEvent.load(screen.getByRole("presentation"));
+		rerender(<EntityLogo {...props} logo="/replacement.svg" />);
+		fireEvent.error(screen.getByRole("presentation"));
+		rerender(<EntityLogo {...props} logo="/first.svg" />);
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+		expect(screen.getByRole("presentation")).toHaveClass("opacity-0");
+		fireEvent.error(screen.getByRole("presentation"));
+		expect(screen.getByText("App placeholder")).toBeInTheDocument();
+		expect(screen.queryByRole("presentation")).not.toBeInTheDocument();
+	});
+
 	it("appends cacheKey to bust browser cache", () => {
 		render(
 			<EntityLogo

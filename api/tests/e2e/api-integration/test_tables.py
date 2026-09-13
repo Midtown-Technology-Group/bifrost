@@ -330,6 +330,8 @@ class TestDocumentRepositoryIntegration:
             ("tenant%_A/folder/cafe\u0301/000", "slash decomposed decoy"),
         ]
 
+        requested_ids.extend(doc_id for doc_id, _ in other_rows)
+
         for doc_id in target_ids:
             await doc_repo.insert(
                 {
@@ -342,7 +344,7 @@ class TestDocumentRepositoryIntegration:
             )
         for doc_id, label in other_rows:
             await doc_repo.insert(
-                {"tenant": "other", "label": label},
+                {"tenant": "target", "policy": "allow", "label": label},
                 created_by=test_user_email,
                 doc_id=doc_id,
             )
@@ -355,7 +357,7 @@ class TestDocumentRepositoryIntegration:
             created_by=test_user_email,
         )
         await DocumentRepository(db_session, other_table).insert(
-            {"tenant": "target", "doc_id": f"{target_prefix}001"},
+            {"tenant": "target", "policy": "allow", "doc_id": f"{target_prefix}001"},
             created_by=test_user_email,
             doc_id=f"{target_prefix}001",
         )
