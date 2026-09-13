@@ -91,3 +91,11 @@ The intermediate `da4fe3ab6` full gate was deliberately stopped when the review
 arrived; it is not completion evidence. The combined repairs require a new
 clean-commit full gate before queueing.
 API Pyright/Ruff and client TypeScript/ESLint passed for the combined repairs.
+
+The combined-repair CI unit run exposed one stale scope assertion: matching
+apps from another Solution must be returned as foreign matches, so bound SDK
+commands can reject them. The existing selector test now checks that contract;
+the command-level cross-Solution rejection regressions remain in place. The
+same follow-up removes CodeQL's unnecessary `uuid4` wrapper in a deploy test.
+The local gate on `cdacf5db2` was interrupted by a host reboot and provides no
+completion evidence. Validation resumes on the corrected clean commit.

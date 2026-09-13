@@ -26,10 +26,10 @@ def test_own_install_slug_match():
     assert foreign == []
 
 
-def test_no_own_match_returns_none():
+def test_no_own_match_reports_app_owned_by_another_solution():
     match, foreign = _select_bound_app(ITEMS, "other", SOL)
     assert match is None
-    assert foreign == []
+    assert [app["id"] for app in foreign] == ["cccc"]
 
 
 def test_name_match_is_case_insensitive():

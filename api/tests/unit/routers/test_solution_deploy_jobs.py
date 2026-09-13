@@ -54,7 +54,7 @@ async def test_deploy_stages_before_lock_and_cleans_artifact_on_sdk_conflict(mon
             if "applications" in sql:
                 return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [app_id]))
             events.append("conflict")
-            return SimpleNamespace(scalar_one_or_none=lambda: uuid4())
+            return SimpleNamespace(scalar_one_or_none=uuid4)
 
         async def rollback(self):
             events.append("rollback")
