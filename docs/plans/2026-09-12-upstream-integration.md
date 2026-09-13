@@ -42,6 +42,11 @@ At inspection, active ruleset 22240877 requires a merge queue configured with
 `merge_method: SQUASH`. This conflicts with ancestry preservation. Resolve that
 policy conflict before landing any integration batch; do not silently squash.
 
+The fork owner approved changing the queue method to `MERGE` on 2026-09-12.
+The ruleset was updated and read back to verify that its merge method was the
+only policy change. Queue limits, conditions, enforcement and bypass actors
+remain unchanged.
+
 ## Validation status
 
 The first two integrations passed 56 focused unit tests. Subsequent combined
@@ -62,3 +67,83 @@ ancestors of the integration branch.
 The delivery PR must record client checks and the full pre-PR result for its exact
 clean candidate. Final acceptance still requires the modernization and batch-write
 consolidation integrations and ancestry verification on fork main.
+
+## Redesign reconciliation
+
+The next merge records upstream `3c6590a45` as a parent. This upstream commit
+combines the shared visual system, responsive page layouts, Home collections,
+entity logos, dependency availability, and browser acceptance coverage. Review
+its backend contracts and shared components separately from page presentation.
+The fork's existing execution and source-governance behavior remains required.
+
+Conflict decisions:
+
+- Keep the consolidated `react-router` package for the host SPA. Preserve the
+  app-facing `react-router-dom` name in native and user-dependency import maps,
+  and in embedded app fixtures. Standalone app dependencies retain their own
+  router contract.
+- Keep immutable-source mutation guards, execution attempt history, browser
+  WebMCP tools, and conditional event criteria. Integrate those controls into
+  upstream's new layouts rather than removing them with their old containers.
+- Keep the `log1:` cursor format and numeric-offset compatibility. Adopt the
+  upstream workflow/global filters and stricter malformed-cursor rejection.
+- Keep report script and event-handler stripping. Adopt the isolated report
+  iframe and blocked-popup feedback with an empty sandbox policy. Both inline
+  and popup tests inspect the sanitized frame content.
+- Preserve explicit MCP authorization-server issuer metadata, manual issuer
+  entry, and rejection of OAuth configuration without an issuer. The upstream
+  discovery test must supply valid issuer metadata.
+- Preserve worker runtime labels and configured capacity across partial
+  heartbeats. A runtime change clears the previous label. Focused component
+  tests cover both transitions.
+- Preserve the JSON/YAML editor's blank-buffer and validator semantics while
+  adopting the shared editor layout.
+- Adopt upstream's explicit new-conversation draft transition in the route
+  reveal key. Ordinary conversation navigation receives its own pathname key;
+  Settings, account settings, and app runners retain their shared shells.
+- Retain upstream's rewritten per-mapping OAuth browser test: it now creates
+  deterministic fixtures and replaces the old opportunistic test removed by
+  the fork in `297d2bea8`.
+- Join the independent migration branches with
+  `20260912_merge_mtg_redesign`; neither existing migration chain is rewritten.
+- The CLI contract changes are additive metadata. Refresh the fingerprint
+  without changing the compatibility version.
+- Keep the fork's CI deployment boundary and browser artifact path. Adopt
+  upstream's test-stack command lock and skill-mirror checker.
+
+Regenerating types against the running modernization API produced no diff.
+All 370 focused backend, live endpoint, contract and Tailwind compilation checks
+passed without skips. Python quality checks and TypeScript passed. Browser
+checks cover collections, logos, event criteria, MCP management and per-mapping
+OAuth. A Home launch failure exposed an app import-contract mismatch; the
+restored contract passed Home launch and preview-to-publish browser checks.
+A component regression also covers the map used by apps with extra dependencies.
+The first full client run passed 3,036 tests and exposed five fixture failures:
+OAuth and MCP callbacks needed branding context for the shared auth transition,
+and the message-ID test still expected the old timestamp-only fallback. The
+callback fixtures now supply branding, and the ID test verifies distinct IDs
+within one millisecond. All seven tests in those three files pass after repair.
+The first pre-PR run then passed all 3,041 client tests. Its backend unit run
+passed 9,976 tests and found six stale fixtures: integration descriptions,
+portable dependency lookups and malformed log cursors. Updated fixtures verify
+description serialization, portable-reference resolution and rejection before
+querying for invalid cursors. All 105 tests in those four files pass after repair.
+The next gate passed all 9,982 backend unit tests. Live MCP failures exposed an
+upstream test-stack public-URL change that conflicted with the fork's Host and
+token-audience checks. Backend tests now use `api:8000`; browser lanes select
+`localhost:3000`, and state reset applies the lane's Compose environment. The
+OAuth fixture supplies its issuer in metadata and callback responses, preserving
+the fork's issuer binding. All 213 affected backend checks and four browser
+checks passed after repair, including personal consent/persistence/disconnect.
+The clean pre-PR gate remains required before publication.
+
+## Browser runner image freshness
+
+The modernization gate passed 3,041 client tests, 9,982 backend unit tests,
+and 1,876 backend E2E tests. Browser smoke exposed a stale shared runner image
+missing the editor's pinned Monaco assets; 13 other checks passed. Browser
+lanes now build both the client and runner from the current worktree. The
+runner Dockerfile creates its asset directory with ownership for `pwuser`
+before installing the pinned package. Desktop and mobile editor save/file
+switching checks both passed against the rebuilt runner (three checks including
+authentication setup). A fresh exact-commit gate is required before publication.

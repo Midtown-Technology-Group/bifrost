@@ -7,23 +7,40 @@
  * This spec runs under the org-user storage state and verifies neither
  * appears.
  *
- * The org user seeds a private agent so the settings surface is reachable
- * without weakening the current owner-only access contract.
+ * `beforeAll` seeds a private agent owned by the member. An authenticated
+ * agent owned by an admin may be runnable without being editable by the member.
  */
 
-import { test, expect } from "@playwright/test";
-import { seedAgentViaPage } from "./setup/seed-agent";
+import { test, expect } from "./fixtures/api-fixture";
+
+let seededAgentId: string | null = null;
 
 test.describe("Agent Settings — Budget Visibility (non-admin user)", () => {
+	test.beforeAll(async ({ api }) => {
+		const response = await api.post("/api/agents", {
+			data: {
+				name: `Member budget visibility ${Date.now()}`,
+				system_prompt: "Member-owned settings acceptance fixture.",
+				channels: ["chat"],
+				access_level: "private",
+			},
+		});
+		expect(response.ok(), await response.text()).toBe(true);
+		seededAgentId = (await response.json()).id;
+	});
+
+	test.afterAll(async ({ api }) => {
+		if (seededAgentId) {
+			const response = await api.delete(`/api/agents/${seededAgentId}`);
+			expect([200, 204, 404]).toContain(response.status());
+		}
+	});
+
 	test("budget fields are not visible to non-admin users", async ({
 		page,
 	}) => {
-		const seededAgent = await seedAgentViaPage(page, {
-			namePrefix: "Budget Vis Spec",
-			accessLevel: "private",
-		});
-
-		await page.goto(`/agents/${seededAgent.id}`);
+		expect(seededAgentId).toBeTruthy();
+		await page.goto(`/agents/${seededAgentId}`);
 		await page.getByRole("tab", { name: /settings/i }).click();
 		await expect(
 			page.getByRole("textbox", { name: /name/i }).first(),
@@ -32,9 +49,7 @@ test.describe("Agent Settings — Budget Visibility (non-admin user)", () => {
 		// Budget fields must not appear for non-admins.
 		await expect(page.getByLabel(/max iterations/i)).toHaveCount(0);
 		await expect(page.getByLabel(/max token budget/i)).toHaveCount(0);
-		await expect(
-			page.getByLabel(/max tokens \/ response/i),
-		).toHaveCount(0);
+		await expect(page.getByLabel(/max tokens \/ response/i)).toHaveCount(0);
 
 		// Organization selector is also admin-only (see AgentSettingsTab).
 		await expect(page.getByLabel(/^organization/i)).toHaveCount(0);

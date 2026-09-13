@@ -228,102 +228,112 @@ test.describe.serial("Public form iframe", () => {
 		await api.dispose();
 	});
 
-	test("publishes in the UI and submits from an allowed second origin", async ({
-		browser,
-		page,
-	}) => {
-		test.setTimeout(60_000);
-
-		const admin = await browser.newContext({
-			baseURL: BIFROST_URL,
-			storageState: "e2e/.auth/platform_admin.json",
-		});
-		const adminPage = await admin.newPage();
-		await adminPage.goto(`/forms/${formId}/edit`);
-		await adminPage.getByTitle("Share Form").click();
-		await expect(adminPage.getByLabel("Private form link")).toHaveValue(
-			`${new URL(BIFROST_URL).origin}/execute/${formId}`,
-		);
-		await expect(
-			adminPage.getByRole("heading", { name: "Confirmation Message" }),
-		).toHaveCount(0);
-		await adminPage.getByRole("tab", { name: "HMAC" }).click();
-		await expect(
-			adminPage.getByText("No embed secrets configured."),
-		).toBeVisible();
-		await expect(
-			adminPage.getByRole("heading", { name: "Confirmation Message" }),
-		).toHaveCount(0);
-		await adminPage.getByRole("tab", { name: "Website Embed" }).click();
-		await expect(
-			adminPage.getByRole("switch", { name: "Spam Protection" }),
-		).toBeChecked();
-		await expect(
-			adminPage.getByRole("heading", { name: "Confirmation Message" }),
-		).toBeVisible();
-		await expect(
-			adminPage.getByLabel("Confirmation Message editor"),
-		).toContainText("Thank you");
-		await adminPage
-			.getByLabel("Confirmation Message editor")
-			.fill("## Preview check\n\nThis should render immediately.");
-		await adminPage.getByRole("tab", { name: "Preview" }).click();
-		const previewHeading = adminPage.getByRole("heading", {
-			name: "Preview check",
-		});
-		await expect(previewHeading).toBeVisible();
-		const previewPanel = adminPage.getByRole("tabpanel", {
-			name: "Preview",
-		});
-		const previewBody = previewPanel.getByText(
-			"This should render immediately.",
-		);
-		await expect(previewBody).toBeVisible();
-		const headingFontSize = await previewHeading.evaluate((element) =>
-			Number.parseFloat(window.getComputedStyle(element).fontSize),
-		);
-		const bodyFontSize = await previewBody.evaluate((element) =>
-			Number.parseFloat(window.getComputedStyle(element).fontSize),
-		);
-		expect(headingFontSize).toBeGreaterThan(bodyFontSize);
-		await adminPage.getByRole("tab", { name: "Edit" }).click();
-		await adminPage
-			.getByRole("button", { name: /Website Restrictions/ })
-			.click();
-		await adminPage
-			.getByLabel("Allowed Website Origins")
-			.fill(ALLOWED_ORIGIN);
-		await adminPage.getByRole("switch", { name: "Not Published" }).click();
-		await expect(
-			adminPage.getByRole("heading", {
-				name: "Allow anonymous form access?",
-			}),
-		).toBeVisible();
-		await expect(
-			adminPage.getByText(
-				/No other workflows or Bifrost execution APIs are granted/i,
-			),
-		).toBeVisible();
-		await adminPage
-			.getByRole("button", { name: "Publish public embed" })
-			.click();
-		await expect(
-			adminPage.getByText("Published", { exact: true }),
-		).toBeVisible();
-		const embedCode = adminPage.getByLabel("Embed Code");
-		await expect(embedCode).toContainText(
-			"theme=light&header=true&background=solid",
-		);
-		await adminPage.getByRole("combobox", { name: "Theme" }).click();
-		await adminPage.getByRole("option", { name: "Dark" }).click();
-		await adminPage.getByRole("switch", { name: "Show Header" }).click();
-		await adminPage
-			.getByRole("switch", { name: "Transparent Background" })
-			.click();
-		await expect(embedCode).toContainText(
-			"theme=dark&header=false&background=transparent",
-		);
-		await admin.close();
+	test(
+		"publishes in the UI and submits from an allowed second origin",
+		{ tag: "@smoke" },
+		async ({ browser, page }) => {
+			const admin = await browser.newContext({
+				baseURL: BIFROST_URL,
+				storageState: "e2e/.auth/platform_admin.json",
+			});
+			const adminPage = await admin.newPage();
+			await adminPage.goto(`/forms/${formId}/edit`);
+			await adminPage.getByTitle("Share Form").click();
+			await expect(adminPage.getByLabel("Private form link")).toHaveValue(
+				`${new URL(BIFROST_URL).origin}/execute/${formId}`,
+			);
+			await expect(
+				adminPage.getByRole("heading", {
+					name: "Confirmation Message",
+				}),
+			).toHaveCount(0);
+			await adminPage.getByRole("tab", { name: "HMAC" }).click();
+			await expect(
+				adminPage.getByText("No embed secrets configured."),
+			).toBeVisible();
+			await expect(
+				adminPage.getByRole("heading", {
+					name: "Confirmation Message",
+				}),
+			).toHaveCount(0);
+			await adminPage.getByRole("tab", { name: "Website Embed" }).click();
+			await expect(
+				adminPage.getByRole("switch", { name: "Spam Protection" }),
+			).toBeChecked();
+			await expect(
+				adminPage.getByRole("heading", {
+					name: "Confirmation Message",
+				}),
+			).toBeVisible();
+			await expect(
+				adminPage.getByLabel("Confirmation Message editor"),
+			).toContainText("Thank you");
+			await adminPage
+				.getByLabel("Confirmation Message editor")
+				.fill("## Preview check\n\nThis should render immediately.");
+			await adminPage.getByRole("tab", { name: "Preview" }).click();
+			const previewHeading = adminPage.getByRole("heading", {
+				name: "Preview check",
+			});
+			await expect(previewHeading).toBeVisible();
+			const previewPanel = adminPage.getByRole("tabpanel", {
+				name: "Preview",
+			});
+			const previewBody = previewPanel.getByText(
+				"This should render immediately.",
+			);
+			await expect(previewBody).toBeVisible();
+			const headingFontSize = await previewHeading.evaluate((element) =>
+				Number.parseFloat(window.getComputedStyle(element).fontSize),
+			);
+			const bodyFontSize = await previewBody.evaluate((element) =>
+				Number.parseFloat(window.getComputedStyle(element).fontSize),
+			);
+			expect(headingFontSize).toBeGreaterThan(bodyFontSize);
+			await adminPage.getByRole("tab", { name: "Edit" }).click();
+			await adminPage
+				.getByRole("button", { name: /Website Restrictions/ })
+				.click();
+			await adminPage
+				.getByLabel("Allowed Website Origins")
+				.fill(ALLOWED_ORIGIN);
+			await adminPage
+				.getByRole("switch", { name: "Not Published" })
+				.click();
+			await expect(
+				adminPage.getByRole("heading", {
+					name: "Allow anonymous form access?",
+				}),
+			).toBeVisible();
+			await expect(
+				adminPage.getByText(
+					/No other workflows or Bifrost execution APIs are granted/i,
+				),
+			).toBeVisible();
+			await adminPage
+				.getByRole("button", { name: "Publish public embed" })
+				.click();
+			await expect(
+				adminPage.getByText("Published", { exact: true }),
+			).toBeVisible();
+			const embedCode = adminPage.getByLabel("Embed code source", {
+				exact: true,
+			});
+			await expect(embedCode).toContainText(
+				"theme=light&header=true&background=solid",
+			);
+			await adminPage.getByRole("combobox", { name: "Theme" }).click();
+			await adminPage.getByRole("option", { name: "Dark" }).click();
+			await adminPage
+				.getByRole("switch", { name: "Show Header" })
+				.click();
+			await adminPage
+				.getByRole("switch", { name: "Transparent Background" })
+				.click();
+			await expect(embedCode).toContainText(
+				"theme=dark&header=false&background=transparent",
+			);
+			await admin.close();
 
 			const publication = await api.get(
 				`/api/forms/${formId}/publication`,
@@ -359,41 +369,45 @@ test.describe.serial("Public form iframe", () => {
 				}
 			});
 
-		// Load a real document from the second Docker-network origin so Chromium
-		// classifies both hosts in the same local address space. Block only that
-		// parent's SPA scripts, then replace its HTML with the customer iframe.
-		// The embedded client uses the separate `client` host and remains intact.
-		await page.route(`${ALLOWED_ORIGIN}/**`, (route) =>
-			route.request().resourceType() === "script"
-				? route.abort()
-				: route.continue(),
-		);
-		await page.goto(`${ALLOWED_ORIGIN}/`);
-		await page.setContent(
-			`<iframe title="Public form" style="width:100%;height:800px" src="${BIFROST_URL}/embed/forms/public/${publicKey}"></iframe>`,
-		);
-		const frame = page.frameLocator('iframe[title="Public form"]');
-		await expect(
-			frame.getByRole("heading", {
-				name: `Public website form ${UNIQUE}`,
-			}),
-		).toBeVisible({ timeout: 15_000 });
-		await frame
-			.getByRole("combobox", { name: "Company *", exact: true })
-			.click();
-		await frame.getByText("Acme Corporation", { exact: true }).click();
-		await expect(frame.getByLabel("Company name")).toHaveValue(
-			"Acme Corporation",
-		);
-		await frame.getByLabel("Email").fill("visitor@example.com");
-		const submit = frame.getByRole("button", { name: "Submit" });
-		await expect(submit).toBeDisabled();
-		await frame.getByRole("checkbox", { name: "I'm not a robot" }).click();
-		await submit.click({ trial: true });
-		await expect(
-			frame.getByText("Verified", { exact: true }),
-		).toBeVisible();
-		await submit.click();
+			// Load a real document from the second Docker-network origin so Chromium
+			// classifies both hosts in the same local address space. Block only that
+			// parent's SPA scripts, then replace its HTML with the customer iframe.
+			// The embedded client uses the separate `client` host and remains intact.
+			await page.route(`${ALLOWED_ORIGIN}/**`, (route) =>
+				route.request().resourceType() === "script"
+					? route.abort()
+					: route.continue(),
+			);
+			await page.goto(`${ALLOWED_ORIGIN}/`);
+			await page.setContent(
+				`<iframe title="Public form" style="width:100%;height:800px" src="${BIFROST_URL}/embed/forms/public/${publicKey}"></iframe>`,
+			);
+			const frame = page.frameLocator('iframe[title="Public form"]');
+			await expect(
+				frame.getByRole("heading", {
+					name: `Public website form ${UNIQUE}`,
+				}),
+			).toBeVisible({ timeout: 15_000 });
+			await frame
+				.getByRole("combobox", { name: "Company *", exact: true })
+				.click();
+			await frame.getByText("Acme Corporation", { exact: true }).click();
+			await expect(frame.getByLabel("Company name")).toHaveValue(
+				"Acme Corporation",
+			);
+			await frame
+				.getByRole("textbox", { name: "Email *", exact: true })
+				.fill("visitor@example.com");
+			const submit = frame.getByRole("button", { name: "Submit" });
+			await expect(submit).toBeDisabled();
+			await frame
+				.getByRole("checkbox", { name: "I'm not a robot" })
+				.click();
+			await expect(
+				frame.locator("label").filter({ hasText: /^Verified$/ }),
+			).toBeVisible();
+			await expect(submit).toBeEnabled();
+			await submit.click();
 
 			const confirmation = frame.getByRole("status");
 			await expect(confirmation).toBeVisible();
@@ -551,7 +565,9 @@ test.describe.serial("Public form iframe", () => {
 			.getByRole("combobox", { name: "Company *", exact: true })
 			.click();
 		await frame.getByText("Acme Corporation", { exact: true }).click();
-		await frame.getByLabel("Email").fill("hmac@example.com");
+		await frame
+			.getByRole("textbox", { name: "Email *", exact: true })
+			.fill("hmac@example.com");
 		await expect(
 			frame.getByRole("checkbox", { name: "I'm not a robot" }),
 		).toHaveCount(0);
@@ -569,12 +585,19 @@ test.describe.serial("Public form iframe", () => {
 			)
 			.toBe(true);
 		await expect(
-			frame.getByRole("heading", { name: "Result" }),
+			frame.getByRole("tabpanel", { name: "Result" }),
 		).toBeVisible({
 			timeout: 30_000,
 		});
 		await expect(frame.getByText("hmac@example.com").first()).toBeVisible();
-		await expect(frame.getByRole("status")).toHaveCount(0);
+		// The result page announces execution status. It must not show the
+		// public form's confirmation message instead of the signed result.
+		await expect(
+			frame.getByRole("heading", { name: "Thank you", exact: true }),
+		).toHaveCount(0);
+		await expect(
+			frame.getByText("Your form was submitted.", { exact: true }),
+		).toHaveCount(0);
 	});
 
 	test("blocks a disallowed browser ancestor on the final document", async ({

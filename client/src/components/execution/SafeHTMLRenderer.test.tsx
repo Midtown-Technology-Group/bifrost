@@ -27,15 +27,15 @@ describe("SafeHTMLRenderer — rendering", () => {
 		const { container } = renderWithProviders(
 			<SafeHTMLRenderer html="<p><strong>Hello</strong> world</p>" />,
 		);
-		expect(container.querySelector("strong")?.textContent).toBe("Hello");
-		expect(container.textContent).toContain("world");
+		expect(frameDocument(container).querySelector("strong")?.textContent).toBe("Hello");
+		expect(frameDocument(container).body.textContent).toContain("world");
 	});
 
 	it("strips forbidden inline event handlers (onmouseover)", () => {
 		const { container } = renderWithProviders(
 			<SafeHTMLRenderer html='<p onmouseover="alert(1)">hover me</p>' />,
 		);
-		const p = container.querySelector("p");
+		const p = frameDocument(container).querySelector("p");
 		expect(p).not.toBeNull();
 		expect(p?.getAttribute("onmouseover")).toBeNull();
 		expect(p?.textContent).toBe("hover me");
@@ -46,14 +46,14 @@ describe("SafeHTMLRenderer — rendering", () => {
 			<SafeHTMLRenderer html='<div onclick="alert(1)"><img src="x" onerror="alert(2)" /><script>alert(3)</script><iframe></iframe><object data="x"></object><embed src="x"><p onload="alert(4)">safe text</p></div>' />,
 		);
 
-		expect(container.querySelector("script")).toBeNull();
-		expect(container.querySelector("iframe")).toBeNull();
-		expect(container.querySelector("object")).toBeNull();
-		expect(container.querySelector("embed")).toBeNull();
-		expect(container.querySelector("[onclick]")).toBeNull();
-		expect(container.querySelector("[onerror]")).toBeNull();
-		expect(container.querySelector("[onload]")).toBeNull();
-		expect(container.textContent).toContain("safe text");
+		expect(frameDocument(container).querySelector("script")).toBeNull();
+		expect(frameDocument(container).querySelector("iframe")).toBeNull();
+		expect(frameDocument(container).querySelector("object")).toBeNull();
+		expect(frameDocument(container).querySelector("embed")).toBeNull();
+		expect(frameDocument(container).querySelector("[onclick]")).toBeNull();
+		expect(frameDocument(container).querySelector("[onerror]")).toBeNull();
+		expect(frameDocument(container).querySelector("[onload]")).toBeNull();
+		expect(frameDocument(container).body.textContent).toContain("safe text");
 	});
 
 	it("strips javascript URLs from links", () => {
@@ -61,7 +61,7 @@ describe("SafeHTMLRenderer — rendering", () => {
 			<SafeHTMLRenderer html='<a href="javascript:alert(1)">link</a>' />,
 		);
 
-		const link = container.querySelector("a");
+		const link = frameDocument(container).querySelector("a");
 		expect(link).not.toBeNull();
 		expect(link?.getAttribute("href")).toBeNull();
 		expect(link?.textContent).toBe("link");
@@ -73,7 +73,7 @@ describe("SafeHTMLRenderer — rendering", () => {
 		const { container } = renderWithProviders(
 			<SafeHTMLRenderer html={html} />,
 		);
-		expect(container.querySelector("h1")?.textContent).toBe("Hi");
+		expect(frameDocument(container).querySelector("h1")?.textContent).toBe("Hi");
 	});
 });
 
@@ -82,10 +82,7 @@ describe("SafeHTMLRenderer — open in new window", () => {
 
 	beforeEach(() => {
 		openSpy = vi.spyOn(window, "open").mockReturnValue({
-			document: {
-				write: vi.fn(),
-				close: vi.fn(),
-			},
+			document: document.implementation.createHTMLDocument(""),
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		} as any);
 	});
@@ -102,29 +99,51 @@ describe("SafeHTMLRenderer — open in new window", () => {
 		expect(openSpy).toHaveBeenCalledWith(
 			"",
 			"_blank",
-			"noopener,noreferrer",
 		);
 	});
 
 	it("writes sanitized HTML to the new window", async () => {
-		const write = vi.fn();
-		openSpy.mockReturnValue({
-			document: {
-				write,
-				close: vi.fn(),
-			},
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		} as any);
+        const popupDocument = document.implementation.createHTMLDocument("");
+        const popup = { document: popupDocument, opener: window };
+        openSpy.mockReturnValue(popup as unknown as Window);
 
 		const { user } = renderWithProviders(
 			<SafeHTMLRenderer html='<script>alert(1)</script><p onclick="alert(2)">hi</p>' />,
 		);
 
 		await user.click(screen.getByRole("button", { name: /open/i }));
-		expect(write).toHaveBeenCalledOnce();
-		const writtenHTML = write.mock.calls[0]?.[0] as string;
-		expect(writtenHTML).not.toContain("<script");
-		expect(writtenHTML).not.toContain("onclick");
-		expect(writtenHTML).toContain("<p>hi</p>");
+        expect(popup.opener).toBeNull();
+        const frame = popupDocument.querySelector("iframe");
+        expect(frame?.getAttribute("sandbox")).toBe("");
+        expect(frame?.referrerPolicy).toBe("no-referrer");
+        const writtenHTML = frame?.srcdoc ?? "";
+        expect(writtenHTML).not.toContain("<script");
+        expect(writtenHTML).not.toContain("onclick");
+        expect(writtenHTML).toContain("<p>hi</p>");
+
 	});
+});
+
+
+it("explains blocked popups and retains the inline result", async () => {
+	const open = vi.spyOn(window, "open").mockReturnValue(null);
+	try {
+		const { user } = renderWithProviders(<SafeHTMLRenderer html="<p>Retained result</p>" title="Workflow result" />);
+		await user.click(screen.getByRole("button", { name: "Open full result" }));
+		expect(screen.getByRole("alert")).toHaveTextContent("new window was blocked");
+		expect(screen.getByTitle("Workflow result")).toHaveAttribute("srcdoc", expect.stringContaining("Retained result"));
+	} finally { open.mockRestore(); }
+});
+
+
+function frameDocument(container: HTMLElement) {
+	const frame = container.querySelector("iframe");
+	expect(frame).toHaveAttribute("sandbox", "");
+	return new DOMParser().parseFromString(frame?.srcdoc ?? "", "text/html");
+}
+
+it("keeps report CSS out of the application document", () => {
+	const { container } = renderWithProviders(<SafeHTMLRenderer html="<style>body{display:none}</style><p>Report</p>" />);
+	expect(container.querySelector("style")).toBeNull();
+	expect(frameDocument(container).querySelector("style")?.textContent).toBeTruthy();
 });

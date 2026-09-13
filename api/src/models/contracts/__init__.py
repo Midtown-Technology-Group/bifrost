@@ -643,6 +643,12 @@ from src.models.contracts.export_import import (
     TableExportFile,
 )
 
+# Dependencies
+from src.models.contracts.dependencies import (
+    DependencyAvailabilityRequest,
+    DependencyAvailabilityResponse,
+)
+
 # Platform Admin
 from src.models.contracts.platform import (
     PoolDetail,
@@ -668,6 +674,9 @@ __all__ = [
     "DataProviderInputMode",
     "IntegrationType",
     "generate_entity_id",
+    # Dependencies
+    "DependencyAvailabilityRequest",
+    "DependencyAvailabilityResponse",
     # Organizations - use OrganizationPublic for responses
     "CreateOrganizationRequest",
     "UpdateOrganizationRequest",

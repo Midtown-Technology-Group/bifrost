@@ -88,6 +88,7 @@ vi.mock("framer-motion", () => {
 	);
 	return {
 		motion: new Proxy({}, { get: () => passthrough }),
+		useReducedMotion: () => true,
 		AnimatePresence: ({ children }: { children: React.ReactNode }) => (
 			<>{children}</>
 		),
@@ -151,6 +152,7 @@ function makeForm(fields: FormField[]): Form {
 
 beforeEach(() => {
 	mockMutateAsync.mockReset();
+	mockGetFormFieldOptions.mockReset().mockResolvedValue([]);
 	mockNavigate.mockReset();
 	mockToastSuccess.mockReset();
 	mockToastError.mockReset();
@@ -320,7 +322,7 @@ describe("FormRenderer — required validation", () => {
 		);
 
 		expect(
-			screen.queryByRole("checkbox", { name: /schedule for later/i }),
+			screen.queryByRole("switch", { name: /schedule for later/i }),
 		).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /submit/i }));
 
@@ -503,7 +505,7 @@ describe("FormRenderer — field types", () => {
 });
 
 describe("FormRenderer — scheduling", () => {
-	it("submits a body without scheduled_at or delay_seconds when the schedule checkbox is untouched", async () => {
+	it("submits a body without scheduled_at or delay_seconds when the schedule switch is untouched", async () => {
 		const form = makeForm([
 			{
 				name: "comment",
@@ -566,7 +568,7 @@ describe("FormRenderer — scheduling", () => {
 
 		// Flip "Schedule for later" and pick "In 15 min".
 		await user.click(
-			screen.getByRole("checkbox", { name: /schedule for later/i }),
+			screen.getByRole("switch", { name: /schedule for later/i }),
 		);
 		await user.click(screen.getByRole("button", { name: /in 15 min/i }));
 
@@ -609,7 +611,7 @@ describe("FormRenderer — scheduling", () => {
 		await waitFor(() => expect(submit).toBeEnabled(), { timeout: 3000 });
 
 		await user.click(
-			screen.getByRole("checkbox", { name: /schedule for later/i }),
+			screen.getByRole("switch", { name: /schedule for later/i }),
 		);
 		await user.click(screen.getByRole("button", { name: /in 15 min/i }));
 
@@ -623,4 +625,239 @@ describe("FormRenderer — scheduling", () => {
 		const toastMsg = mockToastSuccess.mock.calls[0]![0] as string;
 		expect(toastMsg).toMatch(/scheduled for/i);
 	}, 15000);
+});
+
+describe("submission recovery", () => {
+	it("protects pending answers, rejects duplicate submits and retains answers for retry", async () => {
+		let rejectSubmission!: (error: Error) => void;
+		mockMutateAsync.mockImplementationOnce(
+			() =>
+				new Promise((_, reject) => {
+					rejectSubmission = reject;
+				}),
+		);
+		const { user } = renderWithProviders(
+			<FormRenderer
+				form={makeForm([
+					{
+						name: "comment",
+						label: "Comment",
+						type: "text",
+						required: true,
+					},
+				])}
+			/>,
+		);
+		const input = screen.getByLabelText(/comment/i);
+		await user.type(input, "Keep this answer");
+		const submit = screen.getByRole("button", { name: "Submit" });
+		await waitFor(() => expect(submit).toBeEnabled());
+		await user.click(submit);
+		await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
+		expect(input).toBeDisabled();
+		fireEvent.submit(input.closest("form")!);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+		rejectSubmission(new Error("Service temporarily unavailable"));
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Service temporarily unavailable");
+		await waitFor(() => expect(alert).toHaveFocus());
+		expect(input).toBeEnabled();
+		expect(input).toHaveValue("Keep this answer");
+		await user.click(screen.getByRole("button", { name: "Submit" }));
+		await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(2));
+		expect(mockMutateAsync.mock.calls[1][0].body.form_data.comment).toBe(
+			"Keep this answer",
+		);
+	});
+});
+
+it("retries failed choices without clearing other answers and protects the pending retry", async () => {
+	let resolveOptions!: (value: unknown) => void;
+	mockGetFormFieldOptions.mockRejectedValue(new Error("Unavailable"));
+	const { user } = renderWithProviders(
+		<FormRenderer
+			form={makeForm([
+				{
+					name: "summary",
+					label: "Summary",
+					type: "text",
+					required: true,
+				},
+				{
+					name: "owner",
+					label: "Owner",
+					type: "select",
+					required: true,
+					has_dynamic_options: true,
+				},
+			])}
+		/>,
+	);
+	await screen.findByRole("button", { name: "Retry choices" });
+	await user.type(screen.getByLabelText(/Summary/), "Keep this answer");
+	mockGetFormFieldOptions.mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				resolveOptions = resolve;
+			}),
+	);
+	await user.click(screen.getByRole("button", { name: "Retry choices" }));
+	await waitFor(() =>
+		expect(
+			screen.getByRole("button", { name: "Retrying…" }),
+		).toBeDisabled(),
+	);
+	expect(screen.getByLabelText(/Summary/)).toHaveValue("Keep this answer");
+	resolveOptions([{ value: "support", label: "Support" }]);
+	await waitFor(() =>
+		expect(
+			screen.queryByRole("button", { name: "Retrying…" }),
+		).not.toBeInTheDocument(),
+	);
+	await user.click(screen.getByRole("combobox"));
+	await user.click(screen.getByRole("option", { name: "Support" }));
+	expect(screen.getByLabelText(/Summary/)).toHaveValue("Keep this answer");
+});
+
+it.each(["success", "failure"])(
+	"ignores an obsolete dependent request's late %s",
+	async (outcome) => {
+		const pending = new Map<
+			string,
+			{
+				resolve: (value: unknown) => void;
+				reject: (error: Error) => void;
+			}
+		>();
+		mockGetFormFieldOptions.mockImplementation(
+			(_form, _field, inputs) =>
+				new Promise((resolve, reject) =>
+					pending.set(inputs.country, { resolve, reject }),
+				),
+		);
+		const { user } = renderWithProviders(
+			<FormRenderer
+				form={makeForm([
+					{
+						name: "country",
+						label: "Country",
+						type: "text",
+						required: true,
+					},
+					{
+						name: "owner",
+						label: "Owner",
+						type: "select",
+						has_dynamic_options: true,
+						data_provider_inputs: {
+							country: {
+								mode: "fieldRef",
+								field_name: "country",
+							},
+						},
+						auto_fill: { email: "email" },
+					},
+					{ name: "email", label: "Email", type: "text" },
+				])}
+			/>,
+		);
+		const country = await screen.findByLabelText(/Country/);
+		fireEvent.change(country, { target: { value: "A" } });
+		await waitFor(() => expect(pending.has("A")).toBe(true));
+		fireEvent.change(country, { target: { value: "B" } });
+		await waitFor(() => expect(pending.has("B")).toBe(true));
+		pending.get("B")!.resolve([
+			{
+				value: "b",
+				label: "Current owner",
+				metadata: { email: "current@example.com" },
+			},
+		]);
+		await waitFor(() =>
+			expect(screen.getByLabelText(/Email/)).toHaveValue(
+				"current@example.com",
+			),
+		);
+		if (outcome === "success")
+			pending.get("A")!.resolve([
+				{
+					value: "a",
+					label: "Obsolete owner",
+					metadata: { email: "obsolete@example.com" },
+				},
+			]);
+		else pending.get("A")!.reject(new Error("Obsolete failure"));
+		await user.click(screen.getByRole("combobox"));
+		expect(
+			screen.getByRole("option", { name: "Current owner" }),
+		).toBeVisible();
+		expect(
+			screen.queryByRole("option", { name: "Obsolete owner" }),
+		).not.toBeInTheDocument();
+		expect(screen.getByLabelText(/Email/)).toHaveValue(
+			"current@example.com",
+		);
+		expect(screen.queryByText("Obsolete failure")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("option", { name: "Current owner" }));
+		fireEvent.change(country, { target: { value: "C" } });
+		await waitFor(() => expect(pending.has("C")).toBe(true));
+		expect(screen.getByRole("combobox")).not.toHaveTextContent(
+			"Current owner",
+		);
+		fireEvent.change(country, { target: { value: "" } });
+		pending.get("C")!.resolve([
+			{
+				value: "c",
+				label: "Cleared owner",
+				metadata: { email: "cleared@example.com" },
+			},
+		]);
+		await waitFor(() =>
+			expect(screen.getByRole("combobox")).toBeDisabled(),
+		);
+		expect(screen.getByLabelText(/Email/)).toHaveValue(
+			"current@example.com",
+		);
+	},
+);
+
+it("starts independent choices while another field's request is pending", async () => {
+	let finishSlow!: (value: unknown) => void;
+	mockGetFormFieldOptions.mockImplementation((_form, field) =>
+		field === "slow"
+			? new Promise((resolve) => {
+					finishSlow = resolve;
+				})
+			: Promise.resolve([{ value: "ready", label: "Ready" }]),
+	);
+	renderWithProviders(
+		<FormRenderer
+			form={makeForm([
+				{
+					name: "slow",
+					label: "Slow choices",
+					type: "select",
+					has_dynamic_options: true,
+				},
+				{
+					name: "fast",
+					label: "Fast choices",
+					type: "select",
+					has_dynamic_options: true,
+				},
+			])}
+		/>,
+	);
+	await waitFor(() =>
+		expect(mockGetFormFieldOptions).toHaveBeenCalledWith(
+			"form-1",
+			"fast",
+			undefined,
+		),
+	);
+	finishSlow([]);
+	await waitFor(() =>
+		expect(screen.getAllByRole("combobox")).toHaveLength(2),
+	);
 });

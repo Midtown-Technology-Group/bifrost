@@ -343,7 +343,11 @@ class TestDependencyGraphService:
         )
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = form
-        mock_db.execute.return_value = mock_result
+        lookup_result = MagicMock()
+        lookup_result.all.return_value = [
+            (workflow_id, "Tickets", "workflows/tickets.py", "sync"),
+        ]
+        mock_db.execute.side_effect = [mock_result, lookup_result]
 
         deps = await service._get_dependencies("form", uuid4())
 
@@ -362,7 +366,7 @@ class TestDependencyGraphService:
         """App dependencies should resolve parsed file refs through workflow lookup."""
         app_id = uuid4()
         workflow_id = uuid4()
-        app = SimpleNamespace(id=app_id, repo_prefix="apps/helpdesk/")
+        app = SimpleNamespace(id=app_id, repo_path="apps/helpdesk", repo_prefix="apps/helpdesk/")
         app_result = MagicMock()
         app_result.scalar_one_or_none.return_value = app
         file_result = MagicMock()
@@ -391,11 +395,11 @@ class TestDependencyGraphService:
     ):
         """Reverse app lookup should match both UUID and portable refs in files."""
         workflow_id = uuid4()
-        app = SimpleNamespace(repo_prefix="apps/helpdesk/")
+        app = SimpleNamespace(repo_path="apps/helpdesk", repo_prefix="apps/helpdesk/")
         file_result = MagicMock()
         file_result.all.return_value = [("content",)]
         workflow_meta = MagicMock()
-        workflow_meta.one_or_none.return_value = ("workflows/tickets.py", "sync")
+        workflow_meta.one_or_none.return_value = ("workflows/tickets.py", "sync", "Tickets")
         mock_db.execute.side_effect = [file_result, workflow_meta]
         monkeypatch.setattr(
             "src.services.app_dependencies.parse_dependencies",
@@ -416,14 +420,22 @@ class TestDependencyGraphService:
         app_id = uuid4()
         agent_id = uuid4()
         forms_result = MagicMock()
-        forms_result.scalars.return_value.all.return_value = [form_id]
+        forms_result.all.return_value = [(form_id, str(workflow_id), None)]
+        lookup_result = MagicMock()
+        lookup_result.all.return_value = [
+            (workflow_id, "Tickets", "workflows/tickets.py", "sync"),
+        ]
+        fields_result = MagicMock()
+        fields_result.scalars.return_value.all.return_value = []
         apps_result = MagicMock()
         apps_result.scalars.return_value.all.return_value = [
-            SimpleNamespace(id=app_id, repo_prefix="apps/helpdesk/")
+            SimpleNamespace(id=app_id, repo_path="apps/helpdesk", repo_prefix="apps/helpdesk/")
         ]
         agents_result = MagicMock()
         agents_result.scalars.return_value.all.return_value = [agent_id]
-        mock_db.execute.side_effect = [forms_result, apps_result, agents_result]
+        mock_db.execute.side_effect = [
+            lookup_result, forms_result, fields_result, apps_result, agents_result,
+        ]
 
         async def app_uses_workflow(app, candidate_workflow_id):
             assert candidate_workflow_id == workflow_id
@@ -436,3 +448,119 @@ class TestDependencyGraphService:
             ("app", app_id, "used_by"),
             ("agent", agent_id, "used_by"),
         ]
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_workflow_includes_field_provider_forms(
+        self, service, mock_db
+    ):
+        """Test workflow inbound dependencies include form field data providers."""
+        workflow_id = uuid4()
+        form_id = uuid4()
+
+        workflow_lookup_result = MagicMock()
+        workflow_lookup_result.all.return_value = [
+            (workflow_id, "Customer Lookup", "workflows/customer_lookup.py", "run")
+        ]
+        forms_result = MagicMock()
+        forms_result.all.return_value = []
+        field_result = MagicMock()
+        field_result.scalars.return_value.all.return_value = [form_id]
+        apps_result = MagicMock()
+        apps_result.scalars.return_value.all.return_value = []
+        agents_result = MagicMock()
+        agents_result.scalars.return_value.all.return_value = []
+        mock_db.execute.side_effect = [
+            workflow_lookup_result,
+            forms_result,
+            field_result,
+            apps_result,
+            agents_result,
+        ]
+
+        deps = await service._get_dependencies("workflow", workflow_id)
+
+        assert ("form", form_id, "used_by") in deps
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_form_resolves_portable_workflow_refs(
+        self, service, mock_db
+    ):
+        """Test form dependencies resolve portable workflow references."""
+        form_id = uuid4()
+        workflow_id = uuid4()
+
+        mock_form = MagicMock()
+        mock_form.workflow_id = "workflows/customer_lookup.py::run"
+        mock_form.launch_workflow_id = None
+        mock_form.fields = []
+
+        form_result = MagicMock()
+        form_result.scalar_one_or_none.return_value = mock_form
+        workflow_lookup_result = MagicMock()
+        workflow_lookup_result.all.return_value = [
+            (workflow_id, "Customer Lookup", "workflows/customer_lookup.py", "run")
+        ]
+        mock_db.execute.side_effect = [form_result, workflow_lookup_result]
+
+        deps = await service._get_dependencies("form", form_id)
+
+        assert deps == [("workflow", workflow_id, "uses")]
+
+    @pytest.mark.asyncio
+    async def test_app_uses_workflow_skips_apps_without_repo_path(
+        self, service, mock_db
+    ):
+        """Test source scans do not touch repo_prefix for standalone apps."""
+        workflow_id = uuid4()
+
+        class AppWithoutRepoPath:
+            repo_path = None
+
+            @property
+            def repo_prefix(self):
+                raise AssertionError("repo_prefix should not be read without repo_path")
+
+        assert (
+            await service._app_uses_workflow(AppWithoutRepoPath(), workflow_id) is False
+        )
+        mock_db.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_dependencies_app_skips_source_scan_without_repo_path(
+        self, service, mock_db
+    ):
+        """Test app dependency expansion tolerates standalone apps without repo_path."""
+        app_id = uuid4()
+
+        class AppWithoutRepoPath:
+            repo_path = None
+
+            @property
+            def repo_prefix(self):
+                raise AssertionError("repo_prefix should not be read without repo_path")
+
+        app_result = MagicMock()
+        app_result.scalar_one_or_none.return_value = AppWithoutRepoPath()
+        mock_db.execute.return_value = app_result
+
+        deps = await service._get_dependencies("app", app_id)
+
+        assert deps == []
+        assert mock_db.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_app_uses_workflow_resolves_display_name(self, service, mock_db):
+        """Reverse app edges accept the same names as forward dependency parsing."""
+        workflow_id = uuid4()
+        app = MagicMock(repo_path="apps/customer", repo_prefix="apps/customer/")
+        files = MagicMock()
+        files.all.return_value = [("useWorkflow('Customer summary')",)]
+        workflow = MagicMock()
+        workflow.one_or_none.return_value = (
+            "workflows/customer.py",
+            "run",
+            "Customer summary",
+        )
+        mock_db.execute.side_effect = [files, workflow]
+
+        assert await service._app_uses_workflow(app, workflow_id) is True

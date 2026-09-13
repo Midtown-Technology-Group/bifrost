@@ -1,5 +1,6 @@
 // client/src/pages/diagnostics/components/MemoryChart.tsx
 import { useMemo, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
 	AreaChart,
 	Area,
@@ -11,6 +12,7 @@ import {
 	ReferenceLine,
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toFiniteNumber } from "@/lib/chart-values";
@@ -67,8 +69,10 @@ interface MemoryChartProps {
 }
 
 export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
+	const reducedMotion = useReducedMotion();
 	const [range, setRange] = useState<TimeRange>("1h");
-	const { data, isLoading } = useWorkerMetrics(range);
+	const { data, isLoading, isError, isFetching, refetch } =
+		useWorkerMetrics(range);
 
 	const { chartData, workerIds, totalCurrent, totalMax, hasUnlimitedWorker } =
 		useMemo(() => {
@@ -196,16 +200,40 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 	return (
 		<Card>
 			<CardContent className="pt-6">
+				{isError && (
+					<Alert variant="destructive" className="mb-4">
+						<AlertTitle>
+							Memory metrics could not be{" "}
+							{data ? "refreshed" : "loaded"}
+						</AlertTitle>
+						<AlertDescription>
+							{data
+								? "The last available history is still shown."
+								: "Retry to load memory history. Live container totals remain available."}
+						</AlertDescription>
+						<Button
+							type="button"
+							variant="outline"
+							className="mt-3 min-h-11"
+							disabled={isFetching}
+							onClick={() => void refetch()}
+						>
+							{isFetching ? "Retrying…" : "Retry memory metrics"}
+						</Button>
+					</Alert>
+				)}
 				{/* Header */}
-				<div className="flex items-start justify-between mb-4">
+				<div className="mb-4 flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
 					<div>
 						<div className="text-xs text-muted-foreground uppercase tracking-wider">
 							Total Memory Usage
 						</div>
-						<div className="flex items-baseline gap-2 mt-1">
+						<div className="mt-1 flex flex-wrap items-baseline gap-2">
 							{!hasData ? (
 								<span className="text-sm text-muted-foreground">
-									No metrics data yet
+									{isError
+										? "Memory history unavailable"
+										: "No metrics data yet"}
 								</span>
 							) : showLimit ? (
 								<>
@@ -244,7 +272,9 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 								key={r}
 								variant={range === r ? "default" : "ghost"}
 								size="sm"
-								className="h-7 px-3 text-xs"
+								className="min-h-11 px-3 text-xs"
+								type="button"
+								aria-pressed={range === r}
 								onClick={() => setRange(r)}
 							>
 								{r}
@@ -256,7 +286,9 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 				{/* Chart */}
 				{chartData.length === 0 ? (
 					<div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
-						No metrics data available yet
+						{isError
+							? "Memory history unavailable"
+							: "No metrics data available yet"}
 					</div>
 				) : (
 					<ResponsiveContainer width="100%" height={200}>
@@ -267,12 +299,18 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 							/>
 							<XAxis
 								dataKey="group"
-								tick={{ fontSize: 11 }}
+								tick={{
+									fontSize: 11,
+									fill: "var(--muted-foreground)",
+								}}
 								tickLine={false}
 								axisLine={false}
 							/>
 							<YAxis
-								tick={{ fontSize: 11 }}
+								tick={{
+									fontSize: 11,
+									fill: "var(--muted-foreground)",
+								}}
 								tickLine={false}
 								axisLine={false}
 								tickFormatter={(v) => formatBytes(v)}
@@ -282,21 +320,22 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 							/>
 							<Tooltip
 								contentStyle={{
-									backgroundColor: "hsl(var(--card))",
-									border: "1px solid hsl(var(--border))",
-									borderRadius: "6px",
+									backgroundColor: "var(--card)",
+									border: "1px solid var(--border)",
+									borderRadius: "var(--bf-radius-control)",
+									color: "var(--foreground)",
 									fontSize: "12px",
 								}}
 								formatter={(value, name) => [
 									formatBytes(toFiniteNumber(value)),
-									name,
+									name as string,
 								]}
 								labelFormatter={(label) => label}
 							/>
 							{showLimit && (
 								<ReferenceLine
 									y={thresholdBytes}
-									stroke="hsl(var(--destructive))"
+									stroke="var(--destructive)"
 									strokeDasharray="4 4"
 									strokeOpacity={0.5}
 									label={{
@@ -304,18 +343,20 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 										position: "right",
 										style: {
 											fontSize: 10,
-											fill: "hsl(var(--destructive))",
+											fill: "var(--destructive)",
 										},
 									}}
 								/>
 							)}
 							<Area
+								isAnimationActive={!reducedMotion}
+								animationDuration={220}
 								type="monotone"
 								dataKey="total"
 								name="Total memory"
-								fill="#3b82f6"
+								fill="var(--primary)"
 								fillOpacity={0.25}
-								stroke="#3b82f6"
+								stroke="var(--primary)"
 								strokeWidth={1.75}
 								activeDot={{ r: 4 }}
 							/>

@@ -20,9 +20,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 vi.mock("@/services/events", async () => {
-	const actual = await vi.importActual<typeof import("@/services/events")>(
-		"@/services/events",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/services/events")>(
+			"@/services/events",
+		);
 	return {
 		...actual,
 		useEventSource: (...args: unknown[]) => useEventSourceMock(...args),
@@ -162,11 +163,8 @@ describe("EventSourceDetail — populated", () => {
 			<EventSourceDetail sourceId="src-1" onClose={onClose} />,
 		);
 
-		// Icon-only Delete button has title="Delete"
-		const deleteBtn = screen
-			.getAllByRole("button")
-			.find((b) => b.getAttribute("title") === "Delete");
-		await user.click(deleteBtn!);
+		await user.click(screen.getByRole("button", { name: / actions$/ }));
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
 
 		expect(
 			screen.getByRole("heading", { name: /delete event source/i }),
@@ -190,11 +188,37 @@ describe("EventSourceDetail — populated", () => {
 			<EventSourceDetail sourceId="src-1" onClose={() => {}} />,
 		);
 		expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-		const deleteBtn = screen
-			.queryAllByRole("button")
-			.find((b) => b.getAttribute("title") === "Delete");
-		expect(deleteBtn).toBeUndefined();
+		expect(
+			screen.queryByRole("button", { name: / actions$/ }),
+		).not.toBeInTheDocument();
 	});
+
+	it.each([
+		["/api/hooks/src-1", `${window.location.origin}/api/hooks/src-1`],
+		[
+			"https://hooks.example.com/api/hooks/src-1",
+			"https://hooks.example.com/api/hooks/src-1",
+		],
+	])(
+		"displays the callback URL %s without duplicating the origin",
+		(callbackUrl, expectedUrl) => {
+			const source = makeSource();
+			useEventSourceMock.mockReturnValue({
+				data: {
+					...source,
+					webhook: { ...source.webhook, callback_url: callbackUrl },
+				},
+				isLoading: false,
+				refetch: vi.fn(),
+			});
+			renderWithProviders(
+				<EventSourceDetail sourceId="src-1" onClose={() => {}} />,
+			);
+			expect(
+				screen.getByText(expectedUrl, { exact: true }),
+			).toBeVisible();
+		},
+	);
 
 	it("shows Graph identity and recreates the provider subscription", async () => {
 		useEventSourceMock.mockReturnValue({
@@ -246,5 +270,43 @@ describe("EventSourceDetail — populated", () => {
 		expect(mockResubscribe.mock.calls[0]![0]).toEqual({
 			params: { path: { source_id: "src-1" } },
 		});
+	});
+});
+
+describe("EventSourceDetail — read recovery", () => {
+	it("offers retry for a failed read without claiming the source was deleted", async () => {
+		const refetch = vi.fn();
+		useEventSourceMock.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: true,
+			refetch,
+		});
+		const { user } = renderWithProviders(
+			<EventSourceDetail sourceId="src-1" onClose={() => {}} />,
+		);
+		expect(screen.getByRole("alert")).toHaveTextContent("Could not load");
+		expect(
+			screen.queryByText(/may have been deleted/),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(refetch).toHaveBeenCalledTimes(1);
+	});
+	it("keeps cached details visible when refresh fails", () => {
+		useEventSourceMock.mockReturnValue({
+			data: makeSource(),
+			isLoading: false,
+			isError: true,
+			refetch: vi.fn(),
+		});
+		renderWithProviders(
+			<EventSourceDetail sourceId="src-1" onClose={() => {}} />,
+		);
+		expect(
+			screen.getByRole("heading", { name: "GitHub Hooks" }),
+		).toBeInTheDocument();
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Showing the last loaded details",
+		);
 	});
 });

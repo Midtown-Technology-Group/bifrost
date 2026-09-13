@@ -10,7 +10,7 @@ and their mappings to organizations with external entities.
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, LargeBinary, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,12 +30,18 @@ class Integration(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
     list_entities_data_provider_id: Mapped[UUID | None] = mapped_column(
         default=None, nullable=True
     )
     entity_id: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
     entity_id_name: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
     default_entity_id: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
+    logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    logo_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
+    logo_thumbnail_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    logo_thumbnail_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
+    logo_thumbnail_version: Mapped[str | None] = mapped_column(String(64), default=None)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")

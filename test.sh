@@ -61,6 +61,12 @@ mkdir -p "$SCRIPT_DIR/client/playwright-results"
 chmod 777 "$SCRIPT_DIR/client/playwright-results" 2>/dev/null || true
 export LOG_DIR
 
+# Host command locks must not live in the container-writable results directory.
+# Reliability/reporting lanes change that directory's mode and container users
+# can own its files; the worktree's Git metadata stays owned by the host caller.
+TEST_LOCK_DIR="$(git rev-parse --path-format=absolute --git-path bifrost-test-locks)"
+mkdir -p "$TEST_LOCK_DIR"
+
 # Load .env.test for optional secrets (GitHub PAT, LLM keys, etc.). Since the
 # file is intentionally ignored, linked worktrees do not receive it from Git;
 # fall back to the primary checkout's copy when the worktree has none.
@@ -147,7 +153,9 @@ reset_state() {
 
     docker compose -f "$COMPOSE_FILE" start pgbouncer > /dev/null
     wait_for_service "$COMPOSE_FILE" pgbouncer pg_isready -h localhost -p 5432 -U bifrost
-    docker compose -f "$COMPOSE_FILE" --profile e2e start \
+    # Apply lane-specific environment changes when returning from browser tests
+    # or entering them; `start` would retain the previous public URL.
+    docker compose -f "$COMPOSE_FILE" --profile e2e up -d --no-build --no-deps \
         api api-replica worker scheduler scheduler-fixtures > /dev/null
     wait_for_api_ready "$COMPOSE_FILE"
     wait_for_api_service_ready "$COMPOSE_FILE" api-replica
@@ -311,7 +319,7 @@ run_pytest() {
     # produce order-impossible failures.  The flock covers the normal case; the
     # stable container name is a second guard when the parent shell is killed and
     # Docker leaves the already-running one-off container behind.
-    exec {runner_lock_fd}>"$LOG_DIR/test-runner.lock"
+    exec {runner_lock_fd}>"$TEST_LOCK_DIR/test-runner.lock"
     if ! flock -n "$runner_lock_fd"; then
         echo "ERROR: another pytest run is already using this worktree's test stack." >&2
         echo "Wait for it to finish before starting another test command." >&2
@@ -594,16 +602,16 @@ client_ci_checks() {
 }
 
 repository_ci_checks() {
+    bash scripts/lib/test_stack_lock_test.sh
     echo "Checking GitHub Action pins..."
     python3 api/scripts/check_github_action_pins.py --verify-versions
 
     echo "Checking generated Codex skill mirrors..."
-    scripts/sync-codex-skills.sh
-    if ! git diff --quiet -- plugins/bifrost/skills .codex/skills; then
-        echo "ERROR: Codex skill mirrors were stale and have been regenerated." >&2
-        echo "Commit the generated changes, then rerun ./test.sh pre-pr." >&2
-        return 1
-    fi
+    # scripts/check_skill_mirrors.py encapsulates the previous host gate:
+    # scripts/sync-codex-skills.sh, then
+    # git diff --quiet -- plugins/bifrost/skills .codex/skills.
+    # It also enforces the public plugin skill-name namespace contract.
+    python3 scripts/check_skill_mirrors.py
 }
 
 build_local_api_candidate() {
@@ -631,9 +639,13 @@ start_test_client() {
     # startup out of stack_up so backend-only lanes never build or boot a
     # client they do not use. Both product and documentation browser projects
     # call this helper before starting the Playwright runner.
-    if [ "${BIFROST_SKIP_BUILD:-0}" != "1" ]; then
-        docker compose -f "$COMPOSE_FILE" build client
-    fi
+    # The client service uses the shared bifrost-test-client-e2e:latest tag.
+    # Always rebuild it here, even when BIFROST_SKIP_BUILD=1 asks backend lanes
+    # to reuse cached API/test-runner images, so one worktree cannot silently
+    # run browser tests against another worktree's previously tagged client.
+    # The runner also has a shared tag and contains versioned browser assets.
+    # Reconcile both images with this worktree before any browser lane.
+    docker compose -f "$COMPOSE_FILE" build client playwright-runner
     # reset_state stops and starts the API, which can change its container IP.
     # Nginx resolves the `api` upstream when it starts, so retaining a client
     # from a previous browser run can pin it to a dead address and make every
@@ -663,6 +675,7 @@ start_test_client() {
 
 client_e2e() {
     require_stack_up
+    local -x BIFROST_TEST_PUBLIC_URL=http://localhost:3000
     local screenshots_all=false
     local passthrough=()
     for a in "$@"; do
@@ -671,7 +684,9 @@ client_e2e() {
         fi
     done
 
-    prepare_test_state
+    # Browser callbacks need a different public authority from backend MCP
+    # tests, so reconcile it even when a backend clean-boot shortcut is enabled.
+    reset_state
 
     start_test_client
 
@@ -679,6 +694,11 @@ client_e2e() {
     if [ "$screenshots_all" = true ]; then
         env_args=(-e PLAYWRIGHT_SCREENSHOT_ALL=1)
     fi
+    # Preserve the candidate identity in browser reports, including scoped runs.
+    # Dirty runs are useful iteration evidence, never clean-release evidence.
+    local source_dirty=false
+    if [ -n "$(git status --porcelain)" ]; then source_dirty=true; fi
+    env_args+=(-e "TEST_SOURCE_REVISION=$(git rev-parse HEAD)" -e "TEST_SOURCE_DIRTY=$source_dirty")
 
     if [ ${#passthrough[@]} -gt 0 ]; then
         docker compose -f "$COMPOSE_FILE" --profile client run --rm --no-deps "${env_args[@]}" \
@@ -708,6 +728,7 @@ client_nightly() {
 
 client_docs() {
     require_stack_up
+    local -x BIFROST_TEST_PUBLIC_URL=http://localhost:3000
     if [ -z "${DOCS_REPO_PATH:-}" ]; then
         echo "DOCS_REPO_PATH must be set to the absolute path of the gobifrost checkout." >&2
         exit 2
@@ -788,7 +809,8 @@ cmd_pre_pr() {
     quality_api
     cmd_unit
     cmd_e2e
-    client_smoke
+    # Match comprehensive PR CI: smoke alone misses affected browser journeys.
+    client_e2e
     build_local_api_candidate
 
     if [ "$(git rev-parse HEAD)" != "$head_sha" ] || \
@@ -807,6 +829,22 @@ cmd_pre_pr() {
 # =============================================================================
 # Dispatch
 # =============================================================================
+
+# All stack-mutating commands share one lock, including Playwright and lifecycle
+# resets. Pytest's inner runner lock alone cannot prevent a browser run resetting
+# its database, or two browser runs replacing each other's API containers.
+case "${1:-}:${2:-}" in
+    help:*|-h:*|--help:*|stack:status|client:unit) ;;
+    *)
+        exec {test_command_lock_fd}>"$TEST_LOCK_DIR/test-stack.lock"
+        if ! flock -n "$test_command_lock_fd"; then
+            echo "ERROR: another test command owns this worktree's test stack." >&2
+            echo "Wait for it to finish before starting tests or changing the stack." >&2
+            exit 1
+        fi
+        ;;
+esac
+
 
 if [ $# -eq 0 ]; then
     cmd_unit

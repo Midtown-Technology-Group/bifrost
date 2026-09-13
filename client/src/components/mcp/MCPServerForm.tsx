@@ -14,7 +14,7 @@
  * just displays whatever the server returned on the public response.
  */
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -34,6 +34,13 @@ import {
 	FormLabel,
 	FormMessage,
 } from "@/components/ui/form";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { $api, apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -126,15 +133,25 @@ interface MCPServerFormProps {
 	onSuccess?: (serverId: string) => void;
 	/** Called when the user clicks Cancel. If omitted, navigates back to the list page. */
 	onCancel?: () => void;
+	onPendingChange?: (pending: boolean) => void;
 }
 
 export function MCPServerForm({
 	onSuccess,
 	onCancel,
+	onPendingChange,
 }: MCPServerFormProps = {}) {
+	const fieldId = useId();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const createServer = $api.useMutation("post", "/api/mcp-servers");
+	const [submitError, setSubmitError] = useState<string | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+	const submitBusy = useRef(false);
+	const errorRef = useRef<HTMLParagraphElement>(null);
+	useEffect(() => {
+		if (submitError) errorRef.current?.focus();
+	}, [submitError]);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
@@ -144,6 +161,7 @@ export function MCPServerForm({
 	const [metadata, setMetadata] = useState<DiscoveredMetadata | null>(null);
 	const [discoveryAttempted, setDiscoveryAttempted] = useState(false);
 	const [discovering, setDiscovering] = useState(false);
+	const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
 	const [overrideMode, setOverrideMode] = useState(false);
 
 	// Manual override values — start blank, populated from metadata when shown.
@@ -166,6 +184,7 @@ export function MCPServerForm({
 			return;
 		}
 
+		setDiscoveryNotice(null);
 		setDiscovering(true);
 		setDiscoveryAttempted(true);
 		setOverrideMode(false);
@@ -176,6 +195,9 @@ export function MCPServerForm({
 			);
 
 			if (error) {
+				setDiscoveryNotice(
+					"Could not discover OAuth settings. Retry discovery or enter the values manually below.",
+				);
 				toast.error("Discovery failed — enter values manually");
 				setMetadata(null);
 				setOverrideMode(true);
@@ -185,6 +207,9 @@ export function MCPServerForm({
 			const discoveredMetadata = data?.metadata as
 				DiscoveredMetadata | null | undefined;
 			if (!discoveredMetadata) {
+				setDiscoveryNotice(
+					"No OAuth settings were found. Enter them below if this server requires OAuth.",
+				);
 				toast.warning(
 					"No OAuth metadata found — enter values manually",
 				);
@@ -203,6 +228,9 @@ export function MCPServerForm({
 			setFlowType(detectFlowFromMetadata(discoveredMetadata));
 			toast.success("OAuth metadata discovered");
 		} catch (err) {
+			setDiscoveryNotice(
+				"Could not discover OAuth settings. Retry discovery or enter the values manually below.",
+			);
 			toast.error(
 				err instanceof Error
 					? err.message
@@ -229,6 +257,8 @@ export function MCPServerForm({
 	};
 
 	const onSubmit = async (values: FormValues) => {
+		if (submitBusy.current || discovering) return;
+		setSubmitError(null);
 		// Build the discovery_metadata payload either from the discovered doc
 		// or from manual overrides.
 		let payload: DiscoveredMetadata | null = null;
@@ -268,9 +298,9 @@ export function MCPServerForm({
 			: [];
 
 		// authorization_code requires authorization_url; if the admin chose
-		// authorization_code but didn't supply one, fail fast with a toast.
+		// authorization_code but didn't supply one, show inline feedback.
 		if (tokenUrl && flowType === "authorization_code" && !authUrl) {
-			toast.error(
+			setSubmitError(
 				"Authorization URL is required for authorization_code flow",
 			);
 			return;
@@ -293,6 +323,9 @@ export function MCPServerForm({
 				}
 			: undefined;
 
+		submitBusy.current = true;
+		setSubmitting(true);
+		onPendingChange?.(true);
 		try {
 			const result = await createServer.mutateAsync({
 				body: {
@@ -317,11 +350,15 @@ export function MCPServerForm({
 				navigate(`/mcp-servers/${result.id}`);
 			}
 		} catch (err) {
-			toast.error(
+			setSubmitError(
 				err instanceof Error
 					? err.message
 					: "Failed to create MCP server",
 			);
+		} finally {
+			submitBusy.current = false;
+			setSubmitting(false);
+			onPendingChange?.(false);
 		}
 	};
 
@@ -330,115 +367,124 @@ export function MCPServerForm({
 
 	return (
 		<Form {...form}>
-			<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-				<FormField
-					control={form.control}
-					name="name"
-					render={({ field }) => (
-						<FormItem>
-							<FormLabel>Display name</FormLabel>
-							<FormControl>
-								<Input
-									placeholder="Microsoft 365 Copilot"
-									{...field}
-								/>
-							</FormControl>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-
-				<FormField
-					control={form.control}
-					name="server_url"
-					render={({ field }) => (
-						<FormItem>
-							<FormLabel>Server URL</FormLabel>
-							<FormControl>
-								<Input
-									type="url"
-									placeholder="https://example.com/mcp"
-									className="font-mono text-sm"
-									{...field}
-								/>
-							</FormControl>
-							<FormDescription>
-								MCP endpoint. Streamable HTTP only.
-							</FormDescription>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-
-				<div className="flex items-center gap-3">
-					<Button
-						type="button"
-						variant="outline"
-						onClick={handleDiscover}
-						disabled={discovering}
+			<form
+				onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
+				className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 [overflow-wrap:anywhere] [&_input]:min-h-11 [&_button]:min-h-11"
+			>
+				<div className="min-h-0 overflow-y-auto">
+					<fieldset
+						disabled={submitting || discovering}
+						className="min-w-0 space-y-6"
 					>
-						{discovering ? (
-							<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-						) : (
-							<Search className="h-4 w-4 mr-2" />
-						)}
-						Discover OAuth metadata
-					</Button>
-					<span className="text-xs text-muted-foreground">
-						Fetches{" "}
-						<code className="font-mono">
-							/.well-known/oauth-authorization-server
-						</code>{" "}
-						and{" "}
-						<code className="font-mono">
-							/.well-known/oauth-protected-resource
-						</code>
-					</span>
-				</div>
-
-				{discoveryAttempted && !metadata && !overrideMode && (
-					<Alert>
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>
-							No OAuth metadata was returned. The backend will
-							store the server with no discovery snapshot — you
-							can wire OAuth manually after save.
-						</AlertDescription>
-					</Alert>
-				)}
-
-				{showDiscoveryPanel && (
-					<div className="rounded-md bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
-						<div className="flex items-center justify-between">
-							<div className="text-sm font-semibold">
-								OAuth metadata{" "}
-								{metadata && !overrideMode ? (
-									<Badge
-										variant="default"
-										className="ml-1 bg-green-600 hover:bg-green-700"
-									>
-										Discovered
-									</Badge>
-								) : (
-									<Badge variant="secondary" className="ml-1">
-										Manual
-									</Badge>
-								)}
-							</div>
-							{!overrideMode && metadata && (
-								<Button
-									type="button"
-									variant="link"
-									size="sm"
-									onClick={handleEnableOverride}
-									className="text-xs"
-								>
-									Override discovered values manually
-								</Button>
+						<FormField
+							control={form.control}
+							name="name"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Display name</FormLabel>
+									<FormControl>
+										<Input
+											placeholder="Microsoft 365 Copilot"
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
 							)}
+						/>
+
+						<FormField
+							control={form.control}
+							name="server_url"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Server URL</FormLabel>
+									<FormControl>
+										<Input
+											type="url"
+											placeholder="https://example.com/mcp"
+											className="font-mono text-sm"
+											{...field}
+										/>
+									</FormControl>
+									<FormDescription>
+										MCP endpoint. Streamable HTTP only.
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleDiscover}
+								disabled={discovering}
+							>
+								{discovering ? (
+									<Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
+								) : (
+									<Search className="h-4 w-4 mr-2" />
+								)}
+								Discover OAuth metadata
+							</Button>
+							<span className="text-xs text-muted-foreground">
+								Fetches{" "}
+								<code className="font-mono">
+									/.well-known/oauth-authorization-server
+								</code>{" "}
+								and{" "}
+								<code className="font-mono">
+									/.well-known/oauth-protected-resource
+								</code>
+							</span>
 						</div>
 
-						<div className="space-y-2">
+						{discoveryNotice && (
+							<Alert>
+								<AlertCircle className="h-4 w-4" />
+								<AlertDescription>
+									{discoveryNotice}
+								</AlertDescription>
+							</Alert>
+						)}
+
+						{showDiscoveryPanel && (
+							<div className="rounded-md bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
+								<div className="flex flex-wrap items-center justify-between gap-3">
+									<div className="text-sm font-semibold">
+										OAuth metadata{" "}
+										{metadata && !overrideMode ? (
+											<Badge
+												variant="default"
+												className="ml-1 bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+											>
+												Discovered
+											</Badge>
+										) : (
+											<Badge
+												variant="secondary"
+												className="ml-1"
+											>
+												Manual
+											</Badge>
+										)}
+									</div>
+									{!overrideMode && metadata && (
+										<Button
+											type="button"
+											variant="link"
+											size="sm"
+											onClick={handleEnableOverride}
+											className="text-xs"
+										>
+											Override discovered values manually
+										</Button>
+									)}
+								</div>
+
+														<div className="space-y-2">
 							<label
 								htmlFor="mcp-oauth-issuer"
 								className="text-xs font-medium text-muted-foreground"
@@ -466,167 +512,192 @@ export function MCPServerForm({
 							</p>
 						</div>
 
-						<div className="space-y-2">
-							<label className="text-xs font-medium text-muted-foreground">
-								OAuth flow
-							</label>
-							<select
-								value={flowType}
-								onChange={(e) =>
-									setFlowType(e.target.value as OAuthFlowType)
-								}
-								className="h-8 w-full rounded-2xl border border-transparent bg-input/50 px-2.5 text-sm transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<option value="authorization_code">
-									Authorization Code — user signs in at the
-									vendor
-								</option>
-								<option value="client_credentials">
-									Client Credentials — server-to-server, no
-									user sign-in
-								</option>
-							</select>
-							<p className="text-xs text-muted-foreground">
-								{flowType === "client_credentials"
-									? "Each org enters a client_id + secret on its connection. Bifrost exchanges those credentials for an access token directly with the vendor — no browser popup, no user sign-in."
-									: "Admin clicks Connect and signs in at the vendor in a popup. Bifrost stores the resulting delegated access token."}
-							</p>
-						</div>
 
-						{flowType === "authorization_code" && (
-							<div className="space-y-2">
-								<label
-									htmlFor="mcp-oauth-authorization-url"
-									className="text-xs font-medium text-muted-foreground"
-								>
-									Authorization URL
-								</label>
-								<Input
-									id="mcp-oauth-authorization-url"
-									readOnly={!overrideMode}
-									value={
-										overrideMode
-											? manualAuthUrl
-											: (parsed?.authorization_url ?? "")
-									}
-									onChange={(e) =>
-										setManualAuthUrl(e.target.value)
-									}
-									className="font-mono text-xs"
-								/>
-							</div>
-						)}
+<div className="space-y-2">
+									<label
+										htmlFor={`${fieldId}-flow`}
+										className="text-xs font-medium text-muted-foreground"
+									>
+										OAuth flow
+									</label>
+									<Select
+										value={flowType}
+										onValueChange={(value) =>
+											setFlowType(value as OAuthFlowType)
+										}
+										disabled={submitting || discovering}
+									>
+										<SelectTrigger
+											id={`${fieldId}-flow`}
+											className="min-h-11 w-full"
+										>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem
+												value="authorization_code"
+												className="min-h-11"
+											>
+												Authorization code
+											</SelectItem>
+											<SelectItem
+												value="client_credentials"
+												className="min-h-11"
+											>
+												Client credentials
+											</SelectItem>
+										</SelectContent>
+									</Select>
+									<p className="text-xs text-muted-foreground">
+										{flowType === "client_credentials"
+											? "Each org enters a client_id + secret on its connection. Bifrost exchanges those credentials for an access token directly with the vendor — no browser popup, no user sign-in."
+											: "Admin clicks Connect and signs in at the vendor in a popup. Bifrost stores the resulting delegated access token."}
+									</p>
+								</div>
 
-						<div className="space-y-2">
-							<label
-								htmlFor="mcp-oauth-token-url"
-								className="text-xs font-medium text-muted-foreground"
-							>
-								Token URL
-							</label>
-							<Input
-								id="mcp-oauth-token-url"
-								readOnly={!overrideMode}
-								value={
-									overrideMode
-										? manualTokenUrl
-										: (parsed?.token_url ?? "")
-								}
-								onChange={(e) =>
-									setManualTokenUrl(e.target.value)
-								}
-								className="font-mono text-xs"
-							/>
-						</div>
+								{flowType === "authorization_code" && (
+									<div className="space-y-2">
+										<label
+											htmlFor={`${fieldId}-auth`}
+											className="text-xs font-medium text-muted-foreground"
+										>
+											Authorization URL
+										</label>
+										<Input
+											id={`${fieldId}-auth`}
+											readOnly={!overrideMode}
+											value={
+												overrideMode
+													? manualAuthUrl
+													: (parsed?.authorization_url ??
+														"")
+											}
+											onChange={(e) =>
+												setManualAuthUrl(e.target.value)
+											}
+											className="font-mono text-xs"
+										/>
+									</div>
+								)}
 
-						<div className="space-y-2">
-							<label
-								htmlFor="mcp-oauth-resource"
-								className="text-xs font-medium text-muted-foreground"
-							>
-								Audience / resource indicator
-							</label>
-							<Input
-								id="mcp-oauth-resource"
-								readOnly={!overrideMode}
-								value={
-									overrideMode
-										? manualAudience
-										: (parsed?.audience ?? "")
-								}
-								onChange={(e) =>
-									setManualAudience(e.target.value)
-								}
-								className="font-mono text-xs"
-							/>
-						</div>
+								<div className="space-y-2">
+									<label
+										htmlFor={`${fieldId}-token`}
+										className="text-xs font-medium text-muted-foreground"
+									>
+										Token URL
+									</label>
+									<Input
+										id={`${fieldId}-token`}
+										readOnly={!overrideMode}
+										value={
+											overrideMode
+												? manualTokenUrl
+												: (parsed?.token_url ?? "")
+										}
+										onChange={(e) =>
+											setManualTokenUrl(e.target.value)
+										}
+										className="font-mono text-xs"
+									/>
+								</div>
 
-						<div className="space-y-2">
-							<label
-								htmlFor="mcp-oauth-scopes"
-								className="text-xs font-medium text-muted-foreground"
-							>
-								Scopes
-							</label>
-							<Input
-								id="mcp-oauth-scopes"
-								readOnly={!overrideMode}
-								value={
-									overrideMode
-										? manualScopes
-										: (parsed?.scopes ?? "")
-								}
-								onChange={(e) =>
-									setManualScopes(e.target.value)
-								}
-								className="font-mono text-xs"
-							/>
-						</div>
+								<div className="space-y-2">
+									<label
+										htmlFor={`${fieldId}-audience`}
+										className="text-xs font-medium text-muted-foreground"
+									>
+										Audience / resource indicator
+									</label>
+									<Input
+										id={`${fieldId}-audience`}
+										readOnly={!overrideMode}
+										value={
+											overrideMode
+												? manualAudience
+												: (parsed?.audience ?? "")
+										}
+										onChange={(e) =>
+											setManualAudience(e.target.value)
+										}
+										className="font-mono text-xs"
+									/>
+								</div>
 
-						{/* Redirect URL is only meaningful for the authorization_code flow.
+								<div className="space-y-2">
+									<label
+										htmlFor={`${fieldId}-scopes`}
+										className="text-xs font-medium text-muted-foreground"
+									>
+										Scopes
+									</label>
+									<Input
+										id={`${fieldId}-scopes`}
+										readOnly={!overrideMode}
+										value={
+											overrideMode
+												? manualScopes
+												: (parsed?.scopes ?? "")
+										}
+										onChange={(e) =>
+											setManualScopes(e.target.value)
+										}
+										className="font-mono text-xs"
+									/>
+								</div>
+
+								{/* Redirect URL is only meaningful for the authorization_code flow.
 						    client_credentials is server-to-server; the vendor never redirects
 						    a browser anywhere, so showing this just confuses admins. */}
-						{flowType === "authorization_code" && (
-							<div className="space-y-2">
-								<label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-									Redirect URL{" "}
-									<Badge
-										variant="default"
-										className="bg-blue-600 hover:bg-blue-700"
-									>
-										Bifrost-managed
-									</Badge>
-								</label>
-								<Input
-									readOnly
-									value={`${window.location.origin}/api/mcp/oauth/callback`}
-									className="font-mono text-xs"
-								/>
-								<p className="text-xs text-muted-foreground">
-									Register this exact URL in the vendor's
-									OAuth app. Same value across all connections
-									of this server.
-								</p>
+								{flowType === "authorization_code" && (
+									<div className="space-y-2">
+										<label
+											htmlFor={`${fieldId}-redirect`}
+											className="text-xs font-medium text-muted-foreground flex items-center gap-2"
+										>
+											Redirect URL{" "}
+											<Badge
+												variant="default"
+												className="bg-primary/10 text-primary"
+											>
+												Bifrost-managed
+											</Badge>
+										</label>
+										<Input
+											id={`${fieldId}-redirect`}
+											readOnly
+											value={`${window.location.origin}/api/mcp/oauth/callback`}
+											className="font-mono text-xs"
+										/>
+										<p className="text-xs text-muted-foreground">
+											Register this exact URL in the
+											vendor's OAuth app. Same value
+											across all connections of this
+											server.
+										</p>
+									</div>
+								)}
 							</div>
 						)}
-					</div>
+					</fieldset>
+				</div>
+				{submitError && (
+					<p
+						ref={errorRef}
+						tabIndex={-1}
+						role="alert"
+						className="shrink-0 text-sm text-destructive outline-none"
+					>
+						{submitError}
+					</p>
 				)}
-
-				<div className="flex gap-2 pt-2">
-					<Button type="submit" disabled={createServer.isPending}>
-						{createServer.isPending ? (
-							<>
-								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-								Creating...
-							</>
-						) : (
-							"Create Server"
-						)}
-					</Button>
+				<div className="flex shrink-0 flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
 					<Button
 						type="button"
 						variant="outline"
+						disabled={submitting}
 						onClick={() => {
+							if (submitBusy.current) return;
 							if (onCancel) {
 								onCancel();
 							} else {
@@ -635,6 +706,18 @@ export function MCPServerForm({
 						}}
 					>
 						Cancel
+					</Button>
+					<Button type="submit" disabled={submitting || discovering}>
+						{submitting ? (
+							<>
+								<Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
+								Creating...
+							</>
+						) : submitError ? (
+							"Retry creation"
+						) : (
+							"Create Server"
+						)}
 					</Button>
 				</div>
 			</form>

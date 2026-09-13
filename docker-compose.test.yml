@@ -150,7 +150,9 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
-      BIFROST_PUBLIC_URL: http://api:8000
+      # Backend MCP hosts/audiences use the internal API; browser lanes select
+      # the loopback client proxy for callbacks before resetting their stack.
+      BIFROST_PUBLIC_URL: ${BIFROST_TEST_PUBLIC_URL:-http://api:8000}
       COVERAGE_FILE: /coverage/.coverage
       # The full E2E suite intentionally reuses session-scoped users. Keep its
       # access tokens valid for the longest supported local/CI run.
@@ -504,6 +506,10 @@ services:
 
   client-check-runner:
     image: bifrost-test-client-check:latest
+    environment:
+      # Respect Vitest's worker override on shared development hosts while
+      # retaining the configured default when no override is supplied.
+      VITEST_MAX_WORKERS: ${VITEST_MAX_WORKERS:-}
     build:
       context: ./client
       dockerfile: Dockerfile

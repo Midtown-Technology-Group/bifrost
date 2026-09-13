@@ -1,0 +1,113 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MemoryRouter } from "react-router";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { hashOAuthState } from "@/services/auth";
+
+const { initOAuth } = vi.hoisted(() => ({
+	initOAuth: vi.fn(),
+}));
+
+import { Login } from "./Login";
+
+vi.mock("@/services/auth", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/services/auth")>(
+			"@/services/auth",
+		);
+	return {
+		...actual,
+		getAuthStatus: vi.fn(async () => ({
+			needs_setup: false,
+			password_login_enabled: true,
+			mfa_required_for_password: false,
+			oauth_providers: [
+				{
+					name: "microsoft",
+					display_name: "Microsoft",
+					icon: "microsoft",
+				},
+			],
+			auto_redirect_to_sso: false,
+			default_sso_provider: null,
+		})),
+		getOAuthProviders: vi.fn(async () => [
+			{ name: "microsoft", display_name: "Microsoft", icon: "microsoft" },
+		]),
+		initOAuth,
+	};
+});
+vi.mock("@/services/passkeys", () => ({
+	supportsPasskeys: () => false,
+}));
+
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => ({
+		login: vi.fn(),
+		loginWithMfa: vi.fn(),
+		loginWithPasskey: vi.fn(),
+		isAuthenticated: false,
+		isLoading: false,
+	}),
+}));
+
+vi.mock("@/components/branding/Logo", () => ({
+	Logo: () => <div aria-label="Bifrost" />,
+}));
+
+vi.mock("@/lib/applicationName", () => ({
+	useApplicationName: () => "Bifrost",
+}));
+
+describe("Login OAuth flow", () => {
+	const originalAssign = window.location.assign;
+
+	beforeEach(() => {
+		initOAuth.mockResolvedValue({
+			authorization_url: "https://login.example.test/authorize",
+			state: "server-state",
+		});
+		vi.spyOn(window.location, "assign").mockImplementation(() => {});
+		sessionStorage.clear();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		window.location.assign = originalAssign;
+	});
+
+	it("redirects to the provider while storing only hashed OAuth state", async () => {
+		const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+		render(
+			<MemoryRouter>
+				<Login />
+			</MemoryRouter>,
+		);
+
+		await userEvent.click(
+			await screen.findByRole("button", { name: /microsoft/i }),
+		);
+
+		await waitFor(() => {
+			expect(initOAuth).toHaveBeenCalledWith(
+				"microsoft",
+				"http://localhost:3000/auth/callback/microsoft",
+			);
+		});
+		await waitFor(() => {
+			expect(window.location.assign).toHaveBeenCalledWith(
+				"https://login.example.test/authorize",
+			);
+		});
+		expect(setItem).not.toHaveBeenCalledWith(
+			"oauth_provider",
+			expect.any(String),
+		);
+		expect(setItem).toHaveBeenCalledWith(
+			"oauth_state",
+			await hashOAuthState("server-state"),
+		);
+		expect(sessionStorage.getItem("oauth_state")).not.toBe("server-state");
+	});
+});

@@ -3,7 +3,11 @@ import { RefreshCw, Loader2, WifiOff, Server } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { usePools, useQueueStatus, type PoolSummary } from "@/services/workers";
+import {
+	usePools,
+	useQueueStatus,
+	type PoolSummary,
+} from "@/services/workers";
 import { getErrorMessage } from "@/lib/api-error";
 import { QueueBadge } from "./QueueBadge";
 import { MemoryChart } from "./MemoryChart";
@@ -21,6 +25,8 @@ export function WorkersTab() {
 	const {
 		data: queueData,
 		isLoading: queueLoading,
+		error: queueError,
+		isFetching: queueFetching,
 		refetch: refetchQueue,
 	} = useQueueStatus({ limit: 50 });
 
@@ -105,11 +111,11 @@ export function WorkersTab() {
 		<div className="max-w-[1100px] mx-auto space-y-6">
 			{/* Connection Status Banner */}
 			{!isConnected && (
-				<Alert className="border-amber-500/50 text-amber-700 dark:text-amber-400 [&>svg]:text-amber-600">
+				<Alert className="border-[var(--bf-warning)]/30">
 					<WifiOff className="h-4 w-4" />
 					<AlertDescription>
-						Connecting to real-time worker updates... Data may not be
-						current.
+						Connecting to real-time worker updates... Data may not
+						be current.
 					</AlertDescription>
 				</Alert>
 			)}
@@ -125,33 +131,49 @@ export function WorkersTab() {
 			)}
 
 			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
+			<div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+				<div className="flex min-w-0 flex-wrap items-center gap-3">
 					<h2 className="text-lg font-semibold">Process Pools</h2>
 					{isConnected && (
-						<span className="flex items-center gap-1 text-xs text-green-600">
-							<span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+						<span className="flex items-center gap-1 text-xs text-[var(--bf-success)]">
+							<span className="w-2 h-2 bg-[var(--bf-success)] rounded-full animate-pulse motion-reduce:animate-none" />
 							Live
 						</span>
 					)}
-					<QueueBadge items={queueItems} isLoading={queueLoading} />
+					<QueueBadge
+						items={queueItems}
+						total={queueData?.total}
+						isLoading={queueLoading}
+						error={
+							queueError
+								? getErrorMessage(
+										queueError,
+										"Could not load the execution queue.",
+									)
+								: undefined
+						}
+						onRetry={() => {
+							void refetchQueue();
+						}}
+						isRetrying={queueFetching}
+					/>
 				</div>
-				<div className="flex items-center gap-3">
+				<div className="flex min-w-0 flex-wrap items-center gap-3">
 					<span className="text-sm text-muted-foreground">
 						{stats.containers} container
 						{stats.containers !== 1 ? "s" : ""} &middot;{" "}
-						{stats.allCapacityKnown
-							? `${stats.forks}/${stats.capacity} active forks`
-							: `${stats.forks} active forks`}
+						{stats.allCapacityKnown ? `${stats.forks}/${stats.capacity} active forks` : `${stats.forks} active forks`}
 					</span>
 					<Button
+						type="button"
+						className="min-h-11"
 						variant="outline"
 						size="sm"
 						onClick={handleRefresh}
 						disabled={isRefreshing || poolsLoading}
 					>
 						<RefreshCw
-							className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+							className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
 						/>
 						Refresh
 					</Button>
@@ -164,9 +186,9 @@ export function WorkersTab() {
 			{/* Container Table */}
 			{poolsLoading && pools.length === 0 ? (
 				<div className="flex items-center justify-center py-12">
-					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+					<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 				</div>
-			) : pools.length === 0 ? (
+			) : poolsError && pools.length === 0 ? null : pools.length === 0 ? (
 				<Card>
 					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
 						<Server className="h-12 w-12 text-muted-foreground mb-4" />

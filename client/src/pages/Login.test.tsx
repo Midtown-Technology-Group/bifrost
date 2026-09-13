@@ -1,113 +1,143 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MemoryRouter } from "react-router";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { hashOAuthState } from "@/services/auth";
-
-const { initOAuth } = vi.hoisted(() => ({
-	initOAuth: vi.fn(),
-}));
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithProviders, screen, waitFor } from "@/test-utils";
 import { Login } from "./Login";
+import {
+	getAuthStatus,
+	initOAuth,
+	PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY,
+} from "@/services/auth";
 
-vi.mock("@/services/auth", async () => {
-	const actual =
-		await vi.importActual<typeof import("@/services/auth")>(
-			"@/services/auth",
-		);
-	return {
-		...actual,
-		getAuthStatus: vi.fn(async () => ({
-			needs_setup: false,
-			password_login_enabled: true,
-			mfa_required_for_password: false,
-			oauth_providers: [
-				{
-					name: "microsoft",
-					display_name: "Microsoft",
-					icon: "microsoft",
-				},
-			],
-			auto_redirect_to_sso: false,
-			default_sso_provider: null,
-		})),
-		getOAuthProviders: vi.fn(async () => [
-			{ name: "microsoft", display_name: "Microsoft", icon: "microsoft" },
-		]),
-		initOAuth,
-	};
-});
-vi.mock("@/services/passkeys", () => ({
-	supportsPasskeys: () => false,
-}));
+const login = vi.fn();
+const loginWithMfa = vi.fn();
+const loginWithPasskey = vi.fn();
 
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => ({
-		login: vi.fn(),
-		loginWithMfa: vi.fn(),
-		loginWithPasskey: vi.fn(),
+		login,
+		loginWithMfa,
+		loginWithPasskey,
 		isAuthenticated: false,
 		isLoading: false,
 	}),
 }));
 
+vi.mock("@/services/auth", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/services/auth")>();
+	return {
+		...actual,
+		getAuthStatus: vi.fn(),
+		hashOAuthState: vi.fn(),
+		initOAuth: vi.fn(),
+	};
+});
+
+vi.mock("@/services/passkeys", () => ({
+	supportsPasskeys: () => true,
+}));
+
 vi.mock("@/components/branding/Logo", () => ({
-	Logo: () => <div aria-label="Bifrost" />,
+	Logo: () => null,
 }));
 
 vi.mock("@/lib/applicationName", () => ({
 	useApplicationName: () => "Bifrost",
 }));
 
-describe("Login OAuth flow", () => {
-	const originalAssign = window.location.assign;
+const preferredStatus = {
+	needs_setup: false,
+	password_login_enabled: true,
+	mfa_required_for_password: false,
+	oauth_providers: [
+		{
+			name: "microsoft",
+			display_name: "Microsoft",
+			icon: "microsoft",
+		},
+	],
+	auto_redirect_to_sso: true,
+	default_sso_provider: "microsoft" as const,
+};
 
+describe("Login preferred SSO redirect", () => {
 	beforeEach(() => {
-		initOAuth.mockResolvedValue({
-			authorization_url: "https://login.example.test/authorize",
-			state: "server-state",
-		});
-		vi.spyOn(window.location, "assign").mockImplementation(() => {});
+		vi.clearAllMocks();
+		login.mockReset();
+		loginWithMfa.mockReset();
+		loginWithPasskey.mockReset();
 		sessionStorage.clear();
+		vi.mocked(getAuthStatus).mockResolvedValue(preferredStatus);
+		vi.mocked(initOAuth).mockImplementation(
+			() => new Promise(() => undefined),
+		);
 	});
 
-	afterEach(() => {
-		vi.restoreAllMocks();
-		window.location.assign = originalAssign;
-	});
-
-	it("redirects to the provider while storing only hashed OAuth state", async () => {
-		const setItem = vi.spyOn(Storage.prototype, "setItem");
-
-		render(
-			<MemoryRouter>
-				<Login />
-			</MemoryRouter>,
-		);
-
-		await userEvent.click(
-			await screen.findByRole("button", { name: /microsoft/i }),
-		);
+	it("tries the preferred provider once before passkey or credentials", async () => {
+		renderWithProviders(<Login />, {
+			initialEntries: ["/login?returnTo=/workflows"],
+		});
 
 		await waitFor(() => {
 			expect(initOAuth).toHaveBeenCalledWith(
 				"microsoft",
-				"http://localhost:3000/auth/callback/microsoft",
+				`${window.location.origin}/auth/callback/microsoft`,
 			);
 		});
-		await waitFor(() => {
-			expect(window.location.assign).toHaveBeenCalledWith(
-				"https://login.example.test/authorize",
-			);
+		expect(
+			sessionStorage.getItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY),
+		).toBe("true");
+		expect(sessionStorage.getItem("oauth_redirect_from")).toBe(
+			"/workflows",
+		);
+		expect(loginWithPasskey).not.toHaveBeenCalled();
+	});
+
+	it("shows the full login screen after the preferred attempt", async () => {
+		sessionStorage.setItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY, "true");
+
+		renderWithProviders(<Login />, { initialEntries: ["/login"] });
+
+		expect(await screen.findByLabelText("Email")).toBeInTheDocument();
+		expect(screen.getByLabelText("Password")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Microsoft" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /sign in with passkey/i }),
+		).toBeInTheDocument();
+		expect(initOAuth).not.toHaveBeenCalled();
+		expect(loginWithPasskey).not.toHaveBeenCalled();
+	});
+
+	it("submits a full formatted recovery code without truncating it", async () => {
+		sessionStorage.setItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY, "true");
+		login.mockResolvedValueOnce({
+			success: false,
+			mfaRequired: true,
+			mfaToken: "mfa-token",
+			availableMethods: ["totp"],
+			expiresIn: 300,
 		});
-		expect(setItem).not.toHaveBeenCalledWith(
-			"oauth_provider",
-			expect.any(String),
+		loginWithMfa.mockResolvedValueOnce(undefined);
+		renderWithProviders(<Login />, { initialEntries: ["/login"] });
+
+		await screen.findByLabelText("Email");
+		const user = (
+			await import("@testing-library/user-event")
+		).default.setup();
+		await user.type(screen.getByLabelText("Email"), "admin@example.com");
+		await user.type(screen.getByLabelText("Password"), "password");
+		await user.click(screen.getByRole("button", { name: "Sign In" }));
+
+		const mfaInput = await screen.findByLabelText("Authentication Code");
+		await user.type(mfaInput, "ABCD-1234");
+		await user.click(screen.getByRole("button", { name: "Verify" }));
+
+		await waitFor(() =>
+			expect(loginWithMfa).toHaveBeenCalledWith(
+				"mfa-token",
+				"ABCD-1234",
+				false,
+			),
 		);
-		expect(setItem).toHaveBeenCalledWith(
-			"oauth_state",
-			await hashOAuthState("server-state"),
-		);
-		expect(sessionStorage.getItem("oauth_state")).not.toBe("server-state");
 	});
 });

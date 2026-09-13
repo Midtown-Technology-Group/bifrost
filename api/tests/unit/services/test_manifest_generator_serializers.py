@@ -227,6 +227,7 @@ def test_integration_serializer_filters_invalid_schema_and_redacts_oauth_secret(
         SimpleNamespace(
             id=INTEGRATION_ID,
             name="Halo",
+            description="Service desk integration",
             entity_id="tenant",
             entity_id_name="Tenant",
             default_entity_id="tenant-1",
@@ -238,6 +239,7 @@ def test_integration_serializer_filters_invalid_schema_and_redacts_oauth_secret(
     )
 
     assert [item.key for item in integration.config_schema] == ["api_url"]
+    assert integration.description == "Service desk integration"
     assert integration.oauth_provider.client_id == "client-id"
     assert integration.mappings[0].oauth_token_id is None
 

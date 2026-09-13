@@ -245,10 +245,10 @@ class TestDependencyGraphService:
     @pytest.mark.asyncio
     async def test_app_uses_workflow_matches_uuid_and_portable_refs(self, monkeypatch):
         workflow_id = uuid4()
-        app = SimpleNamespace(repo_prefix="apps/helpdesk/")
+        app = SimpleNamespace(repo_path="apps/helpdesk", repo_prefix="apps/helpdesk/")
         db = DbStub(
             ResultStub(rows=[("useWorkflow('ignored')",), ("useWorkflow('portable')",)]),
-            ResultStub(rows=[("features/tickets/workflows.py", "create_ticket")]),
+            ResultStub(rows=[("features/tickets/workflows.py", "create_ticket", "Create Ticket")]),
         )
         monkeypatch.setattr(
             "src.services.app_dependencies.parse_dependencies",
@@ -275,7 +275,13 @@ class TestDependencyGraphService:
                 SimpleNamespace(data_provider_id=None),
             ],
         )
-        db = DbStub(ResultStub(scalar=form))
+        db = DbStub(
+            ResultStub(scalar=form),
+            ResultStub(rows=[
+                (workflow_id, "Submit", "workflows/submit.py", "submit"),
+                (launch_id, "Launch", "workflows/launch.py", "launch"),
+            ]),
+        )
 
         deps = await DependencyGraphService(db)._get_dependencies("form", uuid4())
 
@@ -286,18 +292,27 @@ class TestDependencyGraphService:
         ]
 
     @pytest.mark.asyncio
-    async def test_form_dependencies_ignore_portable_refs_until_lookup_supported(self):
+    async def test_form_dependencies_resolve_portable_refs_and_ignore_unknown_refs(self):
+        workflow_id = uuid4()
         provider_id = uuid4()
         form = SimpleNamespace(
             workflow_id="features/tickets/workflows.py::create_ticket",
             launch_workflow_id="not-a-uuid",
             fields=[SimpleNamespace(data_provider_id=provider_id)],
         )
-        db = DbStub(ResultStub(scalar=form))
+        db = DbStub(
+            ResultStub(scalar=form),
+            ResultStub(rows=[
+                (workflow_id, "Create Ticket", "features/tickets/workflows.py", "create_ticket"),
+            ]),
+        )
 
         deps = await DependencyGraphService(db)._get_dependencies("form", uuid4())
 
-        assert deps == [("workflow", provider_id, "uses")]
+        assert deps == [
+            ("workflow", workflow_id, "uses"),
+            ("workflow", provider_id, "uses"),
+        ]
 
     @pytest.mark.asyncio
     async def test_agent_dependencies_are_deduplicated(self):

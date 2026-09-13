@@ -28,6 +28,10 @@ function parseWorkers(value: string | undefined): number {
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
+	metadata: {
+		sourceRevision: process.env.TEST_SOURCE_REVISION ?? "unrecorded",
+		sourceDirty: process.env.TEST_SOURCE_DIRTY ?? "unrecorded",
+	},
 	testDir: "./e2e",
 	outputDir: "playwright-results/test-results",
 	fullyParallel: true,

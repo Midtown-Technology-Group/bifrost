@@ -73,3 +73,9 @@ def test_embed_location_preserves_iframe_framing():
     assert 'add_header X-Content-Type-Options "nosniff" always;' in block
     assert 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;' in block
     assert 'add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;' in block
+
+
+def test_mcp_proxy_preserves_authority_port_for_strict_host_validation():
+    block = _location_block(NGINX_CONF.read_text(), "~ ^/mcp(/|$)")
+    assert "proxy_set_header Host $http_host;" in block
+    assert "proxy_set_header Host $host;" not in block

@@ -59,8 +59,9 @@ test.describe("Workflow infrastructure retry policy", () => {
 		});
 		await expect(workflowRow).toBeVisible();
 		await workflowRow
-			.getByRole("button", { name: "Edit organization scope" })
+			.getByRole("button", { name: `${WORKFLOW_FUNCTION} actions` })
 			.click();
+		await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
 
 		await expect(
 			page.getByRole("dialog", { name: "Edit Workflow Settings" }),
