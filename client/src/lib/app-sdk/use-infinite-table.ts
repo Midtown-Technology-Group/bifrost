@@ -57,38 +57,46 @@ export function useInfiniteTable(
   const offsetRef = useRef(0);
   const tableIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
+  const generationRef = useRef(0);
+  const refreshingRef = useRef(false);
+  const loadingMoreRef = useRef(false);
 
   const loadMore = useCallback(async () => {
-    if (cancelledRef.current) return;
+    if (cancelledRef.current || refreshingRef.current || loadingMoreRef.current) return;
     if (!hasMore && offsetRef.current > 0) return;
+    const generation = generationRef.current;
+    const offset = offsetRef.current;
+    loadingMoreRef.current = true;
     try {
       const snap = await tables.query(
         name,
         {
           where,
           limit: pageSize,
-          offset: offsetRef.current,
+          offset,
           order_by,
           order_dir,
           // After the first page, skip the count query for speed. The
           // hasMore signal comes from the page-size check below.
-          skip_count: offsetRef.current > 0 ? true : undefined,
+          skip_count: offset > 0 ? true : undefined,
         },
         scope,
       );
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || generation !== generationRef.current) return;
       tableIdRef.current = snap.table_id;
       const newRows = snap.documents.map(flattenDocument);
       setRows((prev) =>
-        offsetRef.current === 0 ? newRows : [...prev, ...newRows],
+        offset === 0 ? newRows : [...prev, ...newRows],
       );
-      offsetRef.current += newRows.length;
+      offsetRef.current = offset + newRows.length;
       setHasMore(newRows.length === pageSize);
       setLoading(false);
     } catch (e) {
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || generation !== generationRef.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
       setLoading(false);
+    } finally {
+      if (generation === generationRef.current) loadingMoreRef.current = false;
     }
     // pageSize/where/scope/order_by/order_dir are captured intentionally; if
     // they change the parent effect resets state and re-invokes from offset 0.
@@ -96,11 +104,45 @@ export function useInfiniteTable(
   }, [name, whereKey, pageSize, order_by, order_dir, scope, hasMore]);
 
   useEffect(() => {
+    let effectCancelled = false;
     cancelledRef.current = false;
+    generationRef.current += 1;
+    refreshingRef.current = false;
+    loadingMoreRef.current = false;
     offsetRef.current = 0;
     tableIdRef.current = null;
 
     let unsubscribe: (() => void) | null = null;
+    let refreshInFlight = false;
+    let refreshDirty = false;
+
+    async function loadInitialPage() {
+      if (effectCancelled) return;
+      try {
+        const snap = await tables.query(
+          name,
+          {
+            where,
+            limit: pageSize,
+            offset: offsetRef.current,
+            order_by,
+            order_dir,
+          },
+          scope,
+        );
+        if (effectCancelled) return;
+        tableIdRef.current = snap.table_id;
+        const newRows = snap.documents.map(flattenDocument);
+        setRows(newRows);
+        offsetRef.current = newRows.length;
+        setHasMore(newRows.length === pageSize);
+        setLoading(false);
+      } catch (e) {
+        if (effectCancelled) return;
+        setError(e instanceof Error ? e : new Error(String(e)));
+        setLoading(false);
+      }
+    }
 
     async function refreshLoadedSnapshot() {
       const targetCount = Math.max(offsetRef.current, pageSize);
@@ -122,7 +164,7 @@ export function useInfiniteTable(
           },
           scope,
         );
-        if (cancelledRef.current) return;
+        if (effectCancelled) return;
         if (refreshOffset === 0) total = snap.total;
         const pageRows = snap.documents.map(flattenDocument);
         refreshedRows.push(...pageRows);
@@ -130,11 +172,40 @@ export function useInfiniteTable(
         if (pageRows.length < limit) break;
       }
 
-      if (cancelledRef.current) return;
+      if (effectCancelled) return;
       setRows(refreshedRows);
       offsetRef.current = refreshedRows.length;
       setHasMore(refreshedRows.length < total);
       setError(null);
+    }
+
+    function refreshAuthoritativeSnapshot() {
+      if (refreshInFlight) {
+        refreshDirty = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      generationRef.current += 1;
+      loadingMoreRef.current = false;
+      refreshingRef.current = true;
+      void (async () => {
+        try {
+          do {
+            refreshDirty = false;
+            try {
+              await refreshLoadedSnapshot();
+            } catch (e) {
+              if (!effectCancelled) {
+                setError(e instanceof Error ? e : new Error(String(e)));
+              }
+            }
+          } while (refreshDirty && !effectCancelled);
+        } finally {
+          refreshInFlight = false;
+          if (!effectCancelled) refreshingRef.current = false;
+        }
+      })();
     }
 
     async function init() {
@@ -153,8 +224,8 @@ export function useInfiniteTable(
         setError(null);
         setLoading(true);
 
-        await loadMore();
-        if (cancelledRef.current) return;
+        await loadInitialPage();
+        if (effectCancelled) return;
 
         if (tableIdRef.current) {
           unsubscribe = tables.subscribe(
@@ -162,22 +233,23 @@ export function useInfiniteTable(
             subscribeFilter,
             (evt) => {
               if (evt.type === "error") {
-                if (!cancelledRef.current) setError(new Error(evt.message));
+                if (!effectCancelled) setError(new Error(evt.message));
                 return;
               }
+              if (evt.type === "table_invalidated") {
+                refreshAuthoritativeSnapshot();
+                return;
+              }
+              if (refreshInFlight) refreshDirty = true;
               applyEvent(evt, setRows);
             },
             () => {
-              void refreshLoadedSnapshot().catch((e) => {
-                if (!cancelledRef.current) {
-                  setError(e instanceof Error ? e : new Error(String(e)));
-                }
-              });
+              refreshAuthoritativeSnapshot();
             },
           );
         }
       } catch (e) {
-        if (cancelledRef.current) return;
+        if (effectCancelled) return;
         setError(e instanceof Error ? e : new Error(String(e)));
         setLoading(false);
       }
@@ -185,6 +257,7 @@ export function useInfiniteTable(
 
     init();
     return () => {
+      effectCancelled = true;
       cancelledRef.current = true;
       unsubscribe?.();
     };

@@ -353,12 +353,30 @@ async def _handle_table_message(
         await _re_evaluate_subscription(websocket, user, table_id)
         return
 
-    if msg_type != "document_change":
+    if msg_type not in {"document_change", "table_invalidated"}:
         return
 
     policy_user = _fresh_table_policy_user(user)
     policies = await _load_policies_for_table(table_id, policy_user)
     if policies is None:
+        return
+
+    if msg_type == "table_invalidated":
+        visible_change = any(
+            decide_visibility_change(
+                old_row=mutation.get("old_row"),
+                new_row=mutation.get("new_row"),
+                policies=policies,
+                user=policy_user,
+                user_filter=sub.get("filter"),
+            ) is not None
+            for mutation in payload.get("mutations", [])
+        )
+        if visible_change:
+            await websocket.send_json({
+                "type": "table_invalidated",
+                "table_id": table_id,
+            })
         return
 
     decision = decide_visibility_change(

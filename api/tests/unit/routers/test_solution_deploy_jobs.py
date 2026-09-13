@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.platform_jobs import PlatformJob
@@ -34,6 +35,48 @@ def test_solution_accountability_uses_the_producer_organization(monkeypatch):
     monkeypatch.setattr("src.routers.solutions.get_settings", lambda: settings)
 
     assert _source_accountability_organization_id() == str(producer_organization_id)
+
+
+@pytest.mark.asyncio
+async def test_deploy_stages_before_lock_and_cleans_artifact_on_sdk_conflict(monkeypatch):
+    events = []
+    app_id = uuid4()
+
+    class DB:
+        def add(self, _projection):
+            pass
+
+        async def execute(self, statement, *_args):
+            sql = str(statement)
+            if "pg_advisory_xact_lock" in sql:
+                events.append("lock")
+                return None
+            if "applications" in sql:
+                return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [app_id]))
+            events.append("conflict")
+            return SimpleNamespace(scalar_one_or_none=uuid4)
+
+        async def rollback(self):
+            events.append("rollback")
+
+    async def stage(_data):
+        events.append("stage")
+        return "a" * 64, 5
+
+    async def delete():
+        events.append("delete")
+
+    monkeypatch.setattr("src.routers.solutions.SolutionDeployJobStorage.write_bytes", AsyncMock(side_effect=stage))
+    monkeypatch.setattr("src.routers.solutions.SolutionDeployJobStorage.delete", AsyncMock(side_effect=delete))
+    with pytest.raises(HTTPException) as raised:
+        await _enqueue_solution_deploy_job(
+            DB(), kind="deploy", install_id=uuid4(), organization_id=None,
+            options={"candidate_id": "sha256:" + "a" * 64},
+            requested_by_user_id=uuid4(), requested_by_email="admin@example.com",
+            requested_by_name="Admin", input_bytes=b"input",
+        )
+    assert raised.value.status_code == 409
+    assert events == ["stage", "lock", "conflict", "rollback", "delete"]
 
 
 @pytest.mark.asyncio
