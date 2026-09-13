@@ -20,7 +20,18 @@ now send `table_invalidated` rather than per-row events. Existing built apps
 require an explicit SDK rebuild to consume those frames. This web SDK contract
 is separate from the CLI/server contract (currently version 12).
 
-Validation is pending: focused SDK/source/build and realtime tests, API type
-generation, CLI contract and skill tripwires, and the exact clean-commit full
-gate. The preceding artifact batch owns the host's active heavy test run; this
-batch has only undergone static parsing and migration-graph inspection so far.
+Focused backend verification passed 252 tests covering SDK source archives,
+builds, platform jobs, realtime invalidation, live application updates, solution
+counts and round trips, and CLI contract/DTO/skill tripwires. API type generation
+against this worktree's running API reproduced the merged generated types
+without changes. API type checking and linting passed, as did scoped client
+linting and migration-graph inspection.
+
+Merge `f89f88a5` also brings in the preceding batch's Azure download-header
+repair. Its 60 focused Azure, artifact, MCP, and chat-attachment tests passed
+against this combined tree.
+
+Client type checking, focused component/browser verification, and the exact
+clean-commit full gate remain pending. Run the full gate after incorporating
+the preceding batch's final merge into main; only one heavy local suite may
+run at a time on this shared host.
