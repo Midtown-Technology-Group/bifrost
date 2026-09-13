@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from types import ModuleType
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -838,3 +839,54 @@ async def test_read_uploaded_file_maps_missing_blob_to_file_not_found() -> None:
 
     with pytest.raises(FileNotFoundError, match="Uploaded file not found: upload.bin"):
         await client.read_uploaded_file("upload.bin")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("auth", ["account_key", "default_credential"])
+@pytest.mark.parametrize("active_content", [False, True])
+async def test_download_response_headers_are_signed_through_storage_service(
+    auth, active_content,
+) -> None:
+    """Both Azure auth modes preserve the shared download metadata contract."""
+    from azure.storage.blob import UserDelegationKey
+
+    from src.services.file_storage.service import FileStorageService
+
+    client = _owned_client(_settings(
+        azure_blob_auth=auth, azure_blob_account_key="a2V5",
+    ))
+    client._container_client = SimpleNamespace(
+        get_blob_client=lambda path: SimpleNamespace(
+            url=f"https://acct.blob.core.windows.net/files/{path}",
+        ),
+    )
+    key = UserDelegationKey()
+    key.signed_oid = "00000000-0000-0000-0000-000000000001"
+    key.signed_tid = "00000000-0000-0000-0000-000000000002"
+    key.signed_start = "2026-01-01T00:00:00Z"
+    key.signed_expiry = "2027-01-01T00:00:00Z"
+    key.signed_service = "b"
+    key.signed_version = "2025-11-05"
+    key.value = "a2V5"
+    client._service_client = SimpleNamespace(
+        get_user_delegation_key=AsyncMock(return_value=key),
+    )
+    storage = object.__new__(FileStorageService)
+    storage._s3_storage = client
+
+    url = await storage.generate_presigned_download_url(
+        "legacy.html",
+        response_content_type="application/octet-stream" if active_content else None,
+        response_content_disposition="attachment" if active_content else None,
+    )
+
+    query = parse_qs(urlparse(url).query)
+    assert query["sp"] == ["r"]
+    assert query["sig"]
+    assert query.get("rsct") == (["application/octet-stream"] if active_content else None)
+    assert query.get("rscd") == (["attachment"] if active_content else None)
+    if auth == "default_credential":
+        client._service_client.get_user_delegation_key.assert_awaited_once()
+        assert query["skoid"] == [key.signed_oid]
+    else:
+        client._service_client.get_user_delegation_key.assert_not_awaited()
