@@ -34,7 +34,15 @@ Merge `f89f88a5` also brings in the preceding batch's Azure download-header
 repair. Its 60 focused Azure, artifact, MCP, and chat-attachment tests passed
 against this combined tree.
 
-Focused browser verification and the exact
-clean-commit full gate remain pending. Run the full gate after incorporating
+The focused browser run passed all eight checks (including setup and MCP
+settings prerequisites): `./test.sh client e2e
+e2e/applications-sdk-update.admin.spec.ts
+e2e/solutions-sdk-update.admin.spec.ts
+e2e/policies-app-realtime.admin.spec.ts`. This covers desktop/mobile SDK-update
+controls, solution update status, and live table subscriptions. The SDK-update
+UI specs use explicit API/WebSocket fixtures; the earlier backend SDK-update
+E2E tests exercise the live durable job boundary.
+
+The exact clean-commit full gate remains pending. Run the full gate after incorporating
 the preceding batch's final merge into main; only one heavy local suite may
 run at a time on this shared host.
