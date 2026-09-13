@@ -6,6 +6,9 @@ from src.jobs.execution_policy import (
 )
 from src.jobs.platform.application_deploy import APPLICATION_DEPLOY_DEFINITION
 from src.jobs.platform.application_publish import APPLICATION_PUBLISH_DEFINITION
+from src.jobs.platform.application_sdk_update import (
+    APPLICATION_SDK_UPDATE_DEFINITION,
+)
 from src.jobs.platform.base import PlatformJobDefinition
 from src.jobs.platform.embedding_reindex import EMBEDDING_REINDEX_DEFINITION
 from src.jobs.platform.git_operation import GIT_OPERATION_DEFINITION
@@ -38,6 +41,7 @@ from src.jobs.platform.workspace_release_prepare import (
 _DEFINITIONS = {
     SOLUTION_ACCOUNTABILITY_RECONCILE_DEFINITION.job_type: SOLUTION_ACCOUNTABILITY_RECONCILE_DEFINITION,
     APPLICATION_DEPLOY_DEFINITION.job_type: APPLICATION_DEPLOY_DEFINITION,
+    APPLICATION_SDK_UPDATE_DEFINITION.job_type: APPLICATION_SDK_UPDATE_DEFINITION,
     APPLICATION_PUBLISH_DEFINITION.job_type: APPLICATION_PUBLISH_DEFINITION,
     OAUTH_REFRESH_DEFINITION.job_type: OAUTH_REFRESH_DEFINITION,
     WEBHOOK_RENEWAL_DEFINITION.job_type: WEBHOOK_RENEWAL_DEFINITION,
