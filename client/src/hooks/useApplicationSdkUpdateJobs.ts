@@ -29,7 +29,7 @@ export function useApplicationSdkUpdateJobs({
 }: { solutionId?: string | null } = {}) {
 	const queryClient = useQueryClient();
 	const [states, setStates] = useState<
-		Record<string, ApplicationSdkUpdateState>
+		Record<string, { jobId: string; state: ApplicationSdkUpdateState }>
 	>({});
 
 	const invalidateSdkConsumers = useCallback(() => {
@@ -55,7 +55,7 @@ export function useApplicationSdkUpdateJobs({
 			const nextState = stateFromStatus(job.status);
 			setStates((current) => ({
 				...current,
-				[appId]: nextState,
+				[appId]: { jobId: job.id, state: nextState },
 			}));
 			if (TERMINAL_STATUSES.has(job.status)) {
 				invalidateSdkConsumers();
@@ -68,16 +68,20 @@ export function useApplicationSdkUpdateJobs({
 		setStates((current) => {
 			const next = { ...current };
 			for (const operation of accepted) {
-				next[operation.application_id] = stateFromStatus(
-					operation.status,
-				);
+				// A WebSocket update may beat the original enqueue response.
+				// Preserve that job's observed progress; a new job can seed state.
+				if (next[operation.application_id]?.jobId === operation.job_id) continue;
+				next[operation.application_id] = {
+					jobId: operation.job_id,
+					state: stateFromStatus(operation.status),
+				};
 			}
 			return next;
 		});
 	}, []);
 
 	const getUpdateState = useCallback(
-		(appId: string): ApplicationSdkUpdateState => states[appId] ?? "idle",
+		(appId: string): ApplicationSdkUpdateState => states[appId]?.state ?? "idle",
 		[states],
 	);
 
@@ -85,7 +89,7 @@ export function useApplicationSdkUpdateJobs({
 		(appIds: string[]): boolean =>
 			appIds.some(
 				(appId) =>
-					states[appId] === "queued" || states[appId] === "updating",
+					states[appId]?.state === "queued" || states[appId]?.state === "updating",
 			),
 		[states],
 	);
