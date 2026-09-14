@@ -41,6 +41,7 @@ def test_ai_model_settings_crud_and_assignment(e2e_client, platform_admin):
     assert connection_resp.status_code == 201, connection_resp.text
     connection = connection_resp.json()
     assert connection["api_key_set"] is True
+    assert connection["anthropic_prompt_cache_supported"] is None
     assert "api_key" not in connection
     assert connection["endpoint"] == "https://openrouter.ai/api/v1"
 
@@ -105,6 +106,7 @@ def test_ai_model_settings_crud_and_assignment(e2e_client, platform_admin):
     assert profile_resp.status_code == 201, profile_resp.text
     profile = profile_resp.json()
     assert profile["connection"]["name"] == "Default E2E Renamed"
+    assert profile["connection"]["anthropic_prompt_cache_supported"] is None
     assert profile["enabled_for_chat"] is True
 
     assignment_resp = e2e_client.put(

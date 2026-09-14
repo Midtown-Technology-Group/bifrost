@@ -42,7 +42,7 @@ def test_raise_for_status_with_detail_falls_back_for_non_mapping_json():
 
 
 @pytest.mark.asyncio
-async def test_send_with_5xx_retry_skips_non_idempotent_methods(monkeypatch):
+async def test_send_with_retry_skips_non_idempotent_methods(monkeypatch):
     calls: list[float] = []
 
     async def no_sleep(delay: float) -> None:
@@ -57,7 +57,7 @@ async def test_send_with_5xx_retry_skips_non_idempotent_methods(monkeypatch):
 
     monkeypatch.setattr(client.asyncio, "sleep", no_sleep)
 
-    response = await client._send_with_5xx_retry("post", do_send)
+    response = await client._send_with_retry("post", do_send)
 
     assert response.status_code == 503
     assert sent == 1
@@ -65,7 +65,7 @@ async def test_send_with_5xx_retry_skips_non_idempotent_methods(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_send_with_5xx_retry_uses_backoff_until_success(monkeypatch):
+async def test_send_with_retry_uses_backoff_until_success(monkeypatch):
     sleeps: list[float] = []
     statuses = [504, 503, 200]
 
@@ -77,7 +77,7 @@ async def test_send_with_5xx_retry_uses_backoff_until_success(monkeypatch):
 
     monkeypatch.setattr(client.asyncio, "sleep", no_sleep)
 
-    response = await client._send_with_5xx_retry("GET", do_send)
+    response = await client._send_with_retry("GET", do_send)
 
     assert response.status_code == 200
     assert sleeps == list(client.SDK_RETRY_BACKOFF_SECONDS[:2])
@@ -103,7 +103,7 @@ async def test_get_once_bypasses_refresh_and_retry_policy(monkeypatch):
     refresh_request.assert_not_awaited()
 
 
-def test_send_sync_with_5xx_retry_exhausts_retry_budget(monkeypatch):
+def test_send_sync_with_retry_exhausts_retry_budget(monkeypatch):
     sleeps: list[float] = []
     sent = 0
 
@@ -114,7 +114,7 @@ def test_send_sync_with_5xx_retry_exhausts_retry_budget(monkeypatch):
 
     monkeypatch.setattr(client.time, "sleep", lambda delay: sleeps.append(delay))
 
-    response = client._send_sync_with_5xx_retry("delete", do_send)
+    response = client._send_sync_with_retry("delete", do_send)
 
     assert response.status_code == 502
     assert sent == 1 + len(client.SDK_RETRY_BACKOFF_SECONDS)

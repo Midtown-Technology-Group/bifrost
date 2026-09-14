@@ -62,6 +62,20 @@ IDEMPOTENT_METHODS: frozenset[str] = frozenset(
 SDK_RETRY_BACKOFF_SECONDS: tuple[float, ...] = (0.5, 1.5, 4.0, 10.0, 20.0)
 
 
+# HTTP reads and explicit retry_transient callers can retry these failures.
+# Ordinary writes retain the fork's narrower policy because the server may
+# have committed a mutation before the connection failed.
+TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+    httpx.RemoteProtocolError,
+)
+
+
 def _is_idempotent(method: str) -> bool:
     return method.upper() in IDEMPOTENT_METHODS
 
@@ -70,28 +84,32 @@ def _is_transient_5xx(status_code: int) -> bool:
     return status_code in TRANSIENT_5XX_STATUS_CODES
 
 
-async def _send_with_5xx_retry(
+async def _send_with_retry(
     method: str,
     do_send: Callable[[], Awaitable[httpx.Response]],
     *,
-    retry_connect_timeout: bool = False,
+    retry_safe: bool = False,
+    retry_transient: bool = False,
 ) -> httpx.Response:
-    """Retry transient 5xx and explicitly safe read connection timeouts.
+    """Retry safe requests within one shared six-attempt budget.
 
-    Connection timeouts share the existing six-attempt budget with 5xx retries.
-    They are opt-in independently of HTTP method idempotency: ordinary writes,
-    including conditional PATCH, never gain transport retries. The callback must
-    rebuild a fresh request on every call; it must not reuse a consumed body.
+    Read-only POST callers retain their 5xx and connection-timeout opt-in.
+    Broader transport retries apply to HTTP reads or explicit retry_transient
+    callers. Ordinary writes retain their existing 5xx policy without gaining
+    replay after an uncertain transport failure.
     """
+    retry_status = _is_idempotent(method) or retry_safe or retry_transient
+    retry_transport = method.upper() in {"GET", "HEAD", "OPTIONS"} or retry_transient
     for attempt in range(len(SDK_RETRY_BACKOFF_SECONDS) + 1):
         try:
             response = await do_send()
-        except httpx.ConnectTimeout:
-            if not retry_connect_timeout or attempt == len(SDK_RETRY_BACKOFF_SECONDS):
+        except TRANSIENT_TRANSPORT_EXCEPTIONS as error:
+            allowed = retry_transport or (retry_safe and isinstance(error, httpx.ConnectTimeout))
+            if not allowed or attempt == len(SDK_RETRY_BACKOFF_SECONDS):
                 raise
         else:
             if (
-                not _is_idempotent(method)
+                not retry_status
                 or not _is_transient_5xx(response.status_code)
                 or attempt == len(SDK_RETRY_BACKOFF_SECONDS)
             ):
@@ -100,21 +118,31 @@ async def _send_with_5xx_retry(
     raise AssertionError("Retry loop must return a response or raise")
 
 
-def _send_sync_with_5xx_retry(
+def _send_sync_with_retry(
     method: str,
     do_send: Callable[[], httpx.Response],
+    *,
+    retry_transient: bool = False,
 ) -> httpx.Response:
-    """Sync counterpart of _send_with_5xx_retry."""
-    response = do_send()
-    if not _is_idempotent(method):
+    """Sync counterpart of :func:`_send_with_retry`."""
+    retryable = _is_idempotent(method) or retry_transient
+    backoffs = SDK_RETRY_BACKOFF_SECONDS if retryable else ()
+    response: httpx.Response | None = None
+    for i in range(len(backoffs) + 1):
+        if i > 0:
+            time.sleep(backoffs[i - 1])
+        try:
+            response = do_send()
+        except TRANSIENT_TRANSPORT_EXCEPTIONS:
+            if method.upper() not in {"GET", "HEAD", "OPTIONS"} and not retry_transient:
+                raise
+            if i == len(backoffs):
+                raise
+            continue
+        if i < len(backoffs) and _is_transient_5xx(response.status_code):
+            continue
         return response
-
-    for delay in SDK_RETRY_BACKOFF_SECONDS:
-        if not _is_transient_5xx(response.status_code):
-            return response
-        time.sleep(delay)
-        response = do_send()
-    return response
+    return response  # type: ignore[return-value]
 
 
 def raise_for_status_with_detail(response: httpx.Response) -> None:
@@ -773,6 +801,8 @@ class BifrostClient:
         self, method: str, path: str, **kwargs
     ) -> httpx.Response:
         """Make a synchronous request, refreshing on 401 and retrying once."""
+        retry_transient = kwargs.pop("retry_transient", False)
+
         def _send() -> httpx.Response:
             observed_access_token = self._access_token
             send = getattr(self._sync_http, method.lower())
@@ -783,18 +813,19 @@ class BifrostClient:
                 response = send(path, **kwargs)
             return response
 
-        return _send_sync_with_5xx_retry(method, _send)
+        return _send_sync_with_retry(method, _send, retry_transient=retry_transient)
 
     async def _request_with_refresh(
         self, method: str, path: str, *, retry_safe: bool = False, **kwargs
     ) -> httpx.Response:
         """Make an HTTP request, refreshing token on 401 and retrying once.
 
-        Wrapped with :func:`_send_with_5xx_retry` so idempotent methods retry
-        transient 502/503/504 during rolling API deploys. The 401-refresh-retry
+        Idempotent methods retry transient 502/503/504 responses. HTTP reads
+        and explicit ``retry_transient=True`` callers also retry transport errors. The 401-refresh-retry
         fires inside each attempt, so a refresh-then-5xx still benefits from
         the outer retry.
         """
+        retry_transient = kwargs.pop("retry_transient", False)
 
         async def _send() -> httpx.Response:
             http = self._get_async_client()
@@ -806,9 +837,8 @@ class BifrostClient:
                     response = await getattr(http, method)(path, **kwargs)
             return response
 
-        retry_method = "GET" if retry_safe else method
-        return await _send_with_5xx_retry(
-            retry_method, _send, retry_connect_timeout=retry_safe
+        return await _send_with_retry(
+            method, _send, retry_safe=retry_safe, retry_transient=retry_transient
         )
 
     async def get(self, path: str, **kwargs) -> httpx.Response:
@@ -826,7 +856,7 @@ class BifrostClient:
     async def post(
         self, path: str, *, retry_safe: bool = False, **kwargs
     ) -> httpx.Response:
-        """Make POST request, optionally retrying a read-only POST on transient 5xx."""
+        """Make POST request; retry_safe permits 5xx and connection-timeout read retries."""
         return await self._request_with_refresh(
             "post", path, retry_safe=retry_safe, **kwargs
         )
@@ -855,9 +885,10 @@ class BifrostClient:
         Needed for verbs whose shortcut method on ``httpx.AsyncClient`` does
         not accept a body (DELETE) but whose REST endpoint expects one.
 
-        Wrapped with :func:`_send_with_5xx_retry` so idempotent methods retry
-        transient 502/503/504 during rolling API deploys.
+        Idempotent methods retry transient 502/503/504 responses. HTTP reads
+        and explicit ``retry_transient=True`` callers also retry transport errors.
         """
+        retry_transient = kwargs.pop("retry_transient", False)
 
         async def _send() -> httpx.Response:
             http = self._get_async_client()
@@ -869,9 +900,8 @@ class BifrostClient:
                     response = await http.request(method.upper(), path, **kwargs)
             return response
 
-        retry_method = "GET" if retry_safe else method
-        return await _send_with_5xx_retry(
-            retry_method, _send, retry_connect_timeout=retry_safe
+        return await _send_with_retry(
+            method, _send, retry_safe=retry_safe, retry_transient=retry_transient
         )
 
     def stream(self, method: str, path: str, **kwargs):
@@ -888,7 +918,7 @@ class BifrostClient:
     def get_sync(self, path: str, **kwargs) -> httpx.Response:
         """Make synchronous GET request.
 
-        Wrapped with :func:`_send_sync_with_5xx_retry` so transient 502/503/504
+        Wrapped with :func:`_send_sync_with_retry` so transient 502/503/504
         from rolling API deploys are retried.
         """
         return self._request_with_refresh_sync("GET", path, **kwargs)
