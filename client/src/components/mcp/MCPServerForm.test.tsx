@@ -1,6 +1,6 @@
 import { act } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { renderWithProviders, screen } from "@/test-utils";
+import { renderWithProviders, screen, waitFor } from "@/test-utils";
 import { MCPServerForm } from "./MCPServerForm";
 const mutateAsync = vi.hoisted(() => vi.fn());
 const discover = vi.hoisted(() => vi.fn());
@@ -125,4 +125,49 @@ it("keeps discovery failure guidance beside editable, labelled OAuth fields", as
 		"readonly",
 	);
 	expect(screen.getByLabelText(/Redirect URL/)).toHaveAttribute("readonly");
+});
+
+it("reads scopes from nested authorization-server metadata", async () => {
+	mutateAsync.mockReset().mockResolvedValue({ id: "created" });
+	discover.mockResolvedValue({
+		data: {
+			metadata: {
+				authorization_endpoint: "https://issuer.example.com/authorize",
+				token_endpoint: "https://issuer.example.com/token",
+				authorization_server_metadata: {
+					issuer: "https://issuer.example.com",
+					scopes_supported: ["mcp:access", "profile"],
+				},
+				protected_resource_metadata: {
+					resource: "https://resource.example.com/mcp",
+				},
+			},
+		},
+	});
+	const { user } = renderWithProviders(<MCPServerForm />);
+
+	await user.type(screen.getByLabelText("Display name"), "Scoped MCP");
+	await user.type(
+		screen.getByLabelText("Server URL"),
+		"https://resource.example.com/mcp",
+	);
+	await user.click(
+		screen.getByRole("button", { name: "Discover OAuth metadata" }),
+	);
+
+	expect(await screen.findByLabelText("Scopes")).toHaveValue(
+		"mcp:access profile",
+	);
+	await user.click(screen.getByRole("button", { name: "Create Server" }));
+
+	await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+	expect(mutateAsync).toHaveBeenCalledWith(
+		expect.objectContaining({
+			body: expect.objectContaining({
+				oauth_provider: expect.objectContaining({
+					scopes: ["mcp:access", "profile"],
+				}),
+			}),
+		}),
+	);
 });

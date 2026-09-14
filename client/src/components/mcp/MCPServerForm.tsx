@@ -67,6 +67,9 @@ interface DiscoveredMetadata {
 	scopes_supported?: string[];
 	scopes?: string[] | string;
 	grant_types_supported?: string[];
+	authorization_server_metadata?: {
+		scopes_supported?: string[];
+	};
 	[key: string]: unknown;
 }
 
@@ -75,7 +78,10 @@ function readMetadata(metadata: DiscoveredMetadata) {
 		metadata.authorization_endpoint ?? metadata.authorization_url ?? "";
 	const token_url = metadata.token_endpoint ?? metadata.token_url ?? "";
 	const audience = metadata.audience ?? metadata.resource ?? "";
-	const scopesValue = metadata.scopes_supported ?? metadata.scopes;
+	const scopesValue =
+		metadata.authorization_server_metadata?.scopes_supported ??
+		metadata.scopes_supported ??
+		metadata.scopes;
 	const scopes = Array.isArray(scopesValue)
 		? scopesValue.join(" ")
 		: typeof scopesValue === "string"
