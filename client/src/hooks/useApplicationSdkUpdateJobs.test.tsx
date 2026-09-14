@@ -144,6 +144,37 @@ describe("useApplicationSdkUpdateJobs", () => {
 		},
 	);
 
+	it("ignores notifications and responses for a job replaced by a retry", () => {
+		const { result } = renderHook(() => useApplicationSdkUpdateJobs(), {
+			wrapper: wrapper(new QueryClient()),
+		});
+		act(() => mocks.callback?.(makeJob({ status: "failed" })));
+		act(() => result.current.trackAccepted([{
+			application_id: "app-1", job_id: "job-2", status: "queued",
+			reused: false, notification_id: null,
+		}]));
+		act(() => mocks.callback?.(makeJob({ status: "failed" })));
+		expect(result.current.getUpdateState("app-1")).toBe("queued");
+		act(() => result.current.trackAccepted([{
+			application_id: "app-1", job_id: "job-1", status: "queued",
+			reused: true, notification_id: null,
+		}]));
+		expect(result.current.getUpdateState("app-1")).toBe("queued");
+		act(() => mocks.callback?.(makeJob({ id: "job-2", status: "running" })));
+		expect(result.current.getUpdateState("app-1")).toBe("updating");
+	});
+
+	it("ignores a previously unseen job older than the latest notification", () => {
+		const { result } = renderHook(() => useApplicationSdkUpdateJobs(), {
+			wrapper: wrapper(new QueryClient()),
+		});
+		act(() => mocks.callback?.(makeJob({
+			id: "job-2", status: "running", created_at: "2026-09-12T13:00:00Z",
+		})));
+		act(() => mocks.callback?.(makeJob({ status: "failed" })));
+		expect(result.current.getUpdateState("app-1")).toBe("updating");
+	});
+
 	it("ignores application jobs that are not the SDK update job type", () => {
 		const queryClient = new QueryClient({
 			defaultOptions: { queries: { retry: false } },

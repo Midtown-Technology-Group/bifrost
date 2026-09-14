@@ -29,7 +29,12 @@ export function useApplicationSdkUpdateJobs({
 }: { solutionId?: string | null } = {}) {
 	const queryClient = useQueryClient();
 	const [states, setStates] = useState<
-		Record<string, { jobId: string; state: ApplicationSdkUpdateState }>
+		Record<string, {
+			jobId: string;
+			state: ApplicationSdkUpdateState;
+			createdAt?: string;
+			previousJobIds: string[];
+		}>
 	>({});
 
 	const invalidateSdkConsumers = useCallback(() => {
@@ -53,10 +58,24 @@ export function useApplicationSdkUpdateJobs({
 			const appId = appIdFromJob(job);
 			if (!appId) return;
 			const nextState = stateFromStatus(job.status);
-			setStates((current) => ({
-				...current,
-				[appId]: { jobId: job.id, state: nextState },
-			}));
+			setStates((current) => {
+				const previous = current[appId];
+				if (previous?.previousJobIds.includes(job.id)) return current;
+				if (previous?.createdAt && Date.parse(job.created_at) < Date.parse(previous.createdAt)) {
+					return current;
+				}
+				return {
+					...current,
+					[appId]: {
+						jobId: job.id,
+						state: nextState,
+						createdAt: job.created_at,
+						previousJobIds: previous && previous.jobId !== job.id
+							? [...previous.previousJobIds, previous.jobId]
+							: previous?.previousJobIds ?? [],
+					},
+				};
+			});
 			if (TERMINAL_STATUSES.has(job.status)) {
 				invalidateSdkConsumers();
 			}
@@ -70,10 +89,14 @@ export function useApplicationSdkUpdateJobs({
 			for (const operation of accepted) {
 				// A WebSocket update may beat the original enqueue response.
 				// Preserve that job's observed progress; a new job can seed state.
-				if (next[operation.application_id]?.jobId === operation.job_id) continue;
+				const previous = next[operation.application_id];
+				if (previous?.jobId === operation.job_id || previous?.previousJobIds.includes(operation.job_id)) continue;
 				next[operation.application_id] = {
 					jobId: operation.job_id,
 					state: stateFromStatus(operation.status),
+					previousJobIds: previous
+						? [...previous.previousJobIds, previous.jobId]
+						: [],
 				};
 			}
 			return next;
