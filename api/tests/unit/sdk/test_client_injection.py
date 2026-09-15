@@ -250,7 +250,7 @@ async def test_async_5xx_retry_only_retries_idempotent_methods(monkeypatch):
         get_calls += 1
         return next(get_responses)
 
-    response = await client_mod._send_with_5xx_retry("GET", send_get)
+    response = await client_mod._send_with_retry("GET", send_get)
     assert response.status_code == 200
     assert get_calls == 3
     assert sleeps == [0.5, 1.5]
@@ -262,7 +262,7 @@ async def test_async_5xx_retry_only_retries_idempotent_methods(monkeypatch):
         post_calls += 1
         return httpx.Response(503)
 
-    response = await client_mod._send_with_5xx_retry("POST", send_post)
+    response = await client_mod._send_with_retry("POST", send_post)
     assert response.status_code == 503
     assert post_calls == 1
 
@@ -274,7 +274,7 @@ def test_sync_5xx_retry_and_error_detail(monkeypatch):
     monkeypatch.setattr(client_mod.time, "sleep", lambda delay: sleeps.append(delay))
 
     responses = iter([httpx.Response(504), httpx.Response(200)])
-    response = client_mod._send_sync_with_5xx_retry("DELETE", lambda: next(responses))
+    response = client_mod._send_sync_with_retry("DELETE", lambda: next(responses))
 
     assert response.status_code == 200
     assert sleeps == [0.5]

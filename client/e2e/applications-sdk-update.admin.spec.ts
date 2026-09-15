@@ -235,8 +235,12 @@ test.describe("Applications SDK update UI", () => {
 		await expect(
 			page.getByRole("button", { name: "Update all SDKs (3)" }),
 		).toBeVisible();
+		const monitor = page.getByRole("article").filter({ hasText: "Workflow Monitor" });
 		await page.getByLabel(/search apps/i).fill("Dispatch");
+		await expect(monitor).toBeHidden();
 		await page.getByRole("button", { name: "Update all SDKs (3)" }).click();
+		await page.getByLabel(/search apps/i).clear();
+		await expect(monitor).toBeVisible();
 		sdkFixture.runMonitorUpdate();
 		await expect(
 			page
