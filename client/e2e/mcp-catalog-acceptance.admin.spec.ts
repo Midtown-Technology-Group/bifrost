@@ -166,7 +166,7 @@ test.describe("MCP service catalog acceptance", () => {
 		}
 	});
 
-	test("activates, refreshes, reloads, disconnects, and deletes a service MCP catalog", async ({
+	test("activates, refreshes, reloads, and disconnects a service MCP catalog", async ({
 		page,
 		api,
 	}) => {
@@ -274,24 +274,8 @@ test.describe("MCP service catalog acceptance", () => {
 			FIXTURE_TOOL_NAME,
 		);
 
-		await page.getByRole("button", { name: "Delete connection" }).click();
-		const deleteDialog = page.getByRole("alertdialog", {
-			name: "Delete this connection?",
-		});
-		await expect(deleteDialog).toBeVisible();
-		await deleteDialog
-			.getByRole("button", { name: "Delete connection" })
-			.click();
-		await expect(page).toHaveURL(new RegExp(`/mcp-servers/${server.id}$`));
-		connectionId = undefined;
+		// Connection deletion is covered by mcp-management-acceptance.admin.spec.ts.
+		// Keep this case focused on the catalog; afterEach removes its fixtures.
 
-		const missingConnection = await api.get(
-			`/api/mcp-connections/${connection.id}`,
-		);
-		await expectStatus(
-			missingConnection,
-			[404],
-			"read deleted MCP catalog connection",
-		);
 	});
 });

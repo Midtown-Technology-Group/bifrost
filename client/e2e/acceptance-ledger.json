@@ -746,11 +746,11 @@
 		{
 			"id": "MCP-CATALOG-01",
 			"area": "MCP servers",
-			"title": "activates, refreshes, reloads, disconnects, and deletes a service MCP catalog",
+			"title": "activates, refreshes, reloads, and disconnects a service MCP catalog",
 			"tests": [
 				{
 					"spec": "mcp-catalog-acceptance.admin.spec.ts",
-					"title": "activates, refreshes, reloads, disconnects, and deletes a service MCP catalog",
+					"title": "activates, refreshes, reloads, and disconnects a service MCP catalog",
 					"project": "platform-admin",
 					"variant": "desktop",
 					"proof": "real-platform"
