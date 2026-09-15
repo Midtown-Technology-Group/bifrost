@@ -61,6 +61,9 @@ export function useApplicationSdkUpdateJobs({
 			setStates((current) => {
 				const previous = current[appId];
 				if (previous?.previousJobIds.includes(job.id)) return current;
+				if (previous && !previous.createdAt && previous.jobId !== job.id) {
+					return current;
+				}
 				if (previous?.createdAt && Date.parse(job.created_at) < Date.parse(previous.createdAt)) {
 					return current;
 				}

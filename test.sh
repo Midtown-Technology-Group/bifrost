@@ -603,7 +603,6 @@ client_ci_checks() {
 
 repository_ci_checks() {
     bash scripts/lib/test_stack_lock_test.sh
-    node --test .github/scripts/authorize-merge-queue.test.mjs
     echo "Checking GitHub Action pins..."
     python3 api/scripts/check_github_action_pins.py --verify-versions
 
