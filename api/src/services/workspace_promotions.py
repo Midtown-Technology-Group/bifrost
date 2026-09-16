@@ -1848,6 +1848,23 @@ class WorkspacePromotionPreviewService:
                 baseline_metadata = _registered_entity_metadata(
                     base.files[path], path, workflow.function_name
                 )
+                baseline_drift = [
+                    field
+                    for field in ("name", "type")
+                    if getattr(workflow, field) != baseline_metadata[field]
+                ]
+                if baseline_drift:
+                    baseline_diagnostics.append(
+                        PromotionDiagnostic(
+                            code="non_selected_registration_metadata_changed",
+                            severity="blocker",
+                            message=(
+                                "source changes registered metadata outside the selected entry: "
+                                + ", ".join(baseline_drift)
+                            ),
+                            path=path,
+                        )
+                    )
                 if REQUIRED_R0_BOUNDS - set(baseline_metadata["bounds"]):
                     baseline_diagnostics.append(
                         PromotionDiagnostic(
