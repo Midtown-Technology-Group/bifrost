@@ -145,13 +145,17 @@ class PydanticAIClient(BaseLLMClient):
         settings: dict[str, Any] = {}
         if resolved_max_tokens is not None:
             settings["max_tokens"] = resolved_max_tokens
-        if self.provider_name == "openai":
+        if self.config.provider == "openai" and self.provider_name != "openrouter":
             settings["openai_store"] = False
-        elif self.provider_name == "anthropic":
+        elif self.config.provider == "anthropic":
             # Prompt caching for ai.complete/ai.stream as well; see model_factory.
             from src.services.agent_runtime.model_factory import anthropic_prompt_cache_settings
 
-            settings.update(anthropic_prompt_cache_settings())
+            settings.update(
+                anthropic_prompt_cache_settings(
+                    self.config.anthropic_prompt_cache_supported
+                )
+            )
         return cast(ModelSettings, settings)
 
     @staticmethod

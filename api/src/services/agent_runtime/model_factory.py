@@ -34,14 +34,18 @@ def agent_model_settings(
         settings["max_tokens"] = resolved_max_tokens
     if is_openrouter_endpoint(config.endpoint):
         settings["extra_body"] = {"session_id": session_id[:256]}
-    elif config.provider == "openai":
+    if config.provider == "openai" and not is_openrouter_endpoint(config.endpoint):
         settings["openai_store"] = False
     elif config.provider == "anthropic":
-        settings.update(anthropic_prompt_cache_settings())
+        settings.update(
+            anthropic_prompt_cache_settings(config.anthropic_prompt_cache_supported)
+        )
     return settings
 
 
-def anthropic_prompt_cache_settings() -> dict[str, object]:
+def anthropic_prompt_cache_settings(
+    supported: bool | None = None,
+) -> dict[str, object]:
     """Anthropic prompt-cache breakpoints for agent and client requests.
 
     Agent requests re-send the same system prompt and tool definitions on every
@@ -51,6 +55,8 @@ def anthropic_prompt_cache_settings() -> dict[str, object]:
     automatic moving breakpoint on the latest message, cache the stable prefix
     (roughly 90% cheaper on reads, and noticeably lower time-to-first-token).
     """
+    if supported is False:
+        return {}
     return {
         "anthropic_cache": True,
         "anthropic_cache_instructions": True,
@@ -199,6 +205,25 @@ def create_agent_model(config: LLMConfig, *, model: str | None = None) -> Model:
         from anthropic import AsyncAnthropic
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
+        from src.services.anthropic_prompt_cache import request_with_prompt_cache_fallback
+
+        class BifrostAnthropicModel(AnthropicModel):
+            async def _messages_create(
+                self, messages, stream, model_settings, model_request_parameters
+            ):
+                parent_create = super()._messages_create
+
+                async def send(settings: dict[str, object]):
+                    return await parent_create(
+                        messages,
+                        stream,
+                        settings,  # type: ignore[arg-type]
+                        model_request_parameters,
+                    )
+
+                return await request_with_prompt_cache_fallback(
+                    send, dict(model_settings), config
+                )
 
         client = AsyncAnthropic(
             api_key=config.api_key,
@@ -207,7 +232,7 @@ def create_agent_model(config: LLMConfig, *, model: str | None = None) -> Model:
             max_retries=0,
         )
         provider = AnthropicProvider(anthropic_client=client)
-        return AnthropicModel(model_name, provider=provider)
+        return BifrostAnthropicModel(model_name, provider=provider)
 
     if config.provider == "google":
         from pydantic_ai.models.google import GoogleModel
