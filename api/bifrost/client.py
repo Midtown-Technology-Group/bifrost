@@ -23,7 +23,7 @@ from .credentials import (
     clear_credentials,
     get_credentials,
     is_token_expired,
-    load_allowed_dotenv,
+    load_dotenv_context,
     resolve_credentials,
     resolve_current_connection,
     resolve_environment_url,
@@ -56,10 +56,26 @@ class BifrostDependencyError(BifrostAPIError):
 # SDK is machine-to-machine, so the retry budget is more generous than
 # the user-facing client.
 TRANSIENT_5XX_STATUS_CODES: frozenset[int] = frozenset({502, 503, 504})
-IDEMPOTENT_METHODS: frozenset[str] = frozenset(
-    {"GET", "PUT", "DELETE", "HEAD", "OPTIONS"}
-)
+IDEMPOTENT_METHODS: frozenset[str] = frozenset({"GET", "PUT", "DELETE", "HEAD", "OPTIONS"})
 SDK_RETRY_BACKOFF_SECONDS: tuple[float, ...] = (0.5, 1.5, 4.0, 10.0, 20.0)
+
+
+# Transient transport-layer failures (connection reset, read/connect timeout,
+# pool exhaustion, protocol error). Unlike a 5xx these RAISE rather than return a
+# response, so they bypassed the retry loop entirely: one reset worker<->api
+# connection failed the whole workflow. Retried under the same gate as 5xx:
+# idempotent methods, or a caller that opts in with ``retry_transient=True`` for
+# an operation that is idempotent in effect (an ON CONFLICT upsert, an
+# absolute-value cursor write, etc.).
+TRANSIENT_TRANSPORT_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+    httpx.RemoteProtocolError,
+)
 
 
 def _is_idempotent(method: str) -> bool:
@@ -70,51 +86,65 @@ def _is_transient_5xx(status_code: int) -> bool:
     return status_code in TRANSIENT_5XX_STATUS_CODES
 
 
-async def _send_with_5xx_retry(
+async def _send_with_retry(
     method: str,
     do_send: Callable[[], Awaitable[httpx.Response]],
     *,
-    retry_connect_timeout: bool = False,
+    retry_transient: bool = False,
 ) -> httpx.Response:
-    """Retry transient 5xx and explicitly safe read connection timeouts.
+    """Retry transient 5xx AND transient transport errors on retryable requests.
 
-    Connection timeouts share the existing six-attempt budget with 5xx retries.
-    They are opt-in independently of HTTP method idempotency: ordinary writes,
-    including conditional PATCH, never gain transport retries. The callback must
-    rebuild a fresh request on every call; it must not reuse a consumed body.
+    A request is retryable when the method is idempotent OR the caller passes
+    ``retry_transient=True`` (asserting the operation is idempotent-in-effect).
+    Non-retryable requests make a single attempt, preserving plain POST/PATCH
+    behaviour.
+
+    The do_send callable must be safe to invoke multiple times; it should
+    re-issue the request fresh each call (httpx Request objects with bodies
+    are single-use, so callers either pass simple methods or rebuild the
+    request inside the closure).
     """
-    for attempt in range(len(SDK_RETRY_BACKOFF_SECONDS) + 1):
+    retryable = _is_idempotent(method) or retry_transient
+    backoffs = SDK_RETRY_BACKOFF_SECONDS if retryable else ()
+    response: httpx.Response | None = None
+    for i in range(len(backoffs) + 1):
+        if i > 0:
+            await asyncio.sleep(backoffs[i - 1])
         try:
             response = await do_send()
-        except httpx.ConnectTimeout:
-            if not retry_connect_timeout or attempt == len(SDK_RETRY_BACKOFF_SECONDS):
+        except TRANSIENT_TRANSPORT_EXCEPTIONS:
+            if i == len(backoffs):  # retries exhausted (or non-retryable)
                 raise
-        else:
-            if (
-                not _is_idempotent(method)
-                or not _is_transient_5xx(response.status_code)
-                or attempt == len(SDK_RETRY_BACKOFF_SECONDS)
-            ):
-                return response
-        await asyncio.sleep(SDK_RETRY_BACKOFF_SECONDS[attempt])
-    raise AssertionError("Retry loop must return a response or raise")
+            continue
+        if i < len(backoffs) and _is_transient_5xx(response.status_code):
+            continue
+        return response
+    return response  # type: ignore[return-value]
 
 
-def _send_sync_with_5xx_retry(
+def _send_sync_with_retry(
     method: str,
     do_send: Callable[[], httpx.Response],
+    *,
+    retry_transient: bool = False,
 ) -> httpx.Response:
-    """Sync counterpart of _send_with_5xx_retry."""
-    response = do_send()
-    if not _is_idempotent(method):
+    """Sync counterpart of :func:`_send_with_retry`."""
+    retryable = _is_idempotent(method) or retry_transient
+    backoffs = SDK_RETRY_BACKOFF_SECONDS if retryable else ()
+    response: httpx.Response | None = None
+    for i in range(len(backoffs) + 1):
+        if i > 0:
+            time.sleep(backoffs[i - 1])
+        try:
+            response = do_send()
+        except TRANSIENT_TRANSPORT_EXCEPTIONS:
+            if i == len(backoffs):
+                raise
+            continue
+        if i < len(backoffs) and _is_transient_5xx(response.status_code):
+            continue
         return response
-
-    for delay in SDK_RETRY_BACKOFF_SECONDS:
-        if not _is_transient_5xx(response.status_code):
-            return response
-        time.sleep(delay)
-        response = do_send()
-    return response
+    return response  # type: ignore[return-value]
 
 
 def raise_for_status_with_detail(response: httpx.Response) -> None:
@@ -152,15 +182,11 @@ def raise_for_status_with_detail(response: httpx.Response) -> None:
         message += f": {detail}"
     raise error_type(message=message, request=response.request, response=response)
 
-
 # Thread-local storage for per-thread singleton instances
 # This is needed because thread workers create new event loops via asyncio.run(),
 # and httpx.AsyncClient is bound to the event loop that created it.
 _thread_local = threading.local()
 
-# Auto-load only the CLI-safe .env allowlist when explicitly opted in for local
-# development. Arbitrary working directories must not be able to steer CLI auth.
-load_allowed_dotenv()
 
 class _ConnectionRefreshCoordinator:
     """Loop-agnostic single-flight state for one normalized API URL."""
@@ -202,6 +228,11 @@ async def _acquire_refresh_lock(lock: threading.Lock) -> None:
         if await acquire_task:
             lock.release()
         raise
+
+# Preserve non-auth project context without merging auth fields from different
+# sources into one synthetic os.environ tuple.
+load_dotenv_context()
+
 
 async def refresh_connection_access_token(
     api_url: str,
@@ -250,9 +281,7 @@ async def refresh_connection_access_token(
 
         refresh_token = coordinator.latest_refresh_token or stored_refresh_token
 
-        async with httpx.AsyncClient(
-            base_url=normalized_url, timeout=30.0, trust_env=False
-        ) as client:
+        async with httpx.AsyncClient(base_url=normalized_url, timeout=30.0) as client:
             response = await client.post(
                 "/auth/refresh",
                 json={"refresh_token": refresh_token},
@@ -321,6 +350,7 @@ async def refresh_tokens(
     observed = observed_access_token or str(creds["access_token"])
     token = await refresh_connection_access_token(str(creds["api_url"]), observed)
     return token is not None
+
 
 def _refresh_tokens_sync(
     api_url: str | None = None,
@@ -393,20 +423,14 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
 
     # Surface keyring fallback here — login is the user's chance to fix it.
     from bifrost.credentials import warn_if_keyring_fallback
-
     warn_if_keyring_fallback()
 
     try:
-        async with httpx.AsyncClient(
-            base_url=api_url, timeout=30.0, trust_env=False
-        ) as client:
+        async with httpx.AsyncClient(base_url=api_url, timeout=30.0) as client:
             # Step 1: Request device code
             response = await client.post("/auth/device/code")
             if response.status_code != 200:
-                print(
-                    f"Error requesting device code: {response.status_code}",
-                    file=sys.stderr,
-                )
+                print(f"Error requesting device code: {response.status_code}", file=sys.stderr)
                 return False
 
             data = response.json()
@@ -438,14 +462,12 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
                 attempts += 1
 
                 poll_response = await client.post(
-                    "/auth/device/token", json={"device_code": device_code}
+                    "/auth/device/token",
+                    json={"device_code": device_code}
                 )
 
                 if poll_response.status_code != 200:
-                    print(
-                        f"\nError polling for token: {poll_response.status_code}",
-                        file=sys.stderr,
-                    )
+                    print(f"\nError polling for token: {poll_response.status_code}", file=sys.stderr)
                     return False
 
                 poll_data = poll_response.json()
@@ -456,9 +478,7 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
                     if error == "authorization_pending":
                         continue  # Keep polling
                     elif error == "expired_token":
-                        print(
-                            "\nDevice code expired. Please try again.", file=sys.stderr
-                        )
+                        print("\nDevice code expired. Please try again.", file=sys.stderr)
                         return False
                     elif error == "access_denied":
                         print("\nAuthorization denied.", file=sys.stderr)
@@ -472,9 +492,7 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
                     print(" OK")
 
                     # Calculate expiry time
-                    expires_at = datetime.now(timezone.utc) + timedelta(
-                        seconds=poll_data.get("expires_in", 1800)
-                    )
+                    expires_at = datetime.now(timezone.utc) + timedelta(seconds=poll_data.get("expires_in", 1800))
 
                     # Step 5: Save credentials
                     save_credentials(
@@ -488,9 +506,7 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
                     try:
                         user_response = await client.get(
                             "/auth/me",
-                            headers={
-                                "Authorization": f"Bearer {poll_data['access_token']}"
-                            },
+                            headers={"Authorization": f"Bearer {poll_data['access_token']}"}
                         )
                         if user_response.status_code == 200:
                             user_data = user_response.json()
@@ -552,7 +568,6 @@ class BifrostClient:
             base_url=self.api_url,
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=30.0,
-            trust_env=False,
         )
         self._context: dict[str, Any] | None = None
 
@@ -571,9 +586,7 @@ class BifrostClient:
             current_loop = None
 
         # Check if we need a new client (no client, or different event loop)
-        if self._http is None or (
-            current_loop is not None and self._http_loop != current_loop
-        ):
+        if self._http is None or (current_loop is not None and self._http_loop != current_loop):
             # Old client (if any) will be garbage-collected; httpx handles
             # transport cleanup at GC time. Can't await aclose() from a sync
             # method, so this is the best we can do.
@@ -583,7 +596,6 @@ class BifrostClient:
                 base_url=self.api_url,
                 headers={"Authorization": f"Bearer {self._access_token}"},
                 timeout=30.0,
-                trust_env=False,
             )
             self._http_loop = current_loop
 
@@ -621,7 +633,7 @@ class BifrostClient:
         # Use thread-local storage instead of class-level singleton
         # This ensures each thread gets its own client with httpx bound to its event loop
         selected_api_url = api_url.rstrip("/") if api_url else None
-        instance = getattr(_thread_local, "bifrost_client", None)
+        instance = getattr(_thread_local, 'bifrost_client', None)
         if instance is not None and (
             selected_api_url is None or instance.api_url == selected_api_url
         ):
@@ -691,7 +703,9 @@ class BifrostClient:
                     )
 
             # No auth available
-            raise RuntimeError("Not logged in. Run 'bifrost login' to authenticate.")
+            raise RuntimeError(
+                "Not logged in. Run 'bifrost login' to authenticate."
+            )
 
         return instance
 
@@ -773,28 +787,28 @@ class BifrostClient:
         self, method: str, path: str, **kwargs
     ) -> httpx.Response:
         """Make a synchronous request, refreshing on 401 and retrying once."""
+        retry_transient = kwargs.pop("retry_transient", False) or kwargs.pop("retry_safe", False)
+
         def _send() -> httpx.Response:
             observed_access_token = self._access_token
-            send = getattr(self._sync_http, method.lower())
-            response = send(path, **kwargs)
+            response = self._sync_http.request(method.upper(), path, **kwargs)
             if response.status_code == 401 and self._refresh_and_update_sync(
                 observed_access_token
             ):
-                response = send(path, **kwargs)
+                response = self._sync_http.request(method.upper(), path, **kwargs)
             return response
 
-        return _send_sync_with_5xx_retry(method, _send)
+        return _send_sync_with_retry(method, _send, retry_transient=retry_transient)
 
-    async def _request_with_refresh(
-        self, method: str, path: str, *, retry_safe: bool = False, **kwargs
-    ) -> httpx.Response:
+    async def _request_with_refresh(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Make an HTTP request, refreshing token on 401 and retrying once.
 
-        Wrapped with :func:`_send_with_5xx_retry` so idempotent methods retry
-        transient 502/503/504 during rolling API deploys. The 401-refresh-retry
+        Wrapped with :func:`_send_with_retry` so idempotent methods (or callers passing
+        ``retry_transient=True``) retry transient 502/503/504 and transport errors during rolling API deploys. The 401-refresh-retry
         fires inside each attempt, so a refresh-then-5xx still benefits from
         the outer retry.
         """
+        retry_transient = kwargs.pop("retry_transient", False) or kwargs.pop("retry_safe", False)
 
         async def _send() -> httpx.Response:
             http = self._get_async_client()
@@ -806,30 +820,15 @@ class BifrostClient:
                     response = await getattr(http, method)(path, **kwargs)
             return response
 
-        retry_method = "GET" if retry_safe else method
-        return await _send_with_5xx_retry(
-            retry_method, _send, retry_connect_timeout=retry_safe
-        )
+        return await _send_with_retry(method, _send, retry_transient=retry_transient)
 
     async def get(self, path: str, **kwargs) -> httpx.Response:
         """Make GET request."""
         return await self._request_with_refresh("get", path, **kwargs)
 
-    async def get_once(self, path: str, **kwargs) -> httpx.Response:
-        """Make one GET attempt without refresh or transient-status retries.
-
-        This is intentionally narrow: fail-closed recovery probes must preserve
-        the first response rather than masking it with the SDK retry policy.
-        """
-        return await self._get_async_client().get(path, **kwargs)
-
-    async def post(
-        self, path: str, *, retry_safe: bool = False, **kwargs
-    ) -> httpx.Response:
-        """Make POST request, optionally retrying a read-only POST on transient 5xx."""
-        return await self._request_with_refresh(
-            "post", path, retry_safe=retry_safe, **kwargs
-        )
+    async def post(self, path: str, **kwargs) -> httpx.Response:
+        """Make POST request."""
+        return await self._request_with_refresh("post", path, **kwargs)
 
     async def put(self, path: str, **kwargs) -> httpx.Response:
         """Make PUT request."""
@@ -847,17 +846,16 @@ class BifrostClient:
         """
         return await self._request_with_refresh("delete", path, **kwargs)
 
-    async def request(
-        self, method: str, path: str, *, retry_safe: bool = False, **kwargs
-    ) -> httpx.Response:
+    async def request(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Make an arbitrary-method HTTP request with token refresh.
 
         Needed for verbs whose shortcut method on ``httpx.AsyncClient`` does
         not accept a body (DELETE) but whose REST endpoint expects one.
 
-        Wrapped with :func:`_send_with_5xx_retry` so idempotent methods retry
-        transient 502/503/504 during rolling API deploys.
+        Wrapped with :func:`_send_with_retry` so idempotent methods (or callers passing
+        ``retry_transient=True``) retry transient 502/503/504 and transport errors during rolling API deploys.
         """
+        retry_transient = kwargs.pop("retry_transient", False) or kwargs.pop("retry_safe", False)
 
         async def _send() -> httpx.Response:
             http = self._get_async_client()
@@ -869,10 +867,7 @@ class BifrostClient:
                     response = await http.request(method.upper(), path, **kwargs)
             return response
 
-        retry_method = "GET" if retry_safe else method
-        return await _send_with_5xx_retry(
-            retry_method, _send, retry_connect_timeout=retry_safe
-        )
+        return await _send_with_retry(method, _send, retry_transient=retry_transient)
 
     def stream(self, method: str, path: str, **kwargs):
         """
@@ -888,7 +883,7 @@ class BifrostClient:
     def get_sync(self, path: str, **kwargs) -> httpx.Response:
         """Make synchronous GET request.
 
-        Wrapped with :func:`_send_sync_with_5xx_retry` so transient 502/503/504
+        Wrapped with :func:`_send_sync_with_retry` so transient 502/503/504
         from rolling API deploys are retried.
         """
         return self._request_with_refresh_sync("GET", path, **kwargs)

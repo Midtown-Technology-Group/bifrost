@@ -21,8 +21,8 @@ async def test_safe_read_connect_timeout_then_success(monkeypatch):
     send = AsyncMock(side_effect=[httpx.ConnectTimeout("TLS handshake"), response(200)])
     sleep = AsyncMock()
     monkeypatch.setattr(client_module.asyncio, "sleep", sleep)
-    result = await client_module._send_with_5xx_retry(
-        "GET", send, retry_connect_timeout=True
+    result = await client_module._send_with_retry(
+        "GET", send, retry_transient=True
     )
     assert result.status_code == 200
     assert send.await_count == 2
@@ -35,8 +35,8 @@ async def test_mixed_timeouts_and503_share_six_attempt_budget(monkeypatch):
     sleep = AsyncMock()
     monkeypatch.setattr(client_module.asyncio, "sleep", sleep)
     with pytest.raises(httpx.ConnectTimeout):
-        await client_module._send_with_5xx_retry(
-            "GET", send, retry_connect_timeout=True
+        await client_module._send_with_retry(
+            "GET", send, retry_transient=True
         )
     assert send.await_count == 6
     assert [call.args[0] for call in sleep.await_args_list] == list(
@@ -45,25 +45,43 @@ async def test_mixed_timeouts_and503_share_six_attempt_budget(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["GET", "POST", "PATCH", "PUT", "DELETE"])
+@pytest.mark.parametrize("method", ["POST", "PATCH", "PUT", "DELETE"])
 async def test_no_transport_retry_without_explicit_opt_in(method):
     send = AsyncMock(side_effect=httpx.ConnectTimeout("TLS"))
     with pytest.raises(httpx.ConnectTimeout):
-        await client_module._send_with_5xx_retry(method, send)
+        await client_module._send_with_retry(method, send)
     assert send.await_count == 1
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error", [httpx.ReadTimeout, httpx.WriteTimeout, httpx.ConnectError]
-)
-async def test_other_transport_failures_are_not_replayed(error):
-    send = AsyncMock(side_effect=error("uncertain"))
-    with pytest.raises(error):
-        await client_module._send_with_5xx_retry(
-            "GET", send, retry_connect_timeout=True
+async def test_idempotent_method_retries_without_opt_in(monkeypatch):
+    send = AsyncMock(side_effect=httpx.ConnectTimeout("TLS"))
+    monkeypatch.setattr(client_module.asyncio, "sleep", AsyncMock())
+    with pytest.raises(httpx.ConnectTimeout):
+        await client_module._send_with_retry("GET", send)
+    assert send.await_count == 6
+
+
+@pytest.mark.asyncio
+async def test_write_timeout_is_not_replayed():
+    send = AsyncMock(side_effect=httpx.WriteTimeout("uncertain"))
+    with pytest.raises(httpx.WriteTimeout):
+        await client_module._send_with_retry(
+            "GET", send, retry_transient=True
         )
     assert send.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [httpx.ReadTimeout, httpx.ConnectError])
+async def test_known_transient_errors_replay_with_opt_in(monkeypatch, error):
+    send = AsyncMock(side_effect=[error("uncertain"), response(200)])
+    monkeypatch.setattr(client_module.asyncio, "sleep", AsyncMock())
+    result = await client_module._send_with_retry(
+        "GET", send, retry_transient=True
+    )
+    assert result.status_code == 200
+    assert send.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -88,5 +106,5 @@ async def test_workflow_cancellation_stops_read_retry(monkeypatch):
     send = AsyncMock(side_effect=httpx.ConnectTimeout("TLS"))
     monkeypatch.setattr(client_module.asyncio, "sleep", AsyncMock(side_effect=asyncio.CancelledError))
     with pytest.raises(asyncio.CancelledError):
-        await client_module._send_with_5xx_retry("GET", send, retry_connect_timeout=True)
+        await client_module._send_with_retry("GET", send, retry_transient=True)
     assert send.await_count == 1
