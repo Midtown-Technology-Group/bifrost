@@ -8,6 +8,7 @@ No staged content is visible before activation.
 from __future__ import annotations
 
 import ast
+import asyncio
 import base64
 import difflib
 import hashlib
@@ -75,6 +76,7 @@ CANDIDATE_SCHEMA = "bifrost.workspace-candidate/v2"
 GIT_CLOSURE_SCHEMA = "bifrost.workspace-git-closure/v1"
 GIT_CONVERGENCE_SCHEMA = "bifrost.workspace-history-convergence/v1"
 COMMIT_WRITER_NOT_CONFIGURED = "verified GitHub App commit writer is not configured"
+SNAPSHOT_READ_CONCURRENCY = 32
 
 
 @dataclass
@@ -170,12 +172,17 @@ class WorkspaceRepoChangesetService:
         paths = sorted(await self.repo.list(f"{scope}/"))
         if await self.repo.exists(scope):
             paths.insert(0, scope)
-        files: dict[str, str] = {}
+        semaphore = asyncio.Semaphore(SNAPSHOT_READ_CONCURRENCY)
+
+        async def read_hash(path: str) -> tuple[str, str]:
+            async with semaphore:
+                content = await self.repo.read(path)
+            return path, hashlib.sha256(content).hexdigest()
+
+        hashed_files = await asyncio.gather(*(read_hash(path) for path in paths))
+        files = dict(hashed_files)
         digest = hashlib.sha256()
-        for path in paths:
-            content = await self.repo.read(path)
-            content_hash = hashlib.sha256(content).hexdigest()
-            files[path] = content_hash
+        for path, content_hash in hashed_files:
             digest.update(path.encode())
             digest.update(b"\0")
             digest.update(content_hash.encode())
