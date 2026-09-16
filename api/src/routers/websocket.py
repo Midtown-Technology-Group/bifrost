@@ -295,7 +295,13 @@ async def _populate_user_roles(user: UserPrincipal) -> None:
 
 
 def _fresh_table_policy_user(user: UserPrincipal) -> UserPrincipal:
-    """Copy a websocket principal without reusing custom-claim values."""
+
+    """Copy a websocket principal without reusing custom-claim values.
+
+    Websocket principals live across tables and policy changes. Custom claims
+    can be solution-scoped and mutable, so each evaluation must resolve them
+    afresh rather than sharing a name-keyed cache across subscriptions.
+    """
     policy_user = copy.copy(user)
     policy_user.claims = {}  # type: ignore[attr-defined]
     return policy_user
