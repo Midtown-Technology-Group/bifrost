@@ -47,6 +47,11 @@ ALLOWED_REQUIRED_TEST_ACTIONS = (
 )
 EXPECTED_PR_CANCELLATION = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
 
+ALLOWED_CODEOWNERS = (
+    '@MTG-Thomas',
+    '@Midtown-Technology-Group/',
+)
+
 
 def _repo_root() -> Path:
     path = Path(__file__).resolve()
@@ -184,6 +189,28 @@ def check_ci_workflow(path: Path) -> list[str]:
     return []
 
 
+def check_codeowners(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+
+    violations: list[str] = []
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        for token in parts[1:]:
+            if token.startswith("#"):
+                break
+            if not token.startswith("@"):
+                continue
+            if token in ALLOWED_CODEOWNERS or token.startswith("@Midtown-Technology-Group/"):
+                continue
+            violations.append(
+                f"{path}:{lineno}: CODEOWNERS names {token}; only MTG owners survive upstream merges.",
+            )
+    return violations
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Check MTG fork CI boundaries that must survive upstream merges."
@@ -203,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     violations = check_ci_workflow(workflow)
+    violations += check_codeowners(_repo_root() / ".github/CODEOWNERS")
     if not violations:
         print("MTG CI boundary checks passed.")
         return 0
