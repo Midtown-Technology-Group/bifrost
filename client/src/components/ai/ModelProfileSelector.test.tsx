@@ -197,8 +197,11 @@ describe("ModelProfileSelector", () => {
 		);
 
 		const submit = screen.getByRole("button", { name: "Create" });
-		fireEvent.click(submit);
-		fireEvent.click(submit);
+		// user-event dispatches trusted-like pointer/mouse/keyboard
+		// sequences; under vitest 5 + happy-dom the bare fireEvent click
+		// no longer reaches the form submit handler.
+		await user.click(submit);
+		await user.click(submit);
 
 		expect(aiModels.createModelProfile).toHaveBeenCalledTimes(1);
 
