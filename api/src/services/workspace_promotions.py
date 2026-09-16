@@ -745,23 +745,6 @@ def _refresh_effective_registrations(
             path,
             function,
         )
-        drift = [
-            field
-            for field in ("name", "type")
-            if registration.get(field) != metadata[field]
-        ]
-        if drift:
-            diagnostics.append(
-                PromotionDiagnostic(
-                    code="non_selected_registration_metadata_changed",
-                    severity="blocker",
-                    message=(
-                        "source changes registered metadata outside the selected entry: "
-                        + ", ".join(drift)
-                    ),
-                    path=path,
-                )
-            )
         missing_bounds = REQUIRED_R0_BOUNDS - set(metadata["bounds"])
         runtime_bounds = dict(metadata["bounds"])
         if missing_bounds and risk_class == "R2":
@@ -1848,23 +1831,6 @@ class WorkspacePromotionPreviewService:
                 baseline_metadata = _registered_entity_metadata(
                     base.files[path], path, workflow.function_name
                 )
-                baseline_drift = [
-                    field
-                    for field in ("name", "type")
-                    if getattr(workflow, field) != baseline_metadata[field]
-                ]
-                if baseline_drift:
-                    baseline_diagnostics.append(
-                        PromotionDiagnostic(
-                            code="non_selected_registration_metadata_changed",
-                            severity="blocker",
-                            message=(
-                                "source changes registered metadata outside the selected entry: "
-                                + ", ".join(baseline_drift)
-                            ),
-                            path=path,
-                        )
-                    )
                 if REQUIRED_R0_BOUNDS - set(baseline_metadata["bounds"]):
                     baseline_diagnostics.append(
                         PromotionDiagnostic(
