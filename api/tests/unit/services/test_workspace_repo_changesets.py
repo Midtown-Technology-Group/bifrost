@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import hashlib
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from src.services.workspace_repo_changesets import (
     ChangesetInvalid,
     OrganizationScopeRequired,
     WorkspaceRepoChangesetService,
+    SNAPSHOT_READ_CONCURRENCY,
     require_organization_id,
 )
 from src.services.workspace_release_files import WorkspaceReleasePathGoverned
@@ -68,6 +70,21 @@ class MemoryRepo:
 
     async def delete(self, path):
         self.files.pop(path, None)
+
+
+class ConcurrentReadRepo(MemoryRepo):
+    def __init__(self, files=None):
+        super().__init__(files)
+        self.active_reads = 0
+        self.max_active_reads = 0
+
+    async def read(self, path):
+        self.active_reads += 1
+        self.max_active_reads = max(self.max_active_reads, self.active_reads)
+        await asyncio.sleep(0)
+        content = self.files[path]
+        self.active_reads -= 1
+        return content
 
 
 class MemoryRows:
@@ -614,6 +631,22 @@ async def test_state_can_skip_runtime_inspection():
     assert state.file_count == 1
     assert state.runtime is None
     inspector.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reads_files_concurrently_with_a_bound():
+    files = {f"features/{index:03d}.py": str(index).encode() for index in range(80)}
+    repo = ConcurrentReadRepo(files)
+    svc = WorkspaceRepoChangesetService(FakeDB(), uuid4(), repo=repo)
+
+    revision, observed = await svc._snapshot("features")
+
+    assert observed == {
+        path: hashlib.sha256(content).hexdigest()
+        for path, content in sorted(files.items())
+    }
+    assert len(revision) == 64
+    assert 1 < repo.max_active_reads <= SNAPSHOT_READ_CONCURRENCY
 
 
 @pytest.mark.asyncio
