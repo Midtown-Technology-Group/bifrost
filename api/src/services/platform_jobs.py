@@ -112,6 +112,7 @@ def _notification_status(status: str) -> NotificationStatus:
 async def publish_platform_job_update(job: PlatformJob) -> None:
     """Broadcast the exact HTTP contract and update the notification projection."""
     public = platform_job_to_public(job)
+
     message = {
         "type": "platform_job_updated",
         "job": public.model_dump(mode="json"),
