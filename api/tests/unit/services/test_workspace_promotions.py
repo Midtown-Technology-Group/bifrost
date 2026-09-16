@@ -1322,7 +1322,7 @@ def second(): return 2
     assert result[second_key]["workflow_id"] == base[second_key]["workflow_id"]
 
 
-def test_changed_multi_entity_file_blocks_non_selected_metadata_drift() -> None:
+def test_changed_multi_entity_file_preserves_non_selected_registry_metadata() -> None:
     path = "workflows/shared.py"
     raw = b"""
 from bifrost import workflow
@@ -1363,10 +1363,7 @@ def second(): return 2
         diagnostics=diagnostics,
     )
 
-    assert [item.code for item in diagnostics] == [
-        "non_selected_registration_metadata_changed"
-    ]
-    assert diagnostics[0].severity == "blocker"
+    assert diagnostics == []
     assert base[key]["name"] == "Second"
 
 
