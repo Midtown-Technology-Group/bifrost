@@ -443,6 +443,72 @@ async def test_activation_revalidates_exact_cohort_declaration_under_lock() -> N
 
 
 @pytest.mark.asyncio
+async def test_activation_accepts_bound_non_executable_declaration_paths() -> None:
+    organization_id = uuid4()
+    source_release_id = uuid4()
+    paths = {
+        "features/example/workflow.py": "c" * 64,
+        "features/example/script.ps1": "d" * 64,
+    }
+    artifact = SimpleNamespace(
+        source_revision="a" * 40,
+        source_tree_sha="b" * 40,
+        manifest={
+            "source_release_id": str(source_release_id),
+            "source_release_paths": paths,
+            "cohort_paths": ["features/example/workflow.py"],
+        },
+    )
+    record = SimpleNamespace(
+        id=source_release_id,
+        source_tree_sha="b" * 40,
+        declared_disposition="pending",
+        disposition="pending",
+        paths=paths,
+    )
+    service = WorkspaceReleaseActivationService(
+        SimpleNamespace(scalar=AsyncMock(return_value=record)), organization_id
+    )
+
+    await service._validate_source_release_accountability(artifact)
+
+
+@pytest.mark.asyncio
+async def test_activation_rejects_undeclared_cohort_path() -> None:
+    organization_id = uuid4()
+    source_release_id = uuid4()
+    paths = {"features/example/workflow.py": "c" * 64}
+    artifact = SimpleNamespace(
+        source_revision="a" * 40,
+        source_tree_sha="b" * 40,
+        manifest={
+            "source_release_id": str(source_release_id),
+            "source_release_paths": paths,
+            "cohort_paths": [
+                "features/example/workflow.py",
+                "features/example/undeclared.py",
+            ],
+        },
+    )
+    record = SimpleNamespace(
+        id=source_release_id,
+        source_tree_sha="b" * 40,
+        declared_disposition="pending",
+        disposition="pending",
+        paths=paths,
+    )
+    service = WorkspaceReleaseActivationService(
+        SimpleNamespace(scalar=AsyncMock(return_value=record)), organization_id
+    )
+
+    with pytest.raises(
+        WorkspaceReleaseActivationError,
+        match="declaration paths changed after preview",
+    ):
+        await service._validate_source_release_accountability(artifact)
+
+
+@pytest.mark.asyncio
 async def test_configured_producer_requires_first_source_declaration(
     monkeypatch,
 ) -> None:

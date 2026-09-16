@@ -863,7 +863,7 @@ class WorkspaceReleaseActivationService:
             if (
                 not isinstance(expected_paths, dict)
                 or dict(sorted(record.paths.items())) != expected_paths
-                or sorted(record.paths) != cohort_paths
+                or not set(cohort_paths).issubset(record.paths)
             ):
                 raise WorkspaceReleaseActivationError(
                     "source release declaration paths changed after preview"
