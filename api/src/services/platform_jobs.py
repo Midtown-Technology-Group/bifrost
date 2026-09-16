@@ -112,6 +112,30 @@ def _notification_status(status: str) -> NotificationStatus:
 async def publish_platform_job_update(job: PlatformJob) -> None:
     """Broadcast the exact HTTP contract and update the notification projection."""
     public = platform_job_to_public(job)
+    if job.notification_id is not None:
+        try:
+            description = job.phase or job.status.replace("_", " ").capitalize()
+            await get_notification_service().update_notification(
+                str(job.notification_id),
+                NotificationUpdate(
+                    status=_notification_status(job.status),
+                    description=description[:500],
+                    percent=job.progress_percent,
+                    error=job.error_message[:1000] if job.error_message else None,
+                    result=(
+                        {"job_id": str(job.id), **(job.result or {})}
+                        if job.status == "succeeded"
+                        else None
+                    ),
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update platform job notification projection",
+                extra={"platform_job_id": str(job.id)},
+                exc_info=True,
+            )
+
     message = {
         "type": "platform_job_updated",
         "job": public.model_dump(mode="json"),
