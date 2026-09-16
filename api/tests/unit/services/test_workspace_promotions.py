@@ -170,6 +170,84 @@ async def test_declared_cohort_requires_exact_pending_source_release() -> None:
 
 
 @pytest.mark.asyncio
+async def test_declared_cohort_ignores_non_workspace_release_paths() -> None:
+    organization_id = uuid4()
+    release_id = uuid4()
+    workflow_path = "features/first.py"
+    workflow_hash = "a" * 64
+    record = SimpleNamespace(
+        id=release_id,
+        source_tree_sha="2" * 40,
+        paths={
+            workflow_path: workflow_hash,
+            "features/ninjaone/scripts/Monitor.ps1": "b" * 64,
+            "docs/runbook.md": "c" * 64,
+        },
+        declared_disposition="pending",
+        disposition="pending",
+    )
+
+    class Database:
+        async def scalar(self, _statement):
+            return record
+
+    request = WorkspacePromotionPreviewRequest(
+        schema_version="bifrost.workspace-promotion-bundle/v2",
+        entry={"path": workflow_path, "function": "first"},
+        cohort_paths=[workflow_path],
+        snapshot={
+            "snapshot_id": snapshot_id({workflow_path: workflow_hash}),
+            "files": {workflow_path: workflow_hash},
+            "closure": [{"path": workflow_path, "sha256": workflow_hash}],
+        },
+        protected_source={"commit_sha": "1" * 40, "tree_sha": "2" * 40},
+        client={"cli_version": "test", "sdk_version": "test", "contract_version": "11"},
+    )
+
+    result = await WorkspacePromotionPreviewService(
+        Database(), organization_id
+    )._validate_source_release_cohort(request)
+
+    assert result.id == release_id
+
+
+@pytest.mark.asyncio
+async def test_declared_cohort_rejects_workspace_deletion() -> None:
+    workflow_path = "features/first.py"
+    deleted_path = "features/deleted.py"
+    workflow_hash = "a" * 64
+    record = SimpleNamespace(
+        id=uuid4(),
+        source_tree_sha="2" * 40,
+        paths={workflow_path: workflow_hash, deleted_path: None},
+        declared_disposition="pending",
+        disposition="pending",
+    )
+
+    class Database:
+        async def scalar(self, _statement):
+            return record
+
+    request = WorkspacePromotionPreviewRequest(
+        schema_version="bifrost.workspace-promotion-bundle/v2",
+        entry={"path": workflow_path, "function": "first"},
+        cohort_paths=[workflow_path],
+        snapshot={
+            "snapshot_id": snapshot_id({workflow_path: workflow_hash}),
+            "files": {workflow_path: workflow_hash},
+            "closure": [{"path": workflow_path, "sha256": workflow_hash}],
+        },
+        protected_source={"commit_sha": "1" * 40, "tree_sha": "2" * 40},
+        client={"cli_version": "test", "sdk_version": "test", "contract_version": "11"},
+    )
+
+    with pytest.raises(WorkspacePromotionInvalid, match="executable deletion"):
+        await WorkspacePromotionPreviewService(
+            Database(), uuid4()
+        )._validate_source_release_cohort(request)
+
+
+@pytest.mark.asyncio
 async def test_declared_cohort_reports_exact_path_mismatch() -> None:
     record = SimpleNamespace(
         id=uuid4(),

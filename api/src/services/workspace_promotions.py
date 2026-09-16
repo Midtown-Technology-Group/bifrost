@@ -2167,7 +2167,11 @@ class WorkspacePromotionPreviewService:
             raise WorkspacePromotionInvalid(
                 "source release declaration is not eligible for production promotion"
             )
-        declared_paths = set(record.paths)
+        declared_paths = {
+            path
+            for path, digest in record.paths.items()
+            if digest is not None and _is_executable_python_path(path)
+        }
         cohort_paths = set(request.cohort_paths)
         if declared_paths != cohort_paths:
             missing = sorted(declared_paths - cohort_paths)
@@ -2178,19 +2182,20 @@ class WorkspacePromotionPreviewService:
                 + " extra="
                 + repr(extra)
             )
-        invalid = [
+        deleted_workspace_paths = sorted(
             path
             for path, digest in record.paths.items()
-            if digest is None or not _is_executable_python_path(path)
-        ]
-        if invalid:
+            if digest is None and _is_executable_python_path(path)
+        )
+        if deleted_workspace_paths:
             raise WorkspacePromotionInvalid(
-                "declared cohort contains a deletion or non-executable path: "
-                + ", ".join(sorted(invalid))
+                "declared cohort contains an executable deletion: "
+                + ", ".join(deleted_workspace_paths)
             )
         mismatched = [
             path
             for path, digest in record.paths.items()
+            if path in cohort_paths
             if request.snapshot.files.get(path) != digest
         ]
         if mismatched:
