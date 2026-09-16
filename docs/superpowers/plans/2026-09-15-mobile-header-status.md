@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Prioritize the mobile header toolbar
+## Task 1: Prioritize the mobile header toolbar
 
 **Files:**
 - Modify: `client/src/components/layout/Header.test.tsx`

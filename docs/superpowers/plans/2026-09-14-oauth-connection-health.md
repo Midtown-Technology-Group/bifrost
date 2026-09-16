@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Aggregate concrete OAuth connections
+## Task 1: Aggregate concrete OAuth connections
 
 **Files:**
 - Modify: `api/src/routers/integrations.py`
