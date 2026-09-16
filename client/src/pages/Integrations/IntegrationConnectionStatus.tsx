@@ -105,11 +105,11 @@ export function IntegrationConnectionStatus({
 	return (
 		<div
 			className="relative z-10"
-			onClick={(event) => event.stopPropagation()}
 		>
 			<Popover>
 				<PopoverTrigger asChild>
 					<Button
+						onClick={(event) => event.stopPropagation()}
 						type="button"
 						variant="outline"
 						size="xs"
@@ -128,6 +128,7 @@ export function IntegrationConnectionStatus({
 					</Button>
 				</PopoverTrigger>
 				<PopoverContent
+					onClick={(event) => event.stopPropagation()}
 					align="end"
 					className="w-64 gap-3"
 					aria-label="OAuth connection breakdown"
