@@ -248,6 +248,47 @@ async def test_declared_cohort_rejects_workspace_deletion() -> None:
 
 
 @pytest.mark.asyncio
+async def test_declared_cohort_reads_exact_historical_reviewed_commit() -> None:
+    path = "features/first.py"
+    source = b"VALUE = 1\n"
+    digest = hashlib.sha256(source).hexdigest()
+    commit_sha = "1" * 40
+    tree_sha = "2" * 40
+    seen = {}
+
+    class CommitWriter:
+        async def read_files(self, paths, *, ref):
+            seen["paths"] = paths
+            seen["ref"] = ref
+            return SimpleNamespace(
+                commit_sha=commit_sha,
+                tree_sha=tree_sha,
+                files={path: source},
+            )
+
+    request = WorkspacePromotionPreviewRequest(
+        schema_version="bifrost.workspace-promotion-bundle/v2",
+        entry={"path": path, "function": "first"},
+        cohort_paths=[path],
+        snapshot={
+            "snapshot_id": snapshot_id({path: digest}),
+            "files": {path: digest},
+            "closure": [{"path": path, "sha256": digest}],
+        },
+        protected_source={"commit_sha": commit_sha, "tree_sha": tree_sha},
+        client={"cli_version": "test", "sdk_version": "test", "contract_version": "11"},
+    )
+
+    evidence, files = await WorkspacePromotionPreviewService(
+        SimpleNamespace(), uuid4(), commit_writer=CommitWriter()
+    )._read_protected_source(request)
+
+    assert seen == {"paths": (path,), "ref": commit_sha}
+    assert evidence.commit_sha == commit_sha
+    assert files == {path: source}
+
+
+@pytest.mark.asyncio
 async def test_declared_cohort_reports_exact_path_mismatch() -> None:
     record = SimpleNamespace(
         id=uuid4(),

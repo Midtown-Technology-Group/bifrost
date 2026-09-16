@@ -272,6 +272,78 @@ def test_preview_can_include_all_reviewed_executable_changes(
     }
 
 
+def test_preview_can_target_pending_historical_source_release(
+    tmp_path: Path, monkeypatch
+) -> None:
+    selected = _workspace(tmp_path)
+    selected.write_text(selected.read_text() + "\n# pending reviewed release\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "pending reviewed release"],
+        cwd=tmp_path,
+        check=True,
+    )
+    reviewed_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        promote,
+        "refresh_protected_main",
+        lambda _root: SimpleNamespace(commit_sha="f" * 40),
+    )
+    captured = {}
+    original_builder = promote.build_reviewed_promotion_bundle
+
+    def capture_builder(root, path, *, source_ref="origin/main", cohort_paths=()):
+        captured["source_ref"] = source_ref
+        return original_builder(
+            root, path, source_ref=source_ref, cohort_paths=cohort_paths
+        )
+
+    class Client:
+        def post_sync(self, _endpoint, **kwargs):
+            captured["payload"] = kwargs["json"]
+            return SimpleNamespace(json=lambda: {"job_id": "preview-job"})
+
+        def get_sync(self, _endpoint):
+            return SimpleNamespace(
+                json=lambda: _completed_preview_job(
+                    captured["payload"],
+                    candidate_id="sha256:" + "a" * 64,
+                    closure=[],
+                )
+            )
+
+    monkeypatch.setattr(promote, "build_reviewed_promotion_bundle", capture_builder)
+    monkeypatch.setattr(
+        promote.BifrostClient, "get_instance", lambda **_kwargs: Client()
+    )
+    monkeypatch.setattr(promote, "raise_for_status_with_detail", lambda _response: None)
+
+    assert (
+        promote.handle_promote(
+            [
+                "preview",
+                str(selected),
+                "-w",
+                "demo",
+                "--include-declared-changes",
+                "--source-commit",
+                reviewed_commit,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert captured["source_ref"] == reviewed_commit
+    assert captured["payload"]["protected_source"]["commit_sha"] == reviewed_commit
+
+
 def test_declared_helper_change_uses_unchanged_workflow_anchor(
     tmp_path: Path, monkeypatch
 ) -> None:
