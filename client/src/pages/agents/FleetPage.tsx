@@ -607,6 +607,7 @@ function AgentTableRow({
 
 function AgentActions({ agent }: { agent: AgentSummary }) {
 	const { isPlatformAdmin } = useAuth();
+	const navigate = useNavigate();
 	return (
 		<div className="flex items-center justify-end gap-1">
 			{agent.is_solution_managed && (

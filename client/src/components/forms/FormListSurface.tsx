@@ -9,7 +9,7 @@ import {
 	Share2,
 	Trash2,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { ResourceCatalogCard } from "@/components/catalog/ResourceCatalogCard";
