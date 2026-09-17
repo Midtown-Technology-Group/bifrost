@@ -6,6 +6,7 @@ from scripts.check_mtg_ci_boundaries import (
     _repo_root,
     _resolve_workflow_path,
     check_ci_workflow,
+    check_codeowners,
 )
 
 
@@ -91,3 +92,34 @@ def test_required_test_jobs_reject_preloaded_third_party_actions(tmp_path: Path)
         violations = check_ci_workflow(mutated)
 
         assert any("must not preload third-party action" in item for item in violations)
+
+
+def test_codeowners_without_upstream_owners_passes():
+    assert check_codeowners(_repo_root() / ".github/CODEOWNERS") == []
+
+
+def test_codeowners_rejects_upstream_owner(tmp_path: Path):
+    owners = tmp_path / "CODEOWNERS"
+    owners.write_text(
+        "# fork owners\n*.py @MTG-Thomas\n/api/src/ @jackmusick\n",
+        encoding="utf-8",
+    )
+
+    violations = check_codeowners(owners)
+
+    assert len(violations) == 1
+    assert "@jackmusick" in violations[0]
+
+
+def test_codeowners_ignores_comments_and_blanks(tmp_path: Path):
+    owners = tmp_path / "CODEOWNERS"
+    owners.write_text(
+        "# @jackmusick used to own everything\n\n/docs/ @Midtown-Technology-Group/docs-team\n",
+        encoding="utf-8",
+    )
+
+    assert check_codeowners(owners) == []
+
+
+def test_codeowners_missing_file_passes(tmp_path: Path):
+    assert check_codeowners(tmp_path / "CODEOWNERS") == []
