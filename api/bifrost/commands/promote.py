@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import sys
 import tempfile
 import time
@@ -163,6 +164,13 @@ def _parser() -> argparse.ArgumentParser:
         help="Preview, prepare, CAS-activate, and verify one reviewed release",
     )
     _common_source_arguments(release)
+    release.add_argument(
+        "--source-commit",
+        help=(
+            "Exact historical protected-main commit for an eligible pending "
+            "source-release declaration; requires --include-declared-changes"
+        ),
+    )
     release.add_argument("--include-declared-changes", action="store_true")
     release.add_argument("--supersedes-candidate-id")
     release.add_argument("--expected-base-release-id")
@@ -195,6 +203,13 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Promote the exact executable path cohort declared by the reviewed "
             "protected-main commit"
+        ),
+    )
+    preview.add_argument(
+        "--source-commit",
+        help=(
+            "Exact historical protected-main commit for an eligible pending "
+            "source-release declaration; requires --include-declared-changes"
         ),
     )
 
@@ -950,15 +965,30 @@ def _preview_payload(
 ) -> tuple[dict[str, Any], PromotionBundle, str, str]:
     root = pathlib.Path.cwd().resolve()
     selected_path = _normalize_selected(root, options.path)
-    refreshed = refresh_protected_main(root)
+    refresh_protected_main(root)
+    source_commit = getattr(options, "source_commit", None)
+    if source_commit:
+        if not getattr(options, "include_declared_changes", False):
+            raise PromotionBundleError(
+                "--source-commit requires --include-declared-changes"
+            )
+        if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
+            raise PromotionBundleError(
+                "--source-commit must be an exact lowercase 40-character Git SHA"
+            )
+    # Keep the ordinary path compatible with the long-standing origin/main
+    # snapshot builder.  An explicit historical commit is used only for a
+    # declared cohort whose durable source-release record the server verifies.
+    reviewed_commit = source_commit or "origin/main"
     cohort_paths = (
-        list(reviewed_changed_python_paths(root, commit_sha=refreshed.commit_sha))
+        list(reviewed_changed_python_paths(root, commit_sha=reviewed_commit))
         if getattr(options, "include_declared_changes", False)
         else []
     )
     bundle, provenance = build_reviewed_promotion_bundle(
         root,
         selected_path,
+        source_ref=reviewed_commit,
         cohort_paths=tuple(cohort_paths),
     )
     local_run = _load_run_evidence(

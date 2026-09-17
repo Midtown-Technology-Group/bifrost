@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Reproduce the shared command failures
+## Task 1: Reproduce the shared command failures
 
 **Files:**
 - Modify: `client/src/components/ui/command.test.tsx`

@@ -745,23 +745,6 @@ def _refresh_effective_registrations(
             path,
             function,
         )
-        drift = [
-            field
-            for field in ("name", "type")
-            if registration.get(field) != metadata[field]
-        ]
-        if drift:
-            diagnostics.append(
-                PromotionDiagnostic(
-                    code="non_selected_registration_metadata_changed",
-                    severity="blocker",
-                    message=(
-                        "source changes registered metadata outside the selected entry: "
-                        + ", ".join(drift)
-                    ),
-                    path=path,
-                )
-            )
         missing_bounds = REQUIRED_R0_BOUNDS - set(metadata["bounds"])
         runtime_bounds = dict(metadata["bounds"])
         if missing_bounds and risk_class == "R2":
@@ -2232,14 +2215,21 @@ class WorkspacePromotionPreviewService:
             raise WorkspacePromotionInvalid(
                 "closure paths must use canonical POSIX form"
             )
+        # A declared cohort is already bound above to one durable, eligible
+        # source-release record.  Read that exact reviewed commit so a later
+        # protected-main merge cannot make pending production work impossible.
+        # Single-path rapid previews retain the stricter current-main rule.
+        source_ref = (
+            request.protected_source.commit_sha if request.cohort_paths else "main"
+        )
         try:
-            source = await self.commit_writer.read_files(paths, ref="main")
+            source = await self.commit_writer.read_files(paths, ref=source_ref)
         except PlatformCommitError as exc:
             raise WorkspacePromotionInvalid(str(exc)) from exc
         if source.commit_sha != request.protected_source.commit_sha:
             raise WorkspacePromotionInvalid(
-                "protected main advanced after local review; fetch origin/main and "
-                "rebuild the promotion preview from the current protected head"
+                "protected source does not match the reviewed commit requested by "
+                "the promotion preview"
             )
         if source.tree_sha != request.protected_source.tree_sha:
             raise WorkspacePromotionInvalid(

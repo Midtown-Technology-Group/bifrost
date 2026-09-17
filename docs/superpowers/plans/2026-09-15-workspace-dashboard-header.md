@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Specify the shared title behavior
+## Task 1: Specify the shared title behavior
 
 **Files:**
 - Modify: `client/src/components/layout/WorkspaceTabs.test.tsx`
