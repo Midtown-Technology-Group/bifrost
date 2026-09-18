@@ -1,7 +1,7 @@
 """Accountability contracts for reviewed Workspace source commits."""
 
 import ast
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,6 +21,7 @@ from src.services.github_actions_oidc import WorkspaceSourceReleaseProducer
 from src.services.workspace_source_releases import (
     WorkspaceSourceReleaseConflict,
     WorkspaceSourceReleaseService,
+    _normalize_paths,
     reconcile_source_releases_after_lock,
     source_release_declaration_digest,
     source_release_response,
@@ -152,6 +153,29 @@ def _source_record(
         created_at=now,
         updated_at=now,
     )
+
+
+@pytest.mark.parametrize(
+    "path", ["solutions/acme/app.py", "solutions/acme", "solutions"]
+)
+def test_normalize_paths_rejects_solution_subtree(path: str) -> None:
+    with pytest.raises(ValueError, match="solutions/"):
+        _normalize_paths({path: "c" * 64})
+
+
+@pytest.mark.asyncio
+async def test_declaration_rejects_solution_paths_before_persistence() -> None:
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha="a" * 40,
+        source_tree_sha="b" * 40,
+        paths={"solutions/acme/app.py": "c" * 64},
+        disposition="pending",
+    )
+
+    with pytest.raises(ValueError, match="solutions/"):
+        await WorkspaceSourceReleaseService(
+            _InsertDeclareDatabase(), uuid4()
+        ).declare(request, created_by=uuid4())
 
 
 def test_pending_declaration_requires_exact_paths() -> None:
@@ -519,6 +543,29 @@ async def test_sweep_marks_source_and_unmirrored_live_release_attention() -> Non
     assert "not reached verified production" in source.reason
     assert release.lock_state == "attention_required"
     assert release.error_code == "workspace_release_history_overdue"
+    assert database.locked_entities == [
+        WorkspacePromotionRelease,
+        WorkspaceSourceRelease,
+    ]
+    assert database.flushes == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_disposes_overdue_source_without_live_release() -> None:
+    now = datetime.now(UTC)
+    source = _source_record(due_at=now - timedelta(seconds=1))
+    database = _Database([[], [source]])
+
+    result = await sweep_overdue_workspace_releases(database, now=now)
+
+    assert result == {
+        "source_release_ids": [str(source.id)],
+        "workspace_release_ids": [],
+    }
+    assert source.disposition == "attention_required"
+    assert (
+        source.reason == "reviewed Workspace source has not reached verified production"
+    )
     assert database.locked_entities == [
         WorkspacePromotionRelease,
         WorkspaceSourceRelease,

@@ -93,6 +93,25 @@ must provide a reason. A later exact release may still replace `deferred` with
 verified `released` evidence. Records containing deletions remain open until a
 release path can prove runtime absence as well as signed-history absence.
 
+## Retired releases
+
+Retiring the global Live release (see
+[Rapid Workspace Promotion](rapid-workspace-promotion.md#retirement-and-demotion-of-the-immutable-loose-release))
+leaves no Live release for the platform. Retirement does not silently close
+outstanding accountability: a source-release record that is still `pending`
+keeps its deadline, and the existing accountability sweep disposes it to
+`attention_required` with reason
+`reviewed Workspace source has not reached verified production`. Operators must
+resolve or explicitly classify those records through the normal source-release
+disposition endpoint. The Live-release history sweep also stops reporting the
+retired row because it only selects `activation_state='live'` rows.
+
+Changes under `solutions/<slug>/` are never part of a loose source-release
+`paths` map. The declaration rejects any path equal to `solutions` or beginning
+with `solutions/` and directs the caller to declare Solution source with
+`solution_deploy_obligations`. Those subtrees therefore remain the child
+obligation path before and after retirement.
+
 ## Solution deployment completion
 
 Solution obligations preserve the explicit operator-approved deployment step;

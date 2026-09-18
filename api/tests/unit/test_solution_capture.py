@@ -806,3 +806,98 @@ async def test_deploy_reconcile_sweeps_stale_trigger(db_session) -> None:
         select(EventSubscription).where(EventSubscription.event_source_id == stale.id)
     )).scalars().all()
     assert remaining_subs == []  # cascaded with the source
+
+
+# ── P1-1: capture fails closed for release-governed workflow paths ──────────
+
+
+def _stub_live_release(monkeypatch, governed_paths: tuple[str, ...]) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    async def _descriptor(_session):
+        return SimpleNamespace(
+            release_id="sha256:" + "a" * 64,
+            governed_paths=governed_paths,
+        )
+
+    monkeypatch.setattr(
+        "src.services.workspace_release_files.global_active_workspace_release_descriptor",
+        _descriptor,
+    )
+    monkeypatch.setattr(
+        "src.services.workspace_release_projection.acquire_workspace_release_lock",
+        AsyncMock(),
+    )
+
+
+async def test_capture_refuses_release_governed_workflow(
+    db_session, monkeypatch
+) -> None:
+    from src.models.orm.workflows import Workflow
+
+    db = db_session
+    sol = await _make_solution(db)
+    wf = Workflow(
+        id=uuid.uuid4(),
+        name=f"governed-{uuid.uuid4().hex[:8]}",
+        function_name="main",
+        path="workflows/governed.py",
+        type="workflow",
+        is_active=True,
+        solution_id=None,
+    )
+    db.add(wf)
+    await db.flush()
+
+    _stub_live_release(monkeypatch, ("workflows/governed.py",))
+
+    with pytest.raises(
+        SolutionCaptureConflict, match="governed by active workspace-release-v1"
+    ):
+        await SolutionCaptureService(db).capture(
+            sol,
+            SolutionCaptureSelectors(
+                workflows=[wf.id], tables=[], apps=[], forms=[],
+                agents=[], claims=[], configs=[],
+            ),
+        )
+
+    captured = await db.get(Workflow, wf.id)
+    assert captured is not None and captured.solution_id is None
+
+
+async def test_capture_succeeds_when_release_does_not_govern_workflow_path(
+    db_session, monkeypatch
+) -> None:
+    from src.models.orm.workflows import Workflow
+
+    db = db_session
+    sol = await _make_solution(db)
+    wf = Workflow(
+        id=uuid.uuid4(),
+        name=f"loose-{uuid.uuid4().hex[:8]}",
+        function_name="main",
+        path="workflows/loose.py",
+        type="workflow",
+        is_active=True,
+        solution_id=None,
+    )
+    db.add(wf)
+    await db.flush()
+
+    _stub_live_release(monkeypatch, ("workflows/other.py",))
+
+    result = await SolutionCaptureService(db).capture(
+        sol,
+        SolutionCaptureSelectors(
+            workflows=[wf.id], tables=[], apps=[], forms=[],
+            agents=[], claims=[], configs=[],
+        ),
+    )
+    await db.flush()
+
+    captured = await db.get(Workflow, wf.id)
+    assert captured is not None
+    assert captured.solution_id == sol.id
+    assert result.workflows_captured == 1

@@ -513,7 +513,10 @@ def test_entry_source_must_be_a_member_of_same_release() -> None:
 
 
 @pytest.mark.asyncio
-async def test_superseded_release_remains_valid_for_durable_queued_pin() -> None:
+@pytest.mark.parametrize("activation_state", ["superseded", "retired"])
+async def test_inactive_release_remains_valid_for_durable_queued_pin(
+    activation_state: str,
+) -> None:
     release_row, artifact = _rows()
     descriptor = WorkspaceReleaseDescriptor.from_rows(release_row, artifact)
     registration = next(iter(descriptor.effective_registrations.values()))
@@ -535,7 +538,7 @@ async def test_superseded_release_remains_valid_for_durable_queued_pin() -> None
         runtime_bounds=registration["runtime_bounds"],
     )
     evidence = pinned.queue_evidence()
-    release_row.activation_state = "superseded"
+    release_row.activation_state = activation_state
 
     class Result:
         def one_or_none(self):

@@ -320,3 +320,4 @@ def test_promotion_capabilities_are_independently_default_off() -> None:
     assert fields["workspace_promotion_diagnostics_mode"].default == "off"
     assert fields["workspace_release_prepare_canary_enabled"].default is False
     assert fields["workspace_release_activation_enabled"].default is False
+    assert fields["workspace_release_retirement_enabled"].default is False

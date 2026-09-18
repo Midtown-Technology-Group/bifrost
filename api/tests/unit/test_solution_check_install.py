@@ -41,3 +41,16 @@ def test_no_needs_for_non_modules_imports():
     python_files = {"workflows/w.py": "import os\nfrom datetime import datetime\n"}
     needs = check_install_needs(python_files)
     assert needs == []
+
+
+def test_unbundled_module_blocks_without_global_repo_access():
+    python_files = {"workflows/w.py": "from modules.helpers import x\n"}
+    needs = check_install_needs(python_files, global_repo_access=False)
+    assert any(n.kind == "module" and n.ref == "modules.helpers" for n in needs)
+
+
+def test_unbundled_module_allowed_with_global_repo_access():
+    # global_repo_access resolves modules.* from the loose _repo/ workspace.
+    python_files = {"workflows/w.py": "from modules.helpers import x\n"}
+    needs = check_install_needs(python_files, global_repo_access=True)
+    assert needs == []

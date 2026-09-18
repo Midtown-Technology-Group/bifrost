@@ -197,6 +197,12 @@ class WorkspacePromotionRelease(Base):
     attention_deadline: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    retired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retirement_evidence: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     created_by: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -262,7 +268,8 @@ class WorkspacePromotionRelease(Base):
         ),
         CheckConstraint(
             "activation_state IN ('prepared', 'activating', 'live', "
-            "'activation_failed', 'recovery_required', 'rolled_back', 'superseded')",
+            "'activation_failed', 'recovery_required', 'rolled_back', "
+            "'superseded', 'retired')",
             name="ck_workspace_promotion_release_activation_state",
         ),
         CheckConstraint(

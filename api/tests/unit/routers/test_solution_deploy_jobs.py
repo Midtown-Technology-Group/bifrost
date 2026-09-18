@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -7,15 +8,16 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-
-from src.models.orm.solution_deploy_jobs import SolutionDeployJob
+from src.models.contracts.solutions import SolutionRepoPreviewRequest
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.solutions import Solution
 from src.routers.solutions import (
     _enqueue_solution_deploy_job,
     _run_deploy_job,
-    _source_accountability_organization_id,
     _solution_candidate_id,
+    _source_accountability_organization_id,
+    install_from_repo,
 )
 
 
@@ -315,6 +317,7 @@ async def test_deploy_snapshots_slug_before_commit_expires_solution(tmp_path, mo
     class ExpiringSolution:
         id = job.install_id
         organization_id = uuid4()
+        repo_subpath = None
         _expired = False
 
         @property
@@ -389,3 +392,62 @@ async def test_deploy_snapshots_slug_before_commit_expires_solution(tmp_path, mo
     )
 
     assert job.status == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_install_from_repo_supplies_exact_archive_candidate(monkeypatch):
+    archive = b"exact repo archive bytes"
+    captured: dict = {}
+
+    async def clone(_repo_url, dest, ref=None):
+        (dest / "bifrost.solution.yaml").write_text(
+            "slug: fromrepo\nname: From repo\n"
+        )
+
+    async def enqueue(_db, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id=uuid4())
+
+    class DB:
+        def add(self, _row):
+            pass
+
+        async def flush(self):
+            pass
+
+    ctx = SimpleNamespace(db=DB(), org_id=None)
+    user = SimpleNamespace(user_id=uuid4(), email="admin@example.com", name="Admin")
+    body = SolutionRepoPreviewRequest(
+        repo_url="https://example.com/x.git", organization_id=None
+    )
+
+    from src.services.solutions import git_sync, zip_install
+
+    monkeypatch.setattr(git_sync, "clone_repo_to_dir", clone)
+    monkeypatch.setattr(
+        zip_install,
+        "_parse_workspace",
+        lambda _root: SimpleNamespace(slug="fromrepo", name="From repo"),
+    )
+    monkeypatch.setattr(zip_install, "find_install", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "bifrost.commands.solution._build_deploy_zip",
+        lambda _root, extra_text_files: archive,
+    )
+    monkeypatch.setattr(
+        "src.routers.solutions.build_solution_memory_profile_key",
+        lambda _preview: None,
+    )
+    monkeypatch.setattr(
+        "src.routers.solutions._source_accountability_organization_id",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "src.routers.solutions._enqueue_solution_deploy_job", enqueue
+    )
+
+    await install_from_repo(body, ctx, user)
+
+    assert captured["options"]["candidate_id"] == (
+        f"sha256:{hashlib.sha256(archive).hexdigest()}"
+    )

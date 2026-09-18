@@ -685,6 +685,7 @@ async def reconcile_solution_deploy_obligation(
     deploy_job_id: UUID,
     candidate_id: str,
     artifact: bytes,
+    repo_subpath: str | None = None,
     verified_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Close only the exact reviewed obligation proven by artifact and readback."""
@@ -707,8 +708,13 @@ async def reconcile_solution_deploy_obligation(
     if not records:
         return {"state": "not_tracked"}
 
+    expected_subpath = (
+        repo_subpath if repo_subpath is not None else f"solutions/{solution_slug}"
+    )
     mismatch: tuple[SolutionDeployObligation, str, dict[str, Any]] | None = None
     for record in records:
+        if record.repo_subpath != expected_subpath:
+            continue
         valid, reason, artifact_evidence = verify_solution_artifact(
             record,
             candidate_id=candidate_id,

@@ -399,6 +399,32 @@ class WorkspaceReleaseActivateRequest(BaseModel):
     authorization: WorkspaceReleaseAuthorization
 
 
+class WorkspaceLiveRetireRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    expected_artifact_id: UUID
+    governed_manifest_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    reason: str = Field(min_length=1, max_length=2000)
+    acknowledgement: str
+
+    @model_validator(mode="after")
+    def validate_acknowledgement(self):
+        if self.acknowledgement != "retire-live-workspace-release":
+            raise ValueError(
+                "acknowledgement must be retire-live-workspace-release"
+            )
+        return self
+
+
+class WorkspaceLiveRetireResponse(BaseModel):
+    release_row_id: UUID
+    release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    retired_at: datetime
+    governed_path_count: int = Field(ge=0)
+    evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
 class WorkspaceReleaseRuntimeStatus(BaseModel):
     state: Literal["coherent", "prepared", "not_prepared"]
     immutable_release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
@@ -416,7 +442,12 @@ class WorkspaceReleaseRuntimeStatus(BaseModel):
 
 class WorkspaceReleaseHistoryStatus(BaseModel):
     state: Literal[
-        "pending", "locked", "attention_required", "superseded", "not_queued"
+        "pending",
+        "locked",
+        "attention_required",
+        "superseded",
+        "not_queued",
+        "retired",
     ]
     lock_state: str
     job_id: UUID | None = None
@@ -441,6 +472,8 @@ class WorkspaceReleaseStatusResponse(BaseModel):
     runtime: WorkspaceReleaseRuntimeStatus
     history: WorkspaceReleaseHistoryStatus
     activated_at: datetime | None = None
+    retired_at: datetime | None = None
+    retirement_reason: str | None = None
 
 
 class WorkspaceLiveStatusResponse(BaseModel):
@@ -448,7 +481,20 @@ class WorkspaceLiveStatusResponse(BaseModel):
         "bifrost.workspace-live-status/v1"
     )
     organization_id: UUID
+    state: Literal["live", "retired", "none"] = "none"
     active_release: WorkspaceReleaseStatusResponse | None = None
+    retired_at: datetime | None = None
+    retirement_reason: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_state(cls, data):
+        if isinstance(data, dict) and "state" not in data:
+            data = {
+                **data,
+                "state": "none" if data.get("active_release") is None else "live",
+            }
+        return data
 
 
 WorkspaceSourceDisposition = Literal[

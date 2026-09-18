@@ -171,6 +171,7 @@ async def recover_solution_deploy_accountability(
                 deploy_job_id=deploy_job_id,
                 candidate_id=str(payload.options["candidate_id"]),
                 artifact=artifact,
+                repo_subpath=solution.repo_subpath,
             )
         # Commit evidence before releasing the same lock used by deploy/finalize.
         await db.commit()

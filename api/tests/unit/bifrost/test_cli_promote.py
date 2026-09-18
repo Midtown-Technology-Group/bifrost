@@ -1603,3 +1603,138 @@ def test_release_refuses_live_pointer_drift_before_activation(monkeypatch) -> No
     )
     with pytest.raises(promote.PromotionBundleError, match="changed after preview"):
         promote._handle_release(options)
+
+
+def test_retire_live_posts_exact_resolved_identity(monkeypatch, capsys) -> None:
+    release_id = "sha256:" + "a" * 64
+    artifact_id = "11111111-1111-1111-1111-111111111111"
+    governed_manifest_id = "sha256:" + "b" * 64
+    reason = "retire production Live for rollback"
+    captured = {}
+
+    class Response:
+        is_success = True
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def get_sync(self, endpoint):
+            captured["get_endpoint"] = endpoint
+            return Response(
+                {
+                    "active_release": {
+                        "release_id": release_id,
+                        "artifact_id": artifact_id,
+                        "runtime": {
+                            "activation_authorization": {
+                                "governed_manifest_id": governed_manifest_id
+                            }
+                        },
+                    }
+                }
+            )
+
+        def post_sync(self, endpoint, **kwargs):
+            captured["endpoint"] = endpoint
+            captured["payload"] = kwargs["json"]
+            return Response(
+                {
+                    "release_row_id": artifact_id,
+                    "release_id": release_id,
+                    "governed_path_count": 3,
+                    "retired_at": "2026-09-18T00:00:00+00:00",
+                    "evidence_id": "sha256:" + "c" * 64,
+                }
+            )
+
+    monkeypatch.setattr(promote.BifrostClient, "get_instance", lambda **_kw: Client())
+    monkeypatch.setattr(promote, "raise_for_status_with_detail", lambda _response: None)
+
+    assert (
+        promote.handle_promote(
+            [
+                "retire-live",
+                "--reason",
+                reason,
+                "--acknowledge",
+                promote.RETIRE_LIVE_ACKNOWLEDGEMENT,
+            ]
+        )
+        == 0
+    )
+    assert captured["get_endpoint"] == promote.PROMOTION_LIVE_STATUS_ENDPOINT
+    assert captured["endpoint"] == promote.PROMOTION_LIVE_RETIRE_ENDPOINT
+    assert captured["payload"] == {
+        "expected_release_id": release_id,
+        "expected_artifact_id": artifact_id,
+        "governed_manifest_id": governed_manifest_id,
+        "reason": reason,
+        "acknowledgement": promote.RETIRE_LIVE_ACKNOWLEDGEMENT,
+    }
+    assert "In-flight execution pins remain resolvable" in capsys.readouterr().out
+
+
+def test_retire_live_disabled_surfaces_server_error(monkeypatch, capsys) -> None:
+    class Response:
+        def __init__(self, body, is_success=True):
+            self.body = body
+            self.is_success = is_success
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def get_sync(self, _endpoint):
+            return Response(
+                {
+                    "active_release": {
+                        "release_id": "sha256:" + "a" * 64,
+                        "artifact_id": "11111111-1111-1111-1111-111111111111",
+                        "runtime": {
+                            "activation_authorization": {
+                                "governed_manifest_id": "sha256:" + "b" * 64
+                            }
+                        },
+                    }
+                }
+            )
+
+        def post_sync(self, _endpoint, **_kwargs):
+            return Response({}, is_success=False)
+
+    def raise_for_status(response):
+        if not response.is_success:
+            raise promote.PromotionBundleError(
+                "Workspace release retirement is not enabled"
+            )
+
+    monkeypatch.setattr(promote.BifrostClient, "get_instance", lambda **_kw: Client())
+    monkeypatch.setattr(promote, "raise_for_status_with_detail", raise_for_status)
+
+    assert (
+        promote.handle_promote(
+            [
+                "retire-live",
+                "--reason",
+                "retire",
+                "--acknowledge",
+                promote.RETIRE_LIVE_ACKNOWLEDGEMENT,
+            ]
+        )
+        == 1
+    )
+    assert "retirement is not enabled" in capsys.readouterr().err
+
+
+def test_retire_live_requires_exact_acknowledgement(capsys) -> None:
+    assert (
+        promote.handle_promote(
+            ["retire-live", "--reason", "retire", "--acknowledge", "retire-live"]
+        )
+        == 1
+    )
+    assert promote.RETIRE_LIVE_ACKNOWLEDGEMENT in capsys.readouterr().err

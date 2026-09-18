@@ -603,6 +603,7 @@
 | POST | `/api/workspace-promotions/artifacts/{artifact_id}/prepare` |
 | POST | `/api/workspace-promotions/drafts` |
 | GET | `/api/workspace-promotions/live` |
+| POST | `/api/workspace-promotions/live/retire` |
 | POST | `/api/workspace-promotions/preview` |
 | POST | `/api/workspace-promotions/preview-jobs` |
 | GET | `/api/workspace-promotions/releases/{release_id}` |

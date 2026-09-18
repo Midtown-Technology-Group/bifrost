@@ -246,6 +246,61 @@ release is not complete. The history deadline and
 [Workspace source release accountability](workspace-source-release-accountability.md)
 for protected-main declaration, overdue, and completion rules.
 
+## Retirement and demotion of the immutable loose release
+
+The fork-only immutable loose-Workspace lane is a migration bridge, not the
+long-term governed path. After a workflow family has moved to a sealed Solution,
+an operator retires the single global Live release so the formerly-governed loose
+paths return to the legacy `repo-v1` lane:
+
+```bash
+bifrost promote status --live
+bifrost promote retire-live \
+  --reason "Autotask family migrated to Solutions" \
+  --acknowledge retire-live-workspace-release
+bifrost promote status --live
+```
+
+`retire-live` is gated by the default-off
+`workspace_release_retirement_enabled` platform flag and requires an
+organization-scoped platform superuser. `--reason` is mandatory, and
+`--acknowledge` must be exactly `retire-live-workspace-release`.
+
+The server retires by exact compare-and-swap. It takes the global Workspace
+release lock, reads the Live release row `FOR UPDATE`, and requires the request
+to match the current `release_id`, artifact ID, and `governed_manifest_id`
+exactly. Any mismatch fails closed with `409 Conflict` and writes nothing.
+`--expected-release-id`, `--expected-artifact-id`, and `--governed-manifest-id`
+are optional; when omitted, the CLI resolves them from
+`GET /api/workspace-promotions/live`. Pass them explicitly when the CAS guard
+must be independent of a just-read value. On success the release moves to
+`activation_state='retired'` with
+`retired_at`, a content-addressed retirement-evidence record (schema
+`bifrost.workspace-release-retirement/v1`) carrying the operator reason,
+`governed_manifest_id`, governed-path count, and acting user, and the history
+attention deadline is cleared. The platform emits a strict
+`workspace_release.retired` audit event in the same commit. A retry against the
+same already-retired release ID is idempotent and returns the original evidence.
+
+Read the result back with `GET /api/workspace-promotions/live` (CLI
+`bifrost promote status --live`). Once retired, the response reports
+`state="retired"`, no `active_release`, and the retirement reason. Because no
+release owns Live, the formerly-governed loose paths resolve through the legacy
+`repo-v1` lane again and the governed read/mutation rejections no longer apply; a
+later activation must use `--expect-no-active-release` with the `repo-v1:...`
+base. Retirement itself migrates no entity or source.
+
+The governed destination for migrated families is a sealed Solution on the same
+artifact, release, validation, activation, rollback, and status state machine.
+Solution source is scoped to `solution_id` under `solutions/<slug>/` and
+replaced as a whole, so removals and renames reconcile natively without a
+governed manifest. A Solution that needs shared code sets `global_repo_access`
+so its workflows resolve `modules/*` from the global `_repo/` lane instead of
+vendoring duplicate copies. Declared cohort releases remain a
+compatibility-only path for reviewed legacy Workspace commits (see "new workflow
+families should use sealed Solutions" above); do not start a new family on the
+loose immutable lane.
+
 ## Candidate identity
 
 The model separates stable content from release evidence:
