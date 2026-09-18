@@ -17,12 +17,14 @@ bundles exactly what ``bifrost deploy`` would.
 
 from __future__ import annotations
 
-import logging
 import asyncio
+import hashlib
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -200,12 +202,21 @@ async def deploy_from_workspace(
     return await deploy_zip_to_solution(db, solution, data, force=True)
 
 
-async def sync(db: AsyncSession, solution: Solution) -> None:
+async def sync(
+    db: AsyncSession,
+    solution: Solution,
+    *,
+    accountability_organization_id: UUID | None = None,
+) -> None:
     """Clone the connected install's repo at its configured ref and deploy.
 
     Called by the auto-pull trigger (webhook/poll) on a new commit. The clone
     uses the install's ``git_ref`` when set, or the repo's default branch when
     none is configured.
+
+    When ``accountability_organization_id`` is configured, a verified deploy
+    closes the matching reviewed-source ``SolutionDeployObligation`` exactly as a
+    manual ``/deploy`` does.
 
     Serialized per-install with a Redis lock so overlapping triggers can't race —
     an older clone finishing last would otherwise full-replace the newer commit's
@@ -240,7 +251,11 @@ async def sync(db: AsyncSession, solution: Solution) -> None:
                 # We hold the lock now: clear any pending marker — we're about to
                 # clone the CURRENT main, which subsumes earlier skipped triggers.
                 await redis.delete(pending_key)
-                await _run_sync_once(db, solution)
+                await _run_sync_once(
+                    db,
+                    solution,
+                    accountability_organization_id=accountability_organization_id,
+                )
         except SolutionWriteLockHeld:
             # Another writer holds it; record that a rerun is owed so the holder
             # picks up this (newer) commit after it finishes.
@@ -273,7 +288,12 @@ async def clone_repo_to_dir(repo_url: str, dest: Path, ref: str | None = None) -
         await asyncio.to_thread(GitRepo.clone_from, repo_url, str(dest), depth=1)
 
 
-async def _run_sync_once(db: AsyncSession, solution: Solution) -> None:
+async def _run_sync_once(
+    db: AsyncSession,
+    solution: Solution,
+    *,
+    accountability_organization_id: UUID | None = None,
+) -> None:
     """One clone + deploy + commit + finalize, under the caller's held lock."""
     repo_url = solution.git_repo_url
     assert repo_url is not None  # sync() validated git_connected + git_repo_url
@@ -308,3 +328,57 @@ async def _run_sync_once(db: AsyncSession, solution: Solution) -> None:
             "after retries; the next sync will re-run and heal it.",
             solution.id,
         )
+        return
+    if accountability_organization_id is not None:
+        await _reconcile_synced_obligation(
+            db,
+            solution,
+            accountability_organization_id=accountability_organization_id,
+        )
+
+
+async def _reconcile_synced_obligation(
+    db: AsyncSession,
+    solution: Solution,
+    *,
+    accountability_organization_id: UUID,
+) -> None:
+    """Close the reviewed-source obligation an auto-pull deploy proved."""
+    from src.models.orm.solution_deploy_jobs import SolutionDeployJob
+    from src.services.solution_deploy_obligations import (
+        reconcile_solution_deploy_obligation,
+    )
+    from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
+
+    try:
+        artifact = await SolutionSourceArtifactStorage(solution.id).read()
+        if artifact is None:
+            logger.error(
+                "Solution %s synced but its source artifact is missing; "
+                "source accountability cannot be reconciled",
+                solution.id,
+            )
+            return
+        job = SolutionDeployJob(install_id=solution.id, status="running")
+        db.add(job)
+        await db.flush()
+        accountability = await reconcile_solution_deploy_obligation(
+            db,
+            solution_id=solution.id,
+            solution_slug=solution.slug,
+            accountability_organization_id=accountability_organization_id,
+            deploy_job_id=job.id,
+            candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+            artifact=artifact,
+            repo_subpath=solution.repo_subpath,
+        )
+        job.status = "succeeded"
+        job.result = {"source_release_accountability": accountability}
+        await db.commit()
+    except Exception:  # the deploy is already durable
+        logger.exception(
+            "Solution %s synced but source accountability reconciliation failed",
+            solution.id,
+        )
+        await db.rollback()
+        await db.refresh(solution)

@@ -668,7 +668,7 @@ async def resolve_pinned_workspace_runtime(
     if row is None:
         raise WorkspaceReleaseRuntimeError("queued Workspace release is missing")
     release_row, artifact = row
-    if release_row.activation_state not in {"live", "superseded"}:
+    if release_row.activation_state not in {"live", "superseded", "retired"}:
         raise WorkspaceReleaseRuntimeError(
             "queued Workspace release is no longer executable"
         )

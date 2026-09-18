@@ -1912,6 +1912,7 @@ async def _run_deploy_job(
                             deploy_job_id=job_id,
                             candidate_id=candidate_id,
                             artifact=stored_artifact,
+                            repo_subpath=solution.repo_subpath,
                         )
                     except Exception as exc:  # noqa: BLE001 - deploy is durable
                         logger.exception(
@@ -2092,6 +2093,7 @@ async def _run_install_job(
                     deploy_job_id=job_id,
                     candidate_id=candidate_id,
                     artifact=stored_artifact,
+                    repo_subpath=solution.repo_subpath,
                 )
                 await db.commit()
             install_result = {
@@ -2420,10 +2422,18 @@ async def sync_solution(solution_id: UUID, ctx: Context, user: CurrentSuperuser)
     from src.services.solutions.git_sync import NotASolutionWorkspace
     from src.services.solutions.git_sync import sync as git_sync
 
+    raw_accountability_org_id = _source_accountability_organization_id()
+    accountability_organization_id = (
+        UUID(raw_accountability_org_id) if raw_accountability_org_id else None
+    )
     try:
         # git_sync commits + runs the S3 phase itself (inside its per-install
         # lock, DB-commit-before-S3 per P1-c), so the router does not commit here.
-        await git_sync(ctx.db, solution)
+        await git_sync(
+            ctx.db,
+            solution,
+            accountability_organization_id=accountability_organization_id,
+        )
         # A successful pull means the install is now at the repo HEAD — clear any
         # pending "update available" signal so the badge disappears.
         if solution.update_available_version is not None:
@@ -2735,6 +2745,7 @@ async def install_from_repo(
             organization_id=solution.organization_id,
             options={
                 "force": True,
+                "candidate_id": f"sha256:{hashlib.sha256(archive).hexdigest()}",
                 "accountability_organization_id": _source_accountability_organization_id(),
             },
             requested_by_user_id=user.user_id,

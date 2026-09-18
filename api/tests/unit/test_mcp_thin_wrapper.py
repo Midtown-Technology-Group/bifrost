@@ -55,6 +55,7 @@ from src.services.mcp_server.tools import (  # noqa: E402
     policy_rules as policy_rules_mod,
     roles as roles_mod,
     workflow as workflow_mod,
+    workspace_promotions as workspace_promotions_mod,
 )
 
 
@@ -107,6 +108,7 @@ PARITY_HANDLERS: dict[str, set[str]] = {
         "bifrost_save_memory",
         "bifrost_remove_memory",
     },
+    "workspace_promotions": {"retire_workspace_release"},
 }
 
 
@@ -121,6 +123,7 @@ MODULES = {
     "policy_rules": policy_rules_mod,
     "apps": apps_mod,
     "gateway": gateway_mod,
+    "workspace_promotions": workspace_promotions_mod,
 }
 
 
@@ -398,3 +401,82 @@ def test_file_policy_tools_accept_solution_param() -> None:
         assert "solution" in sig.parameters, (
             f"{fn.__name__} does not accept a 'solution' parameter (Task 11)"
         )
+
+
+@pytest.mark.asyncio
+async def test_retire_workspace_release_resolves_live_identity_and_posts() -> None:
+    from src.services.mcp_server.tools.workspace_promotions import (
+        RETIRE_LIVE_ACKNOWLEDGEMENT,
+        retire_workspace_release,
+    )
+
+    calls: list[tuple[str, str, dict | None]] = []
+    release_id = "sha256:" + "a" * 64
+    artifact_id = "11111111-1111-1111-1111-111111111111"
+    governed_manifest_id = "sha256:" + "b" * 64
+
+    async def _fake_call_rest(context, method, path, *, json_body=None, params=None):
+        calls.append((method, path, json_body))
+        if method == "GET":
+            return (
+                200,
+                {
+                    "active_release": {
+                        "release_id": release_id,
+                        "artifact_id": artifact_id,
+                        "runtime": {
+                            "activation_authorization": {
+                                "governed_manifest_id": governed_manifest_id
+                            }
+                        },
+                    }
+                },
+            )
+        return (200, {"release_id": release_id})
+
+    with patch(
+        "src.services.mcp_server.tools.workspace_promotions.call_rest",
+        AsyncMock(side_effect=_fake_call_rest),
+    ):
+        await retire_workspace_release(
+            _make_mcp_context(),
+            reason="retire production Live",
+            acknowledgement=RETIRE_LIVE_ACKNOWLEDGEMENT,
+        )
+
+    assert calls[0][0] == "GET"
+    assert calls[0][1] == "/api/workspace-promotions/live"
+    assert calls[1][0] == "POST"
+    assert calls[1][1] == "/api/workspace-promotions/live/retire"
+    assert calls[1][2] == {
+        "expected_release_id": release_id,
+        "expected_artifact_id": artifact_id,
+        "governed_manifest_id": governed_manifest_id,
+        "reason": "retire production Live",
+        "acknowledgement": RETIRE_LIVE_ACKNOWLEDGEMENT,
+    }
+
+
+@pytest.mark.asyncio
+async def test_retire_workspace_release_rejects_bad_acknowledgement() -> None:
+    from src.services.mcp_server.tools.workspace_promotions import (
+        retire_workspace_release,
+    )
+
+    calls: list[tuple[str, str, dict | None]] = []
+
+    async def _fake_call_rest(context, method, path, *, json_body=None, params=None):
+        calls.append((method, path, json_body))
+        return (200, {})
+
+    with patch(
+        "src.services.mcp_server.tools.workspace_promotions.call_rest",
+        AsyncMock(side_effect=_fake_call_rest),
+    ):
+        await retire_workspace_release(
+            _make_mcp_context(),
+            reason="retire production Live",
+            acknowledgement="retire-live",
+        )
+
+    assert calls == []

@@ -23,6 +23,7 @@ from src.services.mcp_server.tools import (
     sdk,
     tables,
     workflow,
+    workspace_promotions,
 )
 from src.services.mcp_server.tools import gateway
 
@@ -45,6 +46,7 @@ TOOL_MODULES = [
     sdk,
     tables,
     workflow,
+    workspace_promotions,
 ]
 
 

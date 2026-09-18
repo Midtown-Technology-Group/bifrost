@@ -10,13 +10,18 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
+from src.core.auth import get_current_superuser
 from src.models.contracts.workspace_promotions import (
+    WorkspaceLiveRetireRequest,
     WorkspaceSourceReleaseDeclareRequest,
 )
 from src.routers import workspace_promotions
 from src.services.github_actions_oidc import (
     GitHubActionsOIDCError,
     WorkspaceSourceReleaseProducer,
+)
+from src.services.workspace_release_retirement import (
+    WorkspaceReleaseRetirementError,
 )
 
 
@@ -193,6 +198,134 @@ async def test_unexpected_activation_failure_is_not_masked_as_projection_failure
             SimpleNamespace(),
             _user(),
         )
+
+
+def _retire_request() -> WorkspaceLiveRetireRequest:
+    return WorkspaceLiveRetireRequest(
+        expected_release_id="sha256:" + "a" * 64,
+        expected_artifact_id=uuid4(),
+        governed_manifest_id="sha256:" + "b" * 64,
+        reason="retire production Live for rollback",
+        acknowledgement="retire-live-workspace-release",
+    )
+
+
+@pytest.mark.asyncio
+async def test_retirement_disabled_route_is_not_found(monkeypatch) -> None:
+    monkeypatch.setattr(
+        workspace_promotions,
+        "get_settings",
+        lambda: SimpleNamespace(workspace_release_retirement_enabled=False),
+    )
+    service = MagicMock(side_effect=AssertionError("disabled route must not retire"))
+    monkeypatch.setattr(
+        workspace_promotions, "WorkspaceReleaseRetirementService", service
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await workspace_promotions.retire_workspace_release(
+            _retire_request(), _ctx(), SimpleNamespace(), _user()
+        )
+
+    assert exc_info.value.status_code == 404
+    assert "retirement is not enabled" in exc_info.value.detail
+    service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_retirement_rejects_missing_organization_context(monkeypatch) -> None:
+    monkeypatch.setattr(
+        workspace_promotions,
+        "get_settings",
+        lambda: SimpleNamespace(workspace_release_retirement_enabled=True),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await workspace_promotions.retire_workspace_release(
+            _retire_request(),
+            SimpleNamespace(org_id=None),
+            SimpleNamespace(),
+            _user(),
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_retirement_route_requires_platform_admin() -> None:
+    route = next(
+        route
+        for route in workspace_promotions.router.routes
+        if getattr(route, "path", None) == "/api/workspace-promotions/live/retire"
+    )
+
+    assert get_current_superuser in {
+        dependency.call for dependency in route.dependant.dependencies
+    }
+
+
+@pytest.mark.asyncio
+async def test_retirement_maps_service_conflict_to_409(monkeypatch) -> None:
+    class Service:
+        def __init__(self, _db, _organization_id):
+            pass
+
+        async def retire(self, _request, *, user_id):
+            raise WorkspaceReleaseRetirementError(
+                "no Live Workspace release to retire"
+            )
+
+    monkeypatch.setattr(
+        workspace_promotions,
+        "get_settings",
+        lambda: SimpleNamespace(workspace_release_retirement_enabled=True),
+    )
+    monkeypatch.setattr(
+        workspace_promotions, "WorkspaceReleaseRetirementService", Service
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await workspace_promotions.retire_workspace_release(
+            _retire_request(), _ctx(), SimpleNamespace(), _user()
+        )
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_retirement_returns_service_evidence(monkeypatch) -> None:
+    response = SimpleNamespace(release_row_id=uuid4())
+    captured: dict[str, object] = {}
+
+    class Service:
+        def __init__(self, db, organization_id):
+            captured["db"] = db
+            captured["organization_id"] = organization_id
+
+        async def retire(self, request, *, user_id):
+            captured["request"] = request
+            captured["user_id"] = user_id
+            return response
+
+    monkeypatch.setattr(
+        workspace_promotions,
+        "get_settings",
+        lambda: SimpleNamespace(workspace_release_retirement_enabled=True),
+    )
+    monkeypatch.setattr(
+        workspace_promotions, "WorkspaceReleaseRetirementService", Service
+    )
+    ctx = _ctx()
+    user = _user()
+    db = SimpleNamespace()
+    request = _retire_request()
+
+    result = await workspace_promotions.retire_workspace_release(request, ctx, db, user)
+
+    assert result is response
+    assert captured["db"] is db
+    assert captured["organization_id"] == ctx.org_id
+    assert captured["request"] is request
+    assert captured["user_id"] == user.user_id
 
 
 def _source_declaration(commit_sha: str) -> WorkspaceSourceReleaseDeclareRequest:

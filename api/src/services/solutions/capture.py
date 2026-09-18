@@ -132,6 +132,7 @@ class SolutionCaptureService:
         queue row so a deploy can name who captured an un-pulled entity.
         """
         await self._reject_inline_apps(selectors.apps)
+        await self._reject_governed_workflows(solution, selectors.workflows)
         await self._capture_model(Workflow, solution, selectors.workflows)
         await self._capture_model(Table, solution, selectors.tables)
         await self._capture_model(Application, solution, selectors.apps)
@@ -297,6 +298,37 @@ class SolutionCaptureService:
                     f"(`bifrost solution scaffold-app`) and capture its backing "
                     f"tables/workflows instead — see the v1→v2 migration guide."
                 )
+
+    async def _reject_governed_workflows(
+        self, solution: Solution, ids: list[UUID]
+    ) -> None:
+        """Fail closed when a captured workflow's source is owned by the live
+        immutable Workspace release.
+
+        Capture stamps ``solution_id`` with a Core ``update()``, which bypasses
+        both the ORM solution guard and the immutable-workspace-release guard.
+        Only Workflow carries a Workspace source path, so only workflows are
+        checked; a Core write here would silently corrupt the release.
+        """
+        from src.services.workspace_release_files import (
+            WorkspaceReleasePathGoverned,
+            reject_release_governed_paths,
+        )
+
+        for entity_id in dict.fromkeys(ids):
+            path = (
+                await self.db.execute(
+                    select(Workflow.path).where(Workflow.id == entity_id)
+                )
+            ).scalar_one_or_none()
+            if path is None:
+                continue
+            try:
+                await reject_release_governed_paths(
+                    self.db, solution.organization_id, [path]
+                )
+            except WorkspaceReleasePathGoverned as exc:
+                raise SolutionCaptureConflict(str(exc)) from exc
 
     async def _capture_configs(self, solution: Solution, keys: list[str]) -> None:
         for position, key in enumerate(dict.fromkeys(keys)):

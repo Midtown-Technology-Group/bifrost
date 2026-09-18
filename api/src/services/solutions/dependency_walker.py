@@ -53,11 +53,21 @@ from src.services.solutions.ref_scanner import (
 )
 
 
-def check_install_needs(python_files: dict[str, str]) -> list[UnmetNeed]:
+# Import roots the runtime can resolve from the instance's loose ``_repo/``
+# workspace instead of the bundle when a Solution has ``global_repo_access``.
+_GLOBAL_REPO_RESOLVABLE_ROOTS = frozenset({"modules"})
+
+
+def check_install_needs(
+    python_files: dict[str, str], *, global_repo_access: bool = False
+) -> list[UnmetNeed]:
     """Module-closure check over a bundle's python_files. Every ``modules.x``
     import in the bundle must resolve to a file present in the bundle. Returns
-    the unmet needs (empty => satisfied). This is the pure module-class core;
-    the DB-aware cross-solution-dependency check is layered on by the caller.
+    the unmet needs (empty => satisfied). When the install has
+    ``global_repo_access``, ``modules.*`` resolves from the instance's loose
+    ``_repo/`` workspace at runtime, so those misses are not reported. This is
+    the pure module-class core; the DB-aware cross-solution-dependency check is
+    layered on by the caller.
     """
     present = set(python_files.keys())
 
@@ -73,10 +83,16 @@ def check_install_needs(python_files: dict[str, str]) -> list[UnmetNeed]:
                 return True
         return False
 
+    checked_roots = {"modules"}
+    if global_repo_access:
+        checked_roots -= _GLOBAL_REPO_RESOLVABLE_ROOTS
+
     needs: list[UnmetNeed] = []
     seen: set[str] = set()
     for path, src in python_files.items():
-        modules = {m for m in scan_imported_modules(src) if m.split(".")[0] == "modules"}
+        modules = {
+            m for m in scan_imported_modules(src) if m.split(".")[0] in checked_roots
+        }
         for module in modules:
             if module in seen or _resolves(module):
                 continue

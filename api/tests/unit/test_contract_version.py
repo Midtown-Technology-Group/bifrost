@@ -286,7 +286,12 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # ADDITIVE: old clients omit it and workflows remain non-retryable by default.
     # Redesign integration adds optional logo/description and role metadata.
     # Existing CLI request and response fields remain compatible.
-    "1bad1ec20e7ed5cf9c2987ed2763801a2d48ee0a859bf8dde45d572ad50214f5"
+    # Workspace Live release retirement (2026-09-18). ADDITIVE: release and live
+    # status responses gained optional retired_at/retirement_reason, the live
+    # status gained an optional state enum, and the new retire request/response
+    # DTOs are not CLI-fingerprinted. Existing v11 clients ignore the extra
+    # fields and retain their prior pending/locked/not_queued handling.
+    "abdee692ee5eb20869e1fefe96a318dbb445fdd670127b0652cd92e3e2814de5"
 )
 
 

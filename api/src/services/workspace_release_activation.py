@@ -325,7 +325,9 @@ def _history_status(
         and attention_deadline <= now
         and release.lock_state != "locked"
     )
-    if release.activation_state == "superseded":
+    if release.activation_state == "retired":
+        state = "retired"
+    elif release.activation_state == "superseded":
         state = "superseded"
     elif release.lock_state == "locked":
         state = "locked"
@@ -382,6 +384,10 @@ def release_status(
     activated_at = None
     if isinstance(activation, dict) and activation.get("activated_at"):
         activated_at = datetime.fromisoformat(str(activation["activated_at"]))
+    retirement_evidence = getattr(release, "retirement_evidence", None)
+    retirement_reason = None
+    if isinstance(retirement_evidence, dict) and retirement_evidence.get("reason"):
+        retirement_reason = str(retirement_evidence["reason"])
     return WorkspaceReleaseStatusResponse(
         release_row_id=release.id,
         artifact_id=artifact.id,
@@ -410,6 +416,8 @@ def release_status(
         ),
         history=_history_status(release),
         activated_at=activated_at,
+        retired_at=getattr(release, "retired_at", None),
+        retirement_reason=retirement_reason,
     )
 
 
@@ -642,9 +650,29 @@ class WorkspaceReleaseActivationService:
 
     async def get_live(self) -> WorkspaceLiveStatusResponse:
         rows = await self._current_live()
+        if rows is not None:
+            return WorkspaceLiveStatusResponse(
+                organization_id=self.organization_id,
+                state="live",
+                active_release=release_status(*rows),
+            )
+        retired = await self._latest_retired()
+        if retired is not None:
+            release, _artifact = retired
+            evidence = getattr(release, "retirement_evidence", None)
+            return WorkspaceLiveStatusResponse(
+                organization_id=self.organization_id,
+                state="retired",
+                retired_at=release.retired_at,
+                retirement_reason=(
+                    str(evidence["reason"])
+                    if isinstance(evidence, dict) and evidence.get("reason")
+                    else None
+                ),
+            )
         return WorkspaceLiveStatusResponse(
             organization_id=self.organization_id,
-            active_release=release_status(*rows) if rows else None,
+            state="none",
         )
 
     async def _release_rows(
@@ -695,6 +723,27 @@ class WorkspaceReleaseActivationService:
             return None
         release, artifact = rows[0]
         return release, artifact
+
+    async def _latest_retired(
+        self,
+    ) -> tuple[WorkspacePromotionRelease, WorkspacePromotionArtifact] | None:
+        statement = (
+            select(WorkspacePromotionRelease, WorkspacePromotionArtifact)
+            .join(
+                WorkspacePromotionArtifact,
+                WorkspacePromotionArtifact.id == WorkspacePromotionRelease.artifact_id,
+            )
+            .where(
+                WorkspacePromotionRelease.organization_id == self.organization_id,
+                WorkspacePromotionRelease.activation_state == "retired",
+            )
+            .order_by(WorkspacePromotionRelease.retired_at.desc())
+            .limit(1)
+        )
+        row = (await self.db.execute(statement)).one_or_none()
+        if row is None:
+            return None
+        return row[0], row[1]
 
     async def _current_live_any_organization(
         self, *, for_update: bool = False

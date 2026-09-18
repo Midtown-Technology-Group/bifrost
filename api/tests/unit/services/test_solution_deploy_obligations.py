@@ -45,8 +45,11 @@ def _zip(entries: list[tuple[str, bytes]], *, reverse: bool = False) -> bytes:
     return buffer.getvalue()
 
 
-def _record(entries: list[tuple[str, bytes]]) -> SolutionDeployObligation:
-    repo_subpath = "solutions/example"
+def _record(
+    entries: list[tuple[str, bytes]],
+    *,
+    repo_subpath: str = "solutions/example",
+) -> SolutionDeployObligation:
     files = [
         {
             "path": f"{repo_subpath}/{path}",
@@ -559,6 +562,44 @@ async def test_all_artifact_mismatches_mark_newest_attention() -> None:
     assert first.disposition == "attention_required"
     assert first.source_artifact_sha256 == hashlib.sha256(artifact).hexdigest()
     assert second.disposition == "pending"
+
+
+class _FakeDatabase:
+    def __init__(self, records: list[SolutionDeployObligation]) -> None:
+        self._records = records
+        self.flush = AsyncMock()
+
+    async def scalars(self, _statement):
+        return SimpleNamespace(all=lambda: self._records)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_matches_reviewed_repo_subpath_for_same_slug(monkeypatch) -> None:
+    entries = [("bifrost.solution.yaml", b"slug: example\nname: Example\n")]
+    matching = _record(entries, repo_subpath="solutions/other")
+    other = _record(entries)
+    other.organization_id = matching.organization_id
+    artifact = _zip(entries)
+    database = _FakeDatabase([other, matching])
+    monkeypatch.setattr(
+        "src.services.solution_deploy_obligations._runtime_and_registration_readback",
+        AsyncMock(return_value=(True, None, {"runtime_files": {}})),
+    )
+
+    result = await reconcile_solution_deploy_obligation(
+        database,
+        solution_id=uuid4(),
+        solution_slug="example",
+        accountability_organization_id=matching.organization_id,
+        deploy_job_id=uuid4(),
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+        artifact=artifact,
+        repo_subpath="solutions/other",
+    )
+
+    assert result["state"] == "released"
+    assert matching.disposition == "released"
+    assert other.disposition == "pending"
 
 
 @pytest.mark.asyncio

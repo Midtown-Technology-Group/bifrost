@@ -8,10 +8,12 @@ A git-connected install has exactly one writer: auto-pull from its repo.
 """
 from __future__ import annotations
 
+import hashlib
 import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
-
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
 from src.services.solutions.git_sync import (
@@ -259,7 +261,7 @@ class TestGitSyncRerun:
 
         calls = {"n": 0}
 
-        async def _fake_run_once(db, solution):
+        async def _fake_run_once(db, solution, **_kwargs):
             calls["n"] += 1
             # On the FIRST run, simulate a newer commit's trigger arriving while
             # the lock is held: it would set the pending flag.
@@ -290,7 +292,7 @@ class TestGitSyncRerun:
 
         calls = {"n": 0}
 
-        async def _fake_run_once(db, solution):
+        async def _fake_run_once(db, solution, **_kwargs):
             calls["n"] += 1
 
         monkeypatch.setattr(gs, "_run_sync_once", _fake_run_once)
@@ -410,3 +412,68 @@ class TestDeletionSweepSparesSolutionManaged:
         assert "repo_agent" not in agent_names, "unmanaged agent should be swept"
         assert "repo-app" not in app_slugs, "unmanaged app should be swept"
         assert "repo_claim" not in claim_names, "unmanaged claim should be swept"
+
+
+class TestGitSyncAccountability:
+    async def test_configured_sync_closes_reviewed_obligation(self, monkeypatch):
+        from src.services import solution_deploy_obligations
+        from src.services.solutions import git_sync as gs
+
+        organization_id = uuid.uuid4()
+        solution = Solution(
+            id=uuid.uuid4(),
+            slug="reviewed",
+            name="Reviewed",
+            organization_id=None,
+            git_connected=True,
+            git_repo_url="https://example.com/x.git",
+        )
+        artifact = b"reviewed artifact"
+        finalize = AsyncMock()
+
+        async def clone(_repo_url, dest, ref=None):
+            (dest / "bifrost.solution.yaml").write_text(
+                f"slug: {solution.slug}\nname: Reviewed\n"
+            )
+
+        async def deploy(_db, _solution, _workspace):
+            return SimpleNamespace(finalize_s3=finalize)
+
+        class Storage:
+            def __init__(self, _solution_id):
+                self.read = AsyncMock(return_value=artifact)
+
+        reconcile = AsyncMock(return_value={"state": "released"})
+        database = SimpleNamespace(
+            add=lambda _row: None,
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+            rollback=AsyncMock(),
+        )
+        monkeypatch.setattr(gs, "clone_repo_to_dir", clone)
+        monkeypatch.setattr(gs, "deploy_from_workspace", deploy)
+        monkeypatch.setattr(
+            "src.services.solutions.source_artifact.SolutionSourceArtifactStorage",
+            Storage,
+        )
+        monkeypatch.setattr(
+            solution_deploy_obligations,
+            "reconcile_solution_deploy_obligation",
+            reconcile,
+        )
+
+        await gs._run_sync_once(
+            database,
+            solution,
+            accountability_organization_id=organization_id,
+        )
+
+        finalize.assert_awaited_once()
+        assert reconcile.await_args.kwargs["accountability_organization_id"] == (
+            organization_id
+        )
+        assert reconcile.await_args.kwargs["candidate_id"] == (
+            f"sha256:{hashlib.sha256(artifact).hexdigest()}"
+        )
+        assert reconcile.await_args.kwargs["repo_subpath"] is None
+        database.commit.assert_awaited()

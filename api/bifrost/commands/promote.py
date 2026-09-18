@@ -49,12 +49,14 @@ PROMOTION_PREPARE_ENDPOINT = "/api/workspace-promotions/artifacts/{artifact_id}/
 PROMOTION_ACTIVATE_ENDPOINT = "/api/workspace-promotions/releases/{release_id}/activate"
 PROMOTION_RELEASE_STATUS_ENDPOINT = "/api/workspace-promotions/releases/{release_id}"
 PROMOTION_LIVE_STATUS_ENDPOINT = "/api/workspace-promotions/live"
+PROMOTION_LIVE_RETIRE_ENDPOINT = "/api/workspace-promotions/live/retire"
 PLATFORM_JOB_STATUS_ENDPOINT = "/api/platform-jobs/{job_id}"
 PREPARE_POLL_INTERVAL_SECONDS = 2.0
 PREPARE_POLL_TIMEOUT_SECONDS = 30 * 60
 REVIEWED_PROMOTION_SCHEMA = "bifrost.workspace-promotion-bundle/v2"
 DRAFT_SCHEMA = "bifrost.workspace-draft-upload/v1"
 LOCAL_RUN_SCHEMA = "bifrost.workspace-local-run-evidence/v1"
+RETIRE_LIVE_ACKNOWLEDGEMENT = "retire-live-workspace-release"
 _SUBCOMMANDS = {
     "draft",
     "canary",
@@ -62,6 +64,7 @@ _SUBCOMMANDS = {
     "release",
     "prepare",
     "activate",
+    "retire-live",
     "status",
 }
 
@@ -267,6 +270,32 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     activate.add_argument("--json", action="store_true", help="Emit machine JSON")
+
+    retire_live = subparsers.add_parser(
+        "retire-live",
+        help="Retire the immutable global Live Workspace release",
+    )
+    retire_live.add_argument(
+        "--expected-release-id",
+        help="Exact release ID that must currently own Live",
+    )
+    retire_live.add_argument(
+        "--expected-artifact-id",
+        help="Exact artifact ID that must currently own Live",
+    )
+    retire_live.add_argument(
+        "--governed-manifest-id",
+        help="Exact governed manifest digest that must currently own Live",
+    )
+    retire_live.add_argument(
+        "--reason", required=True, help="Operator reason recorded as evidence"
+    )
+    retire_live.add_argument(
+        "--acknowledge",
+        required=True,
+        help=f"Must be exactly {RETIRE_LIVE_ACKNOWLEDGEMENT}",
+    )
+    retire_live.add_argument("--json", action="store_true", help="Emit machine JSON")
 
     release_status = subparsers.add_parser(
         "status",
@@ -923,6 +952,53 @@ def _handle_activate(options: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_retire_live(options: argparse.Namespace) -> int:
+    if options.acknowledge != RETIRE_LIVE_ACKNOWLEDGEMENT:
+        raise PromotionBundleError(
+            f"--acknowledge must be exactly {RETIRE_LIVE_ACKNOWLEDGEMENT}"
+        )
+    client = BifrostClient.get_instance(require_auth=True)
+    active = _read_live(client)
+    if active is None:
+        raise PromotionBundleError("there is no Live Workspace release to retire")
+    release_id = options.expected_release_id or str(active.get("release_id") or "")
+    artifact_id = options.expected_artifact_id or str(active.get("artifact_id") or "")
+    runtime = active.get("runtime") or {}
+    challenge = runtime.get("activation_authorization") or {}
+    governed_manifest_id = options.governed_manifest_id or str(
+        challenge.get("governed_manifest_id") or ""
+    )
+    if not release_id or not artifact_id or not governed_manifest_id:
+        raise PromotionBundleError(
+            "could not resolve the Live release identity; pass "
+            "--expected-release-id, --expected-artifact-id, and --governed-manifest-id"
+        )
+    response = client.post_sync(
+        PROMOTION_LIVE_RETIRE_ENDPOINT,
+        json={
+            "expected_release_id": release_id,
+            "expected_artifact_id": artifact_id,
+            "governed_manifest_id": governed_manifest_id,
+            "reason": options.reason,
+            "acknowledgement": options.acknowledge,
+        },
+    )
+    raise_for_status_with_detail(response)
+    result = response.json()
+    if not isinstance(result, dict):
+        raise PromotionBundleError("retirement returned invalid evidence")
+    if options.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Retired release row: {result.get('release_row_id')}")
+        print(f"Workspace release: {result.get('release_id')}")
+        print(f"Governed paths: {result.get('governed_path_count')}")
+        print(f"Retired at: {result.get('retired_at')}")
+        print(f"Retirement evidence: {result.get('evidence_id')}")
+        print("In-flight execution pins remain resolvable")
+    return 0
+
+
 def _handle_status(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if bool(options.release_row_id) == bool(options.live):
         parser.error("status requires exactly one of RELEASE_ROW_ID or --live")
@@ -1472,6 +1548,8 @@ def handle_promote(args: list[str]) -> int:
             return _handle_prepare(options)
         if options.command == "activate":
             return _handle_activate(options)
+        if options.command == "retire-live":
+            return _handle_retire_live(options)
         if options.command == "status":
             return _handle_status(options, parser)
         raise PromotionBundleError(f"unsupported promotion command: {options.command}")
@@ -1487,6 +1565,7 @@ __all__ = [
     "LOCAL_RUN_SCHEMA",
     "PROMOTION_ACTIVATE_ENDPOINT",
     "PROMOTION_CANARY_ENDPOINT",
+    "PROMOTION_LIVE_RETIRE_ENDPOINT",
     "PROMOTION_LIVE_STATUS_ENDPOINT",
     "PROMOTION_PREPARE_ENDPOINT",
     "PROMOTION_PREVIEW_ENDPOINT",

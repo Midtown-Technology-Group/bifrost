@@ -114,6 +114,10 @@ class Settings(BaseSettings):
         default=False,
         description="Enable atomic activation of prepared Workspace releases.",
     )
+    workspace_release_retirement_enabled: bool = Field(
+        default=False,
+        description="Enable retirement of the immutable global Workspace Live release.",
+    )
     workspace_promotion_diagnostics_mode: Literal["off", "shadow", "enforce"] = Field(
         default="off",
         description=(

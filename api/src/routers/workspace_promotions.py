@@ -25,6 +25,8 @@ from src.models.contracts.platform_jobs import PlatformJobAccepted
 from src.models.contracts.workspace_promotions import (
     SolutionDeployObligationListResponse,
     SolutionDeployObligationResponse,
+    WorkspaceLiveRetireRequest,
+    WorkspaceLiveRetireResponse,
     WorkspaceLiveStatusResponse,
     WorkspacePromotionArtifactResponse,
     WorkspacePromotionCanaryAccepted,
@@ -69,6 +71,10 @@ from src.services.workspace_promotions import (
 from src.services.workspace_release_activation import (
     WorkspaceReleaseActivationError,
     WorkspaceReleaseActivationService,
+)
+from src.services.workspace_release_retirement import (
+    WorkspaceReleaseRetirementError,
+    WorkspaceReleaseRetirementService,
 )
 from src.services.workspace_source_releases import (
     WorkspaceSourceReleaseConflict,
@@ -465,6 +471,33 @@ async def activate_workspace_release(
         )
         await db.rollback()
         return result
+
+
+@router.post("/live/retire", response_model=WorkspaceLiveRetireResponse)
+async def retire_workspace_release(
+    request: WorkspaceLiveRetireRequest,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentSuperuser,
+) -> WorkspaceLiveRetireResponse:
+    if not get_settings().workspace_release_retirement_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace release retirement is not enabled",
+        )
+    if ctx.org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="an organization context is required",
+        )
+    service = WorkspaceReleaseRetirementService(db, ctx.org_id)
+    try:
+        return await service.retire(request, user_id=user.user_id)
+    except WorkspaceReleaseRetirementError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/live", response_model=WorkspaceLiveStatusResponse)

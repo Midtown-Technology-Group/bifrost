@@ -19,7 +19,9 @@ def deployment():
     solution_id, job_id, org_id = uuid4(), uuid4(), uuid4()
     digest = hashlib.sha256(b"artifact").hexdigest()
     result = {"solution_id": str(solution_id), "candidate_id": f"sha256:{digest}"}
-    solution = SimpleNamespace(id=solution_id, slug="test", organization_id=org_id)
+    solution = SimpleNamespace(
+        id=solution_id, slug="test", organization_id=org_id, repo_subpath=None
+    )
     job = SimpleNamespace(
         job_type="solution.deploy",
         status="succeeded",
