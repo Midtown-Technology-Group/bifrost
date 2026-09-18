@@ -591,6 +591,41 @@ async def _apply_callback_to_mapping(
     return captured
 
 
+async def _apply_callback_to_integration(
+    db: AsyncSession,
+    provider: OAuthProvider,
+    callback_url_params: dict[str, str],
+    token_response: dict[str, Any],
+) -> str | None:
+    """Capture entity_id onto the integration for integration-level connects.
+
+    Idempotent and non-destructive: an existing non-empty
+    ``integration.entity_id`` (manual override) is never overwritten.
+
+    Returns the captured entity_id when extraction succeeded AND was written.
+    """
+    if not provider.integration_id or provider.entity_id_source is None:
+        return None
+
+    from src.models.orm import Integration
+
+    integration = await db.get(Integration, provider.integration_id)
+    if not integration or integration.entity_id:
+        return None
+
+    extracted = extract_entity_id(
+        provider.entity_id_source,
+        callback_url_params=callback_url_params,
+        token_response=token_response,
+    )
+    if not extracted:
+        return None
+
+    integration.entity_id = extracted
+    await db.flush()
+    return extracted
+
+
 @router.post(
     "/callback/{connection_name}",
     response_model=OAuthCallbackResponse,
@@ -740,7 +775,16 @@ async def oauth_callback(
 
     logger.info(f"OAuth callback completed for {log_safe(connection_name)}")
 
+    # Integration-level flow: capture entity_id from the provider's configured
+    # source (e.g. QuickBooks Online realmId from the callback URL), then emit.
+    captured_value: str | None = None
     if mapping_id_from_state is None:
+        captured_value = await _apply_callback_to_integration(
+            db=ctx.db,
+            provider=provider,
+            callback_url_params=request.callback_url_params or {},
+            token_response=result,
+        )
         try:
             from src.services.events.builtins import emit_integration_connected
 
@@ -749,7 +793,7 @@ async def oauth_callback(
                 integration_name=provider.display_name or provider.provider_name,
                 organization_id=org_id,
                 connection_id=provider.id,
-                external_account_id=None,
+                external_account_id=captured_value,
                 external_account_name=provider.display_name,
                 actor_user_id=ctx.user.user_id,
                 actor_email=ctx.user.email,
@@ -761,7 +805,6 @@ async def oauth_callback(
     # Per-mapping flow: link the freshly-stored (org-scoped) token to the mapping
     # and capture entity_id from the provider's configured source. State + org_id
     # were already decoded at the top of this handler — see mapping_id_from_state.
-    captured_value: str | None = None
     if mapping_id_from_state is not None:
         # Single-use enforcement: reject replays of valid-signature state.
         if nonce_from_state and not await consume_nonce(nonce_from_state):
