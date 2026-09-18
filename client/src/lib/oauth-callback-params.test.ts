@@ -25,4 +25,16 @@ describe("collectCallbackUrlParams", () => {
 			collectCallbackUrlParams(new URLSearchParams("code=a&state=b")),
 		).toEqual({});
 	});
+
+	it("preserves __proto__ as an own property without polluting the prototype", () => {
+		const params = collectCallbackUrlParams(
+			new URLSearchParams("__proto__=polluted&realmId=1"),
+		);
+
+		const descriptor = Object.getOwnPropertyDescriptor(params, "__proto__");
+		expect(descriptor?.value).toBe("polluted");
+		expect(descriptor?.enumerable).toBe(true);
+		expect(params.realmId).toBe("1");
+		expect(Object.getPrototypeOf(params)).toBe(Object.prototype);
+	});
 });

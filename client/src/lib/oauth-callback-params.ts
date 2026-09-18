@@ -20,7 +20,12 @@ export function collectCallbackUrlParams(
 	const params: Record<string, string> = {};
 	searchParams.forEach((value, key) => {
 		if (!RESERVED_CALLBACK_PARAMS.has(key)) {
-			params[key] = value;
+			Object.defineProperty(params, key, {
+				value,
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 	});
 	return params;
