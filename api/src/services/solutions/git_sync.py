@@ -343,42 +343,47 @@ async def _reconcile_synced_obligation(
     *,
     accountability_organization_id: UUID,
 ) -> None:
-    """Close the reviewed-source obligation an auto-pull deploy proved."""
+    """Persist the reviewed-source accountability result of an auto-pull deploy."""
     from src.models.orm.solution_deploy_jobs import SolutionDeployJob
     from src.services.solution_deploy_obligations import (
         reconcile_solution_deploy_obligation,
     )
     from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
 
+    job = SolutionDeployJob(install_id=solution.id, status="running")
+    db.add(job)
+    await db.commit()
+    job_id = job.id
+    accountability: dict[str, Any] = {
+        "state": "attention_required",
+        "reason": "source artifact missing after sync",
+    }
     try:
         artifact = await SolutionSourceArtifactStorage(solution.id).read()
-        if artifact is None:
-            logger.error(
-                "Solution %s synced but its source artifact is missing; "
-                "source accountability cannot be reconciled",
-                solution.id,
+        if artifact is not None:
+            accountability = await reconcile_solution_deploy_obligation(
+                db,
+                solution_id=solution.id,
+                solution_slug=solution.slug,
+                accountability_organization_id=accountability_organization_id,
+                deploy_job_id=job_id,
+                candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+                artifact=artifact,
+                repo_subpath=solution.repo_subpath,
             )
-            return
-        job = SolutionDeployJob(install_id=solution.id, status="running")
-        db.add(job)
-        await db.flush()
-        accountability = await reconcile_solution_deploy_obligation(
-            db,
-            solution_id=solution.id,
-            solution_slug=solution.slug,
-            accountability_organization_id=accountability_organization_id,
-            deploy_job_id=job.id,
-            candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
-            artifact=artifact,
-            repo_subpath=solution.repo_subpath,
-        )
-        job.status = "succeeded"
-        job.result = {"source_release_accountability": accountability}
-        await db.commit()
-    except Exception:  # the deploy is already durable
+    except Exception as exc:  # the deploy is already durable
+        await db.rollback()
         logger.exception(
             "Solution %s synced but source accountability reconciliation failed",
             solution.id,
         )
-        await db.rollback()
-        await db.refresh(solution)
+        accountability = {
+            "state": "attention_required",
+            "reason": "post-sync accountability reconciliation failed",
+            "error_type": type(exc).__name__,
+        }
+    stored = await db.get(SolutionDeployJob, job_id)
+    if stored is not None:
+        stored.status = "succeeded"
+        stored.result = {"source_release_accountability": accountability}
+        await db.commit()

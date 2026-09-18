@@ -58,6 +58,29 @@ from src.services.solutions.ref_scanner import (
 _GLOBAL_REPO_RESOLVABLE_ROOTS = frozenset({"modules"})
 
 
+def _resolves_module(module: str, present: set[str]) -> bool:
+    # ``scan_imported_modules`` over-generates: ``from modules.helpers
+    # import x`` yields both ``modules.helpers`` and the speculative
+    # submodule ``modules.helpers.x``. A module is satisfied if it OR any
+    # dotted prefix of it resolves to a bundled file (mirrors vendoring).
+    parts = module.split(".")
+    for i in range(len(parts), 0, -1):
+        base = "/".join(parts[:i])
+        if f"{base}.py" in present or f"{base}/__init__.py" in present:
+            return True
+    return False
+
+
+def _is_speculative_child(module: str, modules: set[str], present: set[str]) -> bool:
+    # Drop the speculative submodule form (``modules.helpers.x``) when its
+    # parent (``modules.helpers``) is also an unresolved import here — one real
+    # missing module, surfaced once.
+    parent = module.rsplit(".", 1)[0]
+    if parent == module or parent not in modules:
+        return False
+    return not _resolves_module(parent, present)
+
+
 def check_install_needs(
     python_files: dict[str, str], *, global_repo_access: bool = False
 ) -> list[UnmetNeed]:
@@ -70,19 +93,6 @@ def check_install_needs(
     layered on by the caller.
     """
     present = set(python_files.keys())
-
-    def _resolves(module: str) -> bool:
-        # ``scan_imported_modules`` over-generates: ``from modules.helpers
-        # import x`` yields both ``modules.helpers`` and the speculative
-        # submodule ``modules.helpers.x``. A module is satisfied if it OR any
-        # dotted prefix of it resolves to a bundled file (mirrors vendoring).
-        parts = module.split(".")
-        for i in range(len(parts), 0, -1):
-            base = "/".join(parts[:i])
-            if f"{base}.py" in present or f"{base}/__init__.py" in present:
-                return True
-        return False
-
     checked_roots = {"modules"}
     if global_repo_access:
         checked_roots -= _GLOBAL_REPO_RESOLVABLE_ROOTS
@@ -93,14 +103,14 @@ def check_install_needs(
         modules = {
             m for m in scan_imported_modules(src) if m.split(".")[0] in checked_roots
         }
-        for module in modules:
-            if module in seen or _resolves(module):
-                continue
-            # Drop the speculative submodule form (``modules.helpers.x``) when
-            # its parent (``modules.helpers``) is also an unresolved import here
-            # — one real missing module, surfaced once.
-            parent = module.rsplit(".", 1)[0]
-            if parent != module and parent in modules and not _resolves(parent):
+        unresolved = [
+            module
+            for module in sorted(modules)
+            if not _resolves_module(module, present)
+            and not _is_speculative_child(module, modules, present)
+        ]
+        for module in unresolved:
+            if module in seen:
                 continue
             seen.add(module)
             needs.append(UnmetNeed(

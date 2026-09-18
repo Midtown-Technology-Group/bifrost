@@ -708,9 +708,12 @@ async def reconcile_solution_deploy_obligation(
     if not records:
         return {"state": "not_tracked"}
 
+    expected_subpath = (
+        repo_subpath if repo_subpath is not None else f"solutions/{solution_slug}"
+    )
     mismatch: tuple[SolutionDeployObligation, str, dict[str, Any]] | None = None
     for record in records:
-        if repo_subpath is not None and record.repo_subpath != repo_subpath:
+        if record.repo_subpath != expected_subpath:
             continue
         valid, reason, artifact_evidence = verify_solution_artifact(
             record,

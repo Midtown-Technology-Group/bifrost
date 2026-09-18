@@ -61,7 +61,17 @@ class WorkspaceReleaseRetirementService:
                 request.expected_release_id, for_update=True
             )
             if retired is not None:
-                return self._retired_response(*retired)
+                release, artifact = retired
+                evidence = getattr(release, "retirement_evidence", None) or {}
+                if (
+                    artifact.id != request.expected_artifact_id
+                    or evidence.get("governed_manifest_id")
+                    != request.governed_manifest_id
+                ):
+                    raise WorkspaceReleaseRetirementError(
+                        "retirement identity CAS mismatch"
+                    )
+                return self._retired_response(release, artifact)
             raise WorkspaceReleaseRetirementError(
                 "no Live Workspace release to retire"
             )

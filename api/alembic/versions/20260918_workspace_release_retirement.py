@@ -49,6 +49,11 @@ def downgrade() -> None:
         "workspace_promotion_releases",
         type_="check",
     )
+    op.execute(
+        "UPDATE workspace_promotion_releases "
+        "SET activation_state = 'superseded' "
+        "WHERE activation_state = 'retired'"
+    )
     op.create_check_constraint(
         "ck_workspace_promotion_release_activation_state",
         "workspace_promotion_releases",

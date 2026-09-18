@@ -603,6 +603,33 @@ async def test_reconcile_matches_reviewed_repo_subpath_for_same_slug(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_reconcile_uses_canonical_subpath_when_repo_subpath_omitted(
+    monkeypatch,
+) -> None:
+    entries = [("bifrost.solution.yaml", b"slug: example\nname: Example\n")]
+    other = _record(entries, repo_subpath="solutions/other")
+    artifact = _zip(entries)
+    database = _FakeDatabase([other])
+    monkeypatch.setattr(
+        "src.services.solution_deploy_obligations._runtime_and_registration_readback",
+        AsyncMock(return_value=(True, None, {"runtime_files": {}})),
+    )
+
+    result = await reconcile_solution_deploy_obligation(
+        database,
+        solution_id=uuid4(),
+        solution_slug="example",
+        accountability_organization_id=other.organization_id,
+        deploy_job_id=uuid4(),
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+        artifact=artifact,
+    )
+
+    assert result["state"] == "not_tracked"
+    assert other.disposition == "pending"
+
+
+@pytest.mark.asyncio
 async def test_overdue_attention_can_close_after_exact_deploy(monkeypatch) -> None:
     entries = [("bifrost.solution.yaml", b"slug: example\nname: Example\n")]
     record = _record(entries)

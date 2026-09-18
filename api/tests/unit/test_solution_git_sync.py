@@ -449,6 +449,7 @@ class TestGitSyncAccountability:
             flush=AsyncMock(),
             commit=AsyncMock(),
             rollback=AsyncMock(),
+            get=AsyncMock(return_value=SimpleNamespace(status="running", result=None)),
         )
         monkeypatch.setattr(gs, "clone_repo_to_dir", clone)
         monkeypatch.setattr(gs, "deploy_from_workspace", deploy)

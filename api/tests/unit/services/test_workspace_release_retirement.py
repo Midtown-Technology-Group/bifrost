@@ -193,6 +193,7 @@ async def test_retire_already_retired_release_is_idempotent(monkeypatch) -> None
     release.retirement_evidence = {
         "schema_version": retirement_module.RETIREMENT_EVIDENCE_SCHEMA,
         "reason": request.reason,
+        "governed_manifest_id": _descriptor.governed_manifest_id,
         "governed_path_count": 1,
         "evidence_id": "sha256:" + "7" * 64,
     }
@@ -211,3 +212,30 @@ async def test_retire_already_retired_release_is_idempotent(monkeypatch) -> None
     assert response.governed_path_count == 1
     assert response.evidence_id == release.retirement_evidence["evidence_id"]
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retire_idempotent_retry_rejects_wrong_identity(monkeypatch) -> None:
+    release, artifact, descriptor, request = _rows()
+    release.activation_state = "retired"
+    release.retired_at = datetime.now(timezone.utc)
+    release.retirement_evidence = {
+        "schema_version": retirement_module.RETIREMENT_EVIDENCE_SCHEMA,
+        "reason": request.reason,
+        "governed_manifest_id": descriptor.governed_manifest_id,
+        "governed_path_count": 1,
+        "evidence_id": "sha256:" + "7" * 64,
+    }
+    db, service, _audit = _service(
+        release,
+        artifact,
+        live=None,
+        retired=(release, artifact),
+        monkeypatch=monkeypatch,
+    )
+    mismatched = request.model_copy(
+        update={"governed_manifest_id": "sha256:" + "9" * 64}
+    )
+
+    with pytest.raises(WorkspaceReleaseRetirementError):
+        await service.retire(mismatched, user_id=uuid4())
