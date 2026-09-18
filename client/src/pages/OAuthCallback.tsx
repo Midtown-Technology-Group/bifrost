@@ -9,6 +9,7 @@ import {
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { handleOAuthCallback } from "@/hooks/useOAuth";
+import { collectCallbackUrlParams } from "@/lib/oauth-callback-params";
 import {
 	EntityIdSourcePicker,
 	type Candidate,
@@ -85,12 +86,16 @@ export function OAuthCallback() {
 			try {
 				// Send the authorization code to the API for token exchange
 				// Include redirect_uri - must match what was sent during authorization
+				// Forward remaining provider params so entity_id (e.g. realmId) is captured
 				const redirectUri = `${window.location.origin}/oauth/callback/${integrationId}`;
+				const callbackUrlParams =
+					collectCallbackUrlParams(searchParams);
 				const response = await handleOAuthCallback(
 					integrationId,
 					code,
 					state,
 					redirectUri,
+					callbackUrlParams,
 				);
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const responseData = response as any; // Response may include error_message or warning_message
