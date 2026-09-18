@@ -7,6 +7,9 @@ stack and the external token endpoint.
 
 from __future__ import annotations
 
+import base64
+import json
+
 from uuid import uuid4
 
 import pytest
@@ -63,6 +66,54 @@ async def test_integration_callback_captures_entity_id(db_session: AsyncSession)
     await db_session.refresh(integration)
     assert captured == "9130350000000000"
     assert integration.entity_id == "9130350000000000"
+
+
+@pytest.mark.asyncio
+async def test_integration_callback_captures_token_response_field(db_session: AsyncSession):
+    """A token_response_field entity_id source lands on the integration."""
+    from src.routers.oauth_connections import _apply_callback_to_integration
+
+    integration = await _make_integration(db_session)
+    provider = await _make_provider(
+        db_session,
+        integration,
+        entity_id_source={"type": "token_response_field", "key": "realm_id"},
+    )
+
+    captured = await _apply_callback_to_integration(
+        db=db_session,
+        provider=provider,
+        callback_url_params={},
+        token_response={"access_token": "x", "realm_id": "5555"},
+    )
+
+    await db_session.refresh(integration)
+    assert captured == "5555"
+    assert integration.entity_id == "5555"
+
+
+@pytest.mark.asyncio
+async def test_integration_callback_captures_id_token_claim(db_session: AsyncSession):
+    """An id_token_claim entity_id source lands on the integration."""
+    from src.routers.oauth_connections import _apply_callback_to_integration
+
+    integration = await _make_integration(db_session)
+    provider = await _make_provider(
+        db_session, integration, entity_id_source={"type": "id_token_claim", "key": "sub"}
+    )
+    payload = base64.urlsafe_b64encode(json.dumps({"sub": "claim-123"}).encode()).decode().rstrip("=")
+    id_token = f"header.{payload}.signature"
+
+    captured = await _apply_callback_to_integration(
+        db=db_session,
+        provider=provider,
+        callback_url_params={},
+        token_response={"access_token": "x", "id_token": id_token},
+    )
+
+    await db_session.refresh(integration)
+    assert captured == "claim-123"
+    assert integration.entity_id == "claim-123"
 
 
 @pytest.mark.asyncio

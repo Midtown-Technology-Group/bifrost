@@ -785,6 +785,15 @@ async def oauth_callback(
             callback_url_params=request.callback_url_params or {},
             token_response=result,
         )
+        # The event carries the effective external account ID: the freshly
+        # captured value, or the stored integration.entity_id (manual override)
+        # when capture was skipped.
+        integration_entity_id = captured_value
+        if integration_entity_id is None and provider.integration_id:
+            from src.models.orm import Integration
+
+            integration = await ctx.db.get(Integration, provider.integration_id)
+            integration_entity_id = integration.entity_id if integration else None
         try:
             from src.services.events.builtins import emit_integration_connected
 
@@ -793,7 +802,7 @@ async def oauth_callback(
                 integration_name=provider.display_name or provider.provider_name,
                 organization_id=org_id,
                 connection_id=provider.id,
-                external_account_id=captured_value,
+                external_account_id=integration_entity_id,
                 external_account_name=provider.display_name,
                 actor_user_id=ctx.user.user_id,
                 actor_email=ctx.user.email,
