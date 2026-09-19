@@ -49,9 +49,9 @@ dependencies = [
     # =========================================================================
     "pyjwt[crypto]>=2.13.0",  # JWT tokens; fixes improper-authentication advisory
     "pwdlib[bcrypt]",  # Modern password hashing
-    # webauthn -> pyOpenSSL 26.1 currently requires cryptography <48. Snyk's
-    # cryptography 50 advisories have time-bounded policy entries in .snyk.
-    "cryptography>=47.0.0",  # Encryption utilities
+    # webauthn 2.7.1 + pyOpenSSL 26.4 now permit cryptography 50.x.
+    # Closes Snyk cryptography 47.0.0 highs (fixed in 50.0.0).
+    "cryptography>=50.0.0",  # Encryption utilities
     "pyotp",  # TOTP/HOTP for MFA
     "webauthn>=2.7.1",  # WebAuthn/Passkeys support
     "altcha>=2.1.0",  # Self-hosted proof-of-work protection for public forms
@@ -101,7 +101,7 @@ dependencies = [
     # Git Integration
     # =========================================================================
     "PyGithub",
-    "GitPython>=3.1.58",  # Closes high-severity command/path injection advisories
+    "GitPython>=3.1.60",  # Closes high-severity command/path injection advisories
 
     # =========================================================================
     # Background Jobs
