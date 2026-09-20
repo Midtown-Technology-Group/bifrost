@@ -539,6 +539,68 @@ async def test_package_targets_and_outcomes_survive_redis_and_worker_loss(
             await db.commit()
 
 
+async def test_expired_package_command_does_not_block_new_target_command(
+    async_session_factory,
+):
+    from src.models.orm.worker_control_commands import WorkerControlCommand
+    from src.services import worker_control_commands as controls
+
+    worker_id = f"package-worker-{uuid4()}"
+    incarnation = uuid4()
+    old_operation = uuid4()
+    new_operation = uuid4()
+    async with async_session_factory() as db:
+        old = await controls.create_worker_control_command(
+            db,
+            worker_id=worker_id,
+            action="package_install",
+            requested_by_user_id=uuid4(),
+            reason="expired target",
+            operation_id=old_operation,
+            target_incarnation_id=incarnation,
+            payload={"run_id": str(old_operation)},
+        )
+        new = await controls.create_worker_control_command(
+            db,
+            worker_id=worker_id,
+            action="package_install",
+            requested_by_user_id=uuid4(),
+            reason="new target",
+            operation_id=new_operation,
+            target_incarnation_id=incarnation,
+            payload={"run_id": str(new_operation)},
+        )
+        await db.execute(
+            update(WorkerControlCommand)
+            .where(WorkerControlCommand.id == old.id)
+            .values(requested_at=func.clock_timestamp() - timedelta(minutes=11))
+        )
+        await db.commit()
+        try:
+            pending = await controls.get_pending_worker_control_command(
+                db,
+                worker_id=worker_id,
+                worker_incarnation_id=incarnation,
+            )
+            assert pending is not None
+            assert pending.id == new.id
+            claim = await controls.claim_worker_control_command(
+                db,
+                command_id=pending.id,
+                worker_id=worker_id,
+                worker_incarnation_id=incarnation,
+            )
+            assert claim is not None and claim.id == new.id
+            await db.commit()
+        finally:
+            await db.execute(
+                delete(WorkerControlCommand).where(
+                    WorkerControlCommand.operation_id.in_((old_operation, new_operation))
+                )
+            )
+            await db.commit()
+
+
 async def test_recovery_resumes_unstarted_claim_and_fences_old_handler(
     async_session_factory, delivery_queue
 ):
@@ -709,6 +771,7 @@ async def test_operator_reconcile_preview_rolls_back_and_apply_audits_atomically
     from src.models.orm.poison_message_dispositions import PoisonMessageDisposition
 
     execution_id = uuid4()
+    idempotency_key = f"reconcile-{uuid4()}"
     async with async_session_factory() as db:
         db.add(Execution(
             id=execution_id,
@@ -716,7 +779,15 @@ async def test_operator_reconcile_preview_rolls_back_and_apply_audits_atomically
             executed_by_name="test",
             status=ExecutionStatus.SUCCESS,
         ))
-        delivery_id = await enqueue(db, "workflow-executions", str(execution_id))
+        delivery_id = await enqueue_delivery(
+            db,
+            queue_name="workflow-executions",
+            message_id=str(execution_id),
+            envelope={
+                "body": {"private_input": "never plaintext"},
+                "headers": {"x-idempotency-key": idempotency_key},
+            },
+        )
         await db.execute(update(WorkDelivery).where(
             WorkDelivery.id == delivery_id
         ).values(status="interrupted", started_at=func.clock_timestamp()))
@@ -743,7 +814,11 @@ async def test_operator_reconcile_preview_rolls_back_and_apply_audits_atomically
             audit = (await db.execute(select(PoisonMessageDisposition).where(
                 PoisonMessageDisposition.message_id == str(execution_id)
             ))).scalar_one()
-            assert audit.actor == "test-operator" and audit.action == "reconcile"
+            assert (
+                audit.actor == "test-operator"
+                and audit.action == "reconcile"
+                and audit.idempotency_key == idempotency_key
+            )
         assert "private_input" not in str(preview) + str(applied)
     finally:
         async with async_session_factory() as db:

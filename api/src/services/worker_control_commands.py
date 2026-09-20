@@ -326,6 +326,11 @@ async def get_pending_worker_control_command(
                     )
                 ),
                 or_(
+                    WorkerControlCommand.action != "package_install",
+                    WorkerControlCommand.requested_at
+                    > func.clock_timestamp() - PACKAGE_COMMAND_TIMEOUT,
+                ),
+                or_(
                     WorkerControlCommand.status == "pending",
                     (
                         (WorkerControlCommand.status == "running")
