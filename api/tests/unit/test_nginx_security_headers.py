@@ -85,14 +85,29 @@ def test_mcp_proxy_preserves_authority_port_for_strict_host_validation():
 def test_every_proxy_uses_the_filtered_runtime_upstream():
     dockerfile = CLIENT_DOCKERFILE.read_text()
     assert "BIFROST_API_UPSTREAM=api:8000" in dockerfile
-    assert "NGINX_ENVSUBST_FILTER=^BIFROST_API_UPSTREAM$" in dockerfile
+    assert (
+        "NGINX_ENVSUBST_FILTER=^(BIFROST_API_UPSTREAM|BIFROST_RENDERER_UPSTREAM|"
+        "BIFROST_RENDERER_RESOLVER|BIFROST_CANONICAL_SCHEME)$" in dockerfile
+    )
     assert "COPY nginx.conf /etc/nginx/templates/default.conf.template" in dockerfile
     config = NGINX_CONF.read_text()
     proxies = [line.strip() for line in config.splitlines() if "proxy_pass " in line]
     assert proxies
-    assert all(line.startswith("proxy_pass http://${BIFROST_API_UPSTREAM}") for line in proxies)
-    for upstream in ("api:8000", "127.0.0.1:8000"):
-        rendered = config.replace("${BIFROST_API_UPSTREAM}", upstream)
+    allowed_prefixes = (
+        "proxy_pass http://${BIFROST_API_UPSTREAM}",
+        "proxy_pass http://${BIFROST_RENDERER_UPSTREAM}",
+    )
+    assert all(line.startswith(allowed_prefixes) for line in proxies)
+    assert any(line.startswith(allowed_prefixes[0]) for line in proxies)
+    assert any(line.startswith(allowed_prefixes[1]) for line in proxies)
+    for api_upstream, renderer_upstream in (
+        ("api:8000", "127.0.0.1:8080"),
+        ("127.0.0.1:8000", "renderer:8080"),
+    ):
+        rendered = config.replace("${BIFROST_API_UPSTREAM}", api_upstream).replace(
+            "${BIFROST_RENDERER_UPSTREAM}", renderer_upstream
+        )
         assert 'try_files $uri $uri/ /index.html;' in rendered
         assert 'proxy_set_header Host $http_host;' in rendered
-        assert f"proxy_pass http://{upstream}/embed/forms/public/$public_form_key/frame-policy;" in rendered
+        assert f"proxy_pass http://{api_upstream}/embed/forms/public/$public_form_key/frame-policy;" in rendered
+        assert f"proxy_pass http://{renderer_upstream}/$3$is_args$args;" in rendered
