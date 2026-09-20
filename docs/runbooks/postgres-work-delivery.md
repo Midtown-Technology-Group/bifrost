@@ -56,14 +56,31 @@ the old backend look clean; package-command rows are operational evidence.
 
 ## Quiesce and drain
 
-There is currently no first-class API command that pauses admissions or the
-scheduler. The operator must use the deployment's ingress/admission control to
-stop new execution and package requests, and stop scheduler triggers for the
-maintenance window. In the checked-in Kubernetes template this is represented
+Set `BIFROST_ADMISSIONS_PAUSED=true` in the reviewed API deployment environment
+and restart every API replica while the old delivery backend is still selected.
+The process-start gate rejects external HTTP requests with 503 and Retry-After,
+including hooks, dynamic execution endpoints, package requests and MCP. Only
+exact GET health endpoints and signed access JWTs identifying the internal
+engine pass; normal route authorization and execution-attempt fencing still
+apply. Normal admin tokens and API keys do not bypass maintenance. New
+WebSockets are rejected; existing sockets only carry subscriptions/progress and
+close as the API replicas restart. The flag does not cancel an accepted request.
+
+Verify all API replicas report the flag and both public hostnames plus private
+API access reject unauthenticated and ordinary-user admissions. Prove an
+authenticated engine SDK call still succeeds: deployed workers may use the
+public API URL, so blocking that ingress would strand accepted work.
+
+Accepted engine work can still publish children and derived work during drain.
+This is deliberately an external admission gate, not a ban on all producers.
+Wait for those descendants and every domain/transport obligation below to
+settle before stopping consumers. Do not run unrelated engine/operator work
+during the window. Stopping scheduler triggers remains a separate operation.
+In the checked-in Kubernetes template this is represented
 by scaling the scheduler deployment to zero, but the template's `bifrost`
 namespace is not the Midtown production namespace. Use the exact protected
 infrastructure command for the target environment; this repository does not
-provide a live admission or scheduler pause command.
+provide the deployment-specific scheduler pause command.
 
 Keep workers running while they drain. Do not scale workers down until their
 old-backend work and in-flight handlers have settled. The worker drain budget
@@ -121,7 +138,10 @@ workers together. Verify the resulting pods through the deployment's
 authoritative read-only status and logs. In PostgreSQL mode workers should use
 the workflow poller for package commands rather than starting the RabbitMQ
 package consumer. Do not reopen admissions until all three roles report the
-same backend and old Rabbit consumers are gone.
+same backend and old Rabbit consumers are gone. After the canaries and recovery
+gates pass, restore `BIFROST_ADMISSIONS_PAUSED=false` and restart every API replica
+before reopening scheduler triggers. Verify ordinary admissions work again;
+changing a ConfigMap alone does not change a running API process.
 
 Run the status/inspection commands again from a PostgreSQL-mode API or worker
 container. A canary also needs an isolated workflow-only worker process using
@@ -175,6 +195,6 @@ docker compose ps
 Do not infer propagation from the presence of a line in `.env`; `docker compose
 config` must show the same selected value for all three services. Compose still
 requires the same quiesce, drain, coordinated restart, and canary gates; the
-flag is process-start configuration, not a live hot switch. There is also no
-repository-owned admission pause or broker-wide drain command, and no live
-deployment proof has been performed as part of this documentation change.
+flag is process-start configuration, not a live hot switch. Pass the maintenance
+flag explicitly into the API container when using Compose. There is no
+broker-wide drain command, and this runbook alone is not live deployment proof.
