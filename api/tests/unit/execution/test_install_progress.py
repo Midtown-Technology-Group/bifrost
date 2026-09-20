@@ -113,3 +113,27 @@ async def test_get_run_progress_reports_fleet_terminal_state(
     assert progress["status"] == expected
     assert progress["reported"] == len(worker_phases)
     assert progress["total"] == total
+
+
+@pytest.mark.asyncio
+async def test_target_snapshot_keeps_disappeared_worker_in_denominator() -> None:
+    fake_redis = AsyncMock()
+    incarnation = "11111111-1111-1111-1111-111111111111"
+
+    async def hgetall(key: str):
+        if key == "bifrost:pkg-install-targets:run-1":
+            return {
+                "__snapshot__": "1",
+                "w1": incarnation,
+                "w2": "22222222-2222-2222-2222-222222222222",
+            }
+        return {"w1": json.dumps({"phase": "recycled"})}
+
+    fake_redis.hgetall.side_effect = hgetall
+    from src.services.execution import install_progress as ip
+    with patch.object(ip, "_raw_redis", AsyncMock(return_value=fake_redis)):
+        progress = await get_run_progress("run-1")
+
+    assert progress["status"] == "running"
+    assert progress["total"] == 2
+    assert progress["reported"] == 1

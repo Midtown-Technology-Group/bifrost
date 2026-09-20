@@ -13,6 +13,9 @@ import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, cast
+from uuid import UUID
+
+from sqlalchemy import select
 
 from src.core.pubsub import manager as pubsub_manager
 from src.core.redis_client import get_redis_client
@@ -21,7 +24,9 @@ logger = logging.getLogger(__name__)
 
 CHANNEL = "package:install"
 _HASH_PREFIX = "bifrost:pkg-install:"
+_TARGET_PREFIX = "bifrost:pkg-install-targets:"
 _HASH_TTL_SECONDS = 120
+_TARGET_TTL_SECONDS = 24 * 60 * 60
 _PHASES = ("installing", "installed", "recycling", "recycled", "failed")
 
 
@@ -30,6 +35,36 @@ class WorkerPhase:
     phase: str
     package: str | None = None
     error: str | None = None
+
+
+async def initialize_run(run_id: str, targets: dict[str, Any]) -> None:
+    """Persist the worker snapshot used to decide completion."""
+    redis = await _raw_redis()
+    key = f"{_TARGET_PREFIX}{run_id}"
+    await redis.hset(
+        key,
+        mapping={
+            "__snapshot__": "1",
+            **{
+                worker: str(incarnation) for worker, incarnation in targets.items()
+            },
+        },
+    )
+    # Keep the immutable target denominator longer than pip's per-worker
+    # timeout and retry window; expiry must not turn a stalled run into success.
+    await redis.expire(key, _TARGET_TTL_SECONDS)
+
+
+def _target_workers(raw: dict[str, str]) -> set[str]:
+    """Ignore phase-hash test doubles or malformed target entries."""
+    result: set[str] = set()
+    for worker, incarnation in raw.items():
+        try:
+            UUID(str(incarnation))
+        except (TypeError, ValueError):
+            continue
+        result.add(worker)
+    return result
 
 
 async def _raw_redis():  # pragma: no cover - thin accessor, patched in tests
@@ -52,6 +87,29 @@ async def _live_worker_count(redis: Any) -> int:
         if cursor == 0:
             break
     return count
+
+
+async def _durable_target_workers(run_id: str) -> set[str] | None:
+    """Recover an expired Redis target snapshot from package command rows."""
+    try:
+        from src.config import get_settings
+
+        if get_settings().work_delivery_backend != "postgres":
+            return None
+        from src.core.database import get_db_context
+        from src.models.orm.worker_control_commands import WorkerControlCommand
+
+        async with get_db_context() as db:
+            rows = await db.execute(
+                select(WorkerControlCommand.worker_id).where(
+                    WorkerControlCommand.operation_id == UUID(run_id),
+                    WorkerControlCommand.action == "package_install",
+                )
+            )
+            return set(rows.scalars().all())
+    except Exception as exc:  # noqa: BLE001 - fail closed for PG progress
+        logger.error("[pkg-install] durable target lookup failed: %s", exc)
+        raise
 
 
 def aggregate_phases(phases: dict[str, WorkerPhase], total: int) -> dict[str, Any]:
@@ -80,6 +138,9 @@ def aggregate_phases(phases: dict[str, WorkerPhase], total: int) -> dict[str, An
 async def get_run_progress(run_id: str) -> dict[str, Any]:
     """Return durable fleet progress for one package recycle operation."""
     redis = await _raw_redis()
+    target_raw = await cast(
+        Awaitable[dict[str, str]], redis.hgetall(f"{_TARGET_PREFIX}{run_id}")
+    )
     raw = await cast(
         Awaitable[dict[str, str]], redis.hgetall(f"{_HASH_PREFIX}{run_id}")
     )
@@ -95,7 +156,19 @@ async def get_run_progress(run_id: str) -> dict[str, Any]:
         except (json.JSONDecodeError, TypeError):
             continue
 
-    aggregate = aggregate_phases(phases, await _live_worker_count(redis))
+    target_workers = _target_workers(target_raw)
+    target_snapshot = "__snapshot__" in target_raw
+    if not target_snapshot and not target_workers:
+        durable_workers = await _durable_target_workers(run_id)
+        if durable_workers is not None:
+            target_workers = durable_workers
+            target_snapshot = True
+    if target_snapshot:
+        phases = {worker: phase for worker, phase in phases.items() if worker in target_workers}
+        total = len(target_workers)
+    else:
+        total = await _live_worker_count(redis)
+    aggregate = aggregate_phases(phases, total)
     terminal = aggregate["recycled"] + aggregate["failed"]
     if not phases:
         operation_status = "pending"
@@ -162,7 +235,21 @@ async def report_phase(
             except (json.JSONDecodeError, TypeError):
                 continue
 
-        total = await _live_worker_count(redis)
+        target_raw = await cast(
+            Awaitable[dict[str, str]], redis.hgetall(f"{_TARGET_PREFIX}{run_id}")
+        )
+        target_workers = _target_workers(target_raw)
+        target_snapshot = "__snapshot__" in target_raw
+        if not target_snapshot and not target_workers:
+            durable_workers = await _durable_target_workers(run_id)
+            if durable_workers is not None:
+                target_workers = durable_workers
+                target_snapshot = True
+        if target_snapshot:
+            phases = {worker: phase for worker, phase in phases.items() if worker in target_workers}
+            total = len(target_workers)
+        else:
+            total = await _live_worker_count(redis)
         agg = aggregate_phases(phases, total)
         message = {
             "type": "progress",

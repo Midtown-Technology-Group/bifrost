@@ -31,12 +31,33 @@ class FakeConsumer:
 
 @pytest.fixture
 def settings() -> SimpleNamespace:
-    return SimpleNamespace(environment="test")
+    return SimpleNamespace(environment="test", work_delivery_backend="rabbitmq")
 
 
 def test_configured_consumers_default_to_all(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BIFROST_WORKER_CONSUMERS", raising=False)
     assert worker_app.configured_consumer_names() == list(worker_app._CONSUMER_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_postgres_packages_use_existing_worker_control_poller(
+    monkeypatch, settings
+):
+    settings.work_delivery_backend = "postgres"
+    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
+    monkeypatch.setenv("BIFROST_WORKER_CONSUMERS", "workflow,package-install")
+    workflow = FakeConsumer("workflow-executions")
+    package = Mock(side_effect=AssertionError("Rabbit fanout must not start"))
+    monkeypatch.setattr(worker_app, "consumer_factories", lambda: {
+        "workflow": lambda: workflow, "package-install": package,
+    })
+    worker = worker_app.Worker()
+    await worker._start_consumers()
+    assert workflow.started == 1
+    package.assert_not_called()
+    monkeypatch.setenv("BIFROST_WORKER_CONSUMERS", "package-install")
+    with pytest.raises(ValueError, match="workflow worker control poller"):
+        await worker._start_consumers()
 
 
 def test_validate_worker_runtime_accepts_readable_ca_bundle(

@@ -346,6 +346,7 @@ async def test_workflow_recovery_obeys_durable_domain_outcome(
                 status=ExecutionStatus(domain_status),
             )
         )
+        await db.flush()
         await enqueue(db, "workflow-executions", str(execution_id))
         if active_attempt:
             from src.services.execution.attempts import create_claimed_attempt

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, text
+from sqlalchemy import DateTime, Index, Integer, JSON, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,16 @@ class WorkerControlCommand(Base):
     )
     worker_id: Mapped[str] = mapped_column(String(255), nullable=False)
     action: Mapped[str] = mapped_column(String(32), nullable=False)
+    operation_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    target_incarnation_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    claim_token: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     process_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="pending", server_default="pending"
@@ -44,4 +54,10 @@ class WorkerControlCommand(Base):
         Index("ix_worker_control_worker_requested", "worker_id", "requested_at"),
         Index("ix_worker_control_status_requested", "status", "requested_at"),
         Index("ix_worker_control_requester", "requested_by_user_id"),
+        Index(
+            "uq_worker_control_operation_worker",
+            "operation_id",
+            "worker_id",
+            unique=True,
+        ),
     )

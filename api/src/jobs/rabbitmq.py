@@ -1105,6 +1105,8 @@ async def publish_broadcast(
         exchange_name: Target fanout exchange name
         message: Message body (will be JSON encoded)
     """
+    if get_settings().work_delivery_backend == "postgres":
+        raise RuntimeError("PostgreSQL fanout requires durable worker control commands")
     await rabbitmq.init_pools()
     async with rabbitmq.get_connection() as connection:
         channel = await connection.channel()

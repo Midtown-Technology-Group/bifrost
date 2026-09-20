@@ -1307,6 +1307,7 @@ class ProcessPoolManager:
                     db,
                     command_id=uuid.UUID(str(command_id)),
                     worker_id=self.worker_id,
+                    worker_incarnation_id=self.worker_incarnation_id,
                 )
                 await db.commit()
             if claimed is None:
@@ -1317,6 +1318,8 @@ class ProcessPoolManager:
                 "action": claimed.action,
                 "pid": claimed.process_id,
                 "reason": claimed.reason,
+                "payload": claimed.payload or {},
+                "claim_token": claimed.claim_token,
             }
             try:
                 await self._dispatch_worker_command(persisted_command)
@@ -1326,6 +1329,8 @@ class ProcessPoolManager:
                         db,
                         command_id=uuid.UUID(str(command_id)),
                         worker_id=self.worker_id,
+                        worker_incarnation_id=self.worker_incarnation_id,
+                        claim_token=claimed.claim_token,
                         succeeded=False,
                         failure_message=str(exc),
                     )
@@ -1336,6 +1341,8 @@ class ProcessPoolManager:
                     db,
                     command_id=uuid.UUID(str(command_id)),
                     worker_id=self.worker_id,
+                    worker_incarnation_id=self.worker_incarnation_id,
+                    claim_token=claimed.claim_token,
                     succeeded=True,
                 )
                 await db.commit()
@@ -1357,31 +1364,74 @@ class ProcessPoolManager:
             await self._handle_recycle_all_command(command)
         elif action == "workspace_generation_changed":
             await self._handle_workspace_generation_changed_command(command)
+        elif action == "package_install":
+            await self._handle_package_install_command(command)
         else:
             logger.warning(f"Unknown command action: {action}")
 
     async def _poll_durable_worker_command(self) -> None:
         """Converge commands even when their Redis notification was lost."""
+        if self.worker_incarnation_id is None:
+            return
 
         from src.core.database import get_db_context
         from src.services.worker_control_commands import (
+            fail_stale_worker_control_commands,
             get_pending_worker_control_command,
         )
 
         async with get_db_context() as db:
+            stale = await fail_stale_worker_control_commands(
+                db,
+                worker_id=self.worker_id,
+                worker_incarnation_id=self.worker_incarnation_id,
+            )
             command = await get_pending_worker_control_command(
                 db,
                 worker_id=self.worker_id,
+                worker_incarnation_id=self.worker_incarnation_id,
             )
-            if command is None:
-                return
-            data = {
-                "command_id": str(command.id),
-                "action": command.action,
-                "pid": command.process_id,
-                "reason": command.reason,
-            }
+            data = (
+                {
+                    "command_id": str(command.id),
+                    "action": command.action,
+                    "pid": command.process_id,
+                    "reason": command.reason,
+                    "payload": command.payload or {},
+                    "claim_token": command.claim_token,
+                }
+                if command is not None
+                else None
+            )
+            await db.commit()
+        for stale_command in stale:
+            payload = stale_command.payload or {}
+            run_id = payload.get("run_id")
+            if run_id:
+                from src.services.execution.install_progress import report_phase
+
+                await report_phase(
+                    str(run_id),
+                    self.worker_id,
+                    phase="failed",
+                    action=payload.get("action", "install"),
+                    package=payload.get("package"),
+                    error=stale_command.failure_message,
+                )
+        if data is None:
+            return
         await self._handle_command(data)
+
+    async def _handle_package_install_command(self, command: dict[str, Any]) -> None:
+        """Run the existing package handler for a durable per-worker command."""
+        from src.jobs.consumers.package_install import PackageInstallConsumer
+
+        payload = dict(command.get("payload") or {})
+        if not payload:
+            raise RuntimeError("package command payload missing")
+        succeeded = await PackageInstallConsumer().process_installation(payload)
+        if succeeded is False:
+            raise RuntimeError("package installation failed on worker")
 
     async def _handle_recycle_process_command(self, command: dict[str, Any]) -> None:
         """
