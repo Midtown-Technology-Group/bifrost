@@ -12,7 +12,7 @@ This migration creates:
 """
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -24,8 +24,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create pgvector extension (requires superuser or extension already installed)
-    op.execute('CREATE EXTENSION IF NOT EXISTS vector')
+    # Managed PostgreSQL can reject CREATE EXTENSION for a restricted role even
+    # when an administrator already installed it. Offline SQL still emits DDL.
+    if context.is_offline_mode() or not op.get_bind().scalar(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname = 'vector')"
+    )):
+        op.execute('CREATE EXTENSION IF NOT EXISTS vector')
 
     # Create knowledge_store table (without embedding column - added separately with vector type)
     op.create_table(
