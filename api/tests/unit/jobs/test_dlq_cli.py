@@ -1,28 +1,46 @@
 """Tests for the DLQ operational CLI helpers."""
 
 import json
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from typing import Any, ClassVar
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
-from unittest.mock import AsyncMock, patch
-
 from src.jobs import dlq_cli
 from src.jobs.dlq_cli import (
-    decode_message,
-    discard,
     _describe,
     _fetch_poison_messages,
+    _postgres_row,
     _requeue_messages,
-    replay,
+    decode_message,
+    discard,
+    postgres_replay,
     reconcile_discard,
+    replay,
 )
 from src.services.execution.poison import PoisonFinalizationResult
+
+
+@pytest.mark.parametrize("arguments", [
+    ["inspect", "workflow-executions", "--status", "poison"],
+    ["discard", "workflow-executions", "--delivery-id", str(uuid4()),
+     "--actor", "test", "--reason", "test"],
+])
+def test_rabbit_backend_rejects_postgres_selection_flags(monkeypatch, arguments):
+    monkeypatch.setattr(dlq_cli, "get_settings", lambda: SimpleNamespace(
+        work_delivery_backend="rabbitmq",
+    ))
+    with pytest.raises(ValueError, match="require the PostgreSQL backend"):
+        dlq_cli.main(arguments)
 
 
 class FakePoisonMessage:
     body = b'{"execution_id":"abc"}'
     message_id = "abc"
     correlation_id = "corr"
-    headers = {
+    headers: ClassVar[dict[str, Any]] = {
         "x-idempotency-key": "abc",
         "x-retry-count": 3,
         "x-replayed-count": 1,
@@ -46,6 +64,42 @@ def test_describe_includes_operational_metadata():
     assert row["retry_count"] == 3
     assert row["replay_count"] == 1
     assert row["body"] == {"execution_id": "abc"}
+
+
+def test_postgres_row_exposes_metadata_without_encrypted_body():
+    row = _postgres_row(
+        SimpleNamespace(
+            id=uuid4(),
+            queue_name="workflow-executions",
+            message_id="message-1",
+            status="claimed",
+            claim_count=2,
+            created_at=datetime.now(UTC),
+            available_at=datetime.now(UTC),
+            started_at=datetime.now(UTC),
+            settled_at=None,
+            lease_owner="worker-1",
+            lease_expires_at=datetime.now(UTC),
+            encrypted_envelope="ciphertext",
+        )
+    )
+
+    assert row["backend"] == "postgres"
+    assert row["message_id"] == "message-1"
+    assert "encrypted_envelope" not in row
+    assert "body" not in row
+
+
+@pytest.mark.asyncio
+async def test_postgres_replay_fails_closed_with_domain_guidance():
+    with pytest.raises(RuntimeError, match="no generic replay is domain-safe"):
+        await postgres_replay(
+            "workflow-executions",
+            1,
+            False,
+            actor="operator@example.com",
+            reason="verify replay",
+        )
 
 
 class FakePoisonQueue:

@@ -116,6 +116,7 @@ class TestConsumerSessionLifecycle:
             consumer = WorkflowExecutionConsumer()
             consumer._pool = AsyncMock()
             consumer._pool.stop = AsyncMock()
+            consumer._postgres = None
             consumer._pool_started = True
 
             with patch.object(

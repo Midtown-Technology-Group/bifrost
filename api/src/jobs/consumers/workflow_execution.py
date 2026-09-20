@@ -192,6 +192,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
     async def stop(self) -> None:
         """Stop the consumer and process pool."""
+        if self._postgres is not None:
+            await self._postgres.pause()
         # Stop process pool
         if self._pool_started:
             await self._pool.stop()
@@ -776,7 +778,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         int(attempt_count or 0),
                         operator_max_attempts(),
                     ):
-                        await republish_execution_from_dispatch(execution_row)
+                        await republish_execution_from_dispatch(execution_row, db=session)
                         execution_row.status = ExecutionStatus.PENDING
                         execution_row.started_at = None
                         execution_row.completed_at = None
@@ -1038,7 +1040,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Remove from queue tracking (execution is now being processed),
             # then load the context required before workflow code can run.
             await remove_from_queue(execution_id)
-            pending = await self._redis_client.get_pending_execution(execution_id)
+            pending = message_data.get("pending_context") if self._postgres is not None else None
+            if pending is None:
+                pending = await self._redis_client.get_pending_execution(execution_id)
         except RedisError as exc:
             raise RetryableConsumerError(
                 f"Redis pending execution state is unavailable: {exc}"
@@ -1745,7 +1749,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         async with get_db_context() as db:
             await self._lock_execution(db, execution_id)
-            execution = await db.get(Execution, execution_uuid)
+            from src.services.work_delivery_store import require_delivery_ownership
+
+            execution = await db.get(Execution, execution_uuid, with_for_update=True)
+            await require_delivery_ownership(db)
             if execution is None:
                 return None
             if execution.status == ExecutionStatus.PENDING:
@@ -1798,7 +1805,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         async with get_db_context() as db:
             await self._lock_execution(db, execution_id)
-            execution = await db.get(Execution, execution_uuid)
+            from src.services.work_delivery_store import require_delivery_ownership
+
+            execution = await db.get(Execution, execution_uuid, with_for_update=True)
+            await require_delivery_ownership(db)
             if execution is None:
                 return ""
             if execution.status != ExecutionStatus.PENDING:

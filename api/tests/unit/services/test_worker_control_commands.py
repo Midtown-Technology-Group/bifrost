@@ -32,6 +32,27 @@ async def test_create_worker_command_records_requester_and_bounded_reason() -> N
 
 
 @pytest.mark.asyncio
+async def test_package_command_keeps_operation_and_incarnation_fence() -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    operation_id = uuid4()
+    incarnation_id = uuid4()
+    command = await create_worker_control_command(
+        db,
+        worker_id="worker-a",
+        action="package_install",
+        requested_by_user_id=uuid4(),
+        reason="package fanout",
+        operation_id=operation_id,
+        target_incarnation_id=incarnation_id,
+        payload={"run_id": str(operation_id), "action": "install"},
+    )
+    assert command.operation_id == operation_id
+    assert command.target_incarnation_id == incarnation_id
+    assert command.payload["action"] == "install"
+
+
+@pytest.mark.asyncio
 async def test_claim_and_finish_are_status_fenced() -> None:
     command = SimpleNamespace(
         status="pending",

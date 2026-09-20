@@ -38,6 +38,7 @@ def make_consumer() -> WorkflowExecutionConsumer:
         workflow_execution.QUEUE_NAME
     ]
     consumer.queue_name = workflow_execution.QUEUE_NAME
+    consumer._postgres = None
     consumer._redis_client = AsyncMock()
     consumer._pool = SimpleNamespace(
         worker_id="worker-test",

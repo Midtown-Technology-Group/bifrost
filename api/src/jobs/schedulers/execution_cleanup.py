@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, delete, func, select, text
 
 from src.core.database import get_session_factory
 from src.core.pubsub import (
@@ -96,7 +96,7 @@ async def _recover_restart_orphan(db, execution: ExecutionModel) -> bool:
     # execution advisory lock prevents the consumer from claiming this message
     # until the caller commits PENDING. If publication fails, no attempt or
     # execution state has been changed and a later sweep can retry safely.
-    await republish_execution_from_dispatch(execution)
+    await republish_execution_from_dispatch(execution, db=db)
     accepted = await finalize_attempt(
         db,
         execution.id,
@@ -123,6 +123,32 @@ async def _recover_restart_orphan(db, execution: ExecutionModel) -> bool:
     execution.duration_ms = None
     execution.error_message = None
     return True
+
+
+async def cleanup_completed_deliveries(db) -> int:
+    """Bound transport storage; domain history remains its own authority.
+
+    Retain a week of completed receipts. Poison and interrupted payloads are
+    never aged out: they still require an explicit domain disposition.
+    """
+    from src.models.orm.work_deliveries import WorkDelivery
+
+    expired = (
+        select(WorkDelivery.id)
+        .where(
+            WorkDelivery.status == "completed",
+            WorkDelivery.settled_at < func.clock_timestamp() - timedelta(days=7),
+        )
+        .order_by(WorkDelivery.settled_at, WorkDelivery.id)
+        .limit(1000)
+        .with_for_update(skip_locked=True)
+    )
+    removed = await db.execute(
+        delete(WorkDelivery)
+        .where(WorkDelivery.id.in_(expired))
+        .returning(WorkDelivery.id)
+    )
+    return len(removed.all())
 
 
 def _execution_age_anchor(execution: ExecutionModel) -> datetime:
@@ -598,6 +624,20 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                 },
             )
 
+    from src.config import get_settings
+
+    if get_settings().work_delivery_backend == "postgres":
+        try:
+            from src.services.worker_control_commands import expire_package_commands
+
+            async with get_session_factory()() as db:
+                operations = await expire_package_commands(db)
+                results["completed_deliveries_pruned"] = await cleanup_completed_deliveries(db)
+                await db.commit()
+            results["package_operations_expired"] = len(operations)
+        except Exception as exc:
+            logger.exception("Package command recovery failed")
+            results["errors"].append({"error": str(exc)})
     return results
 
 

@@ -26,6 +26,7 @@ from src.models import (
     PackageUpdatesResponse,
 )
 from src.core.auth import Context, CurrentSuperuser
+from src.config import get_settings
 from src.core.log_safety import log_safe
 from src.core.redis_client import get_redis_client
 from src.core.requirements_cache import (
@@ -41,6 +42,25 @@ from src.services.execution.install_progress import get_run_progress
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/packages", tags=["Packages"])
+
+
+async def _publish_package_broadcast(
+    message: dict,
+    *,
+    requested_by_user_id: UUID,
+) -> None:
+    """Use durable per-worker commands when PostgreSQL delivery is enabled."""
+    if get_settings().work_delivery_backend == "postgres":
+        from src.services.worker_control_commands import (
+            enqueue_package_installation_commands,
+        )
+
+        await enqueue_package_installation_commands(
+            message,
+            requested_by_user_id=requested_by_user_id,
+        )
+        return
+    await publish_broadcast(exchange_name="package-installations", message=message)
 
 
 # =============================================================================
@@ -342,15 +362,15 @@ async def install_package(
         # run_id ties all workers' phase reports to the same Redis hash so
         # the frontend sees one aggregate status instead of N per-worker logs.
         run_id = str(uuid4())
-        await publish_broadcast(
-            exchange_name="package-installations",
-            message={
+        await _publish_package_broadcast(
+            {
                 "type": "recycle_workers",
                 "package": request.package_name,
                 "version": request.version if request.version else None,
                 "is_update": is_update,
                 "run_id": run_id,
             },
+            requested_by_user_id=user.user_id,
         )
 
         return PackageInstallResponse(
@@ -421,9 +441,8 @@ async def uninstall_package(
         # is what distinguishes install from uninstall in the consumer.
         # run_id ties all workers' phase reports to the same Redis hash.
         run_id = str(uuid4())
-        await publish_broadcast(
-            exchange_name="package-installations",
-            message={
+        await _publish_package_broadcast(
+            {
                 "type": "recycle_workers",
                 "action": "uninstall",
                 "package": package_name,
@@ -431,6 +450,7 @@ async def uninstall_package(
                 "is_update": True,
                 "run_id": run_id,
             },
+            requested_by_user_id=user.user_id,
         )
 
         return {

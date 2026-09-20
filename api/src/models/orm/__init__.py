@@ -18,6 +18,7 @@ from src.models.orm.ai_models import AIEmbeddingConfig, AIModelAssignment, AIMod
 from src.models.orm.app_embed_secrets import AppEmbedSecret
 from src.models.orm.artifacts import Artifact
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.work_deliveries import WorkDelivery
 from src.models.orm.operation_receipts import OperationReceipt
 from src.models.orm.scheduler_leases import SchedulerLease
 from src.models.orm.scheduler_diagnostics import (
@@ -114,6 +115,7 @@ __all__ = [
     "Application",
     "Artifact",
     "PlatformJob",
+    "WorkDelivery",
     "OperationReceipt",
     "SchedulerLease",
     "SchedulerReplica",

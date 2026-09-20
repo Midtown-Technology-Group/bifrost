@@ -142,7 +142,7 @@ async def test_recover_restart_orphan_fences_attempt_and_republishes(monkeypatch
         failure_phase="worker",
     )
     transition.assert_awaited_once()
-    republish.assert_awaited_once_with(execution)
+    republish.assert_awaited_once_with(execution, db=db)
     assert execution.status == "Pending"
     assert execution.started_at is None
     assert execution.error_message is None

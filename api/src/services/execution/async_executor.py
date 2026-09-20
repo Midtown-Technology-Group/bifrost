@@ -23,7 +23,9 @@ from typing import Any
 from fastapi.encoders import jsonable_encoder
 from opentelemetry import trace
 from sqlalchemy import text, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import get_settings
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
 from src.core.log_safety import log_safe
 from src.core.redis_client import get_redis_client
@@ -185,9 +187,16 @@ def validated_recovery_dispatch(execution: Any) -> dict[str, Any]:
     return _validated_pending_dispatch(execution, request)
 
 
-async def republish_execution_from_dispatch(execution: Any) -> None:
+async def republish_execution_from_dispatch(execution: Any, *, db: AsyncSession | None = None) -> None:
     """Restore ephemeral context and republish one pinned workflow execution."""
-    await _publish_pending(**validated_recovery_dispatch(execution))
+    dispatch = validated_recovery_dispatch(execution)
+    if get_settings().work_delivery_backend == "postgres":
+        if db is None:
+            raise ValueError("PostgreSQL recovery requires the domain transaction")
+        from src.services.work_delivery_store import retire_workflow_delivery_for_retry
+
+        await retire_workflow_delivery_for_retry(db, str(execution.id))
+    await _publish_pending(**dispatch, delivery_db=db)
 
 
 async def _persist_execution_pin(
@@ -350,7 +359,10 @@ async def _publish_scheduled_once(
 
         # Hold the transaction-scoped claim through broker confirmation. A
         # failure rolls the transaction back, so a retry can claim SCHEDULED.
-        await _publish_pending(**publish_kwargs)
+        if get_settings().work_delivery_backend == "postgres":
+            await _publish_pending(**publish_kwargs, delivery_db=db)
+        else:
+            await _publish_pending(**publish_kwargs)
         from src.services.execution.attempts import mark_attempt_published
 
         await mark_attempt_published(db, execution)
@@ -392,6 +404,7 @@ async def _publish_pending(
     execution_record_exists: bool = False,
     dispatch_metadata: dict[str, Any] | None = None,
     artifact_workspace_id: str | None = None,
+    delivery_db: AsyncSession | None = None,
 ) -> None:
     """
     Write a pending-execution blob to Redis, register with the queue tracker,
@@ -423,7 +436,7 @@ async def _publish_pending(
             redis_client = get_redis_client()
 
             # Store pending execution in Redis (worker needs this for execution context)
-            await redis_client.set_pending_execution(
+            pending_context = await redis_client.set_pending_execution(
                 execution_id=execution_id,
                 workflow_id=workflow_id,
                 parameters=parameters,
@@ -470,7 +483,14 @@ async def _publish_pending(
                 message["file_path"] = file_path
 
             # Enqueue message via RabbitMQ
-            await publish_message(QUEUE_NAME, message)
+            if get_settings().work_delivery_backend == "postgres":
+                message["pending_context"] = pending_context
+            if delivery_db is not None:
+                # Delivery visibility and PENDING/attempt publication share one
+                # PostgreSQL commit. A consumer cannot race an uncommitted domain row.
+                await publish_message(QUEUE_NAME, message, db=delivery_db)
+            else:
+                await publish_message(QUEUE_NAME, message)
             span.set_attribute("bifrost.execution.enqueue.status", "queued")
         except Exception as exc:
             span.set_attribute("bifrost.execution.enqueue.status", "failed")
@@ -604,7 +624,7 @@ async def enqueue_code_execution(
         execution_id = str(uuid.uuid4())
 
     # Store pending execution in Redis (worker needs this for execution context)
-    await redis_client.set_pending_execution(
+    pending_context = await redis_client.set_pending_execution(
         execution_id=execution_id,
         workflow_id=None,  # No workflow ID for inline code
         script_name=script_name,
@@ -624,7 +644,7 @@ async def enqueue_code_execution(
     await add_to_queue(execution_id)
 
     # Prepare queue message with code
-    message = {
+    message: dict[str, Any] = {
         "execution_id": execution_id,
         "code": code_base64,
         "script_name": script_name,
@@ -632,7 +652,12 @@ async def enqueue_code_execution(
     }
 
     # Enqueue message via RabbitMQ
-    await publish_message(queue_name, message)
+    if get_settings().work_delivery_backend == "postgres":
+        message["pending_context"] = pending_context
+        message["execution_record_exists"] = True
+        await _publish_inline_postgres(context, execution_id, script_name, parameters, queue_name, message)
+    else:
+        await publish_message(queue_name, message)
 
     logger.info(
         f"Enqueued async code execution: {log_safe(script_name)}",
@@ -644,6 +669,46 @@ async def enqueue_code_execution(
     )
 
     return execution_id
+
+
+async def _publish_inline_postgres(
+    context: ExecutionContext, execution_id: str, script_name: str,
+    parameters: dict[str, Any], queue_name: str, message: dict[str, Any],
+) -> None:
+    """Bind accepted inline code to a durable execution and one delivery commit."""
+    from src.core.database import get_db_context
+    from src.models.enums import ExecutionStatus
+    from src.models.orm.executions import Execution
+    from src.services.execution.attempts import mark_attempt_published
+    from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+
+    pending = dict(message["pending_context"])
+    pending.pop("created_at", None)
+    identity = {**message, "pending_context": pending}
+    digest = sha256_digest(canonical_json(identity))
+    async with get_db_context() as db:
+        await db.execute(text(
+            "SELECT pg_advisory_xact_lock("
+            "hashtext('bifrost:workflow-execution:' || :execution_id))"
+        ), {"execution_id": execution_id})
+        execution = await db.get(Execution, uuid.UUID(execution_id))
+        if execution is not None:
+            if execution.dispatch_evidence_hash != digest:
+                raise ValueError("execution identity is already bound to a different request")
+            return
+        execution = Execution(
+            id=uuid.UUID(execution_id), workflow_name=script_name,
+            parameters=parameters, organization_id=uuid.UUID(context.org_id) if context.org_id else None,
+            executed_by=uuid.UUID(context.user_id), executed_by_name=context.name,
+            status=ExecutionStatus.PENDING, runtime_mode="inline-v1",
+            dispatch_evidence={"schema": "bifrost.inline-dispatch/v1", "sha256": digest},
+            dispatch_evidence_hash=digest, attempt_tracking_version="v1",
+        )
+        db.add(execution)
+        await db.flush()
+        await mark_attempt_published(db, execution)
+        await publish_message(queue_name, message, message_id=execution_id, db=db)
+        await db.commit()
 
 
 async def enqueue_system_workflow_execution(

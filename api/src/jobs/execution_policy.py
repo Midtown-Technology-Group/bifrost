@@ -8,7 +8,7 @@ replay, cancellation, and authority boundaries across those implementations.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping
@@ -146,11 +146,15 @@ class ExecutionOperationsPolicy:
                 "interactive workflows must be admitted by the process pool"
             )
         if (
-            self.mechanism == ExecutionMechanism.POSTGRES_LEASE
+            self.workload_class in {
+                WorkloadClass.PLATFORM_INTERACTIVE,
+                WorkloadClass.PLATFORM_BATCH,
+                WorkloadClass.PLATFORM_MAINTENANCE,
+            }
             and self.admission_policy != AdmissionPolicy.PLATFORM_SCHEDULER
         ):
             raise ValueError(
-                f"leased policy {self.identifier!r} must use platform admission"
+                f"platform policy {self.identifier!r} must use platform admission"
             )
 
 
@@ -281,6 +285,17 @@ _BROKER_POLICIES: Mapping[str, ExecutionOperationsPolicy] = MappingProxyType(
 
 
 def broker_execution_policies() -> Mapping[str, ExecutionOperationsPolicy]:
+    from src.config import get_settings
+
+    if get_settings().work_delivery_backend == "postgres":
+        return MappingProxyType({
+            name: replace(
+                policy,
+                mechanism=ExecutionMechanism.POSTGRES_LEASE,
+                replay_allowed=False,
+            )
+            for name, policy in _BROKER_POLICIES.items()
+        })
     return _BROKER_POLICIES
 
 
@@ -318,7 +333,7 @@ def all_execution_policies(
 ) -> Mapping[str, ExecutionOperationsPolicy]:
     """Return one collision-free, validated view of all execution policies."""
 
-    policies = dict(_BROKER_POLICIES)
+    policies = dict(broker_execution_policies())
     for definition in platform_definitions:
         validate_platform_job_definition(definition)
         identifier = definition.operations_policy.identifier

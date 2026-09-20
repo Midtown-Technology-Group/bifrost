@@ -5,7 +5,9 @@ Validates the Task 12 implementation: ``summarize_run`` loads a completed
 extraction, and persists the parsed result onto the run record + an
 ``AIUsage`` row.
 """
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -14,6 +16,10 @@ from sqlalchemy import delete, select
 
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
+from src.models.orm.work_deliveries import WorkDelivery
+from src.jobs.rabbitmq import RetryableConsumerError
+from src.core.security import encrypt_secret
+from src.services.work_delivery_store import DeliveryLease, current_delivery
 from src.services.llm import LLMResponse
 from src.services.execution.run_summarizer import (
     _clamp_confidence,
@@ -353,6 +359,77 @@ async def test_summarize_run_does_not_stack_transport_retries(
         assert "429 rate limited" in run.summary_error
 
 
+@pytest.mark.asyncio
+async def test_summarize_run_retries_later_when_another_live_delivery_owns_generation(
+    async_session_factory, seed_completed_run
+):
+    """Live and backfill deliveries must not call the provider concurrently."""
+    from src.services.execution import run_summarizer as mod
+
+    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
+    previous_id = uuid4()
+    current_id = uuid4()
+    current_token = uuid4()
+    envelope = encrypt_secret(json.dumps({"body": {}}))
+    async with async_session_factory() as db:
+        run = await db.get(AgentRun, seed_completed_run.id)
+        assert run is not None
+        run.summary_status = "generating"
+        run.summary_delivery_id = previous_id
+        db.add_all(
+            [
+                WorkDelivery(
+                    id=previous_id,
+                    queue_name="agent-summarization",
+                    message_id=str(seed_completed_run.id),
+                    encrypted_envelope=envelope,
+                    status="claimed",
+                    lease_owner="previous",
+                    lease_token=uuid4(),
+                    lease_expires_at=expires,
+                    claim_count=1,
+                ),
+                WorkDelivery(
+                    id=current_id,
+                    queue_name="agent-summarization-backfill",
+                    message_id="backfill-message",
+                    encrypted_envelope=envelope,
+                    status="claimed",
+                    lease_owner="current",
+                    lease_token=current_token,
+                    lease_expires_at=expires,
+                    claim_count=1,
+                ),
+            ]
+        )
+        await db.commit()
+
+    scope = current_delivery.set(
+        DeliveryLease(
+            id=current_id,
+            token=current_token,
+            queue_name="agent-summarization-backfill",
+            message_id="backfill-message",
+            envelope={"body": {}},
+            claim_count=1,
+        )
+    )
+    try:
+        with (
+            patch.object(mod, "get_summarization_client", new=AsyncMock()) as client,
+            pytest.raises(RetryableConsumerError),
+        ):
+            await summarize_run(seed_completed_run.id, async_session_factory)
+        client.assert_not_awaited()
+    finally:
+        current_delivery.reset(scope)
+        async with async_session_factory() as db:
+            await db.execute(
+                delete(WorkDelivery).where(
+                    WorkDelivery.id.in_([previous_id, current_id])
+                )
+            )
+            await db.commit()
 class TestExtractJsonObject:
     """Guards against the docker-log regression: every backfilled run's
     summarizer call returned content that json.loads rejected because the LLM

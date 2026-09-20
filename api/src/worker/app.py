@@ -170,8 +170,9 @@ class Worker:
             await require_execution_operations_schema()
             logger.info("Database connection established")
 
-            # Initialize and start RabbitMQ consumers
-            logger.info("Starting RabbitMQ consumers...")
+            logger.info(
+                "Starting %s work consumers...", self.settings.work_delivery_backend
+            )
             await self._start_consumers()
         except Exception:
             logger.error("Startup failed; tearing down partially-started worker")
@@ -213,10 +214,21 @@ class Worker:
             logger.error(f"Error closing DB during cleanup: {e}")
 
     async def _start_consumers(self) -> None:
-        """Start all RabbitMQ consumers."""
+        """Start consumers for the selected work-delivery backend."""
         # Create consumer instances
         factories = consumer_factories()
-        self._consumers = [factories[name]() for name in configured_consumer_names()]
+        names = configured_consumer_names()
+        if (
+            self.settings.work_delivery_backend == "postgres"
+            and "package-install" in names
+        ):
+            if "workflow" not in names:
+                raise ValueError(
+                    "PostgreSQL package commands require the workflow worker control poller"
+                )
+            # The process pool already polls durable commands for this worker.
+            names = [name for name in names if name != "package-install"]
+        self._consumers = [factories[name]() for name in names]
 
         # Start each consumer
         for consumer in self._consumers:

@@ -11,17 +11,17 @@ from typing import Any, cast
 
 import aio_pika
 import redis.asyncio as redis
-from aiobotocore.session import get_session
 from aio_pika.abc import AbstractRobustConnection
+from aiobotocore.session import get_session
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
+from shared.version import get_version
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
-from src.core.database import get_db
+from src.core.database import get_db, get_session_factory
 from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
-from shared.version import get_version
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -228,6 +228,21 @@ async def check_database(db: AsyncSession) -> tuple[str, ComponentStatus]:
     )
 
 
+async def check_postgres_delivery(settings: Settings) -> tuple[str, ComponentStatus]:
+    async def check_schema() -> None:
+        session_factory = get_session_factory(settings)
+        async with session_factory() as delivery_db:
+            await delivery_db.execute(
+                text("SELECT 1 FROM work_deliveries LIMIT 1")
+            )
+
+    name, component = await _checked_component(
+        "work_delivery", "postgresql", check_schema()
+    )
+    component["provider"] = "postgres"
+    return name, component
+
+
 async def check_redis(settings: Settings) -> tuple[str, ComponentStatus]:
     async def ping() -> None:
         client = await _redis_health_connection.get(settings)
@@ -304,13 +319,23 @@ async def build_health_components(
     db: AsyncSession,
     settings: Settings,
 ) -> dict[str, ComponentStatus]:
+    delivery_check = (
+        check_postgres_delivery(settings)
+        if getattr(settings, "work_delivery_backend", "rabbitmq") == "postgres"
+        else check_rabbitmq(settings)
+    )
     checks = await asyncio.gather(
         check_database(db),
         check_redis(settings),
-        check_rabbitmq(settings),
+        delivery_check,
         check_s3(settings),
     )
-    return dict(checks)
+    components = dict(checks)
+    if getattr(settings, "work_delivery_backend", "rabbitmq") == "postgres":
+        # Keep the legacy key stable for health consumers while RabbitMQ is not
+        # part of the selected delivery path.
+        components["rabbitmq"] = _component("not_configured", "rabbitmq")
+    return components
 
 
 def _overall_status(components: dict[str, ComponentStatus]) -> str:

@@ -145,7 +145,7 @@ class RedisClient:
         runtime_evidence: dict[str, Any] | None = None,
         runtime_mode: str = "legacy",
         artifact_workspace_id: str | None = None,
-    ) -> None:
+    ) -> PendingExecution:
         """
         Store pending execution in Redis.
 
@@ -204,6 +204,7 @@ class RedisClient:
                 json.dumps(data),
             )
             logger.debug(f"Stored pending execution: {key}")
+            return data
         except Exception as e:
             logger.error(f"Failed to store pending execution: {e}")
             raise

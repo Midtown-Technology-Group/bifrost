@@ -7,12 +7,16 @@ message to the shared ``package:install`` WebSocket channel. The frontend
 collapses consecutive identical summaries, so N workers reporting the same
 aggregate render as a single line.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, cast
+from uuid import UUID
+
+from sqlalchemy import select
 
 from src.core.pubsub import manager as pubsub_manager
 from src.core.redis_client import get_redis_client
@@ -54,6 +58,42 @@ async def _live_worker_count(redis: Any) -> int:
     return count
 
 
+async def _durable_progress(run_id: str) -> dict[str, Any] | None:
+    """Read the immutable target set and fenced outcomes without Redis."""
+    from src.config import get_settings
+
+    if get_settings().work_delivery_backend != "postgres":
+        return None
+    from src.core.database import get_db_context
+    from src.models.orm.worker_control_commands import WorkerControlCommand
+
+    async with get_db_context() as db:
+        rows = list(
+            (
+                await db.execute(
+                    select(WorkerControlCommand).where(
+                        WorkerControlCommand.operation_id == UUID(run_id),
+                        WorkerControlCommand.action == "package_install",
+                    )
+                )
+            ).scalars()
+        )
+        phases = {
+            row.worker_id: WorkerPhase(
+                phase={
+                    "running": "installing",
+                    "succeeded": "recycled",
+                    "failed": "failed",
+                }[row.status],
+                package=(row.payload or {}).get("package"),
+                error=row.failure_message,
+            )
+            for row in rows
+            if row.status in {"running", "succeeded", "failed"}
+        }
+        return _aggregate_run_progress(run_id, phases, len(rows))
+
+
 def aggregate_phases(phases: dict[str, WorkerPhase], total: int) -> dict[str, Any]:
     """Reduce per-worker phases into counts + failure detail."""
     counts = {p: 0 for p in _PHASES}
@@ -79,6 +119,9 @@ def aggregate_phases(phases: dict[str, WorkerPhase], total: int) -> dict[str, An
 
 async def get_run_progress(run_id: str) -> dict[str, Any]:
     """Return durable fleet progress for one package recycle operation."""
+    durable = await _durable_progress(run_id)
+    if durable is not None:
+        return durable
     redis = await _raw_redis()
     raw = await cast(
         Awaitable[dict[str, str]], redis.hgetall(f"{_HASH_PREFIX}{run_id}")
@@ -95,7 +138,13 @@ async def get_run_progress(run_id: str) -> dict[str, Any]:
         except (json.JSONDecodeError, TypeError):
             continue
 
-    aggregate = aggregate_phases(phases, await _live_worker_count(redis))
+    return _aggregate_run_progress(run_id, phases, await _live_worker_count(redis))
+
+
+def _aggregate_run_progress(
+    run_id: str, phases: dict[str, WorkerPhase], total: int
+) -> dict[str, Any]:
+    aggregate = aggregate_phases(phases, total)
     terminal = aggregate["recycled"] + aggregate["failed"]
     if not phases:
         operation_status = "pending"
@@ -120,9 +169,14 @@ def summary_line(agg: dict[str, Any], action: str) -> str:
         done_verb = verb.replace("ing", "ed")
         base = f"{done_verb} on {agg['installed']}/{total} workers"
     if agg["failed"]:
-        pkgs = ", ".join(
-            f"{f['worker']}: {f['package']}" for f in agg["failures"] if f.get("package")
-        ) or f"{agg['failed']} worker(s)"
+        pkgs = (
+            ", ".join(
+                f"{f['worker']}: {f['package']}"
+                for f in agg["failures"]
+                if f.get("package")
+            )
+            or f"{agg['failed']} worker(s)"
+        )
         base += f" — {agg['failed']} failed ({pkgs})"
     return base
 
@@ -141,6 +195,18 @@ async def report_phase(
     install).
     """
     try:
+        durable = await _durable_progress(run_id)
+        if durable is not None:
+            await pubsub_manager.broadcast(
+                CHANNEL,
+                {
+                    "type": "progress",
+                    "action": action,
+                    "line": summary_line(durable, action),
+                    **durable,
+                },
+            )
+            return
         redis = await _raw_redis()
         key = f"{_HASH_PREFIX}{run_id or 'current'}"
         field_val = json.dumps(

@@ -233,7 +233,7 @@ class PackageInstallConsumer(BroadcastConsumer):
         except Exception as e:
             logger.warning(f"Failed to update packages in Redis: {e}")
 
-    async def _recycle_workers(self) -> None:
+    async def _recycle_workers(self) -> bool:
         """
         Drain all worker processes and restart the template so that child
         processes forked afterward have a fresh sys.modules that can see
@@ -246,12 +246,18 @@ class PackageInstallConsumer(BroadcastConsumer):
             if pool._started:
                 await pool.drain_and_restart_template()
                 logger.info("Drained workers and restarted template after pip install")
+                return True
             else:
                 logger.warning("Pool not started, skipping worker recycle")
         except Exception as e:
             logger.warning(f"Failed to drain/restart after pip install: {e}")
+        return False
 
     async def process_message(self, body: dict[str, Any]) -> None:
+        """Preserve the broadcast consumer contract for RabbitMQ callers."""
+        await self.process_installation(body)
+
+    async def process_installation(self, body: dict[str, Any]) -> bool:
         """Process a package install or uninstall message.
 
         `action` is "install" (default) or "uninstall". For "install" with
@@ -278,7 +284,7 @@ class PackageInstallConsumer(BroadcastConsumer):
                     run_id, wid, phase="failed", action=action,
                     package="(none)", error="uninstall requires a package name",
                 )
-                return
+                return False
             err = await self._pip_uninstall(package)
         elif package:
             err = await self._pip_install(package, version)
@@ -290,12 +296,16 @@ class PackageInstallConsumer(BroadcastConsumer):
                 run_id, wid, phase="failed", action=action,
                 package=package_spec, error=err or "pip command failed",
             )
-            return
+            return False
 
         # Worker subprocesses are forked before pip runs; recycle so they pick
         # up the new on-disk state.
         await report_phase(run_id, wid, phase="recycling", action=action)
-        await self._recycle_workers()
+        if await self._recycle_workers() is False:
+            await report_phase(run_id, wid, phase="failed", action=action,
+                               error="Worker template did not converge after package installation")
+            return False
         await self._update_pool_packages()
         await report_phase(run_id, wid, phase="recycled", action=action)
         logger.info(f"Package {action} completed on {wid}")
+        return True

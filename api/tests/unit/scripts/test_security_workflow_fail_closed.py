@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import yaml
+
 
 def _repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
@@ -24,8 +26,7 @@ def test_snyk_scan_failures_are_not_tolerated() -> None:
     assert "--policy-path=.snyk" in workflow
 
 
-def test_snyk_policy_exceptions_are_time_bounded() -> None:
-    policy = (REPO_ROOT / ".snyk").read_text(encoding="utf-8")
+def test_snyk_policy_has_no_vulnerability_exceptions() -> None:
+    policy = yaml.safe_load((REPO_ROOT / ".snyk").read_text(encoding="utf-8"))
 
-    assert policy.count("expires: 2026-09-13") == 4
-    assert "no compatible release currently permits" in policy
+    assert not policy.get("ignore")
