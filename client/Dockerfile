@@ -48,8 +48,14 @@ FROM nginx:alpine@sha256:db35bfc6b2951e7f8a72db5db120288c127ffaeeb4a6d4b95a26fea
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# The official nginx entrypoint renders this template before starting nginx.
+# Restrict substitution so nginx variables ($host, $uri, captures) stay intact.
+ENV BIFROST_API_UPSTREAM=api:8000 \
+    BIFROST_RENDERER_UPSTREAM=127.0.0.1:8080 \
+    BIFROST_RENDERER_RESOLVER=127.0.0.11 \
+    BIFROST_CANONICAL_SCHEME=http \
+    NGINX_ENVSUBST_FILTER=^(BIFROST_API_UPSTREAM|BIFROST_RENDERER_UPSTREAM|BIFROST_RENDERER_RESOLVER|BIFROST_CANONICAL_SCHEME)$
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx /etc/nginx/conf.d \
     && touch /var/run/nginx.pid \

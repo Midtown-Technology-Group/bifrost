@@ -122,8 +122,8 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@postgres:5432/bifrost
       BIFROST_REDIS_URL: redis://redis:6379/0
     volumes:
       - ./api/src:/app/src:ro

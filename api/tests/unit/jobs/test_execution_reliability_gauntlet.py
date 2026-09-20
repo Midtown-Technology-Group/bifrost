@@ -63,3 +63,22 @@ def test_gauntlet_declares_all_high_risk_scenarios() -> None:
     assert "_worker_death_after_claim" in source
     assert "_admission_saturation" in source
     assert "_graceful_shutdown" in source
+
+
+async def test_completion_waits_for_effect_after_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A visible claim must not let recovery finish before its effect commits."""
+    observations = iter(
+        (
+            {"claims": 2, "effects": 0, "identities": 1},
+            {"claims": 2, "effects": 1, "identities": 1},
+        )
+    )
+
+    async def delayed_counts(_run_id: str, _scenario: str) -> dict[str, int]:
+        return next(observations)
+
+    monkeypatch.setattr(gauntlet, "_counts", delayed_counts)
+    await gauntlet._wait_for(
+        lambda: gauntlet._claims_and_effects_complete("run", "worker_death_after_claim")
+    )
+    assert next(observations, None) is None
