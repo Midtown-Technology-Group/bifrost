@@ -6,6 +6,7 @@ Domain recovery decides whether a fresh attempt is safe.
 """
 
 import json
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Literal
@@ -30,6 +31,40 @@ class DeliveryLease:
     message_id: str
     envelope: dict[str, Any]
     claim_count: int
+
+
+class DeliveryOwnershipLost(RuntimeError):
+    """The current handler may no longer admit or settle domain work."""
+
+
+current_delivery: ContextVar[DeliveryLease | None] = ContextVar(
+    "current_delivery", default=None
+)
+
+
+async def require_delivery_ownership(db: AsyncSession) -> None:
+    """Fence domain admission inside its own transaction; Rabbit is unchanged.
+
+    The row lock serializes with lease expiry/recovery. Call after acquiring the
+    domain identity lock and before changing its state or starting effects.
+    """
+    lease = current_delivery.get()
+    if lease is None:
+        return
+    owned = (
+        await db.execute(
+            select(WorkDelivery.id).where(*_owned(lease)).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if owned is None:
+        raise DeliveryOwnershipLost(str(lease.id))
+    await db.execute(
+        update(WorkDelivery)
+        .where(WorkDelivery.id == lease.id)
+        .values(
+            started_at=func.coalesce(WorkDelivery.started_at, func.clock_timestamp()),
+        )
+    )
 
 
 def _encrypted(envelope: dict[str, Any]) -> str:
@@ -70,6 +105,33 @@ async def enqueue_delivery(
         .returning(WorkDelivery.id)
     )
     return result.scalar_one()
+
+
+async def retire_workflow_delivery_for_retry(
+    db: AsyncSession, execution_id: str
+) -> None:
+    """Fence the old dispatch inside an already-authorized domain retry.
+
+    The caller holds the execution advisory lock and commits this retirement,
+    replacement enqueue and domain/attempt transition together. A late ack for
+    the retired row cannot consume the replacement, even if the child failed
+    before its original delivery handler acknowledged dispatch.
+    """
+    await db.execute(
+        update(WorkDelivery)
+        .where(
+            WorkDelivery.queue_name == "workflow-executions",
+            WorkDelivery.message_id == execution_id,
+            WorkDelivery.status.in_(["queued", "claimed", "interrupted"]),
+        )
+        .values(
+            status="completed",
+            settled_at=func.clock_timestamp(),
+            lease_owner=None,
+            lease_token=None,
+            lease_expires_at=None,
+        )
+    )
 
 
 async def claim_deliveries(
@@ -175,6 +237,7 @@ async def settle_delivery(
         "settled_at": None if status == "queued" else func.clock_timestamp(),
     }
     if status == "queued":
+        values["started_at"] = None
         values["available_at"] = func.clock_timestamp() + timedelta(
             seconds=delay_seconds
         )
@@ -245,3 +308,125 @@ async def interrupt_delivery(db: AsyncSession, lease: DeliveryLease) -> bool:
         .returning(WorkDelivery.id)
     )
     return result.scalar_one_or_none() is not None
+
+
+async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> bool:
+    """Resume only provably unstarted work; domain retry owns uncertain effects.
+
+    Call in a fresh transaction after expiration committed. Domain locks must
+    precede the delivery row lock, exactly as they do during consumer admission.
+    """
+    identity = (
+        await db.execute(
+            select(WorkDelivery.queue_name, WorkDelivery.message_id).where(
+                WorkDelivery.id == delivery_id, WorkDelivery.status == "interrupted"
+            )
+        )
+    ).one_or_none()
+    if identity is None:
+        return False
+    queue, message_id = identity
+    domain = None
+    if queue in {"workflow-executions", "agent-runs"}:
+        try:
+            domain_id = UUID(message_id)
+        except ValueError:
+            return False
+        namespace = (
+            "workflow-execution" if queue == "workflow-executions" else "agent-run"
+        )
+        locked = (
+            await db.execute(
+                text("SELECT pg_try_advisory_xact_lock(hashtext(:identity))"),
+                {"identity": f"bifrost:{namespace}:{domain_id}"},
+            )
+        ).scalar_one()
+        if not locked:
+            return False
+        if queue == "workflow-executions":
+            from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+
+            domain = await db.get(Execution, domain_id, with_for_update=True)
+            active = (
+                await db.execute(
+                    select(WorkflowExecutionAttempt.id)
+                    .where(
+                        WorkflowExecutionAttempt.execution_id == domain_id,
+                        WorkflowExecutionAttempt.completed_at.is_(None),
+                        (
+                            WorkflowExecutionAttempt.claim_token.is_not(None)
+                            | WorkflowExecutionAttempt.status.not_in(
+                                ["dispatching", "published"]
+                            )
+                        ),
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        else:
+            from src.models.orm.agent_runs import AgentRun
+            from src.models.orm.execution_attempts import ExecutionAttempt
+
+            domain = await db.get(AgentRun, domain_id, with_for_update=True)
+            active = (
+                await db.execute(
+                    select(ExecutionAttempt.id)
+                    .where(
+                        ExecutionAttempt.logical_job_type == "agent_run",
+                        ExecutionAttempt.logical_job_id == domain_id,
+                        ExecutionAttempt.completed_at.is_(None),
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+    row = (
+        await db.execute(
+            select(WorkDelivery)
+            .where(WorkDelivery.id == delivery_id, WorkDelivery.status == "interrupted")
+            .with_for_update(skip_locked=True)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return False
+    disposition = "queued" if row.started_at is None else None
+    if domain is not None:
+        status = domain.status
+        if status in {"Pending", "queued"}:
+            disposition = "queued" if active is None else None
+        elif status in {
+            "Success",
+            "Failed",
+            "Timeout",
+            "CompletedWithErrors",
+            "Cancelled",
+            "completed",
+            "failed",
+            "cancelled",
+            "timeout",
+        }:
+            disposition = "completed"
+        else:
+            # Running, scheduled and cancelling belong to domain recovery.
+            disposition = None
+    if disposition is None:
+        # Revisit uncertain domain work without starving newer interruptions.
+        await db.execute(
+            update(WorkDelivery)
+            .where(WorkDelivery.id == row.id)
+            .values(
+                available_at=func.clock_timestamp() + timedelta(seconds=30),
+            )
+        )
+        return False
+    await db.execute(
+        update(WorkDelivery)
+        .where(WorkDelivery.id == row.id)
+        .values(
+            status=disposition,
+            started_at=None if disposition == "queued" else row.started_at,
+            available_at=func.clock_timestamp(),
+            settled_at=None if disposition == "queued" else func.clock_timestamp(),
+        )
+    )
+    return True

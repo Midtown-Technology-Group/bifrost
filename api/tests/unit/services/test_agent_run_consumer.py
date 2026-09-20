@@ -99,7 +99,9 @@ def consumer():
         patch("src.jobs.consumers.agent_run.BaseConsumer.__init__", return_value=None),
     ):
         mock_settings.return_value = MagicMock(max_concurrency=2)
-        return AgentRunConsumer()
+        instance = AgentRunConsumer()
+        instance._postgres = None
+        return instance
 
 
 @pytest.mark.asyncio

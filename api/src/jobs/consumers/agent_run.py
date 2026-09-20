@@ -705,6 +705,9 @@ class AgentRunConsumer(BaseConsumer):
                 ),
                 {"run_id": run_id},
             )
+            from src.services.work_delivery_store import require_delivery_ownership
+
+            await require_delivery_ownership(db)
             agent_run = await db.get(AgentRun, run_uuid)
             if agent_run is not None:
                 if agent_run.status != "queued":

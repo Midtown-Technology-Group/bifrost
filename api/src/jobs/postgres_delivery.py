@@ -15,14 +15,20 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from aio_pika import IncomingMessage
+from sqlalchemy import func, select
 
 from src.core.database import get_db_context
+from src.models.orm.work_deliveries import WorkDelivery
 from src.services.work_delivery_store import (
     DeliveryLease,
+    DeliveryOwnershipLost,
     claim_deliveries,
+    current_delivery,
     interrupt_delivery,
     interrupt_expired_deliveries,
+    recover_interrupted_delivery,
     renew_delivery,
+    require_delivery_ownership,
     settle_delivery,
 )
 
@@ -32,10 +38,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 POLL_SECONDS = 1.0
 HEARTBEAT_SECONDS = 15.0
-
-
-class DeliveryOwnershipLost(RuntimeError):
-    """The delivery can no longer be changed by this handler."""
 
 
 class PostgresMessage:
@@ -152,6 +154,9 @@ class PostgresConsumerRunner:
                         await interrupt_expired_deliveries(
                             db, queue_name=self.consumer.queue_name
                         )
+                        await db.commit()
+                    await self._recover()
+                    async with get_db_context() as db:
                         leases = await claim_deliveries(
                             db,
                             queue_name=self.consumer.queue_name,
@@ -176,6 +181,27 @@ class PostgresConsumerRunner:
                 )
             await asyncio.sleep(POLL_SECONDS)
 
+    async def _recover(self) -> None:
+        async with get_db_context() as db:
+            interrupted = list(
+                (
+                    await db.execute(
+                        select(WorkDelivery.id)
+                        .where(
+                            WorkDelivery.queue_name == self.consumer.queue_name,
+                            WorkDelivery.status == "interrupted",
+                            WorkDelivery.available_at <= func.clock_timestamp(),
+                        )
+                        .order_by(WorkDelivery.available_at, WorkDelivery.id)
+                        .limit(100)
+                    )
+                ).scalars()
+            )
+        for delivery_id in interrupted:
+            async with get_db_context() as db:
+                await recover_interrupted_delivery(db, delivery_id)
+                await db.commit()
+
     @staticmethod
     def _observe_handler(task: asyncio.Task[None]) -> None:
         if not task.cancelled() and task.exception() is not None:
@@ -188,16 +214,21 @@ class PostgresConsumerRunner:
         handler = asyncio.current_task()
         assert handler is not None
         heartbeat = asyncio.create_task(self._heartbeat(message, handler))
+        scope = current_delivery.set(message.lease)
         try:
             if self.consumer._draining:
                 await message.nack(requeue=True)
                 return
+            async with get_db_context() as db:
+                await require_delivery_ownership(db)
+                await db.commit()
             # The shared policy consumes precisely the fields/ack methods above.
             # Topology and Rabbit channel methods never cross this boundary.
             await self.consumer._process_message_with_ack(
                 cast(IncomingMessage, message)
             )
         finally:
+            current_delivery.reset(scope)
             heartbeat.cancel()
             with suppress(asyncio.CancelledError):
                 await heartbeat

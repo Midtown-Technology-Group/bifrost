@@ -31,6 +31,7 @@ def upgrade() -> None:
             server_default=sa.text("clock_timestamp()"),
         ),
         sa.Column("settled_at", sa.DateTime(timezone=True)),
+        sa.Column("started_at", sa.DateTime(timezone=True)),
         sa.Column("lease_owner", sa.String(255)),
         sa.Column("lease_token", postgresql.UUID(as_uuid=True)),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True)),
@@ -51,7 +52,7 @@ def upgrade() -> None:
         "ix_work_deliveries_claim",
         "work_deliveries",
         ["queue_name", "available_at", "id"],
-        postgresql_where=sa.text("status = 'queued'"),
+        postgresql_where=sa.text("status IN ('queued', 'interrupted')"),
     )
     op.create_index(
         "ix_work_deliveries_expired",

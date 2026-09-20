@@ -96,7 +96,7 @@ async def _recover_restart_orphan(db, execution: ExecutionModel) -> bool:
     # execution advisory lock prevents the consumer from claiming this message
     # until the caller commits PENDING. If publication fails, no attempt or
     # execution state has been changed and a later sweep can retry safely.
-    await republish_execution_from_dispatch(execution)
+    await republish_execution_from_dispatch(execution, db=db)
     accepted = await finalize_attempt(
         db,
         execution.id,

@@ -13,10 +13,16 @@ from sqlalchemy import delete, func, select, update
 from src.jobs.rabbitmq import BaseConsumer, RetryableConsumerError
 from src.models.orm.work_deliveries import WorkDelivery
 from src.services.work_delivery_store import (
+    DeliveryOwnershipLost,
     claim_deliveries,
+    current_delivery,
     enqueue_delivery,
+    interrupt_delivery,
     interrupt_expired_deliveries,
+    recover_interrupted_delivery,
     renew_delivery,
+    require_delivery_ownership,
+    retire_workflow_delivery_for_retry,
     settle_delivery,
 )
 
@@ -235,6 +241,146 @@ async def test_poison_retains_work_and_rejects_repeat_settlement(
         stored = await db.get(WorkDelivery, lease.id)
         assert stored is not None and stored.status == "poison"
         assert stored.settled_at is not None and stored.lease_token is None
+
+
+async def test_recovery_resumes_unstarted_claim_and_fences_old_handler(
+    async_session_factory, delivery_queue
+):
+    async with async_session_factory() as db:
+        await enqueue(db, delivery_queue)
+        await db.commit()
+        (old,) = await claim_deliveries(db, queue_name=delivery_queue, owner="lost")
+        await db.commit()
+        assert await interrupt_delivery(db, old)
+        await db.commit()
+        assert await recover_interrupted_delivery(db, old.id)
+        await db.commit()
+        (new,) = await claim_deliveries(
+            db, queue_name=delivery_queue, owner="replacement"
+        )
+        await db.commit()
+        scope = current_delivery.set(old)
+        try:
+            with pytest.raises(DeliveryOwnershipLost):
+                await require_delivery_ownership(db)
+            await db.rollback()
+        finally:
+            current_delivery.reset(scope)
+        scope = current_delivery.set(new)
+        try:
+            await require_delivery_ownership(db)
+            await db.commit()
+        finally:
+            current_delivery.reset(scope)
+        assert await interrupt_delivery(db, new)
+        await db.commit()
+        # A handler crossed the start fence. Unknown effects cannot be replayed.
+        assert not await recover_interrupted_delivery(db, new.id)
+        await db.commit()
+        assert (
+            await claim_deliveries(db, queue_name=delivery_queue, owner="third") == []
+        )
+
+
+async def test_domain_retry_replaces_dispatch_atomically_and_rejects_late_ack(
+    async_session_factory,
+):
+    execution_id = str(uuid4())
+    async with async_session_factory() as db:
+        old_id = await enqueue(db, "workflow-executions", execution_id)
+        await db.commit()
+        (old,) = await claim_deliveries(
+            db, queue_name="workflow-executions", owner="old"
+        )
+        await db.commit()
+        try:
+            await retire_workflow_delivery_for_retry(db, execution_id)
+            rolled_back = await enqueue(db, "workflow-executions", execution_id)
+            await db.rollback()
+            assert await db.get(WorkDelivery, rolled_back) is None
+            assert await renew_delivery(db, old)
+            await db.commit()
+            await retire_workflow_delivery_for_retry(db, execution_id)
+            new_id = await enqueue(db, "workflow-executions", execution_id)
+            await db.commit()
+            assert new_id != old_id
+            assert not await settle_delivery(db, old, status="completed")
+            await db.commit()
+            (new,) = await claim_deliveries(
+                db, queue_name="workflow-executions", owner="new"
+            )
+            assert new.id == new_id
+            await db.commit()
+        finally:
+            await db.execute(
+                delete(WorkDelivery).where(
+                    WorkDelivery.queue_name == "workflow-executions",
+                    WorkDelivery.message_id == execution_id,
+                )
+            )
+            await db.commit()
+
+
+@pytest.mark.parametrize(
+    "domain_status,active_attempt,expected",
+    [
+        ("Pending", False, "queued"),
+        ("Pending", True, "interrupted"),
+        ("Running", False, "interrupted"),
+        ("Success", False, "completed"),
+    ],
+)
+async def test_workflow_recovery_obeys_durable_domain_outcome(
+    async_session_factory, domain_status, active_attempt, expected
+):
+    from src.models.enums import ExecutionStatus
+    from src.models.orm.executions import Execution
+
+    execution_id = uuid4()
+    async with async_session_factory() as db:
+        db.add(
+            Execution(
+                id=execution_id,
+                workflow_name="delivery-recovery-test",
+                executed_by_name="test",
+                status=ExecutionStatus(domain_status),
+            )
+        )
+        await enqueue(db, "workflow-executions", str(execution_id))
+        if active_attempt:
+            from src.services.execution.attempts import create_claimed_attempt
+
+            execution = await db.get(Execution, execution_id)
+            await create_claimed_attempt(
+                db, execution, worker_id="still-running", worker_incarnation_id=uuid4()
+            )
+        await db.commit()
+        leases = await claim_deliveries(
+            db, queue_name="workflow-executions", owner="test"
+        )
+        (lease,) = [item for item in leases if item.message_id == str(execution_id)]
+        await db.commit()
+        scope = current_delivery.set(lease)
+        try:
+            await require_delivery_ownership(db)
+            await db.commit()
+        finally:
+            current_delivery.reset(scope)
+        assert await interrupt_delivery(db, lease)
+        await db.commit()
+        try:
+            await recover_interrupted_delivery(db, lease.id)
+            await db.commit()
+            status = (
+                await db.execute(
+                    select(WorkDelivery.status).where(WorkDelivery.id == lease.id)
+                )
+            ).scalar_one()
+            assert status == expected
+        finally:
+            await db.execute(delete(WorkDelivery).where(WorkDelivery.id == lease.id))
+            await db.execute(delete(Execution).where(Execution.id == execution_id))
+            await db.commit()
 
 
 async def test_consumer_completes_through_shared_policy_without_rabbit(

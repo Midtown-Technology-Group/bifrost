@@ -187,9 +187,16 @@ def validated_recovery_dispatch(execution: Any) -> dict[str, Any]:
     return _validated_pending_dispatch(execution, request)
 
 
-async def republish_execution_from_dispatch(execution: Any) -> None:
+async def republish_execution_from_dispatch(execution: Any, *, db: AsyncSession | None = None) -> None:
     """Restore ephemeral context and republish one pinned workflow execution."""
-    await _publish_pending(**validated_recovery_dispatch(execution))
+    dispatch = validated_recovery_dispatch(execution)
+    if get_settings().work_delivery_backend == "postgres":
+        if db is None:
+            raise ValueError("PostgreSQL recovery requires the domain transaction")
+        from src.services.work_delivery_store import retire_workflow_delivery_for_retry
+
+        await retire_workflow_delivery_for_retry(db, str(execution.id))
+    await _publish_pending(**dispatch, delivery_db=db)
 
 
 async def _persist_execution_pin(

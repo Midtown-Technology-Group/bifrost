@@ -35,6 +35,7 @@ class WorkDelivery(Base):
         server_default=text("clock_timestamp()"),
     )
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_owner: Mapped[str | None] = mapped_column(String(255))
     lease_token: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -59,7 +60,7 @@ class WorkDelivery(Base):
             "queue_name",
             "available_at",
             "id",
-            postgresql_where=text("status = 'queued'"),
+            postgresql_where=text("status IN ('queued', 'interrupted')"),
         ),
         Index(
             "ix_work_deliveries_expired",

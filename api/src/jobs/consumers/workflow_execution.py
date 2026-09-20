@@ -778,7 +778,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         int(attempt_count or 0),
                         operator_max_attempts(),
                     ):
-                        await republish_execution_from_dispatch(execution_row)
+                        await republish_execution_from_dispatch(execution_row, db=session)
                         execution_row.status = ExecutionStatus.PENDING
                         execution_row.started_at = None
                         execution_row.completed_at = None
@@ -1749,6 +1749,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         async with get_db_context() as db:
             await self._lock_execution(db, execution_id)
+            from src.services.work_delivery_store import require_delivery_ownership
+
+            await require_delivery_ownership(db)
             execution = await db.get(Execution, execution_uuid)
             if execution is None:
                 return None
@@ -1802,6 +1805,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         async with get_db_context() as db:
             await self._lock_execution(db, execution_id)
+            from src.services.work_delivery_store import require_delivery_ownership
+
+            await require_delivery_ownership(db)
             execution = await db.get(Execution, execution_uuid)
             if execution is None:
                 return ""

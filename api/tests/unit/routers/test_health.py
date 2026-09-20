@@ -270,12 +270,12 @@ async def test_rabbitmq_remains_selected_by_default(monkeypatch):
     async def rabbit(settings):
         nonlocal rabbit_called
         rabbit_called = True
-        return _healthy_component("rabbitmq", "rabbitmq")
+        return await _healthy_component("rabbitmq", "rabbitmq")
 
     async def postgres(settings):
         nonlocal postgres_called
         postgres_called = True
-        return _healthy_component("work_delivery", "postgresql")
+        return await _healthy_component("work_delivery", "postgresql")
 
     monkeypatch.setattr(health, "check_rabbitmq", rabbit)
     monkeypatch.setattr(health, "check_postgres_delivery", postgres)
