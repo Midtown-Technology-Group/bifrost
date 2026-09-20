@@ -192,6 +192,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
     async def stop(self) -> None:
         """Stop the consumer and process pool."""
+        if self._postgres is not None:
+            await self._postgres.pause()
         # Stop process pool
         if self._pool_started:
             await self._pool.stop()
@@ -1038,7 +1040,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Remove from queue tracking (execution is now being processed),
             # then load the context required before workflow code can run.
             await remove_from_queue(execution_id)
-            pending = await self._redis_client.get_pending_execution(execution_id)
+            pending = message_data.get("pending_context") if self._postgres is not None else None
+            if pending is None:
+                pending = await self._redis_client.get_pending_execution(execution_id)
         except RedisError as exc:
             raise RetryableConsumerError(
                 f"Redis pending execution state is unavailable: {exc}"

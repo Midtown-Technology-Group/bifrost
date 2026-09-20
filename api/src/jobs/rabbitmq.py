@@ -19,6 +19,7 @@ import aio_pika
 from aio_pika import IncomingMessage
 from aio_pika.abc import AbstractRobustConnection, AbstractRobustChannel
 from aio_pika.pool import Pool
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
 from src.jobs.execution_policy import (
@@ -286,6 +287,7 @@ class _AbstractConsumer(ABC):
         self._inflight: set[asyncio.Task] = set()
         self._consumer_tag: str | None = None
         self._draining: bool = False
+        self._postgres: Any = None
 
     @abstractmethod
     async def start(self) -> None:
@@ -302,6 +304,8 @@ class _AbstractConsumer(ABC):
         For graceful shutdown, call drain() instead.
         """
         self._running = False
+        if self._postgres is not None:
+            await self._postgres.stop()
         if self._channel:
             await self._channel.close()
         if self._connection_ctx:
@@ -328,6 +332,8 @@ class _AbstractConsumer(ABC):
         pending: set[asyncio.Task] = set()
 
         try:
+            if self._postgres is not None:
+                await self._postgres.pause()
             # Cancel the consumer: stops new deliveries, keeps channel open.
             if self._queue is not None and self._consumer_tag is not None:
                 try:
@@ -455,7 +461,9 @@ class _AbstractConsumer(ABC):
                 started=started,
             )
         except asyncio.CancelledError as e:
-            if context is None:
+            if self._postgres is not None:
+                await self._postgres.message(message).interrupt()
+            elif context is None:
                 await message.nack(requeue=True)
             else:
                 await self._retry_or_poison(
@@ -641,7 +649,7 @@ class _AbstractConsumer(ABC):
         reason: str,
         dependency: str | None = None,
     ) -> None:
-        if self._channel is None:
+        if self._channel is None and self._postgres is None:
             raise RuntimeError("consumer channel is not available")
         next_retry = context.retry_count + 1
         dependency_failures = self._dependency_failures.get(dependency or "", 0)
@@ -673,6 +681,10 @@ class _AbstractConsumer(ABC):
             if circuit_open:
                 # The next three failures rebuild the bounded circuit window.
                 self._dependency_failures[dependency] = 0
+        if self._postgres is not None:
+            await self._postgres.message(message).stage("queued", headers, retry_delay)
+            return
+        assert self._channel is not None
         await self._channel.default_exchange.publish(
             aio_pika.Message(
                 body=json.dumps(context.body).encode(),
@@ -692,7 +704,7 @@ class _AbstractConsumer(ABC):
         reason: str,
         error_type: str | None = None,
     ) -> None:
-        if self._channel is None:
+        if self._channel is None and self._postgres is None:
             raise RuntimeError("consumer channel is not available")
         context_headers = dict(context.headers)
         if context.idempotency_key:
@@ -717,6 +729,10 @@ class _AbstractConsumer(ABC):
         for key, value in provenance.items():
             if value:
                 headers[key] = value[:500]
+        if self._postgres is not None:
+            await self._postgres.message(message).stage("poison", headers)
+            return
+        assert self._channel is not None
         exchange = await self._channel.declare_exchange(
             self.dead_letter_exchange,
             aio_pika.ExchangeType.DIRECT,
@@ -847,6 +863,13 @@ class BaseConsumer(_AbstractConsumer):
     async def start(self) -> None:
         """Start consuming messages."""
         self._running = True
+
+        if get_settings().work_delivery_backend == "postgres":
+            from src.jobs.postgres_delivery import PostgresConsumerRunner
+
+            self._postgres = PostgresConsumerRunner(self)
+            await self._postgres.start()
+            return
 
         # Initialize pools and get a dedicated connection for this consumer
         await rabbitmq.init_pools()
@@ -1285,6 +1308,7 @@ async def publish_message(
     *,
     message_id: str | None = None,
     headers: dict[str, Any] | None = None,
+    db: AsyncSession | None = None,
 ) -> None:
     """
     Publish a message to a queue.
@@ -1299,6 +1323,31 @@ async def publish_message(
         message: Message body (will be JSON encoded)
         priority: Message priority (0-9, higher = more important)
     """
+    if get_settings().work_delivery_backend == "postgres":
+        from src.core.database import get_db_context
+        from src.services.work_delivery_store import enqueue_delivery
+
+        stable_id = str(message_id or infer_idempotency_key(queue_name, message))
+        envelope = {
+            "body": message,
+            "headers": _message_headers(
+                message, queue_name, message_id=stable_id, headers=headers,
+            ),
+        }
+        if db is not None:
+            await enqueue_delivery(
+                db, queue_name=queue_name,
+                message_id=_bounded_message_id(stable_id), envelope=envelope,
+            )
+        else:
+            async with get_db_context() as session:
+                await enqueue_delivery(
+                    session, queue_name=queue_name,
+                    message_id=_bounded_message_id(stable_id), envelope=envelope,
+                )
+                await session.commit()
+        return
+
     await rabbitmq.init_pools()
     last_exc: BaseException | None = None
     for attempt, delay in enumerate((*_PUBLISH_RETRY_DELAYS_S, None)):

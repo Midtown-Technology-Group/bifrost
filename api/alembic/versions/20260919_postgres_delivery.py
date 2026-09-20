@@ -40,8 +40,10 @@ def upgrade() -> None:
             name="ck_work_deliveries_status",
         ),
         sa.CheckConstraint(
-            "(status = 'claimed') = (lease_token IS NOT NULL AND "
-            "lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            "(status = 'claimed' AND lease_token IS NOT NULL AND "
+            "lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL) OR "
+            "(status <> 'claimed' AND lease_token IS NULL AND "
+            "lease_owner IS NULL AND lease_expires_at IS NULL)",
             name="ck_work_deliveries_lease",
         ),
     )

@@ -1,11 +1,16 @@
 """Real PostgreSQL transaction/ownership tests; no external provider calls."""
 
+import asyncio
+from contextlib import asynccontextmanager
 from datetime import timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, func, select, update
+from src.jobs.rabbitmq import BaseConsumer, RetryableConsumerError
 from src.models.orm.work_deliveries import WorkDelivery
 from src.services.work_delivery_store import (
     claim_deliveries,
@@ -16,6 +21,59 @@ from src.services.work_delivery_store import (
 )
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
+
+
+class RecordingConsumer(BaseConsumer):
+    def __init__(self, queue_name, handler):
+        super().__init__(queue_name=queue_name)
+        self.handler = handler
+
+    async def process_message(self, body):
+        await self.handler(body)
+
+
+@pytest_asyncio.fixture
+async def postgres_transport(monkeypatch, async_session_factory):
+    from src.core import database
+    from src.jobs import postgres_delivery, rabbitmq
+
+    @asynccontextmanager
+    async def session():
+        async with async_session_factory() as db:
+            yield db
+
+    monkeypatch.setattr(database, "get_db_context", session)
+    monkeypatch.setattr(postgres_delivery, "get_db_context", session)
+    monkeypatch.setattr(postgres_delivery, "POLL_SECONDS", 0.02)
+    monkeypatch.setattr(postgres_delivery, "HEARTBEAT_SECONDS", 0.02)
+    monkeypatch.setattr(
+        rabbitmq,
+        "get_settings",
+        lambda: SimpleNamespace(work_delivery_backend="postgres"),
+    )
+    monkeypatch.setattr(
+        rabbitmq.rabbitmq,
+        "init_pools",
+        AsyncMock(side_effect=AssertionError("Rabbit must remain unused")),
+    )
+    yield rabbitmq
+
+
+async def wait_delivery_status(factory, queue, status):
+    async with asyncio.timeout(10):
+        while True:
+            async with factory() as db:
+                row = (
+                    await db.execute(
+                        select(WorkDelivery).where(
+                            WorkDelivery.queue_name == queue,
+                            WorkDelivery.status == status,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if row is not None:
+                    return row
+            await asyncio.sleep(0.02)
 
 
 @pytest_asyncio.fixture
@@ -177,3 +235,84 @@ async def test_poison_retains_work_and_rejects_repeat_settlement(
         stored = await db.get(WorkDelivery, lease.id)
         assert stored is not None and stored.status == "poison"
         assert stored.settled_at is not None and stored.lease_token is None
+
+
+async def test_consumer_completes_through_shared_policy_without_rabbit(
+    async_session_factory,
+    delivery_queue,
+    postgres_transport,
+):
+    handler = AsyncMock()
+    consumer = RecordingConsumer(delivery_queue, handler)
+    await postgres_transport.publish_message(delivery_queue, {"id": "one", "value": 42})
+    try:
+        await consumer.start()
+        row = await wait_delivery_status(
+            async_session_factory, delivery_queue, "completed"
+        )
+        assert row.claim_count == 1
+        handler.assert_awaited_once_with({"id": "one", "value": 42})
+        assert consumer._channel is None
+    finally:
+        await consumer.drain(deadline=1)
+
+
+async def test_consumer_retry_is_not_immediately_consumed(
+    async_session_factory,
+    delivery_queue,
+    postgres_transport,
+):
+    called = asyncio.Event()
+
+    async def handler(body):
+        called.set()
+        raise RetryableConsumerError("temporary admission pressure")
+
+    consumer = RecordingConsumer(delivery_queue, handler)
+    await postgres_transport.publish_message(delivery_queue, {"id": "one"})
+    try:
+        await consumer.start()
+        await asyncio.wait_for(called.wait(), 10)
+        row = await wait_delivery_status(
+            async_session_factory, delivery_queue, "queued"
+        )
+        assert row.claim_count == 1
+        async with async_session_factory() as db:
+            delay = (
+                await db.execute(
+                    select(
+                        WorkDelivery.available_at > func.clock_timestamp(),
+                    ).where(WorkDelivery.id == row.id)
+                )
+            ).scalar_one()
+            assert delay
+    finally:
+        await consumer.drain(deadline=1)
+
+
+async def test_shutdown_interrupts_running_handler_without_replaying(
+    async_session_factory,
+    delivery_queue,
+    postgres_transport,
+):
+    started = asyncio.Event()
+    effects = []
+
+    async def handler(body):
+        effects.append("external effect may have happened")
+        started.set()
+        await asyncio.Event().wait()
+
+    consumer = RecordingConsumer(delivery_queue, handler)
+    await postgres_transport.publish_message(delivery_queue, {"id": "one"})
+    try:
+        await consumer.start()
+        await asyncio.wait_for(started.wait(), 10)
+    finally:
+        await consumer.drain(deadline=0.05)
+    row = await wait_delivery_status(
+        async_session_factory, delivery_queue, "interrupted"
+    )
+    assert row.claim_count == 1 and len(effects) == 1
+    async with async_session_factory() as db:
+        assert await claim_deliveries(db, queue_name=delivery_queue, owner="new") == []

@@ -3,12 +3,14 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from uuid import UUID, uuid4
+from typing import Any
 
 import redis.asyncio as aioredis
 from fastapi import HTTPException, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import get_settings
 from src.core.auth import UserPrincipal
 from src.core.cache.redis_client import get_redis
 from src.jobs.rabbitmq import publish_message
@@ -208,13 +210,19 @@ async def enqueue_agent_run_once(
             await redis.set(redis_key, json.dumps(context), ex=3600)
         if before_queue_publish is not None:
             await before_queue_publish(run_id)
-        message = {
+        message: dict[str, Any] = {
             "run_id": run_id,
             "agent_id": agent_id,
             "trigger_type": trigger_type,
             "sync": sync,
         }
-        await publish_message(QUEUE_NAME, message)
+        if get_settings().work_delivery_backend == "postgres":
+            # Keep caller/tenant context in the encrypted durable envelope so
+            # acceptance does not depend on a one-hour Redis key surviving.
+            message["context"] = context
+            await publish_message(QUEUE_NAME, message, db=db)
+        else:
+            await publish_message(QUEUE_NAME, message)
         agent_run.status = "queued"
         await db.commit()
 

@@ -157,6 +157,9 @@ class AgentRunConsumer(BaseConsumer):
         async with get_redis() as redis:
             context_raw = await redis.get(redis_key)
 
+        if not context_raw and self._postgres is not None and body.get("context"):
+            context_raw = json.dumps(body["context"])
+
         if not context_raw:
             durable_status = await self._fail_missing_context_run(run_id)
             logger.error(

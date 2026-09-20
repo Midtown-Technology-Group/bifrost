@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import Response
-
 from src.routers import health
 
 
@@ -12,7 +11,7 @@ class DummyDB:
         return None
 
 
-def _settings(s3_configured: bool = True):
+def _settings(s3_configured: bool = True, work_delivery_backend: str = "rabbitmq"):
     return SimpleNamespace(
         environment="test",
         object_storage_provider="s3",
@@ -25,6 +24,7 @@ def _settings(s3_configured: bool = True):
         s3_secret_key="secret-secret" if s3_configured else None,
         s3_region="us-east-1",
         azure_blob_configured=False,
+        work_delivery_backend=work_delivery_backend,
     )
 
 
@@ -41,6 +41,7 @@ def _azure_blob_settings(configured: bool = True):
         s3_secret_key=None,
         s3_region="us-east-1",
         azure_blob_configured=configured,
+        work_delivery_backend="rabbitmq",
     )
 
 
@@ -175,6 +176,127 @@ async def test_ready_returns_healthy_when_core_dependencies_pass(monkeypatch):
     assert response.status_code == 200
     assert result.status == "healthy"
     assert set(result.components) == {"database", "redis", "rabbitmq", "s3"}
+
+
+@pytest.mark.asyncio
+async def test_postgres_delivery_readiness_does_not_connect_rabbitmq(monkeypatch):
+    settings = _settings(work_delivery_backend="postgres")
+    monkeypatch.setattr(health, "get_settings", lambda: settings)
+
+    class DeliveryDB:
+        async def execute(self, statement):
+            assert "work_deliveries" in str(statement)
+
+    class Factory:
+        def __call__(self):
+            class Context:
+                async def __aenter__(self):
+                    return DeliveryDB()
+
+                async def __aexit__(self, *exc_info):
+                    return None
+
+            return Context()
+
+    monkeypatch.setattr(health, "get_session_factory", lambda settings: Factory())
+
+    async def fail_if_called(settings):
+        raise AssertionError("RabbitMQ must not be checked for PostgreSQL delivery")
+
+    monkeypatch.setattr(health, "check_rabbitmq", fail_if_called)
+    name, component = await health.check_postgres_delivery(settings)
+
+    assert name == "work_delivery"
+    assert component == {
+        "status": "healthy",
+        "type": "postgresql",
+        "provider": "postgres",
+    }
+
+    monkeypatch.setattr(
+        health,
+        "check_database",
+        lambda db: _healthy_component("database", "postgresql"),
+    )
+    monkeypatch.setattr(
+        health, "check_redis", lambda settings: _healthy_component("redis", "redis")
+    )
+    monkeypatch.setattr(
+        health, "check_s3", lambda settings: _healthy_component("s3", "s3")
+    )
+    components = await health.build_health_components(DummyDB(), settings)
+    assert components["work_delivery"]["provider"] == "postgres"
+    assert components["rabbitmq"]["status"] == "not_configured"
+
+
+@pytest.mark.asyncio
+async def test_postgres_delivery_readiness_reports_missing_schema(monkeypatch):
+    settings = _settings(work_delivery_backend="postgres")
+
+    class MissingSchemaDB:
+        async def execute(self, statement):
+            raise RuntimeError("relation does not exist")
+
+    class Factory:
+        def __call__(self):
+            class Context:
+                async def __aenter__(self):
+                    return MissingSchemaDB()
+
+                async def __aexit__(self, *exc_info):
+                    return None
+
+            return Context()
+
+    monkeypatch.setattr(health, "get_session_factory", lambda settings: Factory())
+
+    name, component = await health.check_postgres_delivery(settings)
+
+    assert name == "work_delivery"
+    assert component == {
+        "status": "unhealthy",
+        "type": "postgresql",
+        "provider": "postgres",
+        "error": "RuntimeError",
+    }
+
+
+@pytest.mark.asyncio
+async def test_rabbitmq_remains_selected_by_default(monkeypatch):
+    settings = _settings()
+    rabbit_called = False
+    postgres_called = False
+
+    async def rabbit(settings):
+        nonlocal rabbit_called
+        rabbit_called = True
+        return _healthy_component("rabbitmq", "rabbitmq")
+
+    async def postgres(settings):
+        nonlocal postgres_called
+        postgres_called = True
+        return _healthy_component("work_delivery", "postgresql")
+
+    monkeypatch.setattr(health, "check_rabbitmq", rabbit)
+    monkeypatch.setattr(health, "check_postgres_delivery", postgres)
+    monkeypatch.setattr(
+        health,
+        "check_database",
+        lambda db: _healthy_component("database", "postgresql"),
+    )
+    monkeypatch.setattr(
+        health, "check_redis", lambda settings: _healthy_component("redis", "redis")
+    )
+    monkeypatch.setattr(
+        health, "check_s3", lambda settings: _healthy_component("s3", "s3")
+    )
+
+    components = await health.build_health_components(DummyDB(), settings)
+
+    assert rabbit_called is True
+    assert postgres_called is False
+    assert "rabbitmq" in components
+    assert "work_delivery" not in components
 
 
 @pytest.mark.asyncio

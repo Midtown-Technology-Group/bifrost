@@ -192,7 +192,7 @@ async def settle_delivery(
 
 
 async def interrupt_expired_deliveries(
-    db: AsyncSession, *, limit: int = 100
+    db: AsyncSession, *, limit: int = 100, queue_name: str | None = None
 ) -> list[UUID]:
     """Expose abandoned ownership for domain-aware recovery, in bounded batches."""
     if not 1 <= limit <= MAX_CLAIM_BATCH:
@@ -209,6 +209,8 @@ async def interrupt_expired_deliveries(
             skip_locked=True,
         )
     )
+    if queue_name is not None:
+        expired = expired.where(WorkDelivery.queue_name == queue_name)
     result = await db.execute(
         update(WorkDelivery)
         .where(
@@ -223,3 +225,23 @@ async def interrupt_expired_deliveries(
         .returning(WorkDelivery.id)
     )
     return list(result.scalars())
+
+
+async def interrupt_delivery(db: AsyncSession, lease: DeliveryLease) -> bool:
+    """Surrender this exact owner, including an already expired lease."""
+    result = await db.execute(
+        update(WorkDelivery)
+        .where(
+            WorkDelivery.id == lease.id,
+            WorkDelivery.status == "claimed",
+            WorkDelivery.lease_token == lease.token,
+        )
+        .values(
+            status="interrupted",
+            lease_owner=None,
+            lease_token=None,
+            lease_expires_at=None,
+        )
+        .returning(WorkDelivery.id)
+    )
+    return result.scalar_one_or_none() is not None

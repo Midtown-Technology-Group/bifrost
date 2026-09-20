@@ -71,6 +71,13 @@ class Settings(BaseSettings):
         default="amqp://bifrost:bifrost_dev@localhost:5672/",
         description="RabbitMQ connection URL",
     )
+    work_delivery_backend: Literal["rabbitmq", "postgres"] = Field(
+        default="rabbitmq",
+        description=(
+            "Work-delivery cutover flag. All publishers and workers must use the "
+            "same backend; drain and verify the old backend before changing it."
+        ),
+    )
 
     # ==========================================================================
     # Workflow Execution
