@@ -1,6 +1,7 @@
 """Domain-aware interrupted-delivery recovery against real PostgreSQL."""
 
 import json
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete, func, select, update
 from src.core.security import decrypt_secret
+from src.jobs.postgres_delivery import PostgresConsumerRunner
 from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.execution_attempts import ExecutionAttempt
@@ -363,3 +365,72 @@ async def test_malformed_summary_envelope_remains_interrupted(
         assert not await recover_interrupted_delivery(db, delivery_id)
         await db.commit()
         assert await _status(db, delivery_id) == "interrupted"
+
+
+async def test_recovery_backoff_advances_past_oldest_malformed_batch(
+    async_session_factory, recovery_rows, monkeypatch
+):
+    from src.jobs import postgres_delivery
+
+    @asynccontextmanager
+    async def session():
+        async with async_session_factory() as db:
+            yield db
+
+    monkeypatch.setattr(postgres_delivery, "get_db_context", session)
+    queue = "agent-summarization"
+    malformed_ids = []
+    async with async_session_factory() as db:
+        for index in range(100):
+            delivery_id = await _delivery(
+                db,
+                queue=queue,
+                message_id=f"malformed-{uuid4()}",
+                body={"run_id": f"not-a-uuid-{index}"},
+                started=False,
+            )
+            malformed_ids.append(delivery_id)
+        await db.execute(
+            update(WorkDelivery)
+            .where(WorkDelivery.id.in_(malformed_ids))
+            .values(available_at=func.clock_timestamp() - timedelta(minutes=1))
+        )
+        run = await _run(db, summary_status="completed")
+        recoverable_id = await _delivery(
+            db,
+            queue=queue,
+            message_id=f"recoverable-{uuid4()}",
+            body={"run_id": str(run.id)},
+            started=False,
+        )
+        await db.commit()
+    await recovery_rows(
+        run_ids=[run.id],
+        delivery_ids=[*malformed_ids, recoverable_id],
+    )
+
+    class _RecoveryConsumer:
+        queue_name = queue
+
+    runner = PostgresConsumerRunner(_RecoveryConsumer())
+    await runner._recover()
+    async with async_session_factory() as db:
+        assert await _status(db, recoverable_id) == "interrupted"
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(WorkDelivery)
+                .where(
+                    WorkDelivery.id.in_(malformed_ids),
+                    WorkDelivery.status == "interrupted",
+                    WorkDelivery.available_at > func.clock_timestamp(),
+                )
+            )
+            == 100
+        )
+
+    # The first bounded pass backs off the malformed head; the next pass can
+    # reach and settle the valid delivery without making malformed work runnable.
+    await runner._recover()
+    async with async_session_factory() as db:
+        assert await _status(db, recoverable_id) == "completed"

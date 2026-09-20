@@ -443,7 +443,7 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
         ).scalar_one()
         if not locked:
             return False
-        domain = await db.get(AgentRun, run_id, with_for_update=True)
+        domain = await db.get(AgentRun, run_id, with_for_update={"of": AgentRun})
         if domain is None:
             return False
     else:
@@ -490,7 +490,7 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
         else:
             from src.models.orm.execution_attempts import ExecutionAttempt
 
-            domain = await db.get(AgentRun, domain_id, with_for_update=True)
+            domain = await db.get(AgentRun, domain_id, with_for_update={"of": AgentRun})
             active = (
                 await db.execute(
                     select(ExecutionAttempt.id)

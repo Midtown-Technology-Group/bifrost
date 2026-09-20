@@ -11,11 +11,12 @@ import json
 import logging
 import socket
 from contextlib import suppress
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from aio_pika import IncomingMessage
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from src.core.database import get_db_context
 from src.models.orm.work_deliveries import WorkDelivery
@@ -199,7 +200,23 @@ class PostgresConsumerRunner:
             )
         for delivery_id in interrupted:
             async with get_db_context() as db:
-                await recover_interrupted_delivery(db, delivery_id)
+                recovered = await recover_interrupted_delivery(db, delivery_id)
+                if not recovered:
+                    # Malformed or otherwise unowned rows return before the
+                    # domain-aware helper can lock the delivery. Back them
+                    # off conditionally so one poison envelope cannot occupy
+                    # the oldest batch forever; keep it interrupted for
+                    # operator inspection and never make it runnable here.
+                    await db.execute(
+                        update(WorkDelivery)
+                        .where(
+                            WorkDelivery.id == delivery_id,
+                            WorkDelivery.status == "interrupted",
+                        )
+                        .values(
+                            available_at=func.clock_timestamp() + timedelta(seconds=30),
+                        )
+                    )
                 await db.commit()
 
     @staticmethod
