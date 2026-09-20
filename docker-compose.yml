@@ -126,9 +126,9 @@ services:
       # Core (required by Settings during migrations)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
-      # Database (via PgBouncer for connection pooling)
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
+      # Migrations require one PostgreSQL session for the advisory lock.
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@postgres:5432/bifrost
       # Redis (for module cache warming)
       BIFROST_REDIS_URL: redis://redis:6379/0
     depends_on:
