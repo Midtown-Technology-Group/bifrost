@@ -197,7 +197,7 @@ class AgentRunConsumer(BaseConsumer):
         if context.get("cancelled"):
             logger.info(f"Agent run {run_id}: pre-cancelled, skipping execution")
             async with self._session_factory() as db:
-                agent_run = await db.get(AgentRun, UUID(run_id), with_for_update=True)
+                agent_run = await db.get(AgentRun, UUID(run_id), with_for_update={"of": AgentRun})
                 await require_delivery_ownership(db)
                 if agent_run is None:
                     agent_run = AgentRun(
@@ -285,7 +285,7 @@ class AgentRunConsumer(BaseConsumer):
                     return
 
                 if agent_id is None:
-                    await db.refresh(agent_run, with_for_update=True)
+                    await db.refresh(agent_run, with_for_update={"of": AgentRun})
                     await require_delivery_ownership(db)
                     logger.error(f"Agent run {run_id}: agent id missing for non-chat run")
                     agent_run.status = "failed"
@@ -364,7 +364,7 @@ class AgentRunConsumer(BaseConsumer):
 
             # Create AgentRun record (brief DB session)
             async with self._session_factory() as db:
-                agent_run = await db.get(AgentRun, UUID(run_id), with_for_update=True)
+                agent_run = await db.get(AgentRun, UUID(run_id), with_for_update={"of": AgentRun})
                 await require_delivery_ownership(db)
                 if agent_run is None:
                     agent_run = AgentRun(
@@ -738,7 +738,7 @@ class AgentRunConsumer(BaseConsumer):
                 ),
                 {"run_id": run_id},
             )
-            agent_run = await db.get(AgentRun, run_uuid, with_for_update=True)
+            agent_run = await db.get(AgentRun, run_uuid, with_for_update={"of": AgentRun})
             await require_delivery_ownership(db)
             if agent_run is not None:
                 if agent_run.status != "queued":
@@ -780,7 +780,7 @@ class AgentRunConsumer(BaseConsumer):
                 ),
                 {"run_id": run_id},
             )
-            agent_run = await db.get(AgentRun, run_uuid, with_for_update=True)
+            agent_run = await db.get(AgentRun, run_uuid, with_for_update={"of": AgentRun})
             await require_delivery_ownership(db)
             if agent_run is None:
                 return None

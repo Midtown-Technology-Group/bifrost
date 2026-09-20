@@ -107,7 +107,7 @@ async def append_user_message_and_reply(
 
     run = (
         await db.execute(
-            select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+            select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
         )
     ).scalar_one()
     conv = await get_or_create_conversation(run_id, db)
@@ -185,7 +185,7 @@ async def append_user_message_and_reply(
         await db.execute(
             select(AgentRun)
             .where(AgentRun.id == run_id)
-            .with_for_update()
+            .with_for_update(of=AgentRun)
             .execution_options(populate_existing=True)
         )
     ).scalar_one()

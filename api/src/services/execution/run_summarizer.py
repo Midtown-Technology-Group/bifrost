@@ -216,7 +216,7 @@ async def summarize_run(
     async with session_factory() as db:
         run = (
             await db.execute(
-                select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
             )
         ).scalar_one_or_none()
         if run is None or run.status != "completed":
@@ -331,7 +331,7 @@ async def summarize_run(
             async with session_factory() as db:
                 run = (
                     await db.execute(
-                        select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                        select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
                     )
                 ).scalar_one()
                 if delivery_id is not None:
@@ -376,7 +376,7 @@ async def summarize_run(
         async with session_factory() as db:
             run = (
                 await db.execute(
-                    select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                    select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
                 )
             ).scalar_one()
             if delivery_id is not None:
@@ -401,7 +401,7 @@ async def summarize_run(
         async with session_factory() as db:
             run = (
                 await db.execute(
-                    select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                    select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
                 )
             ).scalar_one()
             if delivery_id is not None:
@@ -421,7 +421,7 @@ async def summarize_run(
         async with session_factory() as db:
             run = (
                 await db.execute(
-                    select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                    select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
                 )
             ).scalar_one()
             if delivery_id is not None:
@@ -438,7 +438,7 @@ async def summarize_run(
     async with session_factory() as db:
         run = (
             await db.execute(
-                select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                select(AgentRun).where(AgentRun.id == run_id).with_for_update(of=AgentRun)
             )
         ).scalar_one()
         if delivery_id is not None:

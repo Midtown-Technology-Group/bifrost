@@ -146,11 +146,15 @@ class ExecutionOperationsPolicy:
                 "interactive workflows must be admitted by the process pool"
             )
         if (
-            self.mechanism == ExecutionMechanism.POSTGRES_LEASE
+            self.workload_class in {
+                WorkloadClass.PLATFORM_INTERACTIVE,
+                WorkloadClass.PLATFORM_BATCH,
+                WorkloadClass.PLATFORM_MAINTENANCE,
+            }
             and self.admission_policy != AdmissionPolicy.PLATFORM_SCHEDULER
         ):
             raise ValueError(
-                f"leased policy {self.identifier!r} must use platform admission"
+                f"platform policy {self.identifier!r} must use platform admission"
             )
 
 

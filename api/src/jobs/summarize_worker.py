@@ -93,7 +93,7 @@ async def handle_summarize_message(
                     await db.execute(
                         select(AgentRun)
                         .where(AgentRun.id == run_id)
-                        .with_for_update()
+                        .with_for_update(of=AgentRun)
                     )
                 ).scalar_one_or_none()
                 if run is not None:
