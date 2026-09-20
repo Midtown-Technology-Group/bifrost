@@ -15,6 +15,7 @@ def _repo_file(*parts: str) -> Path:
 
 
 NGINX_CONF = _repo_file("client", "nginx.conf")
+CLIENT_DOCKERFILE = _repo_file("client", "Dockerfile")
 
 NORMAL_SECURITY_HEADERS = [
     'add_header X-Content-Type-Options "nosniff" always;',
@@ -79,3 +80,19 @@ def test_mcp_proxy_preserves_authority_port_for_strict_host_validation():
     block = _location_block(NGINX_CONF.read_text(), "~ ^/mcp(/|$)")
     assert "proxy_set_header Host $http_host;" in block
     assert "proxy_set_header Host $host;" not in block
+
+
+def test_every_proxy_uses_the_filtered_runtime_upstream():
+    dockerfile = CLIENT_DOCKERFILE.read_text()
+    assert "BIFROST_API_UPSTREAM=api:8000" in dockerfile
+    assert "NGINX_ENVSUBST_FILTER=^BIFROST_API_UPSTREAM$" in dockerfile
+    assert "COPY nginx.conf /etc/nginx/templates/default.conf.template" in dockerfile
+    config = NGINX_CONF.read_text()
+    proxies = [line.strip() for line in config.splitlines() if "proxy_pass " in line]
+    assert proxies
+    assert all(line.startswith("proxy_pass http://${BIFROST_API_UPSTREAM}") for line in proxies)
+    for upstream in ("api:8000", "127.0.0.1:8000"):
+        rendered = config.replace("${BIFROST_API_UPSTREAM}", upstream)
+        assert 'try_files $uri $uri/ /index.html;' in rendered
+        assert 'proxy_set_header Host $http_host;' in rendered
+        assert f"proxy_pass http://{upstream}/embed/forms/public/$public_form_key/frame-policy;" in rendered
