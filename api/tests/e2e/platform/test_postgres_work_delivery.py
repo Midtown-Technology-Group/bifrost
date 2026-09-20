@@ -302,6 +302,7 @@ async def test_real_worker_executes_postgres_canary_after_pending_cache_loss(
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
+                # The parent and all of its worker children have already exited.
                 pass
         async with async_session_factory() as db:
             await db.execute(
