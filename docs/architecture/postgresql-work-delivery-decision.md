@@ -52,14 +52,16 @@ transactions. Use database time for lease decisions where practical. Polling
 must recover lost wake-up hints; defer LISTEN/NOTIFY optimization until needed.
 
 Do not emulate all AMQP features. Audit and exclude unused stream/priority
-helpers. Decide permanent Rabbit backend support versus temporary rollback
-support before introducing a public provider interface.
+helpers. PostgreSQL is the fork's sole delivery backend after a reversible
+migration; retain RabbitMQ only as migration fallback until the production
+soak and rollback gates are complete. Do not introduce a public provider
+interface for permanent dual-backend support.
 
 ## Failure contract to prove
 
 | Interruption | Required observable behavior |
 | --- | --- |
-| Publisher before/after acceptance commit | No accepted job disappears; repeated admission has one durable logical identity. |
+| Publisher before/after acceptance commit | Before prototype work, the admission contract must define stable per-workload retry identity, admission-level uniqueness or upsert behavior, and the transaction boundary for workflow and agent execution. No accepted job disappears; repeated admission has one durable logical identity. This does not require an atomic domain-and-delivery transaction. |
 | Worker before claim or before child dispatch | Bounded recovery without competing valid owners or an unsafe execution attempt. |
 | Lease expiry or database disconnect | Stale owners cannot commit a newer attempt's state; ambiguous effects are surfaced. |
 | External action may have started | Apply existing workload retry restrictions. Do not automatically replay arbitrary tenant code. |
