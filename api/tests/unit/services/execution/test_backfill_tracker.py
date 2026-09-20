@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.execution import backfill_tracker
 
 
@@ -159,11 +159,15 @@ async def test_record_backfill_outcome_ignores_missing_cancelled_and_duplicate_j
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     broadcasts = []
+    progress = AsyncMock()
 
     async def publish(updated_job_id, payload):
         broadcasts.append((updated_job_id, payload))
 
     monkeypatch.setattr(backfill_tracker, "publish_summary_backfill_update", publish)
+    monkeypatch.setattr(
+        "src.services.platform_jobs.update_deferred_platform_job_progress", progress
+    )
 
     missing = _FakeSession(None)
     await backfill_tracker.record_backfill_outcome(
@@ -194,10 +198,13 @@ async def test_record_backfill_outcome_ignores_missing_cancelled_and_duplicate_j
 
     assert missing.commits == 0
     assert cancelled.commits == 0
-    assert duplicate.commits == 0
+    assert duplicate.commits == 1
     assert cancelled_job.succeeded == 0
     assert duplicate_job.succeeded == 0
-    assert broadcasts == []
+    assert len(broadcasts) == 1
+    assert broadcasts[0][1]["succeeded"] == 0
+    assert broadcasts[0][1]["failed"] == 0
+    progress.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -206,3 +213,26 @@ async def test_sum_run_cost_returns_none_when_no_positive_cost() -> None:
     session.execute_calls = 1
 
     assert await backfill_tracker._sum_run_cost(uuid4(), session) is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_commit_failure_is_retryable_for_delivery_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingSession(_FakeSession):
+        async def commit(self) -> None:
+            raise RuntimeError("commit failed")
+
+    session = FailingSession(_job())
+    lease_token = backfill_tracker.current_delivery.set(object())
+    try:
+        from src.jobs.rabbitmq import RetryableConsumerError
+
+        with pytest.raises(RetryableConsumerError, match="not confirmed"):
+            await backfill_tracker.record_backfill_outcome(
+                uuid4(), uuid4(), True, _SessionFactory(session)
+            )
+    finally:
+        backfill_tracker.current_delivery.reset(lease_token)
+
+    assert session.commits == 0

@@ -2,20 +2,20 @@
 
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
-
 from src.jobs.consumers.agent_run import AgentRunConsumer
 from src.models.contracts.agents import ChatStreamChunk
 from src.models.enums import MessageRole
-from src.models.orm.agents import Conversation
 from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agents import Conversation
+from src.services.work_delivery_store import DeliveryOwnershipLost
 
 
 class FakeRedisCtx:
@@ -134,6 +134,245 @@ async def test_missing_redis_context_returns_early(consumer):
     assert queued_run.status == "failed"
     assert queued_run.error == "Agent run context was unavailable before execution"
     mock_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_postgres_context_wins_when_redis_is_stale_or_unavailable(consumer):
+    run_id = str(uuid4())
+    queued_run = MagicMock(status="queued")
+    mock_session = AsyncMock()
+    mock_session.get.return_value = queued_run
+    mock_session_ctx = AsyncMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+    consumer._session_factory = MagicMock(return_value=mock_session_ctx)
+    consumer._postgres = object()
+    consumer._claim_durable_run = AsyncMock(return_value=uuid4())
+
+    async def redis_must_not_be_opened():
+        raise AssertionError("PostgreSQL delivery must not read Redis context")
+
+    durable_context = {
+        "cancelled": True,
+        "org_id": str(uuid4()),
+        "input": {"message": "durable"},
+    }
+    with (
+        patch("src.jobs.consumers.agent_run.get_redis", redis_must_not_be_opened),
+        patch("src.jobs.consumers.agent_run.require_delivery_ownership", AsyncMock()),
+        patch("src.jobs.consumers.agent_run.transition_execution_attempt", AsyncMock()),
+    ):
+        await consumer.process_message(
+            {
+                "run_id": run_id,
+                "agent_id": str(uuid4()),
+                "trigger_type": "manual",
+                "context": durable_context,
+            }
+        )
+
+    assert queued_run.status == "cancelled"
+    mock_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delivery_fence_rejects_pre_cancel_terminal_write(consumer):
+    run_id = str(uuid4())
+    queued_run = MagicMock(status="queued")
+    mock_session = AsyncMock()
+    mock_session.get.return_value = queued_run
+    mock_session_ctx = AsyncMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+    consumer._session_factory = MagicMock(return_value=mock_session_ctx)
+    consumer._postgres = object()
+    consumer._claim_durable_run = AsyncMock(return_value=uuid4())
+
+    with (
+        patch(
+            "src.jobs.consumers.agent_run.require_delivery_ownership",
+            AsyncMock(side_effect=DeliveryOwnershipLost("stale delivery")),
+        ),
+        pytest.raises(DeliveryOwnershipLost),
+    ):
+        await consumer.process_message(
+            {
+                "run_id": run_id,
+                "agent_id": str(uuid4()),
+                "trigger_type": "manual",
+                "context": {"cancelled": True, "org_id": str(uuid4())},
+            }
+        )
+
+    assert queued_run.status == "queued"
+    mock_session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_completed_postgres_run_enqueues_summary_before_same_transaction_commit(
+    consumer,
+):
+    run_id = uuid4()
+    run_obj = MagicMock(
+        status="running",
+        output=None,
+        error=None,
+        iterations_used=0,
+        tokens_used=0,
+        llm_model=None,
+        duration_ms=None,
+        completed_at=None,
+    )
+    agent = SimpleNamespace(
+        id=uuid4(),
+        name="Test agent",
+        max_run_timeout=10,
+        max_iterations=3,
+        max_token_budget=100,
+        tools=[],
+        delegated_agents=[],
+        roles=[],
+    )
+    db = AsyncMock()
+    db.get.return_value = run_obj
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: agent)
+    events = []
+
+    async def commit():
+        events.append("commit")
+
+    db.commit.side_effect = commit
+    session = db
+    db_context = FakeRedisCtx(db)
+    redis_context = FakeRedisCtx(AsyncMock())
+    consumer._session_factory = MagicMock(return_value=db_context)
+    consumer._postgres = object()
+    consumer._claim_durable_run = AsyncMock(return_value=uuid4())
+
+    class CompletedExecutor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def run(self, **kwargs):
+            return {
+                "output": {"text": "done"},
+                "iterations_used": 1,
+                "tokens_used": 2,
+                "status": "completed",
+                "llm_model": "test-model",
+            }
+
+        async def flush_to_db(self, session):
+            assert session is db
+
+    async def enqueue(run_id_arg, *, db):
+        assert run_id_arg == run_id
+        assert db is session
+        events.append("enqueue")
+
+    with (
+        patch("src.jobs.consumers.agent_run.get_redis", return_value=redis_context),
+        patch(
+            "src.services.execution.autonomous_agent_executor.AutonomousAgentExecutor",
+            CompletedExecutor,
+        ),
+        patch("src.jobs.consumers.agent_run.require_delivery_ownership", AsyncMock()),
+        patch("src.jobs.consumers.agent_run.transition_execution_attempt", AsyncMock()),
+        patch("src.jobs.consumers.agent_run.publish_agent_run_update", AsyncMock()),
+        patch(
+            "src.services.execution.run_summarizer.enqueue_summarize",
+            new=enqueue,
+        ),
+    ):
+        await consumer.process_message(
+            {
+                "run_id": str(run_id),
+                "agent_id": str(agent.id),
+                "trigger_type": "manual",
+                "context": {"input": {"message": "hello"}},
+            }
+        )
+
+    assert run_obj.status == "completed"
+    assert events[-2:] == ["enqueue", "commit"]
+
+
+@pytest.mark.asyncio
+async def test_handler_cancellation_cancels_shielded_executor(consumer):
+    run_id = uuid4()
+    run_obj = MagicMock(
+        status="running",
+        output=None,
+        error=None,
+        iterations_used=0,
+        tokens_used=0,
+        llm_model=None,
+        duration_ms=None,
+        completed_at=None,
+    )
+    agent = SimpleNamespace(
+        id=uuid4(),
+        name="Test agent",
+        max_run_timeout=10,
+        max_iterations=3,
+        max_token_budget=100,
+        tools=[],
+        delegated_agents=[],
+        roles=[],
+    )
+    db = AsyncMock()
+    db.get.return_value = run_obj
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: agent)
+    db_context = FakeRedisCtx(db)
+    redis_client = AsyncMock()
+    redis_context = FakeRedisCtx(redis_client)
+    consumer._session_factory = MagicMock(return_value=db_context)
+    consumer._postgres = object()
+    consumer._claim_durable_run = AsyncMock(return_value=uuid4())
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class BlockingExecutor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def run(self, **kwargs):
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                cancelled.set()
+                raise asyncio.CancelledError
+
+        async def flush_to_db(self, session):
+            return None
+
+    task = None
+    with (
+        patch("src.jobs.consumers.agent_run.get_redis", return_value=redis_context),
+        patch(
+            "src.services.execution.autonomous_agent_executor.AutonomousAgentExecutor",
+            BlockingExecutor,
+        ),
+        patch("src.jobs.consumers.agent_run.require_delivery_ownership", AsyncMock()),
+        patch("src.jobs.consumers.agent_run.transition_execution_attempt", AsyncMock()),
+        patch("src.jobs.consumers.agent_run.publish_agent_run_update", AsyncMock()),
+    ):
+        task = asyncio.create_task(
+            consumer.process_message(
+                {
+                    "run_id": str(run_id),
+                    "agent_id": str(agent.id),
+                    "trigger_type": "manual",
+                    "context": {"input": {"message": "hello"}},
+                }
+            )
+        )
+        await started.wait()
+        task.cancel()
+        await task
+
+    assert cancelled.is_set()
 
 
 @pytest.mark.asyncio

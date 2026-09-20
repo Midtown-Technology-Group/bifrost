@@ -153,6 +153,28 @@ async def test_active_admission_deduplicates(async_session_factory, delivery_que
         await db.commit()
 
 
+async def test_retention_removes_only_old_completed_transport_receipts(
+    async_session_factory, delivery_queue
+):
+    from src.jobs.schedulers.execution_cleanup import cleanup_completed_deliveries
+
+    async with async_session_factory() as db:
+        ids = {}
+        for status, days in [("completed", 8), ("completed", 1), ("poison", 8), ("interrupted", 8)]:
+            identity = f"{status}-{days}"
+            ids[identity] = await enqueue(db, delivery_queue, identity)
+            await db.execute(update(WorkDelivery).where(
+                WorkDelivery.id == ids[identity]
+            ).values(status=status, settled_at=func.clock_timestamp() - timedelta(days=days)))
+        await db.commit()
+        await cleanup_completed_deliveries(db)
+        await db.commit()
+        remaining = set((await db.execute(select(WorkDelivery.id).where(
+            WorkDelivery.queue_name == delivery_queue
+        ))).scalars())
+        assert remaining == {value for key, value in ids.items() if key != "completed-8"}
+
+
 @pytest.mark.parametrize("started", [False, True])
 async def test_sigkill_preserves_accepted_work_and_recovers_only_unstarted_delivery(
     async_session_factory, delivery_queue, started
@@ -676,6 +698,61 @@ async def test_consumer_completes_through_shared_policy_without_rabbit(
         assert consumer._channel is None
     finally:
         await consumer.drain(deadline=1)
+
+
+async def test_operator_reconcile_preview_rolls_back_and_apply_audits_atomically(
+    async_session_factory, postgres_transport
+):
+    from src.jobs.dlq_cli import postgres_reconcile
+    from src.models.enums import ExecutionStatus
+    from src.models.orm.executions import Execution
+    from src.models.orm.poison_message_dispositions import PoisonMessageDisposition
+
+    execution_id = uuid4()
+    async with async_session_factory() as db:
+        db.add(Execution(
+            id=execution_id,
+            workflow_name="operator-recovery-test",
+            executed_by_name="test",
+            status=ExecutionStatus.SUCCESS,
+        ))
+        delivery_id = await enqueue(db, "workflow-executions", str(execution_id))
+        await db.execute(update(WorkDelivery).where(
+            WorkDelivery.id == delivery_id
+        ).values(status="interrupted", started_at=func.clock_timestamp()))
+        await db.commit()
+    try:
+        arguments = dict(
+            delivery_id=str(delivery_id), actor="test-operator", reason="prove recovery"
+        )
+        preview = await postgres_reconcile(
+            "workflow-executions", dry_run=True, **arguments
+        )
+        assert preview[0]["after"]["recovery"] == "would_apply"
+        async with async_session_factory() as db:
+            assert (await db.get(WorkDelivery, delivery_id)).status == "interrupted"
+            assert await db.scalar(select(func.count()).select_from(
+                PoisonMessageDisposition
+            ).where(PoisonMessageDisposition.message_id == str(execution_id))) == 0
+        applied = await postgres_reconcile(
+            "workflow-executions", dry_run=False, **arguments
+        )
+        assert applied[0]["after"]["recovery"] == "applied"
+        async with async_session_factory() as db:
+            assert (await db.get(WorkDelivery, delivery_id)).status == "completed"
+            audit = (await db.execute(select(PoisonMessageDisposition).where(
+                PoisonMessageDisposition.message_id == str(execution_id)
+            ))).scalar_one()
+            assert audit.actor == "test-operator" and audit.action == "reconcile"
+        assert "private_input" not in str(preview) + str(applied)
+    finally:
+        async with async_session_factory() as db:
+            await db.execute(delete(PoisonMessageDisposition).where(
+                PoisonMessageDisposition.message_id == str(execution_id)
+            ))
+            await db.execute(delete(WorkDelivery).where(WorkDelivery.id == delivery_id))
+            await db.execute(delete(Execution).where(Execution.id == execution_id))
+            await db.commit()
 
 
 async def test_consumer_retry_is_not_immediately_consumed(

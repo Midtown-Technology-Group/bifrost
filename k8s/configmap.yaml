@@ -10,6 +10,9 @@ data:
   # Environment
   BIFROST_ENVIRONMENT: "production"
   BIFROST_DEBUG: "false"
+  # Keep API, scheduler, and every worker on one backend during a coordinated
+  # maintenance restart. RabbitMQ remains the safe default.
+  BIFROST_WORK_DELIVERY_BACKEND: "rabbitmq"
 
   # S3 Configuration (non-sensitive)
   BIFROST_S3_BUCKET: "my-bifrost-bucket"

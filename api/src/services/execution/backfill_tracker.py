@@ -16,6 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.core.pubsub import publish_summary_backfill_update
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
+from src.services.work_delivery_store import (
+    DeliveryOwnershipLost,
+    current_delivery,
+    require_delivery_ownership,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +60,13 @@ async def record_backfill_outcome(
                 return
             processed = set(job.processed_run_ids or [])
             run_key = str(run_id)
+            await require_delivery_ownership(db)
             if run_key in processed:
                 logger.info(
                     "Ignoring duplicate backfill outcome",
                     extra={"job_id": str(job_id), "run_id": run_key},
                 )
-                return
-
-            if succeeded:
+            elif succeeded:
                 job.succeeded = (job.succeeded or 0) + 1
                 cost = await _sum_run_cost(run_id, db)
                 if cost is not None:
@@ -110,12 +114,18 @@ async def record_backfill_outcome(
                 current=completed,
                 total=payload["total"],
             )
-    except Exception:
+    except DeliveryOwnershipLost:
+        raise
+    except Exception as exc:
         logger.exception(
             "Failed to record backfill outcome for job %s run %s",
             job_id,
             run_id,
         )
+        if current_delivery.get() is not None:
+            from src.jobs.rabbitmq import RetryableConsumerError
+
+            raise RetryableConsumerError("Backfill progress was not confirmed") from exc
 
 
 async def _sum_run_cost(run_id: UUID, db: AsyncSession) -> Decimal | None:

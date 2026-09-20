@@ -66,7 +66,10 @@ async def _record_durable_poison(
             ),
             {"execution_id": execution_id},
         )
-        execution = await db.get(Execution, execution_uuid)
+        execution = await db.get(Execution, execution_uuid, with_for_update=True)
+        from src.services.work_delivery_store import require_delivery_ownership
+
+        await require_delivery_ownership(db)
         if execution is None:
             if require_matching_terminal:
                 raise PoisonFinalizationConflict("durable execution does not exist")

@@ -8,7 +8,7 @@ Domain recovery decides whether a fresh attempt is safe.
 import json
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.security import decrypt_secret, encrypt_secret
+from src.models.orm.agent_runs import AgentRun
 from src.models.orm.work_deliveries import WorkDelivery
 
 LEASE_SECONDS = 90
@@ -310,23 +311,146 @@ async def interrupt_delivery(db: AsyncSession, lease: DeliveryLease) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> bool:
-    """Resume only provably unstarted work; domain retry owns uncertain effects.
+def _bounded_recovery_retry(
+    envelope: dict[str, Any],
+) -> tuple[bool, dict[str, Any], int, int]:
+    """Advance the existing broker retry header without creating a new identity."""
+    from src.jobs.rabbitmq import DEFAULT_RETRY_DELAYS_SECONDS
 
-    Call in a fresh transaction after expiration committed. Domain locks must
-    precede the delivery row lock, exactly as they do during consumer admission.
+    headers = dict(envelope.get("headers") or {})
+    try:
+        retry_count = int(headers.get("x-retry-count") or 0)
+    except (TypeError, ValueError):
+        retry_count = 0
+    retry_count = max(0, retry_count)
+    enqueued_at = headers.get("x-enqueued-at")
+    if enqueued_at:
+        try:
+            elapsed = (
+                datetime.now(UTC) - datetime.fromisoformat(str(enqueued_at))
+            ).total_seconds()
+        except (TypeError, ValueError):
+            elapsed = 0
+        if elapsed >= 3600:
+            return False, envelope, 0, retry_count
+    if retry_count >= len(DEFAULT_RETRY_DELAYS_SECONDS):
+        return False, envelope, 0, retry_count
+    next_retry = retry_count + 1
+    delay = DEFAULT_RETRY_DELAYS_SECONDS[next_retry - 1]
+    headers["x-retry-count"] = next_retry
+    headers["x-last-error"] = "delivery lease expired before durable outcome"
+    headers["x-retry-delay-seconds"] = delay
+    return True, {**envelope, "headers": headers}, delay, retry_count
+
+
+async def _settle_interrupted(
+    db: AsyncSession,
+    row: WorkDelivery,
+    *,
+    status: Literal["queued", "completed", "poison"],
+    envelope: dict[str, Any] | None = None,
+    delay_seconds: int = 0,
+) -> None:
+    values: dict[str, Any] = {
+        "status": status,
+        "lease_owner": None,
+        "lease_token": None,
+        "lease_expires_at": None,
+        "settled_at": None if status == "queued" else func.clock_timestamp(),
+        "available_at": (
+            func.clock_timestamp() + timedelta(seconds=delay_seconds)
+            if status == "queued"
+            else func.clock_timestamp()
+        ),
+    }
+    if status == "queued":
+        values["started_at"] = None
+    if envelope is not None:
+        values["encrypted_envelope"] = _encrypted(envelope)
+    await db.execute(
+        update(WorkDelivery).where(WorkDelivery.id == row.id).values(**values)
+    )
+
+
+async def _summary_backfill_accounted(
+    db: AsyncSession, envelope: dict[str, Any], run_id: UUID, queue: str
+) -> bool:
+    if queue != "agent-summarization-backfill":
+        return True
+    raw_job_id = envelope["body"].get("backfill_job_id")
+    if not raw_job_id:
+        return True
+    try:
+        job_id = UUID(str(raw_job_id))
+    except ValueError:
+        return False
+    from src.models.orm.summary_backfill_job import SummaryBackfillJob
+
+    processed = await db.scalar(
+        select(SummaryBackfillJob.processed_run_ids).where(
+            SummaryBackfillJob.id == job_id
+        )
+    )
+    # A deleted parent is already outside the accounting contract; do not
+    # hold a delivery open forever for a row that cannot be updated.
+    return processed is None or str(run_id) in set(processed or [])
+
+
+async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> bool:
+    """Recover an interrupted delivery under its domain's lock contract.
+
+    Domain locks are acquired before the exact delivery row lock. Derived LLM
+    queues may retry the same encrypted envelope only within the existing
+    retry-header budget. An exhausted summary is durably failed; a backfill
+    summary is requeued once more so its idempotent parent counter is recorded.
+    Agent execution loss is terminalized as worker_lost without replaying tools.
     """
     identity = (
         await db.execute(
-            select(WorkDelivery.queue_name, WorkDelivery.message_id).where(
+            select(
+                WorkDelivery.queue_name,
+                WorkDelivery.message_id,
+                WorkDelivery.encrypted_envelope,
+            ).where(
                 WorkDelivery.id == delivery_id, WorkDelivery.status == "interrupted"
             )
         )
     ).one_or_none()
     if identity is None:
         return False
-    queue, message_id = identity
-    domain = None
+    queue, message_id, encrypted_envelope = identity
+    derived_queues = {
+        "agent-summarization",
+        "agent-summarization-backfill",
+        "agent-tuning-chat",
+    }
+    envelope: dict[str, Any] | None = None
+    body: dict[str, Any] | None = None
+    if queue in derived_queues:
+        try:
+            envelope = json.loads(decrypt_secret(encrypted_envelope))
+            body = envelope.get("body") if isinstance(envelope, dict) else None
+            run_id = UUID(str(body.get("run_id"))) if isinstance(body, dict) else None
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if run_id is None:
+            return False
+        locked = (
+            await db.execute(
+                text("SELECT pg_try_advisory_xact_lock(hashtext(:identity))"),
+                {"identity": f"bifrost:agent-run:{run_id}"},
+            )
+        ).scalar_one()
+        if not locked:
+            return False
+        domain = await db.get(AgentRun, run_id, with_for_update=True)
+        if domain is None:
+            return False
+    else:
+        domain = None
+        run_id = None
+
+    active = None
     if queue in {"workflow-executions", "agent-runs"}:
         try:
             domain_id = UUID(message_id)
@@ -364,7 +488,6 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
                 )
             ).scalar_one_or_none()
         else:
-            from src.models.orm.agent_runs import AgentRun
             from src.models.orm.execution_attempts import ExecutionAttempt
 
             domain = await db.get(AgentRun, domain_id, with_for_update=True)
@@ -380,6 +503,18 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
                 )
             ).scalar_one_or_none()
 
+    conversation = None
+    if queue == "agent-tuning-chat":
+        from src.models.orm.agent_run_flag_conversations import (
+            AgentRunFlagConversation,
+        )
+
+        conversation = await db.scalar(
+            select(AgentRunFlagConversation)
+            .where(AgentRunFlagConversation.run_id == run_id)
+            .with_for_update()
+        )
+
     row = (
         await db.execute(
             select(WorkDelivery)
@@ -389,11 +524,51 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
     ).scalar_one_or_none()
     if row is None:
         return False
-    disposition = "queued" if row.started_at is None else None
-    if domain is not None:
+
+    disposition: Literal["queued", "completed", "poison"] | None = (
+        "queued" if row.started_at is None else None
+    )
+    next_envelope = envelope
+    delay_seconds = 0
+    domain_loss_terminalized = False
+
+    if queue == "workflow-executions" and domain is not None:
+        status = domain.status
+        if status == "Pending":
+            disposition = "queued" if active is None else None
+        elif status in {
+            "Success",
+            "Failed",
+            "Timeout",
+            "CompletedWithErrors",
+            "Cancelled",
+        }:
+            disposition = "completed"
+        else:
+            disposition = None
+    elif queue == "agent-runs" and isinstance(domain, AgentRun):
         status = domain.status
         if status in {"Pending", "queued"}:
             disposition = "queued" if active is None else None
+        elif status in {"running", "cancelling"}:
+            from src.services.execution_attempts import (
+                transition_execution_attempt,
+            )
+
+            reason = "agent delivery lease expired; worker_lost"
+            await transition_execution_attempt(
+                db,
+                logical_job_type="agent_run",
+                logical_job_id=domain.id,
+                status="worker_lost",
+                failure_code="worker_lost",
+                failure_message=reason,
+            )
+            domain.status = "failed"
+            domain.error = reason
+            domain.completed_at = await db.scalar(select(func.clock_timestamp()))
+            disposition = None
+            domain_loss_terminalized = True
         elif status in {
             "Success",
             "Failed",
@@ -407,10 +582,71 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
         }:
             disposition = "completed"
         else:
-            # Running, scheduled and cancelling belong to domain recovery.
             disposition = None
+    elif queue in {"agent-summarization", "agent-summarization-backfill"}:
+        assert envelope is not None and body is not None and run_id is not None
+        if not isinstance(domain, AgentRun):
+            return False
+        previous_id = domain.summary_delivery_id
+        previous_owner_blocks = False
+        if previous_id is not None and previous_id != row.id:
+            previous_status = await db.scalar(
+                select(WorkDelivery.status).where(WorkDelivery.id == previous_id)
+            )
+            if previous_status in {
+                "queued",
+                "claimed",
+                "interrupted",
+            } or domain.summary_status not in {"completed", "failed", "skipped"}:
+                previous_owner_blocks = True
+        if not previous_owner_blocks:
+            accounted = await _summary_backfill_accounted(db, envelope, run_id, queue)
+            if domain.summary_status in {"completed", "failed", "skipped"}:
+                disposition = "completed" if accounted else "queued"
+            elif row.started_at is None:
+                disposition = "queued"
+            else:
+                allowed, next_envelope, delay_seconds, _ = _bounded_recovery_retry(
+                    envelope
+                )
+                if allowed:
+                    disposition = "queued"
+                else:
+                    domain.summary_status = "failed"
+                    domain.summary_delivery_id = row.id
+                    domain.summary_error = (
+                        "summary delivery recovery exhausted before a durable "
+                        "LLM outcome was recorded"
+                    )
+                    # A backfill must run its idempotent parent accounting path
+                    # even after the summary itself is durably failed.
+                    disposition = "queued" if not accounted else "poison"
+                    delay_seconds = 0
+    elif queue == "agent-tuning-chat":
+        assert envelope is not None and body is not None and run_id is not None
+        if not isinstance(domain, AgentRun):
+            return False
+        delivery_key = str(row.id)
+        assistant_done = bool(
+            conversation is not None
+            and any(
+                isinstance(message, dict)
+                and message.get("kind") == "assistant"
+                and message.get("delivery_id") == delivery_key
+                for message in (conversation.messages or [])
+            )
+        )
+        if assistant_done:
+            disposition = "completed"
+        elif row.started_at is None:
+            disposition = "queued"
+        else:
+            allowed, next_envelope, delay_seconds, _ = _bounded_recovery_retry(envelope)
+            disposition = "queued" if allowed else "poison"
+
     if disposition is None:
-        # Revisit uncertain domain work without starving newer interruptions.
+        # Running agent loss remains visible as interrupted until a later
+        # pass observes the now-terminal domain and settles the transport row.
         await db.execute(
             update(WorkDelivery)
             .where(WorkDelivery.id == row.id)
@@ -418,15 +654,16 @@ async def recover_interrupted_delivery(db: AsyncSession, delivery_id: UUID) -> b
                 available_at=func.clock_timestamp() + timedelta(seconds=30),
             )
         )
-        return False
-    await db.execute(
-        update(WorkDelivery)
-        .where(WorkDelivery.id == row.id)
-        .values(
-            status=disposition,
-            started_at=None if disposition == "queued" else row.started_at,
-            available_at=func.clock_timestamp(),
-            settled_at=None if disposition == "queued" else func.clock_timestamp(),
-        )
+        return domain_loss_terminalized
+    if disposition == "poison" and next_envelope is not None:
+        headers = dict(next_envelope.get("headers") or {})
+        headers["x-poison-reason"] = "delivery recovery retry budget exhausted"
+        next_envelope = {**next_envelope, "headers": headers}
+    await _settle_interrupted(
+        db,
+        row,
+        status=disposition,
+        envelope=next_envelope,
+        delay_seconds=delay_seconds,
     )
     return True

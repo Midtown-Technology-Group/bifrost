@@ -20,17 +20,23 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.pubsub import publish_agent_run_update
 from src.core.cache import get_shared_redis
-from src.jobs.rabbitmq import publish_message
+from src.jobs.rabbitmq import RetryableConsumerError, publish_message
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent
+from src.models.orm.work_deliveries import WorkDelivery
 from src.services.ai_usage_service import record_ai_usage
 from src.services.execution.model_selection import get_summarization_client
 from src.services.llm import LLMMessage
+from src.services.work_delivery_store import (
+    DeliveryOwnershipLost,
+    current_delivery,
+    require_delivery_ownership,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,15 +207,62 @@ async def summarize_run(
     and runs that have already been summarized. Marks ``summary_status='failed'``
     on any LLM/parse error so the UI can surface a regenerate option.
     """
-    # Phase 1: load + transition pending → generating, resolve LLM client
+    lease = current_delivery.get()
+    delivery_id = lease.id if lease is not None else None
+
+    # Phase 1: load + transition pending → generating, resolve LLM client.
+    # Lock the domain row before fencing the delivery row so recovery and
+    # completion use the same domain -> delivery lock order.
     async with session_factory() as db:
         run = (
-            await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+            await db.execute(
+                select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+            )
         ).scalar_one_or_none()
         if run is None or run.status != "completed":
             return
         if run.summary_status == "completed":
             return  # idempotent
+
+        if delivery_id is not None:
+            await require_delivery_ownership(db)
+            if (
+                run.summary_status == "failed"
+                and run.summary_delivery_id == delivery_id
+            ):
+                return
+            previous_id = run.summary_delivery_id
+            if previous_id is not None and previous_id != delivery_id:
+                previous_status = (
+                    await db.execute(
+                        select(WorkDelivery.status).where(
+                            WorkDelivery.id == previous_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if previous_status == "claimed":
+                    active = (
+                        await db.execute(
+                            select(WorkDelivery.id)
+                            .where(
+                                WorkDelivery.id == previous_id,
+                                WorkDelivery.lease_expires_at
+                                > func.clock_timestamp(),
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if active is not None:
+                        raise RetryableConsumerError(
+                            f"summary generation already owned by delivery {previous_id}"
+                        )
+                    raise RetryableConsumerError(
+                        "previous summary generation lease expired; awaiting recovery"
+                    )
+                if previous_status in {"queued", "interrupted"}:
+                    raise RetryableConsumerError(
+                        "previous summary generation is awaiting recovery"
+                    )
+            run.summary_delivery_id = delivery_id
 
         run.summary_status = "generating"
         run.summary_error = None
@@ -277,8 +330,14 @@ async def summarize_run(
         if not raw_content.strip():
             async with session_factory() as db:
                 run = (
-                    await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+                    await db.execute(
+                        select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                    )
                 ).scalar_one()
+                if delivery_id is not None:
+                    await require_delivery_ownership(db)
+                    if run.summary_delivery_id != delivery_id:
+                        raise DeliveryOwnershipLost(str(delivery_id))
                 run.summary_status = "failed"
                 run.summary_error = (
                     "Summarization model returned empty content. "
@@ -293,6 +352,8 @@ async def summarize_run(
             )
             return
         parsed = json.loads(_extract_json_object(raw_content))
+    except DeliveryOwnershipLost:
+        raise
     except json.JSONDecodeError as exc:
         # Log the actual content (truncated) so we can diagnose future failures
         # — without this the docker logs only told us "invalid JSON" with no
@@ -314,8 +375,14 @@ async def summarize_run(
         )
         async with session_factory() as db:
             run = (
-                await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+                await db.execute(
+                    select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                )
             ).scalar_one()
+            if delivery_id is not None:
+                await require_delivery_ownership(db)
+                if run.summary_delivery_id != delivery_id:
+                    raise DeliveryOwnershipLost(str(delivery_id))
             run.summary_status = "failed"
             if looks_truncated:
                 run.summary_error = (
@@ -333,8 +400,14 @@ async def summarize_run(
         logger.exception("Summarizer LLM call failed for run %s", run_id)
         async with session_factory() as db:
             run = (
-                await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+                await db.execute(
+                    select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                )
             ).scalar_one()
+            if delivery_id is not None:
+                await require_delivery_ownership(db)
+                if run.summary_delivery_id != delivery_id:
+                    raise DeliveryOwnershipLost(str(delivery_id))
             run.summary_status = "failed"
             run.summary_error = (
                 f"LLM provider request failed ({type(exc).__name__}): "
@@ -347,8 +420,14 @@ async def summarize_run(
     if not isinstance(parsed, dict):
         async with session_factory() as db:
             run = (
-                await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+                await db.execute(
+                    select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+                )
             ).scalar_one()
+            if delivery_id is not None:
+                await require_delivery_ownership(db)
+                if run.summary_delivery_id != delivery_id:
+                    raise DeliveryOwnershipLost(str(delivery_id))
             run.summary_status = "failed"
             run.summary_error = "Summarization model did not return a JSON object"
             await db.commit()
@@ -358,8 +437,14 @@ async def summarize_run(
     # Phase 3: persist success + AIUsage row
     async with session_factory() as db:
         run = (
-            await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+            await db.execute(
+                select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+            )
         ).scalar_one()
+        if delivery_id is not None:
+            await require_delivery_ownership(db)
+            if run.summary_delivery_id != delivery_id:
+                raise DeliveryOwnershipLost(str(delivery_id))
         run.asked = _truncate(parsed.get("asked"), 400)
         run.did = _truncate(parsed.get("did"), 1200)
         run.answered = _truncate(parsed.get("answered"), 400)
@@ -398,10 +483,18 @@ async def summarize_run(
             cache_write_tokens=response.cache_write_tokens,
             provider_cost=response.provider_cost,
         )
+        if delivery_id is not None:
+            await require_delivery_ownership(db)
         await db.commit()
         await _broadcast_run(run, db)
 
 
-async def enqueue_summarize(run_id: UUID) -> None:
+async def enqueue_summarize(
+    run_id: UUID, db: AsyncSession | None = None
+) -> None:
     """Publish a summarize message for the agent-summarization worker."""
-    await publish_message(SUMMARIZE_QUEUE, {"run_id": str(run_id)})
+    payload = {"run_id": str(run_id)}
+    if db is None:
+        await publish_message(SUMMARIZE_QUEUE, payload)
+    else:
+        await publish_message(SUMMARIZE_QUEUE, payload, db=db)

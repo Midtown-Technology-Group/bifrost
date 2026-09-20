@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.config import get_settings
 from src.core.database import get_session_factory
 from src.jobs.execution_policy import broker_execution_policies
-from src.jobs.rabbitmq import BaseConsumer
+from src.jobs.rabbitmq import BaseConsumer, RetryableConsumerError
 from src.models.orm.agent_runs import AgentRun
 from src.services.execution.run_summarizer import (
     SUMMARIZE_BACKFILL_QUEUE,
@@ -34,6 +34,11 @@ from src.services.execution.run_summarizer import (
 from src.services.execution.tuning_service import (
     TUNE_CHAT_QUEUE,
     append_user_message_and_reply,
+)
+from src.services.work_delivery_store import (
+    DeliveryOwnershipLost,
+    current_delivery,
+    require_delivery_ownership,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +80,10 @@ async def handle_summarize_message(
     succeeded = True
     try:
         await summarize_run(run_id, factory)
+    except (DeliveryOwnershipLost, RetryableConsumerError):
+        # An expired PostgreSQL lease must be recovered by the domain policy;
+        # recording failure here would let stale work settle over a replacement.
+        raise
     except Exception as exc:
         logger.exception("Summarization failed for run %s", run_id)
         succeeded = False
@@ -82,17 +91,30 @@ async def handle_summarize_message(
             async with factory() as db:
                 run = (
                     await db.execute(
-                        select(AgentRun).where(AgentRun.id == run_id)
+                        select(AgentRun)
+                        .where(AgentRun.id == run_id)
+                        .with_for_update()
                     )
                 ).scalar_one_or_none()
                 if run is not None:
+                    lease = current_delivery.get()
+                    if lease is not None:
+                        await require_delivery_ownership(db)
+                        if run.summary_delivery_id != lease.id:
+                            raise DeliveryOwnershipLost(str(lease.id))
                     run.summary_status = "failed"
                     run.summary_error = str(exc)[:500]
                     await db.commit()
-        except Exception:
+        except (DeliveryOwnershipLost, RetryableConsumerError):
+            raise
+        except Exception as exc:
             logger.exception(
                 "Failed to record summary failure for run %s", run_id
             )
+            if current_delivery.get() is not None:
+                raise RetryableConsumerError(
+                    f"could not persist summary failure for run {run_id}"
+                ) from exc
     else:
         # `summarize_run` may have marked the run as failed without raising
         # (invalid JSON, non-dict response). Mirror that into the job counters.
@@ -105,10 +127,14 @@ async def handle_summarize_message(
                 ).scalar_one_or_none()
                 if run is not None and run.summary_status == "failed":
                     succeeded = False
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Failed to re-check summary status for run %s", run_id
             )
+            if current_delivery.get() is not None:
+                raise RetryableConsumerError(
+                    f"could not verify summary outcome for run {run_id}"
+                ) from exc
 
     if job_id is not None:
         await record_backfill_outcome(

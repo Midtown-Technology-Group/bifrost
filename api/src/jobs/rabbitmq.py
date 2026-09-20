@@ -31,6 +31,7 @@ from src.services.execution.fault_injection import (
     FailurePoint,
     execution_failure_checkpoint,
 )
+from src.services.work_delivery_store import DeliveryOwnershipLost
 
 logger = logging.getLogger(__name__)
 
@@ -460,6 +461,10 @@ class _AbstractConsumer(ABC):
                 error_type=type(e).__name__,
                 started=started,
             )
+        except DeliveryOwnershipLost:
+            if self._postgres is not None:
+                await self._postgres.message(message).interrupt()
+            raise
         except asyncio.CancelledError as e:
             if self._postgres is not None:
                 await self._postgres.message(message).interrupt()
@@ -854,10 +859,14 @@ class BaseConsumer(_AbstractConsumer):
         )
         if operations_policy is not None and (
             operations_policy.identifier != queue_name
-            or operations_policy.mechanism != ExecutionMechanism.RABBITMQ_QUEUE
+            or operations_policy.mechanism != (
+                ExecutionMechanism.POSTGRES_LEASE
+                if get_settings().work_delivery_backend == "postgres"
+                else ExecutionMechanism.RABBITMQ_QUEUE
+            )
         ):
             raise ValueError(
-                f"queue {queue_name!r} requires a matching rabbitmq_queue policy"
+                f"queue {queue_name!r} requires a matching delivery policy"
             )
 
     async def start(self) -> None:
@@ -1019,7 +1028,11 @@ class BroadcastConsumer(_AbstractConsumer):
         )
         if operations_policy is not None and (
             operations_policy.identifier != exchange_name
-            or operations_policy.mechanism != ExecutionMechanism.RABBITMQ_FANOUT
+            or operations_policy.mechanism != (
+                ExecutionMechanism.POSTGRES_LEASE
+                if get_settings().work_delivery_backend == "postgres"
+                else ExecutionMechanism.RABBITMQ_FANOUT
+            )
         ):
             raise ValueError(
                 f"exchange {exchange_name!r} requires a matching rabbitmq_fanout policy"

@@ -158,3 +158,152 @@ async def test_append_user_message_appends_across_calls(
     assert conv.messages[1]["content"] == "First reply."
     assert conv.messages[2]["content"] == "Second question."
     assert conv.messages[3]["content"] == "Second reply."
+
+
+@pytest.mark.asyncio
+async def test_append_user_message_replay_with_delivery_id_short_circuits_provider(
+    db_session, seed_flagged_run
+):
+    """A committed PostgreSQL delivery replay must not call the tuning model again."""
+    from src.services.execution import tuning_service as mod
+    from src.services.work_delivery_store import DeliveryLease, current_delivery
+
+    delivery_id = uuid4()
+    scope = current_delivery.set(
+        DeliveryLease(
+            id=delivery_id,
+            token=uuid4(),
+            queue_name="agent-tuning-chat",
+            message_id=str(delivery_id),
+            envelope={"body": {}},
+            claim_count=2,
+        )
+    )
+    conv = await get_or_create_conversation(seed_flagged_run.id, db_session)
+    conv.messages = [
+        {
+            "kind": "user",
+            "content": "Already handled",
+            "turn_id": str(delivery_id),
+            "delivery_id": str(delivery_id),
+        },
+        {
+            "kind": "assistant",
+            "content": "Existing reply",
+            "turn_id": str(delivery_id),
+            "delivery_id": str(delivery_id),
+        },
+    ]
+    await db_session.commit()
+
+    try:
+        with patch.object(mod, "get_tuning_client", new=AsyncMock()) as get_client:
+            replay = await append_user_message_and_reply(
+                seed_flagged_run.id, "Already handled", db_session
+            )
+    finally:
+        current_delivery.reset(scope)
+
+    assert replay.messages == conv.messages
+    get_client.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pg_admission_persists_user_turn_before_provider_call(
+    db_session, seed_flagged_run
+):
+    """A fresh PG delivery has a durable user marker before its LLM call."""
+    from src.services.execution import tuning_service as mod
+    from src.services.work_delivery_store import DeliveryLease, current_delivery
+
+    delivery_id = uuid4()
+    scope = current_delivery.set(
+        DeliveryLease(
+            id=delivery_id,
+            token=uuid4(),
+            queue_name="agent-tuning-chat",
+            message_id=str(delivery_id),
+            envelope={"body": {}},
+            claim_count=1,
+        )
+    )
+    mock_client = _build_mock_client(_build_mock_llm_response("Fresh reply."))
+    try:
+        with (
+            patch.object(
+                mod,
+                "get_tuning_client",
+                new=AsyncMock(return_value=(mock_client, "claude-sonnet-4-6")),
+            ),
+            patch.object(mod, "require_delivery_ownership", new=AsyncMock()),
+            patch.object(mod, "record_ai_usage", new=AsyncMock()),
+            patch.object(mod, "get_shared_redis", new=AsyncMock()),
+        ):
+            result = await append_user_message_and_reply(
+                seed_flagged_run.id, "Fresh question", db_session
+            )
+    finally:
+        current_delivery.reset(scope)
+
+    assert [message["kind"] for message in result.messages] == [
+        "user",
+        "assistant",
+    ]
+    assert result.messages[0]["delivery_id"] == str(delivery_id)
+    mock_client.complete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_with_committed_user_turn_does_not_append_duplicate_user(
+    db_session, seed_flagged_run
+):
+    """A bounded retry reuses the durable user turn after an unknown call."""
+    from src.services.execution import tuning_service as mod
+    from src.services.work_delivery_store import DeliveryLease, current_delivery
+
+    delivery_id = uuid4()
+    scope = current_delivery.set(
+        DeliveryLease(
+            id=delivery_id,
+            token=uuid4(),
+            queue_name="agent-tuning-chat",
+            message_id=str(delivery_id),
+            envelope={"body": {}},
+            claim_count=2,
+        )
+    )
+    conv = await get_or_create_conversation(seed_flagged_run.id, db_session)
+    conv.messages = [
+        {
+            "kind": "user",
+            "content": "Already admitted",
+            "turn_id": str(delivery_id),
+            "delivery_id": str(delivery_id),
+        }
+    ]
+    await db_session.commit()
+    mock_client = _build_mock_client(_build_mock_llm_response("Retry reply."))
+
+    try:
+        with (
+            patch.object(
+                mod,
+                "get_tuning_client",
+                new=AsyncMock(return_value=(mock_client, "claude-sonnet-4-6")),
+            ),
+            patch.object(mod, "require_delivery_ownership", new=AsyncMock()),
+            patch.object(mod, "record_ai_usage", new=AsyncMock()),
+            patch.object(mod, "get_shared_redis", new=AsyncMock()),
+        ):
+            result = await append_user_message_and_reply(
+                seed_flagged_run.id, "Already admitted", db_session
+            )
+    finally:
+        current_delivery.reset(scope)
+
+    assert [message["kind"] for message in result.messages] == [
+        "user",
+        "assistant",
+    ]
+    assert result.messages[0]["delivery_id"] == str(delivery_id)
+    mock_client.complete.assert_awaited_once()

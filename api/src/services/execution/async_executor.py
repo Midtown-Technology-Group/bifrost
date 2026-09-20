@@ -707,7 +707,7 @@ async def _publish_inline_postgres(
         db.add(execution)
         await db.flush()
         await mark_attempt_published(db, execution)
-        await publish_message(queue_name, message, db=db)
+        await publish_message(queue_name, message, message_id=execution_id, db=db)
         await db.commit()
 
 

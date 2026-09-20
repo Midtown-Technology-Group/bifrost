@@ -62,6 +62,24 @@ def test_workflow_policy_records_the_existing_dispatch_boundary() -> None:
     assert policy.cancellation == CancellationMode.QUEUED_AND_RUNNING
 
 
+def test_postgres_registry_reports_selected_transport_without_generic_replay(monkeypatch):
+    from types import SimpleNamespace
+
+    from src import config
+
+    monkeypatch.setattr(
+        config, "get_settings", lambda: SimpleNamespace(work_delivery_backend="postgres")
+    )
+    policies = list_execution_operations_policies()
+    delivery = [policy for policy in policies if policy.identifier in EXPECTED_BROKER_CHANNELS]
+    assert len(delivery) == len(EXPECTED_BROKER_CHANNELS)
+    assert all(policy.mechanism == ExecutionMechanism.POSTGRES_LEASE for policy in delivery)
+    assert all(not policy.replay_allowed for policy in delivery)
+    assert broker_execution_policies()["workflow-executions"].completion_boundary == (
+        CompletionBoundary.CHILD_DISPATCHED
+    )
+
+
 def test_package_fanout_requires_per_worker_idempotency() -> None:
     policy = get_execution_operations_policy("package-installations")
 

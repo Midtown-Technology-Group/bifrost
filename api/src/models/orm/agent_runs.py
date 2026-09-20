@@ -65,6 +65,11 @@ class AgentRun(Base):
         default="pending",
         server_default=text("'pending'"),
     )
+    # PostgreSQL delivery identity that owns the current summarization attempt.
+    # RabbitMQ and synchronous callers leave this unset.
+    summary_delivery_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True, default=None
+    )
     summary_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # Version of SUMMARIZE_SYSTEM_PROMPT that produced the current asked/did/
     # metadata. NULL for unsummarized/failed runs. Bumped manually in

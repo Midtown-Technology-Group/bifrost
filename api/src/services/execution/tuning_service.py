@@ -49,6 +49,7 @@ from src.services.execution.agent_run_access import agent_run_visibility_conditi
 from src.services.execution.dry_run import evaluate_against_prompt
 from src.services.execution.model_selection import get_tuning_client
 from src.services.llm import LLMMessage
+from src.services.work_delivery_store import current_delivery, require_delivery_ownership
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ async def get_or_create_conversation(
         await db.execute(
             select(AgentRunFlagConversation).where(
                 AgentRunFlagConversation.run_id == run_id
-            )
+            ).with_for_update()
         )
     ).scalar_one_or_none()
     if conv is None:
@@ -91,38 +92,79 @@ async def get_or_create_conversation(
 
 
 async def append_user_message_and_reply(
-    run_id: UUID, content: str, db: AsyncSession
+    run_id: UUID,
+    content: str,
+    db: AsyncSession,
 ) -> AgentRunFlagConversation:
     """Append a user turn, call the tuning LLM for a reply, persist both + AIUsage.
 
-    Returns the updated conversation. Caller is responsible for the outer
-    transaction lifetime; this function commits at the end so the reply is
-    durable even if the caller later rolls back.
+    The user turn is committed before the provider call so a lease heartbeat
+    never waits on a domain row lock. The assistant turn and usage are then
+    committed from a fresh read after the provider returns.
     """
-    run = (
-        await db.execute(select(AgentRun).where(AgentRun.id == run_id))
-    ).scalar_one()
+    lease = current_delivery.get()
+    delivery_id = lease.id if lease is not None else None
 
+    run = (
+        await db.execute(
+            select(AgentRun).where(AgentRun.id == run_id).with_for_update()
+        )
+    ).scalar_one()
     conv = await get_or_create_conversation(run_id, db)
+    existing_turn_id: str | None = None
+
+    # A PostgreSQL redelivery after the domain commit is already complete.
+    # Return the durable conversation without calling the provider again.
+    if delivery_id is not None:
+        delivery_key = str(delivery_id)
+        delivery_messages = [
+            message
+            for message in (conv.messages or [])
+            if isinstance(message, dict)
+            and message.get("delivery_id") == delivery_key
+        ]
+        if any(message.get("kind") == "assistant" for message in delivery_messages):
+            await db.commit()
+            await db.refresh(conv)
+            return conv
+        if delivery_messages:
+            # The provider outcome is unknown. Root recovery bounds this
+            # read-only retry; reuse the committed user turn and never append
+            # a duplicate user message.
+            existing_turn_id = delivery_key
+        await require_delivery_ownership(db)
 
     now = datetime.now(timezone.utc)
-    # SQLAlchemy JSONB mutation: rebuild the list and reassign so the
-    # dirty-state is tracked. In-place ``.append`` does not flag the
-    # attribute as modified on JSONB columns unless MutableList is used.
+    turn_id = existing_turn_id or str(delivery_id or uuid4())
     messages = list(conv.messages or [])
-    messages.append(
-        {
+    if existing_turn_id is None:
+        user_message = {
             "kind": "user",
             "content": content,
             "at": now.isoformat(),
+            "turn_id": turn_id,
         }
-    )
+        if delivery_id is not None:
+            user_message["delivery_id"] = str(delivery_id)
+        messages.append(user_message)
+
+    # Persist the admission marker before calling the provider. A replay can
+    # then reuse this user turn after a lease loss without appending another.
+    conv.messages = messages
+    conv.last_updated_at = now
+
+    run_input = run.input
+    run_output = run.output
+
+    # Commit admission before the external call so the lease heartbeat never
+    # waits behind a domain or delivery row lock.
+    await db.commit()
 
     # Build the LLM prompt. Keep it simple: input/output + conversation history.
     prompt_payload = {
         "agent_run": {
-            "input": run.input,
-            "output": run.output,
+            "input": run_input,
+            "output": run_output,
         },
         "history": messages,
     }
@@ -132,17 +174,62 @@ async def append_user_message_and_reply(
     ]
 
     llm_client, resolved_model = await get_tuning_client(db)
+    await db.commit()
     response = await llm_client.complete(
         messages=llm_messages, model=resolved_model, max_tokens=1500
     )
 
-    messages.append(
-        {
-            "kind": "assistant",
-            "content": response.content or "",
-            "at": datetime.now(timezone.utc).isoformat(),
-        }
+    # Re-read after the provider call; other turns may have committed while it
+    # was in flight. Append this assistant response to the fresh JSONB list.
+    run = (
+        await db.execute(
+            select(AgentRun)
+            .where(AgentRun.id == run_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    conv = (
+        await db.execute(
+            select(AgentRunFlagConversation)
+            .where(AgentRunFlagConversation.run_id == run_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if delivery_id is not None:
+        await require_delivery_ownership(db)
+
+    messages = list(conv.messages or [])
+    user_index = next(
+        (
+            index
+            for index, message in enumerate(messages)
+            if isinstance(message, dict) and message.get("turn_id") == turn_id
+        ),
+        None,
     )
+    if user_index is None:
+        raise RuntimeError(f"tuning turn {turn_id} disappeared before completion")
+    if any(
+        isinstance(message, dict)
+        and message.get("turn_id") == turn_id
+        and message.get("kind") == "assistant"
+        for message in messages
+    ):
+        await db.commit()
+        await db.refresh(conv)
+        return conv
+
+    assistant_message = {
+        "kind": "assistant",
+        "content": response.content or "",
+        "at": datetime.now(timezone.utc).isoformat(),
+        "turn_id": turn_id,
+    }
+    if delivery_id is not None:
+        assistant_message["delivery_id"] = str(delivery_id)
+    messages.insert(user_index + 1, assistant_message)
 
     conv.messages = messages
     conv.last_updated_at = datetime.now(timezone.utc)
@@ -162,6 +249,8 @@ async def append_user_message_and_reply(
         cache_write_tokens=response.cache_write_tokens,
         provider_cost=response.provider_cost,
     )
+    if delivery_id is not None:
+        await require_delivery_ownership(db)
     await db.commit()
     await db.refresh(conv)
     return conv

@@ -44,6 +44,12 @@ class WorkDelivery(Base):
     )
 
     __table_args__ = (
+        Index(
+            "ix_work_deliveries_completed",
+            "settled_at",
+            "id",
+            postgresql_where=text("status = 'completed'"),
+        ),
         CheckConstraint(
             "status IN ('queued', 'claimed', 'completed', 'poison', 'interrupted')",
             name="ck_work_deliveries_status",

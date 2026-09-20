@@ -32,6 +32,10 @@ from src.services.execution_attempts import (
     start_execution_attempt,
     transition_execution_attempt,
 )
+from src.services.work_delivery_store import (
+    DeliveryOwnershipLost,
+    require_delivery_ownership,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,13 +156,14 @@ class AgentRunConsumer(BaseConsumer):
 
         logger.info(f"Processing agent run {run_id} (agent={agent_id}, trigger={trigger_type})")
 
-        # Read full context from Redis
-        redis_key = f"{REDIS_PREFIX}:{run_id}:context"
-        async with get_redis() as redis:
-            context_raw = await redis.get(redis_key)
-
-        if not context_raw and self._postgres is not None and body.get("context"):
+        # PostgreSQL admission owns the durable context snapshot, even when a
+        # stale or unavailable cache contains a different request.
+        if self._postgres is not None and body.get("context"):
             context_raw = json.dumps(body["context"])
+        else:
+            redis_key = f"{REDIS_PREFIX}:{run_id}:context"
+            async with get_redis() as redis:
+                context_raw = await redis.get(redis_key)
 
         if not context_raw:
             durable_status = await self._fail_missing_context_run(run_id)
@@ -192,7 +197,8 @@ class AgentRunConsumer(BaseConsumer):
         if context.get("cancelled"):
             logger.info(f"Agent run {run_id}: pre-cancelled, skipping execution")
             async with self._session_factory() as db:
-                agent_run = await db.get(AgentRun, UUID(run_id))
+                agent_run = await db.get(AgentRun, UUID(run_id), with_for_update=True)
+                await require_delivery_ownership(db)
                 if agent_run is None:
                     agent_run = AgentRun(
                         id=UUID(run_id),
@@ -279,6 +285,8 @@ class AgentRunConsumer(BaseConsumer):
                     return
 
                 if agent_id is None:
+                    await db.refresh(agent_run, with_for_update=True)
+                    await require_delivery_ownership(db)
                     logger.error(f"Agent run {run_id}: agent id missing for non-chat run")
                     agent_run.status = "failed"
                     agent_run.error = "Agent id missing"
@@ -325,6 +333,7 @@ class AgentRunConsumer(BaseConsumer):
                         UUID(run_id),
                         with_for_update={"of": AgentRun},
                     )
+                    await require_delivery_ownership(db)
                     if missing_run is not None:
                         if missing_run.status == "running":
                             missing_run.status = "failed"
@@ -355,7 +364,8 @@ class AgentRunConsumer(BaseConsumer):
 
             # Create AgentRun record (brief DB session)
             async with self._session_factory() as db:
-                agent_run = await db.get(AgentRun, UUID(run_id))
+                agent_run = await db.get(AgentRun, UUID(run_id), with_for_update=True)
+                await require_delivery_ownership(db)
                 if agent_run is None:
                     agent_run = AgentRun(
                         id=UUID(run_id),
@@ -445,6 +455,11 @@ class AgentRunConsumer(BaseConsumer):
                         "error": f"Agent run timed out after {run_timeout}s",
                     }
                 except asyncio.CancelledError:  # NOSONAR -- persist the cancelled run before returning.
+                    # wait_for(shield(...)) does not stop the executor when the
+                    # delivery runner loses ownership or drains this handler.
+                    executor_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await executor_task
                     run_result = {
                         "output": None,
                         "iterations_used": 0,
@@ -469,6 +484,7 @@ class AgentRunConsumer(BaseConsumer):
                     UUID(run_id),
                     with_for_update={"of": AgentRun},
                 )
+                await require_delivery_ownership(db)
                 if run_obj is None:
                     logger.info(f"Agent run {run_id}: final update skipped because row disappeared")
                     await transition_execution_attempt(
@@ -522,6 +538,14 @@ class AgentRunConsumer(BaseConsumer):
                     failure_message=run_result.get("error"),
                 )
 
+                if (
+                    self._postgres is not None
+                    and consumer_applied_result
+                    and run_obj.status == "completed"
+                ):
+                    from src.services.execution.run_summarizer import enqueue_summarize
+
+                    await enqueue_summarize(UUID(run_id), db=db)
                 await db.commit()
 
                 # Re-read for publish (need agent relationship)
@@ -543,7 +567,11 @@ class AgentRunConsumer(BaseConsumer):
             # exposes a regenerate button to retry from any state.
             # Errors here MUST NOT crash the run — summary_status stays
             # 'pending' and the UI offers a regenerate path.
-            if consumer_applied_result and agent_run.status == "completed":
+            if (
+                self._postgres is None
+                and consumer_applied_result
+                and agent_run.status == "completed"
+            ):
                 try:
                     from src.services.execution.run_summarizer import enqueue_summarize
                     await enqueue_summarize(UUID(run_id))
@@ -577,6 +605,8 @@ class AgentRunConsumer(BaseConsumer):
                     },
                 )
 
+        except DeliveryOwnershipLost:
+            raise
         except Exception as e:
             logger.exception(f"Agent run {run_id} failed: {e}")
             try:
@@ -586,6 +616,7 @@ class AgentRunConsumer(BaseConsumer):
                         UUID(run_id),
                         with_for_update={"of": AgentRun},
                     )
+                    await require_delivery_ownership(db)
                     if run_obj:
                         if run_obj.status == "running":
                             run_obj.status = "failed"
@@ -614,6 +645,8 @@ class AgentRunConsumer(BaseConsumer):
                     )
                     await db.commit()
                     agent_run = run_obj
+            except DeliveryOwnershipLost:
+                raise
             except Exception:
                 logger.exception(f"Failed to update agent_run {run_id} after error")
 
@@ -705,10 +738,8 @@ class AgentRunConsumer(BaseConsumer):
                 ),
                 {"run_id": run_id},
             )
-            from src.services.work_delivery_store import require_delivery_ownership
-
+            agent_run = await db.get(AgentRun, run_uuid, with_for_update=True)
             await require_delivery_ownership(db)
-            agent_run = await db.get(AgentRun, run_uuid)
             if agent_run is not None:
                 if agent_run.status != "queued":
                     return None
@@ -749,7 +780,8 @@ class AgentRunConsumer(BaseConsumer):
                 ),
                 {"run_id": run_id},
             )
-            agent_run = await db.get(AgentRun, run_uuid)
+            agent_run = await db.get(AgentRun, run_uuid, with_for_update=True)
+            await require_delivery_ownership(db)
             if agent_run is None:
                 return None
             if agent_run.status == "queued":
@@ -948,6 +980,7 @@ class AgentRunConsumer(BaseConsumer):
                         UUID(run_id),
                         with_for_update={"of": AgentRun},
                     )
+                    await require_delivery_ownership(db)
                     if run_obj is None:
                         logger.info(
                             "Chat run %s: final update skipped because row disappeared",
@@ -1067,6 +1100,7 @@ class AgentRunConsumer(BaseConsumer):
                         UUID(run_id),
                         with_for_update={"of": AgentRun},
                     )
+                    await require_delivery_ownership(db)
                     if run_obj is None:
                         logger.info(
                             "Chat run %s: cancel update skipped because row disappeared",

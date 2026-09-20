@@ -49,6 +49,12 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
+        "ix_work_deliveries_completed",
+        "work_deliveries",
+        ["settled_at", "id"],
+        postgresql_where=sa.text("status = 'completed'"),
+    )
+    op.create_index(
         "ix_work_deliveries_claim",
         "work_deliveries",
         ["queue_name", "available_at", "id"],

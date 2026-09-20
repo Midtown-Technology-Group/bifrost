@@ -1751,8 +1751,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await self._lock_execution(db, execution_id)
             from src.services.work_delivery_store import require_delivery_ownership
 
+            execution = await db.get(Execution, execution_uuid, with_for_update=True)
             await require_delivery_ownership(db)
-            execution = await db.get(Execution, execution_uuid)
             if execution is None:
                 return None
             if execution.status == ExecutionStatus.PENDING:
@@ -1807,8 +1807,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await self._lock_execution(db, execution_id)
             from src.services.work_delivery_store import require_delivery_ownership
 
+            execution = await db.get(Execution, execution_uuid, with_for_update=True)
             await require_delivery_ownership(db)
-            execution = await db.get(Execution, execution_uuid)
             if execution is None:
                 return ""
             if execution.status != ExecutionStatus.PENDING:
