@@ -1321,31 +1321,30 @@ class ProcessPoolManager:
                 "payload": claimed.payload or {},
                 "claim_token": claimed.claim_token,
             }
+            failure = None
             try:
                 await self._dispatch_worker_command(persisted_command)
             except Exception as exc:
-                async with get_db_context() as db:
-                    await finish_worker_control_command(
-                        db,
-                        command_id=uuid.UUID(str(command_id)),
-                        worker_id=self.worker_id,
-                        worker_incarnation_id=self.worker_incarnation_id,
-                        claim_token=claimed.claim_token,
-                        succeeded=False,
-                        failure_message=str(exc),
-                    )
-                    await db.commit()
-                raise
+                failure = exc
             async with get_db_context() as db:
-                await finish_worker_control_command(
+                finished = await finish_worker_control_command(
                     db,
                     command_id=uuid.UUID(str(command_id)),
                     worker_id=self.worker_id,
                     worker_incarnation_id=self.worker_incarnation_id,
                     claim_token=claimed.claim_token,
-                    succeeded=True,
+                    succeeded=failure is None,
+                    failure_message=str(failure) if failure is not None else None,
                 )
                 await db.commit()
+            if finished is not None and claimed.action == "package_install":
+                from src.services.execution.install_progress import report_phase
+
+                await report_phase(str(claimed.operation_id), self.worker_id,
+                                   phase="failed" if failure else "recycled",
+                                   action=(claimed.payload or {}).get("action", "install"))
+            if failure is not None:
+                raise failure
             return
 
         action = command.get("action")

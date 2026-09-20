@@ -1,11 +1,14 @@
 """Real PostgreSQL transaction/ownership tests; no external provider calls."""
 
 import asyncio
+import os
+import signal
+import sys
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -27,6 +30,22 @@ from src.services.work_delivery_store import (
 )
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
+
+CRASH_WORKER = """
+import asyncio, sys
+from src.core.database import get_db_context
+from src.services.work_delivery_store import claim_deliveries, current_delivery, require_delivery_ownership
+async def main():
+    async with get_db_context() as db:
+        (lease,) = await claim_deliveries(db, queue_name=sys.argv[1], owner='kill-test')
+        if sys.argv[2] == 'started':
+            current_delivery.set(lease)
+            await require_delivery_ownership(db)
+        await db.commit()
+    print('CLAIM-COMMITTED', flush=True)
+    await asyncio.Event().wait()
+asyncio.run(main())
+"""
 
 
 class RecordingConsumer(BaseConsumer):
@@ -132,6 +151,148 @@ async def test_active_admission_deduplicates(async_session_factory, delivery_que
     async with async_session_factory() as db:
         assert await enqueue(db, delivery_queue) == first
         await db.commit()
+
+
+@pytest.mark.parametrize("started", [False, True])
+async def test_sigkill_preserves_accepted_work_and_recovers_only_unstarted_delivery(
+    async_session_factory, delivery_queue, started
+):
+    async with async_session_factory() as db:
+        delivery_id = await enqueue(db, delivery_queue)
+        await db.commit()
+    child = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        CRASH_WORKER,
+        delivery_queue,
+        "started" if started else "unstarted",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        assert child.stdout is not None
+        async with asyncio.timeout(20):
+            while True:
+                line = await child.stdout.readline()
+                assert line, "Crash-test worker exited before committing its claim"
+                if line.strip() == b"CLAIM-COMMITTED":
+                    break
+    finally:
+        if child.returncode is None:
+            child.kill()
+        await asyncio.wait_for(child.wait(), 5)
+    async with async_session_factory() as db:
+        # Advance just the lease deadline; do not wait ninety seconds per test.
+        await db.execute(
+            update(WorkDelivery)
+            .where(WorkDelivery.id == delivery_id)
+            .values(lease_expires_at=func.clock_timestamp() - timedelta(seconds=1))
+        )
+        await db.commit()
+        assert delivery_id in await interrupt_expired_deliveries(
+            db, queue_name=delivery_queue
+        )
+        await db.commit()
+        assert await recover_interrupted_delivery(db, delivery_id) is (not started)
+        await db.commit()
+        leases = await claim_deliveries(
+            db, queue_name=delivery_queue, owner="replacement"
+        )
+        assert len(leases) == (0 if started else 1)
+        await db.commit()
+
+
+async def test_real_worker_executes_postgres_canary_after_pending_cache_loss(
+    async_session_factory, platform_admin, tmp_path
+):
+    """Exercise the deployed worker entry point with an unreachable AMQP URL."""
+    from src.core.redis_client import get_redis_client
+    from src.models.orm.execution_attempts import ExecutionAttempt
+    from src.models.orm.executions import Execution
+
+    queue = f"postgres-{uuid4()}-canary"
+    env = {
+        **os.environ,
+        "BIFROST_WORK_DELIVERY_BACKEND": "postgres",
+        "BIFROST_WORKER_CONSUMERS": "workflow",
+        "BIFROST_WORKFLOW_QUEUE_NAME": queue,
+        "BIFROST_RABBITMQ_URL": "amqp://unused:unused@127.0.0.1:9/",
+        "BIFROST_MAX_WORKERS": "1",
+        "BIFROST_MAX_CONCURRENCY": "1",
+        "BIFROST_DRAIN_DEADLINE_SECONDS": "5",
+        "HOSTNAME": f"postgres-test-{uuid4()}",
+    }
+    processes = []
+    execution_id = None
+    worker_log = tmp_path / "postgres-worker.log"
+    canary_log = tmp_path / "postgres-canary.log"
+    try:
+        with canary_log.open("wb") as output:
+            canary = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "src.jobs.workflow_canary",
+                env=env,
+                stdout=output,
+                stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True,
+            )
+        processes.append(canary)
+        # Acceptance must precede starting a consumer. Drop only this execution's
+        # cache and prove the encrypted delivery carries its inline code/context.
+        row = await wait_delivery_status(async_session_factory, queue, "queued")
+        execution_id = UUID(row.message_id)
+        client = get_redis_client()
+        await client.delete_pending_execution(str(execution_id))
+        assert await client.get_pending_execution(str(execution_id)) is None
+        with worker_log.open("wb") as output:
+            worker = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "src.worker.main",
+                env=env,
+                stdout=output,
+                stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True,
+            )
+        processes.append(worker)
+        await asyncio.wait_for(canary.wait(), timeout=110)
+        assert canary.returncode == 0, (
+            canary_log.read_text()[-8000:] + worker_log.read_text()[-8000:]
+        )
+        assert "isolated workflow canary passed" in canary_log.read_text()
+        assert worker.returncode is None
+        await wait_delivery_status(async_session_factory, queue, "completed")
+        async with async_session_factory() as db:
+            execution = await db.get(Execution, execution_id)
+            assert execution is not None and execution.status == "Success"
+            assert execution.result == {"canary": "ok"}
+    finally:
+        for process in reversed(processes):
+            if process.returncode is None:
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), 20)
+                except TimeoutError:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    await process.wait()
+            # Reap any template/worker children left by an early parent failure.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        async with async_session_factory() as db:
+            await db.execute(
+                delete(WorkDelivery).where(WorkDelivery.queue_name == queue)
+            )
+            if execution_id is not None:
+                await db.execute(
+                    delete(ExecutionAttempt).where(
+                        ExecutionAttempt.logical_job_id == execution_id
+                    )
+                )
+                await db.execute(delete(Execution).where(Execution.id == execution_id))
+            await db.commit()
 
 
 async def test_concurrent_claims_skip_locked_and_are_bounded(
@@ -241,6 +402,119 @@ async def test_poison_retains_work_and_rejects_repeat_settlement(
         stored = await db.get(WorkDelivery, lease.id)
         assert stored is not None and stored.status == "poison"
         assert stored.settled_at is not None and stored.lease_token is None
+
+
+async def test_package_targets_and_outcomes_survive_redis_and_worker_loss(
+    async_session_factory, postgres_transport, monkeypatch
+):
+    from src import config
+    from src.models.orm.worker_control_commands import WorkerControlCommand
+    from src.services import worker_control_commands as controls
+    from src.services.execution import install_progress
+
+    monkeypatch.setattr(
+        config,
+        "get_settings",
+        lambda: SimpleNamespace(work_delivery_backend="postgres"),
+    )
+    monkeypatch.setattr(
+        install_progress,
+        "_raw_redis",
+        AsyncMock(
+            side_effect=AssertionError(
+                "Durable package progress cannot depend on Redis"
+            )
+        ),
+    )
+    operation = uuid4()
+    incarnation = uuid4()
+    async with async_session_factory() as db:
+        for worker in ["survivor", "lost-pod"]:
+            await controls.create_worker_control_command(
+                db,
+                worker_id=worker,
+                action="package_install",
+                requested_by_user_id=uuid4(),
+                reason="test",
+                operation_id=operation,
+                target_incarnation_id=incarnation,
+                payload={"package": "demo", "run_id": str(operation)},
+            )
+        await db.commit()
+        rows = list(
+            (
+                await db.execute(
+                    select(WorkerControlCommand).where(
+                        WorkerControlCommand.operation_id == operation
+                    )
+                )
+            ).scalars()
+        )
+        survivor = next(row for row in rows if row.worker_id == "survivor")
+        lost = next(row for row in rows if row.worker_id == "lost-pod")
+        try:
+            claim = await controls.claim_worker_control_command(
+                db,
+                command_id=survivor.id,
+                worker_id="survivor",
+                worker_incarnation_id=incarnation,
+            )
+            assert claim is not None
+            token = claim.claim_token
+            await db.commit()
+            assert (
+                await controls.finish_worker_control_command(
+                    db,
+                    command_id=survivor.id,
+                    worker_id="survivor",
+                    worker_incarnation_id=incarnation,
+                    claim_token=uuid4(),
+                    succeeded=True,
+                )
+                is None
+            )
+            assert (
+                await controls.finish_worker_control_command(
+                    db,
+                    command_id=survivor.id,
+                    worker_id="survivor",
+                    worker_incarnation_id=incarnation,
+                    claim_token=token,
+                    succeeded=True,
+                )
+                is not None
+            )
+            await db.commit()
+            progress = await install_progress.get_run_progress(str(operation))
+            assert progress["status"] == "running" and progress["total"] == 2
+            assert progress["recycled"] == 1
+            await db.execute(
+                update(WorkerControlCommand)
+                .where(WorkerControlCommand.id == lost.id)
+                .values(requested_at=func.clock_timestamp() - timedelta(minutes=11))
+            )
+            await db.commit()
+            assert (
+                await controls.claim_worker_control_command(
+                    db,
+                    command_id=lost.id,
+                    worker_id="lost-pod",
+                    worker_incarnation_id=incarnation,
+                )
+                is None
+            )
+            assert operation in await controls.expire_package_commands(db)
+            await db.commit()
+            progress = await install_progress.get_run_progress(str(operation))
+            assert progress["status"] == "failed" and progress["total"] == 2
+            assert progress["recycled"] == 1 and progress["failed"] == 1
+        finally:
+            await db.execute(
+                delete(WorkerControlCommand).where(
+                    WorkerControlCommand.operation_id == operation
+                )
+            )
+            await db.commit()
 
 
 async def test_recovery_resumes_unstarted_claim_and_fences_old_handler(

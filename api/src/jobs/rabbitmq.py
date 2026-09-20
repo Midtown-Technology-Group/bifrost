@@ -1028,6 +1028,8 @@ class BroadcastConsumer(_AbstractConsumer):
 
     async def start(self) -> None:
         """Start consuming messages from the fanout exchange."""
+        if get_settings().work_delivery_backend == "postgres":
+            raise RuntimeError("PostgreSQL fanout requires durable worker control commands")
         self._running = True
 
         # Initialize pools and get a dedicated connection for this consumer
@@ -1150,6 +1152,8 @@ async def publish_to_exchange(
         message: Message body (will be JSON encoded)
         routing_key: Optional routing key for topic/direct exchanges
     """
+    if get_settings().work_delivery_backend == "postgres":
+        raise RuntimeError("Transient AMQP exchanges are unavailable with PostgreSQL delivery")
     await rabbitmq.init_pools()
     async with rabbitmq.get_connection() as connection:
         channel = await connection.channel()
@@ -1195,6 +1199,8 @@ async def consume_from_exchange(
     Yields:
         dict: Parsed message bodies
     """
+    if get_settings().work_delivery_backend == "postgres":
+        raise RuntimeError("Transient AMQP exchanges are unavailable with PostgreSQL delivery")
     await rabbitmq.init_pools()
     connection_ctx = rabbitmq.get_connection()
     connection = await connection_ctx.__aenter__()

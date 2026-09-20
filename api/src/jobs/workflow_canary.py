@@ -8,8 +8,9 @@ import os
 from types import SimpleNamespace
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from src.config import get_settings
 from src.core.database import close_db, get_db_context, init_db
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import rabbitmq
@@ -29,13 +30,24 @@ def canary_queue_name() -> str:
 
 async def poison_depth(queue_name: str) -> int:
     """Read the isolated poison queue depth without consuming any messages."""
+    if get_settings().work_delivery_backend == "postgres":
+        from src.models.orm.work_deliveries import WorkDelivery
+
+        async with get_db_context() as db:
+            return int(
+                await db.scalar(
+                    select(func.count(WorkDelivery.id)).where(
+                        WorkDelivery.queue_name == queue_name,
+                        WorkDelivery.status.in_(["poison", "interrupted"]),
+                    )
+                )
+                or 0
+            )
     await rabbitmq.init_pools()
     async with rabbitmq.get_connection() as connection:
         channel = await connection.channel()
         try:
-            queue = await channel.declare_queue(
-                f"{queue_name}-poison", passive=True
-            )
+            queue = await channel.declare_queue(f"{queue_name}-poison", passive=True)
             return int(queue.declaration_result.message_count)
         finally:
             await channel.close()
@@ -93,7 +105,9 @@ async def run_canary() -> None:
             sync=True,
             queue_name=queue_name,
         )
-        result = await get_redis_client().wait_for_result(execution_id, timeout_seconds=90)
+        result = await get_redis_client().wait_for_result(
+            execution_id, timeout_seconds=90
+        )
         require_successful_canary_result(result)
         poison_after = await poison_depth(queue_name)
         if poison_after > poison_before:

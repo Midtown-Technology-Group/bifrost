@@ -598,6 +598,19 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                 },
             )
 
+    from src.config import get_settings
+
+    if get_settings().work_delivery_backend == "postgres":
+        try:
+            from src.services.worker_control_commands import expire_package_commands
+
+            async with get_session_factory()() as db:
+                operations = await expire_package_commands(db)
+                await db.commit()
+            results["package_operations_expired"] = len(operations)
+        except Exception as exc:
+            logger.exception("Package command recovery failed")
+            results["errors"].append({"error": str(exc)})
     return results
 
 

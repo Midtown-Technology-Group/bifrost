@@ -233,7 +233,7 @@ class PackageInstallConsumer(BroadcastConsumer):
         except Exception as e:
             logger.warning(f"Failed to update packages in Redis: {e}")
 
-    async def _recycle_workers(self) -> None:
+    async def _recycle_workers(self) -> bool:
         """
         Drain all worker processes and restart the template so that child
         processes forked afterward have a fresh sys.modules that can see
@@ -246,10 +246,12 @@ class PackageInstallConsumer(BroadcastConsumer):
             if pool._started:
                 await pool.drain_and_restart_template()
                 logger.info("Drained workers and restarted template after pip install")
+                return True
             else:
                 logger.warning("Pool not started, skipping worker recycle")
         except Exception as e:
             logger.warning(f"Failed to drain/restart after pip install: {e}")
+        return False
 
     async def process_message(self, body: dict[str, Any]) -> None:
         """Preserve the broadcast consumer contract for RabbitMQ callers."""
@@ -299,7 +301,10 @@ class PackageInstallConsumer(BroadcastConsumer):
         # Worker subprocesses are forked before pip runs; recycle so they pick
         # up the new on-disk state.
         await report_phase(run_id, wid, phase="recycling", action=action)
-        await self._recycle_workers()
+        if await self._recycle_workers() is False:
+            await report_phase(run_id, wid, phase="failed", action=action,
+                               error="Worker template did not converge after package installation")
+            return False
         await self._update_pool_packages()
         await report_phase(run_id, wid, phase="recycled", action=action)
         logger.info(f"Package {action} completed on {wid}")

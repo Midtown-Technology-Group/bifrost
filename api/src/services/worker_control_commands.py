@@ -2,11 +2,12 @@
 
 import json
 import logging
+from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
@@ -15,6 +16,7 @@ from src.models.orm.worker_control_commands import WorkerControlCommand
 
 ALLOWED_ACTIONS = {"recycle_process", "recycle_all", "package_install"}
 logger = logging.getLogger(__name__)
+PACKAGE_COMMAND_TIMEOUT = timedelta(minutes=10)
 
 
 def _now() -> datetime:
@@ -32,7 +34,9 @@ async def _snapshot_worker_incarnations() -> dict[str, UUID]:
             if key.count(":") != 2:
                 continue
             worker_id = key.split(":", 2)[2]
-            raw_incarnation = await redis.hget(key, "worker_incarnation_id")
+            raw_incarnation = await cast(
+                Awaitable[str | None], redis.hget(key, "worker_incarnation_id")
+            )
             try:
                 workers[worker_id] = UUID(str(raw_incarnation))
             except (TypeError, ValueError):
@@ -50,10 +54,12 @@ async def enqueue_package_installation_commands(
 ) -> list[WorkerControlCommand]:
     """Persist one fenced package command for each worker in a target snapshot."""
     run_id = UUID(str(message["run_id"]))
-    from src.services.execution.install_progress import initialize_run
-
     commands: list[WorkerControlCommand] = []
     async with get_db_context() as db:
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:operation))"),
+            {"operation": f"bifrost:package-install:{run_id}"},
+        )
         existing_rows = list(
             (
                 await db.execute(
@@ -74,7 +80,10 @@ async def enqueue_package_installation_commands(
             }
         else:
             workers = await _snapshot_worker_incarnations()
-        await initialize_run(run_id, workers)
+        if not workers:
+            raise RuntimeError(
+                "No registered execution workers can accept package installation"
+            )
         for worker_id, incarnation_id in workers.items():
             existing = next(
                 (row for row in existing_rows if row.worker_id == worker_id), None
@@ -145,6 +154,40 @@ async def fail_stale_worker_control_commands(
     return commands
 
 
+async def expire_package_commands(db: AsyncSession) -> list[UUID]:
+    """Record unresolved targets within the existing five-minute cleanup cycle.
+
+    Replacement pods may have different worker IDs. A target that has not
+    converged after ten minutes fails explicitly; startup requirements sync
+    still converges replacement workers. Never infer success from disappearance.
+    """
+    overdue = (
+        select(WorkerControlCommand.id)
+        .where(
+            WorkerControlCommand.action == "package_install",
+            WorkerControlCommand.status.in_(["pending", "running"]),
+            WorkerControlCommand.requested_at
+            <= func.clock_timestamp() - PACKAGE_COMMAND_TIMEOUT,
+        )
+        .order_by(WorkerControlCommand.requested_at)
+        .limit(100)
+        .with_for_update(skip_locked=True)
+    )
+    result = await db.execute(
+        update(WorkerControlCommand)
+        .where(
+            WorkerControlCommand.id.in_(overdue),
+        )
+        .values(
+            status="failed",
+            completed_at=func.clock_timestamp(),
+            failure_message="Target worker did not confirm package convergence within ten minutes",
+        )
+        .returning(WorkerControlCommand.operation_id)
+    )
+    return [operation for operation in set(result.scalars()) if operation is not None]
+
+
 async def create_worker_control_command(
     db: AsyncSession,
     *,
@@ -187,9 +230,17 @@ async def claim_worker_control_command(
             .where(
                 WorkerControlCommand.id == command_id,
                 WorkerControlCommand.worker_id == worker_id,
+                or_(
+                    WorkerControlCommand.action != "package_install",
+                    WorkerControlCommand.requested_at
+                    > func.clock_timestamp() - PACKAGE_COMMAND_TIMEOUT,
+                ),
                 (
                     WorkerControlCommand.target_incarnation_id.is_(None)
-                    | (WorkerControlCommand.target_incarnation_id == worker_incarnation_id)
+                    | (
+                        WorkerControlCommand.target_incarnation_id
+                        == worker_incarnation_id
+                    )
                 ),
                 or_(
                     WorkerControlCommand.status == "pending",
@@ -232,7 +283,10 @@ async def finish_worker_control_command(
                 WorkerControlCommand.worker_id == worker_id,
                 (
                     WorkerControlCommand.target_incarnation_id.is_(None)
-                    | (WorkerControlCommand.target_incarnation_id == worker_incarnation_id)
+                    | (
+                        WorkerControlCommand.target_incarnation_id
+                        == worker_incarnation_id
+                    )
                 ),
                 WorkerControlCommand.status == "running",
                 WorkerControlCommand.claim_token == claim_token,
@@ -266,7 +320,10 @@ async def get_pending_worker_control_command(
                 WorkerControlCommand.worker_id == worker_id,
                 (
                     WorkerControlCommand.target_incarnation_id.is_(None)
-                    | (WorkerControlCommand.target_incarnation_id == worker_incarnation_id)
+                    | (
+                        WorkerControlCommand.target_incarnation_id
+                        == worker_incarnation_id
+                    )
                 ),
                 or_(
                     WorkerControlCommand.status == "pending",

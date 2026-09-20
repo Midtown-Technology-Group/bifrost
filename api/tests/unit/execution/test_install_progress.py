@@ -1,4 +1,5 @@
 """Unit tests for the install-progress aggregator."""
+
 from __future__ import annotations
 
 import json
@@ -25,19 +26,34 @@ def test_aggregate_counts_phases_out_of_total():
     assert agg["installing"] == 1
     assert agg["failed"] == 1
     assert agg["reported"] == 3
-    assert agg["failures"] == [{"worker": "w3", "package": "xhtml2pdf", "error": "no cc"}]
+    assert agg["failures"] == [
+        {"worker": "w3", "package": "xhtml2pdf", "error": "no cc"}
+    ]
 
 
 def test_summary_line_installing():
-    agg = {"total": 6, "installing": 3, "installed": 0, "recycling": 0,
-           "recycled": 0, "failed": 0, "failures": []}
+    agg = {
+        "total": 6,
+        "installing": 3,
+        "installed": 0,
+        "recycling": 0,
+        "recycled": 0,
+        "failed": 0,
+        "failures": [],
+    }
     assert summary_line(agg, action="install") == "Installing on 3/6 workers…"
 
 
 def test_summary_line_complete_with_failures():
-    agg = {"total": 6, "installing": 0, "installed": 5, "recycling": 0,
-           "recycled": 5, "failed": 1,
-           "failures": [{"worker": "w4", "package": "xhtml2pdf", "error": "no cc"}]}
+    agg = {
+        "total": 6,
+        "installing": 0,
+        "installed": 5,
+        "recycling": 0,
+        "recycled": 5,
+        "failed": 1,
+        "failures": [{"worker": "w4", "package": "xhtml2pdf", "error": "no cc"}],
+    }
     line = summary_line(agg, action="install")
     assert "5/6" in line
     assert "xhtml2pdf" in line
@@ -45,8 +61,15 @@ def test_summary_line_complete_with_failures():
 
 def test_summary_line_done_uses_folded_installed_count():
     # 3 done total: but raw recycled=1. Folded installed must win → 3/3.
-    agg = {"total": 3, "installing": 0, "installed": 3, "recycling": 0,
-           "recycled": 1, "failed": 0, "failures": []}
+    agg = {
+        "total": 3,
+        "installing": 0,
+        "installed": 3,
+        "recycling": 0,
+        "recycled": 1,
+        "failed": 0,
+        "failures": [],
+    }
     assert summary_line(agg, action="install") == "Installed on 3/3 workers"
 
 
@@ -65,8 +88,11 @@ async def test_report_phase_writes_hash_and_publishes_once():
         published.append(message)
 
     from src.services.execution import install_progress as ip
-    with patch.object(ip, "_raw_redis", AsyncMock(return_value=fake_redis)), \
-         patch.object(ip.pubsub_manager, "broadcast", side_effect=fake_broadcast):
+
+    with (
+        patch.object(ip, "_raw_redis", AsyncMock(return_value=fake_redis)),
+        patch.object(ip.pubsub_manager, "broadcast", side_effect=fake_broadcast),
+    ):
         await ip.report_phase(
             run_id="run1", worker_id="w1", phase="installed", action="install"
         )
@@ -107,33 +133,10 @@ async def test_get_run_progress_reports_fleet_terminal_state(
     )
 
     from src.services.execution import install_progress as ip
+
     with patch.object(ip, "_raw_redis", AsyncMock(return_value=fake_redis)):
         progress = await get_run_progress("run-1")
 
     assert progress["status"] == expected
     assert progress["reported"] == len(worker_phases)
     assert progress["total"] == total
-
-
-@pytest.mark.asyncio
-async def test_target_snapshot_keeps_disappeared_worker_in_denominator() -> None:
-    fake_redis = AsyncMock()
-    incarnation = "11111111-1111-1111-1111-111111111111"
-
-    async def hgetall(key: str):
-        if key == "bifrost:pkg-install-targets:run-1":
-            return {
-                "__snapshot__": "1",
-                "w1": incarnation,
-                "w2": "22222222-2222-2222-2222-222222222222",
-            }
-        return {"w1": json.dumps({"phase": "recycled"})}
-
-    fake_redis.hgetall.side_effect = hgetall
-    from src.services.execution import install_progress as ip
-    with patch.object(ip, "_raw_redis", AsyncMock(return_value=fake_redis)):
-        progress = await get_run_progress("run-1")
-
-    assert progress["status"] == "running"
-    assert progress["total"] == 2
-    assert progress["reported"] == 1

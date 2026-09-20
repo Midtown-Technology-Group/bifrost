@@ -229,8 +229,8 @@ class TestRecycleWorkers:
             "src.services.execution.process_pool.get_process_pool",
             side_effect=RuntimeError("Pool not initialized"),
         ):
-            # Should not raise
-            await consumer._recycle_workers()
+            # A failed template restart must not report package convergence.
+            assert await consumer._recycle_workers() is False
 
 
 class TestUpdatePoolPackages:
