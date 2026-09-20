@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     )
 
     debug: bool = Field(default=False, description="Enable debug mode")
+    admissions_paused: bool = Field(
+        default=False,
+        description=(
+            "Maintenance gate: reject external API admissions while allowing "
+            "authenticated engine requests to drain. Restart every API replica; "
+            "stop scheduler triggers separately."
+        ),
+    )
 
     # ==========================================================================
     # Database (PostgreSQL)

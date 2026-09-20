@@ -667,6 +667,13 @@ def create_app() -> FastAPI:
             "docs": "/docs",
         }
 
+    # Add last so maintenance covers every route, including the mounted MCP app.
+    # Existing worker calls retain their normal authorization after this gate.
+    if get_settings().admissions_paused:
+        from src.core.admission_pause import AdmissionPauseMiddleware
+
+        app.add_middleware(AdmissionPauseMiddleware)
+
     return app
 
 
