@@ -121,6 +121,12 @@ async def _counts(run_id: str, scenario: str) -> dict[str, int]:
         await connection.close()
 
 
+async def _claims_and_effects_complete(run_id: str, scenario: str) -> bool:
+    """Wait until both the claim and its separately committed effect are visible."""
+    counts = await _counts(run_id, scenario)
+    return counts.get("claims") == 2 and counts.get("effects") == 1
+
+
 async def _record_effect(run_id: str, scenario: str, key: str) -> None:
     connection = await _db()
     try:
@@ -271,7 +277,7 @@ async def _duplicate_delivery(run_id: str, queue_name: str) -> dict[str, Any]:
         await publish_message(queue_name, body, message_id=body["idempotency_key"])
 
         async def complete() -> bool:
-            return (await _counts(run_id, scenario)).get("claims") == 2
+            return await _claims_and_effects_complete(run_id, scenario)
 
         await _wait_for(complete)
         counts = await _counts(run_id, scenario)
@@ -397,7 +403,7 @@ async def _worker_death_after_claim(run_id: str, queue_name: str) -> dict[str, A
         try:
 
             async def recovered() -> bool:
-                return (await _counts(run_id, scenario)).get("claims") == 2
+                return await _claims_and_effects_complete(run_id, scenario)
 
             await _wait_for(recovered)
             counts = await _counts(run_id, scenario)
