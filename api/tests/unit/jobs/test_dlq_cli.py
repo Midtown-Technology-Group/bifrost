@@ -23,6 +23,19 @@ from src.jobs.dlq_cli import (
 from src.services.execution.poison import PoisonFinalizationResult
 
 
+@pytest.mark.parametrize("arguments", [
+    ["inspect", "workflow-executions", "--status", "poison"],
+    ["discard", "workflow-executions", "--delivery-id", str(uuid4()),
+     "--actor", "test", "--reason", "test"],
+])
+def test_rabbit_backend_rejects_postgres_selection_flags(monkeypatch, arguments):
+    monkeypatch.setattr(dlq_cli, "get_settings", lambda: SimpleNamespace(
+        work_delivery_backend="rabbitmq",
+    ))
+    with pytest.raises(ValueError, match="require the PostgreSQL backend"):
+        dlq_cli.main(arguments)
+
+
 class FakePoisonMessage:
     body = b'{"execution_id":"abc"}'
     message_id = "abc"

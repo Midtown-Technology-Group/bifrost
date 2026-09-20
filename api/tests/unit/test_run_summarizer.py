@@ -372,8 +372,10 @@ async def test_summarize_run_retries_later_when_another_live_delivery_owns_gener
     current_token = uuid4()
     envelope = encrypt_secret(json.dumps({"body": {}}))
     async with async_session_factory() as db:
-        seed_completed_run.summary_status = "generating"
-        seed_completed_run.summary_delivery_id = previous_id
+        run = await db.get(AgentRun, seed_completed_run.id)
+        assert run is not None
+        run.summary_status = "generating"
+        run.summary_delivery_id = previous_id
         db.add_all(
             [
                 WorkDelivery(

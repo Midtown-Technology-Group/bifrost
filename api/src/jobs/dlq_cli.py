@@ -195,6 +195,7 @@ async def _record_postgres_disposition(
         PoisonMessageDisposition(
             queue_name=row.queue_name,
             message_id=row.message_id,
+            idempotency_key=headers.get("x-idempotency-key"),
             action=action,
             actor=actor[:255],
             reason=reason[:2000],
@@ -727,6 +728,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(
             f"{args.command} is only available when BIFROST_WORK_DELIVERY_BACKEND=postgres"
         )
+    if getattr(args, "status", None) or getattr(args, "delivery_id", None):
+        raise ValueError("--status and --delivery-id require the PostgreSQL backend")
     if args.command == "inspect":
         rows = asyncio.run(inspect(args.queue, args.limit))
     elif args.command == "replay":
