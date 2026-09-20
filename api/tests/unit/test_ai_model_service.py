@@ -152,6 +152,33 @@ async def test_openai_compatible_profile_detects_and_remembers_transport(db_sess
 
 
 @pytest.mark.asyncio
+async def test_custom_openai_endpoint_detects_and_remembers_transport(db_session):
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name="Foundry OpenAI",
+        provider="openai",
+        api_key="sk-test",
+        endpoint="https://foundry.example.test/api/projects/demo/openai/v1",
+    )
+    profile = await service.create_profile(
+        name="Foundry Router",
+        connection_id=connection.id,
+        model="model-router",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    detector = AsyncMock(return_value="chat_completions")
+
+    with patch(
+        "src.services.openai_transport_detection.detect_openai_transport", detector
+    ):
+        resolved = await service.resolve_config(profile_id=profile.id)
+
+    assert resolved.openai_transport == "chat_completions"
+    detector.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_profile_and_connection_changes_clear_detected_transport(db_session):
     service = AIModelService(db_session)
     connection = await service.create_connection(

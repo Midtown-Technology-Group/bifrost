@@ -213,7 +213,11 @@ class AIModelService:
             )
 
         openai_transport = profile.openai_transport
-        if connection.provider == "openai_compatible" and openai_transport is None:
+        detects_openai_transport = connection.provider == "openai_compatible" or (
+            connection.provider == "openai"
+            and connection.endpoint != PROVIDER_DEFAULT_ENDPOINTS["openai"]
+        )
+        if detects_openai_transport and openai_transport is None:
             from src.services.openai_transport_detection import (
                 detect_openai_transport,
             )
