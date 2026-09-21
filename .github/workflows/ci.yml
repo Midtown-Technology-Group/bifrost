@@ -354,7 +354,9 @@ jobs:
           python3 scripts/check_skill_mirrors.py
 
       - name: Local stage evidence regression checks
-        run: python3 scripts/lib/pre_pr_stage_evidence_test.py
+        run: |
+          python3 scripts/lib/pre_pr_stage_evidence_test.py
+          bash scripts/lib/pre_pr_lanes_test.sh
 
       - name: Set up Python
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
