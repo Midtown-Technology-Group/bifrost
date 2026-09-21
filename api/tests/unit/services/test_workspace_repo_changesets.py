@@ -180,12 +180,10 @@ class RecordingWriter:
 
 class ConvergenceWriter(RecordingWriter):
     def __init__(self, *, source_sha, source_hashes, history_sha, history_hashes):
-        super().__init__()
+        super().__init__(history_hashes=history_hashes)
         self.source_sha = source_sha
         self.source_hashes = source_hashes
         self.history_sha = history_sha
-        self.history_hashes = history_hashes
-        self.inspections = []
 
     async def inspect(self, paths, *, ref=None, reachable_from=None):
         self.inspections.append((paths, ref, reachable_from))

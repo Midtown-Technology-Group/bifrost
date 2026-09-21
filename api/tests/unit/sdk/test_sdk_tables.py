@@ -330,7 +330,6 @@ class TestTablesSDKWithoutContext:
         from bifrost import tables
         from bifrost.client import _clear_client
         from bifrost._context import clear_execution_context
-        import importlib
 
         # Ensure no context is set and no client injected
         clear_execution_context()
@@ -351,7 +350,6 @@ class TestTablesSDKWithoutContext:
         from bifrost import tables
         from bifrost.client import _clear_client
         from bifrost._context import clear_execution_context
-        import importlib
 
         clear_execution_context()
         _clear_client()
@@ -370,7 +368,6 @@ class TestTablesSDKWithoutContext:
         from bifrost import tables
         from bifrost.client import _clear_client
         from bifrost._context import clear_execution_context
-        import importlib
 
         clear_execution_context()
         _clear_client()
@@ -389,7 +386,6 @@ class TestTablesSDKWithoutContext:
         from bifrost import tables
         from bifrost.client import _clear_client
         from bifrost._context import clear_execution_context
-        import importlib
 
         clear_execution_context()
         _clear_client()
@@ -478,8 +474,6 @@ def _doc_payload(**overrides: Any) -> dict[str, Any]:
 
 @pytest.fixture
 def tables_module(monkeypatch: pytest.MonkeyPatch):
-    import importlib
-
     module = importlib.import_module("bifrost.tables")
     monkeypatch.setattr(module, "resolve_scope", lambda scope: scope)
     return module
