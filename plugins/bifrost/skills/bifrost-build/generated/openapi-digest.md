@@ -395,6 +395,7 @@
 | GET | `/api/platform-jobs` |
 | GET | `/api/platform-jobs/{job_id}` |
 | POST | `/api/platform-jobs/{job_id}/cancel` |
+| GET | `/api/platform/app-service/metrics` |
 | GET | `/api/platform/queue` |
 | GET | `/api/platform/scheduler` |
 | GET | `/api/platform/scheduler/tasks/{task_id}/runs` |
