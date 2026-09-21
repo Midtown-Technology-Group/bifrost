@@ -1,0 +1,96 @@
+name: Release draft
+
+# Keeps one "Release vNEXT" issue open while merged PRs accumulate, so nobody
+# has to remember to ask for a release. The version comes from semver:* labels,
+# falling back to conventional-commit types (scripts/next-version.py). Tagging
+# stays a human gate -- see docs/VERSIONING.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-draft
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  draft:
+    name: Draft the next release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compute the next version and merged PRs
+        id: next
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          last_tag="$(git describe --tags --abbrev=0 \
+            --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude 'v*-*' 2>/dev/null || true)"
+          if [[ -n "$last_tag" ]]; then
+            since_date="$(git log -1 --format=%cs "$last_tag")"
+          else
+            since_date="1970-01-01"
+          fi
+          if version="$(./scripts/release/next-release-version.sh)"; then
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" -eq 3 ]]; then
+              echo "Nothing to release since ${last_tag:-the first tag}."
+              exit 0
+            fi
+            echo "::error::next-release-version.sh failed with status $status"
+            exit "$status"
+          fi
+          {
+            echo "prs<<EOF"
+            gh pr list --state merged --base main --limit 1000 \
+              --search "merged:>=$since_date" \
+              --json number,title \
+              --jq '.[] | "- #\(.number) \(.title)"'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the release issue
+        if: steps.next.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.next.outputs.version }}
+          PRS: ${{ steps.next.outputs.prs }}
+        run: |
+          set -euo pipefail
+          title="Release $VERSION"
+          body="$(printf '%s\n' \
+            "Auto-drafted from the merged pull requests below. The version" \
+            "follows \`semver:*\` labels, then conventional-commit types." \
+            "" \
+            "Before releasing (docs/VERSIONING.md):" \
+            "- [ ] \`./scripts/release-check.sh $VERSION\`" \
+            "- [ ] docs freshness: \`./scripts/release/check-docs-freshness.sh\`" \
+            "- [ ] merge the plugin-manifest bump: \`./scripts/update-plugin-version.sh ${VERSION#v}\`" \
+            "- [ ] close this issue as completed to tag \`$VERSION\` automatically" \
+            "- [ ] after CI, edit the GitHub Release draft: Fixed vulnerabilities + upstream baseline" \
+            "" \
+            "### Merged PRs since the last tag" \
+            "" \
+            "$PRS")"
+          existing="$(gh issue list --state open --limit 50 \
+            --search 'in:title "Release v"' \
+            --json number,title \
+            --jq '.[] | select(.title | startswith("Release v")) | .number' | head -1)"
+          if [[ -n "$existing" ]]; then
+            gh issue edit "$existing" --title "$title" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
