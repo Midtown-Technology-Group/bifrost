@@ -1640,6 +1640,11 @@ async def submit_form(
                     detail=str(exc),
                 ) from exc
 
+        # The dispatch path owns its durable commit boundaries. Release the
+        # request's read transaction after CAPTCHA/access checks and before it
+        # opens its own session.
+        await db.commit()
+
         # Execute workflow by ID
         response = await run_workflow(
             context=shared_ctx,
@@ -1867,6 +1872,11 @@ async def execute_startup_workflow(
         execution_id=str(uuid4()),
         embed=ctx.user.verified_context or {},
     )
+
+    # Authorization and workflow resolution above are read-only. Release that
+    # request transaction before the synchronous launch dispatch opens its own
+    # database session.
+    await db.commit()
 
     try:
         # Execute launch workflow by ID

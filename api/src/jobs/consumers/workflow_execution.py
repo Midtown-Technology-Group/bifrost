@@ -755,7 +755,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     await session.rollback()
                     return
                 if (
-                    error_type == "ProcessCrashError"
+                    error_type in {"ProcessCrashError", "WorkerShutdownError"}
                     and execution_row.status != ExecutionStatus.CANCELLING
                 ):
                     from src.models.orm.executions import WorkflowExecutionAttempt
@@ -763,10 +763,19 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         republish_execution_from_dispatch,
                     )
                     from src.services.execution.retry_policy import (
+                        RetryFailureKind,
                         operator_max_attempts,
                         should_retry_execution,
                     )
 
+                    # Manager shutdown has already stopped the child before
+                    # surrendering this fenced result. Keep its workflow opt-in
+                    # distinct from an unexpected subprocess crash.
+                    failure_kind: RetryFailureKind = (
+                        "worker_lost"
+                        if error_type == "WorkerShutdownError"
+                        else "subprocess_crash"
+                    )
                     attempt_count = await session.scalar(
                         select(func.count(WorkflowExecutionAttempt.id)).where(
                             WorkflowExecutionAttempt.execution_id == execution_row.id
@@ -774,7 +783,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
                     if should_retry_execution(
                         getattr(execution_row, "retry_policy", None),
-                        "subprocess_crash",
+                        failure_kind,
                         int(attempt_count or 0),
                         operator_max_attempts(),
                     ):
@@ -786,8 +795,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         execution_row.error_message = None
                         await session.commit()
                         logger.warning(
-                            "Retrying workflow execution %s after subprocess crash",
+                            "Retrying workflow execution %s after %s",
                             execution_id,
+                            failure_kind,
                         )
                         return
             failure_context: dict[str, Any] | None = None
