@@ -74,6 +74,11 @@ def _normalize_paths(paths: dict[str, str | None]) -> dict[str, str | None]:
         path = normalize_workspace_path(raw_path)
         if path != raw_path:
             raise ValueError(f"Workspace source path is not normalized: {raw_path!r}")
+        if path == "solutions" or path.startswith("solutions/"):
+            raise ValueError(
+                "Workspace source paths exclude solutions/ entries declared "
+                "via solution deploy obligations"
+            )
         normalized[path] = digest
     return dict(sorted(normalized.items()))
 

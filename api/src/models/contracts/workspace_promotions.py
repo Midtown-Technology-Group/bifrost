@@ -565,6 +565,16 @@ class WorkspaceSourceReleaseDeclareRequest(BaseModel):
         invalid_paths = [path for path in self.paths if not path or len(path) > 1000]
         if invalid_paths:
             raise ValueError("source release path keys must be 1 to 1000 characters")
+        solution_paths = [
+            path
+            for path in self.paths
+            if path == "solutions" or path.startswith("solutions/")
+        ]
+        if solution_paths:
+            raise ValueError(
+                "source release paths must exclude solutions/ entries "
+                "declared via solution deploy obligations"
+            )
         invalid_hashes = [
             path
             for path, digest in self.paths.items()

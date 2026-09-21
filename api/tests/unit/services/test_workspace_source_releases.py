@@ -215,6 +215,19 @@ def test_declaration_reports_path_and_digest_errors_separately(
         )
 
 
+def test_declaration_rejects_solutions_entries_in_loose_paths() -> None:
+    with pytest.raises(ValidationError, match="solutions/"):
+        WorkspaceSourceReleaseDeclareRequest(
+            source_commit_sha="a" * 40,
+            source_tree_sha="b" * 40,
+            paths={
+                "features/example.py": "c" * 64,
+                "solutions/example/solution.yaml": "d" * 64,
+            },
+            disposition="pending",
+        )
+
+
 def test_response_exposes_overdue_pending_as_attention() -> None:
     now = datetime.now(timezone.utc)
     response = source_release_response(
