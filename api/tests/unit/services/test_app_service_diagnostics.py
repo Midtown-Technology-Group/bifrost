@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
+
 from src.models.contracts.platform import (
     AppServiceMetricSeries,
     AppServiceMetricsResponse,
@@ -36,8 +37,21 @@ def test_resource_id_validation_rejects_arbitrary_urls():
     assert diagnostics._validate_resource_id(RESOURCE_ID) == RESOURCE_ID
     assert diagnostics._validate_resource_id("https://example.test/metrics") is None
     assert diagnostics._validate_resource_id(RESOURCE_ID + "/") is None
-    assert diagnostics._validate_resource_id(RESOURCE_ID.replace("/resourceGroups/rg/", "/resourceGroups/rg?x=/")) is None
-    assert diagnostics._validate_resource_id(RESOURCE_ID.replace("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-00000000000g")) is None
+    assert (
+        diagnostics._validate_resource_id(
+            RESOURCE_ID.replace("/resourceGroups/rg/", "/resourceGroups/rg?x=/")
+        )
+        is None
+    )
+    assert (
+        diagnostics._validate_resource_id(
+            RESOURCE_ID.replace(
+                "00000000-0000-0000-0000-000000000000",
+                "00000000-0000-0000-0000-00000000000g",
+            )
+        )
+        is None
+    )
 
 
 def test_settings_accepts_the_unprefixed_api_binding(monkeypatch):
@@ -75,6 +89,58 @@ def test_metric_mapping_preserves_null_gaps_and_missing_metrics():
     assert memory.available is False
     assert memory.unavailable_reason == "no_data"
     assert [point.value for point in cpu.points] == [42.0, None]
+
+
+def test_availability_status_keeps_partial_metrics_visible():
+    metrics = [
+        AppServiceMetricSeries(name="CpuPercentage", unit="Percent"),
+        AppServiceMetricSeries(
+            name="MemoryPercentage",
+            unit="Percent",
+            available=False,
+            unavailable_reason="no_data",
+        ),
+        AppServiceMetricSeries(
+            name="HttpQueueLength",
+            unit="Count",
+            available=False,
+            unavailable_reason="no_data",
+        ),
+    ]
+    assert diagnostics._availability_status(metrics) == (
+        "available",
+        "missing:MemoryPercentage,HttpQueueLength",
+    )
+    assert diagnostics._availability_status(
+        [metric.model_copy(update={"available": False}) for metric in metrics]
+    ) == ("unavailable", "no_data")
+
+
+def test_metric_mapping_turns_nonfinite_values_into_null_gaps():
+    payload = {
+        "value": [
+            {
+                "name": {"value": "CpuPercentage"},
+                "timeseries": [
+                    {
+                        "data": [
+                            {
+                                "timeStamp": "2026-09-21T13:00:00Z",
+                                "average": float("nan"),
+                            },
+                            {
+                                "timeStamp": "2026-09-21T13:01:00Z",
+                                "average": float("inf"),
+                            },
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    series = diagnostics._series_from_payload("CpuPercentage", payload)
+    assert series.available is False
+    assert [point.value for point in series.points] == [None, None]
 
 
 def test_freshness_is_per_metric_and_ignores_trailing_nulls():
@@ -116,7 +182,9 @@ def test_freshness_is_per_metric_and_ignores_trailing_nulls():
     assert checked.status == "unavailable"
     assert checked.stale is True
     assert by_name["CpuPercentage"].stale is False
-    assert by_name["CpuPercentage"].latest_sample_at == checked_at - timedelta(seconds=30)
+    assert by_name["CpuPercentage"].latest_sample_at == checked_at - timedelta(
+        seconds=30
+    )
     assert by_name["MemoryPercentage"].stale is True
     assert by_name["MemoryPercentage"].stale_reason == "data_delayed"
     assert by_name["HttpQueueLength"].stale is False
@@ -147,7 +215,11 @@ async def test_fetch_error_returns_stale_cached_success(monkeypatch):
         update={"fetched_at": datetime.now(timezone.utc) - timedelta(minutes=2)}
     )
     monkeypatch.setattr(diagnostics, "_read_cached", lambda _key: _async_return(cached))
-    monkeypatch.setattr(diagnostics, "_query_azure", lambda *args, **kwargs: _async_raise(RuntimeError("down")))
+    monkeypatch.setattr(
+        diagnostics,
+        "_query_azure",
+        lambda *args, **kwargs: _async_raise(RuntimeError("down")),
+    )
     response = await diagnostics.get_app_service_metrics(
         "1h", settings=SimpleNamespace(app_service_plan_resource_id=RESOURCE_ID)
     )
@@ -186,6 +258,76 @@ async def test_bounded_timeout_without_cache_is_unavailable(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_error_is_cached_briefly_without_masking_healthy_data(monkeypatch):
+    monkeypatch.setattr(diagnostics, "_read_cached", lambda _key: _async_return(None))
+    monkeypatch.setattr(
+        diagnostics,
+        "_query_azure",
+        lambda *args, **kwargs: _async_raise(TimeoutError("bounded")),
+    )
+    write_cached = AsyncMock()
+    monkeypatch.setattr(diagnostics, "_write_cached", write_cached)
+    response = await diagnostics.get_app_service_metrics(
+        "1h", settings=SimpleNamespace(app_service_plan_resource_id=RESOURCE_ID)
+    )
+    assert response.status == "unavailable"
+    write_cached.assert_awaited_once()
+    assert (
+        write_cached.await_args.kwargs["ttl_seconds"]
+        == diagnostics.CACHE_UNAVAILABLE_TTL_SECONDS
+    )
+
+
+@pytest.mark.asyncio
+async def test_fresh_unavailable_cache_avoids_immediate_arm_retry(monkeypatch):
+    cached = diagnostics._unavailable(
+        "1h", resource_id=RESOURCE_ID, reason="azure_monitor_unavailable"
+    )
+    monkeypatch.setattr(diagnostics, "_read_cached", lambda _key: _async_return(cached))
+    query = AsyncMock(
+        side_effect=AssertionError("short unavailable cache must avoid Azure")
+    )
+    monkeypatch.setattr(diagnostics, "_query_azure", query)
+    response = await diagnostics.get_app_service_metrics(
+        "1h", settings=SimpleNamespace(app_service_plan_resource_id=RESOURCE_ID)
+    )
+    assert response.status == "unavailable"
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_partial_response_is_cached_as_available(monkeypatch):
+    partial = AppServiceMetricsResponse(
+        resource_id=RESOURCE_ID,
+        range="1h",
+        sample_grain="PT1M",
+        fetched_at=datetime.now(timezone.utc),
+        status="available",
+        unavailable_reason="missing:HttpQueueLength",
+        metrics=[
+            AppServiceMetricSeries(name="CpuPercentage", unit="Percent", points=[]),
+            AppServiceMetricSeries(
+                name="MemoryPercentage", unit="Percent", available=False, unavailable_reason="no_data"
+            ),
+            AppServiceMetricSeries(
+                name="HttpQueueLength", unit="Count", available=False, unavailable_reason="no_data"
+            ),
+        ],
+    )
+    monkeypatch.setattr(diagnostics, "_read_cached", lambda _key: _async_return(None))
+    monkeypatch.setattr(diagnostics, "_query_azure", lambda *args, **kwargs: _async_return(partial))
+    write_cached = AsyncMock()
+    monkeypatch.setattr(diagnostics, "_write_cached", write_cached)
+    response = await diagnostics.get_app_service_metrics(
+        "1h", settings=SimpleNamespace(app_service_plan_resource_id=RESOURCE_ID)
+    )
+    assert response.status == "available"
+    write_cached.assert_awaited_once_with(
+        diagnostics._cache_key(RESOURCE_ID, "1h"), response
+    )
+
+
+@pytest.mark.asyncio
 async def test_arm_request_uses_managed_identity_and_never_returns_token(monkeypatch):
     azure_identity = pytest.importorskip("azure.identity.aio")
     captured: dict[str, object] = {}
@@ -211,9 +353,16 @@ async def test_arm_request_uses_managed_identity_and_never_returns_token(monkeyp
                 "value": [
                     {
                         "name": {"value": metric},
-                        "timeseries": [{
-                            "data": [{"timeStamp": "2026-09-21T13:59:00Z", "average": value}],
-                        }],
+                        "timeseries": [
+                            {
+                                "data": [
+                                    {
+                                        "timeStamp": "2026-09-21T13:59:00Z",
+                                        "average": value,
+                                    }
+                                ],
+                            }
+                        ],
                     }
                     for metric, value in (
                         ("CpuPercentage", 42),
@@ -244,7 +393,9 @@ async def test_arm_request_uses_managed_identity_and_never_returns_token(monkeyp
     )
     assert captured["client_id"] == "uami-client-id"
     assert captured["scope"] == diagnostics.ARM_SCOPE
-    assert str(captured["url"]).startswith("https://management.azure.com/subscriptions/")
+    assert str(captured["url"]).startswith(
+        "https://management.azure.com/subscriptions/"
+    )
     assert captured["params"]["api-version"] == "2023-10-01"  # type: ignore[index]
     assert captured["params"]["aggregation"] == "Average"  # type: ignore[index]
     assert captured["headers"] == {"Authorization": "Bearer test-token"}

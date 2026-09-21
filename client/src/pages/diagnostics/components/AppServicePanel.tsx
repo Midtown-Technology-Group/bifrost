@@ -33,7 +33,8 @@ type ChartPoint = {
 };
 
 function latestValue(metric: AppServiceMetricSeries) {
-	return [...metric.points].reverse().find((point) => point.value != null)?.value;
+	return [...metric.points].reverse().find((point) => point.value != null)
+		?.value;
 }
 
 function formatValue(metric: AppServiceMetricSeries) {
@@ -41,13 +42,27 @@ function formatValue(metric: AppServiceMetricSeries) {
 	if (value == null) return "Unavailable";
 	if (metric.unit === "Percent") return `${value.toFixed(1)} %`;
 	if (value > 0 && value < 0.01) return "<0.01 requests";
-	const decimals = value !== 0 && Math.abs(value) < 1 ? 2 : value % 1 ? 2 : 0;
+	let decimals = 0;
+	if (value !== 0 && Math.abs(value) < 1) decimals = 2;
+	else if (value % 1) decimals = 2;
 	return `${value.toFixed(decimals)} requests`;
 }
 
 function formatTimestamp(value: string | null) {
 	if (!value) return "No sample received";
-	return new Date(value).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+	return new Date(value)
+		.toISOString()
+		.replace("T", " ")
+		.replace(/\.\d{3}Z$/, " UTC");
+}
+
+function metricStatus(metric: AppServiceMetricSeries) {
+	if (metric.stale)
+		return `Stale · latest ${formatTimestamp(metric.latest_sample_at)}`;
+	if (metric.available) {
+		return `Latest plan average · ${formatTimestamp(metric.latest_sample_at)}`;
+	}
+	return "No usable sample";
 }
 
 function chartData(metrics: AppServiceMetricSeries[]): ChartPoint[] {
@@ -62,7 +77,8 @@ function chartData(metrics: AppServiceMetricSeries[]): ChartPoint[] {
 				queue: null,
 			};
 			if (metric.name === "CpuPercentage") current.cpu = point.value;
-			if (metric.name === "MemoryPercentage") current.memory = point.value;
+			if (metric.name === "MemoryPercentage")
+				current.memory = point.value;
 			if (metric.name === "HttpQueueLength") current.queue = point.value;
 			points.set(point.timestamp, current);
 		}
@@ -76,18 +92,20 @@ function CapacityTooltip({
 	active,
 	payload,
 	label,
-}: {
+}: Readonly<{
 	active?: boolean;
 	payload?: Array<{ name: string; value: number | null }>;
 	label?: string;
-}) {
+}>) {
 	if (!active || !payload?.length) return null;
 	return (
 		<div className="rounded-md border bg-background p-2 text-xs shadow-sm">
-			<div className="mb-1 text-muted-foreground">{formatTimestamp(label ?? null)}</div>
+			<div className="mb-1 text-muted-foreground">
+				{formatTimestamp(label ?? null)}
+			</div>
 			{payload.map((entry) => (
 				<div key={entry.name}>
-					{entry.name}: {entry.value == null ? "Unavailable" : entry.value}
+					{entry.name}: {entry.value ?? "Unavailable"}
 				</div>
 			))}
 		</div>
@@ -98,7 +116,10 @@ export function AppServicePanel() {
 	const [range, setRange] = useState<AppServiceRange>("1h");
 	const { data, isLoading, isError, isFetching, refetch } =
 		useAppServiceMetrics(range);
-	const points = useMemo(() => chartData(data?.metrics ?? []), [data?.metrics]);
+	const points = useMemo(
+		() => chartData(data?.metrics ?? []),
+		[data?.metrics],
+	);
 
 	if (isLoading) {
 		return (
@@ -112,6 +133,16 @@ export function AppServicePanel() {
 	}
 
 	const unavailable = isError || data?.status === "unavailable";
+	const partial =
+		data?.status === "available" &&
+		data.unavailable_reason?.startsWith("missing:");
+	let unavailableDescription =
+		"Azure Monitor returned no usable metric samples.";
+	if (isError) unavailableDescription = "Azure Monitor could not be reached.";
+	else if (data?.unavailable_reason === "not_configured") {
+		unavailableDescription =
+			"This environment has no App Service plan configured.";
+	}
 	return (
 		<Card data-testid="app-service-panel">
 			<CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -121,7 +152,10 @@ export function AppServicePanel() {
 						Azure Monitor · plan average · UTC samples
 					</p>
 				</div>
-				<div className="flex gap-1" aria-label="App Service metric range">
+				<div
+					className="flex gap-1"
+					aria-label="App Service metric range"
+				>
 					{APP_SERVICE_RANGES.map((option) => (
 						<Button
 							key={option}
@@ -141,11 +175,7 @@ export function AppServicePanel() {
 					<Alert variant="destructive">
 						<AlertTitle>App Service metrics unavailable</AlertTitle>
 						<AlertDescription>
-							{isError
-								? "Azure Monitor could not be reached."
-								: data?.unavailable_reason === "not_configured"
-									? "This environment has no App Service plan configured."
-									: "Azure Monitor returned no complete metric set."}
+							{unavailableDescription}
 						</AlertDescription>
 						<Button
 							type="button"
@@ -158,11 +188,25 @@ export function AppServicePanel() {
 						</Button>
 					</Alert>
 				)}
+				{partial && (
+					<Alert className="border-[var(--bf-warning)]/30">
+						<AlertTitle>
+							Some App Service metrics unavailable
+						</AlertTitle>
+						<AlertDescription>
+							Azure Monitor returned usable data for part of this
+							range; missing metrics remain unavailable.
+						</AlertDescription>
+					</Alert>
+				)}
 				{data?.stale && (
 					<Alert className="border-[var(--bf-warning)]/30">
-						<AlertTitle>Showing stale Azure Monitor data</AlertTitle>
+						<AlertTitle>
+							Showing stale Azure Monitor data
+						</AlertTitle>
 						<AlertDescription>
-							The latest usable sample is from {formatTimestamp(data.latest_sample_at)}.
+							The latest usable sample is from{" "}
+							{formatTimestamp(data.latest_sample_at)}.
 						</AlertDescription>
 					</Alert>
 				)}
@@ -180,11 +224,7 @@ export function AppServicePanel() {
 								{formatValue(metric)}
 							</div>
 							<div className="mt-1 text-xs text-muted-foreground">
-								{metric.stale
-									? `Stale · latest ${formatTimestamp(metric.latest_sample_at)}`
-									: metric.available
-										? `Latest plan average · ${formatTimestamp(metric.latest_sample_at)}`
-										: "No usable sample"}
+								{metricStatus(metric)}
 							</div>
 						</div>
 					))}
@@ -192,30 +232,65 @@ export function AppServicePanel() {
 				{points.length > 0 && (
 					<div className="grid gap-4 lg:grid-cols-2">
 						<div className="rounded-md border p-3">
-							<h3 className="mb-2 text-sm font-medium">CPU and Memory (%)</h3>
-							<div className="h-56" aria-label="CPU and Memory capacity chart">
+							<h3 className="mb-2 text-sm font-medium">
+								CPU and Memory (%)
+							</h3>
+							<div
+								className="h-56"
+								aria-label="CPU and Memory capacity chart"
+							>
 								<ResponsiveContainer width="100%" height="100%">
 									<LineChart data={points}>
 										<CartesianGrid strokeDasharray="3 3" />
 										<XAxis dataKey="timestamp" hide />
 										<YAxis domain={[0, 100]} unit="%" />
-										<Tooltip content={<CapacityTooltip />} />
-										<Line type="monotone" dataKey="cpu" name="CPU" stroke="#2563eb" dot={false} connectNulls={false} />
-										<Line type="monotone" dataKey="memory" name="Memory" stroke="#10b981" dot={false} connectNulls={false} />
+										<Tooltip
+											content={<CapacityTooltip />}
+										/>
+										<Line
+											type="monotone"
+											dataKey="cpu"
+											name="CPU"
+											stroke="#2563eb"
+											dot={false}
+											connectNulls={false}
+										/>
+										<Line
+											type="monotone"
+											dataKey="memory"
+											name="Memory"
+											stroke="#10b981"
+											dot={false}
+											connectNulls={false}
+										/>
 									</LineChart>
 								</ResponsiveContainer>
 							</div>
 						</div>
 						<div className="rounded-md border p-3">
-							<h3 className="mb-2 text-sm font-medium">HTTP queue (requests)</h3>
-							<div className="h-56" aria-label="HTTP queue capacity chart">
+							<h3 className="mb-2 text-sm font-medium">
+								HTTP queue (requests)
+							</h3>
+							<div
+								className="h-56"
+								aria-label="HTTP queue capacity chart"
+							>
 								<ResponsiveContainer width="100%" height="100%">
 									<LineChart data={points}>
 										<CartesianGrid strokeDasharray="3 3" />
 										<XAxis dataKey="timestamp" hide />
 										<YAxis />
-										<Tooltip content={<CapacityTooltip />} />
-										<Line type="monotone" dataKey="queue" name="HTTP queue" stroke="#f59e0b" dot={false} connectNulls={false} />
+										<Tooltip
+											content={<CapacityTooltip />}
+										/>
+										<Line
+											type="monotone"
+											dataKey="queue"
+											name="HTTP queue"
+											stroke="#f59e0b"
+											dot={false}
+											connectNulls={false}
+										/>
 									</LineChart>
 								</ResponsiveContainer>
 							</div>
@@ -224,7 +299,9 @@ export function AppServicePanel() {
 				)}
 				{data && (
 					<p className="text-xs text-muted-foreground">
-						Fetched {formatTimestamp(data.fetched_at)} · latest sample {formatTimestamp(data.latest_sample_at)} · grain {data.sample_grain}
+						Fetched {formatTimestamp(data.fetched_at)} · latest
+						sample {formatTimestamp(data.latest_sample_at)} · grain{" "}
+						{data.sample_grain}
 					</p>
 				)}
 			</CardContent>

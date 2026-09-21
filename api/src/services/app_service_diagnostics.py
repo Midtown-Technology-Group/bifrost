@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -41,10 +42,13 @@ ARM_SCOPE = "https://management.azure.com/.default"
 CACHE_FRESH_SECONDS = 60
 CACHE_HARD_TTL_SECONDS = 300
 REQUEST_TIMEOUT_SECONDS = 12
+CACHE_UNAVAILABLE_TTL_SECONDS = 30
 
 
 def _validate_resource_id(resource_id: str | None) -> str | None:
-    if resource_id and APP_SERVICE_PLAN_RESOURCE_ID_PATTERN.fullmatch(resource_id.strip()):
+    if resource_id and APP_SERVICE_PLAN_RESOURCE_ID_PATTERN.fullmatch(
+        resource_id.strip()
+    ):
         return resource_id.strip()
     return None
 
@@ -69,34 +73,51 @@ def _parse_timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _series_from_payload(metric_name: str, payload: dict[str, Any]) -> AppServiceMetricSeries:
-    metric = next(
-        (
-            item
-            for item in payload.get("value", [])
-            if isinstance(item, dict)
-            and str((item.get("name") or {}).get("value", "")).lower()
-            == metric_name.lower()
-        ),
-        None,
-    )
-    points: list[AppServiceMetricPoint] = []
-    if metric:
-        timeseries = metric.get("timeseries") or []
-        first_series = timeseries[0] if timeseries else {}
-        for datum in first_series.get("data", []) if isinstance(first_series, dict) else []:
-            if not isinstance(datum, dict):
-                continue
-            timestamp = _parse_timestamp(datum.get("timeStamp"))
-            if timestamp is None:
-                continue
-            value = datum.get("average")
-            points.append(
-                AppServiceMetricPoint(
-                    timestamp=timestamp,
-                    value=float(value) if isinstance(value, (int, float)) else None,
-                )
-            )
+def _find_metric(payload: dict[str, Any], metric_name: str) -> dict[str, Any] | None:
+    for item in payload.get("value", []):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if (
+            isinstance(name, dict)
+            and str(name.get("value", "")).lower() == metric_name.lower()
+        ):
+            return item
+    return None
+
+
+def _point_from_datum(datum: Any) -> AppServiceMetricPoint | None:
+    if not isinstance(datum, dict):
+        return None
+    timestamp = _parse_timestamp(datum.get("timeStamp"))
+    if timestamp is None:
+        return None
+    value = datum.get("average")
+    numeric_value = float(value) if isinstance(value, (int, float)) else None
+    if numeric_value is not None and not math.isfinite(numeric_value):
+        numeric_value = None
+    return AppServiceMetricPoint(timestamp=timestamp, value=numeric_value)
+
+
+def _metric_points(metric: dict[str, Any] | None) -> list[AppServiceMetricPoint]:
+    if metric is None:
+        return []
+    timeseries = metric.get("timeseries")
+    if not isinstance(timeseries, list) or not timeseries:
+        return []
+    first_series = timeseries[0]
+    if not isinstance(first_series, dict):
+        return []
+    data = first_series.get("data")
+    if not isinstance(data, list):
+        return []
+    return [point for datum in data if (point := _point_from_datum(datum)) is not None]
+
+
+def _series_from_payload(
+    metric_name: str, payload: dict[str, Any]
+) -> AppServiceMetricSeries:
+    points = _metric_points(_find_metric(payload, metric_name))
 
     available = any(point.value is not None for point in points)
     return AppServiceMetricSeries(
@@ -118,6 +139,17 @@ def _latest_sample(metrics: list[AppServiceMetricSeries]) -> datetime | None:
     return max(timestamps) if timestamps else None
 
 
+def _availability_status(
+    metrics: list[AppServiceMetricSeries],
+) -> tuple[Literal["available", "unavailable"], str | None]:
+    missing = [metric.name for metric in metrics if not metric.available]
+    if len(missing) == len(metrics):
+        return "unavailable", "no_data"
+    if missing:
+        return "available", "missing:" + ",".join(missing)
+    return "available", None
+
+
 def _apply_freshness(
     response: AppServiceMetricsResponse,
     *,
@@ -137,8 +169,7 @@ def _apply_freshness(
     for metric in response.metrics:
         latest = _latest_sample([metric])
         delayed = (
-            latest is not None
-            and (now - latest).total_seconds() > delay_threshold
+            latest is not None and (now - latest).total_seconds() > delay_threshold
         )
         metric_stale = metric.available and (delayed or stale_reason is not None)
         metric_reason = stale_reason or ("data_delayed" if delayed else None)
@@ -158,7 +189,8 @@ def _apply_freshness(
             "latest_sample_at": latest,
             "metrics": updated_metrics,
             "stale": delayed_metrics,
-            "stale_reason": stale_reason or ("data_delayed" if delayed_metrics else None),
+            "stale_reason": stale_reason
+            or ("data_delayed" if delayed_metrics else None),
         }
     )
 
@@ -201,12 +233,17 @@ async def _read_cached(key: str) -> AppServiceMetricsResponse | None:
         return None
 
 
-async def _write_cached(key: str, response: AppServiceMetricsResponse) -> None:
+async def _write_cached(
+    key: str,
+    response: AppServiceMetricsResponse,
+    *,
+    ttl_seconds: int = CACHE_HARD_TTL_SECONDS,
+) -> None:
     try:
         redis = await get_shared_redis()
         await redis.setex(
             key,
-            CACHE_HARD_TTL_SECONDS,
+            ttl_seconds,
             response.model_dump_json(),
         )
     except Exception:
@@ -232,7 +269,9 @@ async def _query_azure(
         f"https://management.azure.com{resource_id}"
         "/providers/microsoft.insights/metrics"
     )
-    from azure.identity.aio import ManagedIdentityCredential  # pyright: ignore[reportMissingImports]
+    from azure.identity.aio import (  # pyright: ignore[reportMissingImports]
+        ManagedIdentityCredential,
+    )
 
     client_id = os.environ.get("AZURE_CLIENT_ID", "").strip() or None
     credential = ManagedIdentityCredential(client_id=client_id)
@@ -251,15 +290,15 @@ async def _query_azure(
         await credential.close()
 
     metrics = [_series_from_payload(name, payload) for name in METRIC_UNITS]
-    missing = [metric.name for metric in metrics if not metric.available]
+    status, unavailable_reason = _availability_status(metrics)
     return AppServiceMetricsResponse(
         resource_id=resource_id,
         range=range,
         sample_grain=grain,
         fetched_at=now,
         latest_sample_at=_latest_sample(metrics),
-        status="available" if not missing else "unavailable",
-        unavailable_reason=None if not missing else "missing:" + ",".join(missing),
+        status=status,
+        unavailable_reason=unavailable_reason,
         metrics=metrics,
     )
 
@@ -286,7 +325,9 @@ async def get_app_service_metrics(
         async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
             response = await _query_azure(resource_id, range, now=now)
     except Exception:
-        logger.warning("Azure Monitor App Service diagnostics request failed", exc_info=True)
+        logger.warning(
+            "Azure Monitor App Service diagnostics request failed", exc_info=True
+        )
         if (
             cached
             and cached.status == "available"
@@ -294,13 +335,17 @@ async def get_app_service_metrics(
             and 0 <= cache_age <= CACHE_HARD_TTL_SECONDS
         ):
             return _apply_freshness(cached, now=now, stale_reason="azure_monitor_error")
-        return _unavailable(
+        response = _unavailable(
             range,
             resource_id=resource_id,
             reason="azure_monitor_unavailable",
         )
+        await _write_cached(key, response, ttl_seconds=CACHE_UNAVAILABLE_TTL_SECONDS)
+        return response
 
     response = _apply_freshness(response, now=now)
     if response.status == "available":
         await _write_cached(key, response)
+    else:
+        await _write_cached(key, response, ttl_seconds=CACHE_UNAVAILABLE_TTL_SECONDS)
     return response

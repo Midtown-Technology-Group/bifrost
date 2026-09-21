@@ -7,7 +7,9 @@ const useWorkerMetrics = vi.hoisted(() => vi.fn());
 vi.mock("@/services/workers", () => ({ useWorkerMetrics }));
 vi.mock("framer-motion", () => ({ useReducedMotion: () => false }));
 vi.mock("recharts", () => {
-	const Chart = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+	const Chart = ({ children }: { children?: ReactNode }) => (
+		<div>{children}</div>
+	);
 	return {
 		AreaChart: Chart,
 		Area: () => null,
@@ -43,8 +45,14 @@ it("does not present unknown worker memory as zero or unlimited", () => {
 			]}
 		/>,
 	);
-	expect(screen.getByText("Memory telemetry unavailable for one or more workers")).toBeInTheDocument();
-	expect(screen.queryByText(/no memory limit reported/i)).not.toBeInTheDocument();
+	expect(
+		screen.getByText(
+			"Memory telemetry unavailable for one or more workers",
+		),
+	).toBeInTheDocument();
+	expect(
+		screen.queryByText(/no memory limit reported/i),
+	).not.toBeInTheDocument();
 });
 
 it("renders a known worker total and denominator", () => {
@@ -62,4 +70,27 @@ it("renders a known worker total and denominator", () => {
 	);
 	expect(screen.getByText("50 MB")).toBeInTheDocument();
 	expect(screen.getByText(/100 MB across 1 container/)).toBeInTheDocument();
+});
+
+it("treats null and non-finite memory values as unknown", () => {
+	renderWithProviders(
+		<MemoryChart
+			livePoints={[
+				{
+					group: "now",
+					worker_id: "worker-one",
+					memory_current: Number.NaN,
+					memory_max: Number.POSITIVE_INFINITY,
+				} as never,
+			]}
+		/>,
+	);
+	expect(
+		screen.getByText(
+			"Memory telemetry unavailable for one or more workers",
+		),
+	).toBeInTheDocument();
+	expect(
+		screen.queryByText(/NaN|Infinity|no memory limit reported/i),
+	).not.toBeInTheDocument();
 });

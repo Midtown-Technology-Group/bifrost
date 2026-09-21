@@ -34,7 +34,9 @@ beforeEach(() => {
 					available: false,
 					stale: false,
 					latest_sample_at: null,
-					points: [{ timestamp: "2026-09-21T13:59:00Z", value: null }],
+					points: [
+						{ timestamp: "2026-09-21T13:59:00Z", value: null },
+					],
 				},
 				{
 					name: "HttpQueueLength",
@@ -57,16 +59,77 @@ it("renders populated values and leaves missing metrics unavailable", () => {
 	expect(screen.getByText("42.5 %")).toBeInTheDocument();
 	expect(screen.getByText("Unavailable")).toBeInTheDocument();
 	expect(screen.getByText("<0.01 requests")).toBeInTheDocument();
-	expect(screen.getByRole("heading", { name: "CPU and Memory (%)" })).toBeInTheDocument();
-	expect(screen.getByRole("heading", { name: "HTTP queue (requests)" })).toBeInTheDocument();
-	expect(screen.getAllByText(/2026-09-21 13:59:00 UTC/).length).toBeGreaterThan(0);
+	expect(
+		screen.getByRole("heading", { name: "CPU and Memory (%)" }),
+	).toBeInTheDocument();
+	expect(
+		screen.getByRole("heading", { name: "HTTP queue (requests)" }),
+	).toBeInTheDocument();
+	expect(
+		screen.getAllByText(/2026-09-21 13:59:00 UTC/).length,
+	).toBeGreaterThan(0);
 });
 
 it("explains an unconfigured plan without implying zero capacity", () => {
 	useAppServiceMetrics.mockReturnValue({
-		data: { status: "unavailable", unavailable_reason: "not_configured", metrics: [] },
+		data: {
+			status: "unavailable",
+			unavailable_reason: "not_configured",
+			metrics: [],
+		},
 	});
 	renderWithProviders(<AppServicePanel />);
-	expect(screen.getByText("App Service metrics unavailable")).toBeInTheDocument();
-	expect(screen.getByText(/no App Service plan configured/i)).toBeInTheDocument();
+	expect(
+		screen.getByText("App Service metrics unavailable"),
+	).toBeInTheDocument();
+	expect(
+		screen.getByText(/no App Service plan configured/i),
+	).toBeInTheDocument();
+});
+
+it("warns on partial Azure data while keeping available metrics visible", () => {
+	useAppServiceMetrics.mockReturnValue({
+		data: {
+			status: "available",
+			unavailable_reason: "missing:HttpQueueLength",
+			stale: false,
+			metrics: [
+				{
+					name: "CpuPercentage",
+					unit: "Percent",
+					available: true,
+					stale: false,
+					latest_sample_at: "2026-09-21T13:59:00Z",
+					points: [{ timestamp: "2026-09-21T13:59:00Z", value: 42 }],
+				},
+				{
+					name: "MemoryPercentage",
+					unit: "Percent",
+					available: true,
+					stale: false,
+					latest_sample_at: "2026-09-21T13:59:00Z",
+					points: [{ timestamp: "2026-09-21T13:59:00Z", value: 55 }],
+				},
+				{
+					name: "HttpQueueLength",
+					unit: "Count",
+					available: false,
+					stale: false,
+					latest_sample_at: null,
+					points: [
+						{ timestamp: "2026-09-21T13:59:00Z", value: null },
+					],
+				},
+			],
+		},
+	});
+	renderWithProviders(<AppServicePanel />);
+	expect(
+		screen.getByText("Some App Service metrics unavailable"),
+	).toBeInTheDocument();
+	expect(screen.getByText("42.0 %")).toBeInTheDocument();
+	expect(screen.getByText("Unavailable")).toBeInTheDocument();
+	expect(
+		screen.queryByText("App Service metrics unavailable"),
+	).not.toBeInTheDocument();
 });

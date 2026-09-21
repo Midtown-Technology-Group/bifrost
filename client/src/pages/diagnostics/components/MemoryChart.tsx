@@ -1,5 +1,6 @@
 // client/src/pages/diagnostics/components/MemoryChart.tsx
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import {
 	AreaChart,
@@ -67,19 +68,21 @@ interface MemoryChartProps {
 	livePools?: LivePool[];
 }
 
+function isFiniteNonNegative(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isFinitePositive(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 	const reducedMotion = useReducedMotion();
 	const [range, setRange] = useState<TimeRange>("1h");
 	const { data, isLoading, isError, isFetching, refetch } =
 		useWorkerMetrics(range);
 
-	const {
-		chartData,
-		workerIds,
-		totalCurrent,
-		totalMax,
-		hasUnknownMemory,
-	} =
+	const { chartData, workerIds, totalCurrent, totalMax, hasUnknownMemory } =
 		useMemo(() => {
 			const allPoints = [...(data?.points ?? []), ...(livePoints ?? [])];
 			const hasLivePools = !!livePools && livePools.length > 0;
@@ -100,10 +103,11 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 				if (!totalsByGroup.has(point.group)) {
 					groupOrder.push(point.group);
 				}
-				if (point.memory_current >= 0) {
+				if (isFiniteNonNegative(point.memory_current)) {
 					totalsByGroup.set(
 						point.group,
-						(totalsByGroup.get(point.group) ?? 0) + point.memory_current,
+						(totalsByGroup.get(point.group) ?? 0) +
+							point.memory_current,
 					);
 				}
 			}
@@ -124,12 +128,12 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 			let max = 0;
 			let unknown = false;
 			for (const point of latestByWorker.values()) {
-				if (point.memory_current < 0) {
+				if (!isFiniteNonNegative(point.memory_current)) {
 					unknown = true;
 				} else {
 					current += point.memory_current;
 				}
-				if (point.memory_max > 0) {
+				if (isFinitePositive(point.memory_max)) {
 					max += point.memory_max;
 				} else {
 					unknown = true;
@@ -154,13 +158,15 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 							? pool.memory_current_bytes
 							: undefined;
 					const memMax =
-						"memory_max_bytes" in pool ? pool.memory_max_bytes : undefined;
-					if (typeof memCurrent === "number" && memCurrent >= 0) {
+						"memory_max_bytes" in pool
+							? pool.memory_max_bytes
+							: undefined;
+					if (isFiniteNonNegative(memCurrent)) {
 						liveCurrent += memCurrent;
 					} else {
 						liveUnknown = true;
 					}
-					if (typeof memMax === "number" && memMax > 0) {
+					if (isFinitePositive(memMax)) {
 						liveMax += memMax;
 					} else {
 						liveUnknown = true;
@@ -185,6 +191,51 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 
 	const hasData = chartData.length > 0 || workerIds.length > 0;
 	const showLimit = totalMax > 0 && !hasUnknownMemory;
+	const memorySummary: ReactNode = (() => {
+		if (!hasData) {
+			return (
+				<span className="text-sm text-muted-foreground">
+					{isError
+						? "Memory history unavailable"
+						: "No metrics data yet"}
+				</span>
+			);
+		}
+		if (hasUnknownMemory) {
+			return (
+				<span className="text-sm text-muted-foreground">
+					Memory telemetry unavailable for one or more workers
+				</span>
+			);
+		}
+		if (showLimit) {
+			return (
+				<>
+					<span className="text-3xl font-bold">
+						{formatBytes(totalCurrent)}
+					</span>
+					<span className="text-sm text-muted-foreground">
+						/ {formatBytes(totalMax)} across {workerIds.length}{" "}
+						container
+						{workerIds.length !== 1 ? "s" : ""}
+					</span>
+				</>
+			);
+		}
+		return (
+			<>
+				<span className="text-3xl font-bold">
+					{formatBytes(totalCurrent)}
+				</span>
+				<span className="text-sm text-muted-foreground">
+					across {workerIds.length} container
+					{workerIds.length !== 1 ? "s" : ""} &middot; no memory limit
+					reported
+				</span>
+			</>
+		);
+	})();
+
 	const thresholdBytes = totalMax * 0.85;
 	const utilizationPct = showLimit
 		? ((totalCurrent / totalMax) * 100).toFixed(0)
@@ -232,39 +283,7 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 							Total Memory Usage
 						</div>
 						<div className="mt-1 flex flex-wrap items-baseline gap-2">
-							{!hasData ? (
-								<span className="text-sm text-muted-foreground">
-									{isError
-										? "Memory history unavailable"
-										: "No metrics data yet"}
-								</span>
-							) : hasUnknownMemory ? (
-								<span className="text-sm text-muted-foreground">
-									Memory telemetry unavailable for one or more workers
-								</span>
-							) : showLimit ? (
-								<>
-									<span className="text-3xl font-bold">
-										{formatBytes(totalCurrent)}
-									</span>
-									<span className="text-sm text-muted-foreground">
-										/ {formatBytes(totalMax)} across{" "}
-										{workerIds.length} container
-										{workerIds.length !== 1 ? "s" : ""}
-									</span>
-								</>
-							) : (
-								<>
-									<span className="text-3xl font-bold">
-										{formatBytes(totalCurrent)}
-									</span>
-									<span className="text-sm text-muted-foreground">
-										across {workerIds.length} container
-										{workerIds.length !== 1 ? "s" : ""}{" "}
-										&middot; no memory limit reported
-									</span>
-								</>
-							)}
+							{memorySummary}
 						</div>
 						{showLimit && (
 							<div className="text-xs text-muted-foreground mt-0.5">
