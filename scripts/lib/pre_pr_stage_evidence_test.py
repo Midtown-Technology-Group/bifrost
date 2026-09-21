@@ -31,8 +31,10 @@ class StageEvidenceTests(unittest.TestCase):
             "if [ \"$1\" = compose ] && [ \"$2\" = version ]; then cat compose-version; exit 0; fi\n"
             "if [ \"$1\" = image ]; then cat image-id; exit $?; fi\n"
             "if [ \"$1\" = compose ] && [ \"$2\" = -f ]; then\n"
-            "  if [ \"$5\" = --images ]; then echo test-image; exit 0; fi\n"
-            "  if [ \"$4\" = config ]; then cat compose-output; exit $?; fi\n"
+            "  shift 3\n"
+            "  if [ \"$1\" = --profile ]; then shift 2; fi\n"
+            "  if [ \"$2\" = --images ]; then echo test-image; exit 0; fi\n"
+            "  if [ \"$1\" = config ]; then cat compose-output; exit $?; fi\n"
             "fi\nexit 1\n",
             encoding="utf-8",
         )
@@ -100,6 +102,17 @@ class StageEvidenceTests(unittest.TestCase):
         self.assertEqual(self.invoke("start", "repository"), 0)
         state = json.loads(self.state.read_text(encoding="utf-8"))
         self.assertEqual(state["stages"]["repository"]["status"], "running")
+        (self.repo / ".env.test").write_text("EXAMPLE=changed\n", encoding="utf-8")
+        self.assertNotEqual(self.invoke("success", "repository"), 0)
+
+    def test_profile_image_change_invalidates_browser_and_client_evidence(self) -> None:
+        for stage in ["browser", "client-unit"]:
+            self.assertEqual(self.invoke("start", stage), 0)
+            self.assertEqual(self.invoke("success", stage), 0)
+            self.assertEqual(self.invoke("reuse", stage), 0)
+            (self.repo / "image-id").write_text("image-two\n", encoding="utf-8")
+            self.assertNotEqual(self.invoke("reuse", stage), 0)
+            (self.repo / "image-id").write_text("image-one\n", encoding="utf-8")
 
     def test_stage_shell_preserves_early_failure(self) -> None:
         root = HELPER.parents[2]

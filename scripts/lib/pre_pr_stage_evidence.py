@@ -30,15 +30,22 @@ def digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def snapshot(repo: Path, compose_file: str, env_file: str) -> dict[str, object]:
+def snapshot(repo: Path, compose_file: str, env_file: str, stage: str | None = None) -> dict[str, object]:
     status = run(["git", "status", "--porcelain", "--untracked-files=all"], repo)
-    compose = run(["docker", "compose", "-f", compose_file, "config"], repo)
-    names = run(["docker", "compose", "-f", compose_file, "config", "--images"], repo)
+    head = run(["git", "rev-parse", "HEAD"], repo)
+    command = ["docker", "compose", "-f", compose_file]
+    profile = {"client": "client-check", "client-unit": "client-check", "browser": "client", "mcp": "test"}.get(stage)
+    if profile:
+        command += ["--profile", profile]
+    compose = run([*command, "config"], repo)
+    names = run([*command, "config", "--images"], repo)
+    if stage == "image" and names != "unavailable":
+        names += f"\nbifrost-local-api-candidate:{head[:12]}"
     # Resolve configured tags, not just running containers: another checkout can
     # rebuild a shared test-image tag between two local gate invocations.
     images = run(["docker", "image", "inspect", "--format", "{{.Id}}", *names.splitlines()], repo) if names and names != "unavailable" else "unavailable"
     return {
-        "head": run(["git", "rev-parse", "HEAD"], repo),
+        "head": head,
         "status": status,
         "compose_sha256": hashlib.sha256(compose.encode()).hexdigest(),
         "compose_available": compose != "unavailable",
@@ -98,7 +105,7 @@ def main() -> int:
     parser.add_argument("--compose-file", default="docker-compose.test.yml")
     parser.add_argument("--env-file", default=".env.test")
     args = parser.parse_args()
-    current = snapshot(args.repo, args.compose_file, args.env_file)
+    current = snapshot(args.repo, args.compose_file, args.env_file, args.stage)
 
     if args.action == "snapshot":
         print(json.dumps(current, sort_keys=True))
