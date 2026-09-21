@@ -105,19 +105,21 @@ class StageEvidenceTests(unittest.TestCase):
         root = HELPER.parents[2]
         shutil.copytree(root / "scripts/lib", self.repo / "scripts/lib", ignore=shutil.ignore_patterns("__pycache__"))
         runner = (root / "test.sh").read_text(encoding="utf-8")
-        runner += '\nprobe_stage() { false; echo later-success; }\nrun_pytest() { printf "arg=%s\\n" "$@"; }\n'
+        runner += '\nprobe_stage() { echo stage-start; false; echo later-success; }\nrun_pytest() { printf "arg=%s\\n" "$@"; }\ndocker() { printf "docker-arg=%s\\n" "$@"; }\n'
         (self.repo / "test.sh").write_text(runner, encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=self.repo, check=True)
         subprocess.run(["git", "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-qm", "harness"], cwd=self.repo, check=True)
         script = 'source ./test.sh help >/dev/null; run_pre_pr_stage unit probe_stage'
         result = subprocess.run(["bash", "-e", "-c", script, "./test.sh"], cwd=self.repo, capture_output=True, text=True, check=False)
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("stage-start", result.stdout)
         self.assertNotIn("later-success", result.stdout)
-        script = 'source ./test.sh help >/dev/null; cmd_unit_targets tests/unit/selected.py; cmd_e2e_targets tests/e2e/selected.py'
+        script = 'source ./test.sh help >/dev/null; cmd_unit_targets tests/unit/selected.py; cmd_e2e_targets tests/e2e/selected.py; client_unit_targets src/selected.test.ts'
         result = subprocess.run(["bash", "-e", "-c", script, "./test.sh"], cwd=self.repo, capture_output=True, text=True, check=True)
         self.assertIn("arg=tests/unit/selected.py", result.stdout)
         self.assertIn("arg=tests/e2e/selected.py", result.stdout)
         self.assertNotIn("arg=tests/\n", result.stdout)
+        self.assertIn("docker-arg=src/selected.test.ts", result.stdout)
 
 
 if __name__ == "__main__":

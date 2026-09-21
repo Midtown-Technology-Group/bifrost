@@ -863,20 +863,14 @@ cmd_ci() {
 cmd_pre_pr() {
     local head_sha stack_was_up full_run=0
 
-    if [ "${1:-}" = "--fresh" ]; then
-        python3 "$PRE_PR_EVIDENCE_HELPER" fresh --repo "$SCRIPT_DIR" \
-            --state "$PRE_PR_STATE_FILE" --compose-file "$COMPOSE_FILE" \
-            --env-file "$BIFROST_TEST_ENV_FILE"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --fresh) rm -f -- "$PRE_PR_STATE_FILE" ;;
+            --full) full_run=1 ;;
+            *) echo "Usage: ./test.sh pre-pr [--fresh] [--full]" >&2; return 2 ;;
+        esac
         shift
-    fi
-    if [ "${1:-}" = "--full" ]; then
-        full_run=1
-        shift
-    fi
-    if [ "$#" -ne 0 ]; then
-        echo "Usage: ./test.sh pre-pr [--fresh] [--full]" >&2
-        return 2
-    fi
+    done
 
     if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
         echo "ERROR: ./test.sh pre-pr requires a clean worktree." >&2
@@ -940,7 +934,7 @@ PY
             fi
             run_pre_pr_stage client client_quality_checks "${client_quality_targets[@]}"
         fi
-        if [ "$(pre_pr_plan_lane api_quality)" != "skip" ] || [ "$(pre_pr_plan_lane api_unit)" != "skip" ] || [ "$(pre_pr_plan_lane api_e2e)" != "skip" ] || [ "$(pre_pr_plan_lane mcp_conformance)" != "skip" ]; then
+        if [ "$(pre_pr_plan_lane api_quality)" != "skip" ] || [ "$(pre_pr_plan_lane api_unit)" != "skip" ] || [ "$(pre_pr_plan_lane api_e2e)" != "skip" ] || [ "$(pre_pr_plan_lane mcp_conformance)" != "skip" ] || [ "$(pre_pr_plan_lane client_e2e)" != "skip" ]; then
             run_pre_pr_stage stack stack_up
         fi
         if [ "$(pre_pr_plan_lane api_quality)" != "skip" ]; then

@@ -570,7 +570,6 @@ services:
       TEST_BLOCKED_ORIGIN: http://localhost:3002
       TEST_API_URL: http://api:8000
       CI: "true"
-      PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-2}
     volumes:
       - ./client/e2e:/app/e2e
       - ./client/playwright.config.ts:/app/playwright.config.ts:ro
