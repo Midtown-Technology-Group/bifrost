@@ -74,9 +74,21 @@ run_test "default is configurable" \
   '[{"title":"Update README","labels":[]}]' \
   '2.2.0' 0 '--base 2.1.0 --default minor'
 
+run_test "semver:patch beats a breaking title (label-first)" \
+  '[{"title":"feat!: remove API","labels":["semver:patch"]}]' \
+  '2.1.1' 0 '--base 2.1.0'
+
+run_test "semver:minor beats a breaking title (label-first)" \
+  '[{"title":"feat!: remove API","labels":["semver:minor"]}]' \
+  '2.2.0' 0 '--base 2.1.0'
+
 run_test "no PRs means nothing to release" \
   '[]' \
-  '' 2 '--base 2.1.0'
+  '' 3 '--base 2.1.0'
+
+run_test "--since drops PRs at or before the tag boundary" \
+  '[{"title":"fix: a","labels":[],"mergedAt":"2026-09-03T00:00:00Z"},{"title":"feat: b","labels":[],"mergedAt":"2026-09-01T00:00:00Z"}]' \
+  '2.1.1' 0 '--base 2.1.0 --since 2026-09-02T00:00:00Z'
 
 run_test "malformed base is rejected" \
   '[{"title":"fix: a","labels":[]}]' \

@@ -45,12 +45,17 @@ jobs:
           if version="$(./scripts/release/next-release-version.sh)"; then
             echo "version=$version" >> "$GITHUB_OUTPUT"
           else
-            echo "Nothing to release since ${last_tag:-the first tag}."
-            exit 0
+            status=$?
+            if [[ "$status" -eq 3 ]]; then
+              echo "Nothing to release since ${last_tag:-the first tag}."
+              exit 0
+            fi
+            echo "::error::next-release-version.sh failed with status $status"
+            exit "$status"
           fi
           {
             echo "prs<<EOF"
-            gh pr list --state merged --base main --limit 50 \
+            gh pr list --state merged --base main --limit 1000 \
               --search "merged:>=$since_date" \
               --json number,title \
               --jq '.[] | "- #\(.number) \(.title)"'

@@ -2,18 +2,19 @@
 """Decide the next MTG Bifrost release version from merged pull requests.
 
 Reads a JSON array of merged pull requests from stdin, each shaped as
-``{"title": "...", "labels": ["semver:minor", "bug"]}``, and prints the next
-``MAJOR.MINOR.PATCH`` (without the ``v``) after ``--base``.
+``{"title": "...", "labels": ["semver:minor", "bug"], "mergedAt": "..."}``,
+and prints the next ``MAJOR.MINOR.PATCH`` (without the ``v``) after ``--base``.
 
 The bump is decided per PR, label-first and conventional-commit-second:
 
-- ``semver:major`` label, or a ``!``/``BREAKING`` marker in the title -> major
-- ``semver:minor`` label, or a ``feat`` conventional type -> minor
-- ``semver:patch`` label, or any other conventional type -> patch
-- neither a label nor a recognizable type -> ``--default`` (default: patch)
+- a ``semver:major`` / ``semver:minor`` / ``semver:patch`` label always wins;
+- otherwise a ``!``/``BREAKING`` title marker is a major, a ``feat`` type is a
+  minor, any other conventional type is a patch;
+- otherwise the bump is ``--default`` (default: patch).
 
-The highest bump across all PRs wins. Exits 2 when there are no PRs, so a
-release is never proposed with nothing in it.
+The highest bump across all PRs wins. Exits 3 when there are no PRs (nothing to
+release); other non-zero codes are real errors. ``--since`` drops PRs merged at
+or before an exact ISO 8601 tag boundary.
 
 Stdlib only and side-effect free, so ``scripts/release-check.sh`` and the
 release-draft workflow share one decision.
@@ -25,6 +26,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime
 
 _CONVENTIONAL = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]*\))?(?P<bang>!)?:")
 _BREAKING = re.compile(r"\bBREAKING\b|!:")
@@ -48,17 +50,32 @@ _KNOWN_TYPES = frozenset(
 
 _RANK = {"patch": 1, "minor": 2, "major": 3}
 
+# Distinct "nothing to release" status, so callers never confuse it with a
+# genuine failure (bad args, gh error, invalid JSON).
+NO_RELEASE = 3
+
+
+def _parse_iso(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
 
 def bump_for(entry: dict) -> str | None:
     """Return ``major``/``minor``/``patch`` for one PR, or None if undecidable."""
     names = {str(label).strip().lower() for label in (entry.get("labels") or [])}
     title = str(entry.get("title") or "").strip()
-    if "semver:major" in names or _BREAKING.search(title):
+    if "semver:major" in names:
         return "major"
     if "semver:minor" in names:
         return "minor"
     if "semver:patch" in names:
         return "patch"
+    if _BREAKING.search(title):
+        return "major"
     match = _CONVENTIONAL.match(title)
     if match:
         if match.group("type") in _MINOR_TYPES:
@@ -96,6 +113,10 @@ def main(argv: list[str] | None = None) -> int:
         help="bump for a PR with no label and no conventional type (default: patch)",
     )
     parser.add_argument(
+        "--since",
+        help="drop PRs merged at or before this ISO 8601 tag boundary",
+    )
+    parser.add_argument(
         "--json", help="PR array as a string; defaults to stdin"
     )
     args = parser.parse_args(argv)
@@ -106,12 +127,24 @@ def main(argv: list[str] | None = None) -> int:
     except json.JSONDecodeError as exc:
         print(f"next-version: invalid JSON on stdin: {exc}", file=sys.stderr)
         return 2
-    if not isinstance(entries, list) or not entries:
-        print(
-            "next-version: no merged pull requests since the last release",
-            file=sys.stderr,
-        )
+    if not isinstance(entries, list):
+        print("next-version: expected a JSON array of pull requests", file=sys.stderr)
         return 2
+
+    if args.since:
+        boundary = _parse_iso(args.since)
+        if boundary is None:
+            print("next-version: --since must be an ISO 8601 timestamp", file=sys.stderr)
+            return 2
+        entries = [
+            entry
+            for entry in entries
+            if (_parse_iso(entry.get("mergedAt")) or boundary) > boundary
+        ]
+
+    if not entries:
+        print("next-version: no merged pull requests since the last release", file=sys.stderr)
+        return NO_RELEASE
     try:
         print(next_version(args.base, entries, args.default))
     except ValueError as exc:
