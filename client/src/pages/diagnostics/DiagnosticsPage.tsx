@@ -6,6 +6,7 @@ import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { AlertCircle } from "lucide-react";
 import { WorkersTab } from "./components/WorkersTab";
 import { SchedulerTab } from "./components/SchedulerTab";
+import { AppServicePanel } from "./components/AppServicePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export function DiagnosticsPage() {
@@ -52,6 +53,9 @@ export function DiagnosticsPage() {
 						<TabsTrigger className="min-h-11" value="scheduler">
 							Scheduler
 						</TabsTrigger>
+						<TabsTrigger className="min-h-11" value="app-service">
+							App Service
+						</TabsTrigger>
 					</TabsList>
 				</div>
 				<TabsContent value="workers" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
@@ -59,6 +63,9 @@ export function DiagnosticsPage() {
 				</TabsContent>
 				<TabsContent value="scheduler" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
 					<SchedulerTab />
+				</TabsContent>
+				<TabsContent value="app-service" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
+					<AppServicePanel />
 				</TabsContent>
 			</Tabs>
 		</div>

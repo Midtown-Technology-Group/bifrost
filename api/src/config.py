@@ -5,17 +5,27 @@ Uses pydantic-settings for environment variable loading with validation.
 All configuration is centralized here for easy management.
 """
 
+import re
 import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, computed_field
+from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def default_temp_location() -> str:
     return str(Path(tempfile.gettempdir()) / "bifrost")
+
+
+# Azure resource IDs are configuration input, so keep their validation in one
+# place and reject ambiguous path/query/control characters before ARM use.
+APP_SERVICE_PLAN_RESOURCE_ID_PATTERN = re.compile(
+    r"^/subscriptions/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    r"/resourceGroups/[A-Za-z0-9][A-Za-z0-9._()-]{0,89}"
+    r"/providers/Microsoft\.Web/serverfarms/[A-Za-z0-9][A-Za-z0-9._()-]{0,59}$"
+)
 
 
 class Settings(BaseSettings):
@@ -195,6 +205,24 @@ class Settings(BaseSettings):
     redis_url: str = Field(
         default="redis://localhost:6379/0", description="Redis connection URL"
     )
+
+    app_service_plan_resource_id: str | None = Field(
+        default=None,
+        validation_alias="APP_SERVICE_PLAN_RESOURCE_ID",
+        description="Exact Azure App Service plan resource ID used by diagnostics.",
+    )
+
+    @field_validator("app_service_plan_resource_id", mode="before")
+    @classmethod
+    def validate_app_service_plan_resource_id(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        resource_id = str(value).strip()
+        if not resource_id:
+            return None
+        if not APP_SERVICE_PLAN_RESOURCE_ID_PATTERN.fullmatch(resource_id):
+            raise ValueError("must be an exact Microsoft.Web/serverfarms resource ID")
+        return resource_id
 
     # ==========================================================================
     # Security

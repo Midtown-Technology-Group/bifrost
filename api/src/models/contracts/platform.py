@@ -303,3 +303,42 @@ class WorkerMetricsResponse(BaseModel):
 
     range: str = Field(..., description="Requested time range: 1h, 6h, 24h, 7d")
     points: list[WorkerMetricPoint] = Field(default_factory=list)
+
+
+class AppServiceMetricPoint(BaseModel):
+    """A single Azure Monitor App Service plan sample."""
+
+    timestamp: datetime
+    value: float | None = None
+
+
+class AppServiceMetricSeries(BaseModel):
+    """One plan-level Azure Monitor metric series."""
+
+    name: Literal["CpuPercentage", "MemoryPercentage", "HttpQueueLength"]
+    unit: Literal["Percent", "Count"]
+    aggregation: Literal["Average"] = "Average"
+    series_label: Literal["plan average"] = "plan average"
+    latest_sample_at: datetime | None = None
+    stale: bool = False
+    stale_reason: str | None = None
+    available: bool = True
+    unavailable_reason: str | None = None
+    points: list[AppServiceMetricPoint] = Field(default_factory=list)
+
+
+class AppServiceMetricsResponse(BaseModel):
+    """Azure Monitor capacity diagnostics for the configured App Service plan."""
+
+    source: Literal["azure_monitor"] = "azure_monitor"
+    scope: Literal["app_service_plan"] = "app_service_plan"
+    resource_id: str | None = None
+    range: Literal["1h", "6h", "24h", "7d"]
+    sample_grain: str
+    fetched_at: datetime
+    latest_sample_at: datetime | None = None
+    stale: bool = False
+    stale_reason: str | None = None
+    status: Literal["available", "unavailable"]
+    unavailable_reason: str | None = None
+    metrics: list[AppServiceMetricSeries] = Field(default_factory=list)
