@@ -14,6 +14,25 @@ Group. Version numbers describe **MTG fork behavior**, not upstream release numb
 Pre-release dev builds use `<next-patch>-dev.<commits-since-tag>` (see
 [dev-version-format runbook](runbooks/dev-version-format.md)).
 
+## Deciding the next version
+
+The next release version is computed automatically from the pull requests
+merged since the last stable tag:
+
+1. A `semver:major` / `semver:minor` / `semver:patch` label on the PR wins.
+2. Otherwise the PR title's conventional-commit type decides — `feat` is a
+   minor, `fix`/`perf`/`refactor`/`chore`/… are patches, and `!` or `BREAKING`
+   is a major.
+3. A PR with neither falls back to a patch.
+4. The highest bump across all merged PRs wins.
+
+`scripts/release/next-release-version.sh` prints `vX.Y.Z` (or exits non-zero
+when nothing has merged since the last tag); the pure decision lives in
+`scripts/next-version.py`. On every push to `main`, the **Release draft**
+workflow opens or updates one `Release vX.Y.Z` issue with the computed version
+and a tagging checklist, so no one has to ask for a release. Tagging remains a
+human gate.
+
 ## First release baseline
 
 - **First MTG semver tag:** `v1.0.0`
@@ -34,7 +53,8 @@ which upstream tag or commit range the MTG release incorporated.
    `scripts/compute-dev-version.sh`.
 4. Before the first tag, dev versions bootstrap as `1.0.0-dev.N` from commit
    count on `main`.
-5. Run `./scripts/release-check.sh vX.Y.Z` before tagging.
+5. Run `./scripts/release-check.sh vX.Y.Z` before tagging — or run it with no
+   argument to use the computed next version.
 6. Push the tag; CI builds signed images and opens a GitHub Release draft.
 7. Edit the release notes to include a **Fixed vulnerabilities** section (OpenSSF
    Passing requirement) and an upstream baseline note when relevant.
@@ -42,6 +62,9 @@ which upstream tag or commit range the MTG release incorporated.
 ## Related files
 
 - `scripts/compute-dev-version.sh` — dev version on every `main` build
+- `scripts/next-version.py` — label / conventional-commit bump decision
+- `scripts/release/next-release-version.sh` — next version from merged PRs
 - `scripts/release-check.sh` — pre-tag checks
+- `.github/workflows/release-draft.yml` — opens the `Release vNEXT` issue
 - `.claude/skills/bifrost-release/SKILL.md` — operator release flow
 - `.claude-plugin/plugin.json` — plugin manifest version (updated at tag time)

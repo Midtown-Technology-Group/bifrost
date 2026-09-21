@@ -1,6 +1,8 @@
 #!/bin/bash
 # Pre-tag safety checks before creating a release tag.
-# Usage: ./scripts/release-check.sh v2.1.0
+# Usage: ./scripts/release-check.sh [v2.1.0]
+# With no tag, the next version is computed from merged PR labels / conventional
+# commit types (scripts/release/next-release-version.sh).
 # Run this BEFORE: git tag v2.1.0 && git push origin v2.1.0
 
 RED='\033[0;31m'
@@ -8,11 +10,15 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-TAG="$1"
+TAG="${1:-}"
 
 if [ -z "$TAG" ]; then
-    echo -e "${RED}Usage: $0 <tag> (e.g., $0 v2.1.0)${NC}"
-    exit 1
+    echo "No tag given; computing the next version from merged PR labels..."
+    if ! TAG="$(./scripts/release/next-release-version.sh)"; then
+        echo -e "${RED}Could not compute a next version. Pass one explicitly: $0 v2.1.0${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Next version: $TAG${NC}"
 fi
 
 if [[ "$TAG" != v* ]]; then
