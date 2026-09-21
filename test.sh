@@ -31,7 +31,7 @@
 #   ./test.sh mcp conformance             Run the blocking official subset.
 #
 # CI escape hatch:
-#   ./test.sh pre-pr                    Required local PR/merge gate for a clean commit.
+#   ./test.sh pre-pr                    Affected local PR checks; --full is exhaustive.
 #   ./test.sh ci                        Full isolated run: up, all tests, down.
 #
 # Global flags (apply to most subcommands):
@@ -66,6 +66,10 @@ export LOG_DIR
 # can own its files; the worktree's Git metadata stays owned by the host caller.
 TEST_LOCK_DIR="$(git rev-parse --path-format=absolute --git-path bifrost-test-locks)"
 mkdir -p "$TEST_LOCK_DIR"
+PRE_PR_STATE_FILE="$TEST_LOCK_DIR/pre-pr-stages.json"
+PRE_PR_EVIDENCE_HELPER="$SCRIPT_DIR/scripts/lib/pre_pr_stage_evidence.py"
+PRE_PR_PLAN_FILE="$TEST_LOCK_DIR/pre-pr-affected-plan.json"
+PRE_PR_CONTEXT=""
 
 # Load .env.test for optional secrets (GitHub PAT, LLM keys, etc.). Since the
 # file is intentionally ignored, linked worktrees do not receive it from Git;
@@ -374,8 +378,10 @@ run_pytest() {
 # no coverage is dropped — just moved off the per-PR critical path. A caller can
 # re-include them ad hoc with `./test.sh unit -m slow` or `-m ""`.
 cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ -m "not slow" -v "$@"; }
+cmd_unit_targets() { run_pytest "$@" -m "not slow" -v; }
 cmd_unit_all() { run_pytest tests/ --ignore=tests/e2e/ -v "$@"; }
 cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
+cmd_e2e_targets() { run_pytest "$@" -v; }
 cmd_all()  { run_pytest tests/ -v "$@"; }
 cmd_reliability() {
     require_stack_up
@@ -601,8 +607,20 @@ client_ci_checks() {
         client-check-runner
 }
 
+client_quality_checks() {
+    docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
+    docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps \
+        client-check-runner sh -c 'npm run tsc && npx eslint "$@"' sh "$@"
+}
+
+client_unit_targets() {
+    docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps \
+        client-check-runner npm test -- "$@"
+}
+
 repository_ci_checks() {
     bash scripts/lib/test_stack_lock_test.sh
+    python3 scripts/lib/pre_pr_stage_evidence_test.py
     node --test .github/scripts/authorize-merge-queue.test.mjs
     echo "Checking GitHub Action pins..."
     python3 api/scripts/check_github_action_pins.py --verify-versions
@@ -633,6 +651,73 @@ build_local_api_candidate() {
         --entrypoint python \
         "$image_tag" \
         -c "import os; from shared.version import get_version; from src.main import app; assert app is not None; assert get_version() == os.environ['EXPECTED_VERSION']"
+}
+
+run_pre_pr_stage() {
+    local stage="$1"
+    shift
+    if [ "$stage" != "stack" ] && python3 "$PRE_PR_EVIDENCE_HELPER" reuse --repo "$SCRIPT_DIR" \
+        --state "$PRE_PR_STATE_FILE" --stage "$stage" \
+        --context "$PRE_PR_CONTEXT" \
+        --compose-file "$COMPOSE_FILE" --env-file "$BIFROST_TEST_ENV_FILE"; then
+        echo "Reusing completed pre-PR stage: $stage"
+        return 0
+    fi
+
+    python3 "$PRE_PR_EVIDENCE_HELPER" start --repo "$SCRIPT_DIR" \
+        --state "$PRE_PR_STATE_FILE" --stage "$stage" \
+        --context "$PRE_PR_CONTEXT" \
+        --compose-file "$COMPOSE_FILE" --env-file "$BIFROST_TEST_ENV_FILE"
+    # Run the stage in a fresh Bash process with errexit enabled. Calling a
+    # function directly from an `if` condition disables errexit throughout the
+    # function body, which could otherwise turn an early failure into a later
+    # successful return and incorrectly credit the stage.
+    if bash -Eeuo pipefail -c 'source ./test.sh help >/dev/null; "$@"' ./test.sh "$@"; then
+        if ! python3 "$PRE_PR_EVIDENCE_HELPER" success --repo "$SCRIPT_DIR" \
+            --state "$PRE_PR_STATE_FILE" --stage "$stage" \
+            --context "$PRE_PR_CONTEXT" \
+            --compose-file "$COMPOSE_FILE" --env-file "$BIFROST_TEST_ENV_FILE"; then
+            echo "ERROR: pre-PR stage '$stage' changed its candidate or environment while running." >&2
+            return 1
+        fi
+        return 0
+    fi
+    python3 "$PRE_PR_EVIDENCE_HELPER" failed --repo "$SCRIPT_DIR" \
+        --state "$PRE_PR_STATE_FILE" --stage "$stage" \
+        --context "$PRE_PR_CONTEXT" \
+        --compose-file "$COMPOSE_FILE" --env-file "$BIFROST_TEST_ENV_FILE"
+    return 1
+}
+
+pre_pr_plan_lane() {
+    local lane="$1"
+    python3 - "$PRE_PR_PLAN_FILE" "$lane" <<'PY'
+import json
+import sys
+plan = json.loads(open(sys.argv[1], encoding="utf-8").read())
+print(plan["lanes"].get(sys.argv[2], "skip"))
+PY
+}
+
+pre_pr_plan_scope() {
+    python3 - "$PRE_PR_PLAN_FILE" <<'PY'
+import json
+import sys
+print(json.loads(open(sys.argv[1], encoding="utf-8").read())["scope"])
+PY
+}
+
+pre_pr_plan_targets() {
+    local key="$1" surface="$2"
+    python3 - "$PRE_PR_PLAN_FILE" "$key" "$surface" <<'PY'
+import json
+import sys
+plan = json.loads(open(sys.argv[1], encoding="utf-8").read())
+values = plan.get("python" if sys.argv[3] == "api" else "client", {}).get(sys.argv[2], [])
+prefix = "api/" if sys.argv[3] == "api" else "client/"
+for value in values:
+    print(value.removeprefix(prefix))
+PY
 }
 
 start_test_client() {
@@ -776,7 +861,16 @@ cmd_ci() {
 }
 
 cmd_pre_pr() {
-    local head_sha stack_was_up
+    local head_sha stack_was_up full_run=0
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --fresh) rm -f -- "$PRE_PR_STATE_FILE" ;;
+            --full) full_run=1 ;;
+            *) echo "Usage: ./test.sh pre-pr [--fresh] [--full]" >&2; return 2 ;;
+        esac
+        shift
+    done
 
     if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
         echo "ERROR: ./test.sh pre-pr requires a clean worktree." >&2
@@ -794,6 +888,22 @@ cmd_pre_pr() {
     fi
 
     head_sha="$(git rev-parse HEAD)"
+    local base_sha
+    base_sha="$(git rev-parse origin/main)"
+    python3 api/scripts/plan_affected_tests.py --base "$base_sha" --head "$head_sha" > "$PRE_PR_PLAN_FILE"
+    if [ "$full_run" = "1" ]; then
+        python3 - "$PRE_PR_PLAN_FILE" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"] = "comprehensive"
+data["reason"] = "explicit --full"
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(data, stream, indent=2, sort_keys=True)
+PY
+    fi
+    PRE_PR_CONTEXT="scope=$(pre_pr_plan_scope);full=$full_run;plan=$(sha256sum "$PRE_PR_PLAN_FILE" | awk '{print $1}')"
     stack_was_up=0
     if stack_is_up "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; then
         stack_was_up=1
@@ -804,15 +914,52 @@ cmd_pre_pr() {
 
     print_project
     echo "Pre-PR candidate: $head_sha"
-    repository_ci_checks
-    client_ci_checks
-    stack_up
-    quality_api
-    cmd_unit
-    cmd_e2e
-    # Match comprehensive PR CI: smoke alone misses affected browser journeys.
-    client_e2e
-    build_local_api_candidate
+    run_pre_pr_stage repository repository_ci_checks
+    if [ "$full_run" = "1" ]; then
+        run_pre_pr_stage client client_ci_checks
+        run_pre_pr_stage stack stack_up
+        run_pre_pr_stage quality quality_api
+        run_pre_pr_stage unit cmd_unit
+        run_pre_pr_stage e2e cmd_e2e
+        run_pre_pr_stage browser client_e2e
+        run_pre_pr_stage image build_local_api_candidate
+    elif [ "$(pre_pr_plan_scope)" = "comprehensive" ]; then
+        run_pre_pr_stage quality quality_api
+        echo "Affected planner selected comprehensive CI; broad integration/browser stages are deferred to required CI. Use --full to run the exhaustive local gate."
+    else
+        if [ "$(pre_pr_plan_lane client_quality)" != "skip" ]; then
+            mapfile -t client_quality_targets < <(pre_pr_plan_targets impacted client)
+            if [ "${#client_quality_targets[@]}" -eq 0 ]; then
+                client_quality_targets=(.)
+            fi
+            run_pre_pr_stage client client_quality_checks "${client_quality_targets[@]}"
+        fi
+        if [ "$(pre_pr_plan_lane api_quality)" != "skip" ] || [ "$(pre_pr_plan_lane api_unit)" != "skip" ] || [ "$(pre_pr_plan_lane api_e2e)" != "skip" ] || [ "$(pre_pr_plan_lane mcp_conformance)" != "skip" ] || [ "$(pre_pr_plan_lane client_e2e)" != "skip" ]; then
+            run_pre_pr_stage stack stack_up
+        fi
+        if [ "$(pre_pr_plan_lane api_quality)" != "skip" ]; then
+            run_pre_pr_stage quality quality_api
+        fi
+        if [ "$(pre_pr_plan_lane api_unit)" != "skip" ]; then
+            mapfile -t unit_targets < <(pre_pr_plan_targets unit_tests api)
+            run_pre_pr_stage unit cmd_unit_targets "${unit_targets[@]}"
+        fi
+        if [ "$(pre_pr_plan_lane api_e2e)" != "skip" ]; then
+            mapfile -t e2e_targets < <(pre_pr_plan_targets e2e_tests api)
+            run_pre_pr_stage e2e cmd_e2e_targets "${e2e_targets[@]}"
+        fi
+        if [ "$(pre_pr_plan_lane mcp_conformance)" != "skip" ]; then
+            run_pre_pr_stage mcp mcp_conformance
+        fi
+        if [ "$(pre_pr_plan_lane client_unit)" != "skip" ]; then
+            mapfile -t client_unit_targets < <(pre_pr_plan_targets unit_tests client)
+            run_pre_pr_stage client-unit client_unit_targets "${client_unit_targets[@]}"
+        fi
+        if [ "$(pre_pr_plan_lane client_e2e)" != "skip" ]; then
+            mapfile -t browser_targets < <(pre_pr_plan_targets e2e_tests client)
+            run_pre_pr_stage browser client_e2e "${browser_targets[@]}"
+        fi
+    fi
 
     if [ "$(git rev-parse HEAD)" != "$head_sha" ] || \
        [ -n "$(git status --porcelain --untracked-files=all)" ]; then
@@ -863,7 +1010,7 @@ case "$1" in
     quality) shift; cmd_quality "$@" ;;
     client) shift; cmd_client "$@" ;;
     mcp) shift; cmd_mcp "$@" ;;
-    pre-pr) cmd_pre_pr ;;
+    pre-pr) shift; cmd_pre_pr "$@" ;;
     ci) cmd_ci ;;
     -h|--help|help)
         sed -n '2,35p' "$0"

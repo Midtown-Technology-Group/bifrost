@@ -67,7 +67,8 @@ If `DOWN` → `./test.sh stack up`. Each worktree runs its own isolated stack (C
 - React component behavior → `./test.sh client unit` (vitest on host, no stack needed)
 - Full user flow through UI → `./test.sh client e2e`
 - All available suites (manual broad run) → `./test.sh all` (backend) + `./test.sh client unit` + `./test.sh client e2e`
-- Exact clean commit before opening or queueing a PR → `./test.sh pre-pr`
+- Exact clean commit before opening or queueing a PR → `./test.sh pre-pr` (affected local checks; comprehensive fallback is deferred to required CI)
+- Exhaustive local gate → `./test.sh pre-pr --full`; add `--fresh` to ignore reusable successful stages
 
 State is auto-reset before every test subcommand. If migrations changed, run `./test.sh stack reset` once — that rebuilds the template DB.
 
@@ -134,7 +135,7 @@ Before declaring work complete, every box must be checked:
 - [ ] Backend logic has a unit test; endpoint/workflow changes have an e2e test
 - [ ] No new `skip`, `xfail`, `.only`, or commented-out tests introduced
 - [ ] Targeted suite green
-- [ ] `./test.sh pre-pr` green for the exact clean `HEAD` before any PR is opened or queued
+- [ ] `./test.sh pre-pr` green for the exact clean `HEAD`; selected and deferred checks reported before opening or queueing a PR
 - [ ] Exact test commands and unrun broader suites reported honestly
 - [ ] Every known out-of-scope failure has a durable fix or a dedicated blocking repair change
 - [ ] UX review done if new UI was built

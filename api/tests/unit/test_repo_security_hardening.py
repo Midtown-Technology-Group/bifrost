@@ -43,8 +43,11 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
         "affected-test-plan",
         "test-e2e",
         "test-client-e2e",
+        "test-client-unit",
         "mcp-conformance",
     }
+    gate_script = jobs["test-e2e-gate"]["steps"][0]["run"]
+    assert 'needs.test-client-unit.result' in gate_script
 
     assert (
         jobs["deploy-dry-run"]["if"]

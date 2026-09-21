@@ -1,20 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const DEFAULT_WORKERS = process.env.CI ? 2 : 4;
-
-function parseWorkers(value: string | undefined): number {
-	if (!value) {
-		return DEFAULT_WORKERS;
-	}
-
-	const parsed = Number(value);
-	if (!Number.isInteger(parsed) || parsed < 1) {
-		return DEFAULT_WORKERS;
-	}
-
-	return parsed;
-}
-
 /**
  * Playwright E2E Test Configuration
  *
@@ -34,10 +19,11 @@ export default defineConfig({
 	},
 	testDir: "./e2e",
 	outputDir: "playwright-results/test-results",
-	fullyParallel: true,
+	// ponytail: one shared workspace => one worker; parallelize after fixtures own isolated workspaces.
+	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
 	retries: 0,
-	workers: parseWorkers(process.env.PLAYWRIGHT_WORKERS),
+	workers: 1,
 	timeout: 30000,
 
 	reporter: [

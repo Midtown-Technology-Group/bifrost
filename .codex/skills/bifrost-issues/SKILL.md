@@ -154,7 +154,7 @@ After targeted verification, commit the exact candidate and run:
 ./test.sh pre-pr
 ```
 
-Do not open a PR or queue it for merge unless this passes for the current `HEAD`. The command rejects dirty worktrees and branches that do not contain current `origin/main`; rerun it after every commit, amend, rebase, or merge. It exercises every locally reproducible PR and merge-queue gate. GitHub-only boundaries such as the synthetic merge ref, registry publication, signing, and attestation remain remote checks.
+Run this on the current clean `HEAD` containing current `origin/main`. It runs local tripwires and affected tests, reporting comprehensive suites deferred to required CI. Use `--full` for exhaustive local verification and `--fresh` to ignore reusable stage evidence. Rerun after source changes; successful unchanged stages may resume only with matching environment/configuration identity. Report the selected checks, deferred checks, and candidate SHA. Required CI and the merge queue remain authoritative for merge.
 
 ### 6. PR linkage
 
@@ -227,7 +227,7 @@ gh pr view <N> --repo gobifrost/bifrost \
 gh api repos/gobifrost/bifrost/actions/jobs/<job_id>/logs
 ```
 
-If the failure is locally reproducible and `./test.sh pre-pr` passed for the same SHA, the local gate is incomplete or non-equivalent. Fix that harness/guidance defect and preserve the exposing condition in `pre-pr` before rerunning or requeueing; do not accept CI as the routine first broad test run.
+If CI exposes a failure after affected local verification, fix the failure and determine whether the affected planner missed a dependency or CI exercised an explicitly deferred broad check. Add a missing dependency edge or retain comprehensive fallback where needed. Rerun the failed stage and directly affected checks; do not discard valid unchanged stage evidence or waive failures as flakes.
 
 Fix CI failures in the same worktree and branch. Prefer a normal follow-up commit once reviewers or other agents may have seen the PR; amending with `--force-with-lease` is acceptable for a fresh, unreviewed PR where you are the only actor. After any force-push, re-check whether auto-merge/queue state survived.
 

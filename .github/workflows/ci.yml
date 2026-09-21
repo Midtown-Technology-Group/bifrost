@@ -65,10 +65,12 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BASE_SHA: ${{ github.event.before }}
         run: |
           case "$EVENT_NAME" in
             pull_request) base_sha="$PR_BASE_SHA" ;;
+            merge_group) base_sha="$MERGE_BASE_SHA" ;;
             push) base_sha="$PUSH_BASE_SHA" ;;
             *) base_sha="" ;;
           esac
@@ -78,7 +80,8 @@ jobs:
           else
             python3 api/scripts/plan_affected_tests.py \
               --base "$base_sha" \
-              --head "$GITHUB_SHA"
+              --head "$GITHUB_SHA" \
+              --event "$EVENT_NAME" --ref "$GITHUB_REF"
           fi
 
       - name: Upload affected test plan
@@ -350,6 +353,9 @@ jobs:
         run: |
           python3 scripts/check_skill_mirrors.py
 
+      - name: Local stage evidence regression checks
+        run: python3 scripts/lib/pre_pr_stage_evidence_test.py
+
       - name: Set up Python
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -484,6 +490,7 @@ jobs:
           TEST_MODE: ${{ needs.affected-test-plan.outputs.client_unit_mode }}
           TEST_TARGETS: ${{ needs.affected-test-plan.outputs.client_unit_targets }}
         run: |
+          node --test e2e/support/playwright-projects.test.mjs
           if [ "$TEST_MODE" = "comprehensive" ]; then
             npm test
           else
@@ -722,6 +729,21 @@ jobs:
             ./test.sh "${shard_files[@]}" -v --durations=50
           fi
 
+      - name: Export E2E service logs and stop stack
+        if: always() && matrix.total != 0
+        run: ./test.sh stack down
+
+      - name: Preserve E2E failure diagnostics
+        if: failure() && matrix.total != 0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-e2e-diagnostics-${{ matrix.shard }}
+          path: |
+            /tmp/bifrost-bifrost-test-*/*.log
+            /tmp/bifrost-bifrost-test-*/test-results.xml
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Preserve E2E coverage evidence
         if: needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -817,7 +839,7 @@ jobs:
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
-    needs: [affected-test-plan, test-e2e, test-client-e2e, mcp-conformance]
+    needs: [affected-test-plan, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
     steps:
@@ -835,11 +857,15 @@ jobs:
             echo "Client e2e tests failed or were cancelled (result: ${{ needs.test-client-e2e.result }})"
             exit 1
           fi
+          if [ "${{ needs.test-client-unit.result }}" != "success" ]; then
+            echo "Client unit tests failed or were cancelled (result: ${{ needs.test-client-unit.result }})"
+            exit 1
+          fi
           if [ "${{ needs.mcp-conformance.result }}" != "success" ]; then
             echo "MCP conformance failed or was cancelled (result: ${{ needs.mcp-conformance.result }})"
             exit 1
           fi
-          echo "Every selected backend e2e, client Playwright, and MCP conformance lane passed or was explicitly outside the affected closure."
+          echo "Every selected backend e2e, client unit/Playwright, and MCP conformance lane passed or was explicitly outside the affected closure."
 
   # =============================================================================
   # Dev publication - MTG promotes the exact PR-built digest after the queue
