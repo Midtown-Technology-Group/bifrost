@@ -544,7 +544,7 @@
 				{
 					"spec": "mcp-settings-acceptance.admin.spec.ts",
 					"title": "admin saves, reloads, resets, and restores MCP configuration",
-					"project": "platform-admin",
+					"project": "mcp-settings",
 					"variant": "desktop",
 					"proof": "real-platform"
 				}

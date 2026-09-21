@@ -934,7 +934,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base")
     parser.add_argument("--head")
     parser.add_argument("--force-comprehensive", action="store_true")
+    parser.add_argument("--event", default="local")
+    parser.add_argument("--ref", default="")
     return parser.parse_args()
+
+
+def plan_event(
+    event: str, base: str | None, head: str | None, ref: str = ""
+) -> AffectedPlan:
+    """Use the exact PR/merge-group diff; unknown events remain exhaustive."""
+    if (
+        event not in {"local", "pull_request", "merge_group", "push"}
+        or ref.startswith("refs/tags/")
+        or not base
+        or not head
+        or not base.strip("0")
+    ):
+        return _comprehensive(
+            (), "event or missing base requires comprehensive validation"
+        )
+    plan = plan_changes(git_changes(base, head))
+    if event == "merge_group" and plan.scope == "affected":
+        # Exercise real authentication/readiness and browser login on the combined
+        # tree, even when a leaf change has no direct endpoint/browser owner.
+        plan.python.e2e_tests = tuple(
+            sorted({*plan.python.e2e_tests, "tests/e2e/api/test_auth.py"})
+        )
+        plan.client.e2e_tests = tuple(
+            sorted({*plan.client.e2e_tests, "e2e/auth.unauth.spec.ts"})
+        )
+        plan.reason += "; merge-group authentication/readiness baseline"
+    return plan
 
 
 def _runner_output(env_name: str) -> Path | None:
@@ -959,7 +989,7 @@ def main() -> int:
             "--base and --head are required unless --force-comprehensive is used"
         )
     else:
-        plan = plan_changes(git_changes(args.base, args.head))
+        plan = plan_event(args.event, args.base, args.head, args.ref)
     payload = json.dumps(plan.to_dict(), indent=2, sort_keys=True)
     print(payload)
     github_output = _runner_output("GITHUB_OUTPUT")

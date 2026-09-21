@@ -312,3 +312,70 @@ def test_ci_evidence_paths_must_match_runner_contract(
     monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path.parent / "escaped"))
     with pytest.raises(SystemExit, match="outside RUNNER_TEMP"):
         affected._runner_output("GITHUB_OUTPUT")
+
+
+@pytest.mark.parametrize("event", ["local", "pull_request", "merge_group"])
+def test_event_plan_keeps_affected_tests_and_adds_merge_integration_baseline(
+    graph_repo: Path, monkeypatch: pytest.MonkeyPatch, event: str
+) -> None:
+    path = "api/src/services/helper.py"
+    _write(graph_repo, path, "VALUE = 1\n")
+    _write(
+        graph_repo,
+        "api/tests/unit/test_helper.py",
+        "from src.services.helper import VALUE\n",
+    )
+
+    def changes(base: str, head: str) -> list[affected.GitChange]:
+        assert (base, head) == ("base", "combined-head")
+        return [affected.GitChange("M", path)]
+
+    monkeypatch.setattr(affected, "git_changes", changes)
+
+    plan = affected.plan_event(event, "base", "combined-head")
+
+    assert plan.scope == "affected"
+    assert plan.python.unit_tests == ("tests/unit/test_helper.py",)
+    assert plan.python.e2e_tests == (
+        ("tests/e2e/api/test_auth.py",) if event == "merge_group" else ()
+    )
+    assert plan.client.e2e_tests == (
+        ("e2e/auth.unauth.spec.ts",) if event == "merge_group" else ()
+    )
+
+
+@pytest.mark.parametrize(
+    "event,base,ref",
+    [
+        ("schedule", "base", "refs/heads/main"),
+        ("workflow_dispatch", "base", "refs/heads/main"),
+        ("push", "base", "refs/tags/v1.0"),
+        ("merge_group", None, ""),
+        ("merge_group", "0" * 40, ""),
+        ("unknown", "base", ""),
+    ],
+)
+def test_event_plan_fails_closed_without_computing_a_partial_diff(
+    monkeypatch: pytest.MonkeyPatch, event: str, base: str | None, ref: str
+) -> None:
+    def unexpected(*args):
+        raise AssertionError("comprehensive event must not select a partial diff")
+
+    monkeypatch.setattr(affected, "git_changes", unexpected)
+    plan = affected.plan_event(event, base, "head", ref)
+    assert plan.scope == "comprehensive"
+    assert plan.lane("api_e2e") == "comprehensive"
+    assert plan.lane("client_e2e") == "comprehensive"
+
+
+@pytest.mark.parametrize(
+    "path,scope",
+    [("README.md", "docs-only"), ("api/alembic/versions/new.py", "comprehensive")],
+)
+def test_merge_group_preserves_docs_skip_and_high_risk_fallback(
+    graph_repo: Path, monkeypatch: pytest.MonkeyPatch, path: str, scope: str
+) -> None:
+    monkeypatch.setattr(
+        affected, "git_changes", lambda *args: [affected.GitChange("M", path)]
+    )
+    assert affected.plan_event("merge_group", "base", "head").scope == scope

@@ -65,10 +65,12 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BASE_SHA: ${{ github.event.before }}
         run: |
           case "$EVENT_NAME" in
             pull_request) base_sha="$PR_BASE_SHA" ;;
+            merge_group) base_sha="$MERGE_BASE_SHA" ;;
             push) base_sha="$PUSH_BASE_SHA" ;;
             *) base_sha="" ;;
           esac
@@ -78,7 +80,8 @@ jobs:
           else
             python3 api/scripts/plan_affected_tests.py \
               --base "$base_sha" \
-              --head "$GITHUB_SHA"
+              --head "$GITHUB_SHA" \
+              --event "$EVENT_NAME" --ref "$GITHUB_REF"
           fi
 
       - name: Upload affected test plan
@@ -484,6 +487,7 @@ jobs:
           TEST_MODE: ${{ needs.affected-test-plan.outputs.client_unit_mode }}
           TEST_TARGETS: ${{ needs.affected-test-plan.outputs.client_unit_targets }}
         run: |
+          node --test e2e/support/playwright-projects.test.mjs
           if [ "$TEST_MODE" = "comprehensive" ]; then
             npm test
           else
@@ -817,7 +821,7 @@ jobs:
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
-    needs: [affected-test-plan, test-e2e, test-client-e2e, mcp-conformance]
+    needs: [affected-test-plan, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
     steps:
@@ -835,11 +839,15 @@ jobs:
             echo "Client e2e tests failed or were cancelled (result: ${{ needs.test-client-e2e.result }})"
             exit 1
           fi
+          if [ "${{ needs.test-client-unit.result }}" != "success" ]; then
+            echo "Client unit tests failed or were cancelled (result: ${{ needs.test-client-unit.result }})"
+            exit 1
+          fi
           if [ "${{ needs.mcp-conformance.result }}" != "success" ]; then
             echo "MCP conformance failed or was cancelled (result: ${{ needs.mcp-conformance.result }})"
             exit 1
           fi
-          echo "Every selected backend e2e, client Playwright, and MCP conformance lane passed or was explicitly outside the affected closure."
+          echo "Every selected backend e2e, client unit/Playwright, and MCP conformance lane passed or was explicitly outside the affected closure."
 
   # =============================================================================
   # Dev publication - MTG promotes the exact PR-built digest after the queue
