@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
+from shared.mcp_urls import validate_mcp_http_url
 from src.models.orm.external_mcp import MCPConnection
 
 if TYPE_CHECKING:
@@ -59,15 +60,17 @@ async def open_client(
     # Imported lazily so the MCP SDK and its HTTP dependencies
     # stays out of the worker import closure (tests/unit/test_import_hygiene.py).
     from fastmcp import Client
+    from fastmcp.client.transports import StreamableHttpTransport
 
-    server_url = _resolve_server_url(connection)
+    server_url = validate_mcp_http_url(_resolve_server_url(connection))
     logger.debug(
         "Opening MCP client: connection=%s url=%s negotiation=auto",
         connection.id,
         server_url,
     )
 
-    client = Client(server_url, auth=access_token, mode="auto")
+    transport = StreamableHttpTransport(server_url, auth=access_token)
+    client = Client(transport, mode="auto")
     async with client:
         negotiation_path = (
             "modern_discover"

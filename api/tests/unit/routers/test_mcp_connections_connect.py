@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,8 +26,32 @@ from src.models.orm.oauth import OAuthProvider, OAuthToken
 from src.models.orm.organizations import Organization
 from src.routers.mcp_connections import (
     MCPConnectActivateResponse,
+    MCPConnectionCreateRequest,
+    MCPConnectionUpdateRequest,
     _activate_client_credentials,
 )
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    ["/tmp/evil-fastmcp-server.py", "file:///etc/passwd", "stdio://local"],
+)
+def test_connection_create_rejects_non_http_transport_targets(
+    unsafe_url: str,
+) -> None:
+    with pytest.raises(ValidationError, match="absolute HTTP or HTTPS"):
+        MCPConnectionCreateRequest(
+            server_id=uuid4(),
+            organization_id=uuid4(),
+            client_id="client-id",
+            client_secret="client-secret",
+            server_url_override=unsafe_url,
+        )
+
+
+def test_connection_update_rejects_non_http_transport_target() -> None:
+    with pytest.raises(ValidationError, match="absolute HTTP or HTTPS"):
+        MCPConnectionUpdateRequest(server_url_override="npx attacker/mcp-server")
 
 
 async def _make_org(db: AsyncSession) -> Organization:
