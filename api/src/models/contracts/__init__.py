@@ -651,6 +651,9 @@ from src.models.contracts.dependencies import (
 
 # Platform Admin
 from src.models.contracts.platform import (
+    AppServiceMetricPoint,
+    AppServiceMetricSeries,
+    AppServiceMetricsResponse,
     PoolDetail,
     PoolsListResponse,
     PoolStatsResponse,
@@ -677,6 +680,9 @@ __all__ = [
     # Dependencies
     "DependencyAvailabilityRequest",
     "DependencyAvailabilityResponse",
+    "AppServiceMetricPoint",
+    "AppServiceMetricSeries",
+    "AppServiceMetricsResponse",
     # Organizations - use OrganizationPublic for responses
     "CreateOrganizationRequest",
     "UpdateOrganizationRequest",

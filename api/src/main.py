@@ -97,6 +97,7 @@ from src.routers import (
     platform_workers_router,
     platform_queue_router,
     platform_stuck_router,
+    app_service_router,
     version_router,
     mcp_servers_router,
     mcp_connections_router,
@@ -628,6 +629,7 @@ def create_app() -> FastAPI:
     app.include_router(platform_workers_router)
     app.include_router(platform_queue_router)
     app.include_router(platform_stuck_router)
+    app.include_router(app_service_router)
     app.include_router(mcp_servers_router)
     app.include_router(mcp_connections_router)
     app.include_router(mcp_me_connections_router)

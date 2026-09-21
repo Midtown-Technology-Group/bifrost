@@ -11,9 +11,11 @@ from src.routers.platform.workers import (
     router as workers_router,
     stuck_router,
 )
+from src.routers.platform.app_service import router as app_service_router
 
 __all__ = [
     "workers_router",
     "queue_router",
     "stuck_router",
+    "app_service_router",
 ]
