@@ -2358,6 +2358,9 @@ async def install_from_repo(
                 ),
             )
         archive = _build_deploy_zip(root, extra_text_files={})
+        # Bind the staged bytes to the reviewed candidate: verify_solution_artifact
+        # matches this raw ZIP SHA, so the lane can reach `released`.
+        candidate_id = f"sha256:{hashlib.sha256(archive).hexdigest()}"
         job = await _enqueue_solution_deploy_job(
             ctx.db,
             kind="install_from_repo",
@@ -2365,6 +2368,7 @@ async def install_from_repo(
             organization_id=solution.organization_id,
             options={
                 "force": True,
+                "candidate_id": candidate_id,
                 "accountability_organization_id": (
                     str(ctx.org_id) if ctx.org_id is not None else None
                 ),
