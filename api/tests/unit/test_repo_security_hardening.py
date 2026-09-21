@@ -175,6 +175,21 @@ def test_debug_stack_has_no_checked_in_default_admin_password() -> None:
     assert "--password password" not in debug_skill
 
 
+def test_netbird_public_debug_uses_per_worktree_jwt_secret() -> None:
+    debug_script = _read("debug.sh")
+
+    credentials_function = debug_script.split(
+        "configure_netbird_public_credentials() {", 1
+    )[1].split("\n}", 1)[0]
+    assert 'secret_key_file="$credential_dir/secret-key"' in credentials_function
+    assert 'od -An -N32 -tx1 /dev/urandom' in credentials_function
+    assert 'BIFROST_SECRET_KEY="$(<"$secret_key_file")"' in credentials_function
+    assert (
+        "export BIFROST_DEFAULT_USER_PASSWORD BIFROST_SECRET_KEY"
+        in credentials_function
+    )
+
+
 def test_debug_env_loader_does_not_source_env_files() -> None:
     debug_script = _read("debug.sh")
 

@@ -157,14 +157,15 @@ compute_netbird_hostname() {
     sanitize_hostname "bifrost-debug-${base}"
 }
 
-# Generate one strong password per worktree and retain it across stack and host
+# Generate strong credentials per worktree and retain them across stack and host
 # restarts. NetBird-mode stacks are exposed through a public HTTPS proxy, so the
-# shared dev password must never be used there.
+# shared dev password and JWT signing key must never be used there.
 configure_netbird_public_credentials() {
-    local state_root credential_dir password_file
+    local state_root credential_dir password_file secret_key_file
     state_root="${XDG_STATE_HOME:-$HOME/.local/state}"
     credential_dir="$state_root/bifrost/debug/$COMPOSE_PROJECT_NAME"
     password_file="$credential_dir/admin-password"
+    secret_key_file="$credential_dir/secret-key"
 
     mkdir -p "$credential_dir"
     chmod 700 "$credential_dir"
@@ -172,9 +173,14 @@ configure_netbird_public_credentials() {
         umask 077
         od -An -N24 -tx1 /dev/urandom | tr -d ' \n' > "$password_file"
     fi
-    chmod 600 "$password_file"
+    if [ ! -f "$secret_key_file" ]; then
+        umask 077
+        od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$secret_key_file"
+    fi
+    chmod 600 "$password_file" "$secret_key_file"
     BIFROST_DEFAULT_USER_PASSWORD="$(<"$password_file")"
-    export BIFROST_DEFAULT_USER_PASSWORD
+    BIFROST_SECRET_KEY="$(<"$secret_key_file")"
+    export BIFROST_DEFAULT_USER_PASSWORD BIFROST_SECRET_KEY
 }
 
 compute_netbird_expose_prefix() {
