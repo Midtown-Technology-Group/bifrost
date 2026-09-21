@@ -410,3 +410,164 @@ class TestDeletionSweepSparesSolutionManaged:
         assert "repo_agent" not in agent_names, "unmanaged agent should be swept"
         assert "repo-app" not in app_slugs, "unmanaged app should be swept"
         assert "repo_claim" not in claim_names, "unmanaged claim should be swept"
+
+
+@pytest.mark.e2e
+class TestSyncReconcilesDeployObligations:
+    """P4-1: a git-connected deploy must close a pending Solution deploy
+    obligation for the install's org. Auto-pull previously deployed without
+    passing ``accountability_organization_id``, so the reconcile query (scoped
+    by org) never matched and obligations stayed pending forever."""
+
+    async def test_git_connected_deploy_closes_pending_obligation(
+        self, db_session, seed_user, tmp_path, monkeypatch
+    ) -> None:
+        import hashlib
+        import io
+        import shutil
+        import zipfile
+        from datetime import datetime, timezone
+
+        from bifrost.commands.solution import _build_deploy_zip
+        from src.models.orm.organizations import Organization
+        from src.models.orm.workspace_promotions import (
+            SolutionDeployObligation,
+            WorkspaceSourceRelease,
+        )
+        from src.services.solution_deploy_obligations import (
+            solution_source_content_id,
+        )
+        from src.services.solutions import git_sync as gs
+
+        db = db_session
+        org = Organization(id=uuid.uuid4(), name=f"O-{uuid.uuid4().hex[:6]}", created_by="t")
+        other_org = Organization(
+            id=uuid.uuid4(), name=f"X-{uuid.uuid4().hex[:6]}", created_by="t"
+        )
+        db.add_all([org, other_org])
+        await db.flush()
+
+        slug = f"oblig-{uuid.uuid4().hex[:8]}"
+        subpath = "solutions/demo"
+        sol = Solution(
+            id=uuid.uuid4(), slug=slug, name="O",
+            organization_id=org.id, git_connected=True,
+            git_repo_url="https://example.com/x.git",
+            repo_subpath=subpath,
+        )
+        db.add(sol)
+        await db.flush()
+
+        # Fixture repo: the connected workspace lives at the install's subpath.
+        fixture_repo = tmp_path / "fixture-repo"
+        root = fixture_repo / subpath
+        (root / "workflows").mkdir(parents=True)
+        (root / ".bifrost").mkdir(parents=True)
+        (root / "bifrost.solution.yaml").write_text(
+            f"slug: {slug}\nname: O\nscope: global\n"
+        )
+        wf_id = str(uuid.uuid4())
+        (root / "workflows" / "w.py").write_text(
+            "from bifrost import workflow\n@workflow\nasync def w():\n    return {}\n"
+        )
+        (root / ".bifrost" / "workflows.yaml").write_text(
+            f"workflows:\n  {wf_id}:\n    id: {wf_id}\n    name: gitwf\n"
+            f"    function_name: w\n    path: workflows/w.py\n    type: workflow\n"
+        )
+
+        # The obligation's reviewed files must exactly match the stored source
+        # artifact's manifest: derive them from the same zip builder the
+        # auto-pull deploy stores.
+        data = _build_deploy_zip(root, extra_text_files={})
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = [
+                info for info in archive.infolist() if not info.is_dir()
+            ]
+            contents = {
+                info.filename.strip("/"): archive.read(info.filename)
+                for info in entries
+            }
+            names = sorted(contents)
+        assert names, "fixture workspace must produce a non-empty deploy zip"
+        source_files = [
+            {
+                "path": f"{subpath}/{name}",
+                "mode": "100644",
+                "sha256": hashlib.sha256(contents[name]).hexdigest(),
+                "size": len(contents[name]),
+            }
+            for name in names
+        ]
+
+        async def _fake_clone(repo_url, dest, ref=None):
+            shutil.copytree(fixture_repo, dest, dirs_exist_ok=True)
+
+        monkeypatch.setattr(gs, "clone_repo_to_dir", _fake_clone)
+
+        async def _ok_readback(db, *, solution_id, artifact):
+            return (True, None, {"runtime_files": {}})
+
+        monkeypatch.setattr(
+            "src.services.solution_deploy_obligations"
+            "._runtime_and_registration_readback",
+            _ok_readback,
+        )
+
+        now = datetime.now(timezone.utc)
+        commit_sha = "a" * 40
+        obligations = []
+        for owner in (org, other_org):
+            release = WorkspaceSourceRelease(
+                id=uuid.uuid4(),
+                organization_id=owner.id,
+                source_commit_sha=commit_sha,
+                source_tree_sha="b" * 40,
+                paths={f"{subpath}/workflows/w.py": "c" * 64},
+                declaration_actor="platform_admin",
+                disposition="pending",
+                declared_disposition="pending",
+                created_by=seed_user.id,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(release)
+            await db.flush()
+            record = SolutionDeployObligation(
+                id=uuid.uuid4(),
+                source_release_id=release.id,
+                organization_id=owner.id,
+                source_commit_sha=commit_sha,
+                source_tree_sha="b" * 40,
+                base_commit_sha="c" * 40,
+                solution_slug=slug,
+                repo_subpath=subpath,
+                source_subtree_sha="d" * 40,
+                source_content_id=solution_source_content_id(
+                    solution_slug=slug,
+                    repo_subpath=subpath,
+                    source_files=source_files,
+                ),
+                source_files=source_files,
+                changed_paths={source_files[-1]["path"]: source_files[-1]["sha256"]},
+                kind="solution_deploy_required",
+                disposition="pending",
+                declared_disposition="solution_deploy_required",
+                due_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(record)
+            obligations.append(record)
+        await db.flush()
+        own_obligation, foreign_obligation = obligations
+
+        await gs._run_sync_once(db, sol)
+
+        assert own_obligation.disposition == "released", (
+            "git-connected deploy must close the install org's pending obligation"
+        )
+        assert own_obligation.resolved_at is not None
+        assert own_obligation.completion_evidence is not None
+        assert own_obligation.solution_id == sol.id
+        # Org scoping: another org's identical obligation is untouched.
+        assert foreign_obligation.disposition == "pending"

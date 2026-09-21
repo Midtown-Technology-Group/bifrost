@@ -19,10 +19,12 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import hashlib
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -292,6 +294,12 @@ async def _run_sync_once(db: AsyncSession, solution: Solution) -> None:
                 f"{solution.repo_subpath or '<repo root>'} in {repo_url}"
             )
         result = await deploy_from_workspace(db, solution, deploy_root)
+    # Snapshot scalar identity before commit. AsyncSession commit may expire ORM
+    # attributes; reading solution.slug afterwards can attempt implicit async IO
+    # (MissingGreenlet). Mirrors the slug snapshot in _run_deploy_job.
+    solution_id = solution.id
+    solution_slug = solution.slug
+    accountability_organization_id = solution.organization_id
     # Commit the DB phase, THEN run S3 — a failed commit changes no running code
     # (Codex P1-c). Both happen while the per-install lock is held so a racing sync
     # can't interleave. The bundle is in-memory, so finalizing after the checkout
@@ -306,5 +314,65 @@ async def _run_sync_once(db: AsyncSession, solution: Solution) -> None:
         logger.error(
             "Solution %s synced (DB committed) but storage finalize failed "
             "after retries; the next sync will re-run and heal it.",
-            solution.id,
+            solution_id,
         )
+        return
+    if accountability_organization_id is not None:
+        await _reconcile_sync_obligation(
+            db,
+            solution_id=solution_id,
+            solution_slug=solution_slug,
+            accountability_organization_id=accountability_organization_id,
+        )
+
+
+async def _reconcile_sync_obligation(
+    db: AsyncSession,
+    *,
+    solution_id: UUID,
+    solution_slug: str,
+    accountability_organization_id: UUID,
+) -> None:
+    """Close any pending deploy obligation this auto-pull deploy satisfies.
+
+    Mirrors the manual-deploy path (``_run_deploy_job``): the stored source
+    artifact plus its candidate digest are replayed against the install org's
+    pending obligations. The deploy itself is already committed and durable, so
+    a reconciliation failure only rolls back the evidence write and logs — it
+    never fails the sync.
+    """
+    from src.services.solution_deploy_obligations import (
+        reconcile_solution_deploy_obligation,
+    )
+    from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
+
+    stored_artifact = await SolutionSourceArtifactStorage(solution_id).read()
+    if stored_artifact is None:
+        return
+    candidate_id = f"sha256:{hashlib.sha256(stored_artifact).hexdigest()}"
+    try:
+        await reconcile_solution_deploy_obligation(
+            db,
+            solution_id=solution_id,
+            solution_slug=solution_slug,
+            accountability_organization_id=accountability_organization_id,
+            deploy_job_id=uuid4(),
+            candidate_id=candidate_id,
+            artifact=stored_artifact,
+        )
+    except Exception:  # noqa: BLE001 - deploy is durable; sync stays green
+        logger.exception(
+            "Solution %s auto-pull accountability reconciliation failed",
+            solution_id,
+        )
+        # Reconciliation owns only post-deploy evidence. Clear a potentially
+        # failed transaction without rolling back the committed Solution
+        # resources.
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001 - preserve deploy truth
+            logger.exception(
+                "Solution %s accountability rollback failed", solution_id
+            )
+        return
+    await db.commit()
