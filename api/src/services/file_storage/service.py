@@ -228,12 +228,14 @@ class FileStorageService:
         self,
         path: str,
         content_type: str,
+        content_length: int | None = None,
         expires_in: int = 600,
     ) -> str:
         """Generate a presigned PUT URL for direct S3 upload."""
         return await self._s3_storage.generate_presigned_upload_url(
             path=path,
             content_type=content_type,
+            content_length=content_length,
             expires_in=expires_in,
         )
 

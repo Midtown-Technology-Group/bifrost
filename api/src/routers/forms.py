@@ -1972,6 +1972,7 @@ async def generate_upload_url(
         upload_url = await storage.generate_presigned_upload_url(
             path=s3_key,
             content_type=request.content_type,
+            content_length=request.file_size,
             expires_in=600,  # 10 minutes
         )
     except Exception as e:
