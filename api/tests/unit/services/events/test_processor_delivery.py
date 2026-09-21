@@ -213,6 +213,10 @@ async def test_queue_event_deliveries_marks_failed_when_queueing_raises():
     processor._queue_workflow_execution = AsyncMock(
         side_effect=RuntimeError("queue is unavailable")
     )
+    async def refresh_failed(row):
+        row.status = EventDeliveryStatus.FAILED
+        row.error_message = "queue is unavailable"
+    session.refresh.side_effect = refresh_failed
 
     queued = await processor.queue_event_deliveries(event.id)
 
@@ -245,6 +249,9 @@ async def test_queue_event_deliveries_routes_pending_workflow_and_agent_deliveri
     )
     processor._queue_workflow_execution = AsyncMock()
     processor._queue_agent_run = AsyncMock()
+    async def refresh_queued(row):
+        row.status = EventDeliveryStatus.QUEUED
+    session.refresh.side_effect = refresh_queued
 
     queued = await processor.queue_event_deliveries(event.id)
 
@@ -749,7 +756,7 @@ async def test_queue_workflow_execution_uses_mapping_event_context_and_source_or
     assert kwargs["parameters"]["source"] == "halo"
     assert kwargs["parameters"]["_event"]["body"] == event.data
     assert kwargs["event"].id == str(event.id)
-    assert delivery.execution_id == uuid.UUID(execution_id)
+    assert kwargs["event_delivery_id"] == str(delivery.id)
 
 
 @pytest.mark.asyncio
