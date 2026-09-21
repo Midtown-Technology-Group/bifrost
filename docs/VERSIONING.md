@@ -55,8 +55,12 @@ which upstream tag or commit range the MTG release incorporated.
    count on `main`.
 5. Run `./scripts/release-check.sh vX.Y.Z` before tagging — or run it with no
    argument to use the computed next version.
-6. Push the tag; CI builds signed images and opens a GitHub Release draft.
-7. Edit the release notes to include a **Fixed vulnerabilities** section (OpenSSF
+6. Merge the plugin-manifest bump (`./scripts/update-plugin-version.sh X.Y.Z`).
+7. Close the open `Release vX.Y.Z` issue as completed. The **Release tag**
+   workflow tags `main` at that version (guarded by green main checks and a
+   version-drift check), and CI builds signed images and opens a GitHub Release
+   draft.
+8. Edit the release notes to include a **Fixed vulnerabilities** section (OpenSSF
    Passing requirement) and an upstream baseline note when relevant.
 
 ## Related files
@@ -66,5 +70,6 @@ which upstream tag or commit range the MTG release incorporated.
 - `scripts/release/next-release-version.sh` — next version from merged PRs
 - `scripts/release-check.sh` — pre-tag checks
 - `.github/workflows/release-draft.yml` — opens the `Release vNEXT` issue
+- `.github/workflows/release-tag.yml` — tags `main` when that issue is closed
 - `.claude/skills/bifrost-release/SKILL.md` — operator release flow
 - `.claude-plugin/plugin.json` — plugin manifest version (updated at tag time)

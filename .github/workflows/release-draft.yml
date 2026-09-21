@@ -70,12 +70,12 @@ jobs:
             "Auto-drafted from the merged pull requests below. The version" \
             "follows \`semver:*\` labels, then conventional-commit types." \
             "" \
-            "Before tagging (docs/VERSIONING.md):" \
+            "Before releasing (docs/VERSIONING.md):" \
             "- [ ] \`./scripts/release-check.sh $VERSION\`" \
             "- [ ] docs freshness: \`./scripts/release/check-docs-freshness.sh\`" \
-            "- [ ] release notes: Fixed vulnerabilities + upstream baseline" \
-            "- [ ] \`./scripts/update-plugin-version.sh ${VERSION#v}\`" \
-            "- [ ] \`git tag $VERSION && git push origin $VERSION\`" \
+            "- [ ] merge the plugin-manifest bump: \`./scripts/update-plugin-version.sh ${VERSION#v}\`" \
+            "- [ ] close this issue as completed to tag \`$VERSION\` automatically" \
+            "- [ ] after CI, edit the GitHub Release draft: Fixed vulnerabilities + upstream baseline" \
             "" \
             "### Merged PRs since the last tag" \
             "" \
