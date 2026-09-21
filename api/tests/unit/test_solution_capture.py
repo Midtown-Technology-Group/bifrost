@@ -718,3 +718,100 @@ async def test_deploy_reconcile_sweeps_stale_trigger(db_session) -> None:
         select(EventSubscription).where(EventSubscription.event_source_id == stale.id)
     )).scalars().all()
     assert remaining_subs == []  # cascaded with the source
+
+
+# ── P1-1: capture must not adopt Live-governed registrations ────────────────
+
+
+def _live_release_for(workflow_id, path: str):
+    """A fake Live descriptor governing one registration (path + identity)."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        release_id="sha256:" + "a" * 64,
+        governed_paths=(path,),
+        effective_registrations={
+            f"{path}::run": {"workflow_id": str(workflow_id)},
+        },
+    )
+
+
+def _stub_release_guard(monkeypatch, release) -> None:
+    """Simulate a Live release (object) or a retired one (None)."""
+    from unittest.mock import AsyncMock
+
+    import src.services.workspace_release_registration_authority as authority
+
+    monkeypatch.setattr(authority, "acquire_workspace_release_lock", AsyncMock())
+    monkeypatch.setattr(
+        authority,
+        "global_active_workspace_release_descriptor",
+        AsyncMock(return_value=release),
+    )
+
+
+async def _make_loose_workflow(db, path: str):
+    from src.models.orm.workflows import Workflow
+
+    wf = Workflow(
+        id=uuid.uuid4(),
+        name=f"wf-{uuid.uuid4().hex[:8]}",
+        function_name="run",
+        path=path,
+        type="workflow",
+        is_active=True,
+        solution_id=None,
+        organization_id=None,
+    )
+    db.add(wf)
+    await db.flush()
+    return wf
+
+
+async def test_capture_workflow_refused_while_release_live(
+    db_session, monkeypatch
+) -> None:
+    from src.models.orm.workflows import Workflow
+
+    db = db_session
+    sol = await _make_solution(db)
+    wf = await _make_loose_workflow(db, "features/live.py")
+    _stub_release_guard(monkeypatch, _live_release_for(wf.id, "features/live.py"))
+
+    with pytest.raises(SolutionCaptureConflict, match="governed by active"):
+        await SolutionCaptureService(db).capture(
+            sol,
+            SolutionCaptureSelectors(
+                workflows=[wf.id], tables=[], apps=[], forms=[],
+                agents=[], claims=[], configs=[],
+            ),
+        )
+
+    # The refuse fires BEFORE any solution_id stamp — the Live row stays live:
+    # still listed as an active workspace workflow with its runtime pin intact.
+    row = await db.get(Workflow, wf.id)
+    assert row is not None and row.solution_id is None
+
+
+async def test_capture_workflow_allowed_after_release_retired(
+    db_session, monkeypatch
+) -> None:
+    from src.models.orm.workflows import Workflow
+
+    db = db_session
+    sol = await _make_solution(db)
+    wf = await _make_loose_workflow(db, "features/live.py")
+    _stub_release_guard(monkeypatch, None)  # retired: no Live release
+
+    result = await SolutionCaptureService(db).capture(
+        sol,
+        SolutionCaptureSelectors(
+            workflows=[wf.id], tables=[], apps=[], forms=[],
+            agents=[], claims=[], configs=[],
+        ),
+    )
+    await db.flush()
+
+    assert result.workflows_captured == 1
+    row = await db.get(Workflow, wf.id)
+    assert row is not None and row.solution_id == sol.id

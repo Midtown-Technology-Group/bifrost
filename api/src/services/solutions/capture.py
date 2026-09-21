@@ -43,6 +43,10 @@ from src.models.orm.workflow_roles import WorkflowRole
 from src.services.repo_storage import RepoStorage
 from src.services.solutions.deploy import SolutionBundle, solution_entity_id
 from src.services.solutions.vendoring import vendor_shared_deps
+from src.services.workspace_release_registration_authority import (
+    WorkspaceReleaseRegistrationGoverned,
+    guard_workspace_registration_mutation,
+)
 
 
 class SolutionCaptureConflict(ValueError):
@@ -255,6 +259,13 @@ class SolutionCaptureService:
             if owner == solution.id and not restamp_org:
                 continue
 
+            if model is Workflow:
+                # A governed (Live-release) registration row must never be
+                # adopted: stamping solution_id drops it from
+                # list_active_workspace_workflows, abandons the runtime pin,
+                # and hard-fails the next preview. Refuse loudly instead.
+                await self._reject_governed_workflow(solution, entity_id)
+
             values: dict[str, Any] = {"solution_id": solution.id}
             if restamp_org:
                 # Re-stamp global → the solution's org. Documents/rows carry no
@@ -266,6 +277,29 @@ class SolutionCaptureService:
                 .where(model.id == entity_id)  # type: ignore[attr-defined]
                 .values(**values)
             )
+
+    async def _reject_governed_workflow(
+        self, solution: Solution, entity_id: UUID
+    ) -> None:
+        """Refuse to capture a workflow governed by the Live release.
+
+        The authority guard checks both the governed source path and the
+        effective registration identity, so renaming/repointing the row
+        cannot escape it. Its ``WorkspaceReleaseRegistrationGoverned``
+        error is re-raised as ``SolutionCaptureConflict`` so the capture
+        endpoint keeps its single 409 contract.
+        """
+        workflow = await self.db.get(Workflow, entity_id)
+        if workflow is None:
+            return  # _capture_model raises the not-found below.
+        try:
+            await guard_workspace_registration_mutation(
+                self.db,
+                operation=f"capture workflow into solution {solution.id}",
+                workflows=(workflow,),
+            )
+        except WorkspaceReleaseRegistrationGoverned as exc:
+            raise SolutionCaptureConflict(str(exc)) from exc
 
     async def _reject_inline_apps(self, app_ids: list[UUID]) -> None:
         """Refuse to capture an inline_v1 app — Solution apps must be
