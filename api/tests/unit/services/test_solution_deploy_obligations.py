@@ -42,8 +42,12 @@ def _zip(entries: list[tuple[str, bytes]], *, reverse: bool = False) -> bytes:
     return buffer.getvalue()
 
 
-def _record(entries: list[tuple[str, bytes]]) -> SolutionDeployObligation:
-    repo_subpath = "solutions/example"
+def _record(
+    entries: list[tuple[str, bytes]],
+    *,
+    solution_slug: str = "example",
+    repo_subpath: str = "solutions/example",
+) -> SolutionDeployObligation:
     files = [
         {
             "path": f"{repo_subpath}/{path}",
@@ -60,11 +64,11 @@ def _record(entries: list[tuple[str, bytes]]) -> SolutionDeployObligation:
         source_commit_sha="a" * 40,
         source_tree_sha="b" * 40,
         base_commit_sha="c" * 40,
-        solution_slug="example",
+        solution_slug=solution_slug,
         repo_subpath=repo_subpath,
         source_subtree_sha="d" * 40,
         source_content_id=solution_source_content_id(
-            solution_slug="example",
+            solution_slug=solution_slug,
             repo_subpath=repo_subpath,
             source_files=files,
         ),
@@ -375,6 +379,7 @@ async def test_exact_artifact_and_runtime_readback_close_obligation(
         database,
         solution_id=uuid4(),
         solution_slug="example",
+        repo_subpath="solutions/example",
         accountability_organization_id=record.organization_id,
         deploy_job_id=uuid4(),
         candidate_id=candidate_id,
@@ -415,6 +420,7 @@ async def test_runtime_mismatch_stays_attention_required(monkeypatch) -> None:
         database,
         solution_id=uuid4(),
         solution_slug="example",
+        repo_subpath="solutions/example",
         accountability_organization_id=record.organization_id,
         deploy_job_id=uuid4(),
         candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
@@ -445,6 +451,7 @@ async def test_readback_exception_becomes_attention_evidence(monkeypatch) -> Non
         database,
         solution_id=uuid4(),
         solution_slug="example",
+        repo_subpath="solutions/example",
         accountability_organization_id=record.organization_id,
         deploy_job_id=uuid4(),
         candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
@@ -478,6 +485,7 @@ async def test_reconcile_skips_newer_artifact_mismatch_and_releases_exact_record
         database,
         solution_id=uuid4(),
         solution_slug="example",
+        repo_subpath="solutions/example",
         accountability_organization_id=older.organization_id,
         deploy_job_id=uuid4(),
         candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
@@ -487,6 +495,67 @@ async def test_reconcile_skips_newer_artifact_mismatch_and_releases_exact_record
     assert result["state"] == "released"
     assert older.disposition == "released"
     assert newer.disposition == "pending"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_matches_same_slug_only_on_repo_subpath(monkeypatch) -> None:
+    entries = [("bifrost.solution.yaml", b"slug: example\nname: Example\n")]
+    matching = _record(entries, repo_subpath="solutions/example")
+    other_path = _record(entries, repo_subpath="solutions/relocated")
+    artifact = _zip(entries)
+    database = SimpleNamespace(
+        scalars=AsyncMock(
+            return_value=SimpleNamespace(all=lambda: [other_path, matching])
+        ),
+        flush=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "src.services.solution_deploy_obligations._runtime_and_registration_readback",
+        AsyncMock(return_value=(True, None, {"runtime_files": {}})),
+    )
+
+    result = await reconcile_solution_deploy_obligation(
+        database,
+        solution_id=uuid4(),
+        solution_slug="example",
+        repo_subpath="solutions/example",
+        accountability_organization_id=matching.organization_id,
+        deploy_job_id=uuid4(),
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+        artifact=artifact,
+    )
+
+    assert result["state"] == "released"
+    assert result["obligation_id"] == str(matching.id)
+    assert matching.disposition == "released"
+    assert matching.completion_evidence["repo_subpath"] == "solutions/example"
+    assert other_path.disposition == "pending"
+    assert other_path.completion_evidence is None
+
+
+@pytest.mark.asyncio
+async def test_reconcile_ignores_same_slug_records_at_other_subpaths() -> None:
+    entries = [("bifrost.solution.yaml", b"slug: example\nname: Example\n")]
+    other_path = _record(entries, repo_subpath="solutions/relocated")
+    artifact = _zip(entries)
+    database = SimpleNamespace(
+        scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [other_path])),
+        flush=AsyncMock(),
+    )
+
+    result = await reconcile_solution_deploy_obligation(
+        database,
+        solution_id=uuid4(),
+        solution_slug="example",
+        repo_subpath="solutions/example",
+        accountability_organization_id=other_path.organization_id,
+        deploy_job_id=uuid4(),
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+        artifact=artifact,
+    )
+
+    assert result == {"state": "not_tracked"}
+    assert other_path.disposition == "pending"
 
 
 @pytest.mark.asyncio
@@ -503,6 +572,7 @@ async def test_all_artifact_mismatches_mark_newest_attention() -> None:
         database,
         solution_id=uuid4(),
         solution_slug="example",
+        repo_subpath="solutions/example",
         accountability_organization_id=first.organization_id,
         deploy_job_id=uuid4(),
         candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
@@ -535,6 +605,7 @@ async def test_overdue_attention_can_close_after_exact_deploy(monkeypatch) -> No
         database,
         solution_id=uuid4(),
         solution_slug="example",
+        repo_subpath="solutions/example",
         accountability_organization_id=record.organization_id,
         deploy_job_id=uuid4(),
         candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",

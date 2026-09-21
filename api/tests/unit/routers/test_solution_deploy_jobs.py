@@ -269,6 +269,12 @@ async def test_deploy_snapshots_slug_before_commit_expires_solution(tmp_path, mo
                 raise RuntimeError("expired ORM attribute was accessed")
             return "snapshot-before-commit"
 
+        @property
+        def repo_subpath(self):
+            if self._expired:
+                raise RuntimeError("expired ORM attribute was accessed")
+            return "solutions/snapshot"
+
     solution = ExpiringSolution()
 
     class FakeDB:
@@ -308,6 +314,7 @@ async def test_deploy_snapshots_slug_before_commit_expires_solution(tmp_path, mo
 
     async def reconcile(*_args, **kwargs):
         assert kwargs["solution_slug"] == "snapshot-before-commit"
+        assert kwargs["repo_subpath"] == "solutions/snapshot"
         return {"state": "released"}
 
     from src.core import database as database_module

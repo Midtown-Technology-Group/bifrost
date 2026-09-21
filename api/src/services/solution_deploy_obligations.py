@@ -637,6 +637,7 @@ async def reconcile_solution_deploy_obligation(
     *,
     solution_id: UUID,
     solution_slug: str,
+    repo_subpath: str,
     accountability_organization_id: UUID,
     deploy_job_id: UUID,
     candidate_id: str,
@@ -648,6 +649,7 @@ async def reconcile_solution_deploy_obligation(
     query = select(SolutionDeployObligation).where(
         SolutionDeployObligation.organization_id == accountability_organization_id,
         SolutionDeployObligation.solution_slug == solution_slug,
+        SolutionDeployObligation.repo_subpath == repo_subpath,
         SolutionDeployObligation.declared_disposition == "solution_deploy_required",
         SolutionDeployObligation.disposition.in_(("pending", "attention_required")),
     )
@@ -665,6 +667,8 @@ async def reconcile_solution_deploy_obligation(
 
     mismatch: tuple[SolutionDeployObligation, str, dict[str, Any]] | None = None
     for record in records:
+        if record.repo_subpath != repo_subpath:
+            continue
         valid, reason, artifact_evidence = verify_solution_artifact(
             record,
             candidate_id=candidate_id,
@@ -721,6 +725,7 @@ async def reconcile_solution_deploy_obligation(
             "source_tree_sha": record.source_tree_sha,
             "source_subtree_sha": record.source_subtree_sha,
             "solution_slug": solution_slug,
+            "repo_subpath": record.repo_subpath,
             "solution_id": str(solution_id),
             "deploy_job_id": str(deploy_job_id),
             "artifact": artifact_evidence,
