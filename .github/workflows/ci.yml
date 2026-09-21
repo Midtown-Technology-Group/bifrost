@@ -729,6 +729,21 @@ jobs:
             ./test.sh "${shard_files[@]}" -v --durations=50
           fi
 
+      - name: Export E2E service logs and stop stack
+        if: always() && matrix.total != 0
+        run: ./test.sh stack down
+
+      - name: Preserve E2E failure diagnostics
+        if: failure() && matrix.total != 0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-e2e-diagnostics-${{ matrix.shard }}
+          path: |
+            /tmp/bifrost-bifrost-test-*/*.log
+            /tmp/bifrost-bifrost-test-*/test-results.xml
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Preserve E2E coverage evidence
         if: needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

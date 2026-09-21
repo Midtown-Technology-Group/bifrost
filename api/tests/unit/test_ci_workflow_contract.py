@@ -125,6 +125,7 @@ def test_nightly_owns_full_browser_slow_coverage_and_clean_builds() -> None:
         "product-browser",
         "slow-unit-contracts",
         "backend-coverage",
+        "client-unit",
         "clean-production-build",
     }
 
@@ -141,6 +142,15 @@ def test_nightly_owns_full_browser_slow_coverage_and_clean_builds() -> None:
         assert run_step["env"]["BIFROST_TEST_USE_CLEAN_BOOT"] == "1"
         assert expected in run_step["run"]
 
+    assert any(
+        step.get("run") == "./test.sh e2e"
+        for step in workflow["jobs"]["backend-coverage"]["steps"]
+    )
+    assert any(
+        step.get("run") == "npm test" and step.get("working-directory") == "client"
+        for step in workflow["jobs"]["client-unit"]["steps"]
+    )
+
     clean_builds = [
         step
         for step in workflow["jobs"]["clean-production-build"]["steps"]
@@ -148,3 +158,15 @@ def test_nightly_owns_full_browser_slow_coverage_and_clean_builds() -> None:
     ]
     assert len(clean_builds) == 2
     assert all(step["with"]["no-cache"] == "true" for step in clean_builds)
+
+
+def test_e2e_failures_export_service_logs_before_runner_cleanup() -> None:
+    steps = _load_workflow(CI_WORKFLOW)["jobs"]["test-e2e"]["steps"]
+    export = next(step for step in steps if step["name"] == "Export E2E service logs and stop stack")
+    artifact = next(step for step in steps if step["name"] == "Preserve E2E failure diagnostics")
+    assert export["if"] == "always() && matrix.total != 0"
+    assert export["run"] == "./test.sh stack down"
+    assert steps.index(export) < steps.index(artifact)
+    assert artifact["if"] == "failure() && matrix.total != 0"
+    assert "*.log" in artifact["with"]["path"]
+    assert "test-results.xml" in artifact["with"]["path"]

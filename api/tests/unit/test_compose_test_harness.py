@@ -243,11 +243,18 @@ def test_api_quality_script_runs_pyright_without_ci_venv_config():
     )
 
 
-def test_pre_pr_covers_the_comprehensive_ci_browser_lane():
-    """The local gate must catch failures outside the browser smoke selection."""
+def test_pre_pr_preserves_full_browser_gate_and_explicit_ci_deferral():
+    """Broad local verification is opt-in; required CI keeps full browser coverage."""
     script = _find_repo_file("test.sh").read_text()
     gate = script.split("cmd_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
     workflow = _find_repo_file(".github/workflows/ci.yml").read_text()
     assert './test.sh client e2e\n' in workflow
-    assert "\n    client_e2e\n" in gate
-    assert "\n    client_smoke\n" not in gate
+    full = gate.split('if [ "$full_run" = "1" ]; then')[-1].split("elif ", 1)[0]
+    assert "run_pre_pr_stage browser client_e2e" in full
+    assert "client_smoke" not in full
+    deferred = gate.split('elif [ "$(pre_pr_plan_scope)" = "comprehensive" ]; then', 1)[1].split("\n    else", 1)[0]
+    assert "deferred to required CI" in deferred
+    assert "client_e2e" not in deferred
+    assert 'cmd_unit_targets "${unit_targets[@]}"' in gate
+    assert 'cmd_e2e_targets "${e2e_targets[@]}"' in gate
+    assert 'client_e2e "${browser_targets[@]}"' in gate

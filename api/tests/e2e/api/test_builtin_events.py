@@ -170,6 +170,29 @@ def _wait_for_failed_delivery(e2e_client, headers, source: dict, predicate):
         return None
 
     result = poll_until(find_delivery, max_wait=20.0, interval=0.5)
+    if result is None:
+        # A queued delivery alone cannot distinguish an unclaimed execution
+        # from a completed execution whose delivery update was lost.
+        executions = {}
+        for delivery in last_observation.get("deliveries", []):
+            execution_id = delivery.get("execution_id")
+            if not execution_id:
+                continue
+            try:
+                response = e2e_client.get(
+                    f"/api/executions/{execution_id}", headers=headers
+                )
+                observation = {"status_code": response.status_code}
+                if response.status_code == 200:
+                    execution = response.json()
+                    observation.update({
+                        key: execution.get(key)
+                        for key in ("status", "started_at", "completed_at", "attempt_history")
+                    })
+                executions[execution_id] = observation
+            except Exception as exc:
+                executions[execution_id] = {"read_error_type": type(exc).__name__}
+        last_observation["linked_executions"] = executions
     assert result is not None, (
         f"No failed delivery for {source['event_type']}; "
         f"last observation: {last_observation!r}"
