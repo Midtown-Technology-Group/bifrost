@@ -249,12 +249,18 @@ def test_pre_pr_preserves_full_browser_gate_and_explicit_ci_deferral():
     gate = script.split("cmd_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
     workflow = _find_repo_file(".github/workflows/ci.yml").read_text()
     assert './test.sh client e2e\n' in workflow
-    full = gate.split('if [ "$full_run" = "1" ]; then')[-1].split("elif ", 1)[0]
+    full = gate.split('if [ "$full_run" = "1" ]; then')[-1].split("\n    else", 1)[0]
     assert "run_pre_pr_stage browser client_e2e" in full
     assert "client_smoke" not in full
-    deferred = gate.split('elif [ "$(pre_pr_plan_scope)" = "comprehensive" ]; then', 1)[1].split("\n    else", 1)[0]
-    assert "deferred to required CI" in deferred
-    assert "client_e2e" not in deferred
-    assert 'cmd_unit_targets "${unit_targets[@]}"' in gate
-    assert 'cmd_e2e_targets "${e2e_targets[@]}"' in gate
-    assert 'client_e2e "${browser_targets[@]}"' in gate
+    scoped = script.split("run_scoped_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
+    assert "run_scoped_pre_pr" in gate
+    assert 'if [ "$(pre_pr_plan_lane "$lane")" = "comprehensive" ]; then' in scoped
+    assert "deferred to required CI" in scoped
+    for lane, command, targets in (
+        ("api_unit", "cmd_unit_targets", "unit_targets"),
+        ("api_e2e", "cmd_e2e_targets", "e2e_targets"),
+        ("client_e2e", "client_e2e", "browser_targets"),
+    ):
+        dispatch = scoped.split(f'if [ "$(pre_pr_plan_lane {lane})" = "affected" ]; then', 1)[1].split("\n    fi", 1)[0]
+        assert f'{command} "${{{targets}[@]}}"' in dispatch
+        assert f'[ "${{#{targets}[@]}}" -gt 0 ]' in dispatch
