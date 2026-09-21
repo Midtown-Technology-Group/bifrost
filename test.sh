@@ -621,6 +621,7 @@ client_unit_targets() {
 repository_ci_checks() {
     bash scripts/lib/test_stack_lock_test.sh
     python3 scripts/lib/pre_pr_stage_evidence_test.py
+    bash scripts/lib/pre_pr_lanes_test.sh
     node --test .github/scripts/authorize-merge-queue.test.mjs
     echo "Checking GitHub Action pins..."
     python3 api/scripts/check_github_action_pins.py --verify-versions
@@ -631,6 +632,13 @@ repository_ci_checks() {
     # git diff --quiet -- plugins/bifrost/skills .codex/skills.
     # It also enforces the public plugin skill-name namespace contract.
     python3 scripts/check_skill_mirrors.py
+}
+
+generated_api_checks() {
+    # This imports the API/OpenAPI schema in the supported image, without booting
+    # databases or the integration stack. Never defer generated drift to CI.
+    docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps test-runner \
+        python scripts/skill-truth/generate.py --check
 }
 
 build_local_api_candidate() {
@@ -860,6 +868,53 @@ cmd_ci() {
     client_e2e
 }
 
+run_scoped_pre_pr() {
+    # A broad lane must not force unrelated lanes broad, or accidentally
+    # invoke a full local suite with an empty list of selected targets.
+    for lane in api_unit api_e2e client_unit client_e2e mcp_conformance; do
+        if [ "$(pre_pr_plan_lane "$lane")" = "comprehensive" ]; then
+            echo "$lane: comprehensive validation deferred to required CI (--full runs it locally)."
+        fi
+    done
+    if [ "$(pre_pr_plan_lane client_quality)" != "skip" ]; then
+        mapfile -t client_quality_targets < <(pre_pr_plan_targets impacted client)
+        if [ "$(pre_pr_plan_lane client_quality)" = "comprehensive" ] || [ "${#client_quality_targets[@]}" -eq 0 ]; then
+            client_quality_targets=(.)
+        fi
+        run_pre_pr_stage client client_quality_checks "${client_quality_targets[@]}"
+    fi
+    if [ "$(pre_pr_plan_lane api_unit)" = "affected" ] || [ "$(pre_pr_plan_lane api_e2e)" = "affected" ] || [ "$(pre_pr_plan_lane mcp_conformance)" = "affected" ] || [ "$(pre_pr_plan_lane client_e2e)" = "affected" ]; then
+        run_pre_pr_stage stack stack_up
+    fi
+    if [ "$(pre_pr_plan_lane api_quality)" != "skip" ]; then
+        run_pre_pr_stage quality quality_api
+        run_pre_pr_stage generated generated_api_checks
+    fi
+    if [ "$(pre_pr_plan_lane api_unit)" = "affected" ]; then
+        mapfile -t unit_targets < <(pre_pr_plan_targets unit_tests api)
+        [ "${#unit_targets[@]}" -gt 0 ] || { echo "ERROR: affected lane has no unit_targets" >&2; return 1; }
+        run_pre_pr_stage unit cmd_unit_targets "${unit_targets[@]}"
+    fi
+    if [ "$(pre_pr_plan_lane api_e2e)" = "affected" ]; then
+        mapfile -t e2e_targets < <(pre_pr_plan_targets e2e_tests api)
+        [ "${#e2e_targets[@]}" -gt 0 ] || { echo "ERROR: affected lane has no e2e_targets" >&2; return 1; }
+        run_pre_pr_stage e2e cmd_e2e_targets "${e2e_targets[@]}"
+    fi
+    if [ "$(pre_pr_plan_lane mcp_conformance)" = "affected" ]; then
+        run_pre_pr_stage mcp mcp_conformance
+    fi
+    if [ "$(pre_pr_plan_lane client_unit)" = "affected" ]; then
+        mapfile -t client_unit_targets < <(pre_pr_plan_targets unit_tests client)
+        [ "${#client_unit_targets[@]}" -gt 0 ] || { echo "ERROR: affected lane has no client_unit_targets" >&2; return 1; }
+        run_pre_pr_stage client-unit client_unit_targets "${client_unit_targets[@]}"
+    fi
+    if [ "$(pre_pr_plan_lane client_e2e)" = "affected" ]; then
+        mapfile -t browser_targets < <(pre_pr_plan_targets e2e_tests client)
+        [ "${#browser_targets[@]}" -gt 0 ] || { echo "ERROR: affected lane has no browser_targets" >&2; return 1; }
+        run_pre_pr_stage browser client_e2e "${browser_targets[@]}"
+    fi
+}
+
 cmd_pre_pr() {
     local head_sha stack_was_up full_run=0
 
@@ -919,46 +974,14 @@ PY
         run_pre_pr_stage client client_ci_checks
         run_pre_pr_stage stack stack_up
         run_pre_pr_stage quality quality_api
+        run_pre_pr_stage generated generated_api_checks
         run_pre_pr_stage unit cmd_unit
         run_pre_pr_stage e2e cmd_e2e
         run_pre_pr_stage browser client_e2e
         run_pre_pr_stage image build_local_api_candidate
-    elif [ "$(pre_pr_plan_scope)" = "comprehensive" ]; then
-        run_pre_pr_stage quality quality_api
-        echo "Affected planner selected comprehensive CI; broad integration/browser stages are deferred to required CI. Use --full to run the exhaustive local gate."
     else
-        if [ "$(pre_pr_plan_lane client_quality)" != "skip" ]; then
-            mapfile -t client_quality_targets < <(pre_pr_plan_targets impacted client)
-            if [ "${#client_quality_targets[@]}" -eq 0 ]; then
-                client_quality_targets=(.)
-            fi
-            run_pre_pr_stage client client_quality_checks "${client_quality_targets[@]}"
-        fi
-        if [ "$(pre_pr_plan_lane api_quality)" != "skip" ] || [ "$(pre_pr_plan_lane api_unit)" != "skip" ] || [ "$(pre_pr_plan_lane api_e2e)" != "skip" ] || [ "$(pre_pr_plan_lane mcp_conformance)" != "skip" ] || [ "$(pre_pr_plan_lane client_e2e)" != "skip" ]; then
-            run_pre_pr_stage stack stack_up
-        fi
-        if [ "$(pre_pr_plan_lane api_quality)" != "skip" ]; then
-            run_pre_pr_stage quality quality_api
-        fi
-        if [ "$(pre_pr_plan_lane api_unit)" != "skip" ]; then
-            mapfile -t unit_targets < <(pre_pr_plan_targets unit_tests api)
-            run_pre_pr_stage unit cmd_unit_targets "${unit_targets[@]}"
-        fi
-        if [ "$(pre_pr_plan_lane api_e2e)" != "skip" ]; then
-            mapfile -t e2e_targets < <(pre_pr_plan_targets e2e_tests api)
-            run_pre_pr_stage e2e cmd_e2e_targets "${e2e_targets[@]}"
-        fi
-        if [ "$(pre_pr_plan_lane mcp_conformance)" != "skip" ]; then
-            run_pre_pr_stage mcp mcp_conformance
-        fi
-        if [ "$(pre_pr_plan_lane client_unit)" != "skip" ]; then
-            mapfile -t client_unit_targets < <(pre_pr_plan_targets unit_tests client)
-            run_pre_pr_stage client-unit client_unit_targets "${client_unit_targets[@]}"
-        fi
-        if [ "$(pre_pr_plan_lane client_e2e)" != "skip" ]; then
-            mapfile -t browser_targets < <(pre_pr_plan_targets e2e_tests client)
-            run_pre_pr_stage browser client_e2e "${browser_targets[@]}"
-        fi
+        run_scoped_pre_pr
+
     fi
 
     if [ "$(git rev-parse HEAD)" != "$head_sha" ] || \

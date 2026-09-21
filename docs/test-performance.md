@@ -56,3 +56,24 @@ PLAYWRIGHT_WORKERS=1 npx playwright test --list
 PLAYWRIGHT_WORKERS=2 npx playwright test --list
 PLAYWRIGHT_WORKERS=bogus npx playwright test --list
 ```
+
+
+## Scoped CI fallback
+
+Affected-test planning uses lane-level decisions. A backend uncertainty does
+not by itself require every frontend unit test; missing browser ownership
+requires broad browser coverage, not unrelated backend tests. Shared API
+contracts remain conservative: backend and browser integration coverage expand
+until compatibility can be proved. Migration, dependency, CI, and unmodelled
+cross-cutting changes retain comprehensive validation. The plan artifact records
+why each lane broadened. This does not bypass required checks or the nightly
+full-suite backstop.
+
+`./test.sh pre-pr` runs repository consistency, relevant quality and generated
+API checks even when comprehensive unit/integration/browser lanes are deferred
+to required CI. Affected lanes run their explicit targets; an empty target list
+is an error. `--full` remains exhaustive. Regenerate the authoritative appendices
+with `api/scripts/skill-truth/generate.py` in the supported Linux environment,
+then run `scripts/sync-codex-skills.sh` and commit both before rerunning the clean
+candidate gate. Do not submit one generated copy and wait for CI to identify
+the other.

@@ -126,7 +126,10 @@ def test_unowned_backend_downstream_falls_back_to_comprehensive(
         [affected.GitChange("M", "api/src/services/helper.py")]
     )
 
-    assert plan.scope == "comprehensive"
+    assert plan.scope == "affected"
+    assert plan.lane("api_unit") == "comprehensive"
+    assert plan.lane("api_e2e") == "comprehensive"
+    assert plan.lane("client_e2e") == "skip"
     assert plan.python.uncovered == ("api/src/services/unowned.py",)
 
 
@@ -176,8 +179,11 @@ def test_unowned_client_page_requires_comprehensive_browser_validation(
         [affected.GitChange("M", "client/src/pages/Reports.tsx")]
     )
 
-    assert plan.scope == "comprehensive"
-    assert plan.client.uncovered == ("client/src/pages/Reports.tsx",)
+    assert plan.scope == "affected"
+    assert plan.lane("client_unit") == "affected"
+    assert plan.lane("client_e2e") == "comprehensive"
+    assert plan.lane("api_unit") == "skip"
+    assert plan.client.uncovered_e2e == ("client/src/pages/Reports.tsx",)
 
 
 @pytest.mark.parametrize(
@@ -185,6 +191,8 @@ def test_unowned_client_page_requires_comprehensive_browser_validation(
     [
         (affected.GitChange("D", "api/src/services/old.py"), "deletions"),
         (affected.GitChange("M", ".github/workflows/ci.yml"), "high-risk"),
+        (affected.GitChange("M", "api/scripts/plan_affected_tests.py"), "high-risk"),
+        (affected.GitChange("M", "api/src/routers/auth.py"), "high-risk"),
         (affected.GitChange("M", "requirements.lock"), "high-risk"),
         (affected.GitChange("M", "unexpected.toml"), "unmodelled"),
     ],
@@ -234,8 +242,10 @@ def test_git_changes_rejects_argument_injection() -> None:
     [
         (
             "api/src/services/plugin.py",
-            "from importlib import import_module\nname = 'src.services.helper'\n"
-            "plugin = import_module(name)\n",
+            (
+                "from importlib import import_module\nname = 'src.services.helper'\n"
+                "plugin = import_module(name)\n"
+            ),
         ),
         (
             "client/src/lib/plugin.ts",
@@ -250,8 +260,10 @@ def test_nonliteral_dynamic_import_falls_back_to_comprehensive(
 
     plan = affected.plan_changes([affected.GitChange("M", path)])
 
-    assert plan.scope == "comprehensive"
-    assert plan.reason == f"non-literal dynamic import in {path}"
+    assert plan.scope == "affected"
+    lane = "api_unit" if path.startswith("api/") else "client_unit"
+    assert plan.lane(lane) == "comprehensive"
+    assert plan.lane_reasons[lane] == f"non-literal dynamic import in {path}"
 
 
 def test_unchanged_generator_wiring_does_not_force_comprehensive(
@@ -297,8 +309,10 @@ def test_changed_generator_dynamic_import_still_fails_closed(
 
     plan = affected.plan_changes([affected.GitChange("M", path)])
 
-    assert plan.scope == "comprehensive"
-    assert plan.reason == f"non-literal dynamic import in {path}"
+    assert plan.scope == "affected"
+    lane = "api_unit" if path.startswith("api/") else "client_unit"
+    assert plan.lane(lane) == "comprehensive"
+    assert plan.lane_reasons[lane] == f"non-literal dynamic import in {path}"
 
 
 def test_ci_evidence_paths_must_match_runner_contract(
@@ -379,3 +393,130 @@ def test_merge_group_preserves_docs_skip_and_high_risk_fallback(
         affected, "git_changes", lambda *args: [affected.GitChange("M", path)]
     )
     assert affected.plan_event("merge_group", "base", "head").scope == scope
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "api/src/core/security.py",
+        "api/src/auth/dependencies.py",
+        "api/src/models/orm/user.py",
+        "api/alembic/versions/new.py",
+    ],
+)
+def test_security_and_storage_changes_remain_global(
+    graph_repo: Path, path: str
+) -> None:
+    _write(graph_repo, path, "VALUE = 1\n")
+    plan = affected.plan_changes([affected.GitChange("M", path)])
+    assert plan.scope == "comprehensive"
+    assert set(plan.to_dict()["lanes"].values()) == {"comprehensive"}
+
+
+def test_mixed_safe_surfaces_select_independently(graph_repo: Path) -> None:
+    _write(graph_repo, "api/src/services/helper.py", "VALUE = 1\n")
+    _write(
+        graph_repo,
+        "api/tests/unit/test_helper.py",
+        "from src.services.helper import VALUE\n",
+    )
+    _write(graph_repo, "client/src/lib/format.ts", "export const value = 1;\n")
+    _write(
+        graph_repo, "client/src/lib/format.test.ts", "import {value} from './format';\n"
+    )
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "api/src/services/helper.py"),
+            affected.GitChange("M", "client/src/lib/format.ts"),
+        ]
+    )
+    assert plan.scope == "affected"
+    assert plan.python.unit_tests == ("tests/unit/test_helper.py",)
+    assert plan.client.unit_tests == ("src/lib/format.test.ts",)
+    assert plan.lane("api_e2e") == plan.lane("client_e2e") == "skip"
+
+
+@pytest.mark.parametrize(
+    "definition", ["class Report: pass\n", "class Report: required: int\n"]
+)
+def test_contract_changes_require_backend_and_browser_not_all_client_unit(
+    graph_repo: Path, definition: str
+) -> None:
+    path = "api/src/models/contracts/report.py"
+    _write(graph_repo, path, definition)
+    _write(graph_repo, "client/src/lib/format.test.ts", "it('works', () => {});\n")
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", path),
+            affected.GitChange("M", "client/src/lib/format.test.ts"),
+        ]
+    )
+    assert plan.scope == "affected"
+    for lane in ("api_quality", "api_unit", "api_e2e", "client_e2e", "mcp_conformance"):
+        assert plan.lane(lane) == "comprehensive"
+        assert "compatibility is not proven" in plan.lane_reasons[lane]
+    assert plan.lane("client_unit") == "affected"
+    assert plan.client.unit_tests == ("src/lib/format.test.ts",)
+
+
+def test_one_browser_owner_does_not_cover_another_page(graph_repo: Path) -> None:
+    for page in ("Owned", "Unowned"):
+        _write(graph_repo, f"client/src/pages/{page}.tsx", "export const value = 1;\n")
+        _write(
+            graph_repo,
+            f"client/src/pages/{page}.test.tsx",
+            f"import {{value}} from './{page}';\n",
+        )
+    _write(
+        graph_repo,
+        "client/e2e/owned.spec.ts",
+        "import {value} from '@/pages/Owned';\n",
+    )
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "client/src/pages/Owned.tsx"),
+            affected.GitChange("M", "client/src/pages/Unowned.tsx"),
+        ]
+    )
+    assert plan.lane("client_unit") == "affected"
+    assert plan.lane("client_e2e") == "comprehensive"
+    assert plan.client.uncovered_e2e == ("client/src/pages/Unowned.tsx",)
+
+
+def test_lane_fallback_serializes_full_e2e_matrix_and_reasons(graph_repo: Path) -> None:
+    path = "api/src/models/contracts/report.py"
+    _write(graph_repo, path, "class Report: pass\n")
+    plan = affected.plan_changes([affected.GitChange("M", path)])
+    output, summary = graph_repo / "output", graph_repo / "summary"
+    affected.write_github_output(output, plan)
+    affected.write_summary(summary, plan)
+    assert "api_e2e_mode=comprehensive" in output.read_text()
+    assert '"shard":4,"total":4' in output.read_text()
+    assert "compatibility is not proven" in summary.read_text()
+    assert plan.to_dict()["lane_reasons"] == plan.lane_reasons
+
+
+def test_browser_only_unowned_page_preserves_owned_component_tests(
+    graph_repo: Path,
+) -> None:
+    _write(
+        graph_repo,
+        "client/src/pages/Report.tsx",
+        "import {value} from '@/components/Value';\n",
+    )
+    _write(graph_repo, "client/src/components/Value.tsx", "export const value = 1;\n")
+    _write(
+        graph_repo,
+        "client/src/components/Value.test.tsx",
+        "import {value} from './Value';\n",
+    )
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "client/src/pages/Report.tsx"),
+            affected.GitChange("M", "client/src/components/Value.tsx"),
+        ]
+    )
+    assert plan.client.uncovered == ("client/src/pages/Report.tsx",)
+    assert plan.lane("client_unit") == "affected"
+    assert plan.client.unit_tests == ("src/components/Value.test.tsx",)
+    assert plan.lane("client_e2e") == "comprehensive"

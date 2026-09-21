@@ -7,9 +7,9 @@ own FastAPI router modules when their literal request paths reach a route in
 that module.  This catches shared-helper fan-out without making every leaf
 change run every platform suite.
 
-Unknown paths, deletions, mixed backend/client changes, contract/storage
-boundaries, parse failures, excessive fan-out, and untested downstream source
-all select comprehensive validation.  CI uploads the JSON result so a focused
+Unknown paths, deletions, storage and CI changes select comprehensive
+validation. Graph uncertainty broadens the affected surface; backend contracts
+also require the browser integration lane.  CI uploads the JSON result so a focused
 run is reviewable rather than an opaque optimization.
 """
 
@@ -54,13 +54,16 @@ DOC_FILES = frozenset(
 COMPREHENSIVE_PREFIXES = (
     ".github/",
     "api/alembic/",
-    "api/src/models/contracts/",
     "api/src/models/orm/",
+    "api/src/core/",
+    "api/src/auth/",
     "k8s/",
     "scripts/ci/",
 )
 COMPREHENSIVE_FILES = frozenset(
     {
+        "api/scripts/plan_affected_tests.py",
+        "api/src/routers/auth.py",
         "pyproject.toml",
         "requirements.lock",
         "requirements-piptools.lock",
@@ -153,6 +156,7 @@ class SurfacePlan:
     uncovered: tuple[str, ...] = ()
     dependency_edges: int = 0
     runtime_edges: int = 0
+    uncovered_e2e: tuple[str, ...] = ()
 
 
 @dataclass
@@ -162,12 +166,16 @@ class AffectedPlan:
     changed_paths: tuple[str, ...]
     python: SurfacePlan = field(default_factory=SurfacePlan)
     client: SurfacePlan = field(default_factory=SurfacePlan)
+    lane_overrides: dict[str, str] = field(default_factory=dict)
+    lane_reasons: dict[str, str] = field(default_factory=dict)
 
     def lane(self, name: str) -> str:
         if self.scope == "comprehensive":
             return "comprehensive"
         if self.scope == "docs-only":
             return "skip"
+        if name in self.lane_overrides:
+            return self.lane_overrides[name]
         if name == "api_quality":
             return (
                 "affected"
@@ -227,6 +235,7 @@ class AffectedPlan:
             "python": vars(self.python),
             "client": vars(self.client),
             "lanes": lanes,
+            "lane_reasons": self.lane_reasons,
         }
 
 
@@ -436,9 +445,8 @@ def _python_node(path: str, index: Mapping[str, str]) -> PythonNode:
                 call_name
                 in {"get", "post", "put", "patch", "delete", "options", "head"}
                 and node.args
-            ):
-                if route := _literal_path(node.args[0]):
-                    requests.add(route)
+            ) and (route := _literal_path(node.args[0])):
+                requests.add(route)
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -562,14 +570,16 @@ def _plan_python(
         if not test.startswith("api/tests/e2e/"):
             continue
         for router, routes in routers.items():
-            if any(
-                _route_matches(route, request)
-                for route in routes
-                for request in parsed[test].requests
+            if (
+                any(
+                    _route_matches(route, request)
+                    for route in routes
+                    for request in parsed[test].requests
+                )
+                and router not in test_direct[test]
             ):
-                if router not in test_direct[test]:
-                    test_direct[test].add(router)
-                    runtime_edges += 1
+                test_direct[test].add(router)
+                runtime_edges += 1
 
     closures = {
         test: _transitive(direct, dependencies, PYTHON_WIRING_SINKS)
@@ -609,7 +619,6 @@ def _plan_python(
         else set()
     )
     uncovered_boundary = boundary_impacted - e2e_covered
-    uncovered.update(uncovered_boundary)
 
     return SurfacePlan(
         changed=tuple(sorted(changed_source)),
@@ -619,6 +628,7 @@ def _plan_python(
         uncovered=tuple(sorted(uncovered)),
         dependency_edges=sum(len(items) for items in dependencies.values()),
         runtime_edges=runtime_edges,
+        uncovered_e2e=tuple(sorted(uncovered_boundary)),
     )
 
 
@@ -688,15 +698,13 @@ def _plan_client(
     )
     uncovered = impacted - covered
 
-    # Browser specs do not normally import React pages.  Page/router changes
-    # therefore fail closed to the comprehensive browser lane unless explicit
-    # source ownership exists.
-    if any(path.startswith(CLIENT_E2E_BOUNDARIES) for path in impacted):
-        e2e_selected = {path for path in selected if _is_client_e2e(path)}
-        if not e2e_selected:
-            uncovered.update(
-                path for path in impacted if path.startswith(CLIENT_E2E_BOUNDARIES)
-            )
+    # Every impacted browser boundary needs an owner, not merely any E2E spec.
+    e2e_covered = set().union(
+        *(closures[test] for test in selected if _is_client_e2e(test)), set()
+    )
+    uncovered_e2e = {
+        path for path in impacted if path.startswith(CLIENT_E2E_BOUNDARIES)
+    } - e2e_covered
 
     return SurfacePlan(
         changed=tuple(sorted(changed_source)),
@@ -717,6 +725,7 @@ def _plan_client(
         ),
         uncovered=tuple(sorted(uncovered)),
         dependency_edges=sum(len(items) for items in dependencies.values()),
+        uncovered_e2e=tuple(sorted(uncovered_e2e)),
     )
 
 
@@ -786,70 +795,84 @@ def plan_changes(changes: Sequence[GitChange]) -> AffectedPlan:
             "documentation and agent guidance only",
             tuple(sorted(c.path for c in changes)),
         )
-    if python_source and client_source:
-        return _comprehensive(
-            changes,
-            "mixed backend and client source changes cross an unmodelled contract boundary",
-        )
-    if len(python_source) + len(client_source) > MAX_CHANGED_SOURCE:
-        return _comprehensive(
-            changes, f"changed source count exceeds {MAX_CHANGED_SOURCE}"
-        )
-
-    try:
-        python_plan = (
-            _plan_python(python_source, python_tests)
-            if (python_source or python_tests)
-            else SurfacePlan()
-        )
-        client_plan = (
-            _plan_client(client_source, client_tests)
-            if (client_source or client_tests)
-            else SurfacePlan()
-        )
-    except PlanError as exc:
-        return _comprehensive(changes, str(exc))
-
-    if (
-        len(python_plan.impacted) > MAX_IMPACTED_SOURCE
-        or len(client_plan.impacted) > MAX_IMPACTED_SOURCE
-    ):
-        return _comprehensive(
-            changes,
-            f"reverse dependency closure exceeds {MAX_IMPACTED_SOURCE}",
-            python=python_plan,
-            client=client_plan,
-        )
-    selected_count = sum(
-        len(items)
-        for items in (
-            python_plan.unit_tests,
-            python_plan.e2e_tests,
-            client_plan.unit_tests,
-            client_plan.e2e_tests,
-        )
-    )
-    if selected_count > MAX_SELECTED_TESTS:
-        return _comprehensive(
-            changes,
-            f"selected test count {selected_count} exceeds {MAX_SELECTED_TESTS}",
-            python=python_plan,
-            client=client_plan,
-        )
-    if python_plan.uncovered or client_plan.uncovered:
-        return _comprehensive(
-            changes,
-            "reverse dependency closure contains source without graph-owned tests",
-            python=python_plan,
-            client=client_plan,
-        )
-    return AffectedPlan(
+    plan = AffectedPlan(
         scope="affected",
-        reason="complete reverse dependency closure has graph-owned tests",
+        reason="independent surface dependency analysis",
         changed_paths=tuple(sorted(change.path for change in changes)),
-        python=python_plan,
-        client=client_plan,
     )
+
+    def broaden(lanes: Sequence[str], reason: str) -> None:
+        for lane in lanes:
+            plan.lane_overrides[lane] = "comprehensive"
+            previous = plan.lane_reasons.get(lane)
+            plan.lane_reasons[lane] = f"{previous}; {reason}" if previous else reason
+
+    for surface, source, tests, planner in (
+        ("api", python_source, python_tests, _plan_python),
+        ("client", client_source, client_tests, _plan_client),
+    ):
+        if not (source or tests):
+            continue
+        lanes = tuple(f"{surface}_{kind}" for kind in ("quality", "unit", "e2e"))
+        try:
+            if len(source) > MAX_CHANGED_SOURCE:
+                raise PlanError(f"changed source count exceeds {MAX_CHANGED_SOURCE}")
+            selected = planner(source, tests)
+        except PlanError as exc:
+            selected = SurfacePlan(changed=source)
+            broaden(lanes, str(exc))
+            if surface == "api":
+                # A failed graph cannot exclude HTTP or MCP consumers.
+                broaden(
+                    ("client_e2e", "mcp_conformance"),
+                    "backend graph uncertainty cannot exclude integration consumers",
+                )
+        if surface == "api":
+            plan.python = selected
+        else:
+            plan.client = selected
+        if len(selected.impacted) > MAX_IMPACTED_SOURCE:
+            broaden(lanes, f"reverse dependency closure exceeds {MAX_IMPACTED_SOURCE}")
+            if surface == "api":
+                broaden(
+                    ("client_e2e", "mcp_conformance"), "backend closure was truncated"
+                )
+        if len(selected.unit_tests) + len(selected.e2e_tests) > MAX_SELECTED_TESTS:
+            broaden(lanes, f"selected test count exceeds {MAX_SELECTED_TESTS}")
+        unowned = selected.uncovered
+        if surface == "client":
+            # Browser execution covers unowned pages; leaf modules still need
+            # a unit owner or the entire client surface must be exercised.
+            unowned = tuple(
+                path for path in unowned if not path.startswith(CLIENT_E2E_BOUNDARIES)
+            )
+        if unowned:
+            broaden(
+                lanes,
+                "source without graph-owned tests: " + ", ".join(unowned[:5]),
+            )
+        if selected.uncovered_e2e:
+            broaden(
+                (f"{surface}_e2e",),
+                "boundary without integration owner: "
+                + ", ".join(selected.uncovered_e2e[:5]),
+            )
+
+    # Python import ownership cannot establish browser compatibility. Contract
+    # edits (including additive ones) run full backend and browser integration;
+    # client unit tests remain graph-selected, since they use mocked API data.
+    if any(path.startswith("api/src/models/contracts/") for path in python_source):
+        broaden(
+            ("api_quality", "api_unit", "api_e2e", "client_e2e", "mcp_conformance"),
+            "backend contract changed; compatibility is not proven by the import graph",
+        )
+    elif any(path.startswith("api/src/routers/") for path in plan.python.impacted):
+        broaden(("client_e2e",), "backend HTTP behavior can affect browser consumers")
+    if plan.lane_reasons:
+        plan.reason = "surface-scoped fallback; see lane_reasons"
+    else:
+        plan.reason = "complete reverse dependency closure has graph-owned tests"
+    return plan
 
 
 def _write_multiline(output, name: str, values: Sequence[str]) -> None:
@@ -920,6 +943,8 @@ def write_summary(path: Path, plan: AffectedPlan) -> None:
         summary.write("## Affected test plan\n\n")
         summary.write(f"- Scope: `{plan.scope}`\n- Reason: {plan.reason}\n")
         summary.write(f"- Changed paths: {len(plan.changed_paths)}\n")
+        for lane, reason in plan.lane_reasons.items():
+            summary.write(f"- `{lane}`: `{plan.lane(lane)}` - {reason}\n")
         summary.write(
             f"- Python impacted/tests: {len(plan.python.impacted)}/{len(plan.python.unit_tests) + len(plan.python.e2e_tests)}\n"
         )
