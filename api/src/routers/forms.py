@@ -1101,29 +1101,16 @@ async def _check_form_access(
 def _embed_can_access_form(ctx, form: FormORM) -> bool:
     """Whether an EMBED principal is bound to THIS form (EXT-1 NEW-I).
 
-    An embed token is HMAC-pre-authorized for exactly ONE resource. Before this
-    gate, the embed short-circuits in get_form / execute_form /
-    execute_startup_workflow / generate_upload_url skipped access control for
-    ANY embed token regardless of which form the path named — so an embed token
-    minted for app A in org H could read AND EXECUTE any form in any other org
-    (cross-tenant workflow execution as sentinel in the victim's org). Mirrors
-    the app-binding pattern in applications.py / app_code_files.py.
+    An embed token is HMAC-pre-authorized for exactly one resource. This gate
+    prevents the form runtime endpoints from treating an application or a
+    different form's capability as authorization for the requested form.
 
-    Binding rules (the token must be bound to the form being touched):
-    - form-embed token (``form_id`` claim set): must match the path form
-      exactly — ``ctx.user.form_id == str(form.id)``.
-    - app-embed token (``app_id`` set, no ``form_id``): the form must live in
-      the embed's OWN org (the form's org equals the token's org — a concrete
-      org). A global form (org-id None) is never embed-reachable, and a
-      cross-org form is rejected. This is the safe minimum that kills the
-      cross-tenant exec even without a form->app FK.
-    - a token with neither claim is never form-bound.
+    A form-embed token must match the path form exactly. App-embed tokens are
+    bound only to their application and carry no form capability, so they must
+    never pass this gate even when the application and form share an org.
     """
     if ctx.user.form_id is not None:
         return ctx.user.form_id == str(form.id)
-    if ctx.user.app_id is not None:
-        form_org = getattr(form, "organization_id", None)
-        return form_org is not None and form_org == ctx.user.organization_id
     return False
 
 
