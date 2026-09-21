@@ -91,6 +91,73 @@ class TestModuleCacheAsync:
             # Verify re-cached to Redis
             mock_client.setex.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "features/external_monitoring/workflows/probe.py",
+            "modules/vendor.py",
+            "_solutions/solution-1/modules/vendor.py",
+            "_workspace_releases/org-1/release-1/files/modules/vendor.py",
+        ],
+    )
+    async def test_cold_read_caches_content_without_scanning_resolver_keys(
+        self, mock_redis_client, path
+    ):
+        """Reading unchanged durable bytes must not scan unrelated Redis keys."""
+        from src.core.module_cache import get_module
+
+        mock_client, mock_redis = mock_redis_client
+        mock_client.get.return_value = None
+        content = b"VALUE = 'durable'\n"
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch(
+                "src.core.module_cache._read_module_from_storage",
+                new=AsyncMock(return_value=content),
+            ),
+        ):
+            result = await get_module(path)
+
+        assert result is not None
+        assert result["content"] == content.decode()
+        assert result["hash"] == hashlib.sha256(content).hexdigest()
+        assert json.loads(mock_client.setex.await_args.args[2]) == result
+        mock_redis.sadd.assert_awaited_once_with("bifrost:module:index", path)
+        mock_redis.scan_iter.assert_not_called()
+        mock_redis.delete.assert_not_called()
+
+    async def test_cold_read_discards_bytes_when_generation_changes(
+        self, mock_redis_client
+    ):
+        """A cache fill crossing a source update must reread the durable bytes."""
+        from src.core.module_cache import get_module
+
+        mock_client, mock_redis = mock_redis_client
+        mock_client.get.return_value = None
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch(
+                "src.core.module_cache.wait_for_workspace_generation",
+                new=AsyncMock(side_effect=["old", "new", "new", "new", "new"]),
+            ),
+            patch(
+                "src.core.module_cache._read_module_from_storage",
+                new=AsyncMock(side_effect=[b"OLD = True", b"NEW = True"]),
+            ) as read_storage,
+        ):
+            result = await get_module("modules/vendor.py")
+
+        assert result == {
+            "content": "NEW = True",
+            "path": "modules/vendor.py",
+            "hash": hashlib.sha256(b"NEW = True").hexdigest(),
+            "generation": "new",
+        }
+        assert read_storage.await_count == 2
+        mock_client.setex.assert_awaited_once()
+        assert json.loads(mock_client.setex.await_args.args[2]) == result
+        mock_redis.scan_iter.assert_not_called()
+
     async def test_immutable_cache_rejects_corrupt_content_with_trusted_hash_label(
         self, mock_redis_client
     ):
