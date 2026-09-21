@@ -51,7 +51,9 @@ async def test_retry_reuses_execution_without_republishing():
     with (
         patch(
             "src.services.execution.async_executor._persist_execution_pin",
-            new=AsyncMock(return_value=({}, False)),
+            new=AsyncMock(return_value=({
+                "execution_id": "22222222-2222-2222-2222-222222222222",
+            }, False)),
         ),
         patch(
             "src.services.execution.async_executor._publish_scheduled_once",

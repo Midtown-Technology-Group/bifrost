@@ -221,6 +221,28 @@ async def _persist_execution_pin(
     from src.services.workspace_release_runtime import pin_workspace_runtime
 
     async with get_db_context() as db:
+        event_delivery = None
+        event_delivery_id = (dispatch_metadata or {}).get("event_delivery_id")
+        if event_delivery_id is not None:
+            from src.models.orm.events import EventDelivery
+
+            # Serialize event publishers without holding a delivery row lock
+            # before the execution lock used by completion handling.
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext('bifrost:event-delivery:' || :id))"),
+                {"id": event_delivery_id},
+            )
+            event_delivery = await db.get(EventDelivery, uuid.UUID(event_delivery_id))
+            if (
+                event_delivery is None
+                or event_delivery.workflow_id != uuid.UUID(workflow_id)
+                or context.event is None
+                or event_delivery.event_id != uuid.UUID(context.event.id)
+            ):
+                raise ValueError("event delivery does not belong to the workflow")
+            if event_delivery.execution_id is not None:
+                execution_id = str(event_delivery.execution_id)
+
         request_identity = _dispatch_request_identity(
             context,
             execution_id,
@@ -320,6 +342,11 @@ async def _persist_execution_pin(
         from src.services.execution.attempts import ensure_dispatch_attempt
 
         await ensure_dispatch_attempt(db, pinned_execution)
+        if event_delivery is not None:
+            from src.models.enums import EventDeliveryStatus
+
+            event_delivery.execution_id = uuid.UUID(execution_id)
+            event_delivery.status = EventDeliveryStatus.QUEUED
         await db.commit()
         return dict(dispatch["publish"]), True
 
@@ -546,6 +573,9 @@ async def enqueue_workflow_execution_once(
         dispatch_metadata=dispatch_metadata,
     )
 
+    # An event delivery keeps its existing canonical execution on redispatch.
+    execution_id = str(publish_kwargs["execution_id"])
+
     await _publish_scheduled_once(
         execution_id=execution_id,
         publish_kwargs=publish_kwargs,
@@ -717,6 +747,7 @@ async def enqueue_system_workflow_execution(
     source: str,
     org_id: str | None = None,
     event: EventContext | None = None,
+    event_delivery_id: str | None = None,
 ) -> str:
     """
     Enqueue a system-triggered workflow execution.
@@ -760,4 +791,8 @@ async def enqueue_system_workflow_execution(
         parameters=parameters,
         execution_id=execution_id,  # Pass explicitly to avoid double generation
         org_id_override=org_id or "00000000-0000-0000-0000-000000000002",
+        dispatch_metadata=(
+            {"event_delivery_id": event_delivery_id}
+            if event_delivery_id is not None else None
+        ),
     )

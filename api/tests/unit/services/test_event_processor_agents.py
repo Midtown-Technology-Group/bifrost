@@ -120,7 +120,7 @@ async def test_queue_deliveries_routes_agent_subscription():
     count = await processor.queue_event_deliveries(event_id)
 
     assert count == 1
-    assert delivery.status == EventDeliveryStatus.QUEUED
+    processor.session.refresh.assert_awaited_once_with(delivery)
     processor._queue_agent_run.assert_awaited_once_with(delivery, event)
     processor._queue_workflow_execution.assert_not_awaited()
 
@@ -143,7 +143,7 @@ async def test_queue_deliveries_routes_workflow_subscription():
     count = await processor.queue_event_deliveries(event_id)
 
     assert count == 1
-    assert delivery.status == EventDeliveryStatus.QUEUED
+    processor.session.refresh.assert_awaited_once_with(delivery)
     processor._queue_workflow_execution.assert_awaited_once_with(delivery, event)
     processor._queue_agent_run.assert_not_awaited()
 
@@ -349,8 +349,10 @@ async def test_queue_deliveries_uses_fallback_message_for_empty_exception():
     count = await processor.queue_event_deliveries(event_id)
 
     assert count == 0
-    assert delivery.status == EventDeliveryStatus.FAILED
-    assert delivery.error_message == "ReadError while queueing event delivery"
+    values = processor.session.execute.await_args.args[0].compile().params
+    assert values["status"] == EventDeliveryStatus.FAILED
+    assert values["error_message"] == "ReadError while queueing event delivery"
+    processor.session.refresh.assert_awaited_once_with(delivery)
 
 
 @pytest.mark.asyncio

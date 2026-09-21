@@ -671,7 +671,18 @@ class EventProcessor:
                     await self._queue_agent_run(delivery, event_obj)
                 else:
                     await self._queue_workflow_execution(delivery, event_obj)
-                delivery.status = EventDeliveryStatus.QUEUED
+                # Workflows bind QUEUED before publication; agents already
+                # carry the delivery ID. Neither may overwrite a fast result.
+                await self.session.execute(
+                    sa.update(EventDelivery)
+                    .where(
+                        EventDelivery.id == delivery.id,
+                        EventDelivery.status == EventDeliveryStatus.PENDING,
+                    )
+                    .values(status=EventDeliveryStatus.QUEUED)
+                    .execution_options(synchronize_session=False)
+                )
+                await self.session.refresh(delivery)
                 queued += 1
             except Exception as e:
                 error_message = format_exception_message(
@@ -682,8 +693,20 @@ class EventProcessor:
                     f"Failed to queue delivery {delivery.id}: {error_message}",
                     exc_info=True,
                 )
-                delivery.status = EventDeliveryStatus.FAILED
-                delivery.error_message = error_message
+                # Compare in PostgreSQL: completion can commit while this
+                # publisher is handling an uncertain publication response.
+                await self.session.execute(
+                    sa.update(EventDelivery)
+                    .where(
+                        EventDelivery.id == delivery.id,
+                        EventDelivery.status.in_([
+                            EventDeliveryStatus.PENDING, EventDeliveryStatus.QUEUED
+                        ]),
+                    )
+                    .values(status=EventDeliveryStatus.FAILED, error_message=error_message)
+                    .execution_options(synchronize_session=False)
+                )
+                await self.session.refresh(delivery)
 
         await self.session.flush()
         await self._delivery_repo.update_event_status(event_id)
@@ -820,10 +843,11 @@ class EventProcessor:
             source="Event System",
             org_id=str(execution_org_id),
             event=event_context,
+            event_delivery_id=str(delivery.id),
         )
 
-        # Store the execution ID on the delivery for tracking
-        delivery.execution_id = uuid.UUID(execution_id)
+        # The execution pin transaction bound this delivery before publication.
+        # The caller refreshes after queueing, preserving a fast terminal result.
 
         logger.info(
             "Queued workflow execution for event delivery",
