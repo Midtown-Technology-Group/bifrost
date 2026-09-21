@@ -21,7 +21,7 @@ const badgeVariants = cva(
 				link: "text-primary underline-offset-4 hover:underline",
 				// Bifrost extension: soft warning badge (kept from new-york-era local fork, restyled to Rhea's soft-tint idiom)
 				warning:
-					"bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400 [a]:hover:bg-amber-500/25",
+					"bg-warning/15 text-warning [a]:hover:bg-warning/25",
 			},
 		},
 		defaultVariants: {
