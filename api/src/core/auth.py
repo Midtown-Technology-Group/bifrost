@@ -15,7 +15,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
-from src.core.security import decode_token
+from src.core.security import decode_token, is_actor_token
 from shared.role_cache import get_user_roles
 
 if TYPE_CHECKING:
@@ -144,6 +144,13 @@ async def get_current_user_optional(
     payload = decode_token(token, expected_type=token_type)
 
     if payload is None:
+        return None
+
+    if is_actor_token(payload):
+        logger.warning(
+            "Rejecting actor token (actor_type=%s) on REST auth path",
+            payload.get("actor_type"),
+        )
         return None
 
     if payload.get("mcp"):
@@ -514,6 +521,12 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     # Decode and validate token - must be an access token
     payload = decode_token(token, expected_type="access")
     if payload is None:
+        return None
+    if is_actor_token(payload):
+        logger.warning(
+            "Rejecting actor token (actor_type=%s) on WebSocket auth path",
+            payload.get("actor_type"),
+        )
         return None
     if payload.get("mcp"):
         logger.warning("Rejecting MCP-scoped bearer token on WebSocket auth path")

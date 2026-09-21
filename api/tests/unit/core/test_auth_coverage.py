@@ -111,6 +111,24 @@ async def test_optional_user_rejects_mcp_scoped_rest_token(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_optional_user_rejects_actor_token(monkeypatch):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(actor_type="solution_app"),
+    )
+
+    assert (
+        await auth.get_current_user_optional(
+            _request(),
+            _credentials("actor-token"),
+            object(),
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_required_user_and_active_superuser_guards_raise_http_errors(monkeypatch):
     async def no_current_user(*args):
         return None
@@ -223,6 +241,19 @@ async def test_websocket_auth_uses_header_and_rejects_mcp_token(monkeypatch):
 
     assert await auth.get_current_user_ws(websocket) is None
     assert calls == [("ws-token", "access")]
+
+
+@pytest.mark.asyncio
+async def test_websocket_auth_rejects_actor_token(monkeypatch):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(actor_type="solution_app"),
+    )
+
+    websocket = _request(cookies={"access_token": "actor-token"})
+
+    assert await auth.get_current_user_ws(websocket) is None
 
 
 @pytest.mark.asyncio
