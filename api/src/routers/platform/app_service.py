@@ -17,7 +17,6 @@ router = APIRouter(
 
 @router.get(
     "/metrics",
-    response_model=AppServiceMetricsResponse,
     summary="Get Azure App Service plan metrics",
 )
 async def app_service_metrics(

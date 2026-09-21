@@ -43,8 +43,7 @@ function formatValue(metric: AppServiceMetricSeries) {
 	if (metric.unit === "Percent") return `${value.toFixed(1)} %`;
 	if (value > 0 && value < 0.01) return "<0.01 requests";
 	let decimals = 0;
-	if (value !== 0 && Math.abs(value) < 1) decimals = 2;
-	else if (value % 1) decimals = 2;
+	if ((value !== 0 && Math.abs(value) < 1) || value % 1) decimals = 2;
 	return `${value.toFixed(decimals)} requests`;
 }
 
