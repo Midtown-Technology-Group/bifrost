@@ -99,6 +99,7 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 			// Sum memory across workers within each group bucket
 			const totalsByGroup = new Map<string, number>();
 			const groupOrder: string[] = [];
+			let historicalUnknown = false;
 			for (const point of allPoints) {
 				if (!totalsByGroup.has(point.group)) {
 					groupOrder.push(point.group);
@@ -109,6 +110,8 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 						(totalsByGroup.get(point.group) ?? 0) +
 							point.memory_current,
 					);
+				} else {
+					historicalUnknown = true;
 				}
 			}
 
@@ -126,7 +129,7 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 			}
 			let current = 0;
 			let max = 0;
-			let unknown = false;
+			let unknown = historicalUnknown;
 			for (const point of latestByWorker.values()) {
 				if (!isFiniteNonNegative(point.memory_current)) {
 					unknown = true;
@@ -174,7 +177,7 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 				}
 				current = liveCurrent;
 				max = liveMax;
-				unknown = liveUnknown;
+				unknown = historicalUnknown || liveUnknown;
 				headerWorkerIds = liveIds.sort((left, right) =>
 					left.localeCompare(right),
 				);

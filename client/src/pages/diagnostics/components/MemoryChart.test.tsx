@@ -94,3 +94,31 @@ it("treats null and non-finite memory values as unknown", () => {
 		screen.queryByText(/NaN|Infinity|no memory limit reported/i),
 	).not.toBeInTheDocument();
 });
+
+it("keeps historical invalid memory unknown after a valid latest sample", () => {
+	renderWithProviders(
+		<MemoryChart
+			livePoints={
+				[
+					{
+						group: "earlier",
+						worker_id: "worker-one",
+						memory_current: Number.NaN,
+						memory_max: 100,
+					},
+					{
+						group: "latest",
+						worker_id: "worker-one",
+						memory_current: 50,
+						memory_max: 100,
+					},
+				] as never
+			}
+		/>,
+	);
+	expect(
+		screen.getByText(
+			"Memory telemetry unavailable for one or more workers",
+		),
+	).toBeInTheDocument();
+});

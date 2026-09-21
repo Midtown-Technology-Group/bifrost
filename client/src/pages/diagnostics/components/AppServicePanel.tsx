@@ -154,6 +154,7 @@ export function AppServicePanel() {
 				<div
 					className="flex gap-1"
 					aria-label="App Service metric range"
+					role="group"
 				>
 					{APP_SERVICE_RANGES.map((option) => (
 						<Button
@@ -237,6 +238,7 @@ export function AppServicePanel() {
 							<div
 								className="h-56"
 								aria-label="CPU and Memory capacity chart"
+								role="img"
 							>
 								<ResponsiveContainer width="100%" height="100%">
 									<LineChart data={points}>
@@ -273,6 +275,7 @@ export function AppServicePanel() {
 							<div
 								className="h-56"
 								aria-label="HTTP queue capacity chart"
+								role="img"
 							>
 								<ResponsiveContainer width="100%" height="100%">
 									<LineChart data={points}>
