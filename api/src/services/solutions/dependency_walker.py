@@ -53,12 +53,20 @@ from src.services.solutions.ref_scanner import (
 )
 
 
-def check_install_needs(python_files: dict[str, str]) -> list[UnmetNeed]:
+def check_install_needs(
+    python_files: dict[str, str], global_repo_access: bool = False
+) -> list[UnmetNeed]:
     """Module-closure check over a bundle's python_files. Every ``modules.x``
     import in the bundle must resolve to a file present in the bundle. Returns
     the unmet needs (empty => satisfied). This is the pure module-class core;
     the DB-aware cross-solution-dependency check is layered on by the caller.
+
+    When ``global_repo_access`` is on, the install resolves ``modules.*``
+    imports from the global repo at runtime (outbound-access mode), so the
+    bundling requirement is skipped and no module needs are reported.
     """
+    if global_repo_access:
+        return []
     present = set(python_files.keys())
 
     def _resolves(module: str) -> bool:

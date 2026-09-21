@@ -41,3 +41,17 @@ def test_no_needs_for_non_modules_imports():
     python_files = {"workflows/w.py": "import os\nfrom datetime import datetime\n"}
     needs = check_install_needs(python_files)
     assert needs == []
+
+
+def test_flag_off_is_unchanged():
+    # Explicit flag off behaves like the default: missing modules still block.
+    python_files = {"workflows/w.py": "from modules.helpers import x\n"}
+    needs = check_install_needs(python_files, global_repo_access=False)
+    assert any(n.kind == "module" and "helpers" in n.ref for n in needs)
+
+
+def test_flag_on_skips_modules_bundling_requirement():
+    # Outbound-access mode: the install resolves modules.* from the global
+    # repo at runtime, so unvendored imports report no unmet needs.
+    python_files = {"workflows/w.py": "from modules.helpers import x\n"}
+    assert check_install_needs(python_files, global_repo_access=True) == []

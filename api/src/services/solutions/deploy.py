@@ -343,10 +343,17 @@ class SolutionDeployer:
         # covers the OTHER deploy callers (the direct /deploy endpoint and
         # git-sync auto-pull): a bundle whose ``modules.X`` import isn't shipped
         # would otherwise install and fail at runtime with ModuleNotFoundError.
+        # Skipped when the install has global_repo_access (outbound-access mode
+        # resolves ``modules.*`` from the global repo at runtime).
         # Raised as SolutionDeployConflict so it rolls back with no side effects.
         from src.services.solutions.dependency_walker import check_install_needs
 
-        needs = check_install_needs(bundle.python_files)
+        needs = check_install_needs(
+            bundle.python_files,
+            global_repo_access=bool(
+                getattr(bundle.solution, "global_repo_access", False)
+            ),
+        )
         if needs:
             items = ", ".join(
                 f"{n.ref} ({n.detail})" if n.detail else n.ref for n in needs
