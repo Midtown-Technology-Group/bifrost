@@ -155,6 +155,19 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+async def get_read_only_db() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a request-scoped session without committing on success.
+
+    Read-only endpoints must not turn a handled database failure into a second
+    exception during dependency teardown.  Closing the session rolls back any
+    transaction and returns the connection to the pool without attempting a
+    commit after the endpoint has converted the failure into a response.
+    """
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        yield session
+
+
 async def get_optional_db() -> AsyncGenerator[AsyncSession | None, None]:
     """
     Dependency for optional database sessions.
