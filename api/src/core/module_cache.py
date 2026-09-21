@@ -559,6 +559,7 @@ async def get_module(path: str) -> CachedModule | None:
                 module["content"],
                 module["hash"],
                 generation=generation,
+                invalidate_resolutions=False,
             )
         except Exception as exc:
             logger.warning(
@@ -576,6 +577,7 @@ async def set_module(
     content_hash: str,
     *,
     generation: str | None = None,
+    invalidate_resolutions: bool = True,
 ) -> None:
     """
     Cache a module and add to index.
@@ -586,6 +588,10 @@ async def set_module(
         path: Module path relative to workspace
         content: Python source code
         content_hash: SHA-256 hash of content (for change detection)
+        generation: Workspace generation captured by the caller, if any.
+        invalidate_resolutions: Invalidate import resolutions for source writes.
+            Read-through fills use False: durable source has not changed, and
+            scanning the Redis keyspace must not delay a cold module read.
     """
     redis = get_redis_client()
     key = f"{MODULE_KEY_PREFIX}{path}"
@@ -607,7 +613,8 @@ async def set_module(
     await cast(Awaitable[int], redis_conn.sadd(MODULE_INDEX_KEY, path))
     if generation:
         await redis_conn.set(MODULE_INDEX_GENERATION_KEY, generation)
-    await invalidate_module_resolution_cache(path)
+    if invalidate_resolutions:
+        await invalidate_module_resolution_cache(path)
 
     logger.debug(f"Cached module: {log_safe(path)}")
 
