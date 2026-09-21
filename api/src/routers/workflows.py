@@ -1140,6 +1140,9 @@ async def execute_workflow(
     try:
         if request.code:
             # Execute inline code
+            # The enqueue path owns its durable commit boundaries. Release the
+            # request's read transaction before it opens its own session.
+            await db.commit()
             result = await run_code(
                 context=shared_ctx,
                 code=request.code,
@@ -1176,6 +1179,9 @@ async def execute_workflow(
                 str(workflow.id),
                 db=db,
             )
+            # The dispatch metadata query above reacquires the request
+            # connection, so release it immediately before enqueue.
+            await db.commit()
 
             # Data providers always run sync (small payloads, no UI poll flow),
             # but honor the caller's transient flag: dropdown-options pass
@@ -1204,6 +1210,9 @@ async def execute_workflow(
                 str(workflow.id),
                 db=db,
             )
+            # The dispatch metadata query above reacquires the request
+            # connection, so release it immediately before enqueue.
+            await db.commit()
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),

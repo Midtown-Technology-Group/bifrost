@@ -814,14 +814,27 @@ async def test_execute_workflow_runs_data_provider_without_cache() -> None:
         status=ExecutionStatus.SUCCESS,
         result={"rows": [1]},
     )
+    db = _Db()
+
+    async def run_workflow_after_dispatch_metadata(**_kwargs):
+        assert db.committed is True
+        return service_result
+
+    async def metadata_uses_request_session(*_args, **_kwargs):
+        assert db.committed is False
+        db.committed = False
+        return _dispatch_metadata(workflow)
 
     with (
         patch("src.repositories.WorkflowRepository", return_value=repo),
         patch(
             "src.services.execution.service.get_workflow_for_execution",
-            AsyncMock(return_value=_dispatch_metadata(workflow)),
+            AsyncMock(side_effect=metadata_uses_request_session),
         ),
-        patch("src.services.execution.service.run_workflow", AsyncMock(return_value=service_result)) as run_workflow,
+        patch(
+            "src.services.execution.service.run_workflow",
+            AsyncMock(side_effect=run_workflow_after_dispatch_metadata),
+        ) as run_workflow,
     ):
         result = await workflows.execute_workflow(
             WorkflowExecutionRequest(
@@ -830,7 +843,7 @@ async def test_execute_workflow_runs_data_provider_without_cache() -> None:
                 transient=False,
             ),
             _ctx(user),
-            _Db(),
+            db,
             user,
         )
 
@@ -841,6 +854,54 @@ async def test_execute_workflow_runs_data_provider_without_cache() -> None:
     assert run_workflow.await_args.kwargs["workflow_id"] == str(workflow.id)
     assert run_workflow.await_args.kwargs["sync"] is True
     assert run_workflow.await_args.kwargs["transient"] is False
+    assert db.committed is True
+
+
+@pytest.mark.asyncio
+async def test_execute_workflow_releases_request_db_after_normal_dispatch_metadata() -> None:
+    user = _exec_user()
+    workflow = _workflow(type="workflow")
+    repo = _WorkflowRepo(workflow=workflow)
+    service_result = WorkflowExecutionResponse(
+        execution_id=str(uuid4()),
+        workflow_id=str(workflow.id),
+        workflow_name=workflow.name,
+        status=ExecutionStatus.PENDING,
+    )
+    db = _Db()
+
+    async def metadata_uses_request_session(*_args, **_kwargs):
+        assert db.committed is False
+        return _dispatch_metadata(workflow)
+
+    async def run_workflow_after_dispatch_metadata(**_kwargs):
+        assert db.committed is True
+        return service_result
+
+    with (
+        patch("src.repositories.WorkflowRepository", return_value=repo),
+        patch(
+            "src.services.execution.service.get_workflow_for_execution",
+            AsyncMock(side_effect=metadata_uses_request_session),
+        ),
+        patch(
+            "src.services.execution.service.run_workflow",
+            AsyncMock(side_effect=run_workflow_after_dispatch_metadata),
+        ),
+    ):
+        result = await workflows.execute_workflow(
+            WorkflowExecutionRequest(
+                workflow_id="sync_records",
+                input_data={"ticket": "123"},
+                sync=False,
+            ),
+            _ctx(user),
+            db,
+            user,
+        )
+
+    assert result is service_result
+    assert db.committed is True
 
 
 @pytest.mark.asyncio
@@ -910,9 +971,18 @@ async def test_execute_workflow_runs_inline_code_for_admin_without_publish_when_
         result={"ran": True},
     )
 
+    db = _Db()
+
+    async def run_code_after_request_commit(**_kwargs):
+        assert db.committed is True
+        return service_result
+
     with (
         patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo()),
-        patch("src.services.execution.service.run_code", AsyncMock(return_value=service_result)) as run_code,
+        patch(
+            "src.services.execution.service.run_code",
+            AsyncMock(side_effect=run_code_after_request_commit),
+        ) as run_code,
         patch.object(workflows, "publish_execution_update", AsyncMock()) as publish_execution_update,
         patch.object(workflows, "publish_history_update", AsyncMock()) as publish_history_update,
     ):
@@ -924,7 +994,7 @@ async def test_execute_workflow_runs_inline_code_for_admin_without_publish_when_
                 transient=True,
             ),
             _ctx(admin),
-            _Db(),
+            db,
             admin,
         )
 
@@ -934,6 +1004,7 @@ async def test_execute_workflow_runs_inline_code_for_admin_without_publish_when_
     assert run_code.await_args.kwargs["script_name"] == "inline.py"
     assert run_code.await_args.kwargs["input_data"] == {"x": 1}
     assert run_code.await_args.kwargs["transient"] is True
+    assert db.committed is True
     publish_execution_update.assert_not_awaited()
     publish_history_update.assert_not_awaited()
 
