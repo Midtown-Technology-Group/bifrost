@@ -24,6 +24,15 @@ def test_snyk_scan_failures_are_not_tolerated() -> None:
     assert "--policy-path=.snyk" in workflow
 
 
+def test_snyk_workflow_validates_authentication_before_scanning() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/snyk.yml").read_text(encoding="utf-8")
+
+    assert workflow.count("Verify Snyk authentication") >= 2
+    assert "api.snyk.io/rest/orgs" in workflow
+    assert "Snyk authentication failed" in workflow
+    assert "is not visible to it" in workflow
+
+
 def test_snyk_policy_exceptions_are_time_bounded() -> None:
     policy = (REPO_ROOT / ".snyk").read_text(encoding="utf-8")
 

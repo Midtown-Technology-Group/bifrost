@@ -32,6 +32,20 @@ useful results:
 - Import the GitHub repositories into Snyk so scheduled Snyk monitoring and
   dashboard triage work outside CI.
 
+## Credential Rotation
+
+If Snyk jobs fail with `SNYK-0005` (HTTP 401) or `SNYK-CLI-0012` (unable to
+fetch organization settings), the `SNYK_TOKEN` secret is invalid or lacks
+access to the configured organization:
+
+1. Generate a new token in the Snyk dashboard for an account with access to
+   the `SNYK_ORG` organization.
+2. Replace the `SNYK_TOKEN` repository secret; never paste the token into
+   issues, logs, or workflow files.
+3. Re-run the Snyk workflow (`workflow_dispatch` or a representative PR) and
+   confirm the Open Source and IaC jobs pass the authentication preflight
+   before triaging any findings.
+
 ## Scan Surfaces
 
 The initial workflow scans:
