@@ -273,6 +273,54 @@ async def test_task_request_rejects_unsupported_tool_before_side_effect():
     dispatch.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_delegation_task_enqueues_private_delegation_run():
+    context = _context()
+    service = MCPAgentGatewayService(context)
+    agent = _agent()
+    delegated = _agent()
+    tool = ResolvedGatewayTool(
+        tool_ref=str(uuid4()),
+        definition=ToolDefinition(
+            name="delegate_task",
+            description="Delegate a task",
+            parameters={"type": "object"},
+        ),
+        source="delegation",
+        source_identity=f"delegation:{delegated.id}",
+        source_id=delegated.id,
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield MagicMock()
+
+    repository = MagicMock()
+    repository.get_agent = AsyncMock(return_value=delegated)
+    enqueue = AsyncMock(return_value=(uuid4(), False))
+
+    with (
+        patch("src.core.database.get_db_context", return_value=db_context()),
+        patch(
+            "src.services.mcp_server.gateway.AgentRepository",
+            return_value=repository,
+        ),
+        patch(
+            "src.services.execution.agent_run_service.enqueue_agent_run_once",
+            new=enqueue,
+        ),
+    ):
+        await service._dispatch_delegation_task(
+            agent,
+            tool,
+            {"task": "Handle the private request"},
+            operation_id="private-delegation",
+        )
+
+    assert enqueue.await_args.kwargs["trigger_type"] == "delegation"
+    assert enqueue.await_args.kwargs["caller_user_id"] == str(context.user_id)
+
+
 def test_operation_identity_is_stable_and_scoped_to_caller_agent_and_tool():
     first_context = _context()
     first = MCPAgentGatewayService(first_context)
