@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
-from src.core.database import get_db, get_session_factory
+from src.core.database import get_read_only_db, get_session_factory
 from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -391,7 +391,7 @@ async def live_health_check() -> HealthCheck:
 @router.get("/ready", response_model=DetailedHealthCheck)
 async def ready_health_check(
     response: Response,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_only_db),
 ) -> DetailedHealthCheck:
     """
     Readiness check for core API serving dependencies.
@@ -402,7 +402,7 @@ async def ready_health_check(
 @router.get("/detailed", response_model=DetailedHealthCheck)
 async def detailed_health_check(
     response: Response,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_only_db),
 ) -> DetailedHealthCheck:
     """
     Detailed health check with component status.
