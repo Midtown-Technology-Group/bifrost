@@ -246,14 +246,21 @@ async def test_existing_execution_is_rehydrated_before_current_runtime_is_pinned
 
 
 @pytest.mark.asyncio
-async def test_publish_pending_writes_redis_then_publishes():
+@pytest.mark.parametrize("display_unavailable", [False, True])
+async def test_publish_pending_writes_redis_then_publishes(display_unavailable):
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
     redis = AsyncMock()
+    display_redis = AsyncMock()
+    display_redis.zadd.side_effect = RedisTimeoutError("Timeout connecting to server")
+    tracking = AsyncMock(wraps=async_executor.add_to_queue) if display_unavailable else AsyncMock()
     with (
+        patch("src.services.execution.queue_tracker._get_redis", new=AsyncMock(return_value=display_redis)),
         patch(
             "src.services.execution.async_executor.get_redis_client", return_value=redis
         ),
         patch(
-            "src.services.execution.async_executor.add_to_queue", new=AsyncMock()
+            "src.services.execution.async_executor.add_to_queue", new=tracking
         ) as q,
         patch(
             "src.services.execution.async_executor.publish_message", new=AsyncMock()

@@ -37,57 +37,37 @@ async def _close_redis(r: aioredis.Redis) -> None:
         await close()
 
 
-async def add_to_queue(execution_id: str) -> int:
-    """
-    Add execution to queue tracking and publish position updates.
-
-    Args:
-        execution_id: Unique execution ID
-
-    Returns:
-        Position in queue (1-based)
-    """
-    r = await _get_redis()
+async def add_to_queue(execution_id: str) -> int | None:
+    """Update queue-position display; Redis failure must not block publication."""
     try:
-        timestamp = time.time()
-
-        # Add to sorted set with timestamp as score
-        await r.zadd(QUEUE_KEY, {execution_id: timestamp})
-
-        # Get position (0-based rank + 1 for 1-based position)
-        rank = await r.zrank(QUEUE_KEY, execution_id)
-        position = (rank + 1) if rank is not None else 1
-    finally:
-        await _close_redis(r)
-
-    logger.debug(f"Added execution {execution_id} to queue at position {position}")
-
-    # Publish updated positions to all queued executions
-    await publish_all_queue_positions()
-
-    return position
+        r = await _get_redis()
+        try:
+            await r.zadd(QUEUE_KEY, {execution_id: time.time()})
+            rank = await r.zrank(QUEUE_KEY, execution_id)
+            position = (rank + 1) if rank is not None else 1
+        finally:
+            await _close_redis(r)
+        logger.debug(f"Added execution {execution_id} to queue at position {position}")
+        await publish_all_queue_positions()
+        return position
+    except aioredis.RedisError:
+        logger.warning("Queue-position display unavailable for %s", execution_id, exc_info=True)
+        return None
 
 
 async def remove_from_queue(execution_id: str) -> None:
-    """
-    Remove execution from queue tracking and publish position updates.
-
-    Called when execution starts running or is cancelled before starting.
-
-    Args:
-        execution_id: Execution ID to remove
-    """
-    r = await _get_redis()
+    """Clear queue-position display without blocking execution or completion."""
     try:
-        # Remove from sorted set
-        removed = await r.zrem(QUEUE_KEY, execution_id)
-    finally:
-        await _close_redis(r)
-
-    if removed:
-        logger.debug(f"Removed execution {execution_id} from queue")
-        # Publish updated positions to remaining queued executions
-        await publish_all_queue_positions()
+        r = await _get_redis()
+        try:
+            removed = await r.zrem(QUEUE_KEY, execution_id)
+        finally:
+            await _close_redis(r)
+        if removed:
+            logger.debug(f"Removed execution {execution_id} from queue")
+            await publish_all_queue_positions()
+    except aioredis.RedisError:
+        logger.warning("Queue-position display cleanup unavailable for %s", execution_id, exc_info=True)
 
 
 async def get_queue_position(execution_id: str) -> int | None:

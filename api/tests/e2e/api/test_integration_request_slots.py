@@ -78,3 +78,26 @@ async def test_expired_token_cannot_release_new_owner():
     finally:
         async with get_redis() as redis:
             await redis.delete(key)
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_admission_polling_reuses_api_redis_pool(monkeypatch):
+    from unittest.mock import Mock
+    from src.core.cache import redis_client
+    from src.services import integration_request_slots as slots
+
+    await redis_client.close_shared_redis()
+    factory = Mock(wraps=redis_client.redis.from_url)
+    monkeypatch.setattr(redis_client.redis, "from_url", factory)
+    integration_id = uuid4()
+    try:
+        assert (await slots.acquire(integration_id, "owner", 1))[0]
+        assert not (await slots.acquire(integration_id, "contender", 1))[0]
+        await slots.release(integration_id, "owner")
+        assert (await slots.acquire(integration_id, "contender", 1))[0]
+        await slots.release(integration_id, "contender")
+        # Repeated API polls must not create/close a TLS connection per request.
+        factory.assert_called_once()
+    finally:
+        await redis_client.close_shared_redis()

@@ -1,27 +1,29 @@
 """Deferred execution promoter.
 
-Every 60 seconds, moves due SCHEDULED executions onto RabbitMQ through the
-same serialized, publisher-confirmed transition used by run-now dispatch.
+Moves due schedules and durable unpublished submissions through the same
+serialized publication transition used by run-now dispatch.
 
 Design notes:
 
 - Each row remains SCHEDULED until broker confirmation. An execution-keyed
   advisory lock prevents a concurrent publisher from dispatching it twice.
-- ``SELECT ... FOR UPDATE SKIP LOCKED`` keeps the job safe to run in
-  parallel (multiple scheduler pods / APScheduler threads): each batch
-  picks a disjoint set of rows.
-- ``LIMIT 500`` bounds recovery bursts after an outage — if 10k rows
-  matured while the promoter was down, they drain in controlled batches.
-- ``user_email`` is intentionally an empty string: the Execution row does
+- Concurrent ticks may select the same candidate; the canonical publisher
+  locks and rechecks its state before publication.
+- Keyset pages of 500 skip rejected rows without starving later work.
+  Successful publications remain bounded by reported free worker slots.
+- For legacy date-scheduled rows without dispatch evidence, ``user_email`` is
+  intentionally an empty string: the Execution row does
   not persist the triggering user's email. The worker hydrates it from
   the User record keyed by ``executed_by``. ``startup=None`` for the same
   reason — startup results are per-session context and would be stale by
   the time a scheduled row matures.
 """
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
+from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, tuple_
 
 from src.core.database import get_db_context
 from src.models.enums import ExecutionStatus
@@ -73,6 +75,35 @@ async def _capacity_aware_batch_limit() -> int:
         raise RuntimeError("worker capacity could not be read") from exc
 
 
+async def _candidate_ids() -> AsyncIterator[UUID]:
+    """Scan past rejected rows without holding a transaction during publication."""
+    now = datetime.now(timezone.utc)
+    cursor: tuple[datetime, UUID] | None = None
+    while True:
+        query = (
+            select(Execution.created_at, Execution.id)
+            .where(Execution.status == ExecutionStatus.SCHEDULED)
+            .where(Execution.created_at <= now)
+            .where(or_(
+                Execution.scheduled_at <= now,
+                and_(Execution.scheduled_at.is_(None), Execution.dispatch_evidence.is_not(None)),
+            ))
+            .order_by(Execution.created_at.asc(), Execution.id.asc())
+            .limit(BATCH_LIMIT)
+        )
+        if cursor is not None:
+            query = query.where(tuple_(Execution.created_at, Execution.id) > cursor)
+        async with get_db_context() as db:
+            candidates = (await db.execute(query)).all()
+        if not candidates:
+            return
+        cursor = (candidates[-1].created_at, candidates[-1].id)
+        for candidate in candidates:
+            yield candidate.id
+        if len(candidates) < BATCH_LIMIT:
+            return
+
+
 async def promote_due_executions() -> tuple[int, int]:
     """Promote due SCHEDULED rows to PENDING and publish them.
 
@@ -86,81 +117,71 @@ async def promote_due_executions() -> tuple[int, int]:
         logger.info("deferred_execution_promoter: no reported worker capacity")
         return 0, 0
 
-    async with get_db_context() as db:
-        result = await db.execute(
-            select(Execution.id)
-            .where(Execution.status == ExecutionStatus.SCHEDULED)
-            .where(Execution.scheduled_at <= datetime.now(timezone.utc))
-            .order_by(Execution.scheduled_at.asc())
-            .limit(batch_limit)
-        )
-        candidate_ids = list(result.scalars().all())
+    async for execution_id in _candidate_ids():
+        if promoted >= batch_limit:
+            break
+        try:
+            async with get_db_context() as row_db:
+                row = await row_db.get(Execution, execution_id)
+                if row is None:
+                    continue
+                # Copy every value needed for publication while the ORM row
+                # is attached. The context manager may roll back/expire the
+                # session on exit; detached attributes are not a safe retry
+                # boundary.
+                publish_execution_id = str(row.id)
+                publish_kwargs: dict | None = {
+                    "execution_id": publish_execution_id,
+                    "workflow_id": str(row.workflow_id) if row.workflow_id else None,
+                    "parameters": row.parameters or {},
+                    "org_id": str(row.organization_id) if row.organization_id else None,
+                    "user_id": str(row.executed_by) if row.executed_by else "",
+                    "user_name": row.executed_by_name or "",
+                    "user_email": "",
+                    "form_id": str(row.form_id) if row.form_id else None,
+                    "startup": None,
+                    "form_inputs": {},
+                    "embed": {},
+                    "api_key_id": str(row.api_key_id) if row.api_key_id else None,
+                    "sync": False,
+                    "is_platform_admin": bool(
+                        (row.execution_context or {}).get("is_platform_admin", False)
+                    ),
+                    "is_provider_org": bool(
+                        (row.execution_context or {}).get("is_provider_org", False)
+                    ),
+                    "is_external": bool(
+                        (row.execution_context or {}).get("is_external", False)
+                    ),
+                    "file_path": None,
+                    "solution_deployment_id": (
+                        str(row.solution_deployment_id)
+                        if row.solution_deployment_id
+                        else None
+                    ),
+                    "runtime_evidence": row.runtime_evidence,
+                    "runtime_mode": row.runtime_mode,
+                    "execution_record_exists": True,
+                }
+                if row.dispatch_evidence is not None:
+                    # The canonical publisher validates pinned context under
+                    # its execution lock; never reconstruct an accepted event.
+                    publish_kwargs = None
+            execution_failure_checkpoint(FailurePoint.SCHEDULE_PUBLISH)
+            published = await _publish_scheduled_once(
+                execution_id=publish_execution_id,
+                publish_kwargs=publish_kwargs,
+            )
+            promoted += int(published)
+        except Exception:
+            failures += 1
+            logger.exception(
+                "deferred_execution_promoter: publish failed; row remains scheduled",
+                extra={"execution_id": str(execution_id)},
+            )
 
-        if not candidate_ids:
-            return 0, 0
-        # Do not hold the batch row locks while waiting for broker confirms.
-        # The per-row publisher reacquires the canonical advisory fence.
-        await db.commit()
-
-        for execution_id in candidate_ids:
-            try:
-                async with get_db_context() as row_db:
-                    row = await row_db.get(Execution, execution_id)
-                    if row is None:
-                        continue
-                    # Copy every value needed for publication while the ORM row
-                    # is attached. The context manager may roll back/expire the
-                    # session on exit; detached attributes are not a safe retry
-                    # boundary.
-                    publish_execution_id = str(row.id)
-                    publish_kwargs = {
-                        "execution_id": publish_execution_id,
-                        "workflow_id": str(row.workflow_id) if row.workflow_id else None,
-                        "parameters": row.parameters or {},
-                        "org_id": str(row.organization_id) if row.organization_id else None,
-                        "user_id": str(row.executed_by) if row.executed_by else "",
-                        "user_name": row.executed_by_name or "",
-                        "user_email": "",
-                        "form_id": str(row.form_id) if row.form_id else None,
-                        "startup": None,
-                        "form_inputs": {},
-                        "embed": {},
-                        "api_key_id": str(row.api_key_id) if row.api_key_id else None,
-                        "sync": False,
-                        "is_platform_admin": bool(
-                            (row.execution_context or {}).get("is_platform_admin", False)
-                        ),
-                        "is_provider_org": bool(
-                            (row.execution_context or {}).get("is_provider_org", False)
-                        ),
-                        "is_external": bool(
-                            (row.execution_context or {}).get("is_external", False)
-                        ),
-                        "file_path": None,
-                        "solution_deployment_id": (
-                            str(row.solution_deployment_id)
-                            if row.solution_deployment_id
-                            else None
-                        ),
-                        "runtime_evidence": row.runtime_evidence,
-                        "runtime_mode": row.runtime_mode,
-                        "execution_record_exists": True,
-                    }
-                execution_failure_checkpoint(FailurePoint.SCHEDULE_PUBLISH)
-                published = await _publish_scheduled_once(
-                    execution_id=publish_execution_id,
-                    publish_kwargs=publish_kwargs,
-                )
-                promoted += int(published)
-            except Exception:
-                failures += 1
-                logger.exception(
-                    "deferred_execution_promoter: publish failed; row remains scheduled",
-                    extra={"execution_id": str(execution_id)},
-                )
-
-        logger.info(
-            "deferred_execution_promoter tick complete",
-            extra={"promoted": promoted, "failures": failures},
-        )
-        return promoted, failures
+    logger.info(
+        "deferred_execution_promoter tick complete",
+        extra={"promoted": promoted, "failures": failures},
+    )
+    return promoted, failures
