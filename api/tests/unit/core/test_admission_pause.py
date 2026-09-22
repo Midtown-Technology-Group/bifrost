@@ -133,12 +133,14 @@ async def test_existing_websocket_is_closed_without_blocking_finite_request_drai
     assert admission_tracker.websocket_senders
 
     async with admission_tracker.lock:
-        await admission_tracker.close_websockets()
+        close_tasks = admission_tracker.start_websocket_closes()
+    await admission_tracker.finish_websocket_closes(close_tasks)
 
     assert sent == [{"type": "websocket.close", "code": 1013}]
     assert admission_tracker.websocket_senders == {}
     assert admission_tracker.ordinary_inflight == 0
-    await task
+    result = await task
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -178,11 +180,13 @@ async def test_websocket_message_handler_counts_as_finite_inflight_work():
     assert admission_tracker.ordinary_inflight == 1
 
     async with admission_tracker.lock:
-        await admission_tracker.close_websockets()
+        close_tasks = admission_tracker.start_websocket_closes()
+    await admission_tracker.finish_websocket_closes(close_tasks)
     assert admission_tracker.ordinary_inflight == 1
 
     release.set()
-    await task
+    result = await task
+    assert result is None
     assert handled.is_set()
     assert admission_tracker.ordinary_inflight == 0
 
@@ -223,10 +227,42 @@ async def test_existing_websocket_rechecks_durable_gate_before_each_message():
     await entered.wait()
     closed = RuntimeMaintenanceState(generation=None, phase="draining")
     message_ready.set()
-    await task
+    result = await task
+    assert result is None
 
     assert sent == [{"type": "websocket.close", "code": 1013}]
     assert admission_tracker.ordinary_inflight == 0
+
+
+@pytest.mark.asyncio
+async def test_stuck_websocket_close_is_bounded_outside_admission_lock():
+    fenced = asyncio.Event()
+    cancellation_seen = asyncio.Event()
+    release = asyncio.Event()
+
+    async def stuck_send(message):
+        assert message == {"type": "websocket.close", "code": 1013}
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancellation_seen.set()
+            await release.wait()
+
+    async with admission_tracker.lock:
+        admission_tracker.websocket_senders[id(stuck_send)] = (stuck_send, fenced)
+        close_tasks = admission_tracker.start_websocket_closes()
+
+    await asyncio.wait_for(
+        admission_tracker.finish_websocket_closes(close_tasks, timeout=0.01),
+        timeout=0.1,
+    )
+    assert fenced.is_set()
+    await asyncio.wait_for(cancellation_seen.wait(), timeout=0.1)
+
+    await asyncio.wait_for(admission_tracker.lock.acquire(), timeout=0.1)
+    admission_tracker.lock.release()
+    release.set()
+    await asyncio.gather(*close_tasks)
 
 
 @pytest.mark.asyncio

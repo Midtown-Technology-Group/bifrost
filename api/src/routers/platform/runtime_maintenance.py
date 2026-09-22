@@ -117,7 +117,8 @@ async def enter_maintenance(
             )
             await db.commit()
             invalidate_runtime_maintenance_cache()
-            await admission_tracker.close_websockets()
+            close_tasks = admission_tracker.start_websocket_closes()
+        await admission_tracker.finish_websocket_closes(close_tasks)
         return {
             **_state_payload(state),
             "ordinary_requests_inflight": admission_tracker.ordinary_inflight,

@@ -95,9 +95,14 @@ class RuntimeDrainCounts:
         return self.accepted_work == 0 and self.trigger_leases == 0
 
 
+@dataclass
+class _RuntimeMaintenanceCache:
+    state: RuntimeMaintenanceState | None = None
+    until: float = 0.0
+
+
 _cache_lock = asyncio.Lock()
-_cached_state: RuntimeMaintenanceState | None = None
-_cached_until = 0.0
+_cache = _RuntimeMaintenanceCache()
 
 
 async def acquire_runtime_maintenance_lock(db: AsyncSession, *, shared: bool) -> None:
@@ -165,25 +170,23 @@ async def read_runtime_maintenance_state(
 
 
 async def read_cached_runtime_maintenance_state() -> RuntimeMaintenanceState:
-    global _cached_state, _cached_until
     now = time.monotonic()
-    if _cached_state is not None and now < _cached_until:
-        return _cached_state
+    if _cache.state is not None and now < _cache.until:
+        return _cache.state
     async with _cache_lock:
         now = time.monotonic()
-        if _cached_state is not None and now < _cached_until:
-            return _cached_state
+        if _cache.state is not None and now < _cache.until:
+            return _cache.state
         async with get_db_context() as db:
             state = await read_runtime_maintenance_state(db)
-        _cached_state = state
-        _cached_until = now + _CACHE_SECONDS
+        _cache.state = state
+        _cache.until = now + _CACHE_SECONDS
         return state
 
 
 def invalidate_runtime_maintenance_cache() -> None:
-    global _cached_state, _cached_until
-    _cached_state = None
-    _cached_until = 0.0
+    _cache.state = None
+    _cache.until = 0.0
 
 
 async def enter_runtime_maintenance(

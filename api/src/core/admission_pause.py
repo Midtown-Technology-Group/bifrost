@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -16,6 +17,9 @@ from src.services.runtime_maintenance import (
     read_cached_runtime_maintenance_state,
 )
 
+WEBSOCKET_CLOSE = "websocket.close"
+WEBSOCKET_DISCONNECT = "websocket.disconnect"
+
 
 class AdmissionTracker:
     """Serialize maintenance entry with finite requests and open sockets."""
@@ -25,20 +29,38 @@ class AdmissionTracker:
         self.ordinary_inflight = 0
         self.websocket_senders: dict[int, tuple[Send, asyncio.Event]] = {}
 
-    async def close_websockets(self) -> None:
-        """Close sockets admitted before maintenance without waiting for clients."""
+    def start_websocket_closes(self) -> list[asyncio.Task[None]]:
+        """Fence existing sockets and start best-effort close frames."""
         sockets = list(self.websocket_senders.values())
         self.websocket_senders.clear()
         for _, closed in sockets:
             closed.set()
-        if sockets:
-            await asyncio.gather(
-                *(
-                    send({"type": "websocket.close", "code": 1013})
-                    for send, _ in sockets
-                ),
-                return_exceptions=True,
-            )
+        return [
+            asyncio.create_task(send({"type": WEBSOCKET_CLOSE, "code": 1013}))
+            for send, _ in sockets
+        ]
+
+    async def finish_websocket_closes(
+        self,
+        tasks: list[asyncio.Task[None]],
+        *,
+        timeout: float = 0.25,
+    ) -> None:
+        """Bound close-frame delivery; socket fencing is already complete."""
+        if not tasks:
+            return
+        _, pending = await asyncio.wait(tasks, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        for task in tasks:
+            task.add_done_callback(self._observe_websocket_close)
+
+    @staticmethod
+    def _observe_websocket_close(task: asyncio.Task[None]) -> None:
+        if task.done():
+            with suppress(asyncio.CancelledError, Exception):
+                task.exception()
+
 
 admission_tracker = AdmissionTracker()
 
@@ -110,7 +132,7 @@ class AdmissionPauseMiddleware:
                         admission_tracker.ordinary_inflight -= 1
                         message_inflight = False
                     if socket_closed.is_set():
-                        return {"type": "websocket.disconnect", "code": 1013}
+                        return {"type": WEBSOCKET_DISCONNECT, "code": 1013}
 
                 receive_task = asyncio.create_task(receive())
                 closed_task = asyncio.create_task(socket_closed.wait())
@@ -122,10 +144,11 @@ class AdmissionPauseMiddleware:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
                 if closed_task in done and socket_closed.is_set():
-                    return {"type": "websocket.disconnect", "code": 1013}
+                    return {"type": WEBSOCKET_DISCONNECT, "code": 1013}
 
                 message = receive_task.result()
                 if message["type"] == "websocket.receive":
+                    close_tasks = []
                     async with admission_tracker.lock:
                         try:
                             active = (await self.state_reader()).active
@@ -133,11 +156,20 @@ class AdmissionPauseMiddleware:
                             active = True
                         if active:
                             socket_closed.set()
-                            await send({"type": "websocket.close", "code": 1013})
+                            close_tasks = [
+                                asyncio.create_task(
+                                    send({"type": WEBSOCKET_CLOSE, "code": 1013})
+                                )
+                            ]
                         if socket_closed.is_set():
-                            return {"type": "websocket.disconnect", "code": 1013}
-                        admission_tracker.ordinary_inflight += 1
-                        message_inflight = True
+                            disconnected = True
+                        else:
+                            disconnected = False
+                            admission_tracker.ordinary_inflight += 1
+                            message_inflight = True
+                    await admission_tracker.finish_websocket_closes(close_tasks)
+                    if disconnected:
+                        return {"type": WEBSOCKET_DISCONNECT, "code": 1013}
                 return message
 
             try:
@@ -158,7 +190,10 @@ class AdmissionPauseMiddleware:
             return
 
         if scope["type"] == "websocket":
-            await send({"type": "websocket.close", "code": 1013})
+            close_task = asyncio.create_task(
+                send({"type": WEBSOCKET_CLOSE, "code": 1013})
+            )
+            await admission_tracker.finish_websocket_closes([close_task])
             return
 
         response = JSONResponse(

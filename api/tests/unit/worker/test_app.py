@@ -108,6 +108,38 @@ async def test_runtime_maintenance_rejects_unimplemented_delivery_backend(
 
 
 @pytest.mark.asyncio
+async def test_runtime_maintenance_retries_transient_state_read_failure(
+    monkeypatch: pytest.MonkeyPatch, settings: SimpleNamespace
+) -> None:
+    settings.work_delivery_backend = "postgres"
+    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
+
+    @asynccontextmanager
+    async def db_context():
+        yield object()
+
+    monkeypatch.setattr(worker_app, "get_db_context", db_context)
+    worker = worker_app.Worker()
+    worker.running = True
+    reads = 0
+
+    async def read_state(_db):
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            raise OSError("database temporarily unavailable")
+        worker._shutdown_event.set()
+        return RuntimeMaintenanceState()
+
+    monkeypatch.setattr(worker_app, "read_runtime_maintenance_state", read_state)
+
+    await worker._maintenance_loop()
+
+    assert reads == 2
+    assert worker._stop_error is None
+
+
+@pytest.mark.asyncio
 async def test_postgres_packages_use_existing_worker_control_poller(
     monkeypatch, settings
 ):
@@ -228,6 +260,7 @@ async def test_start_initializes_db_starts_consumers_and_waits_for_shutdown(
 
     init_db.assert_awaited_once()
     assert worker.running is True
+    assert worker._maintenance_task is None
 
 
 @pytest.mark.asyncio

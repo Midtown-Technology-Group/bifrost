@@ -118,6 +118,12 @@ class PostgresConsumerRunner:
         self._poller: asyncio.Task[None] | None = None
         self._pause_requested = asyncio.Event()
 
+    def _poller_cancelled(self, poller: asyncio.Task[None]) -> None:
+        if self._poller is poller:
+            self._poller = None
+        with suppress(asyncio.CancelledError):
+            poller.exception()
+
     async def start(self) -> None:
         if self._poller is not None:
             return
@@ -135,21 +141,22 @@ class PostgresConsumerRunner:
             # iteration always becomes a tracked handler before pause returns.
             poller = self._poller
             self._pause_requested.set()
-            try:
-                await asyncio.wait_for(poller, timeout=max(0.0, timeout))
-            except TimeoutError:
+            done, _ = await asyncio.wait({poller}, timeout=max(0.0, timeout))
+            if poller not in done:
                 logger.error(
                     "PostgreSQL delivery poller did not pause within %.1fs for %s",
                     timeout,
                     self.consumer.queue_name,
                 )
                 poller.cancel()
-                with suppress(asyncio.CancelledError):
-                    await poller
-                raise
-            finally:
-                if self._poller is poller:
-                    self._poller = None
+                poller.add_done_callback(self._poller_cancelled)
+                raise TimeoutError(
+                    f"PostgreSQL delivery poller did not pause for "
+                    f"{self.consumer.queue_name}"
+                )
+            if poller.result() is not None:
+                raise RuntimeError("PostgreSQL delivery poller returned a value")
+            self._poller = None
 
     async def stop(self) -> None:
         await self.pause()

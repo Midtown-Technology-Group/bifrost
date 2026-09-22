@@ -54,8 +54,9 @@ async def test_pause_cancels_a_stuck_poller_at_its_deadline() -> None:
 
     runner._poller = asyncio.create_task(poller())
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(TimeoutError, match="did not pause"):
         await runner.pause(timeout=0.01)
 
-    assert cancelled.is_set()
+    await asyncio.wait_for(cancelled.wait(), timeout=1)
+    await asyncio.sleep(0)
     assert runner._poller is None

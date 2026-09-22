@@ -177,10 +177,11 @@ class Worker:
                 "Starting %s work consumers...", self.settings.work_delivery_backend
             )
             await self._start_consumers()
-            self._maintenance_task = asyncio.create_task(
-                self._maintenance_loop(), name="runtime-maintenance"
-            )
-            self._maintenance_task.add_done_callback(self._maintenance_task_done)
+            if self.settings.work_delivery_backend == "postgres":
+                self._maintenance_task = asyncio.create_task(
+                    self._maintenance_loop(), name="runtime-maintenance"
+                )
+                self._maintenance_task.add_done_callback(self._maintenance_task_done)
         except Exception:
             logger.error("Startup failed; tearing down partially-started worker")
             await self._cleanup_after_failed_start()
@@ -258,8 +259,22 @@ class Worker:
     async def _maintenance_loop(self) -> None:
         """Pause PostgreSQL intake only after the durable drain is sealed."""
         while self.running and not self._shutdown_event.is_set():
-            async with get_db_context() as db:
-                state = await read_runtime_maintenance_state(db)
+            try:
+                async with get_db_context() as db:
+                    state = await read_runtime_maintenance_state(db)
+            except Exception:
+                # Claim and enqueue paths independently read the same durable
+                # gate and already fail closed. A transient status read should
+                # not introduce a separate whole-worker shutdown trigger.
+                logger.warning(
+                    "Runtime maintenance state read failed; retrying",
+                    exc_info=True,
+                )
+                try:
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=0.5)
+                except TimeoutError:
+                    continue
+                break
             if state.sealed and not self._maintenance_paused:
                 if self.settings.work_delivery_backend != "postgres":
                     raise RuntimeError(
