@@ -324,3 +324,115 @@ async def test_fast_agent_completion_is_not_overwritten_by_dispatcher(
         async with async_session_factory() as db:
             await db.execute(delete(AgentRun).where(AgentRun.id == run_id))
             await db.commit()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.parametrize("backend", ["rabbitmq", "postgres"])
+async def test_promoter_recovers_unpublished_event_without_losing_context(
+    async_session_factory, linked_event, monkeypatch, backend
+):
+    """A failed first publication retains one accepted execution and its event."""
+    from src.jobs.schedulers import deferred_execution_promoter as promoter
+
+    event_id, delivery_id, workflow_id = linked_event
+
+    @asynccontextmanager
+    async def db_context():
+        async with async_session_factory() as db:
+            yield db
+
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr(promoter, "get_db_context", db_context)
+    monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
+    monkeypatch.setattr(events.EventProcessor, "_broadcast_event_update", AsyncMock())
+    from types import SimpleNamespace
+    monkeypatch.setattr(async_executor, "get_settings", lambda: SimpleNamespace(work_delivery_backend=backend))
+    publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
+    monkeypatch.setattr(async_executor, "_publish_pending", publish)
+    async with async_session_factory() as db:
+        assert await events.EventProcessor(db).queue_event_deliveries(event_id) == 0
+        await db.commit()
+    original_dispatch = publish.await_args.kwargs.copy()
+    original_dispatch.pop("delivery_db", None)
+    async with async_session_factory() as db:
+        delivery = await db.get(EventDelivery, delivery_id)
+        assert delivery.status == EventDeliveryStatus.QUEUED
+        execution_id = delivery.execution_id
+        execution = await db.get(Execution, execution_id)
+        assert execution.status == ExecutionStatus.SCHEDULED
+        assert execution.scheduled_at is None
+    publish.reset_mock(side_effect=True)
+    # Concurrent recovery ticks must use the same serialized publication fence.
+    await asyncio.gather(promoter.promote_due_executions(), promoter.promote_due_executions())
+    calls = [c.kwargs for c in publish.await_args_list if c.kwargs["execution_id"] == str(execution_id)]
+    assert len(calls) == 1
+    recovered = calls[0].copy()
+    recovered.pop("delivery_db", None)
+    assert recovered == original_dispatch
+    assert recovered["event"]["id"] == str(event_id)
+    assert recovered["dispatch_metadata"]["event_delivery_id"] == str(delivery_id)
+    async with async_session_factory() as db:
+        execution = await db.get(Execution, execution_id)
+        assert execution.status == ExecutionStatus.PENDING
+        delivery = await db.get(EventDelivery, delivery_id)
+        assert delivery.execution_id == execution_id
+        assert delivery.status == EventDeliveryStatus.QUEUED
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unsafe", ["terminal", "future", "corrupt", "unlinked", "failed_delivery", "superseded"])
+async def test_recovery_never_publishes_unsafe_or_terminal_event(
+    async_session_factory, linked_event, monkeypatch, unsafe
+):
+    from datetime import datetime, timedelta, timezone
+    from src.jobs.schedulers import deferred_execution_promoter as promoter
+    from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+
+    event_id, delivery_id, workflow_id = linked_event
+
+    @asynccontextmanager
+    async def db_context():
+        async with async_session_factory() as db:
+            yield db
+
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr(promoter, "get_db_context", db_context)
+    monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
+    publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
+    monkeypatch.setattr(async_executor, "_publish_pending", publish)
+    with pytest.raises(ConnectionError):
+        await async_executor.enqueue_system_workflow_execution(
+            workflow_id=str(workflow_id), parameters={}, source="Event System",
+            event=EventContext(id=str(event_id), type="test.link", data={}, organization_id=None, received_at=""),
+            event_delivery_id=str(delivery_id),
+        )
+    execution_id = UUID(publish.await_args.kwargs["execution_id"])
+    async with async_session_factory() as db:
+        execution = await db.get(Execution, execution_id)
+        delivery = await db.get(EventDelivery, delivery_id)
+        if unsafe == "terminal":
+            execution.status = ExecutionStatus.FAILED
+        elif unsafe == "future":
+            execution.scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        elif unsafe == "corrupt":
+            execution.dispatch_evidence_hash = "corrupted"
+        elif unsafe == "unlinked":
+            import copy
+            envelope = copy.deepcopy(execution.dispatch_evidence)
+            envelope["publish"].pop("dispatch_metadata")
+            envelope["publish_hash"] = sha256_digest(canonical_json(envelope["publish"]))
+            execution.dispatch_evidence = envelope
+            execution.dispatch_evidence_hash = sha256_digest(canonical_json(envelope))
+        elif unsafe == "failed_delivery":
+            delivery.status = EventDeliveryStatus.FAILED
+        elif unsafe == "superseded":
+            delivery.execution_id = None
+        await db.commit()
+    publish.reset_mock(side_effect=True)
+    await promoter.promote_due_executions()
+    assert not any(c.kwargs["execution_id"] == str(execution_id) for c in publish.await_args_list)
+    async with async_session_factory() as db:
+        execution = await db.get(Execution, execution_id)
+        assert execution.status == (ExecutionStatus.FAILED if unsafe == "terminal" else ExecutionStatus.SCHEDULED)

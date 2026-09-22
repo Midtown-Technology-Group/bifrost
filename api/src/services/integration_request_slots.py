@@ -9,7 +9,7 @@ from collections.abc import Awaitable
 from typing import Any, cast
 from uuid import UUID
 
-from src.core.cache import get_redis
+from src.core.cache import get_shared_redis
 
 LEASE_SECONDS = 60
 MAX_REQUEST_SECONDS = 30
@@ -42,11 +42,11 @@ def validate_limit(value: object) -> int | None:
 
 async def acquire(integration_id: UUID, owner: str, limit: int) -> tuple[bool, float]:
     key = f"bifrost:integration-request-slots:{integration_id}"
-    async with get_redis() as redis:
-        result = await cast(Awaitable[Any], redis.eval(_ACQUIRE, 1, key, owner, limit, LEASE_SECONDS * 1000))
+    redis = await get_shared_redis()
+    result = await cast(Awaitable[Any], redis.eval(_ACQUIRE, 1, key, owner, limit, LEASE_SECONDS * 1000))
     return bool(result[0]), float(result[1]) / 1000
 
 
 async def release(integration_id: UUID, owner: str) -> None:
-    async with get_redis() as redis:
-        await cast(Awaitable[Any], redis.eval(_RELEASE, 1, f"bifrost:integration-request-slots:{integration_id}", owner))
+    redis = await get_shared_redis()
+    await cast(Awaitable[Any], redis.eval(_RELEASE, 1, f"bifrost:integration-request-slots:{integration_id}", owner))

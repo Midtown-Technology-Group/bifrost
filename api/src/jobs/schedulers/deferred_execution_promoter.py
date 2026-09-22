@@ -1,18 +1,18 @@
 """Deferred execution promoter.
 
-Every 60 seconds, moves due SCHEDULED executions onto RabbitMQ through the
-same serialized, publisher-confirmed transition used by run-now dispatch.
+Moves due schedules and durable unpublished submissions through the same
+serialized publication transition used by run-now dispatch.
 
 Design notes:
 
 - Each row remains SCHEDULED until broker confirmation. An execution-keyed
   advisory lock prevents a concurrent publisher from dispatching it twice.
-- ``SELECT ... FOR UPDATE SKIP LOCKED`` keeps the job safe to run in
-  parallel (multiple scheduler pods / APScheduler threads): each batch
-  picks a disjoint set of rows.
+- Concurrent ticks may select the same candidate; the canonical publisher
+  locks and rechecks its state before publication.
 - ``LIMIT 500`` bounds recovery bursts after an outage — if 10k rows
   matured while the promoter was down, they drain in controlled batches.
-- ``user_email`` is intentionally an empty string: the Execution row does
+- For legacy date-scheduled rows without dispatch evidence, ``user_email`` is
+  intentionally an empty string: the Execution row does
   not persist the triggering user's email. The worker hydrates it from
   the User record keyed by ``executed_by``. ``startup=None`` for the same
   reason — startup results are per-session context and would be stale by
@@ -21,7 +21,7 @@ Design notes:
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from src.core.database import get_db_context
 from src.models.enums import ExecutionStatus
@@ -90,9 +90,12 @@ async def promote_due_executions() -> tuple[int, int]:
         result = await db.execute(
             select(Execution.id)
             .where(Execution.status == ExecutionStatus.SCHEDULED)
-            .where(Execution.scheduled_at <= datetime.now(timezone.utc))
-            .order_by(Execution.scheduled_at.asc())
-            .limit(batch_limit)
+            .where(or_(
+                Execution.scheduled_at <= datetime.now(timezone.utc),
+                and_(Execution.scheduled_at.is_(None), Execution.dispatch_evidence.is_not(None)),
+            ))
+            .order_by(Execution.created_at.asc(), Execution.id.asc())
+            .limit(BATCH_LIMIT)
         )
         candidate_ids = list(result.scalars().all())
 
@@ -103,6 +106,8 @@ async def promote_due_executions() -> tuple[int, int]:
         await db.commit()
 
         for execution_id in candidate_ids:
+            if promoted >= batch_limit:
+                break
             try:
                 async with get_db_context() as row_db:
                     row = await row_db.get(Execution, execution_id)
@@ -113,7 +118,7 @@ async def promote_due_executions() -> tuple[int, int]:
                     # session on exit; detached attributes are not a safe retry
                     # boundary.
                     publish_execution_id = str(row.id)
-                    publish_kwargs = {
+                    publish_kwargs: dict | None = {
                         "execution_id": publish_execution_id,
                         "workflow_id": str(row.workflow_id) if row.workflow_id else None,
                         "parameters": row.parameters or {},
@@ -146,6 +151,10 @@ async def promote_due_executions() -> tuple[int, int]:
                         "runtime_mode": row.runtime_mode,
                         "execution_record_exists": True,
                     }
+                    if row.dispatch_evidence is not None:
+                        # The canonical publisher validates pinned context under
+                        # its execution lock; never reconstruct an accepted event.
+                        publish_kwargs = None
                 execution_failure_checkpoint(FailurePoint.SCHEDULE_PUBLISH)
                 published = await _publish_scheduled_once(
                     execution_id=publish_execution_id,

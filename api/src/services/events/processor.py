@@ -700,10 +700,21 @@ class EventProcessor:
                 )
                 # Compare in PostgreSQL: completion can commit while this
                 # publisher is handling an uncertain publication response.
+                from src.models.enums import ExecutionStatus
+                from src.models.orm.executions import Execution
+
+                # A pinned but unpublished execution is still accepted work.
+                # Leave its canonical delivery queued for scheduler recovery.
+                unpublished = sa.exists().where(
+                    Execution.id == EventDelivery.execution_id,
+                    Execution.status == ExecutionStatus.SCHEDULED,
+                    Execution.dispatch_evidence.is_not(None),
+                )
                 await self.session.execute(
                     sa.update(EventDelivery)
                     .where(
                         EventDelivery.id == delivery.id,
+                        ~unpublished,
                         EventDelivery.status.in_([
                             EventDeliveryStatus.PENDING, EventDeliveryStatus.QUEUED
                         ]),
