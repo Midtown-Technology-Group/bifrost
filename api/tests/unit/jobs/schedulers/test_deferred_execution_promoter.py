@@ -207,3 +207,43 @@ async def test_publish_failure_leaves_row_scheduled(db_session):
     await db_session.refresh(due)
     # It never moved, so the next tick can retry without best-effort rollback.
     assert due.status == ExecutionStatus.SCHEDULED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reject_with_error", [False, True])
+async def test_scans_past_rejected_page_on_repeated_ticks(db_session, reject_with_error):
+    from src.jobs.schedulers import deferred_execution_promoter as promoter
+
+    await _cancel_existing_scheduled(db_session)
+    now = datetime.now(timezone.utc)
+    rows = [_new_scheduled(now + timedelta(hours=1)) for _ in range(4)]
+    for index, row in enumerate(rows):
+        row.created_at = now + timedelta(seconds=index)
+    db_session.add_all(rows)
+    await db_session.commit()
+    ids = [str(row.id) for row in rows]
+
+    async def publish(*, execution_id, publish_kwargs):
+        if execution_id in ids[:2]:
+            if reject_with_error:
+                raise RuntimeError("invalid pinned dispatch")
+            return False
+        return True
+
+    with (
+        patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
+        patch(PATH_DATETIME) as clock,
+        patch.object(promoter, "BATCH_LIMIT", 2),
+        patch.object(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=1)),
+        patch(PATH_PUBLISH, new=AsyncMock(side_effect=publish)) as pub,
+    ):
+        clock.now.return_value = now + timedelta(hours=2)
+        for _ in range(2):
+            pub.reset_mock()
+            assert await promoter.promote_due_executions() == (1, 2 if reject_with_error else 0)
+            assert [call.kwargs["execution_id"] for call in pub.await_args_list] == ids[:3]
+
+    # Rejected rows are retained; scanning never marks them failed or replays them.
+    for row in rows:
+        await db_session.refresh(row)
+        assert row.status == ExecutionStatus.SCHEDULED
