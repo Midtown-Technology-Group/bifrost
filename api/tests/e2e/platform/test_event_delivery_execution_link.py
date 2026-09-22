@@ -402,12 +402,13 @@ async def test_recovery_never_publishes_unsafe_or_terminal_event(
     monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
     publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
     monkeypatch.setattr(async_executor, "_publish_pending", publish)
+    dispatch = dict(
+        workflow_id=str(workflow_id), parameters={}, source="Event System",
+        event=EventContext(id=str(event_id), type="test.link", data={}, organization_id=None, received_at=""),
+        event_delivery_id=str(delivery_id),
+    )
     with pytest.raises(ConnectionError):
-        await async_executor.enqueue_system_workflow_execution(
-            workflow_id=str(workflow_id), parameters={}, source="Event System",
-            event=EventContext(id=str(event_id), type="test.link", data={}, organization_id=None, received_at=""),
-            event_delivery_id=str(delivery_id),
-        )
+        await async_executor.enqueue_system_workflow_execution(**dispatch)
     execution_id = UUID(publish.await_args.kwargs["execution_id"])
     async with async_session_factory() as db:
         execution = await db.get(Execution, execution_id)

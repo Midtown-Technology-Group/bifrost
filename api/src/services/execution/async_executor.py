@@ -384,27 +384,28 @@ async def _publish_scheduled_once(
         ):
             return False
 
+        event = None
         if publish_kwargs is None:
             publish_kwargs = validated_recovery_dispatch(execution)
             event = publish_kwargs.get("event")
-            if event is not None:
-                from src.models.enums import EventDeliveryStatus
-                from src.models.orm.events import EventDelivery
+        if event is not None:
+            from src.models.enums import EventDeliveryStatus
+            from src.models.orm.events import EventDelivery
 
-                delivery_id = (publish_kwargs.get("dispatch_metadata") or {}).get("event_delivery_id")
-                if not delivery_id:
-                    raise ValueError("event recovery requires a canonical delivery link")
-                delivery = await db.get(
-                    EventDelivery, uuid.UUID(delivery_id), with_for_update={"of": EventDelivery}
-                )
-                if (
-                    delivery is None
-                    or delivery.execution_id != execution.id
-                    or delivery.workflow_id != execution.workflow_id
-                    or str(delivery.event_id) != event.get("id")
-                    or delivery.status != EventDeliveryStatus.QUEUED
-                ):
-                    return False
+            delivery_id = (publish_kwargs.get("dispatch_metadata") or {}).get("event_delivery_id")
+            if not delivery_id:
+                raise ValueError("event recovery requires a canonical delivery link")
+            delivery = await db.get(
+                EventDelivery, uuid.UUID(delivery_id), with_for_update={"of": EventDelivery}
+            )
+            if (
+                delivery is None
+                or delivery.execution_id != execution.id
+                or delivery.workflow_id != execution.workflow_id
+                or str(delivery.event_id) != event.get("id")
+                or delivery.status != EventDeliveryStatus.QUEUED
+            ):
+                return False
 
         # Hold the transaction-scoped claim through broker confirmation. A
         # failure rolls the transaction back, so a retry can claim SCHEDULED.
