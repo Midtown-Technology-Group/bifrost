@@ -1,12 +1,14 @@
 """The event/execution link must be committed before a fast worker completes."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.models.enums import EventDeliveryStatus, EventSourceType, ExecutionStatus
 from src.models.orm import (
@@ -71,6 +73,59 @@ async def linked_event(async_session_factory):
             )
             await db.execute(delete(Workflow).where(Workflow.id == workflow_id))
             await db.commit()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_dispatch_releases_outer_connection_before_nested_publication(
+    async_engine, async_session_factory, linked_event, monkeypatch
+):
+    """A bounded pool must not deadlock on the dispatcher's own transaction."""
+    event_id, delivery_id, workflow_id = linked_event
+    async with async_session_factory() as setup:
+        first = await setup.get(EventDelivery, delivery_id)
+        event = await setup.get(Event, event_id)
+        assert first is not None and event is not None
+        subscription = EventSubscription(
+            id=uuid4(), event_source_id=event.event_source_id,
+            workflow_id=workflow_id, created_by="event-link-test",
+        )
+        setup.add(subscription)
+        await setup.flush()
+        setup.add(EventDelivery(
+            id=uuid4(), event_id=event_id,
+            event_subscription_id=subscription.id, workflow_id=first.workflow_id,
+        ))
+        await setup.commit()
+
+    engine = create_async_engine(
+        async_engine.url, pool_size=1, max_overflow=0, pool_timeout=0.2
+    )
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def db_context():
+        async with sessions() as db:
+            yield db
+
+    publish = AsyncMock()
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr(async_executor, "_publish_pending", publish)
+    monkeypatch.setattr(events.EventProcessor, "_broadcast_event_update", AsyncMock())
+    try:
+        async with sessions() as publisher:
+            assert await events.EventProcessor(publisher).queue_event_deliveries(event_id) == 2
+            await publisher.commit()
+        assert publish.await_count == 2
+        async with sessions() as observer:
+            deliveries = (await observer.scalars(
+                select(EventDelivery).where(EventDelivery.event_id == event_id)
+            )).all()
+            assert len(deliveries) == 2
+            assert all(d.status == EventDeliveryStatus.QUEUED for d in deliveries)
+            assert all(d.execution_id is not None for d in deliveries)
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.e2e
