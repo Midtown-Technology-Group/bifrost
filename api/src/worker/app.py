@@ -15,6 +15,7 @@ Can be scaled horizontally (replicas: N) for increased throughput.
 
 import asyncio
 import logging
+import math
 import os
 import signal
 from pathlib import Path
@@ -61,6 +62,23 @@ _CONSUMER_NAMES = (
     "summarize-backfill",
     "tune-chat",
 )
+
+
+def _drain_deadline() -> float:
+    value = os.environ.get("BIFROST_DRAIN_DEADLINE_SECONDS", "300")
+    try:
+        deadline = float(value)
+        if not math.isfinite(deadline) or deadline <= 0:
+            raise ValueError(f"must be positive and finite, got {deadline}")
+    except ValueError as exc:
+        logger.warning(
+            "Invalid BIFROST_DRAIN_DEADLINE_SECONDS=%r: %s; "
+            "falling back to 300s",
+            value,
+            exc,
+        )
+        return 300.0
+    return deadline
 
 
 def validate_worker_runtime() -> None:
@@ -280,9 +298,7 @@ class Worker:
                     raise RuntimeError(
                         "Sealed runtime maintenance requires PostgreSQL delivery"
                     )
-                deadline = float(
-                    os.environ.get("BIFROST_DRAIN_DEADLINE_SECONDS", "300")
-                )
+                deadline = _drain_deadline()
                 await asyncio.gather(
                     *(
                         consumer.pause_postgres_intake(deadline=deadline)
@@ -327,17 +343,7 @@ class Worker:
 
         # Drain consumers in parallel — each cancels its consumer tag, waits on
         # its in-flight tasks, then closes its channel.
-        deadline_str = os.environ.get("BIFROST_DRAIN_DEADLINE_SECONDS", "300")
-        try:
-            drain_deadline = float(deadline_str)
-            if drain_deadline <= 0:
-                raise ValueError(f"must be positive, got {drain_deadline}")
-        except ValueError as e:
-            logger.warning(
-                f"Invalid BIFROST_DRAIN_DEADLINE_SECONDS={deadline_str!r}: {e}; "
-                f"falling back to 300s"
-            )
-            drain_deadline = 300.0
+        drain_deadline = _drain_deadline()
         results = await asyncio.gather(
             *(self._drain_consumer(consumer, drain_deadline) for consumer in self._consumers),
             return_exceptions=True,

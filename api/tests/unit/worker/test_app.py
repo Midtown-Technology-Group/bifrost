@@ -393,13 +393,15 @@ async def test_stop_drains_consumers_and_closes_resources(
     close_db.assert_awaited_once()
 
 
+@pytest.mark.parametrize("value", ["0", "nan", "not-a-number"])
 @pytest.mark.asyncio
 async def test_stop_uses_default_deadline_for_invalid_env(
     monkeypatch: pytest.MonkeyPatch,
     settings: SimpleNamespace,
+    value: str,
 ) -> None:
     monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
-    monkeypatch.setenv("BIFROST_DRAIN_DEADLINE_SECONDS", "0")
+    monkeypatch.setenv("BIFROST_DRAIN_DEADLINE_SECONDS", value)
     monkeypatch.setattr(worker_app, "close_db", AsyncMock())
     monkeypatch.setattr(worker_app.rabbitmq, "close", AsyncMock())
     consumer = FakeConsumer("one")
