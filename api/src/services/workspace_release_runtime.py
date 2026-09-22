@@ -580,6 +580,9 @@ async def pin_workspace_runtime(
         Workflow,
         workflow_id,
         options=(selectinload(Workflow.roles),),
+        # EventDelivery may already hold this workflow in the identity map.
+        # Force the query so loader options also run for an existing instance.
+        populate_existing=True,
     )
     if workflow is None or not workflow.is_active:
         raise WorkspaceReleaseRuntimeError(f"workflow {workflow_id} is not executable")
