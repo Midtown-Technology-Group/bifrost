@@ -85,7 +85,8 @@ async def test_dispatch_releases_outer_connection_before_nested_publication(
     async with async_session_factory() as setup:
         first = await setup.get(EventDelivery, delivery_id)
         event = await setup.get(Event, event_id)
-        assert first is not None and event is not None
+        assert first is not None
+        assert event is not None
         subscription = EventSubscription(
             id=uuid4(), event_source_id=event.event_source_id,
             workflow_id=workflow_id, created_by="event-link-test",
