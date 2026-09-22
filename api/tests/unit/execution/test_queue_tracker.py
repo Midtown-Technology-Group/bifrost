@@ -287,3 +287,26 @@ class TestCleanupStaleEntries:
             await cleanup_stale_entries()
 
         mock_publish.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["add", "remove"])
+@pytest.mark.parametrize("failure_at", ["command", "broadcast", "close"])
+async def test_display_updates_never_block_delivery_on_redis_failure(
+    mock_get_redis, mock_redis, operation, failure_at
+):
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
+    mock_redis.zrank.return_value = 0
+    mock_redis.zrem.return_value = 1
+    publish = AsyncMock()
+    failing = {
+        "command": mock_redis.zadd if operation == "add" else mock_redis.zrem,
+        "broadcast": publish,
+        "close": mock_redis.aclose,
+    }[failure_at]
+    failing.side_effect = RedisTimeoutError("Timeout connecting to server")
+    with patch("src.services.execution.queue_tracker.publish_all_queue_positions", publish):
+        result = await (add_to_queue("owned-proof") if operation == "add" else remove_from_queue("owned-proof"))
+    assert result is None
+    mock_redis.aclose.assert_awaited_once()
