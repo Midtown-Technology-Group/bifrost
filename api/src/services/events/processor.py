@@ -665,6 +665,11 @@ class EventProcessor:
             if delivery.status != EventDeliveryStatus.PENDING:
                 continue
 
+            # Enqueue uses its own durable transaction. Release this session's
+            # connection first so concurrent webhooks cannot exhaust the pool
+            # while each waits for a second connection to publish its work.
+            await self.session.commit()
+
             try:
                 subscription = delivery.subscription
                 if subscription and subscription.target_type == "agent":
