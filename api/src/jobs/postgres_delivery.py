@@ -116,21 +116,40 @@ class PostgresConsumerRunner:
         self.consumer = consumer
         self.owner = f"{socket.gethostname()}:{uuid4()}"
         self._poller: asyncio.Task[None] | None = None
+        self._pause_requested = asyncio.Event()
 
     async def start(self) -> None:
+        if self._poller is not None:
+            return
         # Fail startup on a missing migration or unusable database, rather than
         # advertising an idle worker whose background poller never connected.
         async with get_db_context() as db:
             await interrupt_expired_deliveries(db, queue_name=self.consumer.queue_name)
             await db.commit()
+        self._pause_requested.clear()
         self._poller = asyncio.create_task(self._poll())
 
-    async def pause(self) -> None:
+    async def pause(self, timeout: float = 300.0) -> None:
         if self._poller is not None:
-            self._poller.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._poller
-            self._poller = None
+            # Exit cooperatively so a lease committed by the current poll
+            # iteration always becomes a tracked handler before pause returns.
+            poller = self._poller
+            self._pause_requested.set()
+            try:
+                await asyncio.wait_for(poller, timeout=max(0.0, timeout))
+            except TimeoutError:
+                logger.error(
+                    "PostgreSQL delivery poller did not pause within %.1fs for %s",
+                    timeout,
+                    self.consumer.queue_name,
+                )
+                poller.cancel()
+                with suppress(asyncio.CancelledError):
+                    await poller
+                raise
+            finally:
+                if self._poller is poller:
+                    self._poller = None
 
     async def stop(self) -> None:
         await self.pause()
@@ -145,7 +164,11 @@ class PostgresConsumerRunner:
                 )
 
     async def _poll(self) -> None:
-        while self.consumer._running and not self.consumer._draining:
+        while (
+            self.consumer._running
+            and not self.consumer._draining
+            and not self._pause_requested.is_set()
+        ):
             try:
                 capacity = min(
                     100, self.consumer.prefetch_count - len(self.consumer._inflight)
@@ -180,7 +203,12 @@ class PostgresConsumerRunner:
                 logger.exception(
                     "PostgreSQL delivery poll failed for %s", self.consumer.queue_name
                 )
-            await asyncio.sleep(POLL_SECONDS)
+            try:
+                await asyncio.wait_for(
+                    self._pause_requested.wait(), timeout=POLL_SECONDS
+                )
+            except TimeoutError:
+                continue
 
     async def _recover(self) -> None:
         async with get_db_context() as db:

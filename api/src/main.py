@@ -95,6 +95,7 @@ from src.routers import (
     export_import_router,
     docs_router,
     platform_workers_router,
+    runtime_maintenance_router,
     platform_queue_router,
     platform_stuck_router,
     app_service_router,
@@ -627,6 +628,7 @@ def create_app() -> FastAPI:
     app.include_router(export_import_router)
     app.include_router(docs_router)
     app.include_router(platform_workers_router)
+    app.include_router(runtime_maintenance_router)
     app.include_router(platform_queue_router)
     app.include_router(platform_stuck_router)
     app.include_router(app_service_router)
@@ -670,11 +672,14 @@ def create_app() -> FastAPI:
         }
 
     # Add last so maintenance covers every route, including the mounted MCP app.
-    # Existing worker calls retain their normal authorization after this gate.
-    if get_settings().admissions_paused:
-        from src.core.admission_pause import AdmissionPauseMiddleware
+    # The static setting remains a startup fail-safe while the durable gate can
+    # close and reopen admissions without recycling the API process.
+    from src.core.admission_pause import AdmissionPauseMiddleware
 
-        app.add_middleware(AdmissionPauseMiddleware)
+    app.add_middleware(
+        AdmissionPauseMiddleware,
+        static_paused=get_settings().admissions_paused,
+    )
 
     return app
 

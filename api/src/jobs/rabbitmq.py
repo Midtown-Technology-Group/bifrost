@@ -313,6 +313,40 @@ class _AbstractConsumer(ABC):
             await self._connection_ctx.__aexit__(None, None, None)
         logger.info(f"Consumer stopped for {self.queue_name}")
 
+    async def pause_postgres_intake(self, deadline: float = 300.0) -> None:
+        """Pause PostgreSQL claims and wait for already admitted work.
+
+        RabbitMQ intentionally has no release-maintenance implementation. The
+        protected operation rejects that backend before this method is reached.
+        """
+        if self._postgres is None:
+            raise RuntimeError(
+                "Runtime maintenance requires the PostgreSQL delivery backend"
+            )
+        expires_at = asyncio.get_running_loop().time() + deadline
+        await self._postgres.pause(timeout=max(0.0, deadline))
+        pending = {task for task in self._inflight if not task.done()}
+        if pending:
+            _, pending = await asyncio.wait(
+                pending,
+                timeout=max(0.0, expires_at - asyncio.get_running_loop().time()),
+            )
+        if pending:
+            raise TimeoutError(
+                f"Maintenance drain timed out for {self.queue_name}: "
+                f"{len(pending)} handler(s) remain"
+            )
+        await self._drain_admitted_work(
+            max(0.0, expires_at - asyncio.get_running_loop().time())
+        )
+
+    async def resume_postgres_intake(self) -> None:
+        if self._postgres is None:
+            raise RuntimeError(
+                "Runtime maintenance requires the PostgreSQL delivery backend"
+            )
+        await self._postgres.start()
+
     async def drain(self, deadline: float = 300.0) -> None:
         """Stop new deliveries, wait on in-flight tasks, then close.
 
@@ -334,7 +368,9 @@ class _AbstractConsumer(ABC):
 
         try:
             if self._postgres is not None:
-                await self._postgres.pause()
+                await self._postgres.pause(
+                    timeout=max(0.0, expires_at - asyncio.get_running_loop().time())
+                )
             # Cancel the consumer: stops new deliveries, keeps channel open.
             if self._queue is not None and self._consumer_tag is not None:
                 try:

@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.security import decrypt_secret, encrypt_secret
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.work_deliveries import WorkDelivery
+from src.services.runtime_maintenance import (
+    reject_if_runtime_maintenance_sealed,
+    runtime_claims_sealed,
+)
 
 LEASE_SECONDS = 90
 MAX_CLAIM_BATCH = 100
@@ -89,6 +93,7 @@ async def enqueue_delivery(
         raise ValueError("queue_name must contain 1..100 characters")
     if not message_id or len(message_id) > 255:
         raise ValueError("message_id must contain 1..255 characters")
+    await reject_if_runtime_maintenance_sealed(db)
     delivery_id = uuid4()
     result = await db.execute(
         insert(WorkDelivery)
@@ -144,6 +149,8 @@ async def claim_deliveries(
 ) -> list[DeliveryLease]:
     if not owner or len(owner) > 255 or not 1 <= limit <= MAX_CLAIM_BATCH:
         raise ValueError("claim requires an owner and a batch size between 1 and 100")
+    if await runtime_claims_sealed(db):
+        return []
     rows = (
         (
             await db.execute(

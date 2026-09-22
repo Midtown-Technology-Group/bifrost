@@ -8,6 +8,7 @@ import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.scheduler.main import PLATFORM_JOB_CONCURRENCY, Scheduler
+from src.services.runtime_maintenance import RuntimeMaintenanceActive
 
 
 class FakeLeadershipLease:
@@ -49,6 +50,7 @@ async def test_trigger_services_run_only_while_lease_is_held(
     scheduler.running = True
     scheduler._start_leader_services = AsyncMock()  # type: ignore[method-assign]
     scheduler._stop_leader_services = AsyncMock()  # type: ignore[method-assign]
+    scheduler._runtime_maintenance_active = AsyncMock(return_value=False)  # type: ignore[method-assign]
 
     waits = 0
 
@@ -66,6 +68,53 @@ async def test_trigger_services_run_only_while_lease_is_held(
     assert scheduler._stop_leader_services.await_count >= 1
     assert lease.acquire_calls == 2
     assert lease.release_calls >= 1
+
+
+@pytest.mark.asyncio
+async def test_runtime_maintenance_releases_trigger_leadership_without_stopping_replica() -> None:
+    lease = FakeLeadershipLease()
+    lease.is_leader = True
+    scheduler = Scheduler(leadership_lease=lease)  # type: ignore[arg-type]
+    scheduler.running = True
+    scheduler._stop_leader_services = AsyncMock()  # type: ignore[method-assign]
+    scheduler._runtime_maintenance_active = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    async def stop_waiting(_seconds: float) -> None:
+        scheduler._shutdown_event.set()
+
+    scheduler._wait_or_shutdown = stop_waiting  # type: ignore[method-assign]
+
+    await scheduler._leadership_loop()
+
+    assert lease.acquire_calls == 0
+    assert lease.release_calls >= 1
+    assert scheduler._stop_leader_services.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_scheduled_callback_is_not_started_while_maintenance_is_active() -> None:
+    scheduler = Scheduler(leadership_lease=FakeLeadershipLease())  # type: ignore[arg-type]
+    scheduler._runtime_maintenance_active = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    callback = AsyncMock()
+
+    await scheduler._run_scheduled_task("test", callback)
+
+    callback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enter_race_fences_scheduler_run_before_callback(monkeypatch) -> None:
+    scheduler = Scheduler(leadership_lease=FakeLeadershipLease())  # type: ignore[arg-type]
+    scheduler._runtime_maintenance_active = AsyncMock(return_value=False)  # type: ignore[method-assign]
+    callback = AsyncMock()
+    monkeypatch.setattr(
+        "src.scheduler.main.start_scheduler_run",
+        AsyncMock(side_effect=RuntimeMaintenanceActive("active")),
+    )
+
+    await scheduler._run_scheduled_task("test", callback)
+
+    callback.assert_not_awaited()
 
 
 @pytest.mark.asyncio

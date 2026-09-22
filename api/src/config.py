@@ -60,6 +60,14 @@ class Settings(BaseSettings):
             "stop scheduler triggers separately."
         ),
     )
+    runtime_maintenance_single_api_process: bool = Field(
+        default=False,
+        description=(
+            "Explicit deployment assertion that exactly one API process serves "
+            "the runtime-maintenance target; required because the finite request "
+            "counter is process-local"
+        ),
+    )
 
     # ==========================================================================
     # Database (PostgreSQL)

@@ -20,7 +20,7 @@ import signal
 from pathlib import Path
 
 from src.config import get_settings
-from src.core.database import init_db, close_db
+from src.core.database import close_db, get_db_context, init_db
 from src.jobs.rabbitmq import rabbitmq
 from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
 from src.jobs.consumers.package_install import PackageInstallConsumer
@@ -30,6 +30,7 @@ from src.jobs.summarize_worker import (
     SummarizeConsumer,
     TuneChatConsumer,
 )
+from src.services.runtime_maintenance import read_runtime_maintenance_state
 
 # Configure logging
 logging.basicConfig(
@@ -136,6 +137,8 @@ class Worker:
         self._stopping = False
         self._stop_task: asyncio.Task[None] | None = None
         self._stop_error: Exception | None = None
+        self._maintenance_task: asyncio.Task[None] | None = None
+        self._maintenance_paused = False
 
     async def start(self) -> None:
         """Start the worker.
@@ -174,6 +177,10 @@ class Worker:
                 "Starting %s work consumers...", self.settings.work_delivery_backend
             )
             await self._start_consumers()
+            self._maintenance_task = asyncio.create_task(
+                self._maintenance_loop(), name="runtime-maintenance"
+            )
+            self._maintenance_task.add_done_callback(self._maintenance_task_done)
         except Exception:
             logger.error("Startup failed; tearing down partially-started worker")
             await self._cleanup_after_failed_start()
@@ -239,6 +246,50 @@ class Worker:
                 logger.error(f"Failed to start consumer {consumer.queue_name}: {e}")
                 raise
 
+    def _maintenance_task_done(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled() or not self.running or self._shutdown_event.is_set():
+            return
+        error = task.exception() or RuntimeError(
+            "Runtime maintenance loop stopped unexpectedly"
+        )
+        self._stop_error = error
+        self._stop_task = asyncio.create_task(self._stop_from_signal())
+
+    async def _maintenance_loop(self) -> None:
+        """Pause PostgreSQL intake only after the durable drain is sealed."""
+        while self.running and not self._shutdown_event.is_set():
+            async with get_db_context() as db:
+                state = await read_runtime_maintenance_state(db)
+            if state.sealed and not self._maintenance_paused:
+                if self.settings.work_delivery_backend != "postgres":
+                    raise RuntimeError(
+                        "Sealed runtime maintenance requires PostgreSQL delivery"
+                    )
+                deadline = float(
+                    os.environ.get("BIFROST_DRAIN_DEADLINE_SECONDS", "300")
+                )
+                await asyncio.gather(
+                    *(
+                        consumer.pause_postgres_intake(deadline=deadline)
+                        for consumer in self._consumers
+                    )
+                )
+                self._maintenance_paused = True
+                logger.info(
+                    "PostgreSQL worker intake paused for maintenance generation %s",
+                    state.generation,
+                )
+            elif not state.sealed and self._maintenance_paused:
+                await asyncio.gather(
+                    *(consumer.resume_postgres_intake() for consumer in self._consumers)
+                )
+                self._maintenance_paused = False
+                logger.info("PostgreSQL worker intake resumed")
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=0.5)
+            except TimeoutError:
+                continue
+
     async def stop(self) -> None:
         """Stop the worker gracefully (drain in-flight, then close).
 
@@ -254,6 +305,10 @@ class Worker:
         self._stopping = True
         logger.info("Stopping Bifrost Worker (graceful drain)...")
         self.running = False
+        if self._maintenance_task is not None and not self._maintenance_task.done():
+            self._maintenance_task.cancel()
+            await asyncio.gather(self._maintenance_task, return_exceptions=True)
+        self._maintenance_task = None
 
         # Drain consumers in parallel — each cancels its consumer tag, waits on
         # its in-flight tasks, then closes its channel.

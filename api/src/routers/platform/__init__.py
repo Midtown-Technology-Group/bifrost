@@ -12,10 +12,14 @@ from src.routers.platform.workers import (
     stuck_router,
 )
 from src.routers.platform.app_service import router as app_service_router
+from src.routers.platform.runtime_maintenance import (
+    router as runtime_maintenance_router,
+)
 
 __all__ = [
     "workers_router",
     "queue_router",
     "stuck_router",
     "app_service_router",
+    "runtime_maintenance_router",
 ]

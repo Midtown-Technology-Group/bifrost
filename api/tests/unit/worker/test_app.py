@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from contextlib import asynccontextmanager
 
 import pytest
 
 from src.worker import app as worker_app
+from src.services.runtime_maintenance import RuntimeMaintenanceState
 
 
 class FakeConsumer:
@@ -16,6 +18,8 @@ class FakeConsumer:
         self.started = 0
         self.stopped = 0
         self.drained: list[float] = []
+        self.paused: list[float] = []
+        self.resumed = 0
 
     async def start(self) -> None:
         if self.fail_start:
@@ -28,6 +32,12 @@ class FakeConsumer:
     async def drain(self, *, deadline: float) -> None:
         self.drained.append(deadline)
 
+    async def pause_postgres_intake(self, *, deadline: float) -> None:
+        self.paused.append(deadline)
+
+    async def resume_postgres_intake(self) -> None:
+        self.resumed += 1
+
 
 @pytest.fixture
 def settings() -> SimpleNamespace:
@@ -37,6 +47,64 @@ def settings() -> SimpleNamespace:
 def test_configured_consumers_default_to_all(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BIFROST_WORKER_CONSUMERS", raising=False)
     assert worker_app.configured_consumer_names() == list(worker_app._CONSUMER_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_runtime_maintenance_seals_then_resumes_postgres_consumers(
+    monkeypatch: pytest.MonkeyPatch, settings: SimpleNamespace
+) -> None:
+    settings.work_delivery_backend = "postgres"
+    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
+
+    @asynccontextmanager
+    async def db_context():
+        yield object()
+
+    monkeypatch.setattr(worker_app, "get_db_context", db_context)
+    worker = worker_app.Worker()
+    consumer = FakeConsumer()
+    worker._consumers = [consumer]
+    worker.running = True
+    reads = 0
+
+    async def read_state(_db):
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return RuntimeMaintenanceState(phase="sealed")
+        worker._shutdown_event.set()
+        return RuntimeMaintenanceState()
+
+    monkeypatch.setattr(worker_app, "read_runtime_maintenance_state", read_state)
+
+    await worker._maintenance_loop()
+
+    assert consumer.paused == [300.0]
+    assert consumer.resumed == 1
+    assert worker._maintenance_paused is False
+
+
+@pytest.mark.asyncio
+async def test_runtime_maintenance_rejects_unimplemented_delivery_backend(
+    monkeypatch: pytest.MonkeyPatch, settings: SimpleNamespace
+) -> None:
+    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
+
+    @asynccontextmanager
+    async def db_context():
+        yield object()
+
+    monkeypatch.setattr(worker_app, "get_db_context", db_context)
+    monkeypatch.setattr(
+        worker_app,
+        "read_runtime_maintenance_state",
+        AsyncMock(return_value=RuntimeMaintenanceState(phase="sealed")),
+    )
+    worker = worker_app.Worker()
+    worker.running = True
+
+    with pytest.raises(RuntimeError, match="requires PostgreSQL"):
+        await worker._maintenance_loop()
 
 
 @pytest.mark.asyncio
