@@ -27,7 +27,8 @@ class DeviceControlKey(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # bcrypt hash of the raw bfck_ key; raw is returned once, never stored.
+    # bcrypt hash of the bfck_ key's secret component (the key UUID routes
+    # the lookup); raw is returned once, never stored.
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")

@@ -46,7 +46,8 @@ class Device(Base):
     agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     os: Mapped[str | None] = mapped_column(String(128), nullable=True)
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # bcrypt hash of the raw bfdk_ device key; raw is returned once, never stored.
+    # bcrypt hash of the bfdk_ key's secret component (the device UUID routes
+    # the lookup); raw is returned once, never stored.
     api_key_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     api_key_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
