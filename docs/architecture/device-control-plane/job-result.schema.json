@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "device-control-plane/job-result.schema.json",
+  "title": "Device job result",
+  "description": "Request body for POST /api/device/jobs/{id}/result (agent protocol, X-Bifrost-Key device auth, claim_token fencing). The agent may report only succeeded/failed/timeout/cancelled. The server is the sole authority for status lost: if the job row is already terminal (including lost) the result is rejected with HTTP 409 job_terminal or fence_violation, and the agent must never locally re-run. Frozen for epic #818 / M0.2 #828.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "timeout", "cancelled"],
+      "description": "Agent-observed terminal outcome. timeout is posted only after the agent actually killed the process tree. cancelled is posted only after the agent observed the cooperative cancel flag (heartbeat hint) and stopped execution. lost is never agent-postable."
+    },
+    "exit_code": {
+      "type": ["integer", "null"],
+      "minimum": -2147483648,
+      "maximum": 2147483647,
+      "description": "Process exit code, or null when no exit code was observed (for example a spawn failure reported as failed)."
+    },
+    "duration_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Spawn-to-exit wall time in milliseconds, or null when not measured."
+    },
+    "truncated": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when output hit max_output_bytes and was cut off."
+    },
+    "error": {
+      "type": ["string", "null"],
+      "maxLength": 4096,
+      "description": "Short human-readable failure or timeout reason. Must never contain device keys, control keys, enrollment tokens, or full script bodies."
+    },
+    "output": {
+      "type": ["string", "null"],
+      "maxLength": 65536,
+      "description": "Optional final output tail up to 64 KiB for at-a-glance history. The authoritative stream is the log sequence; absence of output here is always acceptable."
+    }
+  }
+}

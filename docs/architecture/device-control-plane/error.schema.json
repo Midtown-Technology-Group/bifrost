@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "device-control-plane/error.schema.json",
+  "title": "Device control-plane structured error",
+  "description": "Structured error envelope for device control-plane HTTP routes. Workspace maps code device_busy to a UserError (never a silent queue or Ninja fallback). Shape is frozen for epic #818 / M0.2 #828; new codes and extra optional fields are additive, existing fields may not change meaning.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable machine-readable code. Frozen registry: device_busy (409, active job holds the device), fence_violation (409, wrong/expired claim_token), job_terminal (409, job already terminal including lost), log_seq_conflict (409, seq reused with different content), invalid_key (401, missing/unknown/disabled device or control key), enrollment_token_invalid (401), enrollment_token_expired (401), enrollment_token_consumed (401), device_disabled (403, device exists but not active), out_of_scope (403, control key does not target this device), unknown_job (404), permission_denied (403, user lacks can_execute_devices/can_manage_config), script_too_large (413), payload_too_large (413), invalid_parameter (422).",
+          "examples": [
+            "device_busy",
+            "fence_violation",
+            "job_terminal",
+            "log_seq_conflict",
+            "invalid_key",
+            "out_of_scope"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Operator-readable explanation. Must never embed raw key material or full script bodies."
+        },
+        "retryable": {
+          "type": "boolean",
+          "default": false,
+          "description": "True only when an identical retry may succeed without a new logical request decision (for example a transient blip). device_busy, fence_violation, and job_terminal are never retryable in place; busy requires a new job create after the device frees up, and fence/terminal outcomes require an explicit new job id when retry is intended."
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Present on device_busy: the id of the active job holding the device. Optional elsewhere."
+        }
+      }
+    }
+  }
+}

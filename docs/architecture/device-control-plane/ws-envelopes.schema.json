@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "device-control-plane/ws-envelopes.schema.json",
+  "title": "Device control-plane WebSocket envelopes",
+  "description": "Server-to-client envelopes on /ws/connect for the device control plane. Auth contract: the device principal presents Authorization: Bearer <device_key> on the handshake only; a device_key (or any other) credential in the query string is rejected with close code 4001 before any subscription. Devices may hold only channel device:{device_id}; user JWT principals may never subscribe device:*. WebSocket delivery is a lossy hint: HTTP claim/log/result remains the authority. Frozen for epic #818 / M0.2 #828.",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {"type": "string"}
+  },
+  "oneOf": [
+    {
+      "$comment": "Connect ack for a device principal, mirroring the existing user ack shape (userId) with deviceId instead.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "channels", "deviceId"],
+      "properties": {
+        "type": {"const": "connected"},
+        "channels": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Effective channels; always includes device:{device_id}, which the server auto-subscribes."
+        },
+        "deviceId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The authenticated device id."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "channel"],
+      "properties": {
+        "type": {"const": "subscribed"},
+        "channel": {
+          "type": "string",
+          "pattern": "^device:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "description": "Only the principal's own device:{device_id} channel can be acknowledged for a device."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": {"const": "error"},
+        "channel": {
+          "type": "string",
+          "description": "Channel the failed subscribe/unsubscribe referred to, when applicable."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Access-denied or protocol error text. A denied subscribe answers with this envelope; it does not close the socket."
+        }
+      }
+    },
+    {
+      "$comment": "Lossy wake-up hint published on device:{device_id} after a job create commits. The agent must still claim over HTTP; missing this message only costs latency (poll fallback).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "job_id", "device_id"],
+      "properties": {
+        "type": {"const": "device_job_available"},
+        "job_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "device_jobs.id that is now claimable (status pending)."
+        },
+        "device_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Target device; matches the channel's device id."
+        }
+      }
+    }
+  ]
+}
