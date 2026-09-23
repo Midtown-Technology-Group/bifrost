@@ -157,6 +157,13 @@
 | PUT | `/api/decorator-properties` |
 | POST | `/api/dependencies/availability` |
 | GET | `/api/dependencies/{entity_type}/{entity_id}` |
+| GET | `/api/devices` |
+| POST | `/api/devices` |
+| POST | `/api/devices/enroll` |
+| GET | `/api/devices/{device_id}` |
+| POST | `/api/devices/{device_id}/disable` |
+| POST | `/api/devices/{device_id}/enable` |
+| POST | `/api/devices/{device_id}/rotate-key` |
 | DELETE | `/api/endpoints/{workflow_id}` |
 | GET | `/api/endpoints/{workflow_id}` |
 | PATCH | `/api/endpoints/{workflow_id}` |
