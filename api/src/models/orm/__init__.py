@@ -46,6 +46,7 @@ from src.models.orm.executions import Execution, ExecutionLog
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.execution_lifecycle_events import ExecutionLifecycleEvent
 from src.models.orm.worker_control_commands import WorkerControlCommand
+from src.models.orm.device_control_keys import DeviceControlKey
 from src.models.orm.devices import Device
 from src.models.orm.poison_message_dispositions import PoisonMessageDisposition
 from src.models.orm.external_mcp import (
@@ -164,6 +165,7 @@ __all__ = [
     "ExecutionLifecycleEvent",
     "WorkerControlCommand",
     "Device",
+    "DeviceControlKey",
     "PoisonMessageDisposition",
     "ExecutionLog",
     # CLI Sessions

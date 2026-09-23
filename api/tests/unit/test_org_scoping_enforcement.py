@@ -291,6 +291,10 @@ IDENTITY_MODELS: set[str] = {
     # (device control plane #818). Agent auth resolves by embedded key UUID,
     # user routes by device id — never by name with org-to-global cascade.
     "Device",
+    # Control keys are credential rows addressed by UUID inside one
+    # organization; verification looks up the embedded key UUID, never a
+    # name-cascade resolve.
+    "DeviceControlKey",
 }
 
 
