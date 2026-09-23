@@ -3,9 +3,9 @@
 Implements the M0 freeze (docs/architecture/device-control-plane.md):
 
 - Key formats embed their row UUID so verification is an O(1) lookup:
-  ``bfdk_<device_uuid>_<secret>`` (device key), ``bfck_<key_uuid>``
-  (control key), ``bfen_<device_uuid>`` (enrollment token); secrets are
-  ``token_urlsafe(32)``.
+  ``bfdk_<device_uuid>_<secret>`` (device key), ``bfck_<key_uuid>_<secret>``
+  (control key), ``bfen_<device_uuid>_<secret>`` (enrollment token); secrets
+  are ``token_urlsafe(32)``.
 - Only bcrypt hashes of the **secret component** are stored (same discipline
   as ``workflow_keys`` hashing its 43-char token): the UUID routes to the
   row, then bcrypt verifies the secret. The full prefixed raw key is 85
