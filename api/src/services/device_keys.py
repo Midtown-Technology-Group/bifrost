@@ -30,7 +30,7 @@ CONTROL_KEY_PREFIX = "bfck_"
 ENROLLMENT_TOKEN_PREFIX = "bfen_"
 
 _KEY_PATTERN = re.compile(
-    r"^(?P<prefix>bfdk|bfck|bfen)_"
+    r"^(?P<prefix>bfdk_|bfck_|bfen_)"
     r"(?P<key_id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_"
     r"(?P<secret>[A-Za-z0-9_-]{43})$"
 )
