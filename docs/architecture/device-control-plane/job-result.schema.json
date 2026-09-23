@@ -2,11 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "device-control-plane/job-result.schema.json",
   "title": "Device job result",
-  "description": "Request body for POST /api/device/jobs/{id}/result (agent protocol, X-Bifrost-Key device auth, claim_token fencing). The agent may report only succeeded/failed/timeout/cancelled. The server is the sole authority for status lost: if the job row is already terminal (including lost) the result is rejected with HTTP 409 job_terminal or fence_violation, and the agent must never locally re-run. Frozen for epic #818 / M0.2 #828.",
+  "description": "Request body for POST /api/device/jobs/{id}/result (agent protocol, X-Bifrost-Key device auth). The required claim_token is the UUID returned by the claim response; a wrong or stale token fails with fence_violation. The agent may report only succeeded/failed/timeout/cancelled. The server is the sole authority for status lost: if the job row is already terminal (including lost) the result is rejected with HTTP 409 job_terminal or fence_violation, and the agent must never locally re-run. Frozen for epic #818 / M0.2 #828.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status"],
+  "required": ["claim_token", "status"],
   "properties": {
+    "claim_token": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Fencing token from the claim response for this job; rotated on every (re)claim."
+    },
     "status": {
       "type": "string",
       "enum": ["succeeded", "failed", "timeout", "cancelled"],
@@ -36,7 +41,7 @@
     "output": {
       "type": ["string", "null"],
       "maxLength": 65536,
-      "description": "Optional final output tail up to 64 KiB for at-a-glance history. The authoritative stream is the log sequence; absence of output here is always acceptable."
+      "description": "Optional final output tail up to 64 KiB of UTF-8 bytes for at-a-glance history (this maxLength bounds characters only; the server enforces the byte cap). The authoritative stream is the log sequence; absence of output here is always acceptable."
     }
   }
 }

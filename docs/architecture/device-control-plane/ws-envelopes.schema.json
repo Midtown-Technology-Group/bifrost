@@ -18,12 +18,18 @@
         "type": {"const": "connected"},
         "channels": {
           "type": "array",
-          "items": {"type": "string"},
-          "description": "Effective channels; always includes device:{device_id}, which the server auto-subscribes."
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^device:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "description": "Effective channels; exactly the device's own device:{device_id} channel, which the server auto-subscribes. The server must verify the channel id matches the authenticated deviceId; any requested foreign channel is denied with an error envelope instead."
         },
         "deviceId": {
           "type": "string",
           "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
           "description": "The authenticated device id."
         }
       }
@@ -69,11 +75,13 @@
         "job_id": {
           "type": "string",
           "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
           "description": "device_jobs.id that is now claimable (status pending)."
         },
         "device_id": {
           "type": "string",
           "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
           "description": "Target device; matches the channel's device id."
         }
       }

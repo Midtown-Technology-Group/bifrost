@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "device-control-plane/error.schema.json",
   "title": "Device control-plane structured error",
-  "description": "Structured error envelope for device control-plane HTTP routes. Workspace maps code device_busy to a UserError (never a silent queue or Ninja fallback). Shape is frozen for epic #818 / M0.2 #828; new codes and extra optional fields are additive, existing fields may not change meaning.",
+  "description": "Structured error envelope for device control-plane HTTP routes. Workspace maps code device_busy to a UserError (never a silent queue or Ninja fallback). Shape is frozen for epic #818 / M0.2 #828. additionalProperties:false is intentional: new codes and new optional fields are additive, but they must be declared in this file when introduced (validators reject undeclared fields); existing fields may not change meaning.",
   "type": "object",
   "additionalProperties": false,
   "required": ["error"],
@@ -39,9 +39,50 @@
         "job_id": {
           "type": "string",
           "format": "uuid",
-          "description": "Present on device_busy: the id of the active job holding the device. Optional elsewhere."
+          "description": "Required when code is device_busy: the id of the active job holding the device. Optional elsewhere."
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "$comment": "device_busy must carry job_id and is never retryable in place.",
+      "if": {
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "required": ["code"],
+            "properties": {"code": {"const": "device_busy"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "required": ["job_id"],
+            "properties": {"retryable": {"const": false}}
+          }
+        }
+      }
+    },
+    {
+      "$comment": "Fence/terminal rejections are never retryable in place; retry means a new job id.",
+      "if": {
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "required": ["code"],
+            "properties": {"code": {"enum": ["fence_violation", "job_terminal"]}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "properties": {"retryable": {"const": false}}
+          }
+        }
+      }
+    }
+  ]
 }

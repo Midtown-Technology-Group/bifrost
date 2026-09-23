@@ -2,7 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "device-control-plane/enrollment.schema.json",
   "title": "Device enrollment request/response",
-  "description": "POST /api/devices/enroll (CSRF-exempt, no user session, no device key yet). Single-use operator-created enrollment token with a short TTL; on success the device moves pending_enrolled -> active and the raw device key is returned exactly once. Errors use the shared error.schema.json envelope. Frozen for epic #818 / M0.2 #828.",
+  "description": "POST /api/devices/enroll (CSRF-exempt, no user session, no device key yet). Single-use operator-created enrollment token with a short TTL; on success the device moves pending_enrolled -> active and the raw device key is returned exactly once. The root schema accepts either message (oneOf); consumers may also validate #/definitions/request or #/definitions/response directly. Errors outside these two messages use the shared error.schema.json envelope. Frozen for epic #818 / M0.2 #828.",
+  "oneOf": [
+    {"$ref": "#/definitions/request"},
+    {"$ref": "#/definitions/response"}
+  ],
   "definitions": {
     "request": {
       "type": "object",

@@ -30,7 +30,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 262144,
-      "description": "UTF-8 PowerShell script body. Platform hard cap 256 KiB. Readable only through this fenced claim response; the device principal has no other script-body read path."
+      "description": "UTF-8 PowerShell script body. Platform hard cap is 256 KiB of UTF-8 bytes; this maxLength bounds characters only, and the server enforces the byte cap (oversize create -> script_too_large). Readable only through this fenced claim response; the device principal has no other script-body read path."
     },
     "params": {
       "type": "object",
@@ -55,7 +55,7 @@
     "claim_token": {
       "type": "string",
       "format": "uuid",
-      "description": "Opaque fencing token minted at claim time. Required on POST logs and POST result for this job. Rotated on every (re)claim; a stale token is rejected with fence_violation."
+      "description": "Opaque fencing token minted at claim time. Required as the claim_token request-body property on POST /api/device/jobs/{id}/logs and POST /api/device/jobs/{id}/result for this job. Rotated on every (re)claim; a stale token is rejected with fence_violation."
     },
     "claimed_at": {
       "type": "string",

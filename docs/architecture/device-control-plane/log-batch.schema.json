@@ -2,11 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "device-control-plane/log-batch.schema.json",
   "title": "Device job log batch",
-  "description": "Request body for POST /api/device/jobs/{id}/logs (agent protocol, X-Bifrost-Key device auth, claim_token fencing). Idempotency key is the pair (path job id, entry.seq). Frozen for epic #818 / M0.2 #828.",
+  "description": "Request body for POST /api/device/jobs/{id}/logs (agent protocol, X-Bifrost-Key device auth, claim_token fencing). The required claim_token is the UUID returned by the claim response; a stale or wrong token fails with fence_violation. Idempotency key is the pair (path job id, entry.seq). Frozen for epic #818 / M0.2 #828.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["entries"],
+  "required": ["claim_token", "entries"],
   "properties": {
+    "claim_token": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Fencing token from the claim response for this job; rotated on every (re)claim."
+    },
     "entries": {
       "type": "array",
       "minItems": 1,
@@ -30,7 +35,7 @@
           "text": {
             "type": "string",
             "maxLength": 65536,
-            "description": "Captured output chunk, max 64 KiB per entry."
+            "description": "Captured output chunk. Cap is 64 KiB of UTF-8 bytes per entry; this maxLength bounds characters only and the server enforces the byte cap (payload_too_large)."
           },
           "ts": {
             "type": "string",
