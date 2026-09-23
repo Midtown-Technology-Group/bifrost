@@ -5,19 +5,23 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from src.models.orm.config import SystemConfig
+from src.models.orm.work_deliveries import WorkDelivery
 from src.services.runtime_maintenance import (
     MAINTENANCE_CATEGORY,
     MAINTENANCE_KEY,
     RuntimeMaintenanceActive,
     RuntimeMaintenanceError,
+    RuntimeMaintenanceSealed,
     acquire_runtime_maintenance_lock,
     enter_runtime_maintenance,
     exit_runtime_maintenance,
     read_runtime_maintenance_state,
+    seal_runtime_maintenance,
 )
 from src.services.scheduler_diagnostics import start_scheduler_run
+from src.services.work_delivery_store import claim_deliveries, enqueue_delivery
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -127,3 +131,51 @@ async def test_active_maintenance_fences_a_new_scheduler_run(
 
     with pytest.raises(RuntimeMaintenanceActive, match="active"):
         await start_scheduler_run("test-trigger", "scheduler-test")
+
+
+async def test_queued_delivery_prevents_sealing(db_session) -> None:
+    state = await enter_runtime_maintenance(
+        db_session, requested_by="release@example.com", reason="accepted work"
+    )
+    await enqueue_delivery(
+        db_session, queue_name=f"maintenance-{uuid4()}",
+        message_id=str(uuid4()), envelope={"synthetic": True},
+    )
+    assert state.generation is not None
+    observed, counts = await seal_runtime_maintenance(
+        db_session, generation=state.generation
+    )
+    assert observed.phase == "draining"
+    assert counts.work_deliveries >= 1
+    assert counts.drained is False
+
+
+async def test_persisted_seal_fences_publication_and_claims_until_exit(db_session) -> None:
+    queue = f"maintenance-{uuid4()}"
+    state = await enter_runtime_maintenance(
+        db_session, requested_by="release@example.com", reason="restart boundary"
+    )
+    delivery_id = await enqueue_delivery(
+        db_session, queue_name=queue, message_id=str(uuid4()),
+        envelope={"synthetic": True},
+    )
+    # Seed the persisted sealed state to exercise transport defenses even if
+    # unexpected queued data exists; the seal transition itself must reject it.
+    row = (await db_session.execute(select(SystemConfig).where(
+        SystemConfig.category == MAINTENANCE_CATEGORY,
+        SystemConfig.key == MAINTENANCE_KEY,
+        SystemConfig.organization_id.is_(None),
+    ))).scalar_one()
+    row.value_json = {**row.value_json, "phase": "sealed"}
+    await db_session.flush()
+    assert await claim_deliveries(db_session, queue_name=queue, owner="test") == []
+    with pytest.raises(RuntimeMaintenanceSealed):
+        await enqueue_delivery(
+            db_session, queue_name=queue, message_id=str(uuid4()), envelope={},
+        )
+    delivery = await db_session.get(WorkDelivery, delivery_id)
+    assert delivery is not None and delivery.status == "queued"
+    assert state.generation is not None
+    await exit_runtime_maintenance(db_session, generation=state.generation)
+    claims = await claim_deliveries(db_session, queue_name=queue, owner="test")
+    assert [claim.id for claim in claims] == [delivery_id]
