@@ -68,6 +68,7 @@ from src.routers.docs import router as docs_router
 from src.routers.jobs import router as jobs_router
 from src.routers.platform_jobs import router as platform_jobs_router
 from src.routers.scheduler_diagnostics import router as scheduler_diagnostics_router
+from src.routers.devices import router as devices_router
 from src.routers.platform import (
     app_service_router,
     runtime_maintenance_router,
@@ -153,6 +154,7 @@ __all__ = [
     "export_import_router",
     "docs_router",
     "jobs_router",
+    "devices_router",
     "platform_jobs_router",
     "scheduler_diagnostics_router",
     "platform_workers_router",

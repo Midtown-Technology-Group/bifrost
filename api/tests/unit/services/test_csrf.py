@@ -100,6 +100,10 @@ class TestCsrfExemptPaths:
     def test_is_a_set(self):
         assert isinstance(CSRF_EXEMPT_PATHS, set)
 
+    def test_devices_enroll_exempt(self):
+        """Device enrollment uses a one-time token, never a user session."""
+        assert "/api/devices/enroll" in CSRF_EXEMPT_PATHS
+
 
 class TestCsrfExemptPrefixes:
     """Tests for the CSRF_EXEMPT_PREFIXES constant."""

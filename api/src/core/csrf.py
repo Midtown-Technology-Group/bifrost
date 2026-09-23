@@ -49,6 +49,9 @@ CSRF_EXEMPT_PATHS = {
     "/health",
     "/ready",
     "/",
+    # Device control plane: one-time enrollment token auth, no user session
+    # (docs/architecture/device-control-plane.md; M1 #831)
+    "/api/devices/enroll",
     # MCP OAuth endpoints (called by external MCP clients)
     "/authorize",
     "/token",
