@@ -287,6 +287,10 @@ IDENTITY_MODELS: set[str] = {
     # A memory store is an owner boundary looked up by its user/organization
     # identity. It is never name-resolved through the org-to-global cascade.
     "MemoryStore",
+    # Devices are estate identities addressed by UUID within one organization
+    # (device control plane #818). Agent auth resolves by embedded key UUID,
+    # user routes by device id — never by name with org-to-global cascade.
+    "Device",
 }
 
 

@@ -60,6 +60,7 @@ from src.models.orm import (
     # Applications (App Builder)
     Application,
     PlatformJob,
+    Device,
     SchedulerLease,
     SchedulerReplica,
     SchedulerTaskRun,
@@ -131,6 +132,7 @@ __all__ = [
     # Applications (App Builder)
     "Application",
     "PlatformJob",
+    "Device",
     "SchedulerLease",
     "SchedulerReplica",
     "SchedulerTaskRun",
