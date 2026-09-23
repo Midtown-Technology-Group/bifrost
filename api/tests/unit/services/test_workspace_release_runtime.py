@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import inspect
 
 from bifrost.workspace_release import (
     workspace_manifest_id,
@@ -34,9 +35,11 @@ class _PinSession:
         self.release = release
         self.artifact = artifact
         self.get_options = None
+        self.populate_existing = False
 
-    async def get(self, _model, _identity, *, options=None):
+    async def get(self, _model, _identity, *, options=None, populate_existing=False):
         self.get_options = options
+        self.populate_existing = populate_existing
         return self.workflow
 
     async def execute(self, _statement):
@@ -367,6 +370,51 @@ async def test_pin_eager_loads_registration_roles_before_sync_validation() -> No
     assert session.get_options is not None
     assert len(session.get_options) == 1
     assert list(session.get_options[0].path)[1] is Workflow.roles.property
+    assert session.populate_existing is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_role", [False, True])
+async def test_pin_loads_roles_for_workflow_already_in_session(db_session, monkeypatch, has_role) -> None:
+    """EventDelivery eagerly loads Workflow before the runtime pin lookup."""
+    release, artifact = _rows()
+    registration = next(iter(artifact.manifest["effective_registrations"].values()))
+    registration["organization_id"] = None
+    from src.models.orm.users import Role
+    from src.models.orm.workflow_roles import WorkflowRole
+
+    roles = [Role(id=uuid4(), name="issue808", created_by="regression-test")] if has_role else []
+    registration["role_ids"] = [str(role.id) for role in roles]
+    artifact.manifest = {
+        **artifact.manifest,
+        "effective_registration_manifest_id": workspace_registration_manifest_id(
+            artifact.manifest["effective_registrations"]
+        ),
+    }
+    descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
+    workflow = Workflow(**vars(_workflow_for_registration(registration, organization_id=None)))
+    db_session.add(workflow)
+    db_session.add_all(roles)
+    await db_session.flush()
+    db_session.add_all(
+        WorkflowRole(workflow_id=workflow.id, role_id=role.id) for role in roles
+    )
+    await db_session.flush()
+    db_session.expire(workflow, ["roles"])
+    assert "roles" in inspect(workflow).unloaded
+
+    async def active_release(_session, _organization_id):
+        return descriptor
+
+    monkeypatch.setattr(
+        "src.services.workspace_release_runtime.active_workspace_release", active_release
+    )
+    pinned = await pin_workspace_runtime(db_session, workflow.id)
+
+    assert pinned is not None
+    assert pinned.workflow_id == workflow.id
+    assert "roles" not in inspect(workflow).unloaded
+    assert [str(role.id) for role in workflow.roles] == registration["role_ids"]
 
 
 @pytest.mark.asyncio

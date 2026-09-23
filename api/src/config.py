@@ -208,6 +208,19 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
+    # Decision Inference (experimental, issue #806)
+    # ==========================================================================
+    decision_inference_mode: Literal["off", "shadow", "enforce"] = Field(
+        default="off",
+        description=(
+            "Gate for the experimental DecisionEngine. Off rejects decision "
+            "calls; shadow computes results marked non-authoritative; enforce "
+            "marks results authoritative. Deterministic authorization and "
+            "policy gates always apply separately regardless of mode."
+        ),
+    )
+
+    # ==========================================================================
     # Redis
     # ==========================================================================
     redis_url: str = Field(
