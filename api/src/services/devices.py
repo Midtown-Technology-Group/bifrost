@@ -204,7 +204,12 @@ async def enroll_device(
             "enrollment token is not valid",
         )
 
-    device = await db.get(Device, parsed.key_id)
+    # Row lock: concurrent enrolls with the same single-use token must
+    # serialize so only one request can consume it and issue a key.
+    result = await db.execute(
+        select(Device).where(Device.id == parsed.key_id).with_for_update()
+    )
+    device = result.scalar_one_or_none()
     if device is None:
         raise DeviceOperationError(
             status.HTTP_401_UNAUTHORIZED,
@@ -274,19 +279,21 @@ async def set_device_enabled(
     if enabled:
         if device.status != DEVICE_STATUS_DISABLED:
             raise DeviceOperationError(
-                status.HTTP_409_CONFLICT,
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "invalid_parameter",
                 "only disabled devices can be enabled",
             )
-        device.status = (
-            DEVICE_STATUS_ACTIVE
-            if device.api_key_hash is not None
-            else DEVICE_STATUS_PENDING_ENROLLED
-        )
+        if device.api_key_hash is not None:
+            device.status = DEVICE_STATUS_ACTIVE
+            # Disable cleared the key flag; re-enable must restore it or an
+            # enrolled device comes back active but unable to authenticate.
+            device.api_key_enabled = True
+        else:
+            device.status = DEVICE_STATUS_PENDING_ENROLLED
     else:
         if device.status == DEVICE_STATUS_DISABLED:
             raise DeviceOperationError(
-                status.HTTP_409_CONFLICT,
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "invalid_parameter",
                 "device is already disabled",
             )

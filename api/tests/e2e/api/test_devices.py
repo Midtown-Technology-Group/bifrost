@@ -135,6 +135,11 @@ def test_permission_denied_without_role(e2e_client, platform_admin, org1, non_ad
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "permission_denied"
 
+    # List must use the same envelope (not a 500 from an uncaught error).
+    listing = e2e_client.get("/api/devices", headers=non_admin_user.headers)
+    assert listing.status_code == 403
+    assert listing.json()["error"]["code"] == "permission_denied"
+
 
 def test_org_isolation(e2e_client, platform_admin, org1, org2, org1_user, org2_user, device_manager_role):
     created = _create_device(e2e_client, platform_admin.headers, org1["id"], "e2e-iso")

@@ -101,8 +101,11 @@ async def list_devices_route(
     ctx: Context,
     user: CurrentUser,
     scope: str | None = Query(default=None),
-) -> list[DevicePublic]:
-    await require_device_manage_permission(ctx.db, user)
+) -> list[DevicePublic] | JSONResponse:
+    try:
+        await require_device_manage_permission(ctx.db, user)
+    except DeviceOperationError as exc:
+        return exc.to_response()
     stmt = list_devices_stmt(user, scope)
     rows = (await ctx.db.execute(stmt)).scalars().all()
     return [DevicePublic.model_validate(row) for row in rows]

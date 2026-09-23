@@ -144,7 +144,9 @@ class TestEnrollDevice:
 
     async def test_unknown_device_rejected(self):
         session = mock_session()
-        session.get.return_value = None
+        _result = MagicMock()
+        _result.scalar_one_or_none.return_value = None
+        session.execute.return_value = _result
         token = f"{ENROLLMENT_TOKEN_PREFIX}{uuid4()}_{'a' * 43}"
         with pytest.raises(DeviceOperationError) as exc:
             await enroll_device(session, token)
@@ -160,7 +162,9 @@ class TestEnrollDevice:
             enrollment_token_hash=token_hash,
             enrollment_expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
         )
-        session.get.return_value = device
+        _result = MagicMock()
+        _result.scalar_one_or_none.return_value = device
+        session.execute.return_value = _result
         with pytest.raises(DeviceOperationError) as exc:
             await enroll_device(session, token)
         assert exc.value.code == "enrollment_token_expired"
@@ -175,7 +179,9 @@ class TestEnrollDevice:
             enrollment_token_hash=None,
             enrollment_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
-        session.get.return_value = device
+        _result = MagicMock()
+        _result.scalar_one_or_none.return_value = device
+        session.execute.return_value = _result
         with pytest.raises(DeviceOperationError) as exc:
             await enroll_device(session, token)
         assert exc.value.code == "enrollment_token_consumed"
@@ -190,7 +196,9 @@ class TestEnrollDevice:
             enrollment_token_hash=token_hash,
             enrollment_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
-        session.get.return_value = device
+        _result = MagicMock()
+        _result.scalar_one_or_none.return_value = device
+        session.execute.return_value = _result
         with pytest.raises(DeviceOperationError) as exc:
             await enroll_device(session, token)
         assert exc.value.code == "device_disabled"
@@ -207,7 +215,9 @@ class TestEnrollDevice:
             enrollment_token_hash=other_hash,
             enrollment_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
-        session.get.return_value = device
+        _result = MagicMock()
+        _result.scalar_one_or_none.return_value = device
+        session.execute.return_value = _result
         with pytest.raises(DeviceOperationError) as exc:
             await enroll_device(session, token)
         assert exc.value.code == "enrollment_token_invalid"
@@ -224,7 +234,9 @@ class TestEnrollDevice:
             api_key_hash=None,
             api_key_enabled=False,
         )
-        session.get.return_value = device
+        _result = MagicMock()
+        _result.scalar_one_or_none.return_value = device
+        session.execute.return_value = _result
 
         result_device, raw_key = await enroll_device(session, token)
         assert result_device.status == DEVICE_STATUS_ACTIVE
@@ -291,10 +303,13 @@ class TestLifecycle:
 
         enabled = await set_device_enabled(session, user, active.id, True)
         assert enabled.status == DEVICE_STATUS_ACTIVE
+        # Re-enable restores the key flag cleared by disable.
+        assert enabled.api_key_enabled is True
 
         with pytest.raises(DeviceOperationError) as exc:
             await set_device_enabled(session, user, active.id, True)
         assert exc.value.code == "invalid_parameter"
+        assert exc.value.status_code == 422
 
     async def test_get_scoped_missing_device_404(self):
         session = mock_session()
