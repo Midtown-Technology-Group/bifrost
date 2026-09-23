@@ -1,8 +1,14 @@
-"""Upgrade/downgrade coverage for the devices table migration (#829)."""
+"""Upgrade/downgrade coverage for the devices table migration (#829).
+
+Real up/down against Postgres is exercised by the test-stack boot
+(``alembic upgrade head``) and CI; this test pins the migration source
+contract: revision chain, ORM parity, defaults, FK, indexes, and paired
+downgrade order.
+"""
 
 from __future__ import annotations
 
-import importlib.util
+import runpy
 from pathlib import Path
 
 from sqlalchemy import Column, ForeignKeyConstraint
@@ -47,39 +53,26 @@ class _RecordingOp:
         return [call for call in self.calls if call[0] == op_name]
 
 
-def _load_migration_module():
+def _migration_globals() -> dict:
     assert MIGRATION_PATH.exists(), (
         "expected migration api/alembic/versions/20260923_devices.py"
     )
-    spec = importlib.util.spec_from_file_location(
-        "devices_migration",
-        MIGRATION_PATH,
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return runpy.run_path(str(MIGRATION_PATH))
 
 
-def _upgrade_create_table():
-    module = _load_migration_module()
+def _run_upgrade():
+    """Execute upgrade() with a recording op; return (globals, recorder, ...)."""
+    scope = _migration_globals()
     recorder = _RecordingOp()
-    module.op = recorder
-    module.upgrade()
+    upgrade = scope["upgrade"]
+    upgrade.__globals__["op"] = recorder
+    upgrade()
     tables = recorder.named_calls("create_table")
     assert len(tables) == 1
     name, args = tables[0][1]
     columns = [a for a in args if isinstance(a, Column)]
     constraints = [a for a in args if not isinstance(a, Column)]
-    return module, recorder, name, columns, constraints
-
-
-def test_migration_revision_chain() -> None:
-    module = _load_migration_module()
-    assert module.revision == "20260923_devices"
-    assert module.down_revision == "20260920_ai_delivery_fences"
-    assert len(module.revision) <= 32
+    return scope, recorder, name, columns, constraints
 
 
 def _server_default_text(column: Column) -> str:
@@ -90,8 +83,15 @@ def _server_default_text(column: Column) -> str:
     return str(getattr(arg, "text", arg)).lower()
 
 
+def test_migration_revision_chain() -> None:
+    scope = _migration_globals()
+    assert scope["revision"] == "20260923_devices"
+    assert scope["down_revision"] == "20260920_ai_delivery_fences"
+    assert len(scope["revision"]) <= 32
+
+
 def test_upgrade_creates_devices_table_matching_orm() -> None:
-    _module, _recorder, name, columns, constraints = _upgrade_create_table()
+    _scope, _recorder, name, columns, constraints = _run_upgrade()
 
     assert name == "devices"
     col_names = {col.name for col in columns}
@@ -116,29 +116,30 @@ def test_upgrade_creates_devices_table_matching_orm() -> None:
 
 
 def test_upgrade_creates_expected_indexes() -> None:
-    _module, recorder, *_rest = _upgrade_create_table()
+    _scope, recorder, *_rest = _run_upgrade()
     created = {call[1][0] for call in recorder.named_calls("create_index")}
     assert created == EXPECTED_INDEXES
 
 
 def test_upgrade_hash_index_is_partial() -> None:
-    _module, recorder, *_rest = _upgrade_create_table()
+    _scope, recorder, *_rest = _run_upgrade()
     partial = [
-        kwargs
+        call[2]
         for call in recorder.named_calls("create_index")
         if call[1][0] == "ix_devices_api_key_hash"
-        for kwargs in [call[2]]
     ]
     assert len(partial) == 1
-    assert "api_key_hash IS NOT NULL" in str(partial[0].get("postgresql_where", ""))
+    where = str(partial[0].get("postgresql_where", ""))
+    assert "api_key_hash IS NOT NULL" in where
 
 
 def test_downgrade_drops_indexes_then_table() -> None:
-    module = _load_migration_module()
+    scope = _migration_globals()
     recorder = _RecordingOp()
-    module.op = recorder
+    downgrade = scope["downgrade"]
+    downgrade.__globals__["op"] = recorder
 
-    module.downgrade()
+    downgrade()
 
     drops = recorder.calls
     assert [call[0] for call in drops] == [
