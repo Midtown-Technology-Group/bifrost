@@ -234,9 +234,10 @@ Transitions and rules:
   fires when the agent is gone or wedged. `lost` is terminal; **explicit
   retry creates a new job id** (audited like any create). No automatic
   re-execution, ever.
-- **Fencing:** logs and results require the current `claim_token`, are
-  idempotent on `(job_id, seq)`, and are rejected with `fence_violation` /
-  `job_terminal` once the row is terminal — including after `lost`. A late
+- **Fencing:** logs and results require the current `claim_token` (sent as a
+  required request-body property), are idempotent on `(job_id, seq)`, and are
+  rejected with `fence_violation` / `job_terminal` once the row is terminal —
+  including after `lost`. A late
   agent result never resurrects a job. On fence rejection the agent stops its
   local execution best-effort, drops that job's spool, and never re-runs.
 - **Cancellation:** cooperative per the ownership table above. The agent
@@ -385,12 +386,15 @@ to a second transport.
 | WS envelopes | [`device-control-plane/ws-envelopes.schema.json`](./device-control-plane/ws-envelopes.schema.json) |
 | Enrollment request/response | [`device-control-plane/enrollment.schema.json`](./device-control-plane/enrollment.schema.json) |
 
-These files are frozen for Scope A. Additive changes (new error codes, new
-optional fields) are allowed without ceremony. **Breaking changes** (removing
-or repurposing a field, changing a status enum, weakening fencing/auth/busy
-contracts) require an update to epic #818 and this document **before** any
-implementation change. Implementation issues (#829–#854) must not reinterpret
-these contracts; if reality conflicts, stop and raise it on #818.
+These files are frozen for Scope A. Schemas are intentionally closed
+(`additionalProperties: false`): **additive** changes (new error codes, new
+optional fields) are non-breaking but must be recorded by editing the
+affected schema file — validators reject undeclared fields on purpose.
+**Breaking changes** (removing or repurposing a field, changing a status
+enum, weakening fencing/auth/busy contracts) require an update to epic #818
+and this document **before** any implementation change. Implementation issues
+(#829–#854) must not reinterpret these contracts; if reality conflicts, stop
+and raise it on #818.
 
 ## Review-gate answers
 
