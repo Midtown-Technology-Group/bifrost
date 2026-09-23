@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from src.models.orm.config import SystemConfig
 from src.models.orm.work_deliveries import WorkDelivery
 from src.services.runtime_maintenance import (
@@ -99,25 +99,42 @@ async def test_state_survives_new_sessions_and_requires_exact_generation(
 async def test_enter_waits_for_an_existing_shared_claim_boundary(
     async_session_factory,
 ) -> None:
-    claim_session = async_session_factory()
-    await acquire_runtime_maintenance_lock(claim_session, shared=True)
+    backend = asyncio.Queue()
 
     async def enter():
         async with async_session_factory() as db:
+            # This transaction pins the same PostgreSQL backend through the lock.
+            await backend.put(await db.scalar(text("SELECT pg_backend_pid()")))
             state = await enter_runtime_maintenance(
                 db, requested_by="release@example.com", reason="claim race"
             )
             await db.commit()
             return state
 
-    entering = asyncio.create_task(enter())
-    await asyncio.sleep(0.05)
-    assert entering.done() is False
+    async with async_session_factory() as claim_session:
+        await acquire_runtime_maintenance_lock(claim_session, shared=True)
+        entering = asyncio.create_task(enter())
+        try:
+            pid = await asyncio.wait_for(backend.get(), timeout=5)
 
-    await claim_session.commit()
-    await claim_session.close()
-    state = await asyncio.wait_for(entering, timeout=2)
-    assert state.phase == "draining"
+            async def wait_for_blocked_lock():
+                while not await claim_session.scalar(
+                    text("SELECT EXISTS (SELECT 1 FROM pg_locks "
+                         "WHERE pid = :pid AND locktype = 'advisory' AND NOT granted)"),
+                    {"pid": pid},
+                ):
+                    if entering.done():
+                        pytest.fail("Maintenance entered without waiting for the shared lock")
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(wait_for_blocked_lock(), timeout=5)
+            assert entering.done() is False
+            await claim_session.commit()
+            state = await asyncio.wait_for(entering, timeout=5)
+            assert state.phase == "draining"
+        finally:
+            entering.cancel()
+            await asyncio.gather(entering, return_exceptions=True)
 
 
 async def test_active_maintenance_fences_a_new_scheduler_run(
