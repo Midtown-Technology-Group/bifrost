@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "device-control-plane/claim-response.schema.json",
+  "title": "Device job claim response",
+  "description": "Response body for POST /api/device/jobs/claim (agent protocol, X-Bifrost-Key device auth). HTTP 204 with an empty body means no work is available. Frozen for epic #818 / M0.2 #828; breaking changes require an update to the epic before implementation changes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "script_name",
+    "script_content",
+    "timeout_seconds",
+    "max_output_bytes",
+    "claim_token",
+    "claimed_at"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "device_jobs.id for the claimed job."
+    },
+    "script_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Operator-facing script label; audit/display only."
+    },
+    "script_content": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 262144,
+      "description": "UTF-8 PowerShell script body. Platform hard cap is 256 KiB of UTF-8 bytes; this maxLength bounds characters only, and the server enforces the byte cap (oversize create -> script_too_large). Readable only through this fenced claim response; the device principal has no other script-body read path."
+    },
+    "params": {
+      "type": "object",
+      "description": "String-keyed JSON parameters passed to the job. Serialized size cap 32 KiB; the 256 KiB script cap applies to script_content alone.",
+      "additionalProperties": true,
+      "default": {}
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 900,
+      "default": 120,
+      "description": "Wall-clock execution budget the agent must enforce locally (kill process tree on expiry, then report status=timeout)."
+    },
+    "max_output_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 16777216,
+      "default": 1048576,
+      "description": "Combined stdout/stderr byte cap. The agent truncates at this cap, sets truncated=true on the result, and never grows the spool past this size per job."
+    },
+    "claim_token": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Opaque fencing token minted at claim time. Required as the claim_token request-body property on POST /api/device/jobs/{id}/logs and POST /api/device/jobs/{id}/result for this job. Rotated on every (re)claim; a stale token is rejected with fence_violation."
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time the claim committed."
+    },
+    "claim_lease_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 60,
+      "description": "The agent must report running or a terminal result within this lease. If it does not, the job stays reclaimable from claimed (never from running); a later claim mints a new claim_token."
+    }
+  }
+}
