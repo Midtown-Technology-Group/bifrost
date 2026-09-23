@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 
 from src.scheduler.main import PLATFORM_JOB_CONCURRENCY, Scheduler
 from src.services.runtime_maintenance import RuntimeMaintenanceActive
@@ -142,6 +143,42 @@ async def test_stopping_leader_services_cancels_running_scheduler_callback() -> 
     await asyncio.wait_for(started.wait(), timeout=1)
     await scheduler._stop_leader_services()
     await asyncio.wait_for(cancelled.wait(), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_maintenance_pauses_triggers_without_cancelling_accepted_callback() -> None:
+    lease = FakeLeadershipLease()
+    lease.is_leader = True
+    scheduler = Scheduler(leadership_lease=lease)  # type: ignore[arg-type]
+    scheduler.running = True
+    scheduler._runtime_maintenance_active = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    started, finish, completed = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def callback() -> None:
+        started.set()
+        await finish.wait()
+        completed.set()
+
+    apscheduler = AsyncIOScheduler()
+    apscheduler.add_job(callback, next_run_time=datetime.now(timezone.utc))
+    apscheduler.start()
+    scheduler._scheduler = apscheduler
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    async def inspect_drain_then_stop(_seconds: float) -> None:
+        assert scheduler._scheduler is apscheduler
+        assert apscheduler.state == STATE_PAUSED
+        assert lease.is_leader is False
+        finish.set()
+        await asyncio.wait_for(completed.wait(), timeout=1)
+        # Reacquiring leadership after exit resumes this same scheduler.
+        await scheduler._start_leader_services()
+        assert apscheduler.state == STATE_RUNNING
+        scheduler._shutdown_event.set()
+
+    scheduler._wait_or_shutdown = inspect_drain_then_stop  # type: ignore[method-assign]
+    await scheduler._leadership_loop()
+    assert completed.is_set()
 
 
 @pytest.mark.asyncio

@@ -609,6 +609,7 @@ class Scheduler:
     async def _start_leader_services(self) -> None:
         """Start services that must have exactly one active replica."""
         if self._scheduler is not None:
+            self._scheduler.resume()
             return
         await self._start_scheduler()
 
@@ -652,7 +653,10 @@ class Scheduler:
                     maintenance_active = True
                     logger.exception("Cannot read runtime maintenance state")
                 if maintenance_active:
-                    await self._stop_leader_services()
+                    # Pause future triggers without cancelling accepted callbacks.
+                    # Their durable run rows keep the drain gate closed until done.
+                    if self._scheduler is not None:
+                        self._scheduler.pause()
                     if self._leadership_lease.is_leader:
                         try:
                             await self._leadership_lease.release()
