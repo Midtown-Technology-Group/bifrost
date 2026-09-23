@@ -32,6 +32,7 @@ from src.services.platform_job_memory_profiles import (
     resolve_platform_job_memory_required_bytes,
     record_platform_job_memory_profile,
 )
+from src.services.runtime_maintenance import reject_if_runtime_maintenance_sealed
 from src.services.notification_service import get_notification_service
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,7 @@ async def enqueue_platform_job(
     memory_profile_key: str | None = None,
 ) -> tuple[PlatformJob, bool]:
     """Create or reuse one active job under a durable deduplication key."""
+    await reject_if_runtime_maintenance_sealed(db)
     parsed_payload = definition.payload_model.model_validate(payload)
     if dedupe_key is not None:
         await db.execute(

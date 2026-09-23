@@ -18,6 +18,7 @@ from src.models.orm.scheduler_diagnostics import (
 )
 from src.scheduler.registry import ScheduledTaskDefinition
 from src.services.execution.memory_monitor import get_cgroup_memory
+from src.services.runtime_maintenance import reject_if_runtime_maintenance_active
 
 logger = logging.getLogger(__name__)
 DIAGNOSTIC_RETENTION = timedelta(days=7)
@@ -98,6 +99,7 @@ async def publish_task_states(
 
 async def start_scheduler_run(task_id: str, leader_owner_id: str) -> UUID:
     async with get_db_context() as db:
+        await reject_if_runtime_maintenance_active(db)
         run = SchedulerTaskRun(
             task_id=task_id,
             leader_owner_id=leader_owner_id,

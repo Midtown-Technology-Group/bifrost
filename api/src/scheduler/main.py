@@ -40,6 +40,10 @@ from src.scheduler.registry import (
     SCHEDULED_TASKS_BY_ID,
     ScheduledTaskOutcome,
 )
+from src.services.runtime_maintenance import (
+    RuntimeMaintenanceActive,
+    read_runtime_maintenance_state,
+)
 from src.services.scheduler_diagnostics import (
     finish_scheduler_run,
     heartbeat_scheduler_replica,
@@ -178,7 +182,16 @@ class Scheduler:
             await self._wait_or_shutdown(10)
 
     async def _run_scheduled_task(self, task_id: str, callback) -> None:  # type: ignore[no-untyped-def]
-        run_id = await start_scheduler_run(task_id, self._leadership_lease.owner_id)
+        if await self._runtime_maintenance_active():
+            logger.info("Skipped scheduled trigger while runtime maintenance is active")
+            return
+        try:
+            run_id = await start_scheduler_run(
+                task_id, self._leadership_lease.owner_id
+            )
+        except RuntimeMaintenanceActive:
+            logger.info("Skipped scheduled trigger during runtime maintenance")
+            return
         try:
             result = await callback()
         except asyncio.CancelledError:
@@ -279,12 +292,13 @@ class Scheduler:
         )
 
         scheduler.add_job(
-            backfill_logo_thumbnails,
+            self._run_scheduled_task,
             IntervalTrigger(minutes=1),
             id="logo_thumbnail_backfill",
             name="Backfill bounded entity-logo thumbnails",
             replace_existing=True,
             next_run_time=datetime.now(timezone.utc),
+            args=["logo_thumbnail_backfill", backfill_logo_thumbnails],
             **misfire_options,
         )
         logger.info("Logo thumbnail backfill scheduled (every 60s)")
@@ -595,6 +609,7 @@ class Scheduler:
     async def _start_leader_services(self) -> None:
         """Start services that must have exactly one active replica."""
         if self._scheduler is not None:
+            self._scheduler.resume()
             return
         await self._start_scheduler()
 
@@ -621,10 +636,36 @@ class Scheduler:
             # The retry interval elapsed without a shutdown request.
             return
 
+    async def _runtime_maintenance_active(self) -> bool:
+        async with get_db_context() as db:
+            return (await read_runtime_maintenance_state(db)).active
+
     async def _leadership_loop(self) -> None:
         """Elect one trigger leader while every replica remains a job runner."""
         try:
             while self.running and not self._shutdown_event.is_set():
+                try:
+                    maintenance_active = await self._runtime_maintenance_active()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # An unknown gate state cannot authorize scheduled triggers.
+                    maintenance_active = True
+                    logger.exception("Cannot read runtime maintenance state")
+                if maintenance_active:
+                    # Pause future triggers without cancelling accepted callbacks.
+                    # Their durable run rows keep the drain gate closed until done.
+                    if self._scheduler is not None:
+                        self._scheduler.pause()
+                    if self._leadership_lease.is_leader:
+                        try:
+                            await self._leadership_lease.release()
+                        except Exception:
+                            logger.exception(
+                                "Failed to release scheduler trigger lease for maintenance"
+                            )
+                    await self._wait_or_shutdown(0.5)
+                    continue
                 if not self._leadership_lease.is_leader:
                     try:
                         acquired = await self._leadership_lease.try_acquire()

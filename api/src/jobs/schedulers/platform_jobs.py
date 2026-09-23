@@ -39,6 +39,7 @@ from src.services.platform_job_memory_profiles import (
 from src.services.platform_jobs import (
     publish_platform_job_update,
 )
+from src.services.runtime_maintenance import runtime_claims_sealed
 
 LEASE_DURATION = timedelta(seconds=30)
 HEARTBEAT_INTERVAL_SECONDS = 5
@@ -192,6 +193,8 @@ async def claim_platform_job() -> ClaimedPlatformJob | None:
     """Claim one admissible queued job using row locking and a fenced lease."""
     updated: list[PlatformJob] = []
     async with get_db_context() as db:
+        if await runtime_claims_sealed(db):
+            return None
         candidate_ids = (
             (
                 await db.execute(

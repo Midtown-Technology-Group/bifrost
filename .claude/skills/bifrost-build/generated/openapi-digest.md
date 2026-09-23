@@ -397,6 +397,10 @@
 | POST | `/api/platform-jobs/{job_id}/cancel` |
 | GET | `/api/platform/app-service/metrics` |
 | GET | `/api/platform/queue` |
+| GET | `/api/platform/runtime-maintenance` |
+| POST | `/api/platform/runtime-maintenance/enter` |
+| POST | `/api/platform/runtime-maintenance/{generation}/exit` |
+| POST | `/api/platform/runtime-maintenance/{generation}/seal` |
 | GET | `/api/platform/scheduler` |
 | GET | `/api/platform/scheduler/tasks/{task_id}/runs` |
 | GET | `/api/platform/stuck-history` |

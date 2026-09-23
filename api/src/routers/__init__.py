@@ -70,6 +70,7 @@ from src.routers.platform_jobs import router as platform_jobs_router
 from src.routers.scheduler_diagnostics import router as scheduler_diagnostics_router
 from src.routers.platform import (
     app_service_router,
+    runtime_maintenance_router,
     workers_router as platform_workers_router,
     queue_router as platform_queue_router,
     stuck_router as platform_stuck_router,
@@ -158,6 +159,7 @@ __all__ = [
     "platform_queue_router",
     "platform_stuck_router",
     "app_service_router",
+    "runtime_maintenance_router",
     "version_router",
     "mcp_servers_router",
     "mcp_connections_router",
