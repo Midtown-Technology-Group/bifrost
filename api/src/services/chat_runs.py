@@ -136,6 +136,9 @@ async def create_chat_run(
     db: DbSession,
     user: UserPrincipal,
     request: ChatRunCreateRequest,
+    *,
+    channel: str = "chat",
+    conversation_extra_data: dict | None = None,
 ) -> ChatRunCreateResponse:
     """Create or resume a chat run submission."""
     client_run_id = request.client_run_id or uuid4()
@@ -229,8 +232,9 @@ async def create_chat_run(
             id=conversation_id,
             agent_id=requested_agent.id if requested_agent else None,
             user_id=user.user_id,
-            channel="chat",
+            channel=channel,
             title=None,
+            extra_data=conversation_extra_data or {},
             is_active=True,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),

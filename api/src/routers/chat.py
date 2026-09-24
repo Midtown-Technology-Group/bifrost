@@ -18,11 +18,12 @@ from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from shared.scope_resolver import has_scope_bypass
-from src.core.auth import CurrentActiveUser
+from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
 from src.models.contracts.agents import (
     ChatRequest,
@@ -57,10 +58,25 @@ from src.services.chat_runs import (
     create_chat_run,
     get_chat_state,
 )
+from src.services.teams_chat_bridge import submit_teams_chat_event
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
+
+
+class TeamsChatEventSubmit(BaseModel):
+    event_id: UUID
+
+
+@router.post("/teams/events")
+async def submit_teams_event(
+    request: TeamsChatEventSubmit,
+    db: DbSession,
+    _admin: CurrentSuperuser,
+) -> dict:
+    """Submit a verified Teams event as its linked Bifrost user."""
+    return await submit_teams_chat_event(db, request.event_id)
 
 
 class NonStreamingChatResult(TypedDict):
