@@ -173,6 +173,7 @@ class AutonomousAgentExecutor:
             or await load_agent_for_user(db, agent_id, principal) is None
         ):
             raise ExternalActorResolutionError("External actor grant changed during run")
+        self._caller_is_platform_admin = principal.is_superuser
         return principal.user_id, organization_id, principal.is_superuser
 
     async def run(
@@ -294,7 +295,7 @@ class AutonomousAgentExecutor:
         # Resolve tools in one short DB lease. No DB
         # connection is held across model requests or tool execution.
         async with self._session_factory() as db:
-            if caller_user_id is not None:
+            if caller_user_id is not None and self._external_actor is None:
                 caller = await db.get(User, caller_user_id)
                 self._caller_is_platform_admin = bool(caller and caller.is_superuser)
             external_access = await self._external_caller_access(db)

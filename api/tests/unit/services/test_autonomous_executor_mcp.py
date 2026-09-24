@@ -409,6 +409,9 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
         external_user_id="jane-object-id", integration_id=uuid4(),
     ))
     mock_agent.organization_id = customer_id
+    mock_session_factory._fake_session.get = AsyncMock(
+        return_value=SimpleNamespace(is_superuser=True)
+    )
     mock_llm = AsyncMock()
     mock_llm.complete = AsyncMock(return_value=LLMResponse(
         content="done", tool_calls=None, finish_reason="end_turn",
@@ -428,9 +431,11 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
             _caller={"user_id": str(user_id), "organization_id": str(customer_id)},
         )
     assert tools.await_args.kwargs["caller_access"] == (user_id, customer_id, False)
+    assert executor._caller_is_platform_admin is False
     assert not executor._caller["is_provider_org"]
     assert executor._caller["organization_id"] == str(customer_id)
     connection_id = uuid4()
+    executor._caller_is_platform_admin = True
     with (
         patch("src.services.execution.autonomous_agent_executor.resolve_external_actor", new=AsyncMock(return_value=(principal, identity_id))),
         patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=mock_agent)),
@@ -442,6 +447,7 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
             remote_tool_name="read",
         )
     assert invoke.await_args.kwargs["caller_user_id"] == user_id
+    assert executor._caller_is_platform_admin is False
     with (
         patch("src.services.execution.autonomous_agent_executor.resolve_external_actor", new=AsyncMock(return_value=(principal, identity_id))),
         patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=None)),
