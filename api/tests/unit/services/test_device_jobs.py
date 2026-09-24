@@ -8,7 +8,6 @@ and the running-loss watchdog that writes terminal `lost` without re-queue.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -29,6 +28,8 @@ from src.models.orm.device_jobs import (
 )
 from src.services.device_jobs import (
     append_logs,
+    broadcast_job_available,
+    broadcast_job_logs,
     claim_next,
     create_device_job,
     finish,
@@ -703,13 +704,12 @@ class TestRenewFromHeartbeat:
 
 class TestBroadcasts:
     async def test_job_available_hint_shape(self, monkeypatch):
-        import src.services.device_jobs as dj_module
-        from unittest.mock import AsyncMock
+        from src.core.pubsub import manager as pubsub_manager
 
         fake = AsyncMock()
-        monkeypatch.setattr(dj_module, "pubsub_manager", SimpleNamespace(broadcast=fake))
+        monkeypatch.setattr(pubsub_manager, "broadcast", fake)
         device_id, job_id = uuid4(), uuid4()
-        await dj_module.broadcast_job_available(device_id, job_id)
+        await broadcast_job_available(device_id, job_id)
         fake.assert_awaited_once_with(
             f"device:{device_id}",
             {
@@ -720,14 +720,13 @@ class TestBroadcasts:
         )
 
     async def test_log_fanout_shape(self, monkeypatch):
-        import src.services.device_jobs as dj_module
-        from unittest.mock import AsyncMock
+        from src.core.pubsub import manager as pubsub_manager
 
         fake = AsyncMock()
-        monkeypatch.setattr(dj_module, "pubsub_manager", SimpleNamespace(broadcast=fake))
+        monkeypatch.setattr(pubsub_manager, "broadcast", fake)
         job_id = uuid4()
         entries = [{"seq": 1, "stream": "stdout", "text": "x", "ts": None}]
-        await dj_module.broadcast_job_logs(job_id, entries)
+        await broadcast_job_logs(job_id, entries)
         fake.assert_awaited_once_with(
             f"device_job:{job_id}",
             {"type": "device_job_logs", "job_id": str(job_id), "entries": entries},
