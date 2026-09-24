@@ -927,13 +927,14 @@ async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch
     async def fake_audit_db():
         yield AsyncMock()
 
+    session = AsyncMock()
     with (
         patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(return_value=(principal, event.external_identity_id))),
         patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=agent)),
         patch("src.services.events.processor.emit_audit", new=AsyncMock()) as audit,
         patch("src.core.database.get_db_context", fake_audit_db),
     ):
-        await p.EventProcessor(AsyncMock())._queue_agent_run(delivery, event)
+        await p.EventProcessor(session)._queue_agent_run(delivery, event)
 
     kwargs = enqueue.await_args.kwargs
     assert kwargs["org_id"] == str(event.organization_id)
@@ -944,6 +945,7 @@ async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch
     assert kwargs["run_id"] == str(uuid.uuid5(delivery.id, "agent-run"))
     assert delivery.agent_run_id is not None
     assert audit.await_args.kwargs["details"]["external_identity_id"] == str(event.external_identity_id)
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -1011,10 +1011,9 @@ class EventProcessor:
         if event.authenticated_actor is not None:
             from src.core.database import get_db_context
 
-            # The request audit must commit before this human-attributed run
-            # can be published. Isolate it from the delivery session so an
-            # audit failure cannot leave that session unable to mark failure.
-            await self.session.commit()
+            # The delivery loop committed its rows before calling this method.
+            # Keep the strict request audit in its own transaction so an audit
+            # failure cannot leave the delivery session unable to mark failure.
             async with get_db_context() as audit_db:
                 await emit_audit(
                     audit_db,
