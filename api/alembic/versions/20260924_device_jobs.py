@@ -47,6 +47,7 @@ def upgrade() -> None:
         sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("agent_session_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("last_agent_activity_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cancel_requested_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("exit_code", sa.Integer(), nullable=True),
         sa.Column("result", sa.Text(), nullable=True),

@@ -31,6 +31,7 @@ from src.services.device_jobs import (
     create_device_job,
     finish,
     mark_running,
+    record_activity,
     sweep_device_jobs,
 )
 from src.services.devices import DeviceOperationError
@@ -63,6 +64,7 @@ def _job(**overrides) -> DeviceJob:
         claimed_at=overrides.pop("claimed_at", None),
         agent_session_id=overrides.pop("agent_session_id", None),
         last_agent_activity_at=overrides.pop("last_agent_activity_at", None),
+        started_at=overrides.pop("started_at", None),
         log_sequence=overrides.pop("log_sequence", 0),
     )
     for key, value in overrides.items():
@@ -290,6 +292,7 @@ class TestMarkRunning:
         )
         assert got.status == JOB_STATUS_RUNNING
         assert got.last_agent_activity_at == NOW
+        assert got.started_at == NOW
 
     async def test_wrong_token_fenced(self):
         session = _session()
@@ -318,14 +321,59 @@ class TestMarkRunning:
     async def test_replay_is_idempotent_for_current_token(self):
         session = _session()
         token = uuid4()
-        job = _job(status=JOB_STATUS_RUNNING, claim_token=token)
+        original_start = NOW - timedelta(seconds=30)
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            claim_token=token,
+            started_at=original_start,
+        )
         session.execute.return_value = _result(scalar=job)
         got = await mark_running(
             session, job_id=job.id, claim_token=token, agent_session_id=uuid4(),
             now=NOW,
         )
         assert got.status == JOB_STATUS_RUNNING
+        # A replay must not move the timeout-backstop anchor.
+        assert got.started_at == original_start
         session.commit.assert_awaited()
+
+
+class TestRecordActivity:
+    async def test_renews_for_live_claim(self):
+        session = _session()
+        token = uuid4()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            claim_token=token,
+            last_agent_activity_at=NOW - timedelta(seconds=60),
+        )
+        session.execute.return_value = _result(scalar=job)
+        got = await record_activity(
+            session, job_id=job.id, claim_token=token, now=NOW
+        )
+        assert got.last_agent_activity_at == NOW
+        session.commit.assert_awaited()
+
+    async def test_wrong_token_fenced(self):
+        session = _session()
+        job = _job(status=JOB_STATUS_RUNNING, claim_token=uuid4())
+        session.execute.return_value = _result(scalar=job)
+        with pytest.raises(DeviceOperationError) as exc:
+            await record_activity(
+                session, job_id=job.id, claim_token=uuid4(), now=NOW
+            )
+        assert exc.value.code == "fence_violation"
+
+    async def test_terminal_job_rejected(self):
+        session = _session()
+        token = uuid4()
+        job = _job(status=JOB_STATUS_LOST, claim_token=token)
+        session.execute.return_value = _result(scalar=job)
+        with pytest.raises(DeviceOperationError) as exc:
+            await record_activity(
+                session, job_id=job.id, claim_token=token, now=NOW
+            )
+        assert exc.value.code == "job_terminal"
 
 
 class TestFinish:
@@ -430,7 +478,10 @@ class TestSweepWatchdog:
         wedged = _job(
             status=JOB_STATUS_RUNNING,
             timeout_seconds=120,
-            claimed_at=NOW - timedelta(seconds=120 + 60 + 1),
+            # Claim was recent, but execution started long ago: the backstop
+            # must anchor on started_at, not claimed_at.
+            claimed_at=NOW - timedelta(seconds=10),
+            started_at=NOW - timedelta(seconds=120 + 60 + 1),
             last_agent_activity_at=NOW - timedelta(seconds=10),  # heartbeats alive
         )
         session.execute.return_value = _result(rows=[wedged])

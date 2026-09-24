@@ -105,6 +105,18 @@ def test_upgrade_matches_orm_columns_and_guards():
     checks = {c.name for c in constraints if isinstance(c, CheckConstraint)}
     assert checks == EXPECTED_CHECKS
 
+    # ORM must declare the same foreign keys as the migration — otherwise a
+    # future autogenerate would propose dropping them (review guard).
+    orm_cols = DeviceJob.__table__.columns
+    for col_name, target in (
+        ("device_id", "devices.id"),
+        ("organization_id", "organizations.id"),
+    ):
+        fks = list(orm_cols[col_name].foreign_keys)
+        assert len(fks) == 1, f"{col_name} missing ORM FK"
+        assert fks[0].target_fullname == target
+        assert fks[0].ondelete == "CASCADE"
+
     fk_map: dict[tuple, str | None] = {}
     for c in constraints:
         if isinstance(c, ForeignKeyConstraint):

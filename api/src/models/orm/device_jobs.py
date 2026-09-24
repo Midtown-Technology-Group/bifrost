@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -69,10 +70,12 @@ class DeviceJob(Base):
     )
     organization_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
     device_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
+        ForeignKey("devices.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -116,6 +119,12 @@ class DeviceJob(Base):
         PG_UUID(as_uuid=True), nullable=True
     )
     last_agent_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Set once when the agent reports the real spawn (mark_running); the
+    # timeout backstop measures from here, not from claimed_at, so a late
+    # claim cannot eat the agent's own timeout window.
+    started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     # Cooperative cancel flag (M0: no kill guarantee by the platform).

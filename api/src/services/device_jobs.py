@@ -278,6 +278,36 @@ async def mark_running(
     job.status = JOB_STATUS_RUNNING
     job.agent_session_id = agent_session_id
     job.last_agent_activity_at = current
+    if job.started_at is None:
+        job.started_at = current
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+async def record_activity(
+    db: AsyncSession,
+    *,
+    job_id: UUID,
+    claim_token: UUID,
+    now: datetime | None = None,
+) -> DeviceJob:
+    """Fenced activity renewal for a live claim (heartbeat/log piggyback).
+
+    Keeps `last_agent_activity_at` fresh so the sweep watchdog does not mark
+    a healthy long-running job `lost`. Fenced exactly like logs/results: a
+    stale token gets fence_violation, a terminal job gets job_terminal.
+    """
+    current = now if now is not None else datetime.now(timezone.utc)
+    job = await _locked_job(db, job_id)
+    _assert_fenced(job, claim_token)
+    if job.status not in (JOB_STATUS_CLAIMED, JOB_STATUS_RUNNING):
+        raise DeviceOperationError(
+            status.HTTP_409_CONFLICT,
+            "job_terminal",
+            f"job is {job.status}, not live",
+        )
+    job.last_agent_activity_at = current
     await db.commit()
     await db.refresh(job)
     return job
@@ -353,7 +383,8 @@ async def sweep_device_jobs(
         silent = job.last_agent_activity_at is None or (
             job.last_agent_activity_at < silence_cutoff
         )
-        past_deadline = job.claimed_at is not None and job.claimed_at < (
+        past_deadline_anchor = job.started_at or job.claimed_at
+        past_deadline = past_deadline_anchor is not None and past_deadline_anchor < (
             current
             - timedelta(
                 seconds=job.timeout_seconds + TIMEOUT_BACKSTOP_GRACE_SECONDS
