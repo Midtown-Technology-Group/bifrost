@@ -43,6 +43,14 @@ def _event_row(*, adapter="microsoft_bot_framework", sender_id="aad-user"):
     return event, source, webhook
 
 
+def test_missing_bot_recipient_does_not_strip_a_user_mention():
+    activity = {
+        "text": "<at>Jane</at> hello",
+        "entities": [{"type": "mention", "text": "<at>Jane</at>", "mentioned": {}}],
+    }
+    assert bridge._message_text(activity) == "<at>Jane</at> hello"
+
+
 class _Result:
     def __init__(self, value):
         self.value = value

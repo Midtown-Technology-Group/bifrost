@@ -43,7 +43,11 @@ def _message_text(activity: dict) -> str:
         if not isinstance(entity, dict) or entity.get("type") != "mention":
             continue
         mentioned = entity.get("mentioned") or {}
-        if not isinstance(mentioned, dict) or mentioned.get("id") != recipient_id:
+        if (
+            not recipient_id
+            or not isinstance(mentioned, dict)
+            or mentioned.get("id") != recipient_id
+        ):
             continue
         tag = entity.get("text")
         if isinstance(tag, str) and tag:
