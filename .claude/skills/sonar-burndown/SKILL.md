@@ -24,7 +24,7 @@ Fix open SonarQubeCloud findings in small, behavior-preserving batches. Sonar is
 5. **Make the smallest correct fix** in the working tree.
 6. **Run the repo's normal validation** for the touched area (`./test.sh` scope per `bifrost-testing`: relevant unit tests plus lint/type-checks — `ruff`/`pyright` for Python via `./test.sh quality api`, `tsc`/`lint` for the client).
 7. **Run Sonar verification** where supported: `scripts/sonar-burndown.sh verify --base <default-branch>` (Cloud agentic analysis; needs the project entitled for it — if it errors, say so and rely on Automatic Analysis of the pushed branch instead).
-8. **Confirm the targeted findings disappeared** — re-list (`list --file <path>` or by rule) and check the issue keys are gone. A fix that doesn't clear the finding is not done; investigate, don't suppress.
+8. **Confirm in the matching scope, after that scope's analysis completes** — a PR analysis never clears the main backlog. On the PR, `list --pull-request <N>` must show no new findings from your change; pre-existing keys clear from the main backlog only after the post-merge analysis runs — re-list then. A fix that doesn't clear the finding is not done; investigate, don't suppress.
 9. **Summarize:** issue keys addressed, rule IDs, files changed, validation performed, findings intentionally left unresolved and why.
 
 ## Reference

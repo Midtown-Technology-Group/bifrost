@@ -89,9 +89,13 @@ the project is in the other mode — adjust and retry.
    ```
 
    Raw equivalent: `sonar analyze agentic --base main --force`.
-5. Confirm the targeted issue keys are gone by re-listing
-   (`list --file <dir>` or the same rule filter). Never transition issues
-   manually — analysis decides.
+5. Confirm in the matching scope — and only after that scope's analysis
+   has completed. A PR analysis never clears the main backlog:
+   - On the PR: `list --pull-request <N>` (or `--file`/`--branch` filters)
+     must show no NEW findings from your change.
+   - On main: the targeted pre-existing keys disappear only after the
+     post-merge Automatic Analysis runs — re-list the main backlog then.
+   Never transition issues manually — analysis decides.
 6. Stop and report instead of fixing when the change would touch public
    behavior, auth/authz, tenant isolation, crypto, concurrency, execution
    semantics, migrations, agent policy, or architecture.
