@@ -5,6 +5,8 @@ Defines the base class and result types for webhook adapters.
 Adapters handle provider-specific subscription management and request validation.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -148,6 +150,23 @@ class Deliver:
     event_id: UUID | None = None
     """Persisted event ID, populated by the event processor after ingestion."""
 
+    authenticated_actor: AuthenticatedExternalActor | None = None
+    """Provider-authenticated human identity, never copied from event JSON."""
+
+
+@dataclass(frozen=True)
+class AuthenticatedExternalActor:
+    """Non-secret identity claims emitted only after provider verification."""
+
+    provider: str
+    external_scope_id: str
+    external_user_id: str
+    integration_id: UUID
+    external_event_id: str | None = None
+    conversation_id: str | None = None
+    team_id: str | None = None
+    reply_to_id: str | None = None
+
 
 @dataclass
 class Rejected:
@@ -200,6 +219,9 @@ class WebhookAdapter(ABC):
 
     requires_organization: bool = False
     """Whether the adapter must authenticate in an organization/tenant context."""
+
+    authenticates_external_actor: bool = False
+    """Opt in only when handle_request verifies the provider before emitting an actor."""
 
     config_schema: dict[str, Any] = {}
     """JSON Schema for adapter configuration."""

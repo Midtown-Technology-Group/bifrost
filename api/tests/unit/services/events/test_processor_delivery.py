@@ -1,4 +1,5 @@
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,7 +8,8 @@ import pytest
 
 from src.models.enums import EventDeliveryStatus, EventStatus
 from src.services.events import processor as p
-from src.services.webhooks.protocol import Deliver, Rejected, ValidationResponse, WebhookRequest
+from src.services.events.external_actors import actor_record
+from src.services.webhooks.protocol import AuthenticatedExternalActor, Deliver, Rejected, ValidationResponse, WebhookRequest
 
 
 def _make_event(event_id: uuid.UUID | None = None) -> SimpleNamespace:
@@ -21,6 +23,8 @@ def _make_event(event_id: uuid.UUID | None = None) -> SimpleNamespace:
         data={},
         source_ip="10.0.0.5",
         status=EventStatus.PROCESSING,
+        authenticated_actor=None,
+        external_identity_id=None,
         event_source=SimpleNamespace(
             id=uuid.uuid4(),
             organization_id=None,
@@ -384,6 +388,60 @@ async def test_process_webhook_handles_adapter_result_types_and_errors(monkeypat
     result = await processor.process_webhook(event_source, webhook_source, request)
     assert isinstance(result, Rejected)
     assert result.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_generic_adapter_cannot_assert_authenticated_actor(monkeypatch):
+    processor = p.EventProcessor(AsyncMock())
+    actor = AuthenticatedExternalActor(
+        provider="microsoft_teams", external_scope_id="tenant",
+        external_user_id="user", integration_id=uuid.uuid4(),
+    )
+    adapter = SimpleNamespace(
+        authenticates_external_actor=False,
+        handle_request=AsyncMock(return_value=Deliver(data={}, authenticated_actor=actor)),
+    )
+    monkeypatch.setattr(p, "get_adapter", lambda _name: adapter)
+    processor._process_delivery = AsyncMock()
+    result = await processor.process_webhook(
+        SimpleNamespace(id=uuid.uuid4()),
+        SimpleNamespace(adapter_name="generic", config={}, state={}),
+        WebhookRequest("POST", "/hooks/source", {}, {}, b"{}"),
+    )
+    assert isinstance(result, Rejected)
+    assert result.status_code == 403
+    processor._process_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_authenticated_actor_must_use_source_integration(monkeypatch):
+    processor = p.EventProcessor(AsyncMock())
+    actor = AuthenticatedExternalActor(
+        provider="microsoft_teams", external_scope_id="tenant",
+        external_user_id="user", integration_id=uuid.uuid4(),
+    )
+    delivery = Deliver(data={}, authenticated_actor=actor)
+    adapter = SimpleNamespace(
+        authenticates_external_actor=True,
+        handle_request=AsyncMock(return_value=delivery),
+    )
+    monkeypatch.setattr(p, "get_adapter", lambda _name: adapter)
+    processor._process_delivery = AsyncMock(return_value=delivery)
+    source = SimpleNamespace(
+        adapter_name="microsoft_bot_framework", config={}, state={},
+        integration_id=uuid.uuid4(),
+    )
+    request = WebhookRequest("POST", "/hooks/source", {}, {}, b"{}")
+
+    rejected = await processor.process_webhook(SimpleNamespace(id=uuid.uuid4()), source, request)
+    assert isinstance(rejected, Rejected)
+    assert rejected.status_code == 403
+    processor._process_delivery.assert_not_awaited()
+
+    source.integration_id = actor.integration_id
+    assert await processor.process_webhook(SimpleNamespace(id=uuid.uuid4()), source, request) is delivery
+    assert adapter.handle_request.await_args.args[1]["integration_id"] == str(actor.integration_id)
+    processor._process_delivery.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -783,6 +841,21 @@ async def test_queue_workflow_execution_defaults_to_provider_org_for_global_even
 
 
 @pytest.mark.asyncio
+async def test_event_delivery_cannot_bypass_workflow_approval(monkeypatch):
+    event = _make_event()
+    delivery = _make_delivery(event=event, target_type="workflow")
+    delivery.workflow.tags = ["approval_required"]
+    enqueue = AsyncMock()
+    monkeypatch.setattr(
+        "src.services.execution.async_executor.enqueue_system_workflow_execution",
+        enqueue,
+    )
+    with pytest.raises(ValueError, match="Approval-required"):
+        await p.EventProcessor(AsyncMock())._queue_workflow_execution(delivery, event)
+    enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_queue_agent_run_uses_mapping_and_agent_org(monkeypatch):
     event = _make_event()
     event.data = {"ticket": {"id": 123}, "summary": "Cannot log in"}
@@ -820,7 +893,95 @@ async def test_queue_agent_run_uses_mapping_and_agent_org(monkeypatch):
         },
         org_id=str(agent.organization_id),
         event_delivery_id=str(delivery.id),
+        run_id=str(uuid.uuid5(delivery.id, "agent-run")),
     )
+
+
+@pytest.mark.asyncio
+async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch):
+    event = _make_event()
+    event.event_type = "microsoft_teams.message"
+    event.data = {"activity": {"text": "Investigate PC123"}}
+    event.organization_id = uuid.uuid4()
+    event.external_identity_id = uuid.uuid4()
+    event.authenticated_actor = actor_record(
+        AuthenticatedExternalActor(
+            provider="microsoft_teams",
+            external_scope_id="tenant-A",
+            external_user_id="jane-object-id",
+            integration_id=uuid.uuid4(),
+            external_event_id="activity-A",
+        )
+    )
+    delivery = _make_delivery(event=event, target_type="agent")
+    agent = SimpleNamespace(id=uuid.uuid4(), organization_id=event.organization_id)
+    delivery.subscription.agent = agent
+    principal = SimpleNamespace(
+        user_id=uuid.uuid4(), email="jane@example.com", name="Jane",
+        organization_id=event.organization_id, is_superuser=False,
+        is_external=False, is_provider_org=False, roles=["Tier 2"],
+    )
+    enqueue = AsyncMock(return_value=str(uuid.uuid4()))
+    monkeypatch.setattr("src.services.execution.agent_run_service.enqueue_agent_run", enqueue)
+    @asynccontextmanager
+    async def fake_audit_db():
+        yield AsyncMock()
+
+    session = AsyncMock()
+    with (
+        patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(return_value=(principal, event.external_identity_id))),
+        patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=agent)),
+        patch("src.services.events.processor.emit_audit", new=AsyncMock()) as audit,
+        patch("src.core.database.get_db_context", fake_audit_db),
+    ):
+        await p.EventProcessor(session)._queue_agent_run(delivery, event)
+
+    kwargs = enqueue.await_args.kwargs
+    assert kwargs["org_id"] == str(event.organization_id)
+    assert kwargs["caller_user_id"] == str(principal.user_id)
+    assert kwargs["caller_email"] == principal.email
+    assert kwargs["caller_roles"] == ["Tier 2"]
+    assert kwargs["event_delivery_id"] == str(delivery.id)
+    assert kwargs["run_id"] == str(uuid.uuid5(delivery.id, "agent-run"))
+    assert delivery.agent_run_id is not None
+    assert audit.await_args.kwargs["details"]["external_identity_id"] == str(event.external_identity_id)
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_authenticated_actor_audit_failure_prevents_run_publication(monkeypatch):
+    event = _make_event()
+    event.authenticated_actor = actor_record(AuthenticatedExternalActor(
+        provider="microsoft_teams", external_scope_id="tenant-A",
+        external_user_id="jane-object-id", integration_id=uuid.uuid4(),
+    ))
+    event.external_identity_id = uuid.uuid4()
+    delivery = _make_delivery(event=event, target_type="agent")
+    delivery.subscription.agent = SimpleNamespace(
+        id=uuid.uuid4(), organization_id=event.organization_id,
+    )
+    principal = SimpleNamespace(
+        user_id=uuid.uuid4(), organization_id=event.organization_id,
+        email="jane@example.com", name="Jane", is_superuser=False,
+        is_external=False, is_provider_org=False, roles=[],
+    )
+    enqueue = AsyncMock()
+    monkeypatch.setattr("src.services.execution.agent_run_service.enqueue_agent_run", enqueue)
+
+    @asynccontextmanager
+    async def fake_audit_db():
+        yield AsyncMock()
+
+    with (
+        patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(return_value=(principal, event.external_identity_id))),
+        patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=delivery.subscription.agent)),
+        patch("src.core.database.get_db_context", fake_audit_db),
+        patch("src.services.events.processor.emit_audit", new=AsyncMock(side_effect=RuntimeError("audit unavailable"))),
+    ):
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            await p.EventProcessor(AsyncMock())._queue_agent_run(delivery, event)
+
+    enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio

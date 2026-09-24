@@ -240,6 +240,9 @@ IDENTITY_MODELS: set[str] = {
     "KnowledgeNamespaceRole",
     "Event",
     "AuditLog",
+    # Approval proposals are addressed by immutable ID within their recorded
+    # organization; they never participate in name-based scope resolution.
+    "AgentActionApproval",
     # A Solution install belongs to a scope (organization_id) but is never
     # resolved by name with cascade — it is identity, like Organization.
     "Solution",

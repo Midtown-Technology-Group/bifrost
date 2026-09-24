@@ -11,6 +11,7 @@ from src.models.orm.agent_prompt_history import AgentPromptHistory
 from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.orm.agent_runs import AgentRun, AgentRunStep
+from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.models.orm.agents import Agent, AgentDelegation, AgentRole, AgentTool, Conversation, Message, MessageAttachment
 from src.models.orm.ai_usage import AIModelPricing, AIUsage
@@ -42,6 +43,7 @@ from src.models.orm.codex_gateway import (
 )
 from src.models.orm.config import Config, SystemConfig
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, WebhookSource
+from src.models.orm.external_identities import ExternalIdentity
 from src.models.orm.executions import Execution, ExecutionLog
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.execution_lifecycle_events import ExecutionLifecycleEvent
@@ -135,6 +137,7 @@ __all__ = [
     "UserInvite",
     # Agent Runs
     "AgentRun",
+    "AgentActionApproval",
     "AgentRunFlagConversation",
     "AgentRunStep",
     "AgentRunVerdictHistory",
@@ -230,6 +233,7 @@ __all__ = [
     "WebhookSource",
     "EventSubscription",
     "Event",
+    "ExternalIdentity",
     "EventDelivery",
     # External MCP (client)
     "MCPServer",

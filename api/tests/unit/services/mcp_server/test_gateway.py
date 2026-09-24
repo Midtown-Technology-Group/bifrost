@@ -652,7 +652,7 @@ async def test_workflow_dispatch_preserves_durable_metadata_and_domain_result():
     response.error_type = None
 
     with patch(
-        "src.services.execution.service.execute_tool",
+        "src.services.mcp_server.gateway.execute_agent_workflow_tool",
         new=AsyncMock(return_value=response),
     ) as execute:
         result = await service._dispatch_workflow(
@@ -672,7 +672,7 @@ async def test_workflow_dispatch_preserves_durable_metadata_and_domain_result():
         "error_type": None,
     }
     assert execute.await_args.kwargs["sync"] is True
-    assert execute.await_args.kwargs["org_id"] == str(context.org_id)
+    assert execute.await_args.kwargs["caller"].organization_id == context.org_id
 
 
 @pytest.mark.asyncio
@@ -691,7 +691,7 @@ async def test_workflow_task_dispatch_returns_pending_durable_metadata():
     response.error_type = None
 
     with patch(
-        "src.services.execution.service.execute_tool",
+        "src.services.mcp_server.gateway.execute_agent_workflow_tool",
         new=AsyncMock(return_value=response),
     ) as execute:
         result = await service._dispatch_workflow(
@@ -705,7 +705,44 @@ async def test_workflow_task_dispatch_returns_pending_durable_metadata():
     assert result["execution_id"] == execution_id
     assert result["status"] == "Pending"
     assert execute.await_args.kwargs["sync"] is False
-    assert execute.await_args.kwargs["org_id"] == str(context.org_id)
+    assert execute.await_args.kwargs["caller"].organization_id == context.org_id
+
+
+@pytest.mark.asyncio
+async def test_workflow_approval_proposal_returns_approval_id_and_rejects_task():
+    service = MCPAgentGatewayService(_context())
+    agent, tool = _agent(), _resolved_tool()
+    approval_id = str(uuid4())
+    response = MagicMock()
+    response.execution_id = ""
+    response.status.value = "Pending"
+    response.duration_ms = None
+    response.result = None
+    response.error = f"Approval required: {approval_id}"
+    response.error_type = "approval_required"
+    response.details = {"approval_id": approval_id}
+    with patch(
+        "src.services.mcp_server.gateway.execute_agent_workflow_tool",
+        new=AsyncMock(return_value=response),
+    ) as execute:
+        result = await service._dispatch_workflow(
+            agent, tool, {}, operation_id="approval-proposal", task_requested=False,
+        )
+    assert result["details"] == {"approval_id": approval_id}
+    assert result["status"] == "Pending"
+    assert execute.await_args.kwargs["task_requested"] is False
+
+    response.error_type = "approval_task_unsupported"
+    with patch(
+        "src.services.mcp_server.gateway.execute_agent_workflow_tool",
+        new=AsyncMock(return_value=response),
+    ) as execute:
+        with pytest.raises(GatewayError) as exc_info:
+            await service._dispatch_workflow(
+                agent, tool, {}, operation_id="approval-task", task_requested=True,
+            )
+    assert exc_info.value.code == "TASKS_UNSUPPORTED"
+    assert execute.await_args.kwargs["task_requested"] is True
 
 
 @pytest.mark.asyncio

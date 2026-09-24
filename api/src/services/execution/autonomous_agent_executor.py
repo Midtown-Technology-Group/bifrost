@@ -36,6 +36,8 @@ from src.core.cache.keys import agent_run_steps_stream_key
 from src.core.pubsub import publish_agent_run_step
 from src.core.system_agents import is_privileged_agent_management_tool
 from src.services.execution.agent_helpers import (
+    agent_mcp_granted,
+    agent_workflow_granted,
     build_agent_system_prompt,
     caller_can_access_delegated_agent,
     caller_can_access_workflow_tool,
@@ -46,6 +48,12 @@ from src.services.execution.agent_helpers import (
 from src.services.execution.agent_workflow_tools import (
     AgentWorkflowCaller,
     execute_agent_workflow_tool,
+)
+from src.services.events.external_actors import (
+    ExternalActorResolutionError,
+    actor_from_record,
+    resolve_external_actor,
+    resolve_run_external_actor,
 )
 from src.services.agent_runtime import (
     AgentRunBudget,
@@ -137,6 +145,7 @@ class AutonomousAgentExecutor:
         self._caller_user_id: UUID | None = None
         self._caller_is_platform_admin = False
         self._caller: dict[str, Any] | None = None
+        self._external_actor: tuple[dict, UUID, UUID, UUID] | None = None
         # Buffers for Redis-first pattern (flushed to DB after run completes)
         self._pending_steps: list[dict[str, Any]] = []
         self._pending_ai_usage: list[dict[str, Any]] = []
@@ -146,6 +155,26 @@ class AutonomousAgentExecutor:
         # charged to the root run instead of giving each child a fresh budget.
         self._active_usage: RunUsage | None = None
         self._active_budget: AgentRunBudget | None = None
+
+    async def _external_caller_access(self, db: AsyncSession) -> tuple[UUID, UUID, bool] | None:
+        """Recheck an external provider grant before planning or dispatch."""
+        if self._external_actor is None:
+            return None
+        from src.services.agent_run_access import load_agent_for_user
+
+        record, identity_id, organization_id, agent_id = self._external_actor
+        principal, current_identity_id = await resolve_external_actor(
+            db, actor_from_record(record), source_org_id=organization_id,
+        )
+        if (
+            current_identity_id != identity_id
+            or principal.user_id != self._caller_user_id
+            or principal.organization_id != organization_id
+            or await load_agent_for_user(db, agent_id, principal) is None
+        ):
+            raise ExternalActorResolutionError("External actor grant changed during run")
+        self._caller_is_platform_admin = principal.is_superuser
+        return principal.user_id, organization_id, principal.is_superuser
 
     async def run(
         self,
@@ -178,8 +207,8 @@ class AutonomousAgentExecutor:
         self._current_run_id = run_id
         self._knowledge_search_budget.reset()
 
-        # Resolve caller_user_id from _caller metadata. If a webhook ran
-        # without a signed user claim, _caller is either absent or has no
+        # Resolve caller_user_id from server-created run context. If an ordinary
+        # webhook ran without a verified external actor, _caller has no
         # ``user_id`` and the run is treated as autonomous (None) — auth
         # resolution will then route to the service token, gated by the
         # connection's ``available_to_autonomous`` flag.
@@ -198,8 +227,27 @@ class AutonomousAgentExecutor:
         self._caller_user_id = caller_user_id
         self._caller_is_platform_admin = False
         self._caller = dict(_caller) if _caller else None
+        self._external_actor = None
 
         async with self._session_factory() as db:
+            resolved = await resolve_run_external_actor(db, UUID(run_id), caller_user_id)
+            if resolved is not None:
+                principal, identity_id, actor_record = resolved
+                if principal.organization_id is None:
+                    raise ExternalActorResolutionError("External actor has no organization")
+                self._external_actor = (
+                    actor_record, identity_id, principal.organization_id, agent.id,
+                )
+                self._caller_is_platform_admin = principal.is_superuser
+                self._caller = {
+                    "user_id": str(principal.user_id), "email": principal.email,
+                    "name": principal.name,
+                    "organization_id": str(principal.organization_id),
+                    "is_superuser": principal.is_superuser,
+                    "is_external": principal.is_external,
+                    "is_provider_org": principal.is_provider_org,
+                    "roles": principal.roles,
+                }
             llm_config = await get_llm_config(db, profile_id=agent.llm_profile_id)
         model_name = llm_config.model
 
@@ -247,13 +295,15 @@ class AutonomousAgentExecutor:
         # Resolve tools in one short DB lease. No DB
         # connection is held across model requests or tool execution.
         async with self._session_factory() as db:
-            if caller_user_id is not None:
+            if caller_user_id is not None and self._external_actor is None:
                 caller = await db.get(User, caller_user_id)
                 self._caller_is_platform_admin = bool(caller and caller.is_superuser)
+            external_access = await self._external_caller_access(db)
             tool_definitions, self._tool_workflow_id_map = await resolve_agent_tools(
                 agent,
                 db,
                 caller_user_id=caller_user_id,
+                **({"caller_access": external_access} if external_access else {}),
             )
         last_response_content = ""
 
@@ -531,6 +581,11 @@ class AutonomousAgentExecutor:
 
     async def _execute_tool(self, tool_call: ToolCallRequest, agent: Agent) -> str:
         """Execute a tool call, mirroring AgentExecutor's dispatch logic."""
+        external_access = None
+        if self._external_actor is not None:
+            async with self._session_factory() as db:
+                external_access = await self._external_caller_access(db)
+
         # Knowledge search
         if tool_call.name == "search_knowledge" and agent.knowledge_sources:
             return await self._execute_knowledge_search(tool_call, agent)
@@ -556,9 +611,12 @@ class AutonomousAgentExecutor:
         # a fully autonomous run (service token only).
         mcp_route = parse_mcp_tool_name(tool_call.name)
         if mcp_route is not None:
+            if tool_call.name not in self._tool_workflow_id_map:
+                raise ToolError(f"Unknown tool: {tool_call.name}")
             connection_id, remote_tool_name = mcp_route
             return await self._execute_mcp_tool(
                 tool_call,
+                agent_id=agent.id,
                 connection_id=connection_id,
                 remote_tool_name=remote_tool_name,
             )
@@ -570,12 +628,13 @@ class AutonomousAgentExecutor:
 
         async with self._session_factory() as db:
             workflow = await db.get(Workflow, workflow_id)
-            if workflow is None or not await caller_can_access_workflow_tool(
+            if workflow is None or not await agent_workflow_granted(db, agent.id, workflow_id) or not await caller_can_access_workflow_tool(
                 workflow,
                 agent,
                 db,
                 caller_user_id=self._caller_user_id,
                 caller_is_platform_admin=self._caller_is_platform_admin,
+                **({"caller_access": external_access} if external_access else {}),
             ):
                 raise ToolError(f"Unknown tool: {tool_call.name}")
 
@@ -609,6 +668,8 @@ class AutonomousAgentExecutor:
                     if self._caller_user_id and self._caller
                     else False
                 ),
+                agent_id=agent.id,
+                agent_run_id=UUID(self._current_run_id) if self._current_run_id else None,
             ),
             artifact_workspace_id=(
                 self._ancestor_run_ids[0]
@@ -633,6 +694,7 @@ class AutonomousAgentExecutor:
         self,
         tool_call: ToolCallRequest,
         *,
+        agent_id: UUID,
         connection_id: UUID,
         remote_tool_name: str,
     ) -> str:
@@ -644,8 +706,8 @@ class AutonomousAgentExecutor:
 
         For autonomous runs ``self._caller_user_id`` is typically
         ``None`` — auth resolution then routes to the connection's
-        service token, gated by ``available_to_autonomous``. Webhook
-        deliveries that pass a user_id (signed claim) get user-token
+        service token, gated by ``available_to_autonomous``. A verified
+        external actor that resolved to a Bifrost user gets user-token
         resolution.
 
         ``NeedsReauthError`` and ``MisconfigError`` cannot be remediated
@@ -657,6 +719,9 @@ class AutonomousAgentExecutor:
 
         try:
             async with self._session_factory() as db:
+                await self._external_caller_access(db)
+                if not await agent_mcp_granted(db, agent_id, connection_id):
+                    raise ToolError("MCP connection is not granted to this agent")
                 result = await db.execute(
                     select(MCPConnection)
                     .where(MCPConnection.id == connection_id)
@@ -1139,6 +1204,8 @@ class AutonomousAgentExecutor:
         agent: Agent,
     ) -> str:
         """Execute delegation for an autonomous parent run."""
+        if self._external_actor is not None:
+            raise ToolError("External actor delegation requires a scoped child grant")
         outcome = await self.run_delegation(
             parent_agent=agent,
             tool_call=tool_call,

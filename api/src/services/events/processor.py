@@ -25,6 +25,14 @@ from sqlalchemy.orm import joinedload
 
 from src.core.error_messages import format_exception_message
 from src.core.log_safety import log_safe
+from src.services.audit import emit_audit
+from src.services.audit_context import ActorContext
+from src.services.events.external_actors import (
+    ExternalActorResolutionError,
+    actor_from_record,
+    actor_record,
+    resolve_external_actor,
+)
 from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus
 from src.models.orm.events import (
     Event,
@@ -42,6 +50,7 @@ from src.repositories.events import (
 )
 from src.services.events.validation import validate_topic
 from src.services.webhooks.protocol import (
+    AuthenticatedExternalActor,
     Deliver,
     HandleResult,
     Rejected,
@@ -311,7 +320,9 @@ class EventProcessor:
             )
 
         # Let adapter handle the request
-        config = webhook_source.config or {}
+        config = dict(webhook_source.config or {})
+        if getattr(webhook_source, "integration_id", None) is not None:
+            config["integration_id"] = str(webhook_source.integration_id)
         state = webhook_source.state or {}
 
         try:
@@ -335,6 +346,16 @@ class EventProcessor:
             return result
 
         if isinstance(result, Deliver):
+            if result.authenticated_actor is not None and (
+                not adapter.authenticates_external_actor
+                or not isinstance(result.authenticated_actor, AuthenticatedExternalActor)
+            ):
+                return Rejected(message="Adapter cannot assert an external actor", status_code=403)
+            if result.authenticated_actor is not None and (
+                webhook_source.integration_id is None
+                or webhook_source.integration_id != result.authenticated_actor.integration_id
+            ):
+                return Rejected(message="External actor integration does not match source", status_code=403)
             # Process the event
             return await self._process_delivery(
                 webhook_source=webhook_source,
@@ -477,11 +498,30 @@ class EventProcessor:
         Creates event record, finds subscriptions, creates deliveries,
         and queues workflow executions.
         """
+        principal = None
+        identity_id = None
+        if deliver.authenticated_actor is not None:
+            try:
+                principal, identity_id = await resolve_external_actor(
+                    self.session,
+                    deliver.authenticated_actor,
+                    source_org_id=event_source.organization_id,
+                )
+            except ExternalActorResolutionError as exc:
+                logger.warning("Authenticated external actor rejected: %s", exc)
+                return Rejected(message=str(exc), status_code=403)
+
         # Create event record
         event = Event(
             id=uuid.uuid4(),
             event_source_id=event_source.id,
             event_type=deliver.event_type,
+            organization_id=principal.organization_id if principal else None,
+            external_identity_id=identity_id,
+            authenticated_actor=(
+                actor_record(deliver.authenticated_actor)
+                if deliver.authenticated_actor is not None else None
+            ),
             received_at=datetime.now(timezone.utc),
             headers=deliver.raw_headers,
             data=deliver.data,
@@ -490,6 +530,28 @@ class EventProcessor:
         )
         self.session.add(event)
         await self.session.flush()
+        if principal is not None:
+            await emit_audit(
+                self.session,
+                "external_actor.event.accepted",
+                resource_type="event",
+                resource_id=event.id,
+                details={
+                    "external_identity_id": str(identity_id),
+                    "provider": deliver.authenticated_actor.provider,
+                    "external_scope_id": deliver.authenticated_actor.external_scope_id,
+                    "external_user_id": deliver.authenticated_actor.external_user_id,
+                    "external_event_id": deliver.authenticated_actor.external_event_id,
+                    "organization_id": str(principal.organization_id),
+                    "event_source_id": str(event_source.id),
+                },
+                actor_override=ActorContext(
+                    user_id=principal.user_id,
+                    organization_id=principal.organization_id,
+                    source="external",
+                ),
+                strict=True,
+            )
 
         logger.info(
             f"Event received: {event.id}",
@@ -511,6 +573,7 @@ class EventProcessor:
         subscriptions = await self._subscription_repo.get_active_for_event(
             source_id=event_source.id,
             event_type=deliver.event_type,
+            organization_id=event.organization_id if principal else None,
         )
 
         if not subscriptions:
@@ -788,6 +851,8 @@ class EventProcessor:
         workflow = delivery.workflow
         if not workflow:
             raise ValueError(f"Delivery {delivery.id} has no workflow")
+        if "approval_required" in (getattr(workflow, "tags", None) or []):
+            raise ValueError("Approval-required workflows cannot run directly from events")
 
         # Get subscription for input_mapping
         subscription = delivery.subscription
@@ -889,6 +954,29 @@ class EventProcessor:
         if not agent:
             raise ValueError(f"Delivery {delivery.id} subscription has no agent")
 
+        caller_kwargs: dict[str, Any] = {}
+        if event.authenticated_actor is not None:
+            from src.services.agent_run_access import load_agent_for_user
+
+            principal, identity_id = await resolve_external_actor(
+                self.session,
+                actor_from_record(event.authenticated_actor),
+                source_org_id=event.organization_id,
+            )
+            if identity_id != event.external_identity_id:
+                raise ExternalActorResolutionError("External identity mapping changed after receipt")
+            if await load_agent_for_user(self.session, agent.id, principal) is None:
+                raise ExternalActorResolutionError("External caller is not authorized for this agent")
+            caller_kwargs = {
+                "caller_user_id": str(principal.user_id),
+                "caller_email": principal.email,
+                "caller_name": principal.name,
+                "caller_is_superuser": principal.is_superuser,
+                "caller_is_external": principal.is_external,
+                "caller_is_provider_org": principal.is_provider_org,
+                "caller_roles": principal.roles,
+            }
+
         # Build parameters from input mapping or raw event data
         parameters: dict[str, Any] = {}
         if subscription.input_mapping:
@@ -911,7 +999,40 @@ class EventProcessor:
             "source_ip": event.source_ip,
         }
 
-        org_id = str(agent.organization_id) if agent.organization_id else None
+        org_id = (
+            str(event.organization_id)
+            if event.authenticated_actor is not None
+            else str(agent.organization_id) if agent.organization_id else None
+        )
+
+        # A delivery must keep one run identity across uncertain publication
+        # responses and retries, including failures after the run is durable.
+        run_uuid = uuid.uuid5(delivery.id, "agent-run")
+        if event.authenticated_actor is not None:
+            from src.core.database import get_db_context
+
+            # The delivery loop committed its rows before calling this method.
+            # Keep the strict request audit in its own transaction so an audit
+            # failure cannot leave the delivery session unable to mark failure.
+            async with get_db_context() as audit_db:
+                await emit_audit(
+                    audit_db,
+                    "external_actor.agent_run.requested",
+                    resource_type="agent_run",
+                    resource_id=run_uuid,
+                    details={
+                        "event_id": str(event.id),
+                        "event_delivery_id": str(delivery.id),
+                        "external_identity_id": str(event.external_identity_id),
+                        "agent_id": str(agent.id),
+                    },
+                    actor_override=ActorContext(
+                        user_id=principal.user_id,
+                        organization_id=principal.organization_id,
+                        source="external",
+                    ),
+                    strict=True,
+                )
 
         run_id = await enqueue_agent_run(
             agent_id=str(agent.id),
@@ -920,6 +1041,8 @@ class EventProcessor:
             input_data=parameters,
             org_id=org_id,
             event_delivery_id=str(delivery.id),
+            run_id=str(run_uuid),
+            **caller_kwargs,
         )
 
         delivery.agent_run_id = uuid.UUID(run_id)
