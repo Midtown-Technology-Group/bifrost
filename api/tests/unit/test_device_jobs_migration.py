@@ -53,11 +53,17 @@ class _RecordingOp:
         return [call for call in self.calls if call[0] == op_name]
 
 
-def _migration_globals() -> dict:
-    assert MIGRATION_PATH.exists(), (
-        "expected migration api/alembic/versions/20260924_device_jobs.py"
-    )
-    return runpy.run_path(str(MIGRATION_PATH))
+def _migration_globals(path: Path = MIGRATION_PATH) -> dict:
+    assert path.exists(), f"expected migration {path}"
+    return runpy.run_path(str(path))
+
+
+LOGS_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "alembic"
+    / "versions"
+    / "20260924_device_job_logs.py"
+)
 
 
 def _run_upgrade():
@@ -154,3 +160,51 @@ def test_downgrade_drops_everything_in_order():
     dropped = {call[1][0] for call in recorder.calls if call[0] == "drop_index"}
     assert dropped == EXPECTED_INDEXES
     assert recorder.calls[-1][1][0] == "device_jobs"
+
+
+class TestDeviceJobLogsMigration:
+    def test_revision_chain(self):
+        scope = _migration_globals(LOGS_MIGRATION_PATH)
+        assert scope["revision"] == "20260924_device_job_logs"
+        assert scope["down_revision"] == "20260924_device_jobs"
+        assert len(scope["revision"]) <= 32
+
+    def test_upgrade_composite_pk_and_cascade_fk(self):
+        scope = _migration_globals(LOGS_MIGRATION_PATH)
+        recorder = _RecordingOp()
+        scope["upgrade"].__globals__["op"] = recorder
+        scope["upgrade"]()
+
+        tables = recorder.named_calls("create_table")
+        assert len(tables) == 1
+        name, args = tables[0][1]
+        assert name == "device_job_logs"
+        columns = [a for a in args if isinstance(a, Column)]
+        constraints = [a for a in args if not isinstance(a, Column)]
+        assert {c.name for c in columns} == {
+            "job_id", "seq", "stream", "text", "ts", "received_at",
+        }
+
+        pk = [c for c in constraints if type(c).__name__ == "PrimaryKeyConstraint"]
+        assert len(pk) == 1
+        # Unattached PK constraints don't render their string column args;
+        # assert against the migration source (repo precedent for source
+        # assertions in migration tests).
+        source = LOGS_MIGRATION_PATH.read_text()
+        assert 'sa.PrimaryKeyConstraint("job_id", "seq")' in source
+
+        fks = [c for c in constraints if isinstance(c, ForeignKeyConstraint)]
+        assert len(fks) == 1
+        fk_elements = dict(fks[0]._elements)
+        assert "job_id" in fk_elements
+        assert "device_jobs.id" in str(fk_elements["job_id"])
+        assert fks[0].ondelete == "CASCADE"
+
+    def test_downgrade_drops_table(self):
+        scope = _migration_globals(LOGS_MIGRATION_PATH)
+        recorder = _RecordingOp()
+        scope["downgrade"].__globals__["op"] = recorder
+        scope["downgrade"]()
+        kinds = [call[0] for call in recorder.calls]
+        assert kinds == ["drop_table"]
+        assert recorder.calls[0][1][0] == "device_job_logs"

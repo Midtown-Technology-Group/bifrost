@@ -26,6 +26,8 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.pubsub import manager as pubsub_manager
+from src.models.orm.device_job_logs import DeviceJobLog
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
 from src.models.orm.device_jobs import (
     ACTIVE_JOB_STATUSES,
@@ -48,6 +50,12 @@ from src.models.orm.device_jobs import (
     DeviceJob,
 )
 from src.services.devices import DeviceOperationError
+
+
+# Log batch bounds (M0 log-batch contract).
+LOG_ENTRY_MAX_CHARS = 65536
+LOG_BATCH_MAX_ENTRIES = 512
+LOG_BATCH_MAX_CHARS = 1024 * 1024
 
 
 def _busy(active: DeviceJob | None) -> DeviceOperationError:
@@ -211,7 +219,13 @@ async def claim_next(
 
 async def _locked_job(db: AsyncSession, job_id: UUID) -> DeviceJob:
     result = await db.execute(
-        select(DeviceJob).where(DeviceJob.id == job_id).with_for_update()
+        select(DeviceJob)
+        .where(DeviceJob.id == job_id)
+        .with_for_update()
+        # Callers may have preloaded this identity (ownership pre-check);
+        # refresh from the locked row so fence/status checks never read
+        # stale claim_token/status/log_sequence from the identity map.
+        .execution_options(populate_existing=True)
     )
     job = result.scalar_one_or_none()
     if job is None:
@@ -417,3 +431,176 @@ async def sweep_device_jobs(
         "lost_backstop": lost_backstop,
         "stale_claimed_reclaimable": stale_claimed,
     }
+
+
+async def renew_from_heartbeat(
+    db: AsyncSession,
+    *,
+    device_id: UUID,
+    agent_session_id: UUID,
+    now: datetime | None = None,
+) -> DeviceJob | None:
+    """M0 heartbeat contract: renew activity only for the job this agent
+    session owns. Returns the active job (so the route can report
+    `cancel_requested`) or None when there is nothing to renew.
+    """
+    current = now if now is not None else datetime.now(timezone.utc)
+    result = await db.execute(
+        select(DeviceJob)
+        .where(
+            DeviceJob.device_id == device_id,
+            DeviceJob.status.in_((JOB_STATUS_CLAIMED, JOB_STATUS_RUNNING)),
+        )
+        .with_for_update()
+        .limit(1)
+    )
+    job = result.scalar_one_or_none()
+    if job is None:
+        return None
+    if job.agent_session_id != agent_session_id:
+        # A different (e.g. restarted) session must not keep the old
+        # claim's lease alive — the watchdog should be able to see loss.
+        return None
+    job.last_agent_activity_at = current
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+async def append_logs(
+    db: AsyncSession,
+    *,
+    job_id: UUID,
+    claim_token: UUID,
+    entries: list[dict],
+    now: datetime | None = None,
+) -> tuple[DeviceJob, list[DeviceJobLog]]:
+    """Fenced, idempotent log append (M0 log-batch contract).
+
+    The job row is locked for the duration, so per-job writers serialize:
+    first write for a (job, seq) wins, an identical replay is a no-op, and
+    different content for an accepted seq is `log_seq_conflict` (409).
+    Returns (job, newly_inserted_entries).
+    """
+    current = now if now is not None else datetime.now(timezone.utc)
+
+    if len(entries) > LOG_BATCH_MAX_ENTRIES:
+        raise DeviceOperationError(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "payload_too_large",
+            f"log batch exceeds {LOG_BATCH_MAX_ENTRIES} entries",
+        )
+    total_chars = 0
+    seen: set[int] = set()
+    for entry in entries:
+        seq = entry.get("seq")
+        stream = entry.get("stream")
+        text = entry.get("text", "")
+        if not isinstance(seq, int) or seq < 1:
+            raise DeviceOperationError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_parameter",
+                "entry seq must be an integer >= 1",
+            )
+        if seq in seen:
+            raise DeviceOperationError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_parameter",
+                f"duplicate seq {seq} within one batch",
+            )
+        seen.add(seq)
+        if stream not in ("stdout", "stderr"):
+            raise DeviceOperationError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_parameter",
+                "entry stream must be stdout or stderr",
+            )
+        if len(text) > LOG_ENTRY_MAX_CHARS:
+            raise DeviceOperationError(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "payload_too_large",
+                f"log entry exceeds {LOG_ENTRY_MAX_CHARS} characters",
+            )
+        total_chars += len(text)
+    if total_chars > LOG_BATCH_MAX_CHARS:
+        raise DeviceOperationError(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "payload_too_large",
+            f"log batch exceeds {LOG_BATCH_MAX_CHARS} characters",
+        )
+
+    job = await _locked_job(db, job_id)
+    _assert_fenced(job, claim_token)
+    if job.status not in (JOB_STATUS_CLAIMED, JOB_STATUS_RUNNING):
+        raise DeviceOperationError(
+            status.HTTP_409_CONFLICT,
+            "job_terminal",
+            f"job is {job.status}, not live",
+        )
+
+    incoming_seqs = sorted(seen)
+    existing_result = await db.execute(
+        select(DeviceJobLog).where(
+            DeviceJobLog.job_id == job_id,
+            DeviceJobLog.seq.in_(incoming_seqs),
+        )
+    )
+    existing = {row.seq: row for row in existing_result.scalars().all()}
+
+    inserted: list[DeviceJobLog] = []
+    highest = job.log_sequence or 0
+    for entry in sorted(entries, key=lambda e: e["seq"]):
+        seq = entry["seq"]
+        prior = existing.get(seq)
+        if prior is not None:
+            # Idempotent replay must be byte-identical; a changed body for an
+            # accepted seq is a fencing/idempotency conflict.
+            if prior.stream != entry["stream"] or prior.text != entry["text"]:
+                raise DeviceOperationError(
+                    status.HTTP_409_CONFLICT,
+                    "log_seq_conflict",
+                    f"seq {seq} was already accepted with different content",
+                )
+            continue
+        row = DeviceJobLog(
+            job_id=job_id,
+            seq=seq,
+            stream=entry["stream"],
+            text=entry["text"],
+            ts=entry.get("ts"),
+        )
+        db.add(row)
+        inserted.append(row)
+        highest = max(highest, seq)
+
+    job.last_agent_activity_at = current
+    if highest > (job.log_sequence or 0):
+        job.log_sequence = highest
+    await db.commit()
+    for row in inserted:
+        await db.refresh(row)
+    return job, inserted
+
+
+async def broadcast_job_available(device_id: UUID, job_id: UUID) -> None:
+    """Lossy WS hint on device:{device_id} after a create commits (M0)."""
+    await pubsub_manager.broadcast(
+        f"device:{device_id}",
+        {
+            "type": "device_job_available",
+            "job_id": str(job_id),
+            "device_id": str(device_id),
+        },
+    )
+
+
+async def broadcast_job_logs(job_id: UUID, entries: list[dict]) -> None:
+    """Log fanout on device_job:{job_id} for user observation channels."""
+    await pubsub_manager.broadcast(
+        f"device_job:{job_id}",
+        {
+            "type": "device_job_logs",
+            "job_id": str(job_id),
+            "entries": entries,
+        },
+    )
