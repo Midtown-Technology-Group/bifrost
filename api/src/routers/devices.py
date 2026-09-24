@@ -27,6 +27,7 @@ from src.models.contracts.devices import (
     DeviceCreateResponse,
     DeviceEnrollRequest,
     DeviceEnrollResponse,
+    DeviceFreshness,
     DeviceKeyResponse,
     DevicePublic,
 )
@@ -143,20 +144,47 @@ async def list_devices_route(
 
 @router.get(
     "/{device_id}",
-    response_model=DevicePublic,
-    summary="Get one device",
+    response_model=DevicePublic | DeviceFreshness,
+    summary="Get one device (user: full view; control key: freshness only)",
 )
 async def get_device_route(
     device_id: UUID,
-    ctx: Context,
-    user: CurrentUser,
-) -> DevicePublic | JSONResponse:
+    db: DbSession,
+    user: UserPrincipal | None = Depends(get_current_user_optional),
+    x_bifrost_control_key: str | None = Header(
+        default=None, alias="X-Bifrost-Control-Key"
+    ),
+) -> DevicePublic | DeviceFreshness | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
-        device = await get_device_scoped(ctx.db, user, device_id)
+        if x_bifrost_control_key:
+            # Approved M0 delta (#818 comment 5815371680): a control key may
+            # read ONLY id/status/last_seen_at, and only for allow-listed
+            # devices — the pre-accept freshness input for transport
+            # fail-closed. Full registry detail stays user-only.
+            key = await resolve_control_key(db, x_bifrost_control_key)
+            device = await get_device_for_org(db, device_id, key.organization_id)
+            if not key_can_target(key, device):
+                raise DeviceOperationError(
+                    status.HTTP_403_FORBIDDEN,
+                    "out_of_scope",
+                    "control key does not target this device",
+                )
+            return DeviceFreshness(
+                id=device.id,
+                status=device.status,
+                last_seen_at=device.last_seen_at,
+            )
+        if user is None:
+            raise DeviceOperationError(
+                status.HTTP_401_UNAUTHORIZED,
+                "unauthenticated",
+                "user permission or device-scoped control key required",
+            )
+        await require_device_manage_permission(db, user)
+        device = await get_device_scoped(db, user, device_id)
+        return DevicePublic.model_validate(device)
     except DeviceOperationError as exc:
         return exc.to_response()
-    return DevicePublic.model_validate(device)
 
 
 @router.post(

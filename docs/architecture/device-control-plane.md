@@ -147,6 +147,7 @@ User permissions are the existing JSONB role permissions resolved the way
 | **Create job** `POST /api/devices/{id}/jobs` | org member + `can_execute_devices` | yes — device must be in `device_ids`, key enabled, unexpired, device `active` | no | Attribution always recorded (below) |
 | Cancel job | org member + `can_execute_devices` | no | no | Cooperative flag only |
 | Read job list/detail/logs (incl. script body) | org member + `can_execute_devices` | only jobs **it created** | **no** | Script body is create-level readable; the device principal's only script-body path is the fenced claim response for the job it holds |
+| Read device freshness (`id`, `status`, `last_seen_at` only) | full registry read above (`can_manage_config`) | **yes — allow-listed devices only, reduced view** | **no** | Pre-accept freshness input for transport fail-closed. Approved epic delta: #818 comment 5815371680 |
 | Heartbeat / claim / logs / result | no | no | yes, device `active` | `X-Bifrost-Key`, `/api/device/` prefix |
 | WebSocket connect + `device:{id}` | no (`device:*` denied) | no | yes, `Authorization: Bearer` only | Query credentials rejected |
 
@@ -374,6 +375,12 @@ Confirmed **fail-closed**: until M7 sign-off, a `transport=direct` (or v1
 accept; it does not degrade to Ninja. Ninja runs only when `transport=ninja`
 is explicit. After any direct accept, uncertainty resolves to `lost`, never
 to a second transport.
+
+Freshness read for control keys is an **approved epic delta**
+(#818 comment 5815371680): `GET /api/devices/{id}` with
+`X-Bifrost-Control-Key` returns only `id`/`status`/`last_seen_at`, and only
+for devices on the key's allow-list — the pre-accept input the workspace
+needs to observe offline state. Full registry detail remains user-only.
 
 ## Protocol schemas (freeze rule)
 
