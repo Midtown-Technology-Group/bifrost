@@ -295,6 +295,10 @@ IDENTITY_MODELS: set[str] = {
     # organization; verification looks up the embedded key UUID, never a
     # name-cascade resolve.
     "DeviceControlKey",
+    # Device jobs are domain execution records addressed by UUID inside one
+    # organization; agents fence them with claim tokens and users observe
+    # them under org scope — never name-resolved through the cascade.
+    "DeviceJob",
 }
 
 
