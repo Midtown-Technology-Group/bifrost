@@ -1023,8 +1023,9 @@ async def websocket_connect(
     """
     # M0 freeze (feedback #6): device credentials are header-only — a
     # device_key (or any other credential) in the query string is rejected
-    # before any authentication attempt.
-    if "device_key" in websocket.query_params:
+    # before any authentication attempt. (getattr: test doubles for this
+    # endpoint may not model query_params; real connections always have it.)
+    if "device_key" in (getattr(websocket, "query_params", None) or {}):
         await websocket.accept()
         await websocket.close(code=4001, reason="Unauthorized")
         return
