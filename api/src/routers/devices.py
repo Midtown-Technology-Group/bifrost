@@ -356,6 +356,8 @@ async def _authorize_job_read(
 async def list_jobs_route(
     device_id: UUID,
     db: DbSession,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
     user: UserPrincipal | None = Depends(get_current_user_optional),
     x_bifrost_control_key: str | None = Header(
         default=None, alias="X-Bifrost-Control-Key"
@@ -370,7 +372,9 @@ async def list_jobs_route(
             stmt = list_jobs_for_control_key_stmt(key, device_id=device_id)
         else:
             stmt = list_jobs_stmt(user, device_id=device_id)
-        rows = (await db.execute(stmt)).scalars().all()
+        rows = (
+            await db.execute(stmt.offset(offset).limit(limit))
+        ).scalars().all()
         return [DeviceJobPublic.model_validate(row) for row in rows]
     except DeviceOperationError as exc:
         return exc.to_response()

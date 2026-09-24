@@ -71,6 +71,23 @@ class DeviceResultRequest(BaseModel):
     duration_ms: int | None = Field(default=None, ge=0)
 
 
+class DeviceRunningRequest(BaseModel):
+    """POST /api/device/jobs/{job_id}/running body.
+
+    Additive route (feedback #1): the agent reports a **real spawn**
+    (claimed → running) so the server can distinguish safe pre-spawn
+    reclaim from post-spawn `lost`. Same fencing as every agent mutation.
+    """
+
+    claim_token: UUID
+    agent_session_id: UUID
+
+
+class DeviceRunningResponse(BaseModel):
+    job_id: UUID
+    status: str
+
+
 class DeviceResultResponse(BaseModel):
     job_id: UUID
     status: str

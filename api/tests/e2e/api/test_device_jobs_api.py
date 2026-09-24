@@ -255,7 +255,7 @@ async def test_read_authz_and_cross_scope(
     device_id, key = await _create_active_device(
         e2e_client, platform_admin.headers, org1["id"], "read-device"
     )
-    headers_a = {"X-Bifrost-Control-Key": key} if False else org1_user.headers
+    headers_a = org1_user.headers
     created = e2e_client.post(
         f"/api/devices/{device_id}/jobs", headers=headers_a, json=_job_body()
     )
@@ -391,35 +391,42 @@ async def test_cooperative_cancel_loop(
     assert claim.status_code == 200, claim.text
     claim_token = claim.json()["claim_token"]
 
+    # Agent reports a REAL spawn (feedback #1): claimed -> running.
+    running_report = e2e_client.post(
+        f"/api/device/jobs/{job2_id}/running",
+        headers=agent_headers,
+        json={"claim_token": claim_token, "agent_session_id": session_id},
+    )
+    assert running_report.status_code == 200, running_report.text
+    assert running_report.json()["status"] == "running"
+
     running_cancel = e2e_client.post(
         f"/api/devices/{device_id}/jobs/{job2_id}/cancel",
         headers=org1_user.headers,
     )
     assert running_cancel.status_code == 200, running_cancel.text
-    # Claimed jobs cancel immediately (no side effect yet).
-    assert running_cancel.json()["status"] in ("cancelled", "running")
+    # Running cancels are cooperative: status stays running, flag is set.
+    assert running_cancel.json()["status"] == "running"
+    assert running_cancel.json()["cancel_requested_at"] is not None
 
-    if running_cancel.json()["status"] == "running":
-        hb = e2e_client.post(
-            "/api/device/heartbeat",
-            headers=agent_headers,
-            json={"agent_session_id": session_id},
-        )
-        assert hb.status_code == 200
-        assert hb.json()["cancel_requested"] is True
+    hb = e2e_client.post(
+        "/api/device/heartbeat",
+        headers=agent_headers,
+        json={"agent_session_id": session_id},
+    )
+    assert hb.status_code == 200
+    assert hb.json()["cancel_requested"] is True
 
-        result = e2e_client.post(
-            f"/api/device/jobs/{job2_id}/result",
-            headers=agent_headers,
-            json={"claim_token": claim_token, "status": "cancelled", "exit_code": 1},
-        )
-        assert result.status_code == 200, result.text
-        await db_session.refresh(
-            (await db_session.get(DeviceJob, UUID(job2_id)))
-        )
-        row = await db_session.get(DeviceJob, UUID(job2_id))
-        assert row.status == "cancelled"
-        assert row.cancel_requested_at is not None
+    result = e2e_client.post(
+        f"/api/device/jobs/{job2_id}/result",
+        headers=agent_headers,
+        json={"claim_token": claim_token, "status": "cancelled", "exit_code": 1},
+    )
+    assert result.status_code == 200, result.text
+    row = await db_session.get(DeviceJob, UUID(job2_id))
+    await db_session.refresh(row)
+    assert row.status == "cancelled"
+    assert row.cancel_requested_at is not None
 
     # Control keys never cancel (M0 matrix).
     ck = e2e_client.post(

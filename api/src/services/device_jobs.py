@@ -618,14 +618,24 @@ async def get_job_scoped(
     db: AsyncSession,
     user: UserPrincipal,
     job_id: UUID,
+    *,
+    with_lock: bool = False,
 ) -> DeviceJob:
     """Load one job under the caller's resolved org scope (no inline org
-    comparisons in routers — the clause is built here from the helper)."""
+    comparisons in routers — the clause is built here from the helper).
+
+    ``with_lock=True`` takes ``SELECT ... FOR UPDATE`` (refreshing any
+    preloaded identity) so a status decision made here — e.g. cancel vs an
+    agent's concurrent ``mark_running`` — serializes against the agent
+    path instead of racing it.
+    """
     filter_type, filter_org_id = resolve_org_filter(user)
     stmt = select(DeviceJob).where(DeviceJob.id == job_id)
     clause = org_filter_clause(DeviceJob.organization_id, filter_type, filter_org_id)
     if clause is not None:
         stmt = stmt.where(clause)
+    if with_lock:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     job = (await db.execute(stmt)).scalar_one_or_none()
     if job is None:
         raise DeviceOperationError(
@@ -677,7 +687,11 @@ async def request_cancel(
     platform never guarantees a process kill. Idempotent for running jobs.
     """
     current = now if now is not None else datetime.now(timezone.utc)
-    job = await get_job_scoped(db, user, job_id)
+    # Row lock: cancel must serialize with the agent's mark_running/finish.
+    # Without it, a cancel could commit `cancelled` over a just-started
+    # `running` job, freeing the one-active index while the script still
+    # runs (double execution) and swallowing the agent's terminal report.
+    job = await get_job_scoped(db, user, job_id, with_lock=True)
 
     if job.status in TERMINAL_JOB_STATUSES:
         raise DeviceOperationError(

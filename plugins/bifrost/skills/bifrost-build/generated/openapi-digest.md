@@ -166,6 +166,7 @@
 | POST | `/api/device/jobs/claim` |
 | POST | `/api/device/jobs/{job_id}/logs` |
 | POST | `/api/device/jobs/{job_id}/result` |
+| POST | `/api/device/jobs/{job_id}/running` |
 | GET | `/api/devices` |
 | POST | `/api/devices` |
 | POST | `/api/devices/enroll` |
