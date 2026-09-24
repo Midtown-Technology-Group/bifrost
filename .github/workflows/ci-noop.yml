@@ -1,7 +1,18 @@
-# Docs-only PR notice. These jobs intentionally do not share required CI
-# status-check names; real CI runs for every pull request.
+# Fast path for docs/plugin/config-only pull requests.
+#
+# ci.yml ignores these paths on pull_request so we do not build candidate
+# images, publish CI test images, or run real test lanes for changes that
+# cannot affect runtime behavior. This workflow uses the inverse path filter
+# and reports the branch-protection contexts that would otherwise be absent.
+#
+# The merge queue remains deliberately unfiltered: once a docs-only PR is
+# queued, ci.yml validates the exact synthetic merge candidate before main.
+#
+# Keep this pull_request.paths list byte-identical to ci.yml's
+# pull_request.paths-ignore list. Workflow changes are intentionally absent
+# from the list so edits under .github/workflows/** always run real CI.
 
-name: Docs-only CI Notice
+name: CI
 
 on:
   pull_request:
@@ -39,8 +50,32 @@ permissions:
   contents: read
 
 jobs:
-  docs-only-notice:
+  lint:
     runs-on: ubuntu-latest
-    name: Docs-only CI notice
+    name: Lint & Type Check
     steps:
-      - run: echo "Docs-only change — real CI runs from ci.yml when code changes."
+      - run: echo "Skipped — docs/plugin/config-only PR."
+
+  test-unit:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    steps:
+      - run: echo "Skipped — docs/plugin/config-only PR."
+
+  test-client-unit:
+    runs-on: ubuntu-latest
+    name: Client Unit Tests
+    steps:
+      - run: echo "Skipped — docs/plugin/config-only PR."
+
+  test-e2e:
+    runs-on: ubuntu-latest
+    name: E2E Tests
+    steps:
+      - run: echo "Skipped — docs/plugin/config-only PR."
+
+  candidate-images:
+    runs-on: ubuntu-latest
+    name: Candidate Images
+    steps:
+      - run: echo "Skipped — docs/plugin/config-only PR."
