@@ -7,6 +7,39 @@ from uuid import UUID
 from pydantic import BaseModel, Field, RootModel
 
 
+class ExternalIdentityCreateRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    external_scope_id: str = Field(min_length=1, max_length=255)
+    external_user_id: str = Field(min_length=1, max_length=255)
+    authorized_organization_id: UUID | None = None
+
+
+class ExternalIdentityResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    provider: str
+    external_scope_id: str
+    external_user_id: str
+    authorized_organization_id: UUID | None
+    is_active: bool
+
+
+class AgentActionApprovalResponse(BaseModel):
+    id: UUID
+    agent_id: UUID
+    agent_run_id: UUID | None
+    workflow_id: UUID
+    organization_id: UUID | None
+    requested_by_user_id: UUID | None
+    parameters: dict[str, Any]
+    caller: dict[str, Any]
+    status: str
+    approved_by_user_id: UUID | None
+    execution_id: UUID | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
 class VersionResponse(BaseModel):
     version: str
 

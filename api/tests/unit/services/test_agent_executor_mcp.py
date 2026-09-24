@@ -62,6 +62,15 @@ def mock_session_factory():
     return factory
 
 
+@pytest.fixture(autouse=True)
+def granted_connection():
+    with patch(
+        "src.services.agent_executor.agent_mcp_granted",
+        new=AsyncMock(return_value=True),
+    ):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_execute_mcp_tool_passes_caller_user_id(mock_session_factory):
     """When the chat loop calls _execute_mcp_tool with a caller_user_id,
@@ -87,6 +96,7 @@ async def test_execute_mcp_tool_passes_caller_user_id(mock_session_factory):
                 name=f"{MCP_TOOL_PREFIX}{connection_id}__graph_search",
                 arguments={"q": "hello"},
             ),
+            agent_id=uuid4(),
             connection_id=connection_id,
             remote_tool_name="graph_search",
             caller_user_id=caller_user_id,
@@ -127,6 +137,7 @@ async def test_execute_mcp_tool_passes_none_caller_for_autonomous(
                 name=f"{MCP_TOOL_PREFIX}{connection_id}__t",
                 arguments={},
             ),
+            agent_id=uuid4(),
             connection_id=connection_id,
             remote_tool_name="t",
             caller_user_id=None,
@@ -162,6 +173,7 @@ async def test_execute_mcp_tool_translates_needs_reauth(mock_session_factory):
                 name=f"{MCP_TOOL_PREFIX}{connection_id}__graph_search",
                 arguments={},
             ),
+            agent_id=uuid4(),
             connection_id=connection_id,
             remote_tool_name="graph_search",
             caller_user_id=uuid4(),
@@ -200,6 +212,7 @@ async def test_execute_mcp_tool_translates_misconfig(mock_session_factory):
                 name=f"{MCP_TOOL_PREFIX}{connection_id}__t",
                 arguments={},
             ),
+            agent_id=uuid4(),
             connection_id=connection_id,
             remote_tool_name="t",
             caller_user_id=None,
@@ -233,6 +246,7 @@ async def test_execute_mcp_tool_translates_dispatch_error(mock_session_factory):
                 name=f"{MCP_TOOL_PREFIX}{connection_id}__t",
                 arguments={},
             ),
+            agent_id=uuid4(),
             connection_id=connection_id,
             remote_tool_name="t",
             caller_user_id=uuid4(),
@@ -271,6 +285,7 @@ async def test_execute_mcp_tool_handles_missing_connection():
                 name=f"{MCP_TOOL_PREFIX}{connection_id}__t",
                 arguments={},
             ),
+            agent_id=uuid4(),
             connection_id=connection_id,
             remote_tool_name="t",
             caller_user_id=uuid4(),
@@ -283,14 +298,29 @@ async def test_execute_mcp_tool_handles_missing_connection():
 
 
 @pytest.mark.asyncio
+async def test_ungranted_mcp_connection_never_dispatches(mock_session_factory):
+    executor = AgentExecutor(mock_session_factory)
+    connection_id = uuid4()
+    with (
+        patch("src.services.agent_executor.agent_mcp_granted", new=AsyncMock(return_value=False)),
+        patch("src.services.agent_executor.mcp_dispatch.invoke", new=AsyncMock()) as invoke,
+    ):
+        result = await executor._execute_mcp_tool(
+            ToolCallRequest(id="ungranted", name=f"{MCP_TOOL_PREFIX}{connection_id}__t", arguments={}),
+            agent_id=uuid4(), connection_id=connection_id,
+            remote_tool_name="t", caller_user_id=uuid4(), start_time=0.0,
+        )
+    invoke.assert_not_awaited()
+    assert "not granted" in result.error.lower()
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_routes_mcp_prefix_to_mcp_dispatch(
     mock_session_factory,
 ):
     """The tool-name dispatcher in _execute_tool routes the
     ``mcp__<uuid>__<tool>`` pattern to _execute_mcp_tool BEFORE falling
-    through to the workflow lookup. We assert this by patching
-    dispatch.invoke and confirming it ran for an agent with no MCP tools
-    in its workflow id_map."""
+    through to the workflow lookup only when the name was granted to the agent."""
     executor = AgentExecutor(mock_session_factory)
     connection_id = uuid4()
     caller_user_id = uuid4()
@@ -299,9 +329,12 @@ async def test_execute_tool_routes_mcp_prefix_to_mcp_dispatch(
     # ``agent.system_tools`` and uses ``startswith('delegate_to_')`` so a
     # bare MagicMock works.
     agent = MagicMock()
+    agent.id = uuid4()
     agent.system_tools = []
     agent.knowledge_sources = []
     agent.delegated_agents = []
+    tool_name = f"{MCP_TOOL_PREFIX}{connection_id}__graph_search"
+    executor._tool_workflow_id_map[tool_name] = connection_id
 
     fake_envelope = {"content": [], "is_error": False}
 
@@ -312,7 +345,7 @@ async def test_execute_tool_routes_mcp_prefix_to_mcp_dispatch(
         await executor._execute_tool(
             ToolCallRequest(
                 id="tc-7",
-                name=f"{MCP_TOOL_PREFIX}{connection_id}__graph_search",
+                name=tool_name,
                 arguments={"q": "hi"},
             ),
             agent=agent,

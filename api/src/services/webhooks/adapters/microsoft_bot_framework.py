@@ -7,11 +7,13 @@ import logging
 import time
 from typing import Any
 from urllib.parse import urlparse
+from uuid import UUID
 
 import httpx
 import jwt
 
 from src.services.webhooks.protocol import (
+    AuthenticatedExternalActor,
     Deliver,
     HandleResult,
     Rejected,
@@ -30,6 +32,7 @@ class MicrosoftBotFrameworkAdapter(WebhookAdapter):
     display_name = "Microsoft Bot Framework"
     description = "Authenticated Microsoft Teams bot activities"
     requires_integration = None
+    authenticates_external_actor = True
     renewal_interval = None
 
     _OPENID_URL = "https://login.botframework.com/v1/.well-known/openidconfiguration"
@@ -115,6 +118,27 @@ class MicrosoftBotFrameworkAdapter(WebhookAdapter):
         conversation = payload.get("conversation") or {}
         sender = payload.get("from") or {}
 
+        actor = None
+        if activity_type == "message":
+            tenant_id = str((channel_data.get("tenant") or {}).get("id") or "").strip()
+            user_id = str(sender.get("aadObjectId") or "").strip()
+            try:
+                integration_id = UUID(str(config.get("integration_id")))
+            except (TypeError, ValueError):
+                return Rejected(message="Teams Bot integration is not configured", status_code=503)
+            if not tenant_id or not user_id:
+                return Rejected(message="Teams message has no tenant or Entra user ID", status_code=403)
+            actor = AuthenticatedExternalActor(
+                provider="microsoft_teams",
+                external_scope_id=tenant_id,
+                external_user_id=user_id,
+                integration_id=integration_id,
+                external_event_id=str(payload.get("id") or "") or None,
+                conversation_id=str(conversation.get("id") or "") or None,
+                team_id=str((channel_data.get("team") or {}).get("id") or "") or None,
+                reply_to_id=str(payload.get("replyToId") or "") or None,
+            )
+
         return Deliver(
             data={
                 "activity": payload,
@@ -129,10 +153,11 @@ class MicrosoftBotFrameworkAdapter(WebhookAdapter):
                 "reply_to_id": payload.get("replyToId"),
             },
             event_type=f"microsoft_teams.{activity_type}",
+            authenticated_actor=actor,
             raw_headers={
                 key: value
                 for key, value in request.headers.items()
-                if key not in {"authorization", "cookie"}
+                  if key.lower() not in {"authorization", "cookie"}
             },
         )
 

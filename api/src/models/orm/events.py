@@ -328,6 +328,8 @@ class Event(Base):
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete=SET_NULL), default=None
     )
+    external_identity_id: Mapped[UUID | None] = mapped_column(default=None)
+    authenticated_actor: Mapped[dict | None] = mapped_column(JSONB, default=None)
 
     # Event metadata
     event_type: Mapped[str | None] = mapped_column(

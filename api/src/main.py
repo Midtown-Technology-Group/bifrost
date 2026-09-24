@@ -24,6 +24,7 @@ from src.core.embed_middleware import EmbedScopeMiddleware
 from src.core.database import close_db, get_session_factory, init_db
 from src.core.pubsub import manager as pubsub_manager
 from src.routers.health import close_health_check_clients
+from src.routers.agent_action_approvals import router as agent_action_approvals_router
 from src.routers import (
     auth_router,
     mfa_router,
@@ -568,6 +569,7 @@ def create_app() -> FastAPI:
     app.include_router(passkeys_router)
     app.include_router(organizations_router)
     app.include_router(users_router)
+    app.include_router(agent_action_approvals_router)
     app.include_router(roles_router)
     app.include_router(executions_router)
     app.include_router(workflows_router)

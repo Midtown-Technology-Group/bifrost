@@ -117,6 +117,33 @@ async def _get_caller_access(
     return row.id, row.organization_id, row.is_superuser
 
 
+async def agent_workflow_granted(session: AsyncSession, agent_id: UUID, workflow_id: UUID) -> bool:
+    """Recheck a workflow attachment at dispatch, including mid-run revocation."""
+    from src.models.orm.agents import AgentTool
+
+    return (await session.scalar(
+        select(AgentTool.agent_id).where(
+            AgentTool.agent_id == agent_id, AgentTool.workflow_id == workflow_id
+        )
+    )) is not None
+
+
+async def agent_mcp_granted(session: AsyncSession, agent_id: UUID, connection_id: UUID) -> bool:
+    """Recheck an MCP connection grant at dispatch."""
+    from src.models.orm.agents import Agent
+    from src.models.orm.external_mcp import AgentMCPConnection, MCPConnection
+
+    return (await session.scalar(
+        select(AgentMCPConnection.agent_id).where(
+            AgentMCPConnection.agent_id == agent_id,
+            AgentMCPConnection.connection_id == connection_id,
+            AgentMCPConnection.agent_id == Agent.id,
+            AgentMCPConnection.connection_id == MCPConnection.id,
+            Agent.organization_id == MCPConnection.organization_id,
+        )
+    )) is not None
+
+
 def _agent_scope_allows_reference(
     parent_agent: Agent, referenced_org_id: UUID | None
 ) -> bool:
@@ -220,14 +247,15 @@ async def resolve_agent_tools(
     *,
     caller_user_id: UUID | None = None,
     caller_is_platform_admin: bool = False,
+    caller_access: CallerAccess | None | _UnresolvedCallerAccess = _UNRESOLVED_CALLER_ACCESS,
 ) -> tuple[list[ToolDefinition], dict[str, UUID]]:
     """Resolve tool definitions for an agent.
 
     Args:
         agent: The agent whose tools we're resolving.
         session: Active async DB session for catalog reads.
-        caller_user_id: User invoking the agent (chat / claim-bearing
-            webhook), or ``None`` for autonomous runs. Controls whether
+        caller_user_id: User invoking the agent (chat or verified external
+            actor), or ``None`` for autonomous runs. Controls whether
             MCP tools that require per-user OAuth get included in the
             planner-visible toolset. Also scopes workflow/delegation tools
             to the caller for interactive runs.
@@ -246,11 +274,12 @@ async def resolve_agent_tools(
     tool_definitions: list[ToolDefinition] = []
     tool_workflow_id_map: dict[str, UUID] = {}
     seen_names: dict[str, str] = {}
-    caller_access = (
-        await _get_caller_access(session, caller_user_id)
-        if caller_user_id is not None
-        else None
-    )
+    if isinstance(caller_access, _UnresolvedCallerAccess):
+        caller_access = (
+            await _get_caller_access(session, caller_user_id)
+            if caller_user_id is not None
+            else None
+        )
 
     # 1. System tools first (they always win conflicts)
     configured_system_tool_ids = list(agent.system_tools or [])

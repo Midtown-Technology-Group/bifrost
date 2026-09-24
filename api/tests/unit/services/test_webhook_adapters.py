@@ -613,6 +613,7 @@ class TestMicrosoftBotFrameworkAdapter:
     """Tests Microsoft Bot Framework authentication and normalization."""
 
     app_id = "11111111-1111-1111-1111-111111111111"
+    integration_id = "22222222-2222-2222-2222-222222222222"
     service_url = "https://smba.trafficmanager.net/amer/"
 
     @pytest.fixture
@@ -633,7 +634,7 @@ class TestMicrosoftBotFrameworkAdapter:
             "serviceUrl": self.service_url,
             "channelId": "msteams",
             "conversation": {"id": "conversation-1"},
-            "from": {"id": "user-1", "name": "Test User"},
+            "from": {"id": "user-1", "aadObjectId": "user-object-1", "name": "Test User"},
             "channelData": {
                 "tenant": {"id": "tenant-1"},
                 "team": {"id": "team-1"},
@@ -679,7 +680,7 @@ class TestMicrosoftBotFrameworkAdapter:
             await adapter.subscribe("https://example.com/hook", {}, None)
 
     @pytest.mark.asyncio
-    async def test_subscribe_only_requires_app_id(self, adapter):
+    async def test_subscribe_accepts_app(self, adapter):
         result = await adapter.subscribe(
             "https://example.com/hook", {"app_id": self.app_id}, None
         )
@@ -690,7 +691,7 @@ class TestMicrosoftBotFrameworkAdapter:
     async def test_missing_bearer_token_is_rejected(self, adapter):
         result = await adapter.handle_request(
             self._request(self._activity()),
-            {"app_id": self.app_id},
+            {"app_id": self.app_id, "integration_id": self.integration_id},
             {},
         )
 
@@ -705,7 +706,7 @@ class TestMicrosoftBotFrameworkAdapter:
 
         result = await adapter.handle_request(
             self._request(self._activity(), token),
-            {"app_id": self.app_id},
+            {"app_id": self.app_id, "integration_id": self.integration_id},
             {},
         )
 
@@ -714,6 +715,8 @@ class TestMicrosoftBotFrameworkAdapter:
         assert result.data["conversation_id"] == "conversation-1"
         assert result.data["tenant_id"] == "tenant-1"
         assert result.data["team_id"] == "team-1"
+        assert result.authenticated_actor.external_user_id == "user-object-1"
+        assert result.authenticated_actor.external_scope_id == "tenant-1"
         assert "authorization" not in result.raw_headers
         assert "cookie" not in result.raw_headers
 
@@ -740,7 +743,7 @@ class TestMicrosoftBotFrameworkAdapter:
 
         result = await adapter.handle_request(
             self._request(activity, token),
-            {"app_id": self.app_id},
+            {"app_id": self.app_id, "integration_id": self.integration_id},
             {},
         )
 
@@ -755,7 +758,7 @@ class TestMicrosoftBotFrameworkAdapter:
 
         result = await adapter.handle_request(
             self._request(self._activity(), self._token(private_key)),
-            {"app_id": self.app_id},
+            {"app_id": self.app_id, "integration_id": self.integration_id},
             {},
         )
 
@@ -773,7 +776,7 @@ class TestMicrosoftBotFrameworkAdapter:
 
         result = await adapter.handle_request(
             self._request(activity, self._token(private_key)),
-            {"app_id": self.app_id},
+            {"app_id": self.app_id, "integration_id": self.integration_id},
             {},
         )
 

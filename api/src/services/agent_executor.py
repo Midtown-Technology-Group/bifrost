@@ -70,6 +70,8 @@ from src.services.agent_runtime import (
 )
 from src.services.model_capabilities import should_offer_tool_calling
 from src.services.execution.agent_helpers import (
+    agent_mcp_granted,
+    agent_workflow_granted,
     caller_can_access_workflow_tool,
     find_delegated_agent,
     parse_mcp_tool_name,
@@ -240,6 +242,7 @@ class AgentExecutor:
         attachment_ids: list[UUID] | None = None,
         model_profile_id: UUID | None = None,
         user_message_id: UUID | None = None,
+        agent_run_id: UUID | None = None,
     ) -> AsyncIterator[ChatStreamChunk]:
         """
         Process a user message and generate a response.
@@ -263,6 +266,7 @@ class AgentExecutor:
         from src.services.agent_router import AgentRouter
 
         start_time = time.time()
+        self._agent_run_id = agent_run_id
         self._knowledge_search_budget.reset()
         router = AgentRouter(
             self._session_factory,
@@ -1363,9 +1367,16 @@ class AgentExecutor:
         # would otherwise fall through to "tool not found" for an MCP name.
         mcp_route = parse_mcp_tool_name(tool_call.name)
         if mcp_route is not None:
+            if agent is None or tool_call.name not in self._tool_workflow_id_map:
+                return ToolResult(
+                    tool_call_id=tool_call.id, tool_name=tool_call.name,
+                    result=None, error=f"Unknown tool: {tool_call.name}",
+                    duration_ms=int((time.time() - start_time) * 1000),
+                )
             connection_id, remote_tool_name = mcp_route
             return await self._execute_mcp_tool(
                 tool_call,
+                agent_id=agent.id,
                 connection_id=connection_id,
                 remote_tool_name=remote_tool_name,
                 caller_user_id=caller_user_id,
@@ -1381,25 +1392,13 @@ class AgentExecutor:
             async with self._db() as session:
                 if caller_user_id is not None:
                     user = await session.get(User, caller_user_id)
-                if workflow_id:
-                    result = await session.execute(
-                        select(Workflow).where(Workflow.id == workflow_id)
-                    )
-                else:
-                    # Fallback: try by name (for non-prefixed tools or edge cases)
-                    result = await session.execute(
-                        select(Workflow)
-                        .where(Workflow.name == tool_call.name)
-                        .where(Workflow.type == "tool")
-                        .where(Workflow.is_active.is_(True))
-                    )
-                workflow = result.scalar_one_or_none()
+                workflow = await session.get(Workflow, workflow_id) if workflow_id else None
                 if workflow is not None:
                     # Keep ORM access inside the owning async session. Session exit
                     # may expire attributes, and later implicit IO would fail with
                     # MissingGreenlet outside SQLAlchemy's async bridge.
                     resolved_workflow = (str(workflow.id), workflow.name)
-                    if agent is not None:
+                    if agent is not None and await agent_workflow_granted(session, agent.id, workflow.id):
                         can_access = await caller_can_access_workflow_tool(
                             workflow,
                             agent,
@@ -1469,6 +1468,8 @@ class AgentExecutor:
                         if caller
                         else user.is_superuser if user else False
                     ),
+                    agent_id=agent.id if agent else None,
+                    agent_run_id=getattr(self, "_agent_run_id", None),
                 ),
                 execution_id=execution_id,
                 artifact_workspace_id=str(conversation.id) if conversation else None,
@@ -1507,6 +1508,7 @@ class AgentExecutor:
         self,
         tool_call: ToolCallRequest,
         *,
+        agent_id: UUID,
         connection_id: UUID,
         remote_tool_name: str,
         caller_user_id: UUID | None,
@@ -1529,6 +1531,11 @@ class AgentExecutor:
 
         try:
             async with self._db() as session:
+                if not await agent_mcp_granted(session, agent_id, connection_id):
+                    raise ToolDispatchError(
+                        "MCP connection is not granted to this agent",
+                        connection_id=connection_id, tool_name=remote_tool_name,
+                    )
                 result = await session.execute(
                     select(MCPConnection)
                     .where(MCPConnection.id == connection_id)

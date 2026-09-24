@@ -1604,6 +1604,7 @@ class MCPAgentGatewayService:
                 name=self.context.user_name or "MCP User",
                 organization_id=self.context.org_id,
                 is_platform_admin=self.context.is_platform_admin,
+                agent_id=agent.id,
             ),
             execution_id=self._operation_execution_id(
                 agent,

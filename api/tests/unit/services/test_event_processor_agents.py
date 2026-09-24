@@ -39,6 +39,8 @@ def _make_event(
     event.received_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     event.source_ip = "10.0.0.1"
     event.status = "processing"
+    event.authenticated_actor = None
+    event.external_identity_id = None
     return event
 
 
@@ -237,6 +239,7 @@ async def test_queue_agent_run_calls_enqueue():
         assert "event:" in call_kwargs["trigger_source"]
         assert call_kwargs["org_id"] == str(agent.organization_id)
         assert call_kwargs["event_delivery_id"] == str(delivery.id)
+        assert call_kwargs.get("caller_user_id") is None
         assert delivery.agent_run_id == run_id
 
         # Verify input_data includes event data and _event context
@@ -249,6 +252,23 @@ async def test_queue_agent_run_calls_enqueue():
         assert input_data["_event"]["body"] == event.data
         assert input_data["_event"]["headers"] == event.headers
         assert input_data["_event"]["source_ip"] == event.source_ip
+
+
+@pytest.mark.asyncio
+async def test_provider_shaped_generic_event_remains_autonomous():
+    processor = _create_processor()
+    agent = MagicMock()
+    agent.id = uuid.uuid4()
+    agent.organization_id = uuid.uuid4()
+    delivery = _make_delivery(target_type="agent", agent=agent)
+    event = _make_event(data={"authenticated_actor": {"user_id": str(uuid.uuid4())}})
+    mock_enqueue = AsyncMock(return_value=str(uuid.uuid4()))
+    fake_service = _fake_module(
+        "src.services.execution.agent_run_service", enqueue_agent_run=mock_enqueue,
+    )
+    with patch.dict(sys.modules, {"src.services.execution.agent_run_service": fake_service}):
+        await processor._queue_agent_run(delivery, event)
+    assert mock_enqueue.call_args.kwargs.get("caller_user_id") is None
 
 
 @pytest.mark.asyncio

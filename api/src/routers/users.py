@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from src.config import get_settings
 from src.core.auth import CurrentSuperuser
@@ -38,11 +39,88 @@ from src.models.contracts.user_invites import (
     SendInviteRequest,
 )
 from src.models.orm import UserInvite, UserOAuthAccount
+from src.models.orm.external_identities import ExternalIdentity
+from src.models.orm.organizations import Organization
+from shared.models import ExternalIdentityCreateRequest, ExternalIdentityResponse
 from src.core.constants import PROVIDER_ORG_ID
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
+
+
+@router.get("/{user_id}/external-identities", response_model=list[ExternalIdentityResponse])
+async def list_external_identities(
+    user_id: UUID, user: CurrentSuperuser, db: DbSession,
+) -> list[ExternalIdentityResponse]:
+    rows = (await db.execute(
+        select(ExternalIdentity).where(ExternalIdentity.user_id == user_id)
+    )).scalars().all()
+    return [ExternalIdentityResponse.model_validate(row, from_attributes=True) for row in rows]
+
+
+@router.post("/{user_id}/external-identities", response_model=ExternalIdentityResponse, status_code=201)
+async def create_external_identity(
+    user_id: UUID, request: ExternalIdentityCreateRequest,
+    user: CurrentSuperuser, db: DbSession,
+) -> ExternalIdentityResponse:
+    target = await db.get(UserORM, user_id)
+    if target is None or not target.is_active or target.is_system:
+        raise HTTPException(status_code=404, detail="Active user not found")
+    if request.authorized_organization_id is not None:
+        home_org = await db.get(Organization, target.organization_id)
+        granted_org = await db.get(Organization, request.authorized_organization_id)
+        if (
+            home_org is None or not home_org.is_active or not home_org.is_provider
+            or granted_org is None or not granted_org.is_active
+            or granted_org.id == home_org.id
+        ):
+            raise HTTPException(status_code=400, detail="Invalid provider organization grant")
+    identity = ExternalIdentity(
+        user_id=user_id,
+        provider=request.provider,
+        external_scope_id=request.external_scope_id,
+        external_user_id=request.external_user_id,
+        authorized_organization_id=request.authorized_organization_id,
+    )
+    db.add(identity)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="External actor is already linked") from exc
+    await emit_audit(
+        db, "external_identity.create", resource_type="external_identity",
+        resource_id=identity.id,
+        details={
+            "provider": identity.provider,
+            "user_id": str(user_id),
+            "authorized_organization_id": (
+                str(identity.authorized_organization_id)
+                if identity.authorized_organization_id else None
+            ),
+        },
+        strict=True,
+    )
+    await db.commit()
+    return ExternalIdentityResponse.model_validate(identity, from_attributes=True)
+
+
+@router.delete("/{user_id}/external-identities/{identity_id}", status_code=204)
+async def delete_external_identity(
+    user_id: UUID, identity_id: UUID, user: CurrentSuperuser, db: DbSession,
+) -> None:
+    identity = await db.get(ExternalIdentity, identity_id)
+    if identity is None or identity.user_id != user_id:
+        raise HTTPException(status_code=404, detail="External identity not found")
+    await db.delete(identity)
+    await emit_audit(
+        db, "external_identity.delete", resource_type="external_identity",
+        resource_id=identity_id,
+        details={"provider": identity.provider, "user_id": str(user_id)},
+        strict=True,
+    )
+    await db.commit()
 
 
 @router.get(

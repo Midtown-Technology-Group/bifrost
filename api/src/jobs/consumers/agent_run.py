@@ -918,6 +918,7 @@ class AgentRunConsumer(BaseConsumer):
                             attachment_ids=attachment_ids or None,
                             model_profile_id=model_profile_id,
                             user_message_id=persisted_user_message_id,
+                            agent_run_id=UUID(run_id),
                         ):
                             await publish_chat_run_event(
                                 conversation_id=conversation.id,
