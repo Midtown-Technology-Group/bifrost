@@ -30,11 +30,18 @@ def control_key_role(e2e_client, platform_admin, org1_user, org2_user):
     )
     assert assign.status_code == 204, assign.text
     yield role_id
-    # Tear down: the grant must not leak into other modules' fixtures.
-    cleanup = e2e_client.delete(
-        f"/api/roles/{role_id}", headers=platform_admin.headers
-    )
-    assert cleanup.status_code in (200, 204), cleanup.text
+    # Tear down by unassigning users: the grant must not leak into other
+    # modules' fixtures. Role deletion is avoided deliberately — DELETE
+    # /api/roles/{id} currently 500s for roles with assigned users
+    # ("Dependency rule on column 'roles.id' tried to blank-out primary key
+    # column 'user_roles.role_id'"); that pre-existing platform bug is
+    # tracked separately, so teardown uses the assignment-removal endpoint
+    # CodeRabbit's alternative.
+    for uid in (org1_user.user_id, org2_user.user_id):
+        cleanup = e2e_client.delete(
+            f"/api/roles/{role_id}/users/{uid}", headers=platform_admin.headers
+        )
+        assert cleanup.status_code in (200, 204), cleanup.text
 
 
 def _create_device(client, headers, org_id, name):
