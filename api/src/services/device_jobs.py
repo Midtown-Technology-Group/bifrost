@@ -219,7 +219,13 @@ async def claim_next(
 
 async def _locked_job(db: AsyncSession, job_id: UUID) -> DeviceJob:
     result = await db.execute(
-        select(DeviceJob).where(DeviceJob.id == job_id).with_for_update()
+        select(DeviceJob)
+        .where(DeviceJob.id == job_id)
+        .with_for_update()
+        # Callers may have preloaded this identity (ownership pre-check);
+        # refresh from the locked row so fence/status checks never read
+        # stale claim_token/status/log_sequence from the identity map.
+        .execution_options(populate_existing=True)
     )
     job = result.scalar_one_or_none()
     if job is None:
