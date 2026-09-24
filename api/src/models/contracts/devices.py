@@ -76,3 +76,20 @@ class DeviceKeyResponse(BaseModel):
 
     device_id: UUID
     device_key: str
+
+
+class DeviceFreshness(BaseModel):
+    """Reduced device view returned to control-key callers (approved M0
+    delta: Midtown-Technology-Group/bifrost#818 comment 5815371680).
+
+    The workspace must observe pre-accept freshness for transport
+    fail-closed; a control key may read exactly these three fields, and
+    only for devices on its own allow-list. No names, external_ref, or
+    hashes ever leave through this view.
+    """
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    status: str
+    last_seen_at: datetime | None
