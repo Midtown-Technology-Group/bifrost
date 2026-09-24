@@ -100,7 +100,15 @@ async def get_control_key_scoped(
     db: AsyncSession,
     user: UserPrincipal,
     key_id: UUID,
+    *,
+    with_lock: bool = False,
 ) -> DeviceControlKey:
+    """Load one control key under the caller's org scope.
+
+    ``with_lock=True`` takes a row lock (``SELECT ... FOR UPDATE``) so
+    eligibility checks followed by writes — e.g. rotate's enabled-check then
+    hash update — serialize against a concurrent revoke instead of racing it.
+    """
     filter_type, filter_org_id = resolve_org_filter(user)
     stmt = select(DeviceControlKey).where(DeviceControlKey.id == key_id)
     clause = org_filter_clause(
@@ -108,6 +116,8 @@ async def get_control_key_scoped(
     )
     if clause is not None:
         stmt = stmt.where(clause)
+    if with_lock:
+        stmt = stmt.with_for_update()
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise DeviceOperationError(
@@ -138,7 +148,9 @@ async def rotate_control_key_route(
     user: UserPrincipal,
     key_id: UUID,
 ) -> tuple[DeviceControlKey, str]:
-    row = await get_control_key_scoped(db, user, key_id)
+    # Row lock: serialize against a concurrent revoke so the eligibility
+    # check and the hash update commit atomically w.r.t. it.
+    row = await get_control_key_scoped(db, user, key_id, with_lock=True)
     # Rotation preserves enabled/expiry, so it cannot make an unusable key
     # usable — reject instead of minting a new raw secret that would silently
     # fail at verification (revoked keys must be replaced, not rotated).
