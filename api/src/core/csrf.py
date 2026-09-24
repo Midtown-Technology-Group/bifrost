@@ -106,12 +106,17 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         header_keys_lower = {k.lower() for k in request.headers.keys()}
         has_bearer_auth = "authorization" in header_keys_lower
         has_api_key_auth = "x-bifrost-key" in header_keys_lower
+        # Device-scoped control keys are server-to-server credentials like
+        # X-Bifrost-Key (M0 device control plane): their presence means the
+        # caller authenticated with a header credential, not a cookie, so a
+        # browser-forged request cannot carry a valid one.
+        has_control_key_auth = "x-bifrost-control-key" in header_keys_lower
 
-        # If using Bearer token, API key, or embed token, CSRF is not needed.
+        # If using Bearer token, API key, control key, or embed token, CSRF is not needed.
         # Embed tokens are obtained via HMAC verification and are scoped —
         # they cannot be forged by a CSRF attack since the attacker doesn't
         # have the HMAC secret to obtain a valid embed token.
-        if has_bearer_auth or has_api_key_auth or has_embed_auth:
+        if has_bearer_auth or has_api_key_auth or has_control_key_auth or has_embed_auth:
             return await call_next(request)
 
         # If using cookie auth, CSRF is required

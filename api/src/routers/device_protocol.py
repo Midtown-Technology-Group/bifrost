@@ -23,6 +23,8 @@ from src.models.contracts.device_jobs import (
     DeviceLogBatch,
     DeviceResultRequest,
     DeviceResultResponse,
+    DeviceRunningRequest,
+    DeviceRunningResponse,
 )
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
 from src.models.orm.device_jobs import (
@@ -35,6 +37,7 @@ from src.services.device_jobs import (
     broadcast_job_logs,
     claim_next,
     finish,
+    mark_running as mark_running_svc,
     renew_from_heartbeat,
 )
 from src.services.device_keys import (
@@ -178,6 +181,39 @@ async def claim_route(
         claimed_at=job.claimed_at,
         claim_lease_seconds=CLAIM_LEASE_SECONDS,
     )
+
+
+@router.post(
+    "/jobs/{job_id}/running",
+    response_model=DeviceRunningResponse,
+    summary="Report a real spawn: claimed -> running (fenced)",
+)
+async def running_route(
+    job_id: UUID,
+    body: DeviceRunningRequest,
+    db: DbSession,
+    agent: Device | JSONResponse = Depends(device_agent),
+) -> DeviceRunningResponse | JSONResponse:
+    """Additive route required by feedback #1: the agent may only call this
+    after cmd.Start() succeeded, which is what makes pre-spawn reclaim safe
+    and post-spawn ambiguity `lost` (M0 job lifecycle)."""
+    if isinstance(agent, JSONResponse):
+        return agent
+    await _touch(db, agent)
+    # Ownership pre-check before fence work.
+    owned = await db.get(DeviceJob, job_id)
+    if owned is None or owned.device_id != agent.id:
+        return _envelope(status.HTTP_404_NOT_FOUND, "unknown_job", "job not found")
+    try:
+        job = await mark_running_svc(
+            db,
+            job_id=job_id,
+            claim_token=body.claim_token,
+            agent_session_id=body.agent_session_id,
+        )
+    except DeviceOperationError as exc:
+        return _domain_error(exc)
+    return DeviceRunningResponse(job_id=job.id, status=job.status)
 
 
 @router.post(

@@ -71,15 +71,29 @@ async def user_can_manage_devices(db: AsyncSession, user: UserPrincipal) -> bool
     ``can_manage_config`` role permission (M0 authorization matrix)."""
     if user.is_superuser:
         return True
+    return await _user_has_role_permission(db, user.user_id, "can_manage_config")
+
+
+async def user_can_execute_devices(db: AsyncSession, user: UserPrincipal) -> bool:
+    """Job execution gate: platform superuser bypass or the
+    ``can_execute_devices`` role permission (M0 authorization matrix)."""
+    if user.is_superuser:
+        return True
+    return await _user_has_role_permission(db, user.user_id, "can_execute_devices")
+
+
+async def _user_has_role_permission(
+    db: AsyncSession, user_id: UUID, permission: str
+) -> bool:
     from src.models.orm.users import Role, UserRole
 
     result = await db.execute(
         select(Role.permissions)
         .join(UserRole, UserRole.role_id == Role.id)
-        .where(UserRole.user_id == user.user_id)
+        .where(UserRole.user_id == user_id)
     )
     for permissions in result.scalars().all():
-        if permissions and permissions.get("can_manage_config"):
+        if permissions and permissions.get(permission):
             return True
     return False
 
@@ -90,6 +104,17 @@ async def require_device_manage_permission(db: AsyncSession, user: UserPrincipal
             status.HTTP_403_FORBIDDEN,
             "permission_denied",
             "can_manage_config permission required for device registry operations",
+        )
+
+
+async def require_device_execute_permission(
+    db: AsyncSession, user: UserPrincipal
+) -> None:
+    if not await user_can_execute_devices(db, user):
+        raise DeviceOperationError(
+            status.HTTP_403_FORBIDDEN,
+            "permission_denied",
+            "can_execute_devices permission required for device job operations",
         )
 
 
@@ -162,6 +187,28 @@ async def get_device_scoped(
     clause = org_filter_clause(Device.organization_id, filter_type, filter_org_id)
     if clause is not None:
         stmt = stmt.where(clause)
+    device = (await db.execute(stmt)).scalar_one_or_none()
+    if device is None:
+        raise DeviceOperationError(
+            status.HTTP_404_NOT_FOUND, "unknown_device", "device not found"
+        )
+    return device
+
+
+async def get_device_for_org(
+    db: AsyncSession,
+    device_id: UUID,
+    organization_id: UUID,
+) -> Device:
+    """Exact-org device lookup (control-key path: the key's organization)."""
+    from src.core.org_filter import OrgFilterType
+
+    stmt = select(Device).where(Device.id == device_id)
+    stmt = stmt.where(
+        org_filter_clause(
+            Device.organization_id, OrgFilterType.ORG_ONLY, organization_id
+        )
+    )
     device = (await db.execute(stmt)).scalar_one_or_none()
     if device is None:
         raise DeviceOperationError(

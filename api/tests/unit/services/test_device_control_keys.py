@@ -21,10 +21,11 @@ from src.services.device_control_keys import (
     create_control_key,
     get_control_key_scoped,
     list_control_keys_stmt,
+    resolve_control_key,
     revoke_control_key_route,
     rotate_control_key_route,
 )
-from src.services.device_keys import verify_key_hash
+from src.services.device_keys import generate_control_key, verify_key_hash
 from src.services.devices import DeviceOperationError
 
 
@@ -238,3 +239,84 @@ class TestListStatement:
         user = make_user(is_superuser=True, org_id=None)
         rendered = str(list_control_keys_stmt(user))
         assert "WHERE" not in rendered
+
+
+class TestResolveControlKey:
+    """Header-auth resolution for X-Bifrost-Control-Key (M2.4 #836)."""
+
+    @staticmethod
+    def _row(key_id, *, enabled=True, expires_at=None, key_hash=None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            id=key_id, organization_id=uuid4(), enabled=enabled,
+            expires_at=expires_at, key_hash=key_hash, device_ids=[uuid4()],
+        )
+
+    async def test_valid_key_resolves(self):
+        key_id, raw, hashed = generate_control_key()
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=self._row(key_id, key_hash=hashed))
+        row = await resolve_control_key(session, raw)
+        assert row.id == key_id
+
+    async def test_malformed_key_401(self):
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=None)
+        with pytest.raises(DeviceOperationError) as exc:
+            await resolve_control_key(session, "not-a-key")
+        assert exc.value.code == "invalid_key"
+        assert exc.value.status_code == 401
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await resolve_control_key(
+                session, f"bfck_{uuid4()}_{ 'a' * 43 }"
+            )
+        assert exc.value.code == "invalid_key"
+        session.get.assert_awaited()  # well-formed: row lookup attempted
+
+    async def test_unknown_key_401_no_oracle(self):
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=None)
+        _key_id, raw, _hashed = generate_control_key()
+        with pytest.raises(DeviceOperationError) as exc:
+            await resolve_control_key(session, raw)
+        assert exc.value.code == "invalid_key"
+
+    async def test_revoked_key_401(self):
+        key_id, raw, hashed = generate_control_key()
+        session = AsyncMock()
+        session.get = AsyncMock(
+            return_value=self._row(key_id, enabled=False, key_hash=hashed)
+        )
+        with pytest.raises(DeviceOperationError) as exc:
+            await resolve_control_key(session, raw)
+        assert exc.value.code == "invalid_key"
+
+    async def test_expired_key_401(self):
+        from datetime import datetime, timedelta, timezone
+
+        key_id, raw, hashed = generate_control_key()
+        session = AsyncMock()
+        session.get = AsyncMock(
+            return_value=self._row(
+                key_id,
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                key_hash=hashed,
+            )
+        )
+        with pytest.raises(DeviceOperationError) as exc:
+            await resolve_control_key(session, raw)
+        assert exc.value.code == "invalid_key"
+
+    async def test_wrong_secret_401(self):
+        key_id, _raw, hashed = generate_control_key()
+        other_id, other_raw, _other_hash = generate_control_key()
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=self._row(key_id, key_hash=hashed))
+        # Well-formed key for a DIFFERENT row id would 404-fetch → unknown;
+        # same-row wrong secret: rebuild raw with this row id + other secret.
+        forged = f"bfck_{key_id}_{other_raw.rsplit('_', 1)[1]}"
+        with pytest.raises(DeviceOperationError) as exc:
+            await resolve_control_key(session, forged)
+        assert exc.value.code == "invalid_key"
