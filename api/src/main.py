@@ -53,6 +53,7 @@ from src.routers import (
     platform_jobs_router,
     scheduler_diagnostics_router,
     devices_router,
+    device_control_keys_router,
     oauth_connections_router,
     endpoints_router,
     cli_router,
@@ -587,6 +588,7 @@ def create_app() -> FastAPI:
     app.include_router(platform_jobs_router)
     app.include_router(scheduler_diagnostics_router)
     app.include_router(devices_router)
+    app.include_router(device_control_keys_router)
     app.include_router(oauth_connections_router)
     app.include_router(endpoints_router)
     app.include_router(cli_router)

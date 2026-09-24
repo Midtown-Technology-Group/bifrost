@@ -157,6 +157,11 @@
 | PUT | `/api/decorator-properties` |
 | POST | `/api/dependencies/availability` |
 | GET | `/api/dependencies/{entity_type}/{entity_id}` |
+| GET | `/api/device-control-keys` |
+| POST | `/api/device-control-keys` |
+| GET | `/api/device-control-keys/{key_id}` |
+| POST | `/api/device-control-keys/{key_id}/revoke` |
+| POST | `/api/device-control-keys/{key_id}/rotate` |
 | GET | `/api/devices` |
 | POST | `/api/devices` |
 | POST | `/api/devices/enroll` |
