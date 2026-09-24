@@ -78,11 +78,15 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
     tenant_id = str(data.get("tenant_id") or "").strip()
     teams_conversation_id = str(data.get("conversation_id") or "").strip()
     sender = data.get("sender") or {}
-    aad_object_id = str(sender.get("aadObjectId") or "").strip() if isinstance(sender, dict) else ""
+    aad_object_id = (
+        str(sender.get("aadObjectId") or "").strip() if isinstance(sender, dict) else ""
+    )
     activity = data.get("activity") or {}
     content = _message_text(activity) if isinstance(activity, dict) else ""
     if not all((tenant_id, teams_conversation_id, aad_object_id, content)):
-        raise HTTPException(400, "Teams message is missing identity, conversation, or text")
+        raise HTTPException(
+            400, "Teams message is missing identity, conversation, or text"
+        )
 
     integration = await db.scalar(
         select(Integration).where(
@@ -118,7 +122,9 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
         or not user.is_verified
         or user.organization_id != mapped_orgs[0]
     ):
-        raise HTTPException(403, "Teams sender has no linked Bifrost user in this organization")
+        raise HTTPException(
+            403, "Teams sender has no linked Bifrost user in this organization"
+        )
 
     config = await IntegrationsRepository(db).get_integration_defaults(
         integration.id, external=False
@@ -149,6 +155,8 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
         role_ids=[role_id for role_id, _ in roles],
         role_names=[name for _, name in roles],
     )
+    linked_user_id = user.id
+    linked_org_id = user.organization_id
     conversation_id = uuid5(
         NAMESPACE_URL, f"bifrost-teams:{tenant_id}:{teams_conversation_id}:{user.id}"
     )
@@ -157,13 +165,19 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
         "teams_conversation_id": teams_conversation_id,
         "aad_object_id": aad_object_id,
     }
-    existing = await db.get(Conversation, conversation_id)
-    if existing is not None and (
-        existing.user_id != user.id
-        or existing.channel != "teams"
-        or existing.extra_data != metadata
-    ):
-        raise HTTPException(409, "Teams conversation binding differs from the stored chat")
+
+    async def validate_binding() -> None:
+        existing = await db.get(Conversation, conversation_id)
+        if existing is not None and (
+            existing.user_id != linked_user_id
+            or existing.channel != "teams"
+            or existing.extra_data != metadata
+        ):
+            raise HTTPException(
+                409, "Teams conversation binding differs from the stored chat"
+            )
+
+    await validate_binding()
 
     request = ChatRunCreateRequest(
         conversation_id=conversation_id,
@@ -178,14 +192,15 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
     except IntegrityError:
         # Two first messages may race to create the same Teams conversation.
         await db.rollback()
+        await validate_binding()
         submitted = await create_chat_run(
             db, principal, request, channel="teams", conversation_extra_data=metadata
         )
     return {
         "run_id": str(submitted.run_id),
         "conversation_id": str(submitted.conversation.id),
-        "organization_id": str(user.organization_id),
-        "caller_user_id": str(user.id),
+        "organization_id": str(linked_org_id),
+        "caller_user_id": str(linked_user_id),
         "status": submitted.status,
         "idempotent": submitted.idempotent,
     }
