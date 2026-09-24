@@ -19,6 +19,19 @@ if TYPE_CHECKING:
 ConfigItemType = Literal["string", "int", "bool", "json", "secret"]
 
 
+# ==================== SHARED FIELD DESCRIPTIONS ====================
+
+INTEGRATION_NAME_DESCRIPTION = "Integration name"
+INTEGRATION_DESCRIPTION_DESCRIPTION = (
+    "Optional integration description for admin UI cards"
+)
+GLOBAL_ENTITY_ID_DESCRIPTION = "Global entity ID for token URL templating"
+GLOBAL_ENTITY_ID_DISPLAY_NAME_DESCRIPTION = "Display name for the global entity ID"
+EXTERNAL_ENTITY_DISPLAY_NAME_DESCRIPTION = "Display name for the external entity"
+CREATED_AT_DESCRIPTION = "Creation timestamp"
+UPDATED_AT_DESCRIPTION = "Last update timestamp"
+
+
 # ==================== CONFIG SCHEMA MODELS ====================
 
 
@@ -75,7 +88,7 @@ class IntegrationCreate(BaseModel):
     description: str | None = Field(
         default=None,
         max_length=2000,
-        description="Optional integration description for admin UI cards",
+        description=INTEGRATION_DESCRIPTION_DESCRIPTION,
     )
     config_schema: list[ConfigSchemaItem] | None = Field(
         default=None,
@@ -109,12 +122,12 @@ class IntegrationUpdate(BaseModel):
         default=None,
         min_length=1,
         max_length=255,
-        description="Integration name",
+        description=INTEGRATION_NAME_DESCRIPTION,
     )
     description: str | None = Field(
         default=None,
         max_length=2000,
-        description="Optional integration description for admin UI cards",
+        description=INTEGRATION_DESCRIPTION_DESCRIPTION,
     )
     list_entities_data_provider_id: UUID | None = Field(
         default=None,
@@ -128,12 +141,12 @@ class IntegrationUpdate(BaseModel):
         default=None,
         min_length=1,
         max_length=255,
-        description="Global entity ID for token URL templating",
+        description=GLOBAL_ENTITY_ID_DESCRIPTION,
     )
     entity_id_name: str | None = Field(
         default=None,
         max_length=255,
-        description="Display name for the global entity ID",
+        description=GLOBAL_ENTITY_ID_DISPLAY_NAME_DESCRIPTION,
     )
     default_entity_id: str | None = Field(
         default=None,
@@ -168,7 +181,7 @@ class IntegrationMappingCreate(BaseModel):
     entity_name: str | None = Field(
         default=None,
         max_length=255,
-        description="Display name for the external entity",
+        description=EXTERNAL_ENTITY_DISPLAY_NAME_DESCRIPTION,
     )
     oauth_token_id: UUID | None = Field(
         default=None,
@@ -194,7 +207,7 @@ class IntegrationMappingUpdate(BaseModel):
     entity_name: str | None = Field(
         default=None,
         max_length=255,
-        description="Display name for the external entity",
+        description=EXTERNAL_ENTITY_DISPLAY_NAME_DESCRIPTION,
     )
     oauth_token_id: UUID | None = Field(
         default=None,
@@ -221,7 +234,7 @@ class IntegrationMappingBatchItem(BaseModel):
     entity_name: str | None = Field(
         default=None,
         max_length=255,
-        description="Display name for the external entity",
+        description=EXTERNAL_ENTITY_DISPLAY_NAME_DESCRIPTION,
     )
 
 
@@ -284,10 +297,10 @@ class IntegrationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(..., description="Integration ID")
-    name: str = Field(..., description="Integration name")
+    name: str = Field(..., description=INTEGRATION_NAME_DESCRIPTION)
     description: str | None = Field(
         default=None,
-        description="Optional integration description for admin UI cards",
+        description=INTEGRATION_DESCRIPTION_DESCRIPTION,
     )
     list_entities_data_provider_id: UUID | None = Field(
         default=None,
@@ -299,11 +312,11 @@ class IntegrationResponse(BaseModel):
     )
     entity_id: str | None = Field(
         default=None,
-        description="Global entity ID for token URL templating",
+        description=GLOBAL_ENTITY_ID_DESCRIPTION,
     )
     entity_id_name: str | None = Field(
         default=None,
-        description="Display name for the global entity ID",
+        description=GLOBAL_ENTITY_ID_DISPLAY_NAME_DESCRIPTION,
     )
     default_entity_id: str | None = Field(
         default=None,
@@ -352,8 +365,8 @@ class IntegrationResponse(BaseModel):
             "that were omitted from the response"
         ),
     )
-    created_at: datetime = Field(..., description="Creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    created_at: datetime = Field(..., description=CREATED_AT_DESCRIPTION)
+    updated_at: datetime = Field(..., description=UPDATED_AT_DESCRIPTION)
 
 
 class IntegrationMappingResponse(BaseModel):
@@ -373,7 +386,7 @@ class IntegrationMappingResponse(BaseModel):
     entity_id: str = Field(..., description="External entity ID")
     entity_name: str | None = Field(
         default=None,
-        description="Display name for the external entity",
+        description=EXTERNAL_ENTITY_DISPLAY_NAME_DESCRIPTION,
     )
     oauth_token_id: UUID | None = Field(
         default=None,
@@ -399,8 +412,8 @@ class IntegrationMappingResponse(BaseModel):
         default=None,
         description="When the per-mapping OAuth token expires; None if no per-row token",
     )
-    created_at: datetime = Field(..., description="Creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    created_at: datetime = Field(..., description=CREATED_AT_DESCRIPTION)
+    updated_at: datetime = Field(..., description=UPDATED_AT_DESCRIPTION)
 
 
 class IntegrationListResponse(BaseModel):
@@ -473,10 +486,10 @@ class IntegrationDetailResponse(BaseModel):
 
     # Core integration fields
     id: UUID = Field(..., description="Integration ID")
-    name: str = Field(..., description="Integration name")
+    name: str = Field(..., description=INTEGRATION_NAME_DESCRIPTION)
     description: str | None = Field(
         default=None,
-        description="Optional integration description for admin UI cards",
+        description=INTEGRATION_DESCRIPTION_DESCRIPTION,
     )
     list_entities_data_provider_id: UUID | None = Field(
         default=None,
@@ -492,11 +505,11 @@ class IntegrationDetailResponse(BaseModel):
     )
     entity_id: str | None = Field(
         default=None,
-        description="Global entity ID for token URL templating",
+        description=GLOBAL_ENTITY_ID_DESCRIPTION,
     )
     entity_id_name: str | None = Field(
         default=None,
-        description="Display name for the global entity ID",
+        description=GLOBAL_ENTITY_ID_DISPLAY_NAME_DESCRIPTION,
     )
     default_entity_id: str | None = Field(
         default=None,
@@ -545,8 +558,8 @@ class IntegrationDetailResponse(BaseModel):
             "that were omitted from the response"
         ),
     )
-    created_at: datetime = Field(..., description="Creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    created_at: datetime = Field(..., description=CREATED_AT_DESCRIPTION)
+    updated_at: datetime = Field(..., description=UPDATED_AT_DESCRIPTION)
 
     # Nested data
     mappings: list["IntegrationMappingResponse"] = Field(
