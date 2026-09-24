@@ -38,6 +38,9 @@
 | PUT | `/api/admin/required-instructions/organizations/{organization_id}` |
 | GET | `/api/admin/roi/settings` |
 | POST | `/api/admin/roi/settings` |
+| GET | `/api/agent-action-approvals` |
+| POST | `/api/agent-action-approvals/{approval_id}/approve` |
+| POST | `/api/agent-action-approvals/{approval_id}/deny` |
 | GET | `/api/agent-runs` |
 | GET | `/api/agent-runs/backfill-eligible` |
 | GET | `/api/agent-runs/backfill-jobs` |
@@ -597,6 +600,9 @@
 | DELETE | `/api/users/{user_id}` |
 | GET | `/api/users/{user_id}` |
 | PATCH | `/api/users/{user_id}` |
+| GET | `/api/users/{user_id}/external-identities` |
+| POST | `/api/users/{user_id}/external-identities` |
+| DELETE | `/api/users/{user_id}/external-identities/{identity_id}` |
 | GET | `/api/users/{user_id}/forms` |
 | DELETE | `/api/users/{user_id}/invite` |
 | POST | `/api/users/{user_id}/invite/regenerate` |
