@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query, status
 from starlette.responses import JSONResponse
 
 from src.core.auth import Context, CurrentUser
+from src.core.db_deps import DbSession
 from src.models.contracts.devices import (
     DeviceCreate,
     DeviceCreateResponse,
@@ -78,10 +79,13 @@ async def create_device_route(
 )
 async def enroll_device_route(
     body: DeviceEnrollRequest,
-    ctx: Context,
+    db: DbSession,
 ) -> DeviceEnrollResponse | JSONResponse:
+    # Deliberately NO Context/CurrentUser dependency: enrollment authenticates
+    # with the one-time token only (M0: no user session; CSRF-exempt path).
+    # `Context` embeds ExecutionContext.user and would 401 anonymous agents.
     try:
-        device, raw_key = await enroll_device(ctx.db, body.enrollment_token)
+        device, raw_key = await enroll_device(db, body.enrollment_token)
     except DeviceOperationError as exc:
         return exc.to_response()
     return DeviceEnrollResponse(

@@ -35,6 +35,15 @@ def device_manager_role(e2e_client, platform_admin, org1_user, org2_user):
     yield role_id
 
 
+def _anon_client():
+    """Cookie-less client: enroll must work with no user session (M0)."""
+    import httpx
+
+    from tests.e2e.fixtures.setup import API_BASE_URL
+
+    return httpx.Client(base_url=API_BASE_URL)
+
+
 def _create_device(client, headers, org_id, name="e2e-device", **extra):
     body = {"display_name": name, "organization_id": str(org_id), **extra}
     response = client.post("/api/devices", headers=headers, json=body)
@@ -56,9 +65,10 @@ def test_full_lifecycle(e2e_client, platform_admin, org1, org1_user, device_mana
     assert "api_key_hash" not in created["device"]
 
     # Enroll with no user session at all (token auth + CSRF-exempt path).
-    enroll = e2e_client.post(
-        "/api/devices/enroll", json={"enrollment_token": token}
-    )
+    with _anon_client() as anon:
+        enroll = anon.post(
+            "/api/devices/enroll", json={"enrollment_token": token}
+        )
     assert enroll.status_code == 200, enroll.text
     enrolled = enroll.json()
     assert enrolled["status"] == "active"
@@ -66,9 +76,10 @@ def test_full_lifecycle(e2e_client, platform_admin, org1, org1_user, device_mana
     assert enrolled["device_id"] == device_id
 
     # Single-use: the same token cannot enroll twice.
-    reused = e2e_client.post(
-        "/api/devices/enroll", json={"enrollment_token": token}
-    )
+    with _anon_client() as anon:
+        reused = anon.post(
+            "/api/devices/enroll", json={"enrollment_token": token}
+        )
     assert reused.status_code == 401
     assert reused.json()["error"]["code"] == "enrollment_token_consumed"
 
@@ -119,9 +130,10 @@ def test_disabled_device_cannot_enroll(
     )
     assert disabled.status_code == 200
 
-    enroll = e2e_client.post(
-        "/api/devices/enroll", json={"enrollment_token": token}
-    )
+    with _anon_client() as anon:
+        enroll = anon.post(
+            "/api/devices/enroll", json={"enrollment_token": token}
+        )
     assert enroll.status_code == 403
     assert enroll.json()["error"]["code"] == "device_disabled"
 
@@ -192,8 +204,9 @@ def test_create_requires_auth(e2e_client, org1):
 
 
 def test_enroll_rejects_garbage_token(e2e_client):
-    response = e2e_client.post(
-        "/api/devices/enroll", json={"enrollment_token": "bfen_not-a-uuid_short"}
-    )
+    with _anon_client() as anon:
+        response = anon.post(
+            "/api/devices/enroll", json={"enrollment_token": "bfen_not-a-uuid_short"}
+        )
     # Fails pydantic pattern validation (422) or domain validation (401).
     assert response.status_code in (401, 422)
