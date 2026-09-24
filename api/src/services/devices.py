@@ -93,7 +93,7 @@ async def require_device_manage_permission(db: AsyncSession, user: UserPrincipal
         )
 
 
-def _resolve_device_org_id(user: UserPrincipal, requested: UUID | None) -> UUID:
+def resolve_target_org(user: UserPrincipal, requested: UUID | None) -> UUID:
     if user.is_superuser:
         if requested is None:
             if user.organization_id is not None:
@@ -129,7 +129,7 @@ async def create_device(
     Returns (device, raw_enrollment_token, expires_at). The raw token is
     shown exactly once and never stored.
     """
-    organization_id = _resolve_device_org_id(user, body.organization_id)
+    organization_id = resolve_target_org(user, body.organization_id)
 
     device_id = uuid4()
     raw_token, token_hash = generate_enrollment_token(device_id)
