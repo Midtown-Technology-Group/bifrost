@@ -26,6 +26,8 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.org_filter import org_filter_clause, resolve_org_filter
+from src.core.principal import UserPrincipal
 from src.core.pubsub import manager as pubsub_manager
 from src.models.orm.device_job_logs import DeviceJobLog
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
@@ -33,6 +35,7 @@ from src.models.orm.device_jobs import (
     ACTIVE_JOB_STATUSES,
     AGENT_TERMINAL_STATUSES,
     CLAIM_LEASE_SECONDS,
+    JOB_STATUS_CANCELLED,
     JOB_STATUS_CLAIMED,
     JOB_STATUS_LOST,
     JOB_STATUS_PENDING,
@@ -604,3 +607,163 @@ async def broadcast_job_logs(job_id: UUID, entries: list[dict]) -> None:
             "entries": entries,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# User/workspace observation + cooperative cancel (M2.4 #836)
+# ---------------------------------------------------------------------------
+
+
+async def get_job_scoped(
+    db: AsyncSession,
+    user: UserPrincipal,
+    job_id: UUID,
+) -> DeviceJob:
+    """Load one job under the caller's resolved org scope (no inline org
+    comparisons in routers — the clause is built here from the helper)."""
+    filter_type, filter_org_id = resolve_org_filter(user)
+    stmt = select(DeviceJob).where(DeviceJob.id == job_id)
+    clause = org_filter_clause(DeviceJob.organization_id, filter_type, filter_org_id)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    job = (await db.execute(stmt)).scalar_one_or_none()
+    if job is None:
+        raise DeviceOperationError(
+            status.HTTP_404_NOT_FOUND, "unknown_job", "job not found"
+        )
+    return job
+
+
+def list_jobs_stmt(
+    user: UserPrincipal,
+    device_id: UUID | None = None,
+    scope: str | None = None,
+):
+    """Org-scoped (optionally device-filtered) job history statement."""
+    filter_type, filter_org_id = resolve_org_filter(user, scope)
+    stmt = select(DeviceJob)
+    clause = org_filter_clause(DeviceJob.organization_id, filter_type, filter_org_id)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    if device_id is not None:
+        stmt = stmt.where(DeviceJob.device_id == device_id)
+    return stmt.order_by(DeviceJob.created_at.desc())
+
+
+async def list_job_logs(
+    db: AsyncSession,
+    job_id: UUID,
+    *,
+    after_seq: int = 0,
+    limit: int = 5000,
+) -> list[DeviceJobLog]:
+    result = await db.execute(
+        select(DeviceJobLog)
+        .where(DeviceJobLog.job_id == job_id, DeviceJobLog.seq > after_seq)
+        .order_by(DeviceJobLog.seq)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def request_cancel(
+    db: AsyncSession,
+    user: UserPrincipal,
+    job_id: UUID,
+    now: datetime | None = None,
+) -> DeviceJob:
+    """Cooperative cancel (M0 ownership): pending/claimed cancel immediately;
+    running only gets the cancel flag (agent observes via heartbeat); the
+    platform never guarantees a process kill. Idempotent for running jobs.
+    """
+    current = now if now is not None else datetime.now(timezone.utc)
+    job = await get_job_scoped(db, user, job_id)
+
+    if job.status in TERMINAL_JOB_STATUSES:
+        raise DeviceOperationError(
+            status.HTTP_409_CONFLICT,
+            "job_terminal",
+            "job is already terminal",
+        )
+    if job.status == JOB_STATUS_RUNNING:
+        if job.cancel_requested_at is None:
+            job.cancel_requested_at = current
+            await db.commit()
+            await db.refresh(job)
+        return job
+
+    # pending / claimed: no side effect started — terminal immediately.
+    job.status = JOB_STATUS_CANCELLED
+    job.cancel_requested_at = job.cancel_requested_at or current
+    job.error = job.error or "cancelled before running"
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+async def validate_workflow_attribution(
+    db: AsyncSession,
+    organization_id: UUID,
+    workflow_id: UUID | None,
+    execution_id: UUID | None,
+) -> None:
+    """Caller-asserted attribution must resolve inside the target org (M0)."""
+    from src.core.org_filter import OrgFilterType
+    from src.models.orm.executions import Execution
+    from src.models.orm.workflows import Workflow
+
+    if workflow_id is not None:
+        stmt = select(Workflow.id).where(Workflow.id == workflow_id)
+        stmt = stmt.where(
+            org_filter_clause(
+                Workflow.organization_id, OrgFilterType.ORG_ONLY, organization_id
+            )
+        )
+        if (await db.execute(stmt)).scalar_one_or_none() is None:
+            raise DeviceOperationError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_parameter",
+                "workflow_id does not exist in the target organization",
+            )
+    if execution_id is not None:
+        stmt = select(Execution.id).where(Execution.id == execution_id)
+        stmt = stmt.where(
+            org_filter_clause(
+                Execution.organization_id, OrgFilterType.ORG_ONLY, organization_id
+            )
+        )
+        if (await db.execute(stmt)).scalar_one_or_none() is None:
+            raise DeviceOperationError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_parameter",
+                "execution_id does not exist in the target organization",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Control-key read path (M0 matrix: a key reads only jobs it created)
+# ---------------------------------------------------------------------------
+
+
+def list_jobs_for_control_key_stmt(key, device_id: UUID | None = None):
+    stmt = select(DeviceJob).where(
+        DeviceJob.organization_id == key.organization_id,
+        DeviceJob.requested_by_api_key_id == key.id,
+    )
+    if device_id is not None:
+        stmt = stmt.where(DeviceJob.device_id == device_id)
+    return stmt.order_by(DeviceJob.created_at.desc())
+
+
+async def get_job_for_control_key(db: AsyncSession, key, job_id: UUID) -> DeviceJob:
+    stmt = select(DeviceJob).where(
+        DeviceJob.id == job_id,
+        DeviceJob.organization_id == key.organization_id,
+        DeviceJob.requested_by_api_key_id == key.id,
+    )
+    job = (await db.execute(stmt)).scalar_one_or_none()
+    if job is None:
+        raise DeviceOperationError(
+            status.HTTP_404_NOT_FOUND, "unknown_job", "job not found"
+        )
+    return job

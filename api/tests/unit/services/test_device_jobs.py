@@ -8,6 +8,7 @@ and the running-loss watchdog that writes terminal `lost` without re-queue.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, DEVICE_STATUS_DISABLED, Device
 from src.models.orm.device_jobs import (
     CLAIM_LEASE_SECONDS,
+    JOB_STATUS_CANCELLED,
     JOB_STATUS_CLAIMED,
     JOB_STATUS_LOST,
     JOB_STATUS_PENDING,
@@ -33,10 +35,15 @@ from src.services.device_jobs import (
     claim_next,
     create_device_job,
     finish,
+    get_job_for_control_key,
+    list_jobs_for_control_key_stmt,
+    list_jobs_stmt,
     mark_running,
     record_activity,
     renew_from_heartbeat,
+    request_cancel,
     sweep_device_jobs,
+    validate_workflow_attribution,
 )
 from src.services.devices import DeviceOperationError
 
@@ -700,6 +707,136 @@ class TestRenewFromHeartbeat:
             session, device_id=uuid4(), agent_session_id=uuid4(), now=NOW
         )
         assert got is None
+
+
+class TestCancel:
+    async def test_pending_cancels_immediately(self):
+        from src.core.principal import UserPrincipal
+
+        session = _session()
+        job = _job(status=JOB_STATUS_PENDING)
+        session.execute.return_value = _result(scalar=job)
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com",
+            organization_id=job.organization_id, name="U",
+        )
+        got = await request_cancel(session, user, job.id, now=NOW)
+        assert got.status == JOB_STATUS_CANCELLED
+        assert got.cancel_requested_at == NOW
+        assert got.error == "cancelled before running"
+
+    async def test_running_only_gets_flag_and_is_idempotent(self):
+        from src.core.principal import UserPrincipal
+
+        session = _session()
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=uuid4(), name="U",
+        )
+        job = _job(status=JOB_STATUS_RUNNING)
+        session.execute.return_value = _result(scalar=job)
+        first = await request_cancel(session, user, job.id, now=NOW)
+        assert first.status == JOB_STATUS_RUNNING
+        assert first.cancel_requested_at == NOW
+
+        second_now = NOW + timedelta(seconds=5)
+        again = await request_cancel(session, user, job.id, now=second_now)
+        assert again.status == JOB_STATUS_RUNNING
+        # Idempotent: the flag keeps the first observation.
+        assert again.cancel_requested_at == NOW
+
+    async def test_terminal_job_rejected(self):
+        from src.core.principal import UserPrincipal
+
+        session = _session()
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=uuid4(), name="U",
+        )
+        job = _job(status=JOB_STATUS_SUCCEEDED)
+        session.execute.return_value = _result(scalar=job)
+        with pytest.raises(DeviceOperationError) as exc:
+            await request_cancel(session, user, job.id, now=NOW)
+        assert exc.value.code == "job_terminal"
+        assert exc.value.status_code == 409
+
+    async def test_cross_org_job_is_404(self):
+        from src.core.principal import UserPrincipal
+
+        session = _session()
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=uuid4(), name="U",
+        )
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute.return_value = result
+        with pytest.raises(DeviceOperationError) as exc:
+            await request_cancel(session, user, uuid4(), now=NOW)
+        assert exc.value.code == "unknown_job"
+
+
+class TestScopedReads:
+    def test_job_list_scopes_org_and_device(self):
+        from src.core.principal import UserPrincipal
+
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=uuid4(), name="U",
+        )
+        rendered = str(list_jobs_stmt(user, device_id=uuid4()))
+        assert "device_jobs.organization_id = " in rendered
+        assert "device_jobs.device_id = " in rendered
+        assert "ORDER BY device_jobs.created_at DESC" in rendered
+
+    def test_superuser_unscoped_job_list(self):
+        from src.core.principal import UserPrincipal
+
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=None,
+            name="U", is_superuser=True,
+        )
+        rendered = str(list_jobs_stmt(user))
+        assert "WHERE" not in rendered
+
+    def test_control_key_read_is_limited_to_its_own_jobs(self):
+        key = SimpleNamespace(id=uuid4(), organization_id=uuid4())
+        rendered = str(list_jobs_for_control_key_stmt(key, device_id=uuid4()))
+        assert "requested_by_api_key_id" in rendered
+        assert "device_jobs.organization_id" in rendered
+
+    async def test_control_key_detail_404_for_foreign_job(self):
+        session = _session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute.return_value = result
+        key = SimpleNamespace(id=uuid4(), organization_id=uuid4())
+        with pytest.raises(DeviceOperationError) as exc:
+            await get_job_for_control_key(session, key, uuid4())
+        assert exc.value.code == "unknown_job"
+        assert exc.value.status_code == 404
+
+
+class TestAttributionValidation:
+    async def test_no_ids_skips_lookup(self):
+        session = _session()
+        await validate_workflow_attribution(session, uuid4(), None, None)
+        session.execute.assert_not_awaited()
+
+    async def test_unknown_workflow_rejected(self):
+        session = _session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute.return_value = result
+        with pytest.raises(DeviceOperationError) as exc:
+            await validate_workflow_attribution(session, uuid4(), uuid4(), None)
+        assert exc.value.code == "invalid_parameter"
+        assert exc.value.status_code == 422
+
+    async def test_unknown_execution_rejected(self):
+        session = _session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute.return_value = result
+        with pytest.raises(DeviceOperationError) as exc:
+            await validate_workflow_attribution(session, uuid4(), None, uuid4())
+        assert exc.value.code == "invalid_parameter"
 
 
 class TestBroadcasts:

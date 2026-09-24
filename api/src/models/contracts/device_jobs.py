@@ -74,3 +74,66 @@ class DeviceResultRequest(BaseModel):
 class DeviceResultResponse(BaseModel):
     job_id: UUID
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Device jobs — user/workspace side (M2.4 #836)
+# ---------------------------------------------------------------------------
+
+
+class DeviceJobCreate(BaseModel):
+    """POST /api/devices/{device_id}/jobs body (M0 prose contract)."""
+
+    script_name: str = Field(..., min_length=1, max_length=255)
+    # Byte caps (256 KiB script / 32 KiB params) are enforced in the
+    # service; pydantic bounds guard the cheap cases.
+    script_content: str = Field(..., min_length=1, max_length=1_048_576)
+    params: dict | None = None
+    timeout_seconds: int = Field(default=120, ge=1, le=900)
+    max_output_bytes: int = Field(default=1_048_576, ge=1024, le=16_777_216)
+    # Caller-asserted attribution (validated for org scope when present).
+    workflow_id: UUID | None = None
+    execution_id: UUID | None = None
+
+
+class DeviceJobPublic(BaseModel):
+    """Job list item — never exposes script bodies, params, or fencing
+    secrets (claim_token stays agent-only)."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    organization_id: UUID
+    device_id: UUID
+    status: str
+    script_name: str
+    timeout_seconds: int
+    max_output_bytes: int
+    requested_by_user_id: UUID | None
+    requested_by_api_key_id: UUID | None
+    requested_by_workflow_id: UUID | None
+    requested_by_execution_id: UUID | None
+    claimed_at: datetime | None
+    cancel_requested_at: datetime | None
+    exit_code: int | None
+    error: str | None
+    log_sequence: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeviceJobDetail(DeviceJobPublic):
+    """Full observation view: create-level authz may read body/params/result."""
+
+    script_content: str
+    params: dict | None = None
+    result: str | None = None
+
+
+class DeviceJobLogPublic(BaseModel):
+    model_config = {"from_attributes": True}
+
+    seq: int
+    stream: str
+    text: str
+    ts: datetime | None = None

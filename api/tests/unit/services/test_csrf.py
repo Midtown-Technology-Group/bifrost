@@ -111,6 +111,16 @@ class TestCsrfExemptPrefixes:
     def test_hooks_prefix_present(self):
         assert "/api/hooks/" in CSRF_EXEMPT_PREFIXES
 
+    def test_control_key_header_skips_cookie_csrf(self):
+        """X-Bifrost-Control-Key is a header credential like X-Bifrost-Key;
+        mixed cookie+key callers must not be blocked as CSRF (M2.4 #836)."""
+        import inspect
+
+        from src.core import csrf as csrf_mod
+
+        source = inspect.getsource(csrf_mod.CSRFMiddleware.dispatch)
+        assert "x-bifrost-control-key" in source
+
     def test_device_protocol_prefix_present(self):
         """Agent protocol is X-Bifrost-Key auth; M0 freezes the exemption."""
         assert "/api/device/" in CSRF_EXEMPT_PREFIXES

@@ -21,7 +21,9 @@ from src.models.contracts.device_control_keys import ControlKeyCreate
 from src.models.orm.device_control_keys import DeviceControlKey
 from src.models.orm.devices import Device
 from src.services.device_keys import (
+    CONTROL_KEY_PREFIX,
     generate_control_key,
+    parse_device_key,
     revoke_control_key,
     rotate_control_key,
     validate_control_key_scope,
@@ -188,4 +190,29 @@ async def revoke_control_key_route(
     revoke_control_key(row)
     await db.commit()
     await db.refresh(row)
+    return row
+
+
+async def resolve_control_key(db: AsyncSession, raw: str) -> DeviceControlKey:
+    """Authenticate an X-Bifrost-Control-Key credential.
+
+    Envelopes: malformed/unknown/revoked/expired/wrong-secret keys all fail
+    closed as 401 ``invalid_key`` (M0 registry) — no existence oracle.
+    """
+    from src.services.device_keys import control_key_usable, verify_key_hash
+
+    parsed = parse_device_key(raw)
+    if parsed is None or parsed.prefix != CONTROL_KEY_PREFIX:
+        raise DeviceOperationError(
+            status.HTTP_401_UNAUTHORIZED, "invalid_key", "invalid control key"
+        )
+    row = await db.get(DeviceControlKey, parsed.key_id)
+    if row is None or not control_key_usable(row):
+        raise DeviceOperationError(
+            status.HTTP_401_UNAUTHORIZED, "invalid_key", "invalid control key"
+        )
+    if not verify_key_hash(raw, row.key_hash):
+        raise DeviceOperationError(
+            status.HTTP_401_UNAUTHORIZED, "invalid_key", "invalid control key"
+        )
     return row
