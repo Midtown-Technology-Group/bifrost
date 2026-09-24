@@ -32,10 +32,16 @@ from src.models.contracts.policies import Expr, TablePolicies
 from src.models.contracts.policies import FileAction
 from src.models.orm import Agent
 from src.models.orm.applications import Application
+from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
 from src.models.orm.tables import Table as TableOrm
 from src.services.agent_run_access import load_agent_run_for_user
 from src.services.audit import emit_file_policy_deny, emit_table_policy_deny
 from src.services.audit_context import ActorContext
+from src.services.device_keys import (
+    DEVICE_KEY_PREFIX,
+    parse_device_key,
+    verify_key_hash,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -963,6 +969,33 @@ async def can_access_agent_run(user: UserPrincipal, run_id: str) -> bool:
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
 
+async def get_device_principal_ws(websocket: WebSocket) -> Device | None:
+    """Resolve a device principal from the Authorization header only.
+
+    M0 freeze (feedback #6): device WebSocket auth uses
+    ``Authorization: Bearer <device_key>`` and **never** query credentials
+    (the caller rejects ``?device_key=`` before reaching this helper).
+    Returns the active Device, or None when the credential is absent,
+    malformed, unknown, unverifiable, or the device is not active.
+    """
+    auth = websocket.headers.get("authorization") or ""
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth[7:].strip()
+    parsed = parse_device_key(token)
+    if parsed is None or parsed.prefix != DEVICE_KEY_PREFIX:
+        return None
+    async with get_db_context() as db:
+        device = await db.get(Device, parsed.key_id)
+        if device is None or not device.api_key_enabled:
+            return None
+        if not verify_key_hash(token, device.api_key_hash):
+            return None
+        if device.status != DEVICE_STATUS_ACTIVE:
+            return None
+        return device
+
+
 @router.websocket("/connect")
 async def websocket_connect(
     websocket: WebSocket,
@@ -988,16 +1021,29 @@ async def websocket_connect(
             ...payload
         }
     """
+    # M0 freeze (feedback #6): device credentials are header-only — a
+    # device_key (or any other credential) in the query string is rejected
+    # before any authentication attempt. (getattr: test doubles for this
+    # endpoint may not model query_params; real connections always have it.)
+    if "device_key" in (getattr(websocket, "query_params", None) or {}):
+        await websocket.accept()
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
     # Authenticate via header (query params not supported for security)
     user = await get_current_user_ws(websocket)
-
+    device = None
     if not user:
+        # Device principals are not JWTs: try the Bearer device key.
+        device = await get_device_principal_ws(websocket)
+
+    if not user and device is None:
         # Must accept before closing, otherwise client sees HTTP 403
         await websocket.accept()
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    if user.embed and user.embed_kind == "form":
+    if user is not None and user.embed and user.embed_kind == "form":
         await websocket.accept()
         await websocket.close(code=4003, reason="Form sessions cannot use WebSockets")
         return
@@ -1005,7 +1051,16 @@ async def websocket_connect(
     # Filter channels - users can only subscribe to their own user channel
     # and execution channels (we'll validate execution access separately)
     allowed_channels = []
-    for channel in channels:
+    loop_channels = channels
+    if device is not None:
+        # Device principal: only its own device:{id} channel is grantable
+        # (auto-granted on connect). The user-path loop below has no
+        # device: branch, so foreign/user channels can never be requested
+        # into existence for a device connection.
+        device_channel = f"device:{device.id}"
+        allowed_channels.append(device_channel)
+        loop_channels = []
+    for channel in loop_channels:
         if channel.startswith("user:"):
             # Users can only subscribe to their own notifications
             if channel == f"user:{user.user_id}":
@@ -1115,10 +1170,12 @@ async def websocket_connect(
             if user.is_superuser:
                 allowed_channels.append(channel)
 
-    # Always subscribe to user's own channel
-    user_channel = f"user:{user.user_id}"
-    if user_channel not in allowed_channels:
-        allowed_channels.append(user_channel)
+    # Always subscribe to user's own channel (user principals only — a
+    # device principal never receives user channels)
+    if user is not None:
+        user_channel = f"user:{user.user_id}"
+        if user_channel not in allowed_channels:
+            allowed_channels.append(user_channel)
 
     # Per-connection state for policy-driven table subscriptions.
     # Populated by `_authorize_table_subscribe`; consulted by the dispatcher.
@@ -1127,18 +1184,86 @@ async def websocket_connect(
 
     try:
         await manager.connect(websocket, allowed_channels)
-        logger.info(f"WebSocket connected for user {user.user_id}, channels: {log_safe(allowed_channels)}")
+        if user is not None:
+            logger.info(
+                f"WebSocket connected for user {user.user_id}, "
+                f"channels: {log_safe(allowed_channels)}"
+            )
 
         # Send connection confirmation
-        await websocket.send_json({
-            "type": "connected",
-            "channels": allowed_channels,
-            "userId": str(user.user_id)
-        })
+        if device is not None:
+            websocket.state.device = device
+            await websocket.send_json({
+                "type": "connected",
+                "channels": allowed_channels,
+                "deviceId": str(device.id),
+            })
+            logger.info(
+                f"WebSocket connected for device {log_safe(str(device.id))}, "
+                f"channels: {log_safe(allowed_channels)}"
+            )
+        else:
+            await websocket.send_json({
+                "type": "connected",
+                "channels": allowed_channels,
+                "userId": str(user.user_id)
+            })
 
         # Keep connection alive and handle incoming messages
         while True:
             data = await websocket.receive_json()
+
+            if device is not None:
+                # Device principals speak the frozen device WS protocol:
+                # subscribe/unsubscribe to their own device channel, ping.
+                # Everything else is rejected — no table/file/user surfaces.
+                msg_type = data.get("type")
+                own_channel = f"device:{device.id}"
+                if msg_type == "subscribe":
+                    try:
+                        parsed_specs = _parse_channels(data.get("channels", []))
+                    except WSError as e:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": str(e),
+                        })
+                        continue
+                    for spec in parsed_specs:
+                        if spec.name == own_channel:
+                            manager.connections.setdefault(own_channel, set())
+                            manager.connections[own_channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": spec.name,
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": spec.name,
+                                "message": "Access denied",
+                            })
+                elif msg_type == "unsubscribe":
+                    channel = data.get("channel")
+                    if channel == own_channel and own_channel in manager.connections:
+                        manager.connections[own_channel].discard(websocket)
+                        await websocket.send_json({
+                            "type": "unsubscribed",
+                            "channel": channel,
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "error",
+                            "channel": channel,
+                            "message": "Access denied",
+                        })
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Unsupported message for device principal",
+                    })
+                continue
 
             # Handle subscription changes
             if data.get("type") == "subscribe":
@@ -1154,6 +1279,15 @@ async def websocket_connect(
                 for spec in parsed_specs:
                     channel = spec.name
                     # Validate and add subscription
+                    if channel.startswith("device:"):
+                        # Device channels are device-principal-only (M2.3
+                        # #835): a user JWT is always denied on device:*.
+                        await websocket.send_json({
+                            "type": "error",
+                            "channel": channel,
+                            "message": "Access denied"
+                        })
+                        continue
                     if channel.startswith("execution:"):
                         # Validate execution access before subscribing
                         execution_id = channel.split(":", 1)[1]
@@ -1432,7 +1566,10 @@ async def websocket_connect(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        logger.info(f"WebSocket disconnected for user {user.user_id}")
+        if device is not None:
+            logger.info(f"WebSocket disconnected for device {log_safe(str(device.id))}")
+        else:
+            logger.info(f"WebSocket disconnected for user {user.user_id}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
