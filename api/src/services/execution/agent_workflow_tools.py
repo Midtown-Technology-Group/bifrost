@@ -29,6 +29,7 @@ async def execute_agent_workflow_tool(
     execution_id: str | None = None,
     artifact_workspace_id: str | None = None,
     sync: bool = True,
+    task_requested: bool = False,
 ) -> WorkflowExecutionResponse:
     """Execute a workflow tool with one canonical agent execution context."""
     from src.core.database import get_db_context
@@ -49,12 +50,16 @@ async def execute_agent_workflow_tool(
         ):
             raise ValueError("Workflow tool is not granted to this agent")
         if "approval_required" in (workflow.tags or []):
-            requested_by = None
-            if caller.user_id != SYSTEM_USER_ID:
-                try:
-                    requested_by = UUID(caller.user_id)
-                except ValueError:
-                    pass
+            if task_requested:
+                return WorkflowExecutionResponse(
+                    execution_id="", workflow_id=str(workflow.id),
+                    workflow_name=workflow_name, status=ExecutionStatus.PENDING,
+                    error="Approval-required workflows do not support MCP Tasks",
+                    error_type="approval_task_unsupported",
+                )
+            requested_by = (
+                UUID(caller.user_id) if caller.user_id != SYSTEM_USER_ID else None
+            )
             org_id = UUID(str(caller.organization_id)) if caller.organization_id else None
             proposal = AgentActionApproval(
                 id=uuid4(), agent_id=caller.agent_id,

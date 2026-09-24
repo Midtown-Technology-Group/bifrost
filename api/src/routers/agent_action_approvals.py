@@ -57,13 +57,14 @@ async def list_approvals(
 async def deny_approval(
     approval_id: UUID, user: CurrentSuperuser, db: DbSession
 ) -> AgentActionApprovalResponse:
+    approver_id = UUID(str(user.user_id))
     row = await db.get(AgentActionApproval, approval_id, with_for_update=True)
     if row is None:
         raise HTTPException(status_code=404, detail="Approval not found")
     if row.status != "pending":
         raise HTTPException(status_code=409, detail="Approval is already decided")
     row.status = "denied"
-    row.approved_by_user_id = user.user_id
+    row.approved_by_user_id = approver_id
     row.decided_at = datetime.now(UTC)
     await emit_audit(
         db,
@@ -81,6 +82,7 @@ async def deny_approval(
 async def approve_approval(
     approval_id: UUID, user: CurrentSuperuser, db: DbSession
 ) -> AgentActionApprovalResponse:
+    approver_id = UUID(str(user.user_id))
     row = await db.get(AgentActionApproval, approval_id, with_for_update=True)
     if row is None:
         raise HTTPException(status_code=404, detail="Approval not found")
@@ -88,7 +90,7 @@ async def approve_approval(
         return _response(row)
     if row.status not in {"pending", "approved"}:
         raise HTTPException(status_code=409, detail="Approval is already decided")
-    if row.requested_by_user_id == user.user_id:
+    if row.requested_by_user_id == approver_id:
         raise HTTPException(
             status_code=403, detail="Requester cannot approve their own action"
         )
@@ -157,7 +159,7 @@ async def approve_approval(
 
     if row.status == "pending":
         row.status = "approved"
-        row.approved_by_user_id = user.user_id
+        row.approved_by_user_id = approver_id
         row.decided_at = datetime.now(UTC)
         row.execution_id = uuid4()
         await emit_audit(

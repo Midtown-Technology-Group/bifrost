@@ -1005,6 +1005,36 @@ class EventProcessor:
             else str(agent.organization_id) if agent.organization_id else None
         )
 
+        # A delivery must keep one run identity across uncertain publication
+        # responses and retries, including failures after the run is durable.
+        run_uuid = uuid.uuid5(delivery.id, "agent-run")
+        if event.authenticated_actor is not None:
+            from src.core.database import get_db_context
+
+            # The request audit must commit before this human-attributed run
+            # can be published. Isolate it from the delivery session so an
+            # audit failure cannot leave that session unable to mark failure.
+            await self.session.commit()
+            async with get_db_context() as audit_db:
+                await emit_audit(
+                    audit_db,
+                    "external_actor.agent_run.requested",
+                    resource_type="agent_run",
+                    resource_id=run_uuid,
+                    details={
+                        "event_id": str(event.id),
+                        "event_delivery_id": str(delivery.id),
+                        "external_identity_id": str(event.external_identity_id),
+                        "agent_id": str(agent.id),
+                    },
+                    actor_override=ActorContext(
+                        user_id=principal.user_id,
+                        organization_id=principal.organization_id,
+                        source="external",
+                    ),
+                    strict=True,
+                )
+
         run_id = await enqueue_agent_run(
             agent_id=str(agent.id),
             trigger_type="event",
@@ -1012,29 +1042,11 @@ class EventProcessor:
             input_data=parameters,
             org_id=org_id,
             event_delivery_id=str(delivery.id),
+            run_id=str(run_uuid),
             **caller_kwargs,
         )
 
         delivery.agent_run_id = uuid.UUID(run_id)
-        if event.authenticated_actor is not None:
-            await emit_audit(
-                self.session,
-                "external_actor.agent_run.queued",
-                resource_type="agent_run",
-                resource_id=uuid.UUID(run_id),
-                details={
-                    "event_id": str(event.id),
-                    "event_delivery_id": str(delivery.id),
-                    "external_identity_id": str(event.external_identity_id),
-                    "agent_id": str(agent.id),
-                },
-                actor_override=ActorContext(
-                    user_id=principal.user_id,
-                    organization_id=principal.organization_id,
-                    source="external",
-                ),
-                strict=True,
-            )
 
         logger.info(
             "Queued agent run for event delivery",

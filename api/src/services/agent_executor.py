@@ -1485,6 +1485,17 @@ class AgentExecutor:
                     error=None,
                     duration_ms=duration_ms,
                 )
+            if execution_response.error_type == "approval_required":
+                return ToolResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    result={
+                        "status": "pending_approval",
+                        "approval_id": execution_response.details["approval_id"],
+                    },
+                    error=None,
+                    duration_ms=duration_ms,
+                )
             else:
                 return ToolResult(
                     tool_call_id=tool_call.id,

@@ -1612,6 +1612,7 @@ class MCPAgentGatewayService:
                 operation_id,
             ),
             sync=not task_requested,
+            task_requested=task_requested,
         )
         data = {
             "execution_id": response.execution_id,
@@ -1621,6 +1622,11 @@ class MCPAgentGatewayService:
             "error": response.error,
             "error_type": response.error_type,
         }
+        if response.error_type == "approval_task_unsupported":
+            raise GatewayError("TASKS_UNSUPPORTED", response.error or "Task unsupported")
+        if response.error_type == "approval_required":
+            data["details"] = response.details
+            return data
         if response.status.value != "Success" and not (
             task_requested and response.status.value == "Pending"
         ):

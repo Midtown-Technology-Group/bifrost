@@ -48,6 +48,18 @@ def mock_runtime_config():
         yield mock_get_config
 
 
+@pytest.fixture(autouse=True)
+def mock_external_actor_resolution():
+    # This suite exercises autonomous runs; verified actor resolution has its
+    # own focused tests and must not read mock AgentRun/Event objects here.
+    with patch(
+        "src.services.execution.autonomous_agent_executor.resolve_run_external_actor",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_session():
     """Create a mock session factory (async_sessionmaker) for the executor.
@@ -368,7 +380,7 @@ class TestAutonomousAgentExecutor:
                 return_value=True,
             ),
             patch(
-                "src.services.execution.service.execute_tool",
+                "src.services.execution.autonomous_agent_executor.execute_agent_workflow_tool",
                 new_callable=AsyncMock,
                 return_value=MagicMock(
                     execution_id=str(uuid4()),
@@ -387,20 +399,13 @@ class TestAutonomousAgentExecutor:
             )
 
         assert result == '{"ok": true}'
-        mock_execute_tool.assert_awaited_once_with(
-            workflow_id=str(workflow_id),
-            workflow_name="specialist_tool",
-            parameters={"value": 1},
-            user_id=str(caller_user_id),
-            user_email="person@example.com",
-            user_name="Person",
-            org_id=str(caller_org_id),
-            is_platform_admin=True,
-            is_agent=True,
-            execution_id=None,
-            artifact_workspace_id=None,
-            sync=True,
-        )
+        mock_execute_tool.assert_awaited_once()
+        dispatch = mock_execute_tool.await_args.kwargs
+        assert dispatch["workflow_id"] == workflow_id
+        assert dispatch["parameters"] == {"value": 1}
+        assert dispatch["caller"].user_id == str(caller_user_id)
+        assert dispatch["caller"].organization_id == caller_org_id
+        assert dispatch["caller"].is_platform_admin is True
 
     @pytest.mark.asyncio
     async def test_autonomous_workflow_without_caller_uses_system_identity(
@@ -424,7 +429,7 @@ class TestAutonomousAgentExecutor:
                 return_value=True,
             ),
             patch(
-                "src.services.execution.service.execute_tool",
+                "src.services.execution.autonomous_agent_executor.execute_agent_workflow_tool",
                 new_callable=AsyncMock,
                 return_value=MagicMock(
                     execution_id=str(uuid4()),
@@ -443,20 +448,14 @@ class TestAutonomousAgentExecutor:
             )
 
         assert result == '{"ok": true}'
-        mock_execute_tool.assert_awaited_once_with(
-            workflow_id=str(workflow_id),
-            workflow_name="scheduled_tool",
-            parameters={"value": 1},
-            user_id=SYSTEM_USER_ID,
-            user_email=SYSTEM_USER_EMAIL,
-            user_name=mock_agent.name,
-            org_id=str(mock_agent.organization_id),
-            is_platform_admin=False,
-            is_agent=True,
-            execution_id=None,
-            artifact_workspace_id=None,
-            sync=True,
-        )
+        mock_execute_tool.assert_awaited_once()
+        dispatch = mock_execute_tool.await_args.kwargs
+        assert dispatch["workflow_id"] == workflow_id
+        assert dispatch["parameters"] == {"value": 1}
+        assert dispatch["caller"].user_id == SYSTEM_USER_ID
+        assert dispatch["caller"].email == SYSTEM_USER_EMAIL
+        assert dispatch["caller"].organization_id == mock_agent.organization_id
+        assert dispatch["caller"].is_platform_admin is False
 
     def test_global_caller_scope_does_not_fall_back_to_agent_org(
         self, mock_session, mock_agent
@@ -945,7 +944,7 @@ class TestAutonomousAgentExecutor:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("src.services.execution.service.execute_tool") as mock_exec_tool,
+            patch("src.services.execution.autonomous_agent_executor.execute_agent_workflow_tool") as mock_exec_tool,
         ):
             mock_exec_tool.return_value = WorkflowExecutionResponse(
                 execution_id=workflow_execution_id,
@@ -1041,7 +1040,7 @@ class TestAutonomousAgentExecutor:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("src.services.execution.service.execute_tool") as mock_exec_tool,
+            patch("src.services.execution.autonomous_agent_executor.execute_agent_workflow_tool") as mock_exec_tool,
         ):
             mock_exec_tool.return_value = WorkflowExecutionResponse(
                 execution_id=workflow_execution_id,

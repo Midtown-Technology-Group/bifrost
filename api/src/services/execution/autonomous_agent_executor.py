@@ -580,6 +580,11 @@ class AutonomousAgentExecutor:
 
     async def _execute_tool(self, tool_call: ToolCallRequest, agent: Agent) -> str:
         """Execute a tool call, mirroring AgentExecutor's dispatch logic."""
+        external_access = None
+        if self._external_actor is not None:
+            async with self._session_factory() as db:
+                external_access = await self._external_caller_access(db)
+
         # Knowledge search
         if tool_call.name == "search_knowledge" and agent.knowledge_sources:
             return await self._execute_knowledge_search(tool_call, agent)
@@ -622,7 +627,6 @@ class AutonomousAgentExecutor:
 
         async with self._session_factory() as db:
             workflow = await db.get(Workflow, workflow_id)
-            external_access = await self._external_caller_access(db)
             if workflow is None or not await agent_workflow_granted(db, agent.id, workflow_id) or not await caller_can_access_workflow_tool(
                 workflow,
                 agent,

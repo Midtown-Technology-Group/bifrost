@@ -319,6 +319,32 @@ async def test_execute_tool_routes_mcp_prefix(mock_session_factory):
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["search_knowledge", "read_status"])
+async def test_external_grant_is_rechecked_before_non_workflow_tool(
+    mock_session_factory, mock_agent, tool_name,
+):
+    executor = AutonomousAgentExecutor(mock_session_factory)
+    executor._external_actor = ({}, uuid4(), mock_agent.organization_id, mock_agent.id)
+    mock_agent.knowledge_sources = [uuid4()]
+    mock_agent.system_tools = ["read_status"]
+    with (
+        patch.object(
+            executor, "_external_caller_access", new=AsyncMock(
+                side_effect=ExternalActorResolutionError("External actor grant changed during run")
+            ),
+        ),
+        patch.object(executor, "_execute_knowledge_search", new=AsyncMock()) as knowledge,
+        patch.object(executor, "_execute_system_tool", new=AsyncMock()) as system,
+    ):
+        with pytest.raises(ExternalActorResolutionError, match="grant changed"):
+            await executor._execute_tool(
+                ToolCallRequest(id="revoked", name=tool_name, arguments={}), mock_agent,
+            )
+    knowledge.assert_not_awaited()
+    system.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # run() — _caller threading
 # ---------------------------------------------------------------------------
@@ -376,7 +402,7 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
     principal = SimpleNamespace(
         user_id=user_id, organization_id=customer_id,
         email="jane@mtg.example", name="Jane", is_superuser=False,
-        is_external=False, is_provider_org=True, roles=["Tier 2"],
+        is_external=False, is_provider_org=False, roles=["Tier 2"],
     )
     record = actor_record(AuthenticatedExternalActor(
         provider="microsoft_teams", external_scope_id="tenant-A",
@@ -402,7 +428,7 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
             _caller={"user_id": str(user_id), "organization_id": str(customer_id)},
         )
     assert tools.await_args.kwargs["caller_access"] == (user_id, customer_id, False)
-    assert executor._caller["is_provider_org"]
+    assert not executor._caller["is_provider_org"]
     assert executor._caller["organization_id"] == str(customer_id)
     connection_id = uuid4()
     with (

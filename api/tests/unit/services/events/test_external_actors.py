@@ -146,7 +146,7 @@ async def test_provider_user_requires_explicit_customer_grant(actor, granted):
         principal, _ = await resolve_external_actor(db, actor)
         assert principal.user_id == user_id
         assert principal.organization_id == customer_id
-        assert principal.is_provider_org
+        assert not principal.is_provider_org
         assert not principal.is_superuser
     else:
         with pytest.raises(ExternalActorResolutionError, match="outside the tenant"):

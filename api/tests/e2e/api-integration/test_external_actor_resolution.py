@@ -68,7 +68,7 @@ async def test_tenant_sender_and_role_resolve_without_guessing(db_session: Async
     identity.authorized_organization_id = org.id
     principal, _ = await resolve_external_actor(db_session, actor)
     assert principal.organization_id == org.id
-    assert principal.is_provider_org
+    assert not principal.is_provider_org
 
     agent = Agent(
         name=f"Endpoint {uuid4()}", system_prompt="Investigate devices",

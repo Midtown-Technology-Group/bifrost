@@ -117,6 +117,84 @@ async def test_approval_gated_workflow_creates_proposal_without_execution():
 
 
 @pytest.mark.asyncio
+async def test_approval_gated_workflow_rejects_task_without_proposal():
+    workflow_id = uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        id=workflow_id, is_active=True, tags=["approval_required"]
+    )
+
+    @asynccontextmanager
+    async def fake_db():
+        yield db
+
+    with (
+        patch("src.core.database.get_db_context", fake_db),
+        patch(
+            "src.services.execution.agent_helpers.agent_workflow_granted",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        response = await execute_agent_workflow_tool(
+            workflow_id=workflow_id,
+            workflow_name="reset_device",
+            parameters={},
+            caller=AgentWorkflowCaller(
+                user_id=str(uuid4()), email="jane@example.com", name="Jane",
+                organization_id=uuid4(), agent_id=uuid4(),
+            ),
+            task_requested=True,
+        )
+
+    assert response.error_type == "approval_task_unsupported"
+    db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_approval_rejects_malformed_caller_id_without_proposal():
+    workflow_id = uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.get.return_value = SimpleNamespace(
+        id=workflow_id, is_active=True, tags=["approval_required"]
+    )
+
+    @asynccontextmanager
+    async def fake_db():
+        yield db
+
+    with (
+        patch("src.core.database.get_db_context", fake_db),
+        patch(
+            "src.services.execution.agent_helpers.agent_workflow_granted",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "src.services.execution.service.execute_tool", new_callable=AsyncMock
+        ) as execute,
+    ):
+        with pytest.raises(ValueError):
+            await execute_agent_workflow_tool(
+                workflow_id=workflow_id,
+                workflow_name="reset_device",
+                parameters={},
+                caller=AgentWorkflowCaller(
+                    user_id="not-a-uuid",
+                    email="jane@example.com",
+                    name="Jane",
+                    organization_id=uuid4(),
+                    agent_id=uuid4(),
+                ),
+            )
+
+    db.add.assert_not_called()
+    execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_ungranted_workflow_tool_never_executes():
     workflow_id = uuid4()
     db = AsyncMock()

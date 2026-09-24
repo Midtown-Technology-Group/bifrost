@@ -12,7 +12,7 @@ from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.agents import Agent
 from src.models.orm.users import User
 from src.models.orm.workflows import Workflow
-from src.routers.agent_action_approvals import approve_approval
+from src.routers.agent_action_approvals import approve_approval, deny_approval
 
 
 def _proposal():
@@ -89,7 +89,20 @@ async def test_requester_cannot_approve_own_action():
     with patch("src.routers.agent_action_approvals.execute_tool", new=AsyncMock()) as execute:
         with pytest.raises(HTTPException) as exc:
             await approve_approval(
-                row.id, user=SimpleNamespace(user_id=row.requested_by_user_id), db=db,
+                row.id, user=SimpleNamespace(user_id=str(row.requested_by_user_id)), db=db,
             )
     assert exc.value.status_code == 403
     execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_denial_records_uuid_approver_id():
+    row = _proposal()
+    db = AsyncMock()
+    db.get.return_value = row
+    approver_id = uuid4()
+    with patch("src.routers.agent_action_approvals.emit_audit", new=AsyncMock()):
+        await deny_approval(
+            row.id, user=SimpleNamespace(user_id=str(approver_id)), db=db,
+        )
+    assert row.approved_by_user_id == approver_id

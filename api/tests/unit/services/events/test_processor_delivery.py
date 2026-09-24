@@ -1,4 +1,5 @@
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -892,6 +893,7 @@ async def test_queue_agent_run_uses_mapping_and_agent_org(monkeypatch):
         },
         org_id=str(agent.organization_id),
         event_delivery_id=str(delivery.id),
+        run_id=str(uuid.uuid5(delivery.id, "agent-run")),
     )
 
 
@@ -921,10 +923,15 @@ async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch
     )
     enqueue = AsyncMock(return_value=str(uuid.uuid4()))
     monkeypatch.setattr("src.services.execution.agent_run_service.enqueue_agent_run", enqueue)
+    @asynccontextmanager
+    async def fake_audit_db():
+        yield AsyncMock()
+
     with (
         patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(return_value=(principal, event.external_identity_id))),
         patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=agent)),
         patch("src.services.events.processor.emit_audit", new=AsyncMock()) as audit,
+        patch("src.core.database.get_db_context", fake_audit_db),
     ):
         await p.EventProcessor(AsyncMock())._queue_agent_run(delivery, event)
 
@@ -934,8 +941,45 @@ async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch
     assert kwargs["caller_email"] == principal.email
     assert kwargs["caller_roles"] == ["Tier 2"]
     assert kwargs["event_delivery_id"] == str(delivery.id)
+    assert kwargs["run_id"] == str(uuid.uuid5(delivery.id, "agent-run"))
     assert delivery.agent_run_id is not None
     assert audit.await_args.kwargs["details"]["external_identity_id"] == str(event.external_identity_id)
+
+
+@pytest.mark.asyncio
+async def test_authenticated_actor_audit_failure_prevents_run_publication(monkeypatch):
+    event = _make_event()
+    event.authenticated_actor = actor_record(AuthenticatedExternalActor(
+        provider="microsoft_teams", external_scope_id="tenant-A",
+        external_user_id="jane-object-id", integration_id=uuid.uuid4(),
+    ))
+    event.external_identity_id = uuid.uuid4()
+    delivery = _make_delivery(event=event, target_type="agent")
+    delivery.subscription.agent = SimpleNamespace(
+        id=uuid.uuid4(), organization_id=event.organization_id,
+    )
+    principal = SimpleNamespace(
+        user_id=uuid.uuid4(), organization_id=event.organization_id,
+        email="jane@example.com", name="Jane", is_superuser=False,
+        is_external=False, is_provider_org=False, roles=[],
+    )
+    enqueue = AsyncMock()
+    monkeypatch.setattr("src.services.execution.agent_run_service.enqueue_agent_run", enqueue)
+
+    @asynccontextmanager
+    async def fake_audit_db():
+        yield AsyncMock()
+
+    with (
+        patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(return_value=(principal, event.external_identity_id))),
+        patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=delivery.subscription.agent)),
+        patch("src.core.database.get_db_context", fake_audit_db),
+        patch("src.services.events.processor.emit_audit", new=AsyncMock(side_effect=RuntimeError("audit unavailable"))),
+    ):
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            await p.EventProcessor(AsyncMock())._queue_agent_run(delivery, event)
+
+    enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -139,7 +139,7 @@ async def resolve_external_actor(
         is_superuser=user.is_superuser and user.organization_id == org.id,
         is_verified=user.is_verified,
         is_external=user.is_external,
-        is_provider_org=home_org.is_provider,
+        is_provider_org=home_org.is_provider and user.organization_id == org.id,
         roles=list(role_names),
     )
     return principal, identity.id

@@ -397,6 +397,29 @@ class TestWorkflowToolIdResolution:
     """Test that workflow tools with normalized names resolve back to workflows by ID."""
 
     @pytest.mark.asyncio
+    async def test_approval_proposal_is_a_pending_tool_result(self, executor, mock_session):
+        workflow_id, approval_id = uuid4(), uuid4()
+        executor._tool_workflow_id_map["reset_device"] = workflow_id
+        mock_session.get.return_value = MagicMock(id=workflow_id, name="Reset Device")
+        agent = MagicMock(id=uuid4(), organization_id=uuid4(), system_tools=[], knowledge_sources=[])
+        response = MagicMock()
+        response.status.value = "Pending"
+        response.error_type = "approval_required"
+        response.details = {"approval_id": str(approval_id)}
+        with (
+            patch("src.services.agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+            patch("src.services.agent_executor.caller_can_access_workflow_tool", new=AsyncMock(return_value=True)),
+            patch("src.services.agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=response)),
+        ):
+            result = await executor._execute_tool(
+                ToolCallRequest(id="approve", name="reset_device", arguments={}),
+                agent=agent,
+                caller={"user_id": str(uuid4()), "organization_id": str(agent.organization_id)},
+            )
+        assert result.error is None
+        assert result.result == {"status": "pending_approval", "approval_id": str(approval_id)}
+
+    @pytest.mark.asyncio
     async def test_workflow_id_map_populated_for_workflow_tools(self, executor, mock_agent):
         """_get_agent_tools populates _tool_workflow_id_map for workflow tools."""
         workflow_id = uuid4()
@@ -444,9 +467,7 @@ class TestWorkflowToolIdResolution:
 
         mock_session.commit.side_effect = expire_workflow_on_commit
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_workflow
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.get = AsyncMock(return_value=mock_workflow)
 
         tool_call = ToolCallRequest(
             id="call_123",
@@ -454,10 +475,13 @@ class TestWorkflowToolIdResolution:
             arguments={"query": "SELECT 1"},
         )
 
-        with patch("src.services.execution.service.execute_tool", new_callable=AsyncMock) as mock_exec:
+        with (
+            patch("src.services.agent_executor.agent_workflow_granted", new_callable=AsyncMock, return_value=True),
+            patch("src.services.agent_executor.execute_agent_workflow_tool", new_callable=AsyncMock) as mock_exec,
+        ):
             mock_exec.return_value = MagicMock(
                 execution_id="exec_1",
-                status="completed",
+                status=MagicMock(value="Success"),
                 result={"data": []},
             )
 
@@ -481,26 +505,19 @@ class TestWorkflowToolIdResolution:
         assert mock_workflow.expired is True
         assert execution_kwargs["workflow_id"] == str(workflow_id)
         assert execution_kwargs["workflow_name"] == "Execute HaloPSA SQL"
-        assert execution_kwargs["is_agent"] is True
-        assert execution_kwargs["org_id"] == str(caller_org_id)
+        assert execution_kwargs["caller"].organization_id == caller_org_id
+        assert execution_kwargs["caller"].agent_id == mock_agent.id
 
-        # Verify the DB query used Workflow.id, not Workflow.name
-        call_args = mock_session.execute.call_args
-        query = call_args[0][0]
-        # The compiled query should reference the workflow ID, not the normalized name
-        compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
-        assert workflow_id.hex in compiled
-        assert "wf_execute_halopsa_sql" not in compiled
+        # The advertised tool name is never used as a workflow lookup key.
+        assert mock_session.get.await_args.args[1] == workflow_id
+        mock_session.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_execute_tool_falls_back_to_name_lookup(self, executor, mock_session):
-        """_execute_tool falls back to name-based lookup when tool not in ID map."""
+    async def test_execute_tool_rejects_name_without_grant(self, executor, mock_session):
+        """An unadvertised tool name cannot select a workflow by name."""
         from src.services.llm.base import ToolCallRequest
 
-        # Don't populate _tool_workflow_id_map — simulate an unknown tool
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        # Don't populate _tool_workflow_id_map — simulate an unknown tool.
 
         tool_call = ToolCallRequest(
             id="call_456",
@@ -512,11 +529,8 @@ class TestWorkflowToolIdResolution:
 
         assert result.error == "Tool 'some_unknown_tool' not found"
 
-        # Verify the DB query used Workflow.name (fallback path)
-        call_args = mock_session.execute.call_args
-        query = call_args[0][0]
-        compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
-        assert "some_unknown_tool" in compiled
+        mock_session.get.assert_not_awaited()
+        mock_session.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_execute_tool_rechecks_reference_access_at_dispatch(
@@ -531,9 +545,7 @@ class TestWorkflowToolIdResolution:
         workflow = MagicMock()
         workflow.id = workflow_id
         workflow.name = "Restricted Work"
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = workflow
-        mock_session.execute = AsyncMock(return_value=result)
+        mock_session.get = AsyncMock(return_value=workflow)
 
         agent = MagicMock()
         agent.organization_id = uuid4()
@@ -545,7 +557,11 @@ class TestWorkflowToolIdResolution:
             new_callable=AsyncMock,
             return_value=False,
         ) as check_access, patch(
-            "src.services.execution.service.execute_tool",
+            "src.services.agent_executor.agent_workflow_granted",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch(
+            "src.services.agent_executor.execute_agent_workflow_tool",
             new_callable=AsyncMock,
         ) as execute_tool:
             tool_result = await executor._execute_tool(
