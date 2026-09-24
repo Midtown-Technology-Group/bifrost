@@ -15,7 +15,7 @@ from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.org_filter import org_filter_clause, resolve_org_filter
+from src.core.org_filter import OrgFilterType, org_filter_clause, resolve_org_filter
 from src.core.principal import UserPrincipal
 from src.models.contracts.device_control_keys import ControlKeyCreate
 from src.models.orm.device_control_keys import DeviceControlKey
@@ -60,11 +60,15 @@ async def create_control_key(
                 "expires_at must be in the future",
             )
 
-    # Every allow-listed device must exist in the caller's resolved scope —
-    # otherwise the key would grant cross-org targeting at job-create time.
-    filter_type, filter_org_id = resolve_org_filter(user)
+    # Every allow-listed device must exist in the RESOLVED TARGET org —
+    # otherwise a key for org X could persist device ids from org Y (an
+    # unscoped superuser has no caller-side org filter to stop it).
+    # key_can_target would deny cross-org use, but the scope itself must
+    # never be persisted invalid.
+    clause = org_filter_clause(
+        Device.organization_id, OrgFilterType.ORG_ONLY, organization_id
+    )
     stmt = select(Device.id).where(Device.id.in_(device_ids))
-    clause = org_filter_clause(Device.organization_id, filter_type, filter_org_id)
     if clause is not None:
         stmt = stmt.where(clause)
     visible = {row for row in (await db.execute(stmt)).scalars().all()}
@@ -135,6 +139,27 @@ async def rotate_control_key_route(
     key_id: UUID,
 ) -> tuple[DeviceControlKey, str]:
     row = await get_control_key_scoped(db, user, key_id)
+    # Rotation preserves enabled/expiry, so it cannot make an unusable key
+    # usable — reject instead of minting a new raw secret that would silently
+    # fail at verification (revoked keys must be replaced, not rotated).
+    if not row.enabled:
+        raise DeviceOperationError(
+            status.HTTP_409_CONFLICT,
+            "control_key_inactive",
+            "control key is revoked; create a new key instead of rotating",
+        )
+    if row.expires_at is not None:
+        expires_at = (
+            row.expires_at
+            if row.expires_at.tzinfo
+            else row.expires_at.replace(tzinfo=timezone.utc)
+        )
+        if expires_at <= datetime.now(timezone.utc):
+            raise DeviceOperationError(
+                status.HTTP_409_CONFLICT,
+                "control_key_inactive",
+                "control key is expired; create a new key instead of rotating",
+            )
     raw = rotate_control_key(row)
     await db.commit()
     await db.refresh(row)

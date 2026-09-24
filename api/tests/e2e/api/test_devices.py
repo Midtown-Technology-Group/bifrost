@@ -33,6 +33,11 @@ def device_manager_role(e2e_client, platform_admin, org1_user, org2_user):
     )
     assert assign.status_code == 204, assign.text
     yield role_id
+    # Tear down: the grant must not leak into other modules' fixtures.
+    cleanup = e2e_client.delete(
+        f"/api/roles/{role_id}", headers=platform_admin.headers
+    )
+    assert cleanup.status_code in (200, 204), cleanup.text
 
 
 def _anon_client():

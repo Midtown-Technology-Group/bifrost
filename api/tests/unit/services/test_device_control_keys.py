@@ -141,6 +141,7 @@ class TestScopedAccess:
             organization_id=org,
             name="k",
             key_hash="$2b$old",
+            enabled=True,
             device_ids=[device_id],
             created_by=str(uuid4()),
         )
@@ -178,6 +179,53 @@ class TestScopedAccess:
         assert first.enabled is False
         second = await revoke_control_key_route(session, user, existing.id)
         assert second.enabled is False
+
+    async def test_rotate_rejects_revoked_key(self):
+        org = uuid4()
+        existing = DeviceControlKey(
+            id=uuid4(),
+            organization_id=org,
+            name="k",
+            key_hash="$2b$old",
+            enabled=False,
+            device_ids=[uuid4()],
+            created_by=str(uuid4()),
+        )
+        session = mock_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = existing
+        session.execute.return_value = result
+        user = make_user(org_id=org)
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await rotate_control_key_route(session, user, existing.id)
+        assert exc.value.code == "control_key_inactive"
+        assert exc.value.status_code == 409
+        # The old secret hash is untouched — rotation did not happen.
+        assert existing.key_hash == "$2b$old"
+
+    async def test_rotate_rejects_expired_key(self):
+        org = uuid4()
+        existing = DeviceControlKey(
+            id=uuid4(),
+            organization_id=org,
+            name="k",
+            key_hash="$2b$old",
+            enabled=True,
+            expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            device_ids=[uuid4()],
+            created_by=str(uuid4()),
+        )
+        session = mock_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = existing
+        session.execute.return_value = result
+        user = make_user(org_id=org)
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await rotate_control_key_route(session, user, existing.id)
+        assert exc.value.code == "control_key_inactive"
+        assert existing.key_hash == "$2b$old"
 
 
 class TestListStatement:
