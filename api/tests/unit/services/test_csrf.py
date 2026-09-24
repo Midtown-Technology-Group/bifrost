@@ -111,6 +111,11 @@ class TestCsrfExemptPrefixes:
     def test_hooks_prefix_present(self):
         assert "/api/hooks/" in CSRF_EXEMPT_PREFIXES
 
+    def test_device_protocol_prefix_present(self):
+        """Agent protocol is X-Bifrost-Key auth; M0 freezes the exemption."""
+        assert "/api/device/" in CSRF_EXEMPT_PREFIXES
+        assert not "/api/devices/".startswith(CSRF_EXEMPT_PREFIXES)
+
     def test_is_a_tuple(self):
         assert isinstance(CSRF_EXEMPT_PREFIXES, tuple)
 

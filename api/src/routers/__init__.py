@@ -70,6 +70,7 @@ from src.routers.platform_jobs import router as platform_jobs_router
 from src.routers.scheduler_diagnostics import router as scheduler_diagnostics_router
 from src.routers.devices import router as devices_router
 from src.routers.device_control_keys import router as device_control_keys_router
+from src.routers.device_protocol import router as device_protocol_router
 from src.routers.platform import (
     app_service_router,
     runtime_maintenance_router,
@@ -157,6 +158,7 @@ __all__ = [
     "jobs_router",
     "devices_router",
     "device_control_keys_router",
+    "device_protocol_router",
     "platform_jobs_router",
     "scheduler_diagnostics_router",
     "platform_workers_router",

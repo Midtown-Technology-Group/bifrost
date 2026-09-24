@@ -8,6 +8,7 @@ and the running-loss watchdog that writes terminal `lost` without re-queue.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -27,11 +28,13 @@ from src.models.orm.device_jobs import (
     DeviceJob,
 )
 from src.services.device_jobs import (
+    append_logs,
     claim_next,
     create_device_job,
     finish,
     mark_running,
     record_activity,
+    renew_from_heartbeat,
     sweep_device_jobs,
 )
 from src.services.devices import DeviceOperationError
@@ -503,3 +506,229 @@ class TestSweepWatchdog:
         assert stale.status == JOB_STATUS_CLAIMED
         assert stats["stale_claimed_reclaimable"] == 1
         assert stats["lost_silence"] == 0
+
+
+def _append_session(job, existing=None) -> AsyncMock:
+    session = _session()
+    session.execute.side_effect = [
+        _result(scalar=job),
+        _result(rows=existing or []),
+    ]
+    return session
+
+
+class TestAppendLogs:
+    async def test_validation_bounds(self):
+        session = _session()
+        token = uuid4()
+        job_id = uuid4()
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=job_id, claim_token=token,
+                entries=[{"seq": 0, "stream": "stdout", "text": "x"}],
+            )
+        assert exc.value.code == "invalid_parameter"
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=job_id, claim_token=token,
+                entries=[
+                    {"seq": 1, "stream": "stdout", "text": "a"},
+                    {"seq": 1, "stream": "stdout", "text": "b"},
+                ],
+            )
+        assert exc.value.code == "invalid_parameter"
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=job_id, claim_token=token,
+                entries=[{"seq": 1, "stream": "stdin", "text": "a"}],
+            )
+        assert exc.value.code == "invalid_parameter"
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=job_id, claim_token=token,
+                entries=[{"seq": 1, "stream": "stdout", "text": "x" * (65536 + 1)}],
+            )
+        assert exc.value.code == "payload_too_large"
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=job_id, claim_token=token,
+                entries=[
+                    {"seq": i + 1, "stream": "stdout", "text": "y" * 65536}
+                    for i in range(17)
+                ],
+            )
+        assert exc.value.code == "payload_too_large"
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=job_id, claim_token=token,
+                entries=[
+                    {"seq": i + 1, "stream": "stdout", "text": "z"} for i in range(513)
+                ],
+            )
+        assert exc.value.code == "payload_too_large"
+        session.execute.assert_not_awaited()
+
+    async def test_fence_and_terminal(self):
+        token = uuid4()
+        live = _job(status=JOB_STATUS_RUNNING, claim_token=token)
+        session = _append_session(live)
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=live.id, claim_token=uuid4(), entries=
+                [{"seq": 1, "stream": "stdout", "text": "x"}], now=NOW,
+            )
+        assert exc.value.code == "fence_violation"
+
+        terminal = _job(status=JOB_STATUS_SUCCEEDED, claim_token=token)
+        session = _append_session(terminal)
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session, job_id=terminal.id, claim_token=token, entries=
+                [{"seq": 1, "stream": "stdout", "text": "x"}], now=NOW,
+            )
+        assert exc.value.code == "job_terminal"
+
+    async def test_happy_appends_and_renews_activity(self):
+        token = uuid4()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            claim_token=token,
+            last_agent_activity_at=NOW - timedelta(seconds=40),
+            log_sequence=0,
+        )
+        session = _append_session(job, existing=[])
+        got_job, inserted = await append_logs(
+            session,
+            job_id=job.id,
+            claim_token=token,
+            entries=[
+                {"seq": 2, "stream": "stdout", "text": "b"},
+                {"seq": 1, "stream": "stderr", "text": "a"},
+            ],
+            now=NOW,
+        )
+        assert len(inserted) == 2
+        assert got_job.last_agent_activity_at == NOW
+        assert got_job.log_sequence == 2
+        assert session.add.call_count == 2
+        session.commit.assert_awaited()
+
+    async def test_identical_replay_is_noop(self):
+        from src.models.orm.device_job_logs import DeviceJobLog
+
+        token = uuid4()
+        job = _job(status=JOB_STATUS_RUNNING, claim_token=token, log_sequence=1)
+        existing = DeviceJobLog(
+            job_id=job.id, seq=1, stream="stdout", text="same"
+        )
+        session = _append_session(job, existing=[existing])
+        _got, inserted = await append_logs(
+            session,
+            job_id=job.id,
+            claim_token=token,
+            entries=[{"seq": 1, "stream": "stdout", "text": "same"}],
+            now=NOW,
+        )
+        assert inserted == []
+        session.add.assert_not_called()
+        session.commit.assert_awaited()  # activity still renewed
+
+    async def test_changed_content_for_same_seq_conflicts(self):
+        from src.models.orm.device_job_logs import DeviceJobLog
+
+        token = uuid4()
+        job = _job(status=JOB_STATUS_RUNNING, claim_token=token, log_sequence=1)
+        existing = DeviceJobLog(
+            job_id=job.id, seq=1, stream="stdout", text="original"
+        )
+        session = _append_session(job, existing=[existing])
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session,
+                job_id=job.id,
+                claim_token=token,
+                entries=[{"seq": 1, "stream": "stdout", "text": "CHANGED"}],
+                now=NOW,
+            )
+        assert exc.value.code == "log_seq_conflict"
+        assert exc.value.status_code == 409
+        session.add.assert_not_called()
+
+
+class TestRenewFromHeartbeat:
+    async def test_owning_session_renews(self):
+        session = _session()
+        agent = uuid4()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            agent_session_id=agent,
+            last_agent_activity_at=NOW - timedelta(seconds=60),
+        )
+        session.execute.return_value = _result(scalar=job)
+        got = await renew_from_heartbeat(
+            session, device_id=job.device_id, agent_session_id=agent, now=NOW
+        )
+        assert got is job
+        assert job.last_agent_activity_at == NOW
+        session.commit.assert_awaited()
+
+    async def test_foreign_session_does_not_renew(self):
+        session = _session()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            agent_session_id=uuid4(),
+            last_agent_activity_at=NOW - timedelta(seconds=60),
+        )
+        session.execute.return_value = _result(scalar=job)
+        got = await renew_from_heartbeat(
+            session, device_id=job.device_id, agent_session_id=uuid4(), now=NOW
+        )
+        assert got is None
+        assert job.last_agent_activity_at == NOW - timedelta(seconds=60)
+        session.commit.assert_not_awaited()
+
+    async def test_no_active_job_returns_none(self):
+        session = _session()
+        session.execute.return_value = _result(scalar=None)
+        got = await renew_from_heartbeat(
+            session, device_id=uuid4(), agent_session_id=uuid4(), now=NOW
+        )
+        assert got is None
+
+
+class TestBroadcasts:
+    async def test_job_available_hint_shape(self, monkeypatch):
+        import src.services.device_jobs as dj_module
+        from unittest.mock import AsyncMock
+
+        fake = AsyncMock()
+        monkeypatch.setattr(dj_module, "pubsub_manager", SimpleNamespace(broadcast=fake))
+        device_id, job_id = uuid4(), uuid4()
+        await dj_module.broadcast_job_available(device_id, job_id)
+        fake.assert_awaited_once_with(
+            f"device:{device_id}",
+            {
+                "type": "device_job_available",
+                "job_id": str(job_id),
+                "device_id": str(device_id),
+            },
+        )
+
+    async def test_log_fanout_shape(self, monkeypatch):
+        import src.services.device_jobs as dj_module
+        from unittest.mock import AsyncMock
+
+        fake = AsyncMock()
+        monkeypatch.setattr(dj_module, "pubsub_manager", SimpleNamespace(broadcast=fake))
+        job_id = uuid4()
+        entries = [{"seq": 1, "stream": "stdout", "text": "x", "ts": None}]
+        await dj_module.broadcast_job_logs(job_id, entries)
+        fake.assert_awaited_once_with(
+            f"device_job:{job_id}",
+            {"type": "device_job_logs", "job_id": str(job_id), "entries": entries},
+        )

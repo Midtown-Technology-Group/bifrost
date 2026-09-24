@@ -63,6 +63,7 @@ CSRF_EXEMPT_PATHS = {
 CSRF_EXEMPT_PREFIXES = (
     "/api/hooks/",  # Webhook receiver - called by external services, no auth
     "/api/endpoints/",  # API key auth - called with X-Bifrost-Key header
+    "/api/device/",  # Device control plane agent protocol (X-Bifrost-Key; M0 freeze)
     "/embed/",  # Embed entry points - HMAC-verified, no cookie auth
 )
 

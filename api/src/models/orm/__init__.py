@@ -47,6 +47,7 @@ from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.execution_lifecycle_events import ExecutionLifecycleEvent
 from src.models.orm.worker_control_commands import WorkerControlCommand
 from src.models.orm.device_control_keys import DeviceControlKey
+from src.models.orm.device_job_logs import DeviceJobLog
 from src.models.orm.device_jobs import DeviceJob
 from src.models.orm.devices import Device
 from src.models.orm.poison_message_dispositions import PoisonMessageDisposition
@@ -168,6 +169,7 @@ __all__ = [
     "Device",
     "DeviceControlKey",
     "DeviceJob",
+    "DeviceJobLog",
     "PoisonMessageDisposition",
     "ExecutionLog",
     # CLI Sessions

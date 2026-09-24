@@ -162,6 +162,10 @@
 | GET | `/api/device-control-keys/{key_id}` |
 | POST | `/api/device-control-keys/{key_id}/revoke` |
 | POST | `/api/device-control-keys/{key_id}/rotate` |
+| POST | `/api/device/heartbeat` |
+| POST | `/api/device/jobs/claim` |
+| POST | `/api/device/jobs/{job_id}/logs` |
+| POST | `/api/device/jobs/{job_id}/result` |
 | GET | `/api/devices` |
 | POST | `/api/devices` |
 | POST | `/api/devices/enroll` |
