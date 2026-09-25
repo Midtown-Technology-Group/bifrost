@@ -117,6 +117,15 @@ def prepare_solution_repository() -> None:
 def chat_completion_payload(request: dict[str, object]) -> dict[str, object]:
     tools = request.get("tools")
     messages = request.get("messages")
+    is_summary = (
+        request.get("model") == "issue-890-agent"
+        and isinstance(messages, list)
+        and any(
+            isinstance(message, dict)
+            and "You summarize what an AI agent did" in str(message.get("content", ""))
+            for message in messages
+        )
+    )
     if (
         request.get("model") == "issue-890-agent"
         and isinstance(tools, list)
@@ -158,7 +167,17 @@ def chat_completion_payload(request: dict[str, object]) -> dict[str, object]:
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": "ok"},
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({
+                        "asked": "Run the fixture tool",
+                        "did": "I called [issue_890_agent_tool].",
+                        "answered": "ok",
+                        "confidence": 1.0,
+                        "confidence_reason": "The fixture completed.",
+                        "metadata": {},
+                    }) if is_summary else "ok",
+                },
                 "finish_reason": "stop",
             }
         ],

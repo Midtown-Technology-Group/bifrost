@@ -76,6 +76,12 @@ def test_issue_890_agent_fixture_calls_one_tool_then_finishes() -> None:
     assert second.choices[0].finish_reason == "stop"
     assert second.choices[0].message.content == "ok"
 
+    summary = chat_completion_payload({
+        "model": "issue-890-agent",
+        "messages": [{"role": "system", "content": "You summarize what an AI agent did"}],
+    })
+    assert json.loads(summary["choices"][0]["message"]["content"])["answered"] == "ok"
+
 
 def test_chat_completion_stream_contract_is_openai_compatible_sse() -> None:
     events = chat_completion_stream_events({"model": "fixture-chat", "stream": True})
