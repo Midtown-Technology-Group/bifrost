@@ -1,0 +1,527 @@
+{
+  "scenario": "external-http",
+  "source_sha": "d253b5bef8cdd81315da195b8fc8fe6c055fc7c3",
+  "resource_samples": "/tmp/bifrost/issue-890-resources-20260925T062824Z.jsonl",
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "levels": [
+    {
+      "concurrency": 4,
+      "requested": 200,
+      "started_at": "2026-09-25T06:28:32.359621+00:00",
+      "finished_at": "2026-09-25T06:28:48.655836+00:00",
+      "client_cpu_seconds": 0.3561,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T06:28:32.895052+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:33.996289+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:35.042859+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:36.051832+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:37.070056+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:38.152155+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:39.182070+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:40.450191+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:41.512551+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:42.678556+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:43.789995+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:44.837240+00:00",
+          "capacity": 8,
+          "busy": 0,
+          "available": 8,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:45.982740+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:47.019226+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:48.045103+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.0091,
+          "p95_seconds": 0.023
+        },
+        "queue": {
+          "p50_seconds": 0.032,
+          "p95_seconds": 0.1001
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.0464,
+          "p95_seconds": 0.0979
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.1527,
+          "p95_seconds": 0.2625
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 12.273,
+      "p50_seconds": 0.2928,
+      "p95_seconds": 0.4933,
+      "p99_seconds": 0.9644,
+      "wall_seconds": 16.296,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 16,
+      "requested": 200,
+      "started_at": "2026-09-25T06:28:48.985748+00:00",
+      "finished_at": "2026-09-25T06:29:01.076120+00:00",
+      "client_cpu_seconds": 0.3599,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T06:28:49.045043+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:50.098701+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:51.137704+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:52.166674+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:53.183850+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:54.205428+00:00",
+          "capacity": 8,
+          "busy": 3,
+          "available": 5,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:55.270239+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:56.431488+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:57.518221+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:58.567705+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:28:59.689935+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:00.696827+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.0103,
+          "p95_seconds": 0.1423
+        },
+        "queue": {
+          "p50_seconds": 0.2627,
+          "p95_seconds": 0.4574
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.3688,
+          "p95_seconds": 0.5733
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.248,
+          "p95_seconds": 0.3094
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 16.542,
+      "p50_seconds": 0.9138,
+      "p95_seconds": 1.2576,
+      "p99_seconds": 1.4198,
+      "wall_seconds": 12.09,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 64,
+      "requested": 200,
+      "started_at": "2026-09-25T06:29:01.412614+00:00",
+      "finished_at": "2026-09-25T06:29:11.439591+00:00",
+      "client_cpu_seconds": 0.4096,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T06:29:01.719247+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:02.786662+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:03.867449+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:04.908591+00:00",
+          "capacity": 8,
+          "busy": 4,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:05.923080+00:00",
+          "capacity": 8,
+          "busy": 5,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:06.990496+00:00",
+          "capacity": 8,
+          "busy": 5,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:08.005434+00:00",
+          "capacity": 8,
+          "busy": 5,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:09.013846+00:00",
+          "capacity": 8,
+          "busy": 5,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:10.024916+00:00",
+          "capacity": 8,
+          "busy": 5,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:29:11.037370+00:00",
+          "capacity": 8,
+          "busy": 5,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.0123,
+          "p95_seconds": 0.6523
+        },
+        "queue": {
+          "p50_seconds": 2.2765,
+          "p95_seconds": 2.469
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.2892,
+          "p95_seconds": 0.3857
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.1903,
+          "p95_seconds": 0.2626
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 19.946,
+      "p50_seconds": 2.8547,
+      "p95_seconds": 3.6608,
+      "p99_seconds": 4.0656,
+      "wall_seconds": 10.027,
+      "failure_examples": []
+    }
+  ]
+}
