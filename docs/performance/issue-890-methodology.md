@@ -23,7 +23,7 @@ This is the execution plan for [issue #890](https://github.com/Midtown-Technolog
 
 The `external-http` lab scenario calls the existing Compose fixture server from an actual workflow process. Its deterministic 20/50/100 ms delays exercise the workflow's outbound HTTP and queue/persistence path without a live integration credential. These delays are sensitivity points, **not** measured Graph, NinjaOne, or model latency. Replace or weight them only after a bounded production trace gives an external-wait distribution. Run `scripts/issue-890-run.sh --scenario external-http --operations 200` on the isolated Linux VM; the endpoint and server exist only in the test Compose network.
 
-For new runs, give `--output` a filename under `/bifrost-results/`, the test runner's dedicated host-mounted results path. Earlier dated results used the same host mount at `/tmp/bifrost/` before the lab restricted output writes.
+New runs write to the fixed `/bifrost-results/issue-890-load.json` file in the test runner's dedicated host-mounted results path; copy it to a dated result file before another run. Earlier dated results used the same host mount at `/tmp/bifrost/` before the lab restricted output writes.
 
 The `agent` scenario uses the real synchronous agent endpoint, a local OpenAI-compatible model fixture, and one registered workflow tool call followed by a final model response. Each model request has a fixed 50 ms delay. It is a diagnostic for orchestration and DB-pool behavior, not a production model-latency distribution. The fixture also returns valid synthetic summaries so summarization work does not take an error path.
 

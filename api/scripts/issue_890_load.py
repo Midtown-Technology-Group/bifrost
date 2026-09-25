@@ -421,9 +421,6 @@ def main() -> int:
         "--concurrency", type=int, nargs="+", default=[1, 4, 16, 32, 64, 128]
     )
     parser.add_argument("--operations", type=int, default=1000)
-    parser.add_argument(
-        "--output", type=Path, default=Path("/bifrost-results/issue-890-load.json")
-    )
     args = parser.parse_args()
     url = os.environ.get("TEST_API_URL", "")
     if (
@@ -437,8 +434,6 @@ def main() -> int:
         parser.error("operations and concurrency must be positive")
     if args.operations < max(args.concurrency):
         parser.error("operations must be at least the highest concurrency level")
-    if args.output.parent != Path("/bifrost-results"):
-        parser.error("output must be in the isolated results mount")
 
     read_headers, admin_headers, workflow_id, org_id = prepare(url, args.scenario)
     result = {
@@ -465,7 +460,7 @@ def main() -> int:
         result["levels"].append(level)
         print(json.dumps(level), flush=True)
     fd = os.open(
-        args.output,
+        Path("/bifrost-results/issue-890-load.json"),
         os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
         0o600,
     )
