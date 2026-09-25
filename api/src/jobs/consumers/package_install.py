@@ -239,18 +239,17 @@ class PackageInstallConsumer(BroadcastConsumer):
         processes forked afterward have a fresh sys.modules that can see
         newly installed packages.
         """
-        try:
-            from src.services.execution.process_pool import get_process_pool
+        from src.services.execution.process_pool import get_process_pool
 
+        try:
             pool = get_process_pool()
             if pool._started:
                 await pool.drain_and_restart_template()
                 logger.info("Drained workers and restarted template after pip install")
                 return True
-            else:
-                logger.warning("Pool not started, skipping worker recycle")
-        except Exception as e:
-            logger.warning(f"Failed to drain/restart after pip install: {e}")
+            logger.warning("Pool not started, skipping worker recycle")
+        except Exception as exc:
+            logger.warning("Failed to drain/restart after pip install: %s", exc)
         return False
 
     async def process_message(self, body: dict[str, Any]) -> None:

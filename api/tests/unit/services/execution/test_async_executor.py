@@ -508,3 +508,78 @@ async def test_enqueue_system_workflow_execution_preserves_explicit_org():
         enqueue.await_args.kwargs["org_id_override"]
         == "11111111-1111-1111-1111-111111111111"
     )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_code_execution_sync_skips_ui_queue_tracking():
+    redis = AsyncMock()
+    with (
+        patch(
+            "src.services.execution.async_executor.get_redis_client",
+            return_value=redis,
+        ),
+        patch(
+            "src.services.execution.async_executor.add_to_queue",
+            new=AsyncMock(),
+        ) as add,
+        patch(
+            "src.services.execution.async_executor.publish_message",
+            new=AsyncMock(),
+        ) as publish,
+    ):
+        execution_id = await async_executor.enqueue_code_execution(
+            context=_context(),
+            script_name="inline.py",
+            code_base64="cHJpbnQoJ2hpJyk=",
+            parameters={"x": 1},
+            execution_id="exec-sync",
+            sync=True,
+        )
+
+    assert execution_id == "exec-sync"
+    redis.set_pending_execution.assert_awaited_once()
+    assert redis.set_pending_execution.await_args.kwargs["sync"] is True
+    assert redis.set_pending_execution.await_args.kwargs["script_name"] == "inline.py"
+    add.assert_not_awaited()
+    publish.assert_awaited_once_with(
+        "workflow-executions",
+        {
+            "execution_id": "exec-sync",
+            "code": "cHJpbnQoJ2hpJyk=",
+            "script_name": "inline.py",
+            "sync": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_code_execution_async_tracks_ui_queue():
+    redis = AsyncMock()
+    with (
+        patch(
+            "src.services.execution.async_executor.get_redis_client",
+            return_value=redis,
+        ),
+        patch(
+            "src.services.execution.async_executor.add_to_queue",
+            new=AsyncMock(),
+        ) as add,
+        patch(
+            "src.services.execution.async_executor.publish_message",
+            new=AsyncMock(),
+        ) as publish,
+    ):
+        execution_id = await async_executor.enqueue_code_execution(
+            context=_context(),
+            script_name="inline.py",
+            code_base64="cHJpbnQoJ2hpJyk=",
+            parameters={"x": 1},
+            execution_id="exec-async",
+            sync=False,
+        )
+
+    assert execution_id == "exec-async"
+    redis.set_pending_execution.assert_awaited_once()
+    assert redis.set_pending_execution.await_args.kwargs["sync"] is False
+    add.assert_awaited_once_with("exec-async")
+    publish.assert_awaited_once()

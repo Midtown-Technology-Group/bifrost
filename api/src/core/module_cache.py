@@ -17,26 +17,30 @@ from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, NotRequired, TypedDict, cast
+from typing import AsyncIterator, Awaitable, cast
 from uuid import uuid4
 
 from src.core.log_safety import log_safe
+from src.core.module_cache_contract import (
+    MODULE_INDEX_KEY,
+    MODULE_INDEX_GENERATION_KEY,
+    MODULE_KEY_PREFIX,
+    MODULE_RESOLUTION_KEY_PREFIX,
+    MODULE_RESOLUTION_NEGATIVE_TTL,
+    MODULE_RESOLUTION_TTL,
+    WORKSPACE_GENERATION_KEY,
+    WORKSPACE_UPDATING_PREFIX,
+    WORKSPACE_UPDATE_LOCK_SECONDS,
+    CachedModule,
+    module_resolution_cache_key as module_resolution_cache_key,
+)
 from src.core.redis_client import get_redis_client
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
 
-MODULE_KEY_PREFIX = "bifrost:module:"
-MODULE_INDEX_KEY = "bifrost:module:index"
-MODULE_RESOLUTION_KEY_PREFIX = "bifrost:module:resolution:"
-MODULE_RESOLUTION_TTL = 86400
-MODULE_RESOLUTION_NEGATIVE_TTL = 30
-MODULE_INDEX_GENERATION_KEY = "bifrost:module:index:generation"
-WORKSPACE_GENERATION_KEY = "bifrost:workspace:generation"
 WORKSPACE_GENERATION_CHANNEL = "bifrost:workspace:generation:events"
-WORKSPACE_UPDATING_PREFIX = "updating:"
 WORKSPACE_UPDATE_LOCK_KEY = "bifrost:workspace:generation:update-lock"
-WORKSPACE_UPDATE_LOCK_SECONDS = 300
 WORKSPACE_UPDATE_LOCK_WAIT_SECONDS = 10
 WORKSPACE_UPDATE_LOCK_RENEW_SECONDS = WORKSPACE_UPDATE_LOCK_SECONDS / 3
 SOLUTIONS_ROOT = "_solutions"
@@ -44,26 +48,6 @@ WORKSPACE_RELEASES_ROOT = "_workspace_releases"
 _workspace_update_depth: ContextVar[int] = ContextVar(
     "workspace_update_depth", default=0
 )
-
-
-def module_resolution_cache_key(
-    name: str,
-    *,
-    solution_id: str | None,
-    global_repo_access: bool,
-) -> str:
-    """Build the shared Redis key suffix for one scoped import name."""
-    dotted_name = name.strip().replace("/", ".").strip(".")
-    return f"{solution_id or '-'}:{int(global_repo_access)}:{dotted_name}"
-
-
-class CachedModule(TypedDict):
-    """Schema for cached module data."""
-
-    content: str
-    path: str
-    hash: str
-    generation: NotRequired[str]
 
 
 class WorkspacePropagationError(RuntimeError):

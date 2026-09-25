@@ -293,6 +293,8 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # fields and retain their prior pending/locked/not_queued handling.
     # Solution access flags and caller identity gained additive, dual-name
     # compatible fields (2026-09-16). Existing v11 clients retain their scope.
+    # PlatformJobPublic gained execution_backend (2026-09-17). ADDITIVE:
+    # existing clients ignore the placement detail.
     "af17d295582d085f3f77c33b4d4b99884167650d83f6d21183b3a7aa3bab33ce"
 )
 
