@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import HTTPException
@@ -35,13 +35,24 @@ _LEADING_MENTION = re.compile(r"^\s*<at\b[^>]*>.*?</at>\s*", re.IGNORECASE | re.
 async def emit_teams_chat_completion(run) -> None:
     """Notify the Teams Solution after a linked chat run reaches a terminal state."""
     event_id = (run.input or {}).get("teams_event_id")
-    if not event_id or run.status not in {"completed", "failed", "cancelled", "paused", "budget_exceeded", "timeout"}:
+    if not event_id or run.status not in {
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+        "budget_exceeded",
+        "timeout",
+    }:
         return
     from src.services.events import emit_event
 
     completion_event_id, subscribers = await emit_event(
         "microsoft_teams.chat_run_completed",
-        {"run_id": str(run.id), "webhook_event_id": str(event_id), "organization_id": str(run.org_id)},
+        {
+            "run_id": str(run.id),
+            "webhook_event_id": str(event_id),
+            "organization_id": str(run.org_id),
+        },
         organization_id=run.org_id,
         triggered_by=f"agent_run:{run.id}",
     )
@@ -52,16 +63,20 @@ async def emit_teams_chat_completion(run) -> None:
         from src.models.orm.events import EventDelivery
 
         async with get_session_factory()() as db:
-            statuses = (await db.scalars(
-                select(EventDelivery.status).where(EventDelivery.event_id == completion_event_id)
-            )).all()
+            statuses = (
+                await db.scalars(
+                    select(EventDelivery.status).where(
+                        EventDelivery.event_id == completion_event_id
+                    )
+                )
+            ).all()
             if not statuses or EventDeliveryStatus.FAILED in statuses:
                 return
             stored = await db.get(AgentRun, run.id, with_for_update=True)
             if stored is not None:
                 stored.run_metadata = {
                     **(stored.run_metadata or {}),
-                    "teams_completion_emitted_at": datetime.now(timezone.utc).isoformat(),
+                    "teams_completion_emitted_at": datetime.now(UTC).isoformat(),
                 }
                 await db.commit()
 
@@ -72,14 +87,28 @@ async def recover_teams_chat_completions(*, limit: int = 50) -> int:
     from src.models.orm.agent_runs import AgentRun
 
     async with get_session_factory()() as db:
-        runs = (await db.scalars(
-            select(AgentRun).where(
-                AgentRun.status.in_(("completed", "failed", "cancelled", "paused", "budget_exceeded", "timeout")),
-                AgentRun.input.has_key("teams_event_id"),
-                ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
-                AgentRun.completed_at < datetime.now(timezone.utc) - timedelta(seconds=15),
-            ).order_by(AgentRun.completed_at).limit(limit)
-        )).all()
+        runs = (
+            await db.scalars(
+                select(AgentRun)
+                .where(
+                    AgentRun.status.in_(
+                        (
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "paused",
+                            "budget_exceeded",
+                            "timeout",
+                        )
+                    ),
+                    AgentRun.input.has_key("teams_event_id"),
+                    ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
+                    AgentRun.completed_at < datetime.now(UTC) - timedelta(seconds=15),
+                )
+                .order_by(AgentRun.completed_at)
+                .limit(limit)
+            )
+        ).all()
     recovered = 0
     for run in runs:
         try:
@@ -88,7 +117,10 @@ async def recover_teams_chat_completions(*, limit: int = 50) -> int:
         except Exception:
             # The next scheduler pass retries without replaying the AgentRun.
             import logging
-            logging.getLogger(__name__).exception("Teams completion recovery failed for %s", run.id)
+
+            logging.getLogger(__name__).exception(
+                "Teams completion recovery failed for %s", run.id
+            )
     return recovered
 
 
@@ -271,7 +303,11 @@ async def _resolve_teams_chat_event(db, event_id: UUID, *, validate_only: bool) 
     )
     try:
         submitted = await create_chat_run(
-            db, principal, request, channel="teams", conversation_extra_data=metadata,
+            db,
+            principal,
+            request,
+            channel="teams",
+            conversation_extra_data=metadata,
             run_metadata={"teams_event_id": str(event_id)},
         )
     except IntegrityError:
@@ -279,7 +315,11 @@ async def _resolve_teams_chat_event(db, event_id: UUID, *, validate_only: bool) 
         await db.rollback()
         await validate_binding()
         submitted = await create_chat_run(
-            db, principal, request, channel="teams", conversation_extra_data=metadata,
+            db,
+            principal,
+            request,
+            channel="teams",
+            conversation_extra_data=metadata,
             run_metadata={"teams_event_id": str(event_id)},
         )
     return {

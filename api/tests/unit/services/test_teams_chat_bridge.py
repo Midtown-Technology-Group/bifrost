@@ -168,13 +168,16 @@ async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
     emit = AsyncMock(return_value=(UUID(int=4), 0))
     monkeypatch.setattr(events, "emit_event", emit)
     run = SimpleNamespace(
-        id=UUID(int=3), status="completed", org_id=ORG_ID,
+        id=UUID(int=3),
+        status="completed",
+        org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
     )
     await bridge.emit_teams_chat_completion(run)
     assert emit.await_args.args[0] == "microsoft_teams.chat_run_completed"
     assert emit.await_args.args[1] == {
-        "run_id": str(run.id), "webhook_event_id": str(EVENT_ID),
+        "run_id": str(run.id),
+        "webhook_event_id": str(EVENT_ID),
         "organization_id": str(ORG_ID),
     }
     emit.reset_mock()
@@ -190,7 +193,9 @@ async def test_completion_emit_failure_leaves_run_eligible_for_recovery(monkeypa
     emit = AsyncMock(side_effect=RuntimeError("topic unavailable"))
     monkeypatch.setattr(events, "emit_event", emit)
     run = SimpleNamespace(
-        id=UUID(int=3), status="failed", org_id=ORG_ID,
+        id=UUID(int=3),
+        status="failed",
+        org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
         run_metadata={},
     )
@@ -206,14 +211,18 @@ async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(monke
     from src.services import events
 
     run = SimpleNamespace(
-        id=UUID(int=3), status="completed", org_id=ORG_ID,
-        input={"teams_event_id": str(EVENT_ID)}, run_metadata={},
+        id=UUID(int=3),
+        status="completed",
+        org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+        run_metadata={},
     )
     emit = AsyncMock(return_value=(UUID(int=4), 1))
     monkeypatch.setattr(events, "emit_event", emit)
     db = SimpleNamespace(
         scalars=AsyncMock(return_value=_Result([EventDeliveryStatus.FAILED])),
-        get=AsyncMock(), commit=AsyncMock(),
+        get=AsyncMock(),
+        commit=AsyncMock(),
     )
 
     class _Session:
@@ -279,37 +288,55 @@ async def test_retried_event_uses_one_canonical_agent_run_id(monkeypatch):
     """A retry after receipt commit resumes the original run identity."""
     retry_id = UUID("43f9c9b2-e38d-480a-a910-7d85242df644")
     user = SimpleNamespace(
-        id=USER_ID, email="thomas@example.com", name="Thomas",
-        organization_id=ORG_ID, is_active=True, is_superuser=False,
+        id=USER_ID,
+        email="thomas@example.com",
+        name="Thomas",
+        organization_id=ORG_ID,
+        is_active=True,
+        is_superuser=False,
         is_verified=True,
     )
     db = SimpleNamespace(
-        execute=AsyncMock(side_effect=[
-            _Result(_event_row()), _Result([(UUID(int=1), "operator")]),
-            _Result(_event_row()), _Result([(UUID(int=1), "operator")]),
-        ]),
-        scalar=AsyncMock(side_effect=[
-            SimpleNamespace(id=UUID(int=2)), user,
-            SimpleNamespace(id=UUID(int=2)), user,
-        ]),
+        execute=AsyncMock(
+            side_effect=[
+                _Result(_event_row()),
+                _Result([(UUID(int=1), "operator")]),
+                _Result(_event_row()),
+                _Result([(UUID(int=1), "operator")]),
+            ]
+        ),
+        scalar=AsyncMock(
+            side_effect=[
+                SimpleNamespace(id=UUID(int=2)),
+                user,
+                SimpleNamespace(id=UUID(int=2)),
+                user,
+            ]
+        ),
         scalars=AsyncMock(side_effect=[_Result([ORG_ID]), _Result([ORG_ID])]),
         get=AsyncMock(return_value=None),
     )
     monkeypatch.setattr(
-        teams_receipts, "resolve_canonical_teams_event_id",
+        teams_receipts,
+        "resolve_canonical_teams_event_id",
         AsyncMock(return_value=EVENT_ID),
     )
     monkeypatch.setattr(
-        bridge, "IntegrationsRepository",
+        bridge,
+        "IntegrationsRepository",
         lambda _db: SimpleNamespace(
             get_integration_defaults=AsyncMock(return_value={"agent_id": str(AGENT_ID)})
         ),
     )
     monkeypatch.setattr(bridge, "resolve_external_claim", AsyncMock(return_value=False))
-    monkeypatch.setattr(bridge, "resolve_provider_org_claim", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        bridge, "resolve_provider_org_claim", AsyncMock(return_value=True)
+    )
     submitted = SimpleNamespace(
-        run_id=UUID(int=3), conversation=SimpleNamespace(id=UUID(int=4)),
-        status="queued", idempotent=True,
+        run_id=UUID(int=3),
+        conversation=SimpleNamespace(id=UUID(int=4)),
+        status="queued",
+        idempotent=True,
     )
     create = AsyncMock(return_value=submitted)
     monkeypatch.setattr(bridge, "create_chat_run", create)
@@ -319,7 +346,8 @@ async def test_retried_event_uses_one_canonical_agent_run_id(monkeypatch):
 
     expected_run_id = uuid5(NAMESPACE_URL, f"bifrost-teams-event:{EVENT_ID}")
     assert [call.args[2].client_run_id for call in create.await_args_list] == [
-        expected_run_id, expected_run_id,
+        expected_run_id,
+        expected_run_id,
     ]
     assert first["run_id"] == retried["run_id"]
     assert all(
