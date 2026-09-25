@@ -8,11 +8,21 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from src.services import teams_chat_bridge as bridge
+from src.services import teams_receipts
 
 EVENT_ID = UUID("92f93bcd-03c3-4948-8c0d-f309edbc87f8")
 ORG_ID = UUID("00000000-0000-0000-0000-000000000002")
 USER_ID = UUID("e7f3cdad-1c8b-45d8-a813-7e33bd9590f9")
 AGENT_ID = UUID("83fe1e44-7c4e-43be-aaab-7684ebc23810")
+
+
+@pytest.fixture(autouse=True)
+def canonical_event(monkeypatch):
+    monkeypatch.setattr(
+        teams_receipts,
+        "resolve_canonical_teams_event_id",
+        AsyncMock(side_effect=lambda _db, event_id: event_id),
+    )
 
 
 def _event_row(*, adapter="microsoft_bot_framework", sender_id="aad-user"):

@@ -31,6 +31,21 @@ INTEGRATION_NAME = "Microsoft Teams Bot"
 _LEADING_MENTION = re.compile(r"^\s*<at\b[^>]*>.*?</at>\s*", re.IGNORECASE | re.DOTALL)
 
 
+async def emit_teams_chat_completion(run) -> None:
+    """Notify the Teams Solution after a linked chat run reaches a terminal state."""
+    event_id = (run.input or {}).get("teams_event_id")
+    if not event_id or run.status not in {"completed", "failed", "cancelled", "timeout"}:
+        return
+    from src.services.events import emit_event
+
+    await emit_event(
+        "microsoft_teams.chat_run_completed",
+        {"run_id": str(run.id), "webhook_event_id": str(event_id), "organization_id": str(run.org_id)},
+        organization_id=run.org_id,
+        triggered_by=f"agent_run:{run.id}",
+    )
+
+
 def _message_text(activity: dict) -> str:
     text = activity.get("text")
     if not isinstance(text, str):
@@ -60,6 +75,18 @@ def _message_text(activity: dict) -> str:
 
 async def submit_teams_chat_event(db, event_id: UUID) -> dict:
     """Create one user-attributed chat run from a stored, verified Teams event."""
+    return await _resolve_teams_chat_event(db, event_id, validate_only=False)
+
+
+async def validate_teams_chat_event(db, event_id: UUID) -> dict:
+    """Reject an unlinked sender or unconfigured agent before showing a receipt."""
+    return await _resolve_teams_chat_event(db, event_id, validate_only=True)
+
+
+async def _resolve_teams_chat_event(db, event_id: UUID, *, validate_only: bool) -> dict:
+    from src.services.teams_receipts import resolve_canonical_teams_event_id
+
+    event_id = await resolve_canonical_teams_event_id(db, event_id)
     row = await db.execute(
         select(Event, EventSource, WebhookSource)
         .join(EventSource, Event.event_source_id == EventSource.id)
@@ -183,6 +210,13 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
 
     await validate_binding()
 
+    if validate_only:
+        return {
+            "webhook_event_id": str(event_id),
+            "organization_id": str(linked_org_id),
+            "caller_user_id": str(linked_user_id),
+        }
+
     request = ChatRunCreateRequest(
         conversation_id=conversation_id,
         client_run_id=uuid5(NAMESPACE_URL, f"bifrost-teams-event:{event_id}"),
@@ -191,14 +225,16 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
     )
     try:
         submitted = await create_chat_run(
-            db, principal, request, channel="teams", conversation_extra_data=metadata
+            db, principal, request, channel="teams", conversation_extra_data=metadata,
+            run_metadata={"teams_event_id": str(event_id)},
         )
     except IntegrityError:
         # Two first messages may race to create the same Teams conversation.
         await db.rollback()
         await validate_binding()
         submitted = await create_chat_run(
-            db, principal, request, channel="teams", conversation_extra_data=metadata
+            db, principal, request, channel="teams", conversation_extra_data=metadata,
+            run_metadata={"teams_event_id": str(event_id)},
         )
     return {
         "run_id": str(submitted.run_id),
