@@ -53,6 +53,7 @@ test.describe("Organization Management", () => {
 
 		try {
 			await page.goto("/organizations");
+			await page.getByRole("textbox", { name: "Search organizations" }).fill(organization.id);
 			const organizationRow = page.getByRole("row", {
 				name: new RegExp(organizationName),
 			});
@@ -128,12 +129,14 @@ test.describe("Organization Management", () => {
 				page.getByRole("dialog", { name: "Create Organization" }),
 			).toBeHidden({ timeout: 10000 });
 
+			await page.getByRole("textbox", { name: "Search organizations" }).fill(originalName);
 			const createdRow = organizationRow(page, originalName);
 			await expect(createdRow).toBeVisible({ timeout: 10000 });
 			await expect(createdRow).toContainText(originalDomain);
 			await expect(createdRow.getByText("Active")).toBeVisible();
 			organizationId = await createdRow.getAttribute("data-org-id");
-			expect(organizationId).toBeTruthy();
+			if (!organizationId) throw new Error("Created organization has no ID");
+			await page.getByRole("textbox", { name: "Search organizations" }).fill(organizationId);
 
 			await createdRow
 				.getByRole("button", { name: `Edit ${originalName}` })
@@ -153,6 +156,7 @@ test.describe("Organization Management", () => {
 			await expect(
 				page.getByRole("heading", { name: /organizations/i }).first(),
 			).toBeVisible({ timeout: 10000 });
+			await page.getByRole("textbox", { name: "Search organizations" }).fill(organizationId);
 			const editedRow = organizationRow(page, editedName);
 			await expect(editedRow).toBeVisible({ timeout: 10000 });
 			await expect(editedRow).toContainText(editedDomain);
@@ -180,6 +184,7 @@ test.describe("Organization Management", () => {
 			await expect(
 				page.getByRole("heading", { name: /organizations/i }).first(),
 			).toBeVisible({ timeout: 10000 });
+			await page.getByRole("textbox", { name: "Search organizations" }).fill(organizationId);
 			await page.getByRole("switch", { name: "Show Inactive" }).click();
 			await expect(
 				organizationRow(page, editedName).getByText("Inactive", {

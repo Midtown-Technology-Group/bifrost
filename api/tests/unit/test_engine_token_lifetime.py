@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import jwt
 import pytest
+from fastapi import HTTPException, Request, Response
 
 from src.config import get_settings
 from src.core.auth import renew_engine_access_token
@@ -73,3 +74,35 @@ async def test_finite_engine_token_cannot_renew():
     db = AsyncMock()
     assert await renew_engine_access_token(db, token) is None
     db.scalar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_engine_refresh_has_attempt_limit_and_invalid_token_keeps_ip_limit(monkeypatch):
+    from src.routers import auth
+
+    execution_id, attempt_token = uuid4(), uuid4()
+    token, _ = mint_engine_token(
+        execution_id=str(execution_id), attempt_token=str(attempt_token), timeout_seconds=0
+    )
+    request = Request({"type": "http", "headers": [], "client": ("127.0.0.1", 12345)})
+    rate_check = AsyncMock()
+    renew = AsyncMock(return_value="renewed")
+    monkeypatch.setattr(auth.auth_limiter, "check", rate_check)
+    monkeypatch.setattr(auth, "renew_engine_access_token", renew)
+
+    response = await auth.refresh_token(
+        request, Response(), auth.TokenRefresh(refresh_token=token), AsyncMock()
+    )
+    assert response.access_token == "renewed"
+    rate_check.assert_awaited_once_with(
+        "engine_refresh", f"{execution_id}:{attempt_token}"
+    )
+
+    rate_check.reset_mock()
+    renew.return_value = None
+    with pytest.raises(HTTPException) as exc:
+        await auth.refresh_token(
+            request, Response(), auth.TokenRefresh(refresh_token="invalid"), AsyncMock()
+        )
+    assert exc.value.status_code == 401
+    rate_check.assert_awaited_once_with("refresh", "127.0.0.1")
