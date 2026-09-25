@@ -11991,6 +11991,16 @@ export interface components {
              * @default false
              */
             enabled_for_chat: boolean;
+            /**
+             * Default Max Tokens
+             * @description Profile-level default max output tokens (null = provider default)
+             */
+            default_max_tokens?: number | null;
+            /**
+             * Failover Profile Id
+             * @description Fallback profile tried when this profile's provider fails with a retryable transport error after retries are exhausted
+             */
+            failover_profile_id?: string | null;
         };
         /** AIModelProfileMergeRequest */
         AIModelProfileMergeRequest: {
@@ -12031,6 +12041,12 @@ export interface components {
             capabilities?: components["schemas"]["ModelCapabilities"] | null;
             /** Enabled For Chat */
             enabled_for_chat: boolean;
+            /** Default Max Tokens */
+            default_max_tokens?: number | null;
+            /** Failover Profile Id */
+            failover_profile_id?: string | null;
+            /** Failover Profile Name */
+            failover_profile_name?: string | null;
             connection: components["schemas"]["AIProviderConnectionSummary"];
             /** Assignment Keys */
             assignment_keys?: ("primary" | "summarization" | "tuning" | "image_generation" | "video_generation" | "chat_default")[];
@@ -12061,6 +12077,16 @@ export interface components {
             capabilities?: components["schemas"]["ModelCapabilities"] | null;
             /** Enabled For Chat */
             enabled_for_chat?: boolean | null;
+            /**
+             * Default Max Tokens
+             * @description Profile-level default max output tokens (null = provider default)
+             */
+            default_max_tokens?: number | null;
+            /**
+             * Failover Profile Id
+             * @description Fallback profile tried when this profile's provider fails with a retryable transport error after retries are exhausted
+             */
+            failover_profile_id?: string | null;
         };
         /** AIModelsResponse */
         AIModelsResponse: {
