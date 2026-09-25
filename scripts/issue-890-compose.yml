@@ -24,6 +24,7 @@ services:
     image: otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     cpuset: "4-7"
+    user: "${BIFROST_LAB_UID:-1000}:${BIFROST_LAB_GID:-1000}"
     volumes:
       - ./scripts/issue-890-otel.yaml:/etc/otelcol-contrib/config.yaml:ro
       - ${BIFROST_LAB_OTEL_DIR:?}:/results

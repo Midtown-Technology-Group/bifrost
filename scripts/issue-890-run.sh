@@ -14,6 +14,8 @@ export BIFROST_LAB_RENDERER_IMAGE="${BIFROST_LAB_RENDERER_IMAGE:-ghcr.io/mtg-tho
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 export COMPOSE_PROJECT_NAME
 export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+export BIFROST_LAB_UID="$(id -u)"
+export BIFROST_LAB_GID="$(id -g)"
 export BIFROST_LAB_OTEL_DIR="$LOG_DIR/issue-890-otel-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$BIFROST_LAB_OTEL_DIR"
 sampler_pid=""
