@@ -33,6 +33,7 @@ from src.models.orm.solutions import Solution
 from src.services.solutions.deploy import (
     DeployResult,
     SolutionBundle,
+    SolutionFinalizeIncomplete,
 )
 
 logger = logging.getLogger(__name__)
