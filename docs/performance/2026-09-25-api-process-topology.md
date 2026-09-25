@@ -1,0 +1,17 @@
+# Issue 890: API process topology
+
+This diagnostic compared one and two Uvicorn API workers for the same authenticated `GET /api/profile` fixture. The API, scheduler, and execution worker remained pinned to host CPUs 0–3 on `bifrost-platform-test-debian13-01` (8 vCPU, 16 GiB, Xeon E-2278G); both variants used the same container, dependencies, database, and host memory budget. The API container had no separate memory limit. Source was `9b72ac6d1`; the test image ran Python 3.14.7 on x86_64. The live App Service API/worker image digests match infra's pinned release from source `54b07fe6317bcb403791381827b346976b1f221c`; that source uses the same `python:3.14-slim` base digest as the lab image. This verifies source/runtime provenance, not a shell readback from the live container. `docker top` confirmed a Uvicorn parent and two spawned workers for the two-process variant. This lab is not a literal production B3: it also runs test infrastructure and an API replica, and production workload mix differs.
+
+Run command for each bracket: `BIFROST_LAB_API_PROCESSES=<1|2> bash scripts/issue-890-run.sh --scenario api-read --concurrency 16 --operations 5000`. Each run reset isolated test state, started the same role set, completed 5,000/5,000 correct responses with zero failures, and sampled cgroup CPU and memory once per second. Sequence was 1 → 2 → 1.
+
+| API processes | Sequence | Requests/s | Response p95 | Response p99 | API CPU cores | API max memory | Load-client CPU cores |
+| ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | A | 259.17 | 80.1 ms | 98.0 ms | 1.00 | 325 MiB | 0.31 |
+| 2 | B | 475.45 | 58.8 ms | 75.2 ms | 1.89 | 654 MiB | 0.58 |
+| 1 | C | 260.82 | 82.6 ms | 101.3 ms | 1.00 | 325 MiB | 0.31 |
+
+API CPU cores are the first-to-last cgroup `cpu_usage_usec` delta divided by elapsed time within each request window; memory is the largest API cgroup `memory_bytes` sample. The two-process result delivered about 1.83× the bracketing one-process throughput and 27–29% lower p95, while nearly doubling API CPU use and memory. The single process sat at one CPU core in both brackets, consistent with a process-level CPU ceiling for this route. Scheduler cgroup CPU varied from 0.02 to 0.8 cores across these short windows, so this is a topology diagnostic rather than a clean cost or whole-platform capacity claim.
+
+The initial [one-process](results/2026-09-25-api-topology-sweep-1-9b72.json) and [two-process](results/2026-09-25-api-topology-sweep-2-9b72.json) concurrency sweeps covered 1, 4, 16, 32, 64, and 128 with 1,000 correct responses per level and zero failures. At concurrency 128, load-client CPU time was about equal to the entire 11-second wall time in both variants; that point is client-confounded and cannot identify server saturation. The sustained concurrency-16 bracket kept the load client below 0.6 core. Raw [1A](results/2026-09-25-api-topology-1a-9b72.json), [2B](results/2026-09-25-api-topology-2b-9b72.json), and [1C](results/2026-09-25-api-topology-1c-9b72.json) reports each have a matching `-resources-` JSONL file.
+
+This fixture shows a useful Python process-topology improvement before any language extraction. It does not establish a production need for a second API process: production request mix, role-level memory headroom, and useful executions per B3-hour remain to be measured with the [bounded production telemetry rollout](https://github.com/MTG-Thomas/bifrost-infra/issues/1614). No Go subsystem is selected by this read-route result.
