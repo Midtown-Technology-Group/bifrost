@@ -1,5 +1,6 @@
 """The ingress receipt is scoped to one verified Teams message."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -105,3 +106,62 @@ async def test_rejected_request_updates_existing_card(monkeypatch):
     assert await receipts.finish_rejected_teams_receipt(db, EVENT_ID, source)
     assert event.data["teams_receipt"]["status"] == "rejected"
     assert send.await_args.kwargs["update_activity_id"] == "bot-reply"
+
+
+@pytest.mark.asyncio
+async def test_connector_acceptance_without_activity_id_is_not_retried(monkeypatch):
+    event = _event()
+    db = SimpleNamespace(get=AsyncMock(return_value=event), commit=AsyncMock())
+    source = SimpleNamespace(adapter_name="microsoft_bot_framework", integration_id=SOURCE_ID, config={"app_id": "bot-id"})
+    claim = SimpleNamespace(disposition=receipts.OperationReceiptDisposition.OWNER, receipt_id=SOURCE_ID, owner_token=EVENT_ID)
+    monkeypatch.setattr(receipts, "claim_operation_receipt", AsyncMock(return_value=claim))
+    monkeypatch.setattr(receipts, "record_operation_receipt_handle", AsyncMock())
+    success = AsyncMock()
+    monkeypatch.setattr(receipts, "complete_operation_receipt_success", success)
+    send = AsyncMock(return_value=None)
+    monkeypatch.setattr(receipts, "_send_receipt", send)
+
+    class _Repo:
+        def __init__(self, _db):
+            pass
+
+        async def get_integration_defaults(self, *_args, **_kwargs):
+            return {"app_id": "bot-id", "client_secret": "secret"}
+
+    monkeypatch.setattr(receipts, "IntegrationsRepository", _Repo)
+    assert await receipts.send_fast_teams_receipt(db, EVENT_ID, source) == "owner"
+    assert event.data["teams_receipt"]["status"] == "accepted_unaddressable"
+    assert "reply_activity_id" not in event.data["teams_receipt"]
+    success.assert_awaited_once()
+    send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_retry_sends_only_one_receipt(monkeypatch):
+    first = _event()
+    second = _event()
+    db_one = SimpleNamespace(get=AsyncMock(return_value=first), commit=AsyncMock())
+    db_two = SimpleNamespace(get=AsyncMock(return_value=second), commit=AsyncMock())
+    source = SimpleNamespace(adapter_name="microsoft_bot_framework", integration_id=SOURCE_ID, config={"app_id": "bot-id"})
+    owner = SimpleNamespace(disposition=receipts.OperationReceiptDisposition.OWNER, receipt_id=SOURCE_ID, owner_token=EVENT_ID)
+    duplicate = SimpleNamespace(disposition=receipts.OperationReceiptDisposition.STARTED)
+    monkeypatch.setattr(receipts, "claim_operation_receipt", AsyncMock(side_effect=[owner, duplicate]))
+    monkeypatch.setattr(receipts, "record_operation_receipt_handle", AsyncMock())
+    monkeypatch.setattr(receipts, "complete_operation_receipt_success", AsyncMock())
+
+    class _Repo:
+        def __init__(self, _db):
+            pass
+
+        async def get_integration_defaults(self, *_args, **_kwargs):
+            return {"app_id": "bot-id", "client_secret": "secret"}
+
+    monkeypatch.setattr(receipts, "IntegrationsRepository", _Repo)
+    send = AsyncMock(return_value="reply-id")
+    monkeypatch.setattr(receipts, "_send_receipt", send)
+    modes = await asyncio.gather(
+        receipts.send_fast_teams_receipt(db_one, EVENT_ID, source),
+        receipts.send_fast_teams_receipt(db_two, EVENT_ID, source),
+    )
+    assert sorted(modes) == ["duplicate", "owner"]
+    send.assert_awaited_once()
