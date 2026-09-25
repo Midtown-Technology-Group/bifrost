@@ -623,6 +623,13 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                     "agent_run_total_cleaned": results["agent_run_total_cleaned"],
                 },
             )
+        try:
+            from src.services.teams_chat_bridge import recover_teams_chat_completions
+
+            results["teams_completions_recovered"] = await recover_teams_chat_completions()
+        except Exception as e:
+            logger.exception("Teams chat completion recovery failed")
+            results["agent_run_errors"].append({"error": str(e)})
 
     from src.config import get_settings
 

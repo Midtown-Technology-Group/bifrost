@@ -185,6 +185,11 @@ async def test_process_failure_forwards_reported_metrics() -> None:
                 return_value=session_factory,
             ),
             patch(
+                "src.services.execution.attempts.has_recorded_attempt",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
                 "src.jobs.consumers.workflow_execution.update_execution",
                 new_callable=AsyncMock,
             ) as update_execution,

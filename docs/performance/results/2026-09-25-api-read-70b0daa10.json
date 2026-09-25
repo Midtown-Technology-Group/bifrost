@@ -1,0 +1,96 @@
+{
+  "scenario": "api-read",
+  "source_sha": "70b0daa1094907b6547c116a0bfd75dfc9cbdc8e",
+  "resource_samples": "/tmp/bifrost/issue-890-resources-20260925T035345Z.jsonl",
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "levels": [
+    {
+      "concurrency": 1,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:53:52.560333+00:00",
+      "finished_at": "2026-09-25T03:53:57.034031+00:00",
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 223.529,
+      "p50_seconds": 0.0043,
+      "p95_seconds": 0.0055,
+      "p99_seconds": 0.0063,
+      "wall_seconds": 4.474,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 4,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:53:57.041836+00:00",
+      "finished_at": "2026-09-25T03:54:00.511284+00:00",
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 288.231,
+      "p50_seconds": 0.0119,
+      "p95_seconds": 0.0168,
+      "p99_seconds": 0.0377,
+      "wall_seconds": 3.469,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 16,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:54:00.519037+00:00",
+      "finished_at": "2026-09-25T03:54:04.159232+00:00",
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 274.711,
+      "p50_seconds": 0.055,
+      "p95_seconds": 0.0764,
+      "p99_seconds": 0.0904,
+      "wall_seconds": 3.64,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 32,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:54:04.167517+00:00",
+      "finished_at": "2026-09-25T03:54:07.813290+00:00",
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 274.291,
+      "p50_seconds": 0.1124,
+      "p95_seconds": 0.1427,
+      "p99_seconds": 0.1805,
+      "wall_seconds": 3.646,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 64,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:54:07.822792+00:00",
+      "finished_at": "2026-09-25T03:54:11.142418+00:00",
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 301.24,
+      "p50_seconds": 0.2084,
+      "p95_seconds": 0.2707,
+      "p99_seconds": 0.4495,
+      "wall_seconds": 3.32,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 128,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:54:11.153027+00:00",
+      "finished_at": "2026-09-25T03:54:18.900624+00:00",
+      "completed": 998,
+      "failed": 2,
+      "throughput_per_second": 128.814,
+      "p50_seconds": 0.399,
+      "p95_seconds": 3.7998,
+      "p99_seconds": 5.6408,
+      "wall_seconds": 7.748,
+      "failure_examples": [
+        "ReadError: ",
+        "ReadError: "
+      ]
+    }
+  ]
+}

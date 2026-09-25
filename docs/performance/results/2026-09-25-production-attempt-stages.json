@@ -1,0 +1,15 @@
+{
+  "source": "production GET /api/executions and GET /api/executions/{id}, read only",
+  "fetched_at_utc": "2026-09-25T05:59:26.0143223Z",
+  "selection": "every tenth of the latest 300 non-local successful executions",
+  "sampled": 30,
+  "recorded": 30,
+  "errors": 0,
+  "units": "seconds",
+  "stages": {
+    "dispatch": {"count": 30, "p50": 0.6122, "p95": 15.0846, "max": 15.329},
+    "queue": {"count": 30, "p50": 10.86, "p95": 139.92, "max": 140.9875},
+    "claim_to_start": {"count": 30, "p50": 5.1611, "p95": 26.6112, "max": 33.1075},
+    "running_to_terminal": {"count": 30, "p50": 16.167, "p95": 219.2241, "max": 267.2064}
+  }
+}

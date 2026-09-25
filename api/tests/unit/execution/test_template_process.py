@@ -77,7 +77,7 @@ def _fd_count() -> int:
     try:
         return len(os.listdir("/proc/self/fd"))
     except FileNotFoundError:
-        pytest.skip("/proc is required for fd cleanup assertions")
+        return pytest.skip("/proc is required for fd cleanup assertions")
 
 
 class TestTemplateProcessLifecycle:

@@ -287,13 +287,13 @@ def _detection_details(configured: bool) -> dict[str, Any]:
             "title": "Kubernetes execution is on",
             "paragraphs": [
                 "App deploys and SDK rebuilds now launch temporary pods with "
-                "their own memory instead of competing with the scheduler, "
-                "which stays warm for lightweight work.",
+                + "their own memory instead of competing with the scheduler, "
+                + "which stays warm for lightweight work.",
                 "If the cluster has no room, work visibly waits and then "
-                "fails with a capacity error — it never falls back silently "
-                "into the scheduler.",
+                + "fails with a capacity error — it never falls back silently "
+                + "into the scheduler.",
                 "You control which job types go remote and how many may "
-                "overlap. Nothing else moves.",
+                + "overlap. Nothing else moves.",
             ],
             "primary_label": "Open execution settings",
             "primary_url": "/settings/kubernetes-executions",
@@ -302,9 +302,9 @@ def _detection_details(configured: bool) -> dict[str, Any]:
         "title": "Kubernetes execution is off",
         "paragraphs": [
             "The deployment no longer advertises the remote-build backend, "
-            "so builds run in the scheduler again.",
+            + "so builds run in the scheduler again.",
             "Your per-type toggles are preserved and take effect again if "
-            "the backend is re-enabled.",
+            + "the backend is re-enabled.",
         ],
         "primary_label": "Open execution settings",
         "primary_url": "/settings/kubernetes-executions",

@@ -60,7 +60,7 @@ async def run_summary_backfill(
     payload: SummaryBackfillPayload,
 ) -> dict:
     from src.jobs.rabbitmq import publish_message
-    from src.services.execution.run_summarizer import SUMMARIZE_BACKFILL_QUEUE
+    from src.jobs.queue_names import SUMMARIZE_BACKFILL_QUEUE
 
     await context.report(
         "Dispatching summary work",

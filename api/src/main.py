@@ -199,10 +199,17 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info(f"Bifrost API started in {settings.environment} mode")
 
+    from src.core.event_loop_lag import record_event_loop_lag
+
+    lag_stop = asyncio.Event()
+    lag_task = asyncio.create_task(record_event_loop_lag(lag_stop), name="api-event-loop-lag")
     try:
         yield
     finally:
         # Shutdown
+        lag_stop.set()
+        lag_task.cancel()
+        await asyncio.gather(lag_task, return_exceptions=True)
         logger.info("Shutting down Bifrost API...")
 
         from src.services.agent_runtime.retry_transport import (
