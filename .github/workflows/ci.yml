@@ -115,6 +115,7 @@ jobs:
         include:
           - component: api
             image: midtown-technology-group/bifrost-api
+            platforms: linux/amd64
             context: .
             dockerfile: ./api/Dockerfile
             target: runtime
@@ -122,6 +123,7 @@ jobs:
             cache_scope: dev-api
           - component: worker
             image: midtown-technology-group/bifrost-worker
+            platforms: linux/amd64,linux/arm64
             context: .
             dockerfile: ./api/Dockerfile
             target: runtime
@@ -129,6 +131,7 @@ jobs:
             cache_scope: dev-worker
           - component: client
             image: midtown-technology-group/bifrost-client
+            platforms: linux/amd64
             context: ./client
             dockerfile: ./client/Dockerfile
             target: production
@@ -158,6 +161,10 @@ jobs:
           echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Set up ARM64 emulation for worker candidate
+        if: matrix.component == 'worker'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
@@ -178,7 +185,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
-          platforms: linux/amd64
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: >-
             ghcr.io/${{ matrix.image }}:candidate-tree-${{ steps.identity.outputs.tree_sha }}
