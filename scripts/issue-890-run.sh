@@ -14,18 +14,22 @@ export BIFROST_LAB_RENDERER_IMAGE="${BIFROST_LAB_RENDERER_IMAGE:-ghcr.io/mtg-tho
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 export COMPOSE_PROJECT_NAME
 export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+export BIFROST_LAB_OTEL_DIR="$LOG_DIR/issue-890-otel-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$BIFROST_LAB_OTEL_DIR"
 sampler_pid=""
 cleanup() {
     if [[ -n "$sampler_pid" ]]; then
         kill "$sampler_pid" 2>/dev/null || true
         wait "$sampler_pid" 2>/dev/null || true
     fi
-    docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile client rm -sf client renderer
+    docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile client rm -sf client renderer otel-collector
 }
 trap cleanup EXIT
 
 ./test.sh stack up
 ./test.sh stack reset
+docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml \
+    up -d --no-deps --wait otel-collector
 docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile e2e --profile client \
     up -d --no-deps --no-build --wait api scheduler worker client renderer
 # Let scheduler startup jobs finish before measuring a steady-state request curve.
@@ -39,6 +43,11 @@ docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --pro
     -e "BIFROST_BENCH_API_PROCESSES=${BIFROST_LAB_API_PROCESSES:-1}" \
     -e "BIFROST_BENCH_CLIENT_IMAGE=$BIFROST_LAB_CLIENT_IMAGE" \
     -e "BIFROST_BENCH_RENDERER_IMAGE=$BIFROST_LAB_RENDERER_IMAGE" \
-    -e "BIFROST_BENCH_RESOURCE_FILE=/tmp/bifrost/$(basename "$sample_file")" test-runner \
+    -e "BIFROST_BENCH_RESOURCE_FILE=/tmp/bifrost/$(basename "$sample_file")" \
+    -e "BIFROST_BENCH_OTEL_FILE=/tmp/bifrost/$(basename "$BIFROST_LAB_OTEL_DIR")/metrics.jsonl" test-runner \
     python scripts/issue_890_load.py "$@"
 kill -0 "$sampler_pid"
+sleep 16
+test -s "$BIFROST_LAB_OTEL_DIR/metrics.jsonl"
+rg -q 'bifrost.event_loop.lag' "$BIFROST_LAB_OTEL_DIR/metrics.jsonl"
+echo "Event-loop lag metrics: $BIFROST_LAB_OTEL_DIR/metrics.jsonl"
