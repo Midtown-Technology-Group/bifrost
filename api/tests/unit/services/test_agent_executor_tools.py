@@ -1275,14 +1275,16 @@ class TestKnowledgeSearch:
         mock_agent.organization_id = uuid4()
         mock_agent.knowledge_sources = ["docs", "runbooks"]
 
-        doc_with_score = MagicMock(
+        doc_with_score = KnowledgeDocument(
+            id="testing-doc",
             content="Use targeted tests.",
             namespace="docs",
             score=0.87654,
             key="testing.md",
             metadata={"section": "unit"},
         )
-        doc_without_score = MagicMock(
+        doc_without_score = KnowledgeDocument(
+            id="runbook-doc",
             content="No score document.",
             namespace="runbooks",
             score=None,
@@ -1316,17 +1318,27 @@ class TestKnowledgeSearch:
         assert result.result is not None
         assert result.result["documents"] == [
             {
-                "content": "Use targeted tests.",
+                "id": "testing-doc",
+                "title": None,
                 "namespace": "docs",
-                "score": 0.8765,
+                "confidence": 0.8765,
                 "key": "testing.md",
+                "excerpt": "Use targeted tests.",
+                "excerpt_chars": 19,
+                "full_chars": 19,
+                "has_more_content": False,
                 "metadata": {"section": "unit"},
             },
             {
-                "content": "No score document.",
+                "id": "runbook-doc",
+                "title": None,
                 "namespace": "runbooks",
-                "score": None,
+                "confidence": None,
                 "key": "runbook.md",
+                "excerpt": "No score document.",
+                "excerpt_chars": 18,
+                "full_chars": 18,
+                "has_more_content": False,
                 "metadata": {},
             },
         ]
