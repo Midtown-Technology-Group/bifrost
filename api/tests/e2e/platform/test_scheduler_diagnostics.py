@@ -46,6 +46,7 @@ class TestSchedulerDiagnostics:
             "logo_thumbnail_backfill",
             "deferred_execution_promoter",
             "execution_cleanup",
+            "device_jobs_lost_sweep",
             "oauth_token_refresh",
             "metrics_refresh",
             "knowledge_storage_refresh",

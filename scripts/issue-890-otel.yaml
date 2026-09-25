@@ -1,0 +1,27 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  filter/lag:
+    error_mode: propagate
+    metric_conditions:
+      - metric.name != "bifrost.event_loop.lag"
+
+exporters:
+  file:
+    path: /results/metrics.jsonl
+    append: true
+  nop:
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [filter/lag]
+      exporters: [file]
+    traces:
+      receivers: [otlp]
+      exporters: [nop]
