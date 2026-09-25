@@ -3,7 +3,7 @@
 import sys
 
 import pytest
-from scripts.issue_890_load import main, summarize
+from scripts.issue_890_load import attempt_intervals, main, summarize
 
 
 def test_summarize_uses_nearest_rank_and_successful_work_only():
@@ -17,6 +17,23 @@ def test_summarize_uses_nearest_rank_and_successful_work_only():
         "p95_seconds": 0.4,
         "p99_seconds": 0.4,
         "wall_seconds": 2.0,
+    }
+
+
+def test_attempt_intervals_use_persisted_lifecycle_boundaries():
+    assert attempt_intervals(
+        {
+            "created_at": "2026-09-25T00:00:00+00:00",
+            "published_at": "2026-09-25T00:00:00.100000+00:00",
+            "claimed_at": "2026-09-25T00:00:00.300000+00:00",
+            "started_at": "2026-09-25T00:00:00.350000+00:00",
+            "completed_at": "2026-09-25T00:00:00.850000+00:00",
+        }
+    ) == {
+        "dispatch": 0.1,
+        "queue": 0.2,
+        "claim_to_start": 0.05,
+        "running_to_terminal": 0.5,
     }
 
 

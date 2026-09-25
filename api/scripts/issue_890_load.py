@@ -66,6 +66,25 @@ def summarize(latencies: list[float], failures: int, elapsed: float) -> dict:
     }
 
 
+def attempt_intervals(attempt: dict) -> dict[str, float]:
+    """Return persisted lifecycle gaps, in seconds, for one successful attempt."""
+    points = {
+        key: datetime.fromisoformat(attempt[key])
+        for key in ("created_at", "published_at", "claimed_at", "started_at", "completed_at")
+        if attempt.get(key)
+    }
+    return {
+        name: round((points[end] - points[start]).total_seconds(), 4)
+        for name, start, end in (
+            ("dispatch", "created_at", "published_at"),
+            ("queue", "published_at", "claimed_at"),
+            ("claim_to_start", "claimed_at", "started_at"),
+            ("running_to_terminal", "started_at", "completed_at"),
+        )
+        if start in points and end in points
+    }
+
+
 def prepare(url: str, scenario: str) -> tuple[dict[str, str], dict[str, str], str, str]:
     from tests.e2e.conftest import write_and_register
     from tests.e2e.fixtures.setup import _register_and_authenticate_user
@@ -183,6 +202,7 @@ async def run_level(
     failures = 0
     examples: list[str] = []
     pool_samples: list[dict] = []
+    execution_ids: list[str] = []
 
     async with httpx.AsyncClient(
         base_url=url,
@@ -288,6 +308,7 @@ async def run_level(
                         )
                         if result.get("result") != expected:
                             raise ValueError("workflow returned the wrong result")
+                        execution_ids.append(result["execution_id"])
                     latencies.append(time.perf_counter() - started)
                 except (httpx.HTTPError, ValueError, KeyError, TimeoutError) as exc:
                     failures += 1
@@ -310,6 +331,29 @@ async def run_level(
         elapsed = time.perf_counter() - started
         client_cpu_seconds = time.process_time() - client_cpu_started
         finished_at = datetime.now(UTC).isoformat()
+        stage_samples: list[dict[str, float]] = []
+        stage_errors = 0
+        if execution_ids:
+            stride = max(1, len(execution_ids) // 30)
+            for execution_id in execution_ids[::stride][:30]:
+                try:
+                    response = await client.get(
+                        f"/api/executions/{execution_id}", headers=admin_headers
+                    )
+                    response.raise_for_status()
+                    for attempt in response.json()["attempt_history"]["attempts"]:
+                        if attempt["status"] == "succeeded":
+                            stage_samples.append(attempt_intervals(attempt))
+                except (httpx.HTTPError, KeyError, ValueError):
+                    stage_errors += 1
+        stage_summary = {
+            name: {
+                "p50_seconds": percentile(values, 0.50),
+                "p95_seconds": percentile(values, 0.95),
+            }
+            for name in ("dispatch", "queue", "claim_to_start", "running_to_terminal")
+            if (values := [sample[name] for sample in stage_samples if name in sample])
+        }
     return {
         "concurrency": concurrency,
         "requested": operations,
@@ -317,6 +361,9 @@ async def run_level(
         "finished_at": finished_at,
         "client_cpu_seconds": round(client_cpu_seconds, 4),
         "pool_samples": pool_samples,
+        "attempt_stage_samples": len(stage_samples),
+        "attempt_stage_errors": stage_errors,
+        "attempt_stages": stage_summary,
         **summarize(latencies, failures, elapsed),
         "failure_examples": examples,
     }
