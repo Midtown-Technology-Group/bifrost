@@ -23,6 +23,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
     ScheduledTaskDefinition("logo_thumbnail_backfill", "Backfill Entity Logo Thumbnails", "Every minute"),
     ScheduledTaskDefinition("deferred_execution_promoter", "Promote Due Executions", "Every minute"),
     ScheduledTaskDefinition("execution_cleanup", "Clean Up Stuck Executions", "Every 5 minutes"),
+    ScheduledTaskDefinition("device_jobs_lost_sweep", "Sweep Lost Device Jobs", "Every 30 seconds"),
     ScheduledTaskDefinition("oauth_token_refresh", "Refresh Expiring OAuth Tokens", "Every 15 minutes", "durable_job"),
     ScheduledTaskDefinition("metrics_refresh", "Refresh Platform Metrics Snapshot", "Hourly"),
     ScheduledTaskDefinition("knowledge_storage_refresh", "Refresh Knowledge Storage Metrics", "Daily at 02:00 UTC"),
