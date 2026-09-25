@@ -195,10 +195,23 @@ async def test_open_client_uses_auto_mode_and_logs_negotiated_path(
         async with mcp_client.open_client(connection, "secret-token") as opened:
             assert isinstance(opened, FakeClient)
 
-    assert constructed == {
-        "transport": "https://peer.example/mcp",
-        "auth": "secret-token",
-        "mode": "auto",
-    }
+    assert set(constructed) == {"transport", "mode"}
+    assert constructed["mode"] == "auto"
+    assert isinstance(constructed["transport"], StreamableHttpTransport)
+    assert constructed["transport"].url == "https://peer.example/mcp"
+    assert constructed["transport"].auth is not None
     assert "protocol_version=2026-07-28 path=modern_discover" in caplog.text
     assert "secret-token" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_open_client_rejects_non_http_transport_target() -> None:
+    connection = SimpleNamespace(
+        id="connection-id",
+        server_url_override="/tmp/evil-fastmcp-server.py",
+        server=SimpleNamespace(server_url="https://peer.example/mcp"),
+    )
+
+    with pytest.raises(ValueError, match="absolute HTTP or HTTPS"):
+        async with mcp_client.open_client(connection, "secret-token"):
+            pass
