@@ -220,7 +220,7 @@ async def pin_workflow_runtime(
             if definition.get("organization_id")
             else None
         ),
-        can_access_global_repo=bool(solution.global_repo_access),
+        can_access_global_repo=bool(solution.allow_outbound_access),
         source_hashes={key: item.content_hash for key, item in resolution.sources.items()},
     )
 

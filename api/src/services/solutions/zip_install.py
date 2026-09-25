@@ -620,7 +620,7 @@ async def _install_workspace(
     from src.services.solutions.dependency_walker import check_install_needs
 
     needs = check_install_needs(
-        bundle.python_files, global_repo_access=solution.global_repo_access
+        bundle.python_files, global_repo_access=solution.allow_outbound_access
     )
     if needs:
         items = ", ".join(
@@ -790,7 +790,7 @@ async def _deploy_workspace_to_solution(
     from src.services.solutions.dependency_walker import check_install_needs
 
     needs = check_install_needs(
-        bundle.python_files, global_repo_access=solution.global_repo_access
+        bundle.python_files, global_repo_access=solution.allow_outbound_access
     )
     if needs:
         items = ", ".join(

@@ -81,6 +81,8 @@ class UserPrincipal:
     verified_context: dict[str, str] | None = None
     capability_fingerprint: str | None = None
     token_exp: int | None = None
+    # Signed caller install on short-lived engine tokens; None is _repo/global.
+    engine_solution_id: str | None = None
 
     @property
     def is_platform_admin(self) -> bool:
