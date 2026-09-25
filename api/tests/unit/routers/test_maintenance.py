@@ -132,7 +132,9 @@ async def test_get_maintenance_status_maps_db_error_to_http_500() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cleanup_orphaned_deactivates_workflows_missing_from_file_index() -> None:
+async def test_cleanup_orphaned_deactivates_workflows_missing_from_file_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     active_id = uuid4()
     missing_id = uuid4()
     active = SimpleNamespace(
@@ -159,6 +161,10 @@ async def test_cleanup_orphaned_deactivates_workflows_missing_from_file_index() 
         ]
     )
     db.commit = AsyncMock()
+    park = AsyncMock()
+    monkeypatch.setattr(
+        "src.services.service_lifecycle.park_definitions_for_workflows", park
+    )
 
     response = await maintenance.cleanup_orphaned(user=None, db=db)
 
@@ -170,6 +176,9 @@ async def test_cleanup_orphaned_deactivates_workflows_missing_from_file_index() 
     assert missing.is_active is False
     assert missing.is_orphaned is True
     db.commit.assert_awaited_once()
+    park.assert_awaited_once_with(
+        db, [missing_id], reason="source file missing (orphan cleanup)"
+    )
 
 
 @pytest.mark.asyncio

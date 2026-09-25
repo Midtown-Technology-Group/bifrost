@@ -52,7 +52,7 @@ def _make_delivery(
         event=event,
         subscription=subscription,
         workflow_id=workflow_id if target_type == "workflow" else None,
-        workflow=SimpleNamespace(id=workflow_id, organization_id=None)
+        workflow=SimpleNamespace(id=workflow_id, organization_id=None, type="workflow")
         if target_type == "workflow"
         else None,
         execution_id=uuid.uuid4(),

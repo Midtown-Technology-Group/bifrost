@@ -227,6 +227,7 @@ class TestWorkflowMetadataOnly:
         workflow.time_saved = None
         workflow.value = None
         workflow.execution_mode = None
+        workflow.type = "workflow"
 
         result = MagicMock()
         result.scalar_one_or_none.return_value = workflow
@@ -253,6 +254,7 @@ class TestWorkflowMetadataOnly:
             time_saved=0,
             value=0.0,
             execution_mode="sync",
+            type="workflow",
         )
 
     @pytest.mark.asyncio
