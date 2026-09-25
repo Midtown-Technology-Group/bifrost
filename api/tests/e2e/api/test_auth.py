@@ -9,6 +9,7 @@ These tests verify the flows work correctly and test security aspects.
 """
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import jwt
@@ -24,8 +25,10 @@ from tests.helpers.totp import generate_totp_code
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_no_timeout_engine_token_refresh_requires_active_attempt(
-    e2e_client, async_session_factory
+    e2e_client, async_session_factory, monkeypatch
 ):
+    rate_check = AsyncMock()
+    monkeypatch.setattr("src.routers.auth.auth_limiter.check", rate_check)
     execution_id, attempt_token = uuid4(), uuid4()
     now = datetime.now(timezone.utc)
     async with async_session_factory() as db:
@@ -65,6 +68,10 @@ async def test_no_timeout_engine_token_refresh_requires_active_attempt(
         renewed = e2e_client.post("/auth/refresh", json={"refresh_token": expired})
         assert renewed.status_code == 200
         assert decode_token(renewed.json()["access_token"], expected_type="access")
+        assert rate_check.call_args.args == (
+            "engine_refresh",
+            f"{execution_id}:{attempt_token}",
+        )
 
         async with async_session_factory() as db:
             attempt = await db.scalar(
@@ -78,6 +85,11 @@ async def test_no_timeout_engine_token_refresh_requires_active_attempt(
             await db.commit()
         denied = e2e_client.post("/auth/refresh", json={"refresh_token": expired})
         assert denied.status_code == 401
+        assert rate_check.call_args.args[0] == "engine_refresh"
+
+        invalid = e2e_client.post("/auth/refresh", json={"refresh_token": "invalid"})
+        assert invalid.status_code == 401
+        assert rate_check.call_args.args[0] == "refresh"
     finally:
         async with async_session_factory() as db:
             await db.execute(delete(Execution).where(Execution.id == execution_id))
