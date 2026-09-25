@@ -252,6 +252,8 @@ def test_config_claim_policy_table_and_file_policy_serializers():
             key="api_key",
             config_type="secret",
             description="API key",
+            required=False,
+            position=0,
             organization_id=ORG_ID,
             value="should-redact",
         )

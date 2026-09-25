@@ -227,6 +227,7 @@ async def test_handler_requires_action_finishes_with_result_and_releases_lease(
         payload_model=APPLICATION_PUBLISH_DEFINITION.payload_model,
         handler=requires_confirmation,
         policy=PlatformJobPolicy(timeout_seconds=30),
+        operations_policy=APPLICATION_PUBLISH_DEFINITION.operations_policy,
     )
     published = AsyncMock()
     monkeypatch.setattr(runner, "get_platform_job_definition", lambda _: definition)
@@ -295,6 +296,7 @@ async def test_handler_failure_persists_a_durable_result(
         payload_model=APPLICATION_PUBLISH_DEFINITION.payload_model,
         handler=publication_failed,
         policy=PlatformJobPolicy(timeout_seconds=30),
+        operations_policy=APPLICATION_PUBLISH_DEFINITION.operations_policy,
     )
     monkeypatch.setattr(runner, "get_platform_job_definition", lambda _: definition)
     monkeypatch.setattr(service, "publish_platform_job_update", AsyncMock())

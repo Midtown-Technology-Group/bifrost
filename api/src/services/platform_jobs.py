@@ -401,7 +401,7 @@ async def finish_platform_job(
             logical_job_type="platform_job",
             logical_job_id=job.id,
             lease_token=lease_token,
-            status=status,
+            status="succeeded" if status == "requires_action" else status,
             failure_code=bounded_error_code,
             failure_message=error_message,
         )

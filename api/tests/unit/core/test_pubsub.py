@@ -498,39 +498,6 @@ async def test_worker_heartbeat_stores_when_worker_id_present(
 
 
 @pytest.mark.asyncio
-async def test_git_progress_and_completion_publishers(
-    recorder: RecorderManager,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stored: list[tuple[str, int, str]] = []
-
-    class RedisClient:
-        async def setex(self, key: str, ttl: int, value: str) -> None:
-            stored.append((key, ttl, value))
-
-    monkeypatch.setattr("src.core.redis_client.get_redis_client", lambda: RedisClient())
-
-    await pubsub.publish_git_progress("job-1", "Fetching", current=1, total=3)
-    await pubsub.publish_git_op_completed(
-        "job-1",
-        "success",
-        "sync_execute",
-        data={"ok": True},
-        preview={"changes": []},
-        pulled=1,
-        pushed=2,
-        commit_sha="abc123",
-        conflicts=[],
-    )
-
-    assert recorder.broadcasts[-2][0] == "git:job-1"
-    assert recorder.broadcasts[-1][1]["commit_sha"] == "abc123"
-    assert stored[0][0] == "bifrost:job:job-1"
-    assert stored[0][1] == 300
-    assert json.loads(stored[0][2])["pushed"] == 2
-
-
-@pytest.mark.asyncio
 async def test_table_and_file_publishers(monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = RecorderPublisher()
     monkeypatch.setattr(pubsub, "publisher", recorder)

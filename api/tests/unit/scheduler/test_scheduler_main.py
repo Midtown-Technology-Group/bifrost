@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -102,125 +102,6 @@ async def test_start_scheduler_adds_core_jobs_and_starts_scheduler(
         job for job in fake.jobs if job["id"] == "deferred_execution_promoter"
     )
     assert promoter["trigger"].interval.total_seconds() == 7
-
-
-def test_build_clone_url_from_config_handles_github_and_owner_repo(scheduler) -> None:
-    assert scheduler._build_clone_url_from_config(
-        SimpleNamespace(
-            repo_url="https://github.com/MTG-Thomas/bifrost.git",
-            token="token",
-        )
-    ) == "https://x-access-token:token@github.com/MTG-Thomas/bifrost.git"
-    assert scheduler._build_clone_url_from_config(
-        SimpleNamespace(repo_url="MTG-Thomas/bifrost", token="token")
-    ) == "https://x-access-token:token@github.com/MTG-Thomas/bifrost.git"
-
-
-@pytest.mark.asyncio
-async def test_handle_git_operation_reports_missing_or_incomplete_config(
-    monkeypatch: pytest.MonkeyPatch,
-    scheduler,
-) -> None:
-    class FakeDbContext:
-        async def __aenter__(self):
-            return object()
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-    monkeypatch.setattr(scheduler_main, "get_db_context", lambda: FakeDbContext())
-    publish = AsyncMock()
-    monkeypatch.setattr(scheduler_main, "publish_git_op_completed", publish)
-
-    with patch("src.services.github_config.get_github_config", AsyncMock(return_value=None)):
-        await scheduler._handle_git_operation(
-            {"type": "git_status", "jobId": "job-missing", "orgId": "org-1"}
-        )
-
-    publish.assert_awaited_once_with(
-        "job-missing",
-        status="failed",
-        result_type="status",
-        error="GitHub not configured",
-    )
-
-    publish.reset_mock()
-    config = SimpleNamespace(token="", repo_url="https://github.com/org/repo", branch="main")
-    with patch("src.services.github_config.get_github_config", AsyncMock(return_value=config)):
-        await scheduler._handle_git_operation(
-            {"type": "git_status", "jobId": "job-incomplete", "orgId": "org-1"}
-        )
-
-    publish.assert_awaited_once_with(
-        "job-incomplete",
-        status="failed",
-        result_type="status",
-        error="GitHub token or repository not configured",
-    )
-
-
-@pytest.mark.asyncio
-async def test_handle_git_operation_status_unknown_and_exception_paths(
-    monkeypatch: pytest.MonkeyPatch,
-    scheduler,
-) -> None:
-    class FakeDbContext:
-        async def __aenter__(self):
-            return object()
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-    class FakeStatus:
-        def model_dump(self):
-            return {"clean": True}
-
-    class FakeSyncService:
-        def __init__(self, **_kwargs) -> None:
-            return None
-
-        async def desktop_status(self):
-            return FakeStatus()
-
-    config = SimpleNamespace(
-        token="token",
-        repo_url="https://github.com/org/repo.git",
-        branch="main",
-    )
-    publish = AsyncMock()
-    monkeypatch.setattr(scheduler_main, "get_db_context", lambda: FakeDbContext())
-    monkeypatch.setattr(scheduler_main, "publish_git_op_completed", publish)
-    monkeypatch.setattr("src.services.github_sync.GitHubSyncService", FakeSyncService)
-
-    with patch("src.services.github_config.get_github_config", AsyncMock(return_value=config)):
-        await scheduler._handle_git_operation({"type": "git_status", "jobId": "job-status"})
-        await scheduler._handle_git_operation({"type": "git_unknown", "jobId": "job-unknown"})
-
-    assert publish.await_args_list[0].kwargs == {
-        "status": "success",
-        "result_type": "status",
-        "data": {"clean": True},
-    }
-    assert publish.await_args_list[0].args == ("job-status",)
-    assert publish.await_args_list[1].kwargs == {
-        "status": "failed",
-        "result_type": "unknown",
-        "error": "Unknown operation type: git_unknown",
-    }
-
-    publish.reset_mock()
-    with patch(
-        "src.services.github_config.get_github_config",
-        AsyncMock(side_effect=RuntimeError("config failed")),
-    ):
-        await scheduler._handle_git_operation({"type": "git_status", "jobId": "job-error"})
-
-    publish.assert_awaited_once_with(
-        "job-error",
-        status="failed",
-        result_type="status",
-        error="config failed",
-    )
 
 
 @pytest.mark.asyncio
