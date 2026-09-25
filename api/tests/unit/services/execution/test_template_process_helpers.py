@@ -76,14 +76,11 @@ def test_template_process_is_alive_false_before_start():
 def test_template_process_shutdown_clears_state_with_dead_process():
     class DeadProcess:
         def __init__(self):
-            self.join_calls = []
+            self.wait_calls = []
             self.kill_calls = 0
 
-        def join(self, timeout=None):
-            self.join_calls.append(timeout)
-
-        def is_alive(self):
-            return False
+        def wait(self, timeout=None):
+            self.wait_calls.append(timeout)
 
         def kill(self):
             self.kill_calls += 1
@@ -98,7 +95,7 @@ def test_template_process_shutdown_clears_state_with_dead_process():
     proc.shutdown()
 
     assert pipe.sent == [{"action": template_process.CMD_SHUTDOWN}]
-    assert process.join_calls == [10]
+    assert process.wait_calls == [10]
     assert process.kill_calls == 0
     assert proc._pipe is None
     assert proc._process is None

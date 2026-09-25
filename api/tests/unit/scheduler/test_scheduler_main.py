@@ -36,6 +36,7 @@ def settings() -> SimpleNamespace:
         environment="test",
         redis_url="redis://example/0",
         deferred_execution_promoter_interval_seconds=7,
+        platform_build_backend="local",
     )
 
 

@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from src.models.contracts.agent_runs import AgentRunCreateRequest
 from src.routers import agent_runs
 
 
@@ -75,6 +76,38 @@ def test_run_to_response_handles_missing_agent_and_metadata() -> None:
 
     assert response.agent_name is None
     assert response.metadata == {}
+
+
+@pytest.mark.asyncio
+async def test_sync_agent_wait_releases_request_db_connection(monkeypatch) -> None:
+    db = SimpleNamespace(rollback=AsyncMock())
+    agent_id = uuid4()
+    user = SimpleNamespace(
+        organization_id=None,
+        user_id=uuid4(),
+        email="caller@example.test",
+        name="Caller",
+    )
+
+    async def find_agent(*_args):
+        return SimpleNamespace(id=agent_id, name="Agent", is_active=True)
+
+    async def enqueue(**_kwargs):
+        db.rollback.assert_awaited_once()
+        return "run-id"
+
+    async def wait(*_args, **_kwargs):
+        db.rollback.assert_awaited_once()
+        return {"status": "completed"}
+
+    monkeypatch.setattr(agent_runs, "get_executable_agent", find_agent)
+    monkeypatch.setattr(agent_runs, "enqueue_agent_run", enqueue)
+    monkeypatch.setattr(agent_runs, "wait_for_agent_run_result", wait)
+
+    result = await agent_runs.execute_agent_run(
+        AgentRunCreateRequest(agent_name="Agent"), db, user
+    )
+    assert result == {"status": "completed"}
 
 
 def test_is_platform_admin_delegates_to_principal_grant() -> None:

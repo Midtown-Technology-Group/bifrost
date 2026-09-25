@@ -32,7 +32,6 @@ from src.core.module_cache_contract import (
     WORKSPACE_UPDATING_PREFIX,
     WORKSPACE_UPDATE_LOCK_SECONDS,
     CachedModule,
-    module_resolution_cache_key as module_resolution_cache_key,
 )
 from src.core.redis_client import get_redis_client
 from src.services.repo_storage import RepoStorage

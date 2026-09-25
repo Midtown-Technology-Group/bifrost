@@ -34,9 +34,9 @@ from src.core.log_safety import log_safe
 from src.core.module_cache import (
     get_module,
     get_module_resolution_cache,
-    module_resolution_cache_key,
     set_module_resolution_cache,
 )
+from src.core.module_cache_contract import module_resolution_cache_key
 from src.core.requirements_cache import get_requirements
 from src.core.principal import UserPrincipal
 from src.core.security import decode_token
