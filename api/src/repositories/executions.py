@@ -294,7 +294,16 @@ class ExecutionRepository(BaseRepository[Execution]):
             )
 
         if execution_context is not None:
-            update_values["execution_context"] = _make_json_safe(execution_context)
+            # A Teams completion subscription may be registered while the
+            # workflow runs. Preserve that server-owned key when the worker
+            # projects its execution context at terminal state.
+            existing_context = await self.session.scalar(
+                select(Execution.execution_context).where(Execution.id == UUID(execution_id))
+            ) or {}
+            merged_context = _make_json_safe(execution_context)
+            if "teams_action_completion" in existing_context:
+                merged_context["teams_action_completion"] = existing_context["teams_action_completion"]
+            update_values["execution_context"] = merged_context
 
         # Resource metrics
         if metrics is not None:
