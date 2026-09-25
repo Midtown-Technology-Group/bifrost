@@ -355,7 +355,7 @@ async def run_workflow(
     """
     Execute a workflow by ID.
 
-    All workflows are executed via the worker queue (RabbitMQ). The `sync` parameter
+    All workflows are executed via the configured worker-delivery backend. The `sync` parameter
     controls whether we wait for the result or return immediately with PENDING status.
 
     Args:
@@ -456,7 +456,7 @@ async def _enqueue_workflow_async(
     org_id_override: str | None = None,
 ) -> WorkflowExecutionResponse:
     """
-    Enqueue workflow for execution via RabbitMQ.
+    Enqueue workflow for execution via the configured work-delivery backend.
 
     If sync=True, waits for result via Redis BLPOP.
     If sync=False, returns immediately with PENDING status.
@@ -608,7 +608,7 @@ async def _enqueue_code_async(
     code_base64: str,
     parameters: dict[str, Any],
 ) -> WorkflowExecutionResponse:
-    """Enqueue inline code for async execution via RabbitMQ."""
+    """Enqueue inline code for async execution via the configured delivery backend."""
     from src.services.execution.async_executor import enqueue_code_execution
 
     execution_id = await enqueue_code_execution(
