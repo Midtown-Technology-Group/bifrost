@@ -1,0 +1,39 @@
+{
+  "scenario": "api-read",
+  "source_sha": "d8526a684ee60cb41336e55408fe7c55ccf1b095",
+  "resource_samples": "/tmp/bifrost/issue-890-resources-20260925T035836Z.jsonl",
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "levels": [
+    {
+      "concurrency": 128,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:58:43.210825+00:00",
+      "finished_at": "2026-09-25T03:58:51.089977+00:00",
+      "client_cpu_seconds": 6.5702,
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 126.918,
+      "p50_seconds": 0.5543,
+      "p95_seconds": 3.5512,
+      "p99_seconds": 5.2289,
+      "wall_seconds": 7.879,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 1,
+      "requested": 1000,
+      "started_at": "2026-09-25T03:58:51.101082+00:00",
+      "finished_at": "2026-09-25T03:58:56.364429+00:00",
+      "client_cpu_seconds": 1.1398,
+      "completed": 1000,
+      "failed": 0,
+      "throughput_per_second": 189.994,
+      "p50_seconds": 0.0052,
+      "p95_seconds": 0.0065,
+      "p99_seconds": 0.0072,
+      "wall_seconds": 5.263,
+      "failure_examples": []
+    }
+  ]
+}

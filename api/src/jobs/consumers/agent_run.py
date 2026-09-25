@@ -282,6 +282,13 @@ class AgentRunConsumer(BaseConsumer):
                         failure_message=(finished_run.error if finished_run else None),
                     )
                     await db.commit()
+                    if finished_run is not None:
+                        try:
+                            from src.services.teams_chat_bridge import emit_teams_chat_completion
+
+                            await emit_teams_chat_completion(finished_run)
+                        except Exception:
+                            logger.exception("Failed to emit Teams chat completion for %s", run_id)
                     return
 
                 if agent_id is None:
@@ -699,6 +706,13 @@ class AgentRunConsumer(BaseConsumer):
                 except Exception as pub_err:
                     # Pubsub notify is a UI hint; the DB row already reflects the failure
                     logger.debug(f"failed to publish agent_run failure update for {run_id}: {pub_err}")
+                if trigger_type == "chat" or context.get("trigger_type") == "chat":
+                    try:
+                        from src.services.teams_chat_bridge import emit_teams_chat_completion
+
+                        await emit_teams_chat_completion(agent_run)
+                    except Exception:
+                        logger.exception("Failed to emit Teams chat failure for %s", run_id)
 
             if sync:
                 await _publish_sync_result(

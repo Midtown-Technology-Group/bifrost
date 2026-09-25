@@ -1,0 +1,262 @@
+{
+  "scenario": "agent",
+  "source_sha": "15780d818294a6516f789a61c3a4cc145e6f0653",
+  "resource_samples": "/tmp/bifrost/issue-890-resources-20260925T052544Z.jsonl",
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "levels": [
+    {
+      "concurrency": 1,
+      "requested": 20,
+      "started_at": "2026-09-25T05:25:52.662193+00:00",
+      "finished_at": "2026-09-25T05:26:06.397702+00:00",
+      "client_cpu_seconds": 0.0559,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T05:25:53.037065+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:25:56.904537+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:25:58.312739+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:25:59.558903+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:00.952908+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:02.337851+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:03.488467+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:04.952904+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:06.397664+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "completed": 20,
+      "failed": 0,
+      "throughput_per_second": 1.456,
+      "p50_seconds": 0.4794,
+      "p95_seconds": 0.7599,
+      "p99_seconds": 4.2238,
+      "wall_seconds": 13.735,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 4,
+      "requested": 20,
+      "started_at": "2026-09-25T05:26:06.404817+00:00",
+      "finished_at": "2026-09-25T05:26:11.474398+00:00",
+      "client_cpu_seconds": 0.0369,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T05:26:06.421545+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:08.231590+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:09.371776+00:00",
+          "capacity": 4,
+          "busy": 1,
+          "available": 3,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:10.409726+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:11.420530+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "completed": 20,
+      "failed": 0,
+      "throughput_per_second": 3.945,
+      "p50_seconds": 0.9963,
+      "p95_seconds": 1.0926,
+      "p99_seconds": 1.1016,
+      "wall_seconds": 5.07,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 16,
+      "requested": 20,
+      "started_at": "2026-09-25T05:26:11.481995+00:00",
+      "finished_at": "2026-09-25T05:26:47.235506+00:00",
+      "client_cpu_seconds": 0.0482,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T05:26:11.549009+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:44.332548+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:45.395222+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T05:26:46.403731+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "completed": 8,
+      "failed": 12,
+      "throughput_per_second": 0.224,
+      "p50_seconds": 34.6313,
+      "p95_seconds": 35.75,
+      "p99_seconds": 35.75,
+      "wall_seconds": 35.753,
+      "failure_examples": [
+        "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://api:8000/api/agent-runs/execute'\nFor more information check: https://developer.mozilla.org/en-US/docs/W",
+        "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://api:8000/api/agent-runs/execute'\nFor more information check: https://developer.mozilla.org/en-US/docs/W",
+        "ReadError: "
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@ plumbing and the failure-swallowing path.
 """
 import sys
 from types import ModuleType
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -57,7 +57,7 @@ async def test_lazy_summarize_wrapper_forwards_to_real_service(monkeypatch):
     from src.jobs.summarize_worker import summarize_run
 
     run_id = uuid4()
-    session_factory = object()
+    session_factory = MagicMock()
     fake_module = ModuleType("src.services.execution.run_summarizer")
     fake_module.summarize_run = AsyncMock()  # type: ignore[attr-defined]
     monkeypatch.setitem(

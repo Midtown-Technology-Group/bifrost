@@ -1057,20 +1057,23 @@ async def execute_agent_run(
 ) -> dict:
     """Execute an agent synchronously via the SDK."""
     agent = await get_executable_agent(db, request.agent_name, user)
+    agent_id, agent_name, agent_active = agent.id, agent.name, agent.is_active
+    # The synchronous wait can last minutes; release the read transaction first.
+    await db.rollback()
 
     # Paused agents short-circuit gracefully — HTTP 200 with structured body.
     # Downstream consumers (webhook senders, SDK) discriminate on status="paused".
-    if not agent.is_active:
+    if not agent_active:
         return {
             "status": "paused",
             "accepted": False,
-            "message": f"Agent '{agent.name}' is paused. Request not processed.",
-            "agent_id": str(agent.id),
+            "message": f"Agent '{agent_name}' is paused. Request not processed.",
+            "agent_id": str(agent_id),
         }
 
     # Enqueue the agent run for sync execution
     run_id = await enqueue_agent_run(
-        agent_id=str(agent.id),
+        agent_id=str(agent_id),
         trigger_type="api",
         input_data=request.input,
         output_schema=request.output_schema,
