@@ -1,0 +1,382 @@
+{
+  "source": "production execution detail, status=Success, stratified by duration; anonymized",
+  "requested_start_utc": "2026-09-24T04:00:00Z",
+  "list_pages": 4,
+  "list_truncated": false,
+  "population_count": 3094,
+  "detail_failures": 0,
+  "bins": [
+    {
+      "bin": "under_100ms",
+      "population_count": 311,
+      "sample_count": 5,
+      "samples": [
+        {
+          "duration_seconds": 0.007,
+          "cpu_seconds": 0.2143,
+          "cpu_to_wall": 30.614,
+          "peak_memory_mib": 1.9,
+          "process_rss_mib": 122.11,
+          "input_bytes": 6589,
+          "result_bytes": 54,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.009,
+          "cpu_seconds": 0.2337,
+          "cpu_to_wall": 25.967,
+          "peak_memory_mib": 1.79,
+          "process_rss_mib": 122.12,
+          "input_bytes": 6407,
+          "result_bytes": 54,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.011,
+          "cpu_seconds": 16.3582,
+          "cpu_to_wall": 1487.109,
+          "peak_memory_mib": 217.28,
+          "process_rss_mib": 327.13,
+          "input_bytes": 2312,
+          "result_bytes": 281,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.017,
+          "cpu_seconds": 16.8066,
+          "cpu_to_wall": 988.624,
+          "peak_memory_mib": 218.2,
+          "process_rss_mib": 327.14,
+          "input_bytes": 2312,
+          "result_bytes": 281,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.02,
+          "cpu_seconds": 0.6157,
+          "cpu_to_wall": 30.785,
+          "peak_memory_mib": 21.17,
+          "process_rss_mib": 135.06,
+          "input_bytes": 57621,
+          "result_bytes": 317,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        }
+      ]
+    },
+    {
+      "bin": "100ms_to_1s",
+      "population_count": 1012,
+      "sample_count": 5,
+      "samples": [
+        {
+          "duration_seconds": 0.215,
+          "cpu_seconds": 0.6845,
+          "cpu_to_wall": 3.184,
+          "peak_memory_mib": 22.74,
+          "process_rss_mib": 135.02,
+          "input_bytes": 55813,
+          "result_bytes": 348,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.312,
+          "cpu_seconds": 4.1908,
+          "cpu_to_wall": 13.432,
+          "peak_memory_mib": 39.33,
+          "process_rss_mib": 149.64,
+          "input_bytes": 109,
+          "result_bytes": 1508,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.363,
+          "cpu_seconds": 0.3959,
+          "cpu_to_wall": 1.091,
+          "peak_memory_mib": 6.99,
+          "process_rss_mib": 124.62,
+          "input_bytes": 273,
+          "result_bytes": 97,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.433,
+          "cpu_seconds": 0.4214,
+          "cpu_to_wall": 0.973,
+          "peak_memory_mib": 4.77,
+          "process_rss_mib": 124.62,
+          "input_bytes": 273,
+          "result_bytes": 97,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 0.602,
+          "cpu_seconds": 0.7817,
+          "cpu_to_wall": 1.299,
+          "peak_memory_mib": 22.79,
+          "process_rss_mib": 135.02,
+          "input_bytes": 52361,
+          "result_bytes": 512,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        }
+      ]
+    },
+    {
+      "bin": "1s_to_5s",
+      "population_count": 379,
+      "sample_count": 5,
+      "samples": [
+        {
+          "duration_seconds": 1.452,
+          "cpu_seconds": 0.9112,
+          "cpu_to_wall": 0.628,
+          "peak_memory_mib": 11.87,
+          "process_rss_mib": 122.74,
+          "input_bytes": 403,
+          "result_bytes": 28050,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 2.393,
+          "cpu_seconds": 6.0125,
+          "cpu_to_wall": 2.513,
+          "peak_memory_mib": 45.3,
+          "process_rss_mib": 160.59,
+          "input_bytes": 18,
+          "result_bytes": 1463780,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 2.938,
+          "cpu_seconds": 0.4686,
+          "cpu_to_wall": 0.159,
+          "peak_memory_mib": 0.0,
+          "process_rss_mib": 124.62,
+          "input_bytes": 273,
+          "result_bytes": 97,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 3.717,
+          "cpu_seconds": 13.4883,
+          "cpu_to_wall": 3.629,
+          "peak_memory_mib": 222.37,
+          "process_rss_mib": 326.49,
+          "input_bytes": 3004,
+          "result_bytes": 3109,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 4.44,
+          "cpu_seconds": 13.888,
+          "cpu_to_wall": 3.128,
+          "peak_memory_mib": 219.86,
+          "process_rss_mib": 288.21,
+          "input_bytes": 3004,
+          "result_bytes": 3109,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        }
+      ]
+    },
+    {
+      "bin": "5s_to_30s",
+      "population_count": 1012,
+      "sample_count": 5,
+      "samples": [
+        {
+          "duration_seconds": 7.824,
+          "cpu_seconds": 0.4434,
+          "cpu_to_wall": 0.057,
+          "peak_memory_mib": 6.66,
+          "process_rss_mib": 124.61,
+          "input_bytes": 273,
+          "result_bytes": 97,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 10.794,
+          "cpu_seconds": 14.6389,
+          "cpu_to_wall": 1.356,
+          "peak_memory_mib": 218.37,
+          "process_rss_mib": 326.49,
+          "input_bytes": 3004,
+          "result_bytes": 3109,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 16.352,
+          "cpu_seconds": 14.6735,
+          "cpu_to_wall": 0.897,
+          "peak_memory_mib": 220.54,
+          "process_rss_mib": 327.05,
+          "input_bytes": 6532,
+          "result_bytes": 250,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 22.013,
+          "cpu_seconds": 19.0005,
+          "cpu_to_wall": 0.863,
+          "peak_memory_mib": 221.87,
+          "process_rss_mib": 291.25,
+          "input_bytes": 432,
+          "result_bytes": 16559,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 27.668,
+          "cpu_seconds": 4.5589,
+          "cpu_to_wall": 0.165,
+          "peak_memory_mib": 13.96,
+          "process_rss_mib": 152.33,
+          "input_bytes": 118,
+          "result_bytes": 533,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        }
+      ]
+    },
+    {
+      "bin": "30s_to_120s",
+      "population_count": 344,
+      "sample_count": 5,
+      "samples": [
+        {
+          "duration_seconds": 31.352,
+          "cpu_seconds": 36.6242,
+          "cpu_to_wall": 1.168,
+          "peak_memory_mib": 232.64,
+          "process_rss_mib": 327.88,
+          "input_bytes": 329,
+          "result_bytes": 864,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 32.04,
+          "cpu_seconds": 0.4751,
+          "cpu_to_wall": 0.015,
+          "peak_memory_mib": 0.0,
+          "process_rss_mib": 125.94,
+          "input_bytes": 6395,
+          "result_bytes": 47,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 32.831,
+          "cpu_seconds": 0.4822,
+          "cpu_to_wall": 0.015,
+          "peak_memory_mib": 9.07,
+          "process_rss_mib": 125.94,
+          "input_bytes": 6301,
+          "result_bytes": 47,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 37.336,
+          "cpu_seconds": 16.4021,
+          "cpu_to_wall": 0.439,
+          "peak_memory_mib": 221.23,
+          "process_rss_mib": 329.66,
+          "input_bytes": 2147,
+          "result_bytes": 1525,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 51.333,
+          "cpu_seconds": 26.395,
+          "cpu_to_wall": 0.514,
+          "peak_memory_mib": 226.26,
+          "process_rss_mib": 293.27,
+          "input_bytes": 3179,
+          "result_bytes": 2298,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        }
+      ]
+    },
+    {
+      "bin": "over_120s",
+      "population_count": 36,
+      "sample_count": 5,
+      "samples": [
+        {
+          "duration_seconds": 136.37,
+          "cpu_seconds": 1.5316,
+          "cpu_to_wall": 0.011,
+          "peak_memory_mib": 26.33,
+          "process_rss_mib": 137.38,
+          "input_bytes": 2698,
+          "result_bytes": 1820,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 312.705,
+          "cpu_seconds": 6.8861,
+          "cpu_to_wall": 0.022,
+          "peak_memory_mib": 47.94,
+          "process_rss_mib": 170.0,
+          "input_bytes": 118,
+          "result_bytes": 772,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 1213.026,
+          "cpu_seconds": 672.7373,
+          "cpu_to_wall": 0.555,
+          "peak_memory_mib": 57.37,
+          "process_rss_mib": 142.76,
+          "input_bytes": 390,
+          "result_bytes": 8261,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 1365.621,
+          "cpu_seconds": 919.7877,
+          "cpu_to_wall": 0.674,
+          "peak_memory_mib": 62.41,
+          "process_rss_mib": 142.29,
+          "input_bytes": 390,
+          "result_bytes": 8361,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        },
+        {
+          "duration_seconds": 1434.931,
+          "cpu_seconds": 924.4591,
+          "cpu_to_wall": 0.644,
+          "peak_memory_mib": 73.4,
+          "process_rss_mib": 142.31,
+          "input_bytes": 390,
+          "result_bytes": 8361,
+          "ai_usage_rows": 1,
+          "attempts": 1
+        }
+      ]
+    }
+  ]
+}
