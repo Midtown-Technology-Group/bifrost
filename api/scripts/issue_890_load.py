@@ -130,6 +130,7 @@ async def run_level(
     latencies: list[float] = []
     failures = 0
     examples: list[str] = []
+    pool_samples: list[dict] = []
 
     async with httpx.AsyncClient(
         base_url=url,
@@ -139,6 +140,31 @@ async def run_level(
             max_keepalive_connections=concurrency,
         ),
     ) as client:
+
+        async def sample_pool(stop: asyncio.Event) -> None:
+            while not stop.is_set():
+                try:
+                    response = await client.get(
+                        "/api/platform/workers/stats", headers=admin_headers
+                    )
+                    response.raise_for_status()
+                    stats = response.json()
+                    pool_samples.append(
+                        {
+                            "time": datetime.now(UTC).isoformat(),
+                            "capacity": stats["total_configured_capacity"],
+                            "busy": stats["total_busy"],
+                            "available": stats["total_available_slots"],
+                            "saturated_workers": stats["saturated_workers"],
+                            "admission_rejections": stats["admission_rejections"],
+                        }
+                    )
+                except (httpx.HTTPError, KeyError, ValueError) as exc:
+                    pool_samples.append({"error": type(exc).__name__})
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=1.0)
+                except TimeoutError:
+                    pass
 
         async def one(index: int) -> None:
             nonlocal failures
@@ -203,7 +229,16 @@ async def run_level(
         started_at = datetime.now(UTC).isoformat()
         started = time.perf_counter()
         client_cpu_started = time.process_time()
+        stop_sampling = asyncio.Event()
+        pool_task = (
+            asyncio.create_task(sample_pool(stop_sampling))
+            if scenario != "api-read"
+            else None
+        )
         await asyncio.gather(*(one(index) for index in range(operations)))
+        if pool_task:
+            stop_sampling.set()
+            await pool_task
         elapsed = time.perf_counter() - started
         client_cpu_seconds = time.process_time() - client_cpu_started
         finished_at = datetime.now(UTC).isoformat()
@@ -213,6 +248,7 @@ async def run_level(
         "started_at": started_at,
         "finished_at": finished_at,
         "client_cpu_seconds": round(client_cpu_seconds, 4),
+        "pool_samples": pool_samples,
         **summarize(latencies, failures, elapsed),
         "failure_examples": examples,
     }
