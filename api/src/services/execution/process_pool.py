@@ -39,7 +39,7 @@ import sys
 import time
 import uuid
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from queue import Empty
@@ -335,6 +335,7 @@ class ProcessHandle:
     result_reader_fd: int | None = None
     result_callback_failed: bool = False
     result_callback_diagnostics: dict[str, Any] | None = None
+    result_callback_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     # Set for supervised service children (which live in service_processes).
     # None for one-shot workflow children.
     service: ServiceInfo | None = None
@@ -2140,27 +2141,32 @@ class ProcessPoolManager:
 
         if self.on_result is None:
             return False
-        if handle is not None:
-            self._attach_resource_peaks(handle, result)
-        for attempt in range(3):
-            try:
-                await self.on_result(result)
-                if handle is not None:
-                    handle.result_callback_diagnostics = None
-                return True
-            except Exception as exc:
-                if handle is not None:
-                    handle.result_callback_diagnostics = {
-                        "exception_class": type(exc).__name__[:80],
-                        "phase": "terminal_callback",
-                        "attempt_count": attempt + 1,
-                    }
-                logger.exception(
-                    "Result callback attempt %s/3 failed: %s", attempt + 1, exc
-                )
-                if attempt < 2:
-                    await asyncio.sleep(0.1 * (2**attempt))
-        return False
+        lock = handle.result_callback_lock if handle is not None else asyncio.Lock()
+        async with lock:
+            if handle is not None:
+                if handle.result_reported:
+                    return True
+                self._attach_resource_peaks(handle, result)
+            for attempt in range(3):
+                try:
+                    await self.on_result(result)
+                    if handle is not None:
+                        handle.result_callback_diagnostics = None
+                        handle.result_reported = True
+                    return True
+                except Exception as exc:
+                    if handle is not None:
+                        handle.result_callback_diagnostics = {
+                            "exception_class": type(exc).__name__[:80],
+                            "phase": "terminal_callback",
+                            "attempt_count": attempt + 1,
+                        }
+                    logger.exception(
+                        "Result callback attempt %s/3 failed: %s", attempt + 1, exc
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(0.1 * (2**attempt))
+            return False
 
     def _register_result_reader(self, handle: ProcessHandle) -> None:
         """Wake immediately when a one-shot child's result pipe is readable."""

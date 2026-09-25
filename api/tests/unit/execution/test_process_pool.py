@@ -1036,22 +1036,28 @@ class TestProcessPoolManagerResultHandling:
 
         shutdown_task = asyncio.create_task(pool._report_shutdown(handle))
         await callback_started.wait()
-        assert handle.result_reported is True
+        assert handle.result_reported is False
 
-        await pool._handle_result(
-            handle,
-            {
-                "type": "result",
-                "execution_id": "exec-123",
-                "success": True,
-                "result": {"data": "late"},
-            },
+        result_task = asyncio.create_task(
+            pool._handle_result(
+                handle,
+                {
+                    "type": "result",
+                    "execution_id": "exec-123",
+                    "success": True,
+                    "result": {"data": "late"},
+                },
+            )
         )
+        await asyncio.sleep(0)
+        assert not result_task.done()
 
         release_callback.set()
         assert await shutdown_task is None
+        await result_task
 
         assert len(results) == 1
+        assert handle.result_reported is True
         assert results[0]["error_type"] == "WorkerShutdown"
         assert handle.id not in pool.processes
         assert handle.current_execution is None

@@ -821,7 +821,10 @@ class TestCodeEngineApps:
     def test_delete_recreate_same_slug_rejects_stale_source(self, e2e_client, platform_admin):
         """Deleting an app record must not let the next app adopt its old files."""
         slug = f"stale-source-{uuid.uuid4().hex[:8]}"
-        app = _create_app(e2e_client, platform_admin.headers, slug, name="Stale Source")
+        app = _create_app(
+            e2e_client, platform_admin.headers, slug,
+            name="Stale Source", app_model="inline_v1",
+        )
         _delete_app(e2e_client, platform_admin.headers, app["id"])
 
         response = e2e_client.post(

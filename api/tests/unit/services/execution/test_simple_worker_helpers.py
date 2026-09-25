@@ -264,6 +264,7 @@ def test_capture_resource_metrics_converts_linux_ru_maxrss(monkeypatch):
 
     assert simple_worker._capture_resource_metrics() == {
         "peak_memory_bytes": 12288,
+        "peak_process_rss_bytes": 12288,
         "cpu_user_seconds": 1.2346,
         "cpu_system_seconds": 0.5,
         "cpu_total_seconds": 1.7346,
