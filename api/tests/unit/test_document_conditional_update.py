@@ -128,11 +128,15 @@ async def test_conditional_route_retains_all_write_gates(monkeypatch, gate):
     )
     monkeypatch.setattr(
         routes,
-        "_check_action_or_403",
+        "_check_update_or_403",
         AsyncMock(side_effect=error if gate == "policy" else None),
     )
     monkeypatch.setattr(routes, "_resolve_attribution", lambda *args: (None, None))
-    monkeypatch.setattr(routes, "_row_from_doc", lambda doc: doc.data)
+    monkeypatch.setattr(
+        routes,
+        "_row_from_doc",
+        lambda doc: {**doc.data, "id": doc.id, "table_id": str(table.id)},
+    )
     repo = SimpleNamespace(get=AsyncMock(return_value=existing), update=AsyncMock())
     monkeypatch.setattr(routes, "DocumentRepository", lambda *args: repo)
     with pytest.raises(routes.HTTPException) as raised:
@@ -162,9 +166,13 @@ async def test_stale_or_racing_snapshot_returns409_without_publication(
     monkeypatch.setattr(
         routes, "_assert_solution_write_targets_owned_table", AsyncMock()
     )
-    monkeypatch.setattr(routes, "_check_action_or_403", AsyncMock())
+    monkeypatch.setattr(routes, "_check_update_or_403", AsyncMock())
     monkeypatch.setattr(routes, "_resolve_attribution", lambda *args: (None, None))
-    monkeypatch.setattr(routes, "_row_from_doc", lambda doc: doc.data)
+    monkeypatch.setattr(
+        routes,
+        "_row_from_doc",
+        lambda doc: {**doc.data, "id": doc.id, "table_id": str(table.id)},
+    )
     publish = AsyncMock()
     monkeypatch.setattr(routes, "publish_document_change", publish)
     repo = SimpleNamespace(
