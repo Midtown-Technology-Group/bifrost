@@ -157,7 +157,30 @@ async def test_linked_sender_runs_chat_with_their_own_principal(monkeypatch):
     assert request.agent_id == AGENT_ID
     assert request.content == "ping"
     assert create.await_args.kwargs["channel"] == "teams"
+    assert create.await_args.kwargs["run_metadata"] == {"teams_event_id": str(EVENT_ID)}
     assert result["run_id"] == str(UUID(int=3))
+
+
+@pytest.mark.asyncio
+async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
+    from src.services import events
+
+    emit = AsyncMock(return_value=(UUID(int=4), 1))
+    monkeypatch.setattr(events, "emit_event", emit)
+    run = SimpleNamespace(
+        id=UUID(int=3), status="completed", org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+    )
+    await bridge.emit_teams_chat_completion(run)
+    assert emit.await_args.args[0] == "microsoft_teams.chat_run_completed"
+    assert emit.await_args.args[1] == {
+        "run_id": str(run.id), "webhook_event_id": str(EVENT_ID),
+        "organization_id": str(ORG_ID),
+    }
+    emit.reset_mock()
+    run.input = {}
+    await bridge.emit_teams_chat_completion(run)
+    emit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

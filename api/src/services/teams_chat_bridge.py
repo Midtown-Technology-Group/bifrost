@@ -34,7 +34,7 @@ _LEADING_MENTION = re.compile(r"^\s*<at\b[^>]*>.*?</at>\s*", re.IGNORECASE | re.
 async def emit_teams_chat_completion(run) -> None:
     """Notify the Teams Solution after a linked chat run reaches a terminal state."""
     event_id = (run.input or {}).get("teams_event_id")
-    if not event_id or run.status not in {"completed", "failed", "cancelled", "timeout"}:
+    if not event_id or run.status not in {"completed", "failed", "cancelled", "paused", "budget_exceeded", "timeout"}:
         return
     from src.services.events import emit_event
 
