@@ -44,6 +44,7 @@ async def register_teams_action_completion(
         or (run.input or {}).get("teams_event_id") != str(webhook_event_id)
         or event.event_type != "microsoft_teams.message"
         or (event.data or {}).get("channel_id") != "msteams"
+        or not (event.data or {}).get("teams_direct_enqueued")
         or run.org_id is None
         or run.org_id != execution.organization_id
         or not run.conversation_id
@@ -105,6 +106,46 @@ async def register_teams_action_completion(
     if execution.status in TERMINAL:
         await emit_teams_action_completion(db, execution_id)
     return {"execution_id": str(execution_id), "status": execution.status.value}
+
+
+async def register_teams_action_for_run(db, run: AgentRun) -> None:
+    """Server-side discovery avoids granting a workflow callback an admin API."""
+    event_id = (run.input or {}).get("teams_event_id")
+    user_message_id = (run.input or {}).get("user_message_id")
+    if run.status != "completed" or not event_id or not user_message_id or not run.conversation_id:
+        return
+    messages = (
+        await db.scalars(
+            select(Message)
+            .where(Message.conversation_id == run.conversation_id)
+            .order_by(Message.sequence)
+        )
+    ).all()
+    started = False
+    for message in messages:
+        if str(message.id) == str(user_message_id):
+            started = True
+            continue
+        if not started:
+            continue
+        if str(message.role.value if hasattr(message.role, "value") else message.role) == "user":
+            break
+        result = message.tool_result or {}
+        if (
+            message.tool_name in ACTION_TOOLS
+            and isinstance(result, dict)
+            and isinstance(message.tool_input, dict)
+            and message.tool_input.get("apply") is True
+        ):
+            try:
+                execution_id = UUID(str(result["execution_id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            await register_teams_action_completion(
+                db, execution_id=execution_id, run_id=run.id,
+                webhook_event_id=UUID(str(event_id)),
+            )
+            return
 
 
 async def emit_teams_action_completion(db, execution_id: UUID) -> None:

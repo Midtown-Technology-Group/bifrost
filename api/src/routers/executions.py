@@ -12,7 +12,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select, and_, desc, func, or_, text
@@ -57,27 +56,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/executions", tags=["Executions"])
 
-
-class TeamsActionCompletionRequest(BaseModel):
-    run_id: UUID
-    webhook_event_id: UUID
-
-
-@router.post(
-    "/{execution_id}/teams-completion",
-    dependencies=[RequirePlatformAdmin],
-)
-async def register_teams_completion(
-    execution_id: UUID, body: TeamsActionCompletionRequest, ctx: Context
-) -> dict:
-    from src.services.teams_action_completion import register_teams_action_completion
-
-    return await register_teams_action_completion(
-        ctx.db,
-        execution_id=execution_id,
-        run_id=body.run_id,
-        webhook_event_id=body.webhook_event_id,
-    )
 
 _EXECUTION_QUERY_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
     "workflowName": ("workflow_name",),

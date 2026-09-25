@@ -79,6 +79,16 @@ async def emit_teams_chat_completion(run) -> None:
                     "teams_completion_emitted_at": datetime.now(UTC).isoformat(),
                 }
                 await db.commit()
+    if run.status == "completed":
+        from src.core.database import get_session_factory
+        from src.services.teams_action_completion import register_teams_action_for_run
+
+        try:
+            async with get_session_factory()() as db:
+                await register_teams_action_for_run(db, run)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Teams action binding failed for %s", run.id)
 
 
 async def recover_teams_chat_completions(*, limit: int = 50) -> int:
