@@ -68,6 +68,8 @@ async def linked_event(async_session_factory):
     finally:
         async with async_session_factory() as db:
             await db.execute(delete(EventSource).where(EventSource.id == source_id))
+            await db.commit()
+        async with async_session_factory() as db:
             await db.execute(
                 delete(Execution).where(Execution.workflow_id == workflow_id)
             )

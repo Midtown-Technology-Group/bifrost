@@ -167,8 +167,10 @@ export function FormListSurface({
 							const canLaunch =
 								(form.is_active || canManageForms) &&
 								validation?.valid;
-							const unavailableReason = !validation?.valid
-								? `Cannot launch: Missing ${validation?.missingParams.join(", ")}`
+							const unavailableReason = !validation
+								? "Checking launch requirements…"
+								: !validation.valid
+									? `Cannot launch: Missing ${validation.missingParams.join(", ")}`
 								: !form.is_active && !canManageForms
 									? `${term(terminology, "form", "singular")} is disabled`
 									: undefined;
