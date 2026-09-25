@@ -23,6 +23,7 @@ sampler_pid=$!
 trap 'kill "$sampler_pid" 2>/dev/null || true; wait "$sampler_pid" 2>/dev/null || true' EXIT
 echo "Resource samples: $sample_file"
 docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile test run --rm --no-deps \
-    -e "BIFROST_BENCH_SOURCE_SHA=$(git rev-parse HEAD)" test-runner \
+    -e "BIFROST_BENCH_SOURCE_SHA=$(git rev-parse HEAD)" \
+    -e "BIFROST_BENCH_RESOURCE_FILE=/tmp/bifrost/$(basename "$sample_file")" test-runner \
     python scripts/issue_890_load.py "$@"
 kill -0 "$sampler_pid"

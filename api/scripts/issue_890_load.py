@@ -10,6 +10,7 @@ import os
 import platform
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -176,12 +177,16 @@ async def run_level(
                     if len(examples) < 3:
                         examples.append(type(exc).__name__ + ": " + str(exc)[:160])
 
+        started_at = datetime.now(UTC).isoformat()
         started = time.perf_counter()
         await asyncio.gather(*(one(index) for index in range(operations)))
         elapsed = time.perf_counter() - started
+        finished_at = datetime.now(UTC).isoformat()
     return {
         "concurrency": concurrency,
         "requested": operations,
+        "started_at": started_at,
+        "finished_at": finished_at,
         **summarize(latencies, failures, elapsed),
         "failure_examples": examples,
     }
@@ -215,6 +220,7 @@ def main() -> int:
     result = {
         "scenario": args.scenario,
         "source_sha": os.environ.get("BIFROST_BENCH_SOURCE_SHA", "unknown"),
+        "resource_samples": os.environ.get("BIFROST_BENCH_RESOURCE_FILE"),
         "python": platform.python_version(),
         "architecture": platform.machine(),
         "levels": [],
