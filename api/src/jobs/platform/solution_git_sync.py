@@ -8,7 +8,11 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from src.core.database import get_db_context
-from src.jobs.execution_policy import WorkloadClass, platform_job_operations_policy
+from src.jobs.execution_policy import (
+    CancellationMode,
+    WorkloadClass,
+    platform_job_operations_policy,
+)
 from src.jobs.platform.base import (
     PlatformJobContext,
     PlatformJobDefinition,
@@ -113,5 +117,6 @@ SOLUTION_GIT_SYNC_DEFINITION = PlatformJobDefinition(
     operations_policy=platform_job_operations_policy(
         "solution.git_sync",
         workload_class=WorkloadClass.PLATFORM_INTERACTIVE,
+        cancellation=CancellationMode.QUEUED_AND_RUNNING,
     ),
 )

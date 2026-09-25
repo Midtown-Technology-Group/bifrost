@@ -18,7 +18,11 @@ from src.jobs.platform.base import (
 from src.models.contracts.solutions import WorkspaceBundleDecision, WorkspaceBundlePreview
 from src.core.database import get_db_context
 from src.core.repo_dirty import mark_repo_dirty
-from src.jobs.execution_policy import WorkloadClass, platform_job_operations_policy
+from src.jobs.execution_policy import (
+    CancellationMode,
+    WorkloadClass,
+    platform_job_operations_policy,
+)
 from src.services.file_index_service import FileIndexService
 from src.services.repo_sync_writer import RepoSyncWriter
 from src.services.solutions.workspace_bundle_import import (
@@ -341,5 +345,6 @@ WORKSPACE_BUNDLE_IMPORT_DEFINITION = PlatformJobDefinition(
     operations_policy=platform_job_operations_policy(
         "workspace.bundle_import",
         workload_class=WorkloadClass.PLATFORM_INTERACTIVE,
+        cancellation=CancellationMode.QUEUED_AND_RUNNING,
     ),
 )
