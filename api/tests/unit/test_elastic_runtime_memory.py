@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from scripts import elastic_runtime_memory as memory
 
@@ -84,3 +85,21 @@ def test_repo_pythonpath_uses_existing_env_when_script_is_copied(monkeypatch, tm
     monkeypatch.setattr(module, "__file__", str(tmp_path / "elastic_runtime_memory.py"))
 
     assert module._repo_pythonpath() == "/app/api:/app"
+
+
+def test_stage_does_not_pass_platform_job_type_as_command_argument(monkeypatch):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        return SimpleNamespace(stdout="", returncode=0)
+
+    monkeypatch.setattr(memory.subprocess, "run", fake_run)
+    stage = memory.Stage("python", "Python", lambda _args: None)
+    args = SimpleNamespace(platform_job_type="--arbitrary", stage_timeout=1)
+
+    memory._run_stage(stage, args)
+
+    assert "--arbitrary" not in captured["command"]
+    assert captured["env"]["BIFROST_MEMORY_PLATFORM_JOB_TYPE"] == "--arbitrary"
