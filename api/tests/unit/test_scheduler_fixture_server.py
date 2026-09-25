@@ -61,6 +61,22 @@ def test_chat_completion_non_stream_contract_remains_openai_compatible_json() ->
     }
 
 
+def test_issue_890_agent_fixture_calls_one_tool_then_finishes() -> None:
+    request = {
+        "model": "issue-890-agent",
+        "tools": [{"function": {"name": "issue_890_agent_tool"}}],
+        "messages": [{"role": "user", "content": "run"}],
+    }
+    first = ChatCompletion.model_validate(chat_completion_payload(request))
+    assert first.choices[0].finish_reason == "tool_calls"
+    assert first.choices[0].message.tool_calls[0].function.name == "issue_890_agent_tool"
+
+    request["messages"].append({"role": "tool", "content": '{"ok":true}'})
+    second = ChatCompletion.model_validate(chat_completion_payload(request))
+    assert second.choices[0].finish_reason == "stop"
+    assert second.choices[0].message.content == "ok"
+
+
 def test_chat_completion_stream_contract_is_openai_compatible_sse() -> None:
     events = chat_completion_stream_events({"model": "fixture-chat", "stream": True})
     encoded = encode_sse_events(events).decode()

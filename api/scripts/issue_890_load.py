@@ -38,6 +38,13 @@ async def issue_890_external_http(value: int, delay_ms: int) -> dict:
         return response.json()
 """
 
+AGENT_TOOL_SOURCE = """from bifrost import workflow
+
+@workflow(name="issue_890_agent_tool", description="Capacity-lab tool", is_tool=True)
+async def issue_890_agent_tool(value: int) -> dict:
+    return {"value": value, "ok": True}
+"""
+
 
 def percentile(values: list[float], fraction: float) -> float:
     if not values:
@@ -100,19 +107,64 @@ def prepare(url: str, scenario: str) -> tuple[dict[str, str], dict[str, str], st
         )
         stub.raise_for_status()
         user = _register_and_authenticate_user(client, user)
-        is_external_http = scenario == "external-http"
+        is_agent = scenario == "agent"
+        fixture = {
+            "agent": ("issue_890_agent_tool.py", AGENT_TOOL_SOURCE, "issue_890_agent_tool"),
+            "external-http": (
+                "issue_890_external_http.py",
+                EXTERNAL_HTTP_SOURCE,
+                "issue_890_external_http",
+            ),
+        }.get(scenario, ("issue_890_small.py", WORKFLOW_SOURCE, "issue_890_small"))
         workflow = write_and_register(
             client,
             admin.headers,
-            "issue_890_external_http.py" if is_external_http else "issue_890_small.py",
-            EXTERNAL_HTTP_SOURCE if is_external_http else WORKFLOW_SOURCE,
-            "issue_890_external_http" if is_external_http else "issue_890_small",
+            *fixture,
             organization_id=org_id,
         )
         profile = client.get("/api/profile", headers=user.headers)
         profile.raise_for_status()
         if profile.json()["organization_id"] != org_id:
             raise RuntimeError("The benchmark user has the wrong organization")
+        if is_agent:
+            connection = client.post(
+                "/api/admin/ai/connections",
+                headers=admin.headers,
+                json={
+                    "name": f"Issue 890 {suffix}",
+                    "provider": "openai_compatible",
+                    "api_key": "fixture-only",
+                    "endpoint": "http://scheduler-fixtures:8080/v1",
+                },
+            )
+            connection.raise_for_status()
+            profile = client.post(
+                "/api/admin/ai/profiles",
+                headers=admin.headers,
+                json={
+                    "name": f"Issue 890 {suffix}",
+                    "connection_id": connection.json()["id"],
+                    "model": "issue-890-agent",
+                    "enabled_for_chat": False,
+                },
+            )
+            profile.raise_for_status()
+            agent = client.post(
+                "/api/agents",
+                headers=admin.headers,
+                json={
+                    "name": f"Issue 890 agent {suffix}",
+                    "system_prompt": "Call the provided tool once, then answer ok.",
+                    "channels": [],
+                    "access_level": "authenticated",
+                    "organization_id": org_id,
+                    "tool_ids": [workflow["id"]],
+                    "llm_profile_id": profile.json()["id"],
+                    "max_iterations": 3,
+                },
+            )
+            agent.raise_for_status()
+            return user.headers, admin.headers, agent.json()["name"], org_id
         return user.headers, admin.headers, workflow["id"], org_id
 
 
@@ -178,6 +230,22 @@ async def run_level(
                         response.raise_for_status()
                         if response.json()["organization_id"] != org_id:
                             raise ValueError("tenant mismatch in profile response")
+                    elif scenario == "agent":
+                        response = await client.post(
+                            "/api/agent-runs/execute",
+                            headers=admin_headers,
+                            json={
+                                "agent_name": workflow_id,
+                                "input": {"task": f"Run tool for item {index}"},
+                                "timeout": 120,
+                            },
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        if result.get("status") != "completed":
+                            raise ValueError(f"agent ended as {result.get('status')}")
+                        if result.get("iterations_used", 0) < 2:
+                            raise ValueError("agent did not complete a tool-call loop")
                     else:
                         input_data = {"value": index}
                         if scenario == "external-http":
@@ -257,7 +325,7 @@ async def run_level(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--scenario", choices=("api-read", "workflow", "external-http"), required=True
+        "--scenario", choices=("api-read", "workflow", "external-http", "agent"), required=True
     )
     parser.add_argument(
         "--concurrency", type=int, nargs="+", default=[1, 4, 16, 32, 64, 128]
