@@ -352,7 +352,8 @@ export interface paths {
          *     1. Request body (API clients): {"refresh_token": "..."}
          *     2. HttpOnly cookie (browser clients): Automatically sent
          *
-         *     Rate limited: 10 requests per minute per IP address.
+         *     Rate limited: 10 requests per minute per IP for ordinary refreshes,
+         *     or per execution attempt for signed engine tokens.
          *
          *     Args:
          *         request: FastAPI request object
@@ -1454,6 +1455,41 @@ export interface paths {
         patch: operations["update_organization_api_organizations__org_id__patch"];
         trace?: never;
     };
+    "/api/users/{user_id}/external-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List External Identities */
+        get: operations["list_external_identities_api_users__user_id__external_identities_get"];
+        put?: never;
+        /** Create External Identity */
+        post: operations["create_external_identity_api_users__user_id__external_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/external-identities/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete External Identity */
+        delete: operations["delete_external_identity_api_users__user_id__external_identities__identity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -1640,6 +1676,57 @@ export interface paths {
         get: operations["get_user_forms_api_users__user_id__forms_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-action-approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Approvals */
+        get: operations["list_approvals_api_agent_action_approvals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-action-approvals/{approval_id}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deny Approval */
+        post: operations["deny_approval_api_agent_action_approvals__approval_id__deny_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-action-approvals/{approval_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Approval */
+        post: operations["approve_approval_api_agent_action_approvals__approval_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3770,6 +3857,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace-promotions/live/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Workspace Release */
+        post: operations["retire_workspace_release_api_workspace_promotions_live_retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace-promotions/live": {
         parameters: {
             query?: never;
@@ -4326,26 +4430,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/github/configure": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Configure GitHub integration
-         * @description Save GitHub repository configuration. Syncing happens via /sync endpoints.
-         */
-        post: operations["configure_github_api_github_configure_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/github/repositories": {
         parameters: {
             query?: never;
@@ -4440,6 +4524,46 @@ export interface paths {
         get: operations["get_commits_api_github_commits_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/connect/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview first workspace Git connection
+         * @description Compare the detached workspace with a remote branch without changing either.
+         */
+        post: operations["preview_git_connect_api_github_connect_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue reviewed first workspace Git connection
+         * @description Validate a requester-bound preview, then run it through ``workspace.git``.
+         */
+        post: operations["enqueue_git_connect_api_github_connect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4705,6 +4829,337 @@ export interface paths {
         get: operations["get_scheduler_task_history_api_platform_scheduler_tasks__task_id__runs_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List devices in the caller's organization */
+        get: operations["list_devices_route_api_devices_get"];
+        put?: never;
+        /** Create a device and mint a one-time enrollment token */
+        post: operations["create_device_route_api_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enroll with a single-use token and receive the device key once */
+        post: operations["enroll_device_route_api_devices_enroll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one device (user: full view; control key: freshness only) */
+        get: operations["get_device_route_api_devices__device_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/rotate-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the device key (raw returned once) */
+        post: operations["rotate_device_key_endpoint_api_devices__device_id__rotate_key_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a device */
+        post: operations["disable_device_route_api_devices__device_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-enable a disabled device */
+        post: operations["enable_device_route_api_devices__device_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List job history for a device (create-level read authz) */
+        get: operations["list_jobs_route_api_devices__device_id__jobs_get"];
+        put?: never;
+        /** Create a device job (user permission or device-scoped control key) */
+        post: operations["create_job_route_api_devices__device_id__jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one job (script body readable at create-level authz) */
+        get: operations["get_job_route_api_devices__device_id__jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/jobs/{job_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read job logs (create-level authz; never device-readable) */
+        get: operations["get_job_logs_route_api_devices__device_id__jobs__job_id__logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cooperative cancel (user JWT only; no kill guarantee) */
+        post: operations["cancel_job_route_api_devices__device_id__jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device-control-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List control keys in the caller's organization */
+        get: operations["list_control_keys_route_api_device_control_keys_get"];
+        put?: never;
+        /** Create a device-scoped control key (raw returned once) */
+        post: operations["create_control_key_route_api_device_control_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device-control-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one control key */
+        get: operations["get_control_key_route_api_device_control_keys__key_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device-control-keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the control key (raw returned once, same row id) */
+        post: operations["rotate_control_key_endpoint_api_device_control_keys__key_id__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device-control-keys/{key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a control key (idempotent) */
+        post: operations["revoke_control_key_endpoint_api_device_control_keys__key_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Device heartbeat: renew activity and receive the poll hint */
+        post: operations["heartbeat_route_api_device_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/jobs/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim the next job for this device (204 when idle) */
+        post: operations["claim_route_api_device_jobs_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/jobs/{job_id}/running": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a real spawn: claimed -> running (fenced)
+         * @description Additive route required by feedback #1: the agent may only call this
+         *     after cmd.Start() succeeded, which is what makes pre-spawn reclaim safe
+         *     and post-spawn ambiguity `lost` (M0 job lifecycle).
+         */
+        post: operations["running_route_api_device_jobs__job_id__running_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/jobs/{job_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fenced, idempotent log batch */
+        post: operations["logs_route_api_device_jobs__job_id__logs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/jobs/{job_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fenced terminal result */
+        post: operations["result_route_api_device_jobs__job_id__result_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6910,6 +7365,26 @@ export interface paths {
          * @description Apply a consolidated tuning proposal: update prompt, write history, clear verdicts.
          */
         post: operations["apply_tuning_session_api_agents__agent_id__tuning_session_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/teams/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Teams Event
+         * @description Submit a verified Teams event as its linked Bifrost user.
+         */
+        post: operations["submit_teams_event_api_chat_teams_events_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9473,6 +9948,73 @@ export interface paths {
         patch: operations["update_claim_api_claims__name__patch"];
         trace?: never;
     };
+    "/api/solutions/import-workspace/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a Solution archive as workspace content
+         * @description Stage a requester-bound immutable archive and return its collision plan.
+         *
+         *     ``organization_id`` selects the target scope for scoped definitions
+         *     (absent = global workspace content). Files, integrations, and roles are
+         *     always global.
+         */
+        post: operations["preview_workspace_import_api_solutions_import_workspace_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/import-workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a reviewed workspace bundle import */
+        post: operations["enqueue_workspace_import_api_solutions_import_workspace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/import-workspace/preview-repo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a Solution repository snapshot as workspace content
+         * @description Clone, validate, and plan a one-time repository snapshot.
+         *
+         *     Snapshot semantics: coordinates and the resolved commit are bound into the
+         *     staged preview for audit/retry, but no Solution record, install ID, or
+         *     ongoing package-repository connection is created. Checkout, ref, subfolder,
+         *     or descriptor failures return 422 before any preview token is issued.
+         *     ``organization_id`` selects the target scope (absent = global).
+         */
+        post: operations["preview_workspace_import_repo_api_solutions_import_workspace_preview_repo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions": {
         parameters: {
             query?: never;
@@ -9968,12 +10510,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Auto-pull a git-connected install from its repo (admin only)
-         * @description Pull the connected install's repo ``main`` and deploy it (criterion 13).
+         * Queue a git-connected install update from its repo (admin only)
+         * @description Queue a pull of the connected install's configured Git ref (criterion 13).
          *
-         *     This is the auto-pull entry point (webhook/poll/manual). It is the ONLY
-         *     writer for a connected install — the deploy endpoint is refused for it. For a
-         *     disconnected install there is nothing to pull, so this is refused in turn.
+         *     The shared per-Solution resource lock serializes this durable mutation with
+         *     deploys and SDK updates. The git-sync handler retains the service-level
+         *     write lock, which also protects non-platform writers.
          */
         post: operations["sync_solution_api_solutions__solution_id__sync_post"];
         delete?: never;
@@ -11477,6 +12019,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/runtime-maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get runtime maintenance and drain state */
+        get: operations["runtime_maintenance_status_api_platform_runtime_maintenance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/runtime-maintenance/enter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close admissions and begin a bounded drain */
+        post: operations["enter_maintenance_api_platform_runtime_maintenance_enter_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/runtime-maintenance/{generation}/seal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seal claims after accepted work drains */
+        post: operations["seal_maintenance_api_platform_runtime_maintenance__generation__seal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/runtime-maintenance/{generation}/exit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exit one owned maintenance generation */
+        post: operations["exit_maintenance_api_platform_runtime_maintenance__generation__exit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform/queue": {
         parameters: {
             query?: never;
@@ -11509,6 +12119,23 @@ export interface paths {
          * @description Get aggregated stuck workflow statistics
          */
         get: operations["get_stuck_history_api_platform_stuck_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/app-service/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Azure App Service plan metrics */
+        get: operations["app_service_metrics_api_platform_app_service_metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12576,6 +13203,51 @@ export interface components {
          * @enum {string}
          */
         AgentAccessLevel: "authenticated" | "everyone" | "role_based" | "private";
+        /** AgentActionApprovalResponse */
+        AgentActionApprovalResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Run Id */
+            agent_run_id: string | null;
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Requested By User Id */
+            requested_by_user_id: string | null;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Caller */
+            caller: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Approved By User Id */
+            approved_by_user_id: string | null;
+            /** Execution Id */
+            execution_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+        };
         /**
          * AgentChannel
          * @description Supported agent communication channels
@@ -13365,6 +14037,115 @@ export interface components {
             styles?: {
                 [key: string]: string;
             };
+        };
+        /**
+         * AppServiceMetricPoint
+         * @description A single Azure Monitor App Service plan sample.
+         */
+        AppServiceMetricPoint: {
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Value */
+            value?: number | null;
+        };
+        /**
+         * AppServiceMetricSeries
+         * @description One plan-level Azure Monitor metric series.
+         */
+        AppServiceMetricSeries: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "CpuPercentage" | "MemoryPercentage" | "HttpQueueLength";
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "Percent" | "Count";
+            /**
+             * Aggregation
+             * @default Average
+             * @constant
+             */
+            aggregation: "Average";
+            /**
+             * Series Label
+             * @default plan average
+             * @constant
+             */
+            series_label: "plan average";
+            /** Latest Sample At */
+            latest_sample_at?: string | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+            /** Points */
+            points?: components["schemas"]["AppServiceMetricPoint"][];
+        };
+        /**
+         * AppServiceMetricsResponse
+         * @description Azure Monitor capacity diagnostics for the configured App Service plan.
+         */
+        AppServiceMetricsResponse: {
+            /**
+             * Source
+             * @default azure_monitor
+             * @constant
+             */
+            source: "azure_monitor";
+            /**
+             * Scope
+             * @default app_service_plan
+             * @constant
+             */
+            scope: "app_service_plan";
+            /** Resource Id */
+            resource_id?: string | null;
+            /**
+             * Range
+             * @enum {string}
+             */
+            range: "1h" | "6h" | "24h" | "7d";
+            /** Sample Grain */
+            sample_grain: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Latest Sample At */
+            latest_sample_at?: string | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "unavailable";
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+            /** Metrics */
+            metrics?: components["schemas"]["AppServiceMetricSeries"][];
         };
         /** AppValidationIssue */
         AppValidationIssue: {
@@ -14375,6 +15156,13 @@ export interface components {
              * Format: password
              */
             client_secret?: string | null;
+        };
+        /** Body_preview_workspace_import_api_solutions_import_workspace_preview_post */
+        Body_preview_workspace_import_api_solutions_import_workspace_preview_post: {
+            /** File */
+            file: string;
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** Body_sdk_store_artifact_api_sdk_artifacts_post */
         Body_sdk_store_artifact_api_sdk_artifacts_post: {
@@ -15837,7 +16625,7 @@ export interface components {
         CommitRequest: {
             /**
              * Job Id
-             * @description Client-generated job ID (avoids WebSocket race condition)
+             * @description Client-generated platform job ID
              */
             job_id?: string | null;
             /**
@@ -16029,6 +16817,16 @@ export interface components {
             integration_name?: string | null;
             /** Description */
             description?: string | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
             /** Updated At */
             updated_at?: string | null;
             /** Updated By */
@@ -16159,6 +16957,80 @@ export interface components {
              * @description Human-readable explanation
              */
             message: string;
+        };
+        /**
+         * ControlKeyCreate
+         * @description POST /api/device-control-keys body.
+         */
+        ControlKeyCreate: {
+            /** Name */
+            name: string;
+            /** Device Ids */
+            device_ids: string[];
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
+         * ControlKeyCreatedResponse
+         * @description Create response: public row plus the one-time raw key.
+         */
+        ControlKeyCreatedResponse: {
+            control_key: components["schemas"]["ControlKeyPublic"];
+            /** Key */
+            key: string;
+        };
+        /**
+         * ControlKeyKeyResponse
+         * @description One-time raw key response for rotate.
+         */
+        ControlKeyKeyResponse: {
+            /**
+             * Control Key Id
+             * Format: uuid
+             */
+            control_key_id: string;
+            /** Key */
+            key: string;
+        };
+        /**
+         * ControlKeyPublic
+         * @description Public control-key view — never includes the key hash.
+         */
+        ControlKeyPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Name */
+            name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Expires At */
+            expires_at: string | null;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Device Ids */
+            device_ids: string[];
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * ConversationCreate
@@ -16968,6 +17840,55 @@ export interface components {
             success: boolean;
         };
         /**
+         * DeviceClaimRequest
+         * @description Claim must bind the job to the agent session that will heartbeat it.
+         */
+        DeviceClaimRequest: {
+            /**
+             * Agent Session Id
+             * Format: uuid
+             */
+            agent_session_id: string;
+        };
+        /**
+         * DeviceClaimResponse
+         * @description Frozen claim response (claim-response.schema.json).
+         */
+        DeviceClaimResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Script Name */
+            script_name: string;
+            /** Script Content */
+            script_content: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Max Output Bytes */
+            max_output_bytes: number;
+            /**
+             * Claim Token
+             * Format: uuid
+             */
+            claim_token: string;
+            /**
+             * Claimed At
+             * Format: date-time
+             */
+            claimed_at: string;
+            /**
+             * Claim Lease Seconds
+             * @default 60
+             */
+            claim_lease_seconds: number;
+        };
+        /**
          * DeviceCodeResponse
          * @description Response for device authorization code request.
          */
@@ -16988,6 +17909,427 @@ export interface components {
              * @default 5
              */
             interval: number;
+        };
+        /**
+         * DeviceCreate
+         * @description POST /api/devices body.
+         */
+        DeviceCreate: {
+            /** Display Name */
+            display_name: string;
+            /** External Ref */
+            external_ref?: string | null;
+            /** Organization Id */
+            organization_id?: string | null;
+            /**
+             * Enrollment Ttl Seconds
+             * @default 900
+             */
+            enrollment_ttl_seconds: number;
+        };
+        /**
+         * DeviceCreateResponse
+         * @description Create response: public device plus the one-time enrollment token.
+         */
+        DeviceCreateResponse: {
+            device: components["schemas"]["DevicePublic"];
+            /** Enrollment Token */
+            enrollment_token: string;
+            /**
+             * Enrollment Expires At
+             * Format: date-time
+             */
+            enrollment_expires_at: string;
+        };
+        /**
+         * DeviceEnrollRequest
+         * @description POST /api/devices/enroll body (CSRF-exempt, no user session).
+         */
+        DeviceEnrollRequest: {
+            /** Enrollment Token */
+            enrollment_token: string;
+        };
+        /**
+         * DeviceEnrollResponse
+         * @description Frozen enrollment success shape (enrollment.schema.json).
+         */
+        DeviceEnrollResponse: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Device Key */
+            device_key: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Enrollment Token Expires At */
+            enrollment_token_expires_at?: string | null;
+        };
+        /**
+         * DeviceFreshness
+         * @description Reduced device view returned to control-key callers (approved M0
+         *     delta: Midtown-Technology-Group/bifrost#818 comment 5815371680).
+         *
+         *     The workspace must observe pre-accept freshness for transport
+         *     fail-closed; a control key may read exactly these three fields, and
+         *     only for devices on its own allow-list. No names, external_ref, or
+         *     hashes ever leave through this view.
+         */
+        DeviceFreshness: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** Last Seen At */
+            last_seen_at: string | null;
+        };
+        /**
+         * DeviceHeartbeatRequest
+         * @description POST /api/device/heartbeat body (M0: session-gated activity renewal).
+         */
+        DeviceHeartbeatRequest: {
+            /**
+             * Agent Session Id
+             * Format: uuid
+             */
+            agent_session_id: string;
+        };
+        /** DeviceHeartbeatResponse */
+        DeviceHeartbeatResponse: {
+            /**
+             * Server Time
+             * Format: date-time
+             */
+            server_time: string;
+            /** Last Seen At */
+            last_seen_at: string | null;
+            /** Poll Interval Seconds */
+            poll_interval_seconds: number;
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
+        };
+        /**
+         * DeviceJobCreate
+         * @description POST /api/devices/{device_id}/jobs body (M0 prose contract).
+         */
+        DeviceJobCreate: {
+            /** Script Name */
+            script_name: string;
+            /** Script Content */
+            script_content: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Timeout Seconds
+             * @default 120
+             */
+            timeout_seconds: number;
+            /**
+             * Max Output Bytes
+             * @default 1048576
+             */
+            max_output_bytes: number;
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Execution Id */
+            execution_id?: string | null;
+        };
+        /**
+         * DeviceJobDetail
+         * @description Full observation view: create-level authz may read body/params/result.
+         */
+        DeviceJobDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Status */
+            status: string;
+            /** Script Name */
+            script_name: string;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Max Output Bytes */
+            max_output_bytes: number;
+            /** Requested By User Id */
+            requested_by_user_id: string | null;
+            /** Requested By Api Key Id */
+            requested_by_api_key_id: string | null;
+            /** Requested By Workflow Id */
+            requested_by_workflow_id: string | null;
+            /** Requested By Execution Id */
+            requested_by_execution_id: string | null;
+            /** Claimed At */
+            claimed_at: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /** Error */
+            error: string | null;
+            /** Log Sequence */
+            log_sequence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Script Content */
+            script_content: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Result */
+            result?: string | null;
+        };
+        /** DeviceJobLogPublic */
+        DeviceJobLogPublic: {
+            /** Seq */
+            seq: number;
+            /** Stream */
+            stream: string;
+            /** Text */
+            text: string;
+            /** Ts */
+            ts?: string | null;
+        };
+        /**
+         * DeviceJobPublic
+         * @description Job list item — never exposes script bodies, params, or fencing
+         *     secrets (claim_token stays agent-only).
+         */
+        DeviceJobPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Status */
+            status: string;
+            /** Script Name */
+            script_name: string;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Max Output Bytes */
+            max_output_bytes: number;
+            /** Requested By User Id */
+            requested_by_user_id: string | null;
+            /** Requested By Api Key Id */
+            requested_by_api_key_id: string | null;
+            /** Requested By Workflow Id */
+            requested_by_workflow_id: string | null;
+            /** Requested By Execution Id */
+            requested_by_execution_id: string | null;
+            /** Claimed At */
+            claimed_at: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /** Error */
+            error: string | null;
+            /** Log Sequence */
+            log_sequence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DeviceKeyResponse
+         * @description One-time raw key response for rotate-key.
+         */
+        DeviceKeyResponse: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Device Key */
+            device_key: string;
+        };
+        /**
+         * DeviceLogBatch
+         * @description Frozen log batch (log-batch.schema.json).
+         */
+        DeviceLogBatch: {
+            /**
+             * Claim Token
+             * Format: uuid
+             */
+            claim_token: string;
+            /** Entries */
+            entries: components["schemas"]["DeviceLogEntry"][];
+        };
+        /** DeviceLogEntry */
+        DeviceLogEntry: {
+            /** Seq */
+            seq: number;
+            /**
+             * Stream
+             * @enum {string}
+             */
+            stream: "stdout" | "stderr";
+            /** Text */
+            text: string;
+            /** Ts */
+            ts?: string | null;
+        };
+        /**
+         * DevicePublic
+         * @description Public device view — never includes key or enrollment hashes.
+         */
+        DevicePublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Display Name */
+            display_name: string;
+            /** External Ref */
+            external_ref: string | null;
+            /** Status */
+            status: string;
+            /** Agent Version */
+            agent_version: string | null;
+            /** Os */
+            os: string | null;
+            /** Hostname */
+            hostname: string | null;
+            /** Api Key Enabled */
+            api_key_enabled: boolean;
+            /** Last Seen At */
+            last_seen_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DeviceResultRequest
+         * @description Frozen result payload (job-result.schema.json).
+         */
+        DeviceResultRequest: {
+            /**
+             * Claim Token
+             * Format: uuid
+             */
+            claim_token: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "failed" | "timeout" | "cancelled";
+            /** Exit Code */
+            exit_code?: number | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Error */
+            error?: string | null;
+            /** Output */
+            output?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+        };
+        /** DeviceResultResponse */
+        DeviceResultResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * DeviceRunningRequest
+         * @description POST /api/device/jobs/{job_id}/running body.
+         *
+         *     Additive route (feedback #1): the agent reports a **real spawn**
+         *     (claimed → running) so the server can distinguish safe pre-spawn
+         *     reclaim from post-spawn `lost`. Same fencing as every agent mutation.
+         */
+        DeviceRunningRequest: {
+            /**
+             * Claim Token
+             * Format: uuid
+             */
+            claim_token: string;
+            /**
+             * Agent Session Id
+             * Format: uuid
+             */
+            agent_session_id: string;
+        };
+        /** DeviceRunningResponse */
+        DeviceRunningResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Status */
+            status: string;
         };
         /**
          * DeviceTokenErrorResponse
@@ -17042,7 +18384,7 @@ export interface components {
         DiffRequest: {
             /**
              * Job Id
-             * @description Client-generated job ID (avoids WebSocket race condition)
+             * @description Client-generated platform job ID
              */
             job_id?: string | null;
             /**
@@ -17058,7 +18400,7 @@ export interface components {
         DiscardRequest: {
             /**
              * Job Id
-             * @description Client-generated job ID (avoids WebSocket race condition)
+             * @description Client-generated platform job ID
              */
             job_id?: string | null;
             /**
@@ -18915,6 +20257,40 @@ export interface components {
         Expr: {
             [key: string]: unknown;
         };
+        /** ExternalIdentityCreateRequest */
+        ExternalIdentityCreateRequest: {
+            /** Provider */
+            provider: string;
+            /** External Scope Id */
+            external_scope_id: string;
+            /** External User Id */
+            external_user_id: string;
+            /** Authorized Organization Id */
+            authorized_organization_id?: string | null;
+        };
+        /** ExternalIdentityResponse */
+        ExternalIdentityResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Provider */
+            provider: string;
+            /** External Scope Id */
+            external_scope_id: string;
+            /** External User Id */
+            external_user_id: string;
+            /** Authorized Organization Id */
+            authorized_organization_id: string | null;
+            /** Is Active */
+            is_active: boolean;
+        };
         /**
          * FileChange
          * @description Represents a changed file in Git
@@ -20434,6 +21810,77 @@ export interface components {
             usage_example: string;
         };
         /**
+         * GitConnectItem
+         * @description One path compared during a first workspace Git connection preview.
+         */
+        GitConnectItem: {
+            /** Path */
+            path: string;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "local_only" | "remote_only" | "identical" | "conflict";
+            /** Local Sha256 */
+            local_sha256?: string | null;
+            /** Remote Sha256 */
+            remote_sha256?: string | null;
+        };
+        /**
+         * GitConnectPreview
+         * @description Requester-bound, short-lived first-connect reconciliation preview.
+         */
+        GitConnectPreview: {
+            /** Token */
+            token: string;
+            /** Repository Url */
+            repository_url: string;
+            /** Branch */
+            branch: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "requires_reconciliation";
+            /** Items */
+            items?: components["schemas"]["GitConnectItem"][];
+        };
+        /**
+         * GitConnectPreviewRequest
+         * @description Repository and branch to compare against the detached workspace.
+         */
+        GitConnectPreviewRequest: {
+            /** Repository Url */
+            repository_url: string;
+            /**
+             * Branch
+             * @default main
+             */
+            branch: string;
+        };
+        /**
+         * GitConnectRequest
+         * @description Approved strategy and path decisions for a reviewed connect preview.
+         */
+        GitConnectRequest: {
+            /** Preview Token */
+            preview_token: string;
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "publish_local" | "start_from_remote" | "reconcile";
+            /** Decisions */
+            decisions?: {
+                [key: string]: "local" | "remote";
+            };
+            /**
+             * Confirm Destructive
+             * @default false
+             */
+            confirm_destructive: boolean;
+        };
+        /**
          * GitFileStatus
          * @description Git file status
          * @enum {string}
@@ -20470,23 +21917,6 @@ export interface components {
              * @description List of branches in repository
              */
             branches: components["schemas"]["GitHubBranchInfo"][];
-        };
-        /**
-         * GitHubConfigRequest
-         * @description Request to configure GitHub integration - token must already be saved via /validate
-         */
-        GitHubConfigRequest: {
-            /**
-             * Repo Url
-             * @description GitHub repository URL (e.g., https://github.com/user/repo)
-             */
-            repo_url: string;
-            /**
-             * Branch
-             * @description Branch to sync with
-             * @default main
-             */
-            branch: string;
         };
         /**
          * GitHubConfigResponse
@@ -20565,52 +21995,13 @@ export interface components {
             detected_repo?: components["schemas"]["DetectedRepoInfo"] | null;
         };
         /**
-         * GitHubSetupResponse
-         * @description Response after configuring GitHub integration
-         */
-        GitHubSetupResponse: {
-            /**
-             * Job Id
-             * @description Job ID for tracking the setup operation (deprecated)
-             */
-            job_id?: string | null;
-            /**
-             * Notification Id
-             * @description Notification ID for watching progress via WebSocket (deprecated)
-             */
-            notification_id?: string | null;
-            /**
-             * Status
-             * @description Configuration status
-             * @default configured
-             */
-            status: string;
-        };
-        /**
-         * GitJobResponse
-         * @description Response when a git operation is queued as a background job.
-         */
-        GitJobResponse: {
-            /**
-             * Job Id
-             * @description Job ID for tracking progress via WebSocket
-             */
-            job_id: string;
-            /**
-             * Status
-             * @description Job status
-             * @default queued
-             */
-            status: string;
-        };
-        /**
          * GitOpRequest
-         * @description Base request for git operations. Accepts optional client-generated job_id.
+         * @description Base request for Git operations with optional durable idempotency key.
          */
         GitOpRequest: {
             /**
              * Job Id
-             * @description Client-generated job ID (avoids WebSocket race condition)
+             * @description Client-generated platform job ID
              */
             job_id?: string | null;
         };
@@ -22965,6 +24356,16 @@ export interface components {
              */
             token_type: string;
         };
+        /** MaintenanceEnterRequest */
+        MaintenanceEnterRequest: {
+            /**
+             * Generation
+             * Format: uuid
+             */
+            generation: string;
+            /** Reason */
+            reason: string;
+        };
         /**
          * MaintenanceStatus
          * @description Current maintenance status of the workspace.
@@ -24723,7 +26124,7 @@ export interface components {
          * PlatformJobStatus
          * @enum {string}
          */
-        PlatformJobStatus: "queued" | "running" | "waiting" | "cancel_requested" | "succeeded" | "failed" | "cancelled";
+        PlatformJobStatus: "queued" | "running" | "waiting" | "cancel_requested" | "succeeded" | "failed" | "cancelled" | "requires_action";
         /**
          * PlatformMetricsResponse
          * @description Platform metrics snapshot response.
@@ -26086,7 +27487,7 @@ export interface components {
         ResolveRequest: {
             /**
              * Job Id
-             * @description Client-generated job ID (avoids WebSocket race condition)
+             * @description Client-generated platform job ID
              */
             job_id?: string | null;
             /**
@@ -29275,7 +30676,7 @@ export interface components {
         SyncRequest: {
             /**
              * Job Id
-             * @description Client-generated job ID (avoids WebSocket race condition)
+             * @description Client-generated platform job ID
              */
             job_id?: string | null;
             /**
@@ -29284,6 +30685,11 @@ export interface components {
              * @default false
              */
             confirm_deletes: boolean;
+            /**
+             * Retry Job Id
+             * @description ID of this caller's failed workspace git job whose server-stored publication retry plan should be retried
+             */
+            retry_job_id?: string | null;
         };
         /** SystemDiagnosticLogPublic */
         SystemDiagnosticLogPublic: {
@@ -29418,6 +30824,14 @@ export interface components {
             } | null;
             /** @description Optional row-level access policies. See docs/superpowers/specs/2026-04-30-table-policies-design.md. */
             policies?: components["schemas"]["TablePolicies"] | null;
+        };
+        /** TeamsChatEventSubmit */
+        TeamsChatEventSubmit: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
         };
         /**
          * TextArtifactSpec
@@ -31587,6 +33001,128 @@ export interface components {
             /** @description Workflow metadata if valid */
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
+        /** WorkspaceBundleDecision */
+        WorkspaceBundleDecision: {
+            /** Item Id */
+            item_id: string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "keep" | "replace";
+        };
+        /**
+         * WorkspaceBundleDiffLine
+         * @description One portable field difference shown before importing a bundle.
+         */
+        WorkspaceBundleDiffLine: {
+            /** Field */
+            field: string;
+            /** Existing */
+            existing?: unknown | null;
+            /** Incoming */
+            incoming?: unknown | null;
+        };
+        /** WorkspaceBundleImportRequest */
+        WorkspaceBundleImportRequest: {
+            /** Preview Token */
+            preview_token: string;
+            /** Decisions */
+            decisions: components["schemas"]["WorkspaceBundleDecision"][];
+            /** Config Values */
+            config_values?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * WorkspaceBundleItem
+         * @description One entity or source file considered by a workspace-bundle preview.
+         */
+        WorkspaceBundleItem: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow" | "integration" | "config" | "app" | "table" | "event" | "form" | "agent" | "claim" | "policy_rule" | "file_policy" | "file";
+            /** Name */
+            name: string;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "create" | "unchanged" | "conflict";
+            /** Match Key */
+            match_key?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /** Target Id */
+            target_id?: string | null;
+            /** Group Key */
+            group_key?: string | null;
+            /**
+             * Scope Change
+             * @default false
+             */
+            scope_change: boolean;
+            /** Diff */
+            diff?: components["schemas"]["WorkspaceBundleDiffLine"][];
+        };
+        /**
+         * WorkspaceBundlePreview
+         * @description A deterministic, staged workspace-bundle import preview.
+         */
+        WorkspaceBundlePreview: {
+            /** Preview Token */
+            preview_token: string;
+            /** Package Name */
+            package_name: string;
+            /** Package Sha256 */
+            package_sha256: string;
+            /** Items */
+            items: components["schemas"]["WorkspaceBundleItem"][];
+            /** Config Schemas */
+            config_schemas?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Source Kind
+             * @default zip
+             * @enum {string}
+             */
+            source_kind: "zip" | "repo";
+            /** Repo Url */
+            repo_url?: string | null;
+            /** Git Ref */
+            git_ref?: string | null;
+            /** Repo Subpath */
+            repo_subpath?: string | null;
+            /** Resolved Commit */
+            resolved_commit?: string | null;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Conflict Count */
+            readonly conflict_count: number;
+        };
+        /**
+         * WorkspaceBundleRepoPreviewRequest
+         * @description One-time repository snapshot coordinates for a workspace import.
+         *
+         *     Snapshot semantics only: the coordinates are bound into the preview for
+         *     audit/retry, but no ongoing package-repository connection is persisted.
+         *     A future saved re-import recipe may prefill these same fields.
+         */
+        WorkspaceBundleRepoPreviewRequest: {
+            /** Repo Url */
+            repo_url: string;
+            /** Git Ref */
+            git_ref?: string | null;
+            /** Repo Subpath */
+            repo_subpath?: string | null;
+            /** Organization Id */
+            organization_id?: string | null;
+        };
         /** WorkspaceFileImpactDiagnostic */
         WorkspaceFileImpactDiagnostic: {
             /** Code */
@@ -31687,6 +33223,41 @@ export interface components {
             /** Ready To Write */
             ready_to_write: boolean;
         };
+        /** WorkspaceLiveRetireRequest */
+        WorkspaceLiveRetireRequest: {
+            /** Expected Release Id */
+            expected_release_id: string;
+            /**
+             * Expected Artifact Id
+             * Format: uuid
+             */
+            expected_artifact_id: string;
+            /** Governed Manifest Id */
+            governed_manifest_id: string;
+            /** Reason */
+            reason: string;
+            /** Acknowledgement */
+            acknowledgement: string;
+        };
+        /** WorkspaceLiveRetireResponse */
+        WorkspaceLiveRetireResponse: {
+            /**
+             * Release Row Id
+             * Format: uuid
+             */
+            release_row_id: string;
+            /** Release Id */
+            release_id: string;
+            /**
+             * Retired At
+             * Format: date-time
+             */
+            retired_at: string;
+            /** Governed Path Count */
+            governed_path_count: number;
+            /** Evidence Id */
+            evidence_id: string;
+        };
         /** WorkspaceLiveStatusResponse */
         WorkspaceLiveStatusResponse: {
             /**
@@ -31700,7 +33271,17 @@ export interface components {
              * Format: uuid
              */
             organization_id: string;
+            /**
+             * State
+             * @default none
+             * @enum {string}
+             */
+            state: "live" | "retired" | "none";
             active_release?: components["schemas"]["WorkspaceReleaseStatusResponse"] | null;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Retirement Reason */
+            retirement_reason?: string | null;
         };
         /** WorkspacePromotionArtifactResponse */
         WorkspacePromotionArtifactResponse: {
@@ -32142,7 +33723,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "pending" | "locked" | "attention_required" | "superseded" | "not_queued";
+            state: "pending" | "locked" | "attention_required" | "superseded" | "not_queued" | "retired";
             /** Lock State */
             lock_state: string;
             /** Job Id */
@@ -32258,6 +33839,10 @@ export interface components {
             history: components["schemas"]["WorkspaceReleaseHistoryStatus"];
             /** Activated At */
             activated_at?: string | null;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Retirement Reason */
+            retirement_reason?: string | null;
         };
         /** WorkspaceRepoActivateRequest */
         WorkspaceRepoActivateRequest: {
@@ -34580,6 +36165,102 @@ export interface operations {
             };
         };
     };
+    list_external_identities_api_users__user_id__external_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalIdentityResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_external_identity_api_users__user_id__external_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalIdentityCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalIdentityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_external_identity_api_users__user_id__external_identities__identity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+                identity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_api_users_get: {
         parameters: {
             query?: {
@@ -34989,6 +36670,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserFormsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_approvals_api_agent_action_approvals_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionApprovalResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deny_approval_api_agent_action_approvals__approval_id__deny_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionApprovalResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_approval_api_agent_action_approvals__approval_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionApprovalResponse"];
                 };
             };
             /** @description Validation Error */
@@ -39509,6 +41283,39 @@ export interface operations {
             };
         };
     };
+    retire_workspace_release_api_workspace_promotions_live_retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceLiveRetireRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveRetireResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_live_workspace_release_api_workspace_promotions_live_get: {
         parameters: {
             query?: never;
@@ -40400,39 +42207,6 @@ export interface operations {
             };
         };
     };
-    configure_github_api_github_configure_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubSetupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_github_repos_api_github_repositories_get: {
         parameters: {
             query?: never;
@@ -40574,6 +42348,72 @@ export interface operations {
             };
         };
     };
+    preview_git_connect_api_github_connect_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitConnectPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_git_connect_api_github_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     git_fetch_api_github_fetch_post: {
         parameters: {
             query?: never;
@@ -40588,12 +42428,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40621,12 +42461,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40654,12 +42494,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40687,12 +42527,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40720,12 +42560,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40753,12 +42593,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40786,12 +42626,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -40819,12 +42659,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitJobResponse"];
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -41006,6 +42846,743 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchedulerTaskHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devices_route_api_devices_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_device_route_api_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enroll_device_route_api_devices_enroll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceEnrollRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceEnrollResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_device_route_api_devices__device_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bifrost-Control-Key"?: string | null;
+            };
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePublic"] | components["schemas"]["DeviceFreshness"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_device_key_endpoint_api_devices__device_id__rotate_key_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceKeyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_device_route_api_devices__device_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_device_route_api_devices__device_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_route_api_devices__device_id__jobs_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Bifrost-Control-Key"?: string | null;
+            };
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceJobPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_job_route_api_devices__device_id__jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bifrost-Control-Key"?: string | null;
+            };
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceJobCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_route_api_devices__device_id__jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bifrost-Control-Key"?: string | null;
+            };
+            path: {
+                device_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceJobDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_logs_route_api_devices__device_id__jobs__job_id__logs_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-Bifrost-Control-Key"?: string | null;
+            };
+            path: {
+                device_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceJobLogPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_route_api_devices__device_id__jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bifrost-Control-Key"?: string | null;
+            };
+            path: {
+                device_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_control_keys_route_api_device_control_keys_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlKeyPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_control_key_route_api_device_control_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlKeyCreatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_control_key_route_api_device_control_keys__key_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlKeyPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_control_key_endpoint_api_device_control_keys__key_id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlKeyKeyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_control_key_endpoint_api_device_control_keys__key_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlKeyPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_route_api_device_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bifrost-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceHeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceHeartbeatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_route_api_device_jobs_claim_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bifrost-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceClaimResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    running_route_api_device_jobs__job_id__running_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bifrost-Key": string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceRunningRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceRunningResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logs_route_api_device_jobs__job_id__logs_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bifrost-Key": string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceLogBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    result_route_api_device_jobs__job_id__result_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Bifrost-Key": string;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceResultResponse"];
                 };
             };
             /** @description Validation Error */
@@ -44938,6 +47515,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplyTuningResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_teams_event_api_chat_teams_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamsChatEventSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -50032,6 +52644,105 @@ export interface operations {
             };
         };
     };
+    preview_workspace_import_api_solutions_import_workspace_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_workspace_import_api_solutions_import_workspace_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBundlePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_workspace_import_api_solutions_import_workspace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceBundleImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_workspace_import_repo_api_solutions_import_workspace_preview_repo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceBundleRepoPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBundlePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_solutions_api_solutions_get: {
         parameters: {
             query?: never;
@@ -50924,9 +53635,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -53746,6 +56455,129 @@ export interface operations {
             };
         };
     };
+    runtime_maintenance_status_api_platform_runtime_maintenance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    enter_maintenance_api_platform_runtime_maintenance_enter_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceEnterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seal_maintenance_api_platform_runtime_maintenance__generation__seal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exit_maintenance_api_platform_runtime_maintenance__generation__exit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_queue_api_platform_queue_get: {
         parameters: {
             query?: {
@@ -53799,6 +56631,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StuckHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    app_service_metrics_api_platform_app_service_metrics_get: {
+        parameters: {
+            query?: {
+                /** @description Time range: 1h, 6h, 24h, 7d */
+                range?: "1h" | "6h" | "24h" | "7d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppServiceMetricsResponse"];
                 };
             };
             /** @description Validation Error */
