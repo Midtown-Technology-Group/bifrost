@@ -1,5 +1,6 @@
 import sys
 import builtins
+from hashlib import sha256
 from types import ModuleType
 
 from src.core import telemetry
@@ -44,6 +45,55 @@ def test_configure_opentelemetry_returns_when_no_endpoint(monkeypatch):
     telemetry.configure_opentelemetry("api")
 
     assert telemetry._configured_services == set()
+
+
+def test_container_resource_observations_use_cgroup_and_pseudonymous_instance(
+    monkeypatch, tmp_path
+):
+    from src.services.execution import memory_monitor
+
+    cpu_stat = tmp_path / "cpu.stat"
+    cpu_stat.write_text("usage_usec 12500000\nuser_usec 9000000\n")
+    monkeypatch.setattr(telemetry, "_CGROUP_CPU_STAT", cpu_stat)
+    v1_cpu = tmp_path / "cpuacct.usage"
+    v1_memory = tmp_path / "memory.stat"
+    monkeypatch.setattr(telemetry, "_CGROUP_V1_CPU_USAGE", v1_cpu)
+    monkeypatch.setattr(telemetry, "_CGROUP_V1_MEMORY_STAT", v1_memory)
+    monkeypatch.setattr(memory_monitor, "get_cgroup_memory", lambda: (123456, 500000))
+    monkeypatch.setenv("WEBSITE_INSTANCE_ID", "private-instance-name")
+
+    class Meter:
+        def __init__(self):
+            self.callbacks = {}
+
+        def create_observable_counter(self, name, *, callbacks, **_kwargs):
+            self.callbacks[name] = callbacks[0]
+
+        def create_observable_gauge(self, name, *, callbacks, **_kwargs):
+            self.callbacks[name] = callbacks[0]
+
+    meter = Meter()
+    telemetry._register_container_metrics(meter)
+
+    assert meter.callbacks["bifrost.runtime.cpu.time"](None)[0].value == 12.5
+    assert meter.callbacks["bifrost.runtime.memory.working_set"](None)[0].value == 123456
+    assert telemetry._resource_attributes("bifrost-worker", True) == {
+        "service.name": "bifrost-worker",
+        "service.instance.id": sha256(b"private-instance-name").hexdigest()[:16],
+    }
+
+    cpu_stat.unlink()
+    monkeypatch.setattr(memory_monitor, "get_cgroup_memory", lambda: (-1, -1))
+    v1_cpu.write_text("2500000000\n")
+    v1_memory.write_text("total_rss 100000\ntotal_active_file 24000\n")
+    assert telemetry._cgroup_cpu_seconds() == 2.5
+    assert telemetry._cgroup_working_set() == 124000
+    v1_cpu.unlink()
+    v1_memory.unlink()
+    unavailable_meter = Meter()
+    telemetry._register_container_metrics(unavailable_meter)
+    assert unavailable_meter.callbacks["bifrost.runtime.cpu.time"](None) == []
+    assert unavailable_meter.callbacks["bifrost.runtime.memory.working_set"](None) == []
 
 
 def test_configure_opentelemetry_skips_duplicate_service(monkeypatch):

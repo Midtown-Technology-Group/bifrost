@@ -490,7 +490,10 @@ class Worker:
 
 async def main() -> None:
     """Main entry point."""
+    from src.core.telemetry import configure_opentelemetry
+
     worker = Worker()
+    configure_opentelemetry("bifrost-worker", container_resources=True)
 
     # Register signal handlers
     loop = asyncio.get_running_loop()
