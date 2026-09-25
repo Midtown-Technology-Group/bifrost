@@ -19,6 +19,7 @@ from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.rate_limit import RateLimiter
 from src.services.events.processor import EventProcessor, resolve_webhook_source
+from src.services.teams_receipts import send_fast_teams_receipt
 from src.services.webhooks.protocol import (
     Deliver,
     Rejected,
@@ -201,6 +202,15 @@ async def receive_webhook(
     if isinstance(result, Deliver):
         # Event accepted - commit transaction and queue deliveries
         await db.commit()
+
+        if result.event_id and webhook_source.adapter_name == "microsoft_bot_framework":
+            try:
+                await send_fast_teams_receipt(db, result.event_id, webhook_source)
+            except Exception as exc:
+                logger.warning(
+                    "Teams receipt unavailable for event %s: %s",
+                    result.event_id, type(exc).__name__,
+                )
 
         # Queue workflow executions asynchronously
         # This is done after commit to ensure delivery records exist
