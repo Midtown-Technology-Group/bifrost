@@ -45,6 +45,9 @@ def settings() -> SimpleNamespace:
         environment="test",
         work_delivery_backend="rabbitmq",
         service_claim_interval_seconds=5,
+        service_heartbeat_interval_seconds=5,
+        service_lease_ttl_seconds=30,
+        service_token_lifetime_seconds=30,
     )
 
 
