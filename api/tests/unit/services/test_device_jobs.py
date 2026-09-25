@@ -708,6 +708,56 @@ class TestRenewFromHeartbeat:
         )
         assert got is None
 
+    async def test_agent_version_reported_persists_to_device(self):
+        session = _session()
+        device = _device(agent_version=None)
+        session.get = AsyncMock(return_value=device)
+        session.execute.return_value = _result(scalar=None)
+        got = await renew_from_heartbeat(
+            session,
+            device_id=device.id,
+            agent_session_id=uuid4(),
+            agent_version="1.2.3",
+            now=NOW,
+        )
+        assert got is None
+        assert device.agent_version == "1.2.3"
+        session.get.assert_awaited_once()
+        session.commit.assert_awaited()
+
+    async def test_agent_version_unchanged_is_not_rewritten(self):
+        session = _session()
+        device = _device(agent_version="1.2.3")
+        session.get = AsyncMock(return_value=device)
+        session.execute.return_value = _result(scalar=None)
+        await renew_from_heartbeat(
+            session,
+            device_id=device.id,
+            agent_session_id=uuid4(),
+            agent_version="1.2.3",
+            now=NOW,
+        )
+        assert device.agent_version == "1.2.3"
+        session.commit.assert_not_awaited()
+
+    async def test_agent_version_absent_or_empty_never_touches_column(self):
+        for reported in (None, ""):
+            session = _session()
+            device = _device(agent_version="1.2.3")
+            session.get = AsyncMock(return_value=device)
+            session.execute.return_value = _result(scalar=None)
+            got = await renew_from_heartbeat(
+                session,
+                device_id=device.id,
+                agent_session_id=uuid4(),
+                agent_version=reported,
+                now=NOW,
+            )
+            assert got is None
+            assert device.agent_version == "1.2.3"
+            session.get.assert_not_awaited()
+            session.commit.assert_not_awaited()
+
 
 class TestCancel:
     async def test_pending_cancels_immediately(self):
