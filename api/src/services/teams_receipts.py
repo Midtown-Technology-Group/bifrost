@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 from uuid import UUID
 
@@ -148,6 +149,7 @@ async def _send_receipt(
 
 async def send_fast_teams_receipt(
     db: AsyncSession, event_id: UUID, webhook_source: WebhookSource,
+    *, message: str = "Received. Working on it…", sent_status: str = "sent",
 ) -> str | None:
     """Send before worker admission; failure never rejects a verified webhook."""
     event = await db.get(Event, event_id)
@@ -188,8 +190,10 @@ async def send_fast_teams_receipt(
             service_url=receipt["service_url"],
             conversation_id=receipt["conversation_id"],
             inbound_activity_id=receipt["inbound_activity_id"],
+            message=message,
         )
-        receipt["status"] = "sent" if reply_id else "accepted_unaddressable"
+        receipt["sent_at"] = datetime.now(timezone.utc).isoformat()
+        receipt["status"] = sent_status if reply_id else "accepted_unaddressable"
         if reply_id:
             receipt["reply_activity_id"] = reply_id
         await complete_operation_receipt_success(

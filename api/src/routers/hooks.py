@@ -250,10 +250,34 @@ async def receive_webhook(
                     await db.commit()
                 if isinstance(exc, HTTPException) and exc.status_code in (400, 403, 404, 409):
                     if event is not None and "teams_receipt" not in event.data:
-                        # An unlinked sender receives no bot message. The old
-                        # queued router must not bypass that boundary.
+                        # Preserve the previous router's mapped-tenant guidance.
+                        # An unmapped tenant remains silent.
+                        guidance = None
+                        if exc.status_code == 403 and exc.detail == (
+                            "Teams sender has no linked Bifrost user in this organization"
+                        ):
+                            guidance = (
+                                "I can't connect this Teams account to a Bifrost user in this "
+                                "organization. Sign in to Bifrost with your Microsoft account first."
+                            )
+                        elif exc.status_code == 409:
+                            guidance = (
+                                "Bifrost chat is not configured for Teams yet. "
+                                "Please ask your Bifrost admin."
+                            )
+                        if guidance:
+                            try:
+                                await send_fast_teams_receipt(
+                                    db, result.event_id, webhook_source,
+                                    message=guidance, sent_status="guidance",
+                                )
+                            except Exception as guide_exc:
+                                logger.warning(
+                                    "Teams guidance unavailable for event %s: %s",
+                                    result.event_id, type(guide_exc).__name__,
+                                )
                         direct_handled = True
-                        skip_reason = "teams_unlinked_sender"
+                        skip_reason = "teams_chat_preflight_rejected"
                     else:
                         try:
                             direct_handled = await finish_rejected_teams_receipt(

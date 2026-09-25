@@ -172,7 +172,7 @@ async def test_duplicate_teams_event_skips_run_and_legacy_delivery():
 
 
 @pytest.mark.asyncio
-async def test_unlinked_teams_sender_gets_no_receipt_or_legacy_route():
+async def test_unlinked_teams_sender_gets_one_signin_card_and_no_legacy_route():
     source_id = uuid4()
     event_id = uuid4()
     event_source = SimpleNamespace(id=source_id, is_active=True)
@@ -193,7 +193,44 @@ async def test_unlinked_teams_sender_gets_no_receipt_or_legacy_route():
     with (
         patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
         patch("src.routers.hooks.EventProcessor") as processor_class,
-        patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock, side_effect=HTTPException(403, "unlinked")),
+        patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock, side_effect=HTTPException(403, "Teams sender has no linked Bifrost user in this organization")),
+        patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock) as receipt,
+    ):
+        processor = processor_class.return_value
+        processor.process_webhook = AsyncMock(return_value=Deliver(data={}, event_type="microsoft_teams.message", event_id=event_id))
+        processor.queue_event_deliveries = AsyncMock()
+        response = await receive_webhook(str(source_id), request, db)
+
+    assert response.status_code == 202
+    receipt.assert_awaited_once()
+    assert "Sign in to Bifrost" in receipt.await_args.kwargs["message"]
+    assert receipt.await_args.kwargs["sent_status"] == "guidance"
+    processor.queue_event_deliveries.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unmapped_teams_tenant_gets_no_outbound_card():
+    source_id = uuid4()
+    event_id = uuid4()
+    event_source = SimpleNamespace(id=source_id, is_active=True)
+    webhook_source = SimpleNamespace(
+        adapter_name="microsoft_bot_framework", rate_limit_enabled=False,
+        rate_limit_per_minute=None, rate_limit_window_seconds=60,
+    )
+    request = MagicMock()
+    request.method = "POST"
+    request.headers = {}
+    request.query_params = {}
+    request.client = None
+    request.body = AsyncMock(return_value=b"{}")
+    event = SimpleNamespace(event_type="microsoft_teams.message", data={"activity_id": "inbound"})
+    db = AsyncMock()
+    db.get.return_value = event
+
+    with (
+        patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
+        patch("src.routers.hooks.EventProcessor") as processor_class,
+        patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock, side_effect=HTTPException(403, "Teams tenant has no unique Bifrost organization")),
         patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock) as receipt,
     ):
         processor = processor_class.return_value

@@ -131,6 +131,7 @@ async def test_connector_acceptance_without_activity_id_is_not_retried(monkeypat
     monkeypatch.setattr(receipts, "IntegrationsRepository", _Repo)
     assert await receipts.send_fast_teams_receipt(db, EVENT_ID, source) == "owner"
     assert event.data["teams_receipt"]["status"] == "accepted_unaddressable"
+    assert event.data["teams_receipt"]["sent_at"].endswith("+00:00")
     assert "reply_activity_id" not in event.data["teams_receipt"]
     success.assert_awaited_once()
     send.assert_awaited_once()
