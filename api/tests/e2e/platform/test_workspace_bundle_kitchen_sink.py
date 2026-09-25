@@ -408,7 +408,7 @@ async def _seed_destination(db_session) -> dict[str, object]:
         Workflow,
         {"path": WF_BETA_PATH, "function_name": WF_BETA_FN},
         {"name": "Sink Beta", "description": "Beta",
-         "type": "workflow", "access_level": "authenticated",
+         "type": "workflow", "access_level": "role_based",
          "organization_id": None, "solution_id": None},
     )
     await _upsert(
@@ -760,6 +760,7 @@ async def test_workspace_zip_import_preserves_ids_rewrites_refs_and_runtime(
     agent = (
         await db_session.execute(select(Agent).where(Agent.name == AGENT_NAME))
     ).scalars().all()[-1]
+    assert agent.system_tools == []
     tool_links = (
         await db_session.execute(select(AgentTool).where(AgentTool.agent_id == agent.id))
     ).scalars().all()

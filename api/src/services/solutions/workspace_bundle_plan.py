@@ -242,6 +242,15 @@ def _comparable_snapshot(kind: str, snapshot: dict[str, Any], *, incoming: bool)
         # Package defaults only initialize new configs. Existing workspace
         # values are preserved unless the reviewer explicitly enters one.
         data.pop("value", None)
+    if kind == "agent":
+        from src.core.system_agents import PLATFORM_ADMIN_SYSTEM_TOOLS
+
+        # The canonical indexer discards admin-only tools from package content.
+        # Compare that effective definition so a second preview converges.
+        data["system_tools"] = [
+            tool for tool in (data.get("system_tools") or [])
+            if tool not in PLATFORM_ADMIN_SYSTEM_TOOLS
+        ]
     if kind == "event":
         if incoming and data.get("source_type") == "schedule" and data.get("cron_expression"):
             data["timezone"] = data.get("timezone") or "UTC"
