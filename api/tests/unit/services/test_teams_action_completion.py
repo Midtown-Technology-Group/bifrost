@@ -11,6 +11,10 @@ from src.services.teams_action_completion import (
     emit_teams_action_completion,
     register_teams_action_completion,
 )
+from src.services.teams_chat_bridge import (
+    emit_teams_chat_completion,
+    recover_teams_chat_completions,
+)
 
 
 @pytest.mark.asyncio
@@ -90,3 +94,35 @@ async def test_registration_requires_original_linked_user_and_org() -> None:
                 db, execution_id=execution_id, run_id=run_id, webhook_event_id=event_id,
             )
         assert cross_org.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_transient_registration_failure_remains_recoverable() -> None:
+    run = SimpleNamespace(
+        id=uuid4(), input={"teams_event_id": str(uuid4())}, status="completed",
+        org_id=uuid4(), run_metadata={},
+    )
+    db = AsyncMock()
+    db.get.return_value = run
+    db.scalars.return_value = SimpleNamespace(all=lambda: [run])
+
+    class SessionFactory:
+        async def __aenter__(self):
+            return db
+
+        async def __aexit__(self, *_args):
+            return None
+
+    register = AsyncMock(side_effect=[RuntimeError("transient"), None])
+    with (
+        patch("src.core.database.get_session_factory", return_value=SessionFactory),
+        patch("src.services.events.emit_event", new_callable=AsyncMock) as emit,
+        patch("src.services.teams_action_completion.register_teams_action_for_run", register),
+    ):
+        emit.return_value = (uuid4(), 1)
+        with pytest.raises(RuntimeError, match="transient"):
+            await emit_teams_chat_completion(run)
+        assert "teams_completion_emitted_at" not in run.run_metadata
+        assert await recover_teams_chat_completions() == 1
+        assert "teams_completion_emitted_at" in run.run_metadata
+        assert register.await_count == 2

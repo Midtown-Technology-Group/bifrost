@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -182,3 +182,36 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> None:
         }
         execution.execution_context = context
         await db.commit()
+
+
+async def recover_teams_action_completions(*, limit: int = 50) -> int:
+    """Retry only tagged terminal actions whose topic emission was not recorded."""
+    import logging
+
+    from src.core.database import get_session_factory
+
+    async with get_session_factory()() as db:
+        execution_ids = (
+            await db.scalars(
+                select(Execution.id)
+                .where(
+                    Execution.status.in_(TERMINAL),
+                    Execution.execution_context.has_key("teams_action_completion"),
+                    Execution.execution_context["teams_action_completion"]["emitted_at"].astext.is_(None),
+                    Execution.completed_at < datetime.now(timezone.utc) - timedelta(seconds=15),
+                )
+                .order_by(Execution.completed_at)
+                .limit(limit)
+            )
+        ).all()
+    recovered = 0
+    for execution_id in execution_ids:
+        try:
+            async with get_session_factory()() as db:
+                await emit_teams_action_completion(db, execution_id)
+            recovered += 1
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Teams action completion recovery failed for %s", execution_id
+            )
+    return recovered
