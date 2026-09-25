@@ -297,8 +297,25 @@ async def test_invalid_action_does_not_block_later_approved_action() -> None:
         conversation_id=uuid4(),
     )
     invalid_id, valid_id = uuid4(), uuid4()
-    messages = [SimpleNamespace(id=run.input["user_message_id"])] + [
-        SimpleNamespace(
+    expired = False
+
+    class GuardedMessage:
+        def __init__(self, **fields):
+            self.__dict__.update(fields)
+
+        def __getattribute__(self, name):
+            if expired and name in {
+                "id",
+                "role",
+                "tool_name",
+                "tool_input",
+                "tool_result",
+            }:
+                raise AssertionError("ORM message read after rollback")
+            return super().__getattribute__(name)
+
+    messages = [GuardedMessage(id=run.input["user_message_id"])] + [
+        GuardedMessage(
             id=uuid4(),
             role="tool_call",
             tool_name="wf_teams_run_remote_powershell",
@@ -309,6 +326,12 @@ async def test_invalid_action_does_not_block_later_approved_action() -> None:
     ]
     db = AsyncMock()
     db.scalars.return_value = SimpleNamespace(all=lambda: messages)
+
+    async def expire_messages():
+        nonlocal expired
+        expired = True
+
+    db.rollback.side_effect = expire_messages
     with patch(
         "src.services.teams_action_completion.register_teams_action_completion",
         new_callable=AsyncMock,

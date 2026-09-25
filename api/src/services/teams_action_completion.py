@@ -30,6 +30,7 @@ TERMINAL = {
     ExecutionStatus.COMPLETED_WITH_ERRORS,
     ExecutionStatus.STUCK,
 }
+RECOVERY_MAX_AGE = timedelta(hours=24)
 
 
 async def _lock_execution(db, execution_id: UUID) -> None:
@@ -151,7 +152,7 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
         )
     ).all()
     started = False
-    registered: set[UUID] = set()
+    candidates: list[UUID] = []
     for message in messages:
         if str(message.id) == str(user_message_id):
             started = True
@@ -174,25 +175,26 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
                 execution_id = UUID(str(result["execution_id"]))
             except (KeyError, TypeError, ValueError):
                 continue
-            if execution_id in registered:
-                continue
-            try:
-                await register_teams_action_completion(
-                    db,
-                    execution_id=execution_id,
-                    run_id=run.id,
-                    webhook_event_id=UUID(str(event_id)),
-                )
-            except HTTPException as exc:
-                await db.rollback()
-                logging.getLogger(__name__).warning(
-                    "Skipping invalid Teams action %s for run %s: %s",
-                    execution_id,
-                    run.id,
-                    exc.detail,
-                )
-                continue
-            registered.add(execution_id)
+            if execution_id not in candidates:
+                candidates.append(execution_id)
+    run_id = run.id
+    webhook_event_id = UUID(str(event_id))
+    for execution_id in candidates:
+        try:
+            await register_teams_action_completion(
+                db,
+                execution_id=execution_id,
+                run_id=run_id,
+                webhook_event_id=webhook_event_id,
+            )
+        except HTTPException as exc:
+            await db.rollback()
+            logging.getLogger(__name__).warning(
+                "Skipping invalid Teams action %s for run %s: %s",
+                execution_id,
+                run_id,
+                exc.detail,
+            )
 
 
 async def emit_teams_action_completion(db, execution_id: UUID) -> bool:
@@ -249,6 +251,8 @@ async def recover_teams_action_completions(*, limit: int = 50) -> int:
                     ].astext.is_(None),
                     Execution.completed_at
                     < datetime.now(timezone.utc) - timedelta(seconds=15),
+                    Execution.completed_at
+                    > datetime.now(timezone.utc) - RECOVERY_MAX_AGE,
                 )
                 .order_by(
                     Execution.execution_context["teams_action_completion"][
