@@ -35,6 +35,9 @@ EXISTING_HASH=$(psql_postgres -c \
     | tr -d '[:space:]')
 
 if [ "$EXISTING_HASH" = "$MIGRATIONS_HASH" ]; then
+    if [ "$(psql_postgres -c "SELECT 1 FROM pg_database WHERE datname = 'bifrost_test';")" != "1" ]; then
+        psql_postgres -c "CREATE DATABASE bifrost_test TEMPLATE bifrost_test_template;" > /dev/null
+    fi
     echo "template up to date (hash: $MIGRATIONS_HASH)"
     exit 0
 fi

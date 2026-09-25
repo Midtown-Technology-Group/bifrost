@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException, status
@@ -9,7 +9,6 @@ from src.models import (
     CreateRepoRequest,
     DiffRequest,
     DiscardRequest,
-    GitHubConfigRequest,
     CommitRequest,
     GitOpRequest,
     ResolveRequest,
@@ -165,45 +164,6 @@ async def test_validate_github_token_saves_token_and_maps_repositories() -> None
     save_config.assert_awaited_once()
     assert save_config.await_args.kwargs["repo_url"] is None
     assert save_config.await_args.kwargs["branch"] == "main"
-
-
-@pytest.mark.asyncio
-async def test_configure_github_normalizes_repo_and_uses_saved_token() -> None:
-    with (
-        patch.object(github, "get_github_config", AsyncMock(return_value=_config(token="ghp_saved"))),
-        patch.object(github, "save_github_config", AsyncMock()) as save_config,
-    ):
-        result = await github.configure_github(
-            GitHubConfigRequest(repo_url="acme/repo", branch="develop"),
-            _ctx(),
-            _user(),
-            AsyncMock(),
-        )
-
-    assert result.status == "configured"
-    save_config.assert_awaited_once_with(
-        db=save_config.await_args.kwargs["db"],
-        org_id=_ctx().org_id,
-        token="ghp_saved",
-        repo_url="https://github.com/acme/repo",
-        branch="develop",
-        updated_by="admin@example.com",
-    )
-
-
-@pytest.mark.asyncio
-async def test_configure_github_requires_existing_token() -> None:
-    with patch.object(github, "get_github_config", AsyncMock(return_value=_config(token=None))):
-        with pytest.raises(HTTPException) as exc:
-            await github.configure_github(
-                GitHubConfigRequest(repo_url="acme/repo"),
-                _ctx(),
-                _user(),
-                AsyncMock(),
-            )
-
-    assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
-    assert exc.value.detail == "GitHub token not found. Please validate your token first."
 
 
 @pytest.mark.asyncio
@@ -432,103 +392,57 @@ async def test_git_fetch_requires_complete_configuration() -> None:
 
 
 @pytest.mark.asyncio
-async def test_git_commit_publishes_requested_job_id_and_message() -> None:
-    with (
-        patch.object(github, "get_github_config", AsyncMock(return_value=_config())),
-        patch.object(github, "publish_git_operation", AsyncMock(return_value="job-1")) as publish,
-    ):
-        result = await github.git_commit(
-            CommitRequest(message="ship it", job_id="job-1"),
-            _ctx(),
-            _user(),
-            AsyncMock(),
-        )
-
-    assert result.job_id == "job-1"
-    publish.assert_awaited_once_with(
-        job_id="job-1",
-        org_id="11111111-1111-1111-1111-111111111111",
-        user_id="user-1",
-        user_email="admin@example.com",
-        op_type="git_commit",
-        message="ship it",
-    )
-
-
-@pytest.mark.asyncio
-async def test_git_sync_publishes_confirm_deletes_flag() -> None:
-    with (
-        patch.object(github, "get_github_config", AsyncMock(return_value=_config())),
-        patch.object(github, "publish_git_operation", AsyncMock(return_value="job-sync")) as publish,
-    ):
-        result = await github.git_sync(
-            _ctx(),
-            _user(),
-            AsyncMock(),
-            SyncRequest(job_id="job-sync", confirm_deletes=True),
-        )
-
-    assert result.job_id == "job-sync"
-    publish.assert_awaited_once_with(
-        job_id="job-sync",
-        org_id="11111111-1111-1111-1111-111111111111",
-        user_id="user-1",
-        user_email="admin@example.com",
-        op_type="git_sync",
-        confirm_deletes=True,
-    )
-
-
-@pytest.mark.asyncio
-async def test_git_operation_endpoints_publish_expected_payloads() -> None:
+async def test_git_operation_endpoints_enqueue_expected_options() -> None:
+    job_id = uuid4()
+    accepted = object()
     cases = [
         (
-            github.git_abort_merge,
-            (GitOpRequest(job_id="job-abort"),),
-            {"op_type": "git_abort_merge"},
+            github.git_commit,
+            CommitRequest(message="ship it", job_id=job_id),
+            "commit",
+            {"message": "ship it"},
         ),
         (
-            github.git_changes,
-            (GitOpRequest(job_id="job-status"),),
-            {"op_type": "git_status"},
+            github.git_sync,
+            SyncRequest(job_id=job_id, confirm_deletes=True),
+            "sync",
+            {"confirm_deletes": True, "retry_plan": None},
         ),
+        (github.git_abort_merge, GitOpRequest(job_id=job_id), "abort_merge", None),
+        (github.git_changes, GitOpRequest(job_id=job_id), "status", None),
         (
             github.git_resolve,
-            (ResolveRequest(job_id="job-resolve", resolutions={"a.py": "ours"}),),
-            {"op_type": "git_resolve", "resolutions": {"a.py": "ours"}},
+            ResolveRequest(job_id=job_id, resolutions={"a.py": "ours"}),
+            "resolve",
+            {"resolutions": {"a.py": "ours"}},
         ),
-        (
-            github.git_diff,
-            (DiffRequest(job_id="job-diff", path="a.py"),),
-            {"op_type": "git_diff", "path": "a.py"},
-        ),
+        (github.git_diff, DiffRequest(job_id=job_id, path="a.py"), "diff", {"path": "a.py"}),
         (
             github.git_discard,
-            (DiscardRequest(job_id="job-discard", paths=["a.py", "b.py"]),),
-            {"op_type": "git_discard", "paths": ["a.py", "b.py"]},
+            DiscardRequest(job_id=job_id, paths=["a.py", "b.py"]),
+            "discard",
+            {"paths": ["a.py", "b.py"]},
         ),
     ]
 
-    for endpoint, request_args, expected in cases:
+    for endpoint, request, operation, options in cases:
+        enqueue = AsyncMock(return_value=accepted)
         with (
             patch.object(github, "get_github_config", AsyncMock(return_value=_config())),
-            patch.object(
-                github,
-                "publish_git_operation",
-                AsyncMock(return_value=request_args[0].job_id),
-            ) as publish,
+            patch.object(github, "_enqueue_git_operation", enqueue),
         ):
-            if endpoint in {github.git_abort_merge, github.git_changes}:
-                result = await endpoint(_ctx(), _user(), AsyncMock(), *request_args)
+            if endpoint in {github.git_sync, github.git_abort_merge, github.git_changes}:
+                result = await endpoint(_ctx(), _user(), AsyncMock(), request)
             else:
-                result = await endpoint(*request_args, _ctx(), _user(), AsyncMock())
+                result = await endpoint(request, _ctx(), _user(), AsyncMock())
 
-        assert result.job_id == request_args[0].job_id
-        publish.assert_awaited_once()
-        payload = publish.await_args.kwargs
-        assert payload["job_id"] == request_args[0].job_id
-        assert payload["org_id"] == "11111111-1111-1111-1111-111111111111"
-        assert payload["user_id"] == "user-1"
-        assert payload["user_email"] == "admin@example.com"
-        for key, value in expected.items():
-            assert payload[key] == value
+        assert result is accepted
+        enqueue.assert_awaited_once()
+        payload = enqueue.await_args.kwargs
+        assert payload["operation"] == operation
+        assert payload["organization_id"] == _ctx().org_id
+        assert payload["job_id"] == job_id
+        if options is None:
+            assert "options" not in payload
+        else:
+            assert payload["options"] == options

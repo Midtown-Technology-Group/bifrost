@@ -856,6 +856,13 @@ jobs:
         if: needs.affected-test-plan.outputs.client_e2e_mode == 'skip'
         run: echo "Client browser tests are outside the affected closure."
 
+      - name: Show API errors after E2E failure
+        if: failure()
+        run: |
+          source scripts/lib/test_helpers.sh
+          bifrost_test_project="$(compute_project_name .)"
+          COMPOSE_PROJECT_NAME="$bifrost_test_project" docker compose -f docker-compose.test.yml logs --tail=300 api
+
   # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
   # Fails if any backend shard or the Playwright job failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.

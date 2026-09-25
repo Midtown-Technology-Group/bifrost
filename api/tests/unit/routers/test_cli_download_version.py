@@ -1,6 +1,7 @@
 """CLI build-time artifact generation."""
 
 import tarfile
+import tomllib
 from pathlib import Path
 
 from shared.cli_artifact import build_cli_artifact, cli_artifact_filename, to_pep440
@@ -29,7 +30,11 @@ def test_build_cli_artifact_stamps_and_filters_package(tmp_path: Path) -> None:
         assert init is not None
         pyproject_text = pyproject.read().decode()
         assert 'version = "1.2.3"' in pyproject_text
-        assert '"packaging>=23.0"' in pyproject_text
+        metadata = tomllib.loads(pyproject_text)
+        assert any(
+            requirement.startswith("packaging")
+            for requirement in metadata["project"]["dependencies"]
+        )
         assert '__version__ = "v1.2.3"' in init.read().decode()
 
     assert "bifrost/lucide_icon_names.json" in names

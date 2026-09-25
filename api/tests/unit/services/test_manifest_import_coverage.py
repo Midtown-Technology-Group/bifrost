@@ -680,14 +680,16 @@ def test_resolve_config_preserves_existing_secret_and_tracks_plain_global_config
         value=None,
     )
 
-    assert resolver._resolve_config(
+    secret_ops = resolver._resolve_config(
         secret,
         {
             "config_by_natural": {
                 ("api_key", None, UUID(ORG_ID)): (UUID(EXISTING_ID), "encrypted", None),
             },
         },
-    ) == []
+    )
+    assert len(secret_ops) == 1
+    assert "value" not in secret_ops[0].values
     assert resolver.configs_touched == {(ORG_ID, "api_key")}
 
     plain = ManifestConfig(
@@ -819,12 +821,12 @@ def test_resolve_form_and_agent_ignore_empty_content_and_global_metadata():
         b"name: Global\nsystem_prompt: Help\n",
     )
 
-    assert len(form_ops) == 1
-    assert form_ops[0].entity_fk == "form_id"
-    assert form_ops[0].role_ids == {UUID(ROLE_ID)}
-    assert len(agent_ops) == 1
-    assert agent_ops[0].entity_fk == "agent_id"
-    assert agent_ops[0].role_ids == {UUID(ROLE_ID)}
+    assert len(form_ops) == 2
+    assert form_ops[1].entity_fk == "form_id"
+    assert form_ops[1].role_ids == {UUID(ROLE_ID)}
+    assert len(agent_ops) == 2
+    assert agent_ops[1].entity_fk == "agent_id"
+    assert agent_ops[1].role_ids == {UUID(ROLE_ID)}
 
 
 @pytest.mark.asyncio

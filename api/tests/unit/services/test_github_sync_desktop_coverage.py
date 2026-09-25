@@ -8,17 +8,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
-from src.models.contracts.github import PullResult, PushResult
 from src.services.github_sync import (
     GitHubSyncService,
     SyncError,
-    _run_ruff_check,
-    _auto_resolve_manifest_conflicts,
-    _classify_conflict_type,
     _deleted_paths_in_head,
-    _three_way_merge_dicts,
-    _walk_tree,
+    _run_ruff_check,
 )
 
 
@@ -91,21 +85,6 @@ def _service(tmp_path: Path, repo: object) -> GitHubSyncService:
     return service
 
 
-def test_walk_tree_returns_repo_relative_files_and_skips_git_dir(tmp_path: Path) -> None:
-    (tmp_path / ".git" / "objects").mkdir(parents=True)
-    (tmp_path / ".git" / "objects" / "ignored").write_text("git internals")
-    (tmp_path / "workflows").mkdir()
-    (tmp_path / "workflows" / "demo.py").write_text("print('ok')")
-    (tmp_path / "README.md").write_text("docs")
-
-    result = _walk_tree(tmp_path)
-
-    assert result == {
-        "README.md": b"docs",
-        "workflows/demo.py": b"print('ok')",
-    }
-
-
 def test_deleted_paths_in_head_returns_only_deleted_entries() -> None:
     class Git:
         def diff_tree(self, *args):
@@ -123,120 +102,6 @@ def test_deleted_paths_in_head_treats_git_errors_as_no_deletes() -> None:
             raise RuntimeError("no commits yet")
 
     assert _deleted_paths_in_head(SimpleNamespace(git=Git())) == set()
-
-
-def test_three_way_merge_preserves_independent_edits_and_deletions() -> None:
-    merged = _three_way_merge_dicts(
-        base={
-            "kept": {"owner": "base", "enabled": True},
-            "theirs_deleted": "same",
-            "ours_deleted": "same",
-            "ours_changed": "base",
-        },
-        ours={
-            "kept": {"owner": "ours", "enabled": True},
-            "theirs_deleted": "same",
-            "ours_changed": "ours",
-            "ours_added": 1,
-        },
-        theirs={
-            "kept": {"owner": "theirs", "enabled": False},
-            "ours_deleted": "same",
-            "ours_changed": "base",
-            "theirs_added": 2,
-        },
-    )
-
-    assert merged == {
-        "kept": {"owner": "theirs", "enabled": False},
-        "ours_changed": "base",
-        "ours_added": 1,
-        "theirs_added": 2,
-    }
-
-
-@pytest.mark.parametrize(
-    ("entries", "expected"),
-    [
-        ([(1, _Blob()), (2, _Blob()), (3, _Blob())], "both_modified"),
-        ([(2, _Blob()), (3, _Blob())], "both_added"),
-        ([(1, _Blob()), (3, _Blob())], "deleted_by_us"),
-        ([(1, _Blob()), (2, _Blob())], "deleted_by_them"),
-        ([], "both_modified"),
-    ],
-)
-def test_classify_conflict_type_from_git_stages(entries, expected) -> None:
-    assert _classify_conflict_type({"workflows/demo.py": entries}, "workflows/demo.py") == expected
-
-
-def test_auto_resolve_manifest_conflicts_merges_yaml_and_adds_file(
-    tmp_path: Path,
-) -> None:
-    shown = {
-        ":1:.bifrost/workflows.yaml": "demo:\n  name: Demo\n  enabled: true\n",
-        ":2:.bifrost/workflows.yaml": (
-            "demo:\n  name: Demo Local\n  enabled: true\nlocal_only: 1\n"
-        ),
-        ":3:.bifrost/workflows.yaml": (
-            "demo:\n  name: Demo Remote\n  enabled: false\nremote_only: 2\n"
-        ),
-    }
-
-    class Git:
-        def __init__(self) -> None:
-            self.added = []
-
-        def show(self, ref: str) -> str:
-            return shown[ref]
-
-        def add(self, path: str) -> None:
-            self.added.append(path)
-
-    git = Git()
-    repo = SimpleNamespace(git=git)
-
-    resolved = _auto_resolve_manifest_conflicts(
-        repo,
-        tmp_path,
-        {".bifrost/workflows.yaml": [(1, _Blob()), (2, _Blob()), (3, _Blob())]},
-    )
-
-    assert resolved == {".bifrost/workflows.yaml"}
-    assert git.added == [".bifrost/workflows.yaml"]
-    merged = (tmp_path / ".bifrost" / "workflows.yaml").read_text()
-    assert "Demo Remote" in merged
-    assert "enabled: false" in merged
-    assert "local_only: 1" in merged
-    assert "remote_only: 2" in merged
-
-
-def test_auto_resolve_manifest_conflicts_accepts_theirs_when_merge_fails(
-    tmp_path: Path,
-) -> None:
-    class Git:
-        def __init__(self) -> None:
-            self.added = []
-
-        def show(self, ref: str) -> str:
-            if ref.startswith(":3:"):
-                return "- remote\n- list\n"
-            return "- local\n- list\n"
-
-        def add(self, path: str) -> None:
-            self.added.append(path)
-
-    git = Git()
-    repo = SimpleNamespace(git=git)
-
-    resolved = _auto_resolve_manifest_conflicts(
-        repo,
-        tmp_path,
-        {".bifrost/forms.yaml": [(1, _Blob()), (2, _Blob()), (3, _Blob())]},
-    )
-
-    assert resolved == {".bifrost/forms.yaml"}
-    assert (tmp_path / ".bifrost" / "forms.yaml").read_text() == "- remote\n- list\n"
-    assert git.added == [".bifrost/forms.yaml"]
 
 
 @pytest.mark.asyncio
@@ -336,20 +201,6 @@ async def test_ruff_process_is_reaped_when_cancelled(
     assert wait_finished.is_set()
 
 
-@pytest.mark.asyncio
-async def test_desktop_status_returns_empty_status_when_open_fails(tmp_path: Path) -> None:
-    service = object.__new__(GitHubSyncService)
-    service.repo_manager = _RepoManager(tmp_path)
-    service._open_or_init = lambda work_dir: (_ for _ in ()).throw(
-        RuntimeError("bad checkout")
-    )
-
-    result = await service.desktop_status()
-
-    assert result.changed_files == []
-    assert result.total_changes == 0
-    assert result.commits_ahead == 0
-    assert result.commits_behind == 0
 
 
 @pytest.mark.asyncio
@@ -364,79 +215,8 @@ async def test_desktop_commit_delegates_locked_repo_and_message(tmp_path: Path) 
     service._do_commit.assert_awaited_once_with(tmp_path, repo, "publish local edits")
 
 
-@pytest.mark.asyncio
-async def test_desktop_sync_push_failure_stops_before_storage_and_import(
-    tmp_path: Path,
-) -> None:
-    service = _service(tmp_path, object())
-    service._do_pull = AsyncMock(return_value=PullResult(success=True, pulled=1))
-    service._do_push = lambda work_dir, repo: PushResult(
-        success=False,
-        error="non-fast-forward",
-    )
-    service._import_all_entities = AsyncMock()
-    service._update_file_index = AsyncMock()
-
-    result = await service.desktop_sync()
-
-    assert result.success is False
-    assert result.pull_success is True
-    assert result.push_success is False
-    assert result.error == "non-fast-forward"
-    assert service.repo_manager.synced == []
-    service._import_all_entities.assert_not_awaited()
-    service._update_file_index.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_desktop_sync_reports_progress_through_successful_import(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    progress = AsyncMock()
-    refresh = AsyncMock()
-    monkeypatch.setitem(
-        sys.modules,
-        "src.core.pubsub",
-        types.SimpleNamespace(publish_git_progress=progress),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "src.core.module_cache",
-        types.SimpleNamespace(refresh_modules_from_directory=refresh),
-    )
-    monkeypatch.setattr("src.services.github_sync._deleted_paths_in_head", lambda repo: set())
-
-    service = _service(tmp_path, object())
-    service._do_pull = AsyncMock(return_value=PullResult(success=True, pulled=2))
-    service._do_push = lambda work_dir, repo: PushResult(
-        success=True,
-        pushed_commits=3,
-        commit_sha="feedface",
-    )
-    service._import_all_entities = AsyncMock(return_value=(4, [], {}))
-    service._update_file_index = AsyncMock()
-    service._resolver._resolve_deletions = AsyncMock(return_value=[])
-    service._sync_app_previews = AsyncMock()
-
-    result = await service.desktop_sync(job_id="job-42", confirm_deletes=True)
-
-    assert result.success is True
-    assert result.pulled == 2
-    assert result.pushed_commits == 3
-    assert result.commit_sha == "feedface"
-    assert result.entities_imported == 4
-    assert [call.args[1] for call in progress.await_args_list] == [
-        "Pushing to remote...",
-        "Syncing to storage...",
-        "Importing entities...",
-        "Updating file index...",
-        "Checking for removed entities...",
-        "Syncing app previews...",
-    ]
-    assert service.repo_manager.synced == [tmp_path]
-    refresh.assert_awaited_once_with(tmp_path)
-    service._sync_app_previews.assert_awaited_once_with(tmp_path)
 
 
 @pytest.mark.asyncio
@@ -627,112 +407,10 @@ def test_do_fetch_counts_ahead_behind_and_handles_missing_remote(tmp_path: Path)
     assert missing.commits_behind == 0
 
 
-def test_do_status_reports_conflicts_before_staging(tmp_path: Path) -> None:
-    (tmp_path / ".git").mkdir()
-    (tmp_path / ".git" / "MERGE_HEAD").write_text("merge")
-
-    class Index:
-        def unmerged_blobs(self):
-            return {"workflows/demo.py": [(2, _Blob()), (3, _Blob())]}
-
-    class Git:
-        def show(self, ref: str) -> str:
-            if ref.startswith(":2:"):
-                return "ours"
-            return "theirs"
-
-        def rev_list(self, *args):
-            return "0"
-
-        def add(self, *args, **kwargs):
-            raise AssertionError("conflict status should not stage changes")
-
-    service = _service(tmp_path, object())
-    repo = SimpleNamespace(index=Index(), git=Git(), head=_Head(valid=True))
-
-    result = service._do_status(tmp_path, repo)
-
-    assert result.total_changes == 0
-    assert result.merging is True
-    assert len(result.conflicts) == 1
-    assert result.conflicts[0].path == "workflows/demo.py"
-    assert result.conflicts[0].ours_content == "ours"
-    assert result.conflicts[0].theirs_content == "theirs"
-    assert result.conflicts[0].conflict_type == "both_added"
 
 
-def test_do_status_classifies_porcelain_changes_and_renames(tmp_path: Path) -> None:
-    class Index:
-        def unmerged_blobs(self):
-            return {}
-
-    class Git:
-        def __init__(self) -> None:
-            self.reset_called = False
-
-        def rev_list(self, *args):
-            if args[-1] == "origin/main..HEAD":
-                return "1"
-            return "2"
-
-        def add(self, *args, **kwargs):
-            return None
-
-        def status(self, *args):
-            return (
-                "A  workflows/new.py\n"
-                " M workflows/changed.py\n"
-                "D  workflows/deleted.py\n"
-                "R  workflows/old.py -> workflows/renamed.py\n"
-                '?? "forms/quoted form.yaml"\n'
-            )
-
-        def reset(self, *args):
-            self.reset_called = True
-
-    git = Git()
-    repo = SimpleNamespace(index=Index(), git=git, head=_Head(valid=True))
-    service = _service(tmp_path, repo)
-    service.branch = "main"
-
-    result = service._do_status(tmp_path, repo)
-
-    assert result.commits_ahead == 1
-    assert result.commits_behind == 2
-    assert result.total_changes == 5
-    assert [changed.change_type for changed in result.changed_files] == [
-        "added",
-        "modified",
-        "deleted",
-        "renamed",
-        "added",
-    ]
-    assert result.changed_files[3].path == "workflows/renamed.py"
-    assert result.changed_files[4].path == "forms/quoted form.yaml"
-    assert git.reset_called is True
 
 
-def test_do_status_reports_untracked_files_when_repo_has_no_head(tmp_path: Path) -> None:
-    class Index:
-        def unmerged_blobs(self):
-            return {}
-
-    class Git:
-        def add(self, *args, **kwargs):
-            return None
-
-    repo = SimpleNamespace(
-        index=Index(),
-        git=Git(),
-        head=_Head(valid=False),
-        untracked_files=["workflows/first.py", "forms/demo.yaml"],
-    )
-    service = _service(tmp_path, repo)
-
-    result = service._do_status(tmp_path, repo)
-
-    assert result.total_changes == 2
-    assert all(changed.change_type == "added" for changed in result.changed_files)
 
 
 def test_do_push_returns_noop_without_valid_head(tmp_path: Path) -> None:

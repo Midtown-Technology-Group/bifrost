@@ -38,9 +38,20 @@ def _owned_operation(
 class _AsyncBody:
     def __init__(self, content: bytes):
         self._content = content
+        self._offset = 0
 
-    async def read(self) -> bytes:
-        return self._content
+    async def __aenter__(self) -> _AsyncBody:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._content) - self._offset
+        chunk = self._content[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
 
 
 class _ListObjectsV2Paginator:

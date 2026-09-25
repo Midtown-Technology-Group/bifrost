@@ -72,6 +72,11 @@ async def run_solution_deploy(
                     force=bool(payload.options.get("force", False)),
                     candidate_id=candidate_id,
                     accountability_organization_id=accountability_organization_id,
+                    # A from-repo install is created git-connected by the same
+                    # request that enqueues this first deploy; without the
+                    # exemption the one-writer refusal would deadlock creation.
+                    # Manual deploys (kind="deploy") stay refused.
+                    allow_connected_install=payload.kind == "install_from_repo",
                 )
             else:
                 raw_org_id = payload.options.get("organization_id")

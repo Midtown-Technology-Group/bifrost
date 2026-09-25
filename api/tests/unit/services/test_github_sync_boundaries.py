@@ -88,7 +88,7 @@ async def test_file_index_cleanup_deletes_only_explicit_git_deleted_paths(tmp_pa
 async def test_file_index_skips_unchanged_binary_and_non_utf8_then_batches_upserts(
     tmp_path, monkeypatch
 ):
-    from src.services.github_sync import _content_hash
+    from src.services.git_repo_manager import hash_file
 
     GitHubSyncService = _import_github_sync_service(monkeypatch)
 
@@ -106,7 +106,7 @@ async def test_file_index_skips_unchanged_binary_and_non_utf8_then_batches_upser
         [
             (
                 "workflows/unchanged.py",
-                _content_hash(unchanged.read_bytes()),
+                hash_file(unchanged)[1],
             )
         ]
     )

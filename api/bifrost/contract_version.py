@@ -35,7 +35,9 @@ the baked value with ``GET /api/version`` and blocks only on incompatibility.
 #      count-only responses. New SDKs must not send these requests to an old
 #      server that could ignore the mode; the separate bulk-upsert route is
 #      removed (2026-09-12).
-CONTRACT_VERSION: int = 12
+# v13: PlatformJobStatus gained requires_action for reviewed workspace imports;
+#      older CLIs cannot parse that status while polling a job (2026-09-25).
+CONTRACT_VERSION: int = 13
 
 
 def get_contract_version() -> int:

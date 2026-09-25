@@ -4,8 +4,10 @@ import importlib
 import asyncio
 import hashlib
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -110,6 +112,64 @@ class TestS3Uri:
 
     def test_builds_uri_from_bucket(self, manager):
         assert manager._s3_uri() == "s3://bifrost-local/_repo/"
+
+    def test_checkpoint_uri_is_uuid_scoped(self, manager):
+        checkpoint_id = str(uuid4())
+
+        assert manager._checkpoint_uri(checkpoint_id) == (
+            f"s3://bifrost-local/_workspace_sync_checkpoints/{checkpoint_id}/"
+        )
+        with pytest.raises(ValueError, match="Invalid workspace checkpoint ID"):
+            manager._checkpoint_uri("../../repo")
+
+
+@pytest.mark.asyncio
+async def test_azure_checkpoint_restores_exact_tree(tmp_path, mock_settings, monkeypatch):
+    from src.services.file_storage import azure_blob_client
+
+    objects: dict[str, bytes] = {}
+
+    class FakeAzureStorage:
+        def __init__(self, _settings):
+            pass
+
+        @asynccontextmanager
+        async def get_client(self):
+            yield self
+
+        async def put_object_from_chunks(self, key, chunks):
+            objects[key] = b"".join([chunk async for chunk in chunks])
+
+        async def list_objects_v2(self, *, Bucket, Prefix, ContinuationToken=None):
+            return {"Contents": [{"Key": key} for key in objects if key.startswith(Prefix)]}
+
+        async def iter_object_chunks(self, key):
+            yield objects[key]
+
+        async def delete_object(self, *, Bucket, Key):
+            del objects[Key]
+
+    monkeypatch.setattr(azure_blob_client, "AzureBlobStorageClient", FakeAzureStorage)
+    mock_settings.object_storage_provider = "azure_blob"
+    mock_settings.azure_blob_container = "bifrost"
+    manager = GitRepoManager(settings=mock_settings)
+    manager._run_aws_cli = AsyncMock(side_effect=AssertionError("S3 CLI used for Azure"))
+    source = tmp_path / "source"
+    (source / ".git").mkdir(parents=True)
+    (source / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (source / "workflow.py").write_text("value = 1\n")
+
+    checkpoint_id = await manager.checkpoint_workspace(source)
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "stale.py").write_text("stale")
+    await manager.restore_workspace_checkpoint(checkpoint_id, target)
+
+    assert (target / ".git" / "HEAD").read_text() == "ref: refs/heads/main\n"
+    assert (target / "workflow.py").read_text() == "value = 1\n"
+    assert not (target / "stale.py").exists()
+    await manager.delete_workspace_checkpoint(checkpoint_id)
+    assert not objects
 
 
 class TestPersistentWorkDir:

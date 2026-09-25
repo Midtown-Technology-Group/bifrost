@@ -5,19 +5,275 @@ Tests the GitHubSyncService data models and exceptions.
 """
 
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
-
+from git import Repo
 from src.models.contracts.github import (
     OrphanInfo,
     PreflightIssue,
     PreflightResult,
+    WorkingTreeStatus,
     WorkflowReference,
 )
-from src.services.github_sync import SyncError
+from src.services.github_sync import GitStatusError, SyncError
+
+
+class _StatusRepoManager:
+    """Minimal read-only repo manager for exercising desktop_status()."""
+
+    def __init__(self, work_dir: Path, *, is_initialized: bool = True) -> None:
+        self.work_dir = work_dir
+        self.is_initialized = is_initialized
+
+    @asynccontextmanager
+    async def lock(self):
+        yield self.work_dir
+
+
+def _status_service(work_dir: Path):
+    from src.services.github_sync import GitHubSyncService
+
+    service = GitHubSyncService.__new__(GitHubSyncService)
+    service.branch = "main"
+    service.repo_url = "https://example.invalid/workspace.git"
+    service.repo_manager = _StatusRepoManager(work_dir)
+    return service
+
+
+@pytest.mark.asyncio
+async def test_desktop_status_returns_empty_only_for_uninitialized_workspace(tmp_path: Path) -> None:
+    service = _status_service(tmp_path)
+    service.repo_manager = _StatusRepoManager(tmp_path, is_initialized=False)
+
+    assert await service.desktop_status() == WorkingTreeStatus()
+
+
+@pytest.mark.asyncio
+async def test_desktop_status_surfaces_invalid_repository(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+
+    with pytest.raises(GitStatusError, match="status failed"):
+        await _status_service(tmp_path).desktop_status()
+
+
+def _git_state(repo: Repo) -> tuple[bytes, bytes, bytes, tuple[tuple[str, bytes], ...]]:
+    """Capture the index plus merge state that status must not alter."""
+    work_dir = Path(repo.working_tree_dir)
+    merge_files = ("MERGE_HEAD", "MERGE_MODE", "MERGE_MSG")
+    return (
+        (work_dir / ".git" / "index").read_bytes(),
+        repo.git.diff("--cached", "--binary", as_process=False).encode(),
+        repo.git.ls_files("-u", "-z", as_process=False).encode(),
+        tuple(
+            (name, (work_dir / ".git" / name).read_bytes())
+            for name in merge_files
+            if (work_dir / ".git" / name).exists()
+        ),
+    )
+
+
+def _commit(repo: Repo, path: str, content: str, message: str) -> None:
+    target = Path(repo.working_tree_dir) / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+    repo.index.add([path])
+    repo.index.commit(message)
+
+
+def _configure_user(repo: Repo) -> None:
+    with repo.config_writer() as config:
+        config.set_value("user", "name", "Test User")
+        config.set_value("user", "email", "test@example.com")
+
+
+@pytest.mark.asyncio
+async def test_desktop_status_does_not_change_dirty_index(tmp_path: Path) -> None:
+    repo = Repo.init(tmp_path)
+    _configure_user(repo)
+    repo.git.branch("-M", "main")
+    _commit(repo, "tracked.txt", "base\n", "initial")
+    _commit(repo, "rename source.txt", "rename me\n", "add rename source")
+    _commit(repo, "staged modified.txt", "before\n", "add staged modification")
+    _commit(repo, "deleted.txt", "delete me\n", "add deleted file")
+
+    (tmp_path / "staged.txt").write_text("staged\n")
+    repo.index.add(["staged.txt"])
+    (tmp_path / "staged modified.txt").write_text("after\n")
+    repo.index.add(["staged modified.txt"])
+    repo.git.mv("rename source.txt", "renamed file.txt")
+    repo.git.rm("deleted.txt")
+    (tmp_path / "tracked.txt").write_text("working tree change\n")
+    (tmp_path / "file with spaces.txt").write_text("untracked\n")
+
+    before = _git_state(repo)
+    status = await _status_service(tmp_path).desktop_status()
+
+    assert _git_state(repo) == before
+    assert {(change.path, change.change_type) for change in status.changed_files} == {
+        ("staged.txt", "added"),
+        ("staged modified.txt", "modified"),
+        ("tracked.txt", "modified"),
+        ("file with spaces.txt", "added"),
+        ("renamed file.txt", "renamed"),
+        ("deleted.txt", "deleted"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_desktop_status_does_not_change_in_progress_merge(tmp_path: Path, caplog) -> None:
+    repo = Repo.init(tmp_path)
+    _configure_user(repo)
+    repo.git.branch("-M", "main")
+    _commit(repo, "conflict.txt", "base\n", "initial")
+
+    other = repo.create_head("other")
+    other.checkout()
+    _commit(repo, "conflict.txt", "theirs\n", "theirs")
+    repo.heads.main.checkout()
+    _commit(repo, "conflict.txt", "ours\n", "ours")
+    with pytest.raises(Exception):
+        repo.git.merge("other")
+    assert (tmp_path / ".git" / "MERGE_HEAD").exists()
+
+    before = _git_state(repo)
+    status = await _status_service(tmp_path).desktop_status()
+
+    assert _git_state(repo) == before
+    assert "Status failed" not in caplog.text
+    assert status.merging is True
+    assert [conflict.path for conflict in status.conflicts] == ["conflict.txt"]
+
+
+def test_status_parser_consumes_copy_source_record(tmp_path: Path) -> None:
+    """A porcelain-v2 copy record reports only its destination to the API."""
+    from src.services.github_sync import GitHubSyncService
+
+    class FakeGit:
+        def status(self, *args, **kwargs):
+            assert args == ("--porcelain=v2", "-z")
+            assert kwargs == {"env": {"GIT_OPTIONAL_LOCKS": "0"}}
+            return (
+                "2 C. N... 100644 100644 100644 abcdef0 abcdef0 C100 "
+                "copied file.txt\0source file.txt\0"
+            )
+
+    class FakeRepo:
+        git = FakeGit()
+
+        class index:
+            @staticmethod
+            def unmerged_blobs():
+                return {}
+
+        class head:
+            @staticmethod
+            def is_valid():
+                return False
+
+    (tmp_path / ".git").mkdir()
+    service = GitHubSyncService.__new__(GitHubSyncService)
+
+    status = service._do_status(tmp_path, FakeRepo())
+
+    assert [(change.path, change.change_type) for change in status.changed_files] == [
+        ("copied file.txt", "modified")
+    ]
+
+
+def test_status_parser_reports_unmerged_record(tmp_path: Path) -> None:
+    """Porcelain type-u records produce conflicts without consulting the index."""
+    from src.services.github_sync import GitHubSyncService
+
+    class FakeGit:
+        def status(self, *args, **kwargs):
+            return "u UU N... 100644 100644 100644 100644 base ours theirs conflict.txt\0"
+
+        def show(self, spec):
+            return {":2:conflict.txt": "ours", ":3:conflict.txt": "theirs"}[spec]
+
+    class FakeRepo:
+        git = FakeGit()
+
+        class head:
+            @staticmethod
+            def is_valid():
+                return False
+
+    (tmp_path / ".git").mkdir()
+    status = GitHubSyncService.__new__(GitHubSyncService)._do_status(tmp_path, FakeRepo())
+
+    assert [(conflict.path, conflict.conflict_type) for conflict in status.conflicts] == [
+        ("conflict.txt", "both_modified")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status_code", "stage", "conflict_type"),
+    [
+        ("UD", 2, "deleted_by_them"),
+        ("DU", 3, "deleted_by_us"),
+    ],
+)
+def test_status_parser_reads_only_present_conflict_stage(
+    tmp_path: Path,
+    status_code: str,
+    stage: int,
+    conflict_type: str,
+) -> None:
+    """Delete/modify conflicts expose only the side present in Git's index."""
+    from src.services.github_sync import GitHubSyncService
+
+    class FakeGit:
+        def status(self, *args, **kwargs):
+            return (
+                f"u {status_code} N... 100644 100644 100644 100644 "
+                "base ours theirs conflict.txt\0"
+            )
+
+        def show(self, spec):
+            assert spec == f":{stage}:conflict.txt"
+            return "present"
+
+    class FakeRepo:
+        git = FakeGit()
+
+        class head:
+            @staticmethod
+            def is_valid():
+                return False
+
+    (tmp_path / ".git").mkdir()
+    conflict = GitHubSyncService.__new__(GitHubSyncService)._do_status(tmp_path, FakeRepo()).conflicts[0]
+
+    assert conflict.conflict_type == conflict_type
+    assert conflict.ours_content == ("present" if stage == 2 else None)
+    assert conflict.theirs_content == ("present" if stage == 3 else None)
+
+
+@pytest.mark.parametrize("porcelain", ["x unknown\0", "1 M. malformed\0"])
+def test_status_parser_rejects_unknown_or_malformed_records(tmp_path: Path, porcelain: str) -> None:
+    from src.services.github_sync import GitHubSyncService
+
+    class FakeGit:
+        def status(self, *args, **kwargs):
+            return porcelain
+
+    class FakeRepo:
+        git = FakeGit()
+
+        class head:
+            @staticmethod
+            def is_valid():
+                return False
+
+    (tmp_path / ".git").mkdir()
+
+    with pytest.raises(GitStatusError):
+        GitHubSyncService.__new__(GitHubSyncService)._do_status(tmp_path, FakeRepo())
 
 
 class _Head:
@@ -27,25 +283,6 @@ class _Head:
 
     def is_valid(self) -> bool:
         return self._valid
-
-
-def test_content_hash_is_stable_sha256():
-    from src.services.github_sync import _content_hash
-
-    assert _content_hash(b"bifrost") == (
-        "0dbe5eed7bf15a420a2a6a7356654aea49eb6c506d544ae1460ff41dc840a100"
-    )
-
-
-def test_walk_tree_reads_files_and_skips_git_internals(tmp_path):
-    from src.services.github_sync import _walk_tree
-
-    (tmp_path / "workflows").mkdir()
-    (tmp_path / "workflows" / "daily.py").write_bytes(b"print('ok')\n")
-    (tmp_path / ".git" / "objects").mkdir(parents=True)
-    (tmp_path / ".git" / "config").write_bytes(b"[core]\n")
-
-    assert _walk_tree(tmp_path) == {"workflows/daily.py": b"print('ok')\n"}
 
 
 class TestDeletedPathsInHead:
@@ -76,76 +313,6 @@ class TestDeletedPathsInHead:
             git = Git()
 
         assert _deleted_paths_in_head(Repo()) == set()
-
-
-class TestManifestConflictAutoResolve:
-    def test_auto_resolves_dict_yaml_conflict(self, tmp_path):
-        from src.services.github_sync import _auto_resolve_manifest_conflicts
-
-        class Git:
-            added = []
-
-            def show(self, ref):
-                return {
-                    ":1:.bifrost/workflows.yaml": "wf:\n  name: old\n  local: keep\n",
-                    ":2:.bifrost/workflows.yaml": "wf:\n  name: ours\n  local: keep\n",
-                    ":3:.bifrost/workflows.yaml": "wf:\n  name: theirs\n  remote: add\n",
-                }[ref]
-
-            def add(self, path):
-                self.added.append(path)
-
-        class Repo:
-            git = Git()
-
-        resolved = _auto_resolve_manifest_conflicts(
-            Repo(),
-            tmp_path,
-            {".bifrost/workflows.yaml": [(1, object()), (2, object()), (3, object())]},
-        )
-
-        assert resolved == {".bifrost/workflows.yaml"}
-        merged = (tmp_path / ".bifrost" / "workflows.yaml").read_text()
-        assert "name: theirs" in merged
-        assert "remote: add" in merged
-        assert Repo.git.added == [".bifrost/workflows.yaml"]
-
-    def test_auto_resolve_falls_back_to_theirs_on_bad_yaml(self, tmp_path):
-        from src.services.github_sync import _auto_resolve_manifest_conflicts
-
-        class Git:
-            added = []
-
-            def show(self, ref):
-                if ref == ":3:.bifrost/apps.yaml":
-                    return "apps:\n- theirs\n"
-                return "- not\n- a\n- dict\n"
-
-            def add(self, path):
-                self.added.append(path)
-
-        class Repo:
-            git = Git()
-
-        resolved = _auto_resolve_manifest_conflicts(
-            Repo(),
-            tmp_path,
-            {".bifrost/apps.yaml": [(1, object()), (2, object()), (3, object())]},
-        )
-
-        assert resolved == {".bifrost/apps.yaml"}
-        assert (tmp_path / ".bifrost" / "apps.yaml").read_text() == "apps:\n- theirs\n"
-
-    def test_auto_resolve_ignores_non_manifest_conflicts(self, tmp_path):
-        from src.services.github_sync import _auto_resolve_manifest_conflicts
-
-        resolved = _auto_resolve_manifest_conflicts(
-            object(),
-            tmp_path,
-            {"workflows/conflict.py": [(1, object()), (2, object()), (3, object())]},
-        )
-
-        assert resolved == set()
 
 
 class TestGitHubSyncFetchAndPush:
@@ -782,247 +949,6 @@ class TestGitHubSyncCloneOrInit:
             service._clone_or_init(tmp_path)
 
 
-class TestGitHubSyncStatusAndResolve:
-    def test_do_status_reports_conflicts_with_stage_content(self, tmp_path):
-        from src.services.github_sync import GitHubSyncService
-
-        class Git:
-            def show(self, ref):
-                return {
-                    ":2:workflows/conflict.py": "ours",
-                    ":3:workflows/conflict.py": "theirs",
-                }[ref]
-
-            def rev_list(self, *args):
-                if args[-1] == "origin/main..HEAD":
-                    return "1"
-                if args[-1] == "HEAD..origin/main":
-                    return "2"
-                raise AssertionError(args)
-
-        class Index:
-            def unmerged_blobs(self):
-                return {"workflows/conflict.py": [(1, object()), (2, object()), (3, object())]}
-
-        class Repo:
-            git = Git()
-            index = Index()
-            head = _Head(valid=True)
-
-        service = object.__new__(GitHubSyncService)
-        service.branch = "main"
-
-        result = service._do_status(tmp_path, Repo())
-
-        assert result.total_changes == 0
-        assert result.commits_ahead == 1
-        assert result.commits_behind == 2
-        assert result.conflicts is not None
-        assert result.conflicts[0].path == "workflows/conflict.py"
-        assert result.conflicts[0].ours_content == "ours"
-        assert result.conflicts[0].theirs_content == "theirs"
-        assert result.conflicts[0].conflict_type == "both_modified"
-
-    def test_do_status_classifies_porcelain_and_resets_index(self, tmp_path):
-        from src.services.github_sync import GitHubSyncService
-
-        class Git:
-            calls = []
-
-            def add(self, **kwargs):
-                self.calls.append(("add", kwargs))
-
-            def status(self, *args):
-                assert args == ("--porcelain",)
-                return "\n".join([
-                    "M  workflows/changed.py",
-                    "A  forms/new.yaml",
-                    "D  workflows/old.py",
-                    "R  workflows/old_name.py -> workflows/new_name.py",
-                    "?? apps/new/file.tsx",
-                ])
-
-            def reset(self, *args):
-                self.calls.append(("reset", args))
-
-            def rev_list(self, *args):
-                raise RuntimeError("no origin")
-
-        class Index:
-            def unmerged_blobs(self):
-                return {}
-
-        class Repo:
-            git = Git()
-            index = Index()
-            head = _Head(valid=True)
-
-        service = object.__new__(GitHubSyncService)
-        service.branch = "main"
-
-        result = service._do_status(tmp_path, Repo())
-
-        assert [(f.path, f.change_type) for f in result.changed_files] == [
-            ("workflows/changed.py", "modified"),
-            ("forms/new.yaml", "added"),
-            ("workflows/old.py", "deleted"),
-            ("workflows/new_name.py", "renamed"),
-            ("apps/new/file.tsx", "added"),
-        ]
-        assert result.total_changes == 5
-        assert ("add", {"A": True}) in Repo.git.calls
-        assert ("reset", ("HEAD",)) in Repo.git.calls
-
-    def test_do_status_lists_untracked_files_when_head_invalid(self, tmp_path):
-        from src.services.github_sync import GitHubSyncService
-
-        class Git:
-            def add(self, **kwargs):
-                return None
-
-        class Index:
-            def unmerged_blobs(self):
-                return {}
-
-        class Repo:
-            git = Git()
-            index = Index()
-            head = _Head(valid=False)
-            untracked_files = ["workflows/new.py"]
-
-        service = object.__new__(GitHubSyncService)
-        service.branch = "main"
-
-        result = service._do_status(tmp_path, Repo())
-
-        assert result.changed_files[0].path == "workflows/new.py"
-        assert result.changed_files[0].change_type == "added"
-        assert result.total_changes == 1
-
-    def test_do_resolve_rejects_when_no_merge_or_unmerged_entries(self, tmp_path):
-        from src.services.github_sync import GitHubSyncService
-
-        repo = type(
-            "Repo",
-            (),
-            {"index": type("Index", (), {"unmerged_blobs": lambda self: {}})()},
-        )()
-        service = object.__new__(GitHubSyncService)
-
-        result = service._do_resolve(tmp_path, repo, {"x.py": "ours"})
-
-        assert result.success is False
-        assert result.error == "No conflicts to resolve"
-
-    def test_do_resolve_applies_checkout_and_delete_modify_fallback(self, tmp_path):
-        from src.services.github_sync import GitHubSyncService
-
-        (tmp_path / ".git").mkdir()
-        (tmp_path / ".git" / "MERGE_HEAD").write_text("merge")
-
-        class Git:
-            def __init__(self):
-                self.checkout = MagicMock(side_effect=[None, RuntimeError("missing side")])
-                self.add = MagicMock()
-                self.rm = MagicMock()
-
-        class Index:
-            def __init__(self):
-                self.commit = MagicMock()
-
-            def unmerged_blobs(self):
-                return {"workflows/a.py": [(1, object()), (2, object()), (3, object())]}
-
-        class Repo:
-            git = Git()
-            index = Index()
-
-        service = object.__new__(GitHubSyncService)
-
-        result = service._do_resolve(
-            tmp_path,
-            Repo(),
-            {"workflows/a.py": "ours", "workflows/deleted.py": "theirs"},
-        )
-
-        assert result.success is True
-        Repo.git.checkout.assert_any_call("--ours", "workflows/a.py")
-        Repo.git.checkout.assert_any_call("--theirs", "workflows/deleted.py")
-        Repo.git.add.assert_any_call("workflows/a.py")
-        Repo.git.rm.assert_called_once_with("workflows/deleted.py")
-        Repo.index.commit.assert_called_once_with("Merge with conflict resolution")
-
-
-class TestThreeWayMergeDicts:
-    def test_theirs_wins_when_both_modify_scalar(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"name": "Old"},
-            {"name": "Ours"},
-            {"name": "Theirs"},
-        ) == {"name": "Theirs"}
-
-    def test_preserves_ours_when_theirs_deletes_modified_value(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"settings": {"enabled": False}},
-            {"settings": {"enabled": True}},
-            {},
-        ) == {"settings": {"enabled": True}}
-
-    def test_honors_theirs_delete_when_ours_unchanged(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"settings": {"enabled": False}},
-            {"settings": {"enabled": False}},
-            {},
-        ) == {}
-
-    def test_merges_nested_dicts_and_additions(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"access": {"level": "private"}},
-            {"access": {"level": "private"}, "local": True},
-            {"access": {"level": "public"}, "remote": True},
-        ) == {
-            "access": {"level": "public"},
-            "local": True,
-            "remote": True,
-        }
-
-
-@pytest.mark.parametrize(
-    ("entries", "expected"),
-    [
-        ({1: object(), 2: object(), 3: object()}, "both_modified"),
-        ({2: object(), 3: object()}, "both_added"),
-        ({1: object(), 3: object()}, "deleted_by_us"),
-        ({1: object(), 2: object()}, "deleted_by_them"),
-        ({2: object()}, "both_modified"),
-    ],
-)
-def test_classify_conflict_type(entries, expected):
-    from src.services.github_sync import _classify_conflict_type
-
-    assert (
-        _classify_conflict_type(
-            {"workflows/conflict.py": list(entries.items())},
-            "workflows/conflict.py",
-        )
-        == expected
-    )
-
-
-def test_classify_conflict_type_defaults_when_path_missing():
-    from src.services.github_sync import _classify_conflict_type
-
-    assert _classify_conflict_type({}, "missing.py") == "both_modified"
-
-
 def test_manifest_regeneration_filters_inline_forms_and_agents_to_repo_scope(tmp_path):
     """Inline forms/agents should not leak when their workflows are outside this repo."""
     from bifrost.manifest import Manifest, ManifestAgent, ManifestForm, ManifestWorkflow
@@ -1399,6 +1325,7 @@ class TestMemoryUsageDuringFileScan:
         import tracemalloc
 
         from src.services.file_storage.file_ops import compute_git_blob_sha
+
         from tests.fixtures.large_module_generator import generate_large_module_file
 
         # Generate a ~4MB Python file (similar to halopsa.py)
@@ -1457,6 +1384,7 @@ class TestMemoryUsageDuringFileScan:
         import tracemalloc
 
         from src.services.file_storage.file_ops import compute_git_blob_sha
+
         from tests.fixtures.large_module_generator import generate_large_module_file
 
         # Generate a ~4MB Python file

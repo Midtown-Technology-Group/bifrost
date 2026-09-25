@@ -364,7 +364,11 @@ print_header() {
 }
 
 print_login() {
-    echo "Login:    ${BIFROST_DEFAULT_USER_EMAIL:-dev@localhost} / ${BIFROST_DEFAULT_USER_PASSWORD:-<not configured>}"
+    # A stack can keep its generated credential when the client is later
+    # exposed through a host port. Report what the running API actually uses.
+    local running_password
+    running_password="$(service_admin_password api)"
+    echo "Login:    ${BIFROST_DEFAULT_USER_EMAIL:-dev@localhost} / ${running_password:-${BIFROST_DEFAULT_USER_PASSWORD:-<not configured>}}"
 }
 
 # =============================================================================
