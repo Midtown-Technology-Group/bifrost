@@ -30,9 +30,10 @@ def test_token_covers_timeout_plus_flush_margin():
     assert timedelta(seconds=890) < remaining <= timedelta(seconds=900)
 
 
-def test_no_timeout_workflow_gets_a_day_not_five_minutes():
+def test_no_timeout_workflow_gets_short_renewable_token():
     remaining = _expiry(0) - datetime.now(timezone.utc)
-    assert remaining > timedelta(seconds=NO_TIMEOUT_TOKEN_SECONDS - 10)
+    assert timedelta(seconds=NO_TIMEOUT_TOKEN_SECONDS + 290) < remaining
+    assert remaining <= timedelta(seconds=NO_TIMEOUT_TOKEN_SECONDS + 300)
 
 
 @pytest.mark.asyncio
@@ -58,6 +59,7 @@ async def test_expired_no_timeout_engine_token_renews_only_for_active_attempt():
     assert renewed_payload is not None
     assert renewed_payload["engine_execution_id"] == str(execution_id)
     assert renewed_payload["engine_attempt_token"] == str(attempt_token)
+    assert renewed_payload["exp"] - int(datetime.now(timezone.utc).timestamp()) <= 600
 
     db.scalar.return_value = None
     assert await renew_engine_access_token(db, expired) is None
