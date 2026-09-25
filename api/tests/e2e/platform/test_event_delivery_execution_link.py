@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from unittest.mock import AsyncMock
 
@@ -348,6 +349,9 @@ async def test_promoter_recovers_unpublished_event_without_losing_context(
     monkeypatch.setattr(promoter, "get_db_context", db_context)
     monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
     monkeypatch.setattr(events.EventProcessor, "_broadcast_event_update", AsyncMock())
+    # Keep the live scheduler from claiming the row; this test drives recovery.
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    monkeypatch.setattr(Execution.__table__.c.created_at.default, "arg", lambda _ctx: future)
     from types import SimpleNamespace
     monkeypatch.setattr(async_executor, "get_settings", lambda: SimpleNamespace(work_delivery_backend=backend))
     publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
@@ -364,6 +368,12 @@ async def test_promoter_recovers_unpublished_event_without_losing_context(
         execution = await db.get(Execution, execution_id)
         assert execution.status == ExecutionStatus.SCHEDULED
         assert execution.scheduled_at is None
+        assert execution.created_at == future
+
+    async def only_test_execution():
+        yield execution_id
+
+    monkeypatch.setattr(promoter, "_candidate_ids", only_test_execution)
     publish.reset_mock(side_effect=True)
     # Concurrent recovery ticks must use the same serialized publication fence.
     await asyncio.gather(promoter.promote_due_executions(), promoter.promote_due_executions())
@@ -388,7 +398,6 @@ async def test_promoter_recovers_unpublished_event_without_losing_context(
 async def test_recovery_never_publishes_unsafe_or_terminal_event(
     async_session_factory, linked_event, monkeypatch, unsafe
 ):
-    from datetime import datetime, timedelta, timezone
     from src.jobs.schedulers import deferred_execution_promoter as promoter
     from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
 
@@ -402,6 +411,9 @@ async def test_recovery_never_publishes_unsafe_or_terminal_event(
     monkeypatch.setattr("src.core.database.get_db_context", db_context)
     monkeypatch.setattr(promoter, "get_db_context", db_context)
     monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
+    # Keep the live scheduler from publishing before unsafe state is staged.
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    monkeypatch.setattr(Execution.__table__.c.created_at.default, "arg", lambda _ctx: future)
     publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
     monkeypatch.setattr(async_executor, "_publish_pending", publish)
     dispatch = dict(
@@ -412,8 +424,14 @@ async def test_recovery_never_publishes_unsafe_or_terminal_event(
     with pytest.raises(ConnectionError):
         await async_executor.enqueue_system_workflow_execution(**dispatch)
     execution_id = UUID(publish.await_args.kwargs["execution_id"])
+
+    async def only_test_execution():
+        yield execution_id
+
+    monkeypatch.setattr(promoter, "_candidate_ids", only_test_execution)
     async with async_session_factory() as db:
         execution = await db.get(Execution, execution_id)
+        assert execution.created_at == future
         delivery = await db.get(EventDelivery, delivery_id)
         if unsafe == "terminal":
             execution.status = ExecutionStatus.FAILED
