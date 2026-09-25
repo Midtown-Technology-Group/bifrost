@@ -8,6 +8,8 @@ This is App Service aggregate telemetry, including its API, scheduler, worker, c
 
 App Service application and HTTP file/blob logging are also disabled. The Talos observability cluster has an OTLP collector and Tempo, but its gRPC receiver is currently exposed as a cluster-only service; a secure, reachable production export path has not been proven. Production tracing should start only after that route, sampling, retention, and export overhead are checked.
 
+The current `bifrost-infra` `origin/main` Bicep file `bicep/environments/poc/appservice-production.bicep` explicitly sets the three OTel exporters to `none` to avoid depending on the retired host candidate's cluster-local collector. The App Service is Bicep-managed. A durable production capture therefore needs an approved destination and a source-controlled infra change; editing the live app setting alone would create drift. No production telemetry configuration was changed during this study.
+
 Source: `az monitor metrics list` for the production App Service resource with `--metric Requests Http5xx MemoryWorkingSet --interval PT1H --offset 1d --aggregation Total Average Maximum`, plus read-only `az webapp`, `az appservice plan`, and site-container configuration queries.
 
 ## Isolated lab scope
