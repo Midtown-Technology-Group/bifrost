@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException, status
 
 from src.models.contracts.events import DynamicValuesRequest, EmitEventRequest
-from src.models.contracts.events import EventSourceCreate, ScheduleSourceConfig
+from src.models.contracts.events import EventSourceCreate, EventSourceUpdate, ScheduleSourceConfig, WebhookSourceConfig
 from src.models.enums import (
     EventDeliveryStatus,
     EventSourceType,
@@ -73,6 +73,60 @@ def _event(source_id=None, **overrides: object) -> SimpleNamespace:
     for key, value in overrides.items():
         setattr(event, key, value)
     return event
+
+
+@pytest.mark.asyncio
+async def test_managed_webhook_can_bind_only_its_teams_integration():
+    integration_id = uuid4()
+    original_updated_at = _now()
+    webhook = SimpleNamespace(
+        adapter_name="microsoft_bot_framework",
+        integration_id=None,
+        config={"app_id": str(uuid4())},
+        updated_at=original_updated_at,
+    )
+    source = _source(
+        EventSourceType.WEBHOOK,
+        solution_id=uuid4(),
+        webhook_source=webhook,
+        updated_at=original_updated_at,
+    )
+    db = AsyncMock()
+    db.scalar.return_value = SimpleNamespace(id=integration_id, name="Microsoft Teams Bot")
+    db.execute.return_value = _db_execute_result(source)
+    db.execute.return_value.unique.return_value.scalar_one.return_value = source
+    request = EventSourceUpdate(webhook=WebhookSourceConfig(integration_id=integration_id))
+
+    with (
+        patch.object(events, "EventSourceRepository") as repo_cls,
+        patch.object(events, "_build_event_source_response", AsyncMock(return_value="updated")),
+    ):
+        repo_cls.return_value.get_by_id_with_details = AsyncMock(return_value=source)
+        result = await events.update_source(source.id, request, _ctx(), _user(), db)
+
+    assert result == "updated"
+    assert webhook.integration_id == integration_id
+    assert source.updated_at == original_updated_at
+    db.flush.assert_awaited_once()
+
+    db.scalar.return_value = SimpleNamespace(id=uuid4(), name="NinjaOne")
+    with patch.object(events, "EventSourceRepository") as repo_cls:
+        repo_cls.return_value.get_by_id_with_details = AsyncMock(return_value=source)
+        with pytest.raises(HTTPException) as error:
+            await events.update_source(source.id, request, _ctx(), _user(), db)
+    assert error.value.status_code == 400
+    assert webhook.integration_id == integration_id
+
+
+@pytest.mark.asyncio
+async def test_managed_webhook_rejects_portable_content_update():
+    source = _source(EventSourceType.WEBHOOK, solution_id=uuid4(), webhook_source=SimpleNamespace())
+    db = AsyncMock()
+    with patch.object(events, "EventSourceRepository") as repo_cls:
+        repo_cls.return_value.get_by_id_with_details = AsyncMock(return_value=source)
+        with pytest.raises(HTTPException) as error:
+            await events.update_source(source.id, EventSourceUpdate(name="changed"), _ctx(), _user(), db)
+    assert error.value.status_code == 409
 
 
 class TestEventResponseBuilders:

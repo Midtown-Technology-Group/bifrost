@@ -55,6 +55,7 @@ from src.models.orm.events import (
     ScheduleSource,
     WebhookSource,
 )
+from src.models.orm.integrations import Integration
 from src.repositories.events import (
     EventDeliveryRepository,
     EventRepository,
@@ -626,7 +627,16 @@ async def update_source(
     # mutating, rather than letting the before_flush backstop raise a 500.
     from src.services.solutions.guard import assert_not_solution_managed
 
-    assert_not_solution_managed(source)
+    # Integration bindings belong to the install, even for a managed source.
+    binding_only = (
+        request.model_fields_set == {"webhook"}
+        and request.webhook is not None
+        and request.webhook.model_fields_set == {"integration_id"}
+    )
+    if not binding_only:
+        assert_not_solution_managed(source)
+    elif source.webhook_source is None:
+        raise HTTPException(status_code=400, detail="Source is not a webhook")
 
     # Update basic fields
     if request.name is not None:
@@ -640,11 +650,29 @@ async def update_source(
     if "organization_id" in request.model_fields_set:
         source.organization_id = request.organization_id
 
-    source.updated_at = datetime.now(timezone.utc)
+    if not binding_only:
+        source.updated_at = datetime.now(timezone.utc)
 
     # Update webhook-specific fields
     if request.webhook and source.webhook_source:
         ws = source.webhook_source
+        if "integration_id" in request.webhook.model_fields_set:
+            integration_id = request.webhook.integration_id
+            if integration_id is not None:
+                integration = await db.scalar(
+                    select(Integration).where(
+                        Integration.id == integration_id,
+                        Integration.is_deleted.is_(False),
+                    )
+                )
+                if integration is None:
+                    raise HTTPException(status_code=404, detail="Integration not found")
+                if (
+                    ws.adapter_name == "microsoft_bot_framework"
+                    and integration.name != "Microsoft Teams Bot"
+                ):
+                    raise HTTPException(status_code=400, detail="Expected Microsoft Teams Bot integration")
+            ws.integration_id = integration_id
         if request.webhook.config:
             ws.config = request.webhook.config
             # Sync secret to state (adapter reads from state, not config)

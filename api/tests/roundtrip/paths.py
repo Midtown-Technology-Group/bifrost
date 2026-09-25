@@ -138,8 +138,8 @@ FIELD_OVERRIDES: dict[tuple[str, str], str] = {
     # full-replace-from-manifest and NOT remapped via solution_entity_id
     # (deploy.py:1340). The generic REFERENCE remap-id check would false-red.
     ("ManifestAgent", "mcp_connection_ids"): "keep_env_ref",
-    # EventSource.webhook_integration_id is reset to None on Solution deploy —
-    # the install re-binds its own integration after install (deploy.py:1609).
+    # Portable source never supplies the install-owned webhook integration ID;
+    # first install binds it locally and later deploys preserve that binding.
     ("ManifestEventSource", "webhook_integration_id"): "scrub",
     # EventSource.subscriptions is a CONTENT list of ManifestEventSubscription.
     # A whole-list byte-compare false-REDS on the solution path because each
