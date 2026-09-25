@@ -387,6 +387,13 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
 
     assert await response["Body"].read() == b"blob-bytes"
 
+    response = await client.get_object(Bucket="ignored", Key="docs/readme.txt")
+    async with response["Body"] as body:
+        assert await body.read(4) == b"blob"
+        assert await body.read(4) == b"-byt"
+        assert await body.read(4) == b"es"
+        assert await body.read(4) == b""
+
 
 @pytest.mark.asyncio
 async def test_head_object_returns_s3_shaped_properties(monkeypatch) -> None:
