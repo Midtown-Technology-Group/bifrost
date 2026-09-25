@@ -123,7 +123,7 @@ async def test_app_lifespan_seeds_policy_rules_and_shuts_down(
         async with main.app_lifespan(SimpleNamespace()):
             pass
 
-    main.configure_opentelemetry.assert_called_once_with("bifrost-api")
+    main.configure_opentelemetry.assert_called_once_with("bifrost-api", container_resources=True)
     main.init_db.assert_awaited_once_with()
     main.register_dynamic_workflow_endpoints.assert_awaited_once()
     main.create_default_user.assert_awaited_once_with()
