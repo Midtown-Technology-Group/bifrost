@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.sql.dml import Delete, Insert
 
 from src.services.solutions.deploy import SolutionDeployer, SolutionDeployConflict
 
@@ -41,7 +42,7 @@ async def test_redeploy_keeps_only_valid_teams_webhook_binding(integration_name)
     if integration_name != "Microsoft Teams Bot":
         with pytest.raises(SolutionDeployConflict, match="Microsoft Teams Bot integration"):
             await deploy
-        assert not any(getattr(statement, "is_delete", False) for statement in statements)
+        assert not any(isinstance(statement, Delete) for statement in statements)
         return
     await deploy
 
@@ -49,6 +50,6 @@ async def test_redeploy_keeps_only_valid_teams_webhook_binding(integration_name)
         statement for statement in statements
         if getattr(statement, "table", None) is not None
         and statement.table.name == "webhook_sources"
-        and statement.is_insert
+        and isinstance(statement, Insert)
     )
     assert webhook_insert.compile().params["integration_id"] == integration_id
