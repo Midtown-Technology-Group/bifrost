@@ -1136,7 +1136,7 @@ class TestProcessPoolManagerResultHandling:
         )
 
         release_callback.set()
-        await shutdown_task
+        assert await shutdown_task is None
 
         assert len(results) == 1
         assert results[0]["error_type"] == "WorkerShutdown"
@@ -1817,8 +1817,8 @@ async def test_requirements_setup_subprocess_cancellation_kills_process_group():
         task = asyncio.create_task(_run_requirements_setup_subprocess())
         await asyncio.sleep(0)
         task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], asyncio.CancelledError)
 
     assert killpg.call_args_list == [
         call(4242, signal.SIGTERM),
