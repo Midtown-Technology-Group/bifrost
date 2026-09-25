@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 import types
 from queue import Empty
 from unittest.mock import Mock, patch
@@ -30,6 +31,12 @@ class FakeConnection:
 
     def send(self, item):
         self.sent.append(item)
+
+    def send_bytes(self, item):
+        self.sent.append(item)
+
+    def fileno(self):
+        return 99
 
     def recv(self):
         return self.items.pop(0)
@@ -155,21 +162,18 @@ def test_template_process_start_timeout_kills_process() -> None:
     child_conn = FakeConnection()
     process = Mock()
     process.pid = 1234
-    process.is_alive.return_value = True
-
-    ctx = Mock()
-    ctx.Process.return_value = process
+    process.poll.return_value = 0
 
     with (
-        patch("src.services.execution.template_process.multiprocessing.get_context", return_value=ctx),
         patch("src.services.execution.template_process.multiprocessing.Pipe", return_value=(parent_conn, child_conn)),
+        patch("src.services.execution.template_process.subprocess.Popen", return_value=process),
     ):
         template = TemplateProcess()
         with pytest.raises(RuntimeError, match="failed to start"):
             template.start()
 
-    process.start.assert_called_once()
     process.kill.assert_called_once()
+    process.wait.assert_called_once_with(timeout=5)
 
 
 def test_template_process_start_success_sets_pid() -> None:
@@ -178,30 +182,27 @@ def test_template_process_start_success_sets_pid() -> None:
     process = Mock()
     process.pid = 1234
 
-    ctx = Mock()
-    ctx.Process.return_value = process
-
     with (
-        patch("src.services.execution.template_process.multiprocessing.get_context", return_value=ctx),
         patch("src.services.execution.template_process.multiprocessing.Pipe", return_value=(parent_conn, child_conn)),
+        patch("src.services.execution.template_process.subprocess.Popen", return_value=process) as popen,
     ):
         template = TemplateProcess(install_requirements_on_startup=False)
         template.start()
 
-    process.start.assert_called_once()
+    popen.assert_called_once()
+    assert popen.call_args.args[0][-1] == "0"
     assert template.pid == 5678
 
 
 def test_template_process_start_is_noop_when_already_alive() -> None:
     process = Mock()
-    process.is_alive.return_value = True
+    process.poll.return_value = None
     template = TemplateProcess()
     template._process = process
     template.pid = 1234
 
     template.start()
 
-    process.start.assert_not_called()
     assert template.pid == 1234
 
 
@@ -211,12 +212,9 @@ def test_template_process_start_error_message_raises() -> None:
     process = Mock()
     process.pid = 1234
 
-    ctx = Mock()
-    ctx.Process.return_value = process
-
     with (
-        patch("src.services.execution.template_process.multiprocessing.get_context", return_value=ctx),
         patch("src.services.execution.template_process.multiprocessing.Pipe", return_value=(parent_conn, child_conn)),
+        patch("src.services.execution.template_process.subprocess.Popen", return_value=process),
     ):
         template = TemplateProcess()
         with pytest.raises(RuntimeError, match="startup failed: boom"):
@@ -232,7 +230,7 @@ def test_template_process_fork_sends_command_and_wraps_queues() -> None:
     template = TemplateProcess()
     template._pipe = control
     template._process = Mock()
-    template._process.is_alive.return_value = True
+    template._process.poll.return_value = None
 
     with patch(
         "src.services.execution.template_process.multiprocessing.Pipe",
@@ -264,7 +262,7 @@ def test_template_process_fork_timeout_raises() -> None:
     template = TemplateProcess()
     template._pipe = control
     template._process = Mock()
-    template._process.is_alive.return_value = True
+    template._process.poll.return_value = None
 
     with patch(
         "src.services.execution.template_process.multiprocessing.Pipe",
@@ -282,7 +280,7 @@ def test_template_process_fork_unexpected_response_raises() -> None:
     template = TemplateProcess()
     template._pipe = control
     template._process = Mock()
-    template._process.is_alive.return_value = True
+    template._process.poll.return_value = None
 
     with patch(
         "src.services.execution.template_process.multiprocessing.Pipe",
@@ -298,7 +296,6 @@ def test_template_process_fork_unexpected_response_raises() -> None:
 def test_template_process_shutdown_sends_command_and_clears_state() -> None:
     control = FakeConnection()
     process = Mock()
-    process.is_alive.return_value = False
     template = TemplateProcess()
     template._pipe = control
     template._process = process
@@ -307,7 +304,7 @@ def test_template_process_shutdown_sends_command_and_clears_state() -> None:
     template.shutdown()
 
     assert control.sent == [{"action": CMD_SHUTDOWN}]
-    process.join.assert_called_once_with(timeout=10)
+    process.wait.assert_called_once_with(timeout=10)
     process.kill.assert_not_called()
     assert template._pipe is None
     assert template._process is None
@@ -317,7 +314,7 @@ def test_template_process_shutdown_sends_command_and_clears_state() -> None:
 def test_template_process_shutdown_kills_process_that_stays_alive() -> None:
     control = FakeConnection()
     process = Mock()
-    process.is_alive.side_effect = [True, False]
+    process.wait.side_effect = [subprocess.TimeoutExpired("template", 10), 0]
     template = TemplateProcess()
     template._pipe = control
     template._process = process
@@ -326,9 +323,9 @@ def test_template_process_shutdown_kills_process_that_stays_alive() -> None:
     template.shutdown()
 
     assert control.sent == [{"action": CMD_SHUTDOWN}]
-    process.join.assert_any_call(timeout=10)
+    process.wait.assert_any_call(timeout=10)
     process.kill.assert_called_once()
-    process.join.assert_any_call(timeout=5)
+    process.wait.assert_any_call(timeout=5)
     assert template._pipe is None
     assert template._process is None
     assert template.pid is None

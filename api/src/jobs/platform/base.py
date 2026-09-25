@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -21,6 +21,7 @@ class PlatformJobPolicy:
     admission_memory_ratio: float = 0.85
     hard_memory_ratio: float = 0.95
     allow_running_cancellation: bool = False
+    execution_class: Literal["default", "build"] = "default"
 
 
 class PlatformJobFailure(Exception):
@@ -107,6 +108,8 @@ class PlatformJobDefinition:
     policy: PlatformJobPolicy
     operations_policy: ExecutionOperationsPolicy
     encrypt_payload: bool = False
+    display_name: str | None = None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         from src.jobs.execution_policy import validate_platform_job_definition

@@ -35,6 +35,7 @@ import logging
 import os
 import signal
 import subprocess
+import sys
 import time
 import uuid
 from contextlib import suppress
@@ -60,10 +61,9 @@ from src.core.cache.keys import TTL_ACTIVE_EXECUTION, active_execution_key
 from src.core.redis_client import ActiveExecution
 from src.models.contracts.notifications import NotificationCategory, NotificationCreate, NotificationStatus
 from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
-from src.services.execution.simple_worker import install_requirements, RequirementsInstallResult
+from src.services.execution.requirements_setup_result import RequirementsInstallResult
 from src.services.notification_service import get_notification_service
 from src.services.execution.template_process import TemplateProcess
-from src.core.module_cache import WORKSPACE_GENERATION_CHANNEL
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,47 @@ async def _notify_requirements_failures(result: RequirementsInstallResult) -> No
         logger.info(f"[pool] Notified admins of requirements install failures: {shown}")
     except Exception as e:  # noqa: BLE001 - notification must never block the pool
         logger.warning(f"[pool] Could not publish requirements-failure notification: {e}")
+
+
+async def _run_requirements_setup_subprocess() -> RequirementsInstallResult:
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "src.services.execution.requirements_setup_helper",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = await process.communicate()
+    except asyncio.CancelledError:
+        _kill_process_group(process, signal.SIGTERM)
+        await _kill_process_group_after_grace(process)
+        raise
+
+    if process.returncode != 0:
+        raise RuntimeError(
+            "requirements setup helper failed "
+            f"(exit={process.returncode}, stderr_bytes={len(stderr)})"
+        )
+
+    try:
+        payload = json.loads(stdout.decode())
+    except json.JSONDecodeError as e:
+        raise RuntimeError("requirements setup helper returned invalid JSON") from e
+    return RequirementsInstallResult.from_json_dict(payload)
+
+
+def _kill_process_group(process: asyncio.subprocess.Process, sig: signal.Signals) -> None:
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, sig)
+
+
+async def _kill_process_group_after_grace(process: asyncio.subprocess.Process) -> None:
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(process.wait(), timeout=5)
+    _kill_process_group(process, signal.SIGKILL)
+    await process.wait()
 
 
 def _get_installed_packages() -> list[dict[str, str]]:
@@ -608,12 +649,11 @@ class ProcessPoolManager:
         self.worker_incarnation_id = uuid.uuid4()
         self._last_active_execution_refresh = time.monotonic()
 
-        # Install requirements once (shared filesystem — all child processes inherit)
-        install_result = await asyncio.to_thread(install_requirements)
+        # Install requirements once in a short-lived helper so the supervisor
+        # never imports requirements cache/S3 clients before forking templates.
+        install_result = await _run_requirements_setup_subprocess()
         await _notify_requirements_failures(install_result)
-
-        # Compute requirements status for heartbeat reporting
-        self._update_requirements_status()
+        self._apply_requirements_status(install_result)
 
         # Start template process (loads deps, ready to fork)
         await self._start_template()
@@ -1250,6 +1290,8 @@ class ProcessPoolManager:
         outer loop so a dropped Redis connection results in a fresh pubsub
         on the next iteration rather than looping on a dead one.
         """
+        from src.core.module_cache import WORKSPACE_GENERATION_CHANNEL
+
         channel = f"bifrost:pool:{self.worker_id}:commands"
         channels = [channel, WORKSPACE_GENERATION_CHANNEL]
         logger.info(f"Command listener loop started on channels {channels}")
@@ -1487,9 +1529,9 @@ class ProcessPoolManager:
         # Pick up any requirements changes published to S3/Redis since
         # last start (recycle is typically triggered after a package
         # install on the API container).
-        install_result = await asyncio.to_thread(install_requirements)
+        install_result = await _run_requirements_setup_subprocess()
         await _notify_requirements_failures(install_result)
-        self._update_requirements_status()
+        self._apply_requirements_status(install_result)
 
         in_flight = len(self.processes)
         try:
@@ -1566,6 +1608,30 @@ class ProcessPoolManager:
                 "sync": exec_info.active_execution["sync"],
             }
         )
+
+    async def _report_shutdown(self, handle: ProcessHandle) -> None:
+        """
+        Report an execution interrupted by worker shutdown.
+
+        This is used only after the graceful drain deadline expires. At that
+        point the RabbitMQ message was already acknowledged at dispatch time,
+        so the parent must record a terminal result before closing DB/Redis.
+        """
+        exec_info = handle.current_execution
+        if self.on_result is None or exec_info is None:
+            return
+        handle.result_reported = True
+        try:
+            await self.on_result(exec_info.attach_transport_metadata({
+                "type": "result",
+                "execution_id": exec_info.execution_id,
+                "success": False,
+                "error": "Execution interrupted by worker shutdown",
+                "error_type": "WorkerShutdown",
+                "duration_ms": int(exec_info.elapsed_seconds * 1000),
+            }))
+        except Exception as e:
+            logger.exception(f"Error reporting shutdown interruption: {e}")
 
     async def _check_process_health(self) -> None:
         """
@@ -1862,6 +1928,11 @@ class ProcessPoolManager:
             result: Result data from the worker
         """
         exec_info = handle.current_execution
+        self._unregister_result_reader(handle)
+        if exec_info is None:
+            logger.error("Result received without an active execution on %s", handle.id)
+            return
+        callback_already_owned = handle.result_reported
         if exec_info is not None:
             # Child output is untrusted. Bind it to this handle's durable
             # ownership instead of accepting identity fields from the child.
@@ -1873,15 +1944,16 @@ class ProcessPoolManager:
                 # not let a child invent one, and preserve their established
                 # callback payload shape rather than adding a null token.
                 result.pop("attempt_token", None)
-
-        if exec_info is None:
-            logger.error("Result received without an active execution on %s", handle.id)
-            return
         result = exec_info.attach_transport_metadata(result)
 
         # Do not relinquish ownership until the authoritative callback commits.
-        self._unregister_result_reader(handle)
-        handle.result_reported = await self._deliver_result(result, handle=handle)
+        if callback_already_owned:
+            logger.info(
+                "Suppressing late child result for %s; terminal callback already owns it",
+                exec_info.execution_id,
+            )
+        else:
+            handle.result_reported = await self._deliver_result(result, handle=handle)
         if not handle.result_reported:
             handle.state = ProcessState.KILLED
             handle.killed_at = datetime.now(timezone.utc)
@@ -2051,41 +2123,10 @@ class ProcessPoolManager:
         except Exception as e:
             logger.error(f"Error unregistering worker: {e}")
 
-    def _update_requirements_status(self) -> None:
-        """
-        Compare installed packages against requirements.txt.
-
-        Sets _requirements_installed and _requirements_total for heartbeat reporting.
-        Called after install_requirements() at startup and after recycle_all.
-        """
-        try:
-            from src.core.requirements_cache import get_requirements_sync
-
-            content = get_requirements_sync()
-            if not content:
-                self._requirements_total = 0
-                self._requirements_installed = 0
-                return
-
-            required = {
-                line.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip().lower()
-                for line in content.strip().split("\n")
-                if line.strip()
-            }
-            self._requirements_total = len(required)
-
-            installed = {p["name"].lower() for p in _get_installed_packages()}
-            self._requirements_installed = len(required & installed)
-
-            missing = required - installed
-            if missing:
-                logger.warning(f"[pool] Missing required packages: {', '.join(sorted(missing))}")
-            else:
-                logger.info(
-                    f"[pool] All {self._requirements_total} required packages installed"
-                )
-        except Exception as e:
-            logger.warning(f"Failed to check requirements status: {e}")
+    def _apply_requirements_status(self, result: RequirementsInstallResult) -> None:
+        """Apply helper-computed requirements counts for heartbeat reporting."""
+        self._requirements_total = result.requirements_total
+        self._requirements_installed = result.requirements_installed
 
     def _build_heartbeat(self) -> dict[str, Any]:
         """

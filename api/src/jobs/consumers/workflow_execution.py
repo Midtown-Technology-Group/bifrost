@@ -811,6 +811,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     **(existing_context or {}),
                     **result["execution_context"],
                 }
+            failure_metrics = result.get("metrics")
             status = await update_execution(
                 execution_id=execution_id,
                 status=status,
@@ -818,6 +819,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 error_type=error_type,
                 duration_ms=duration_ms,
                 **({"execution_context": failure_context} if failure_context is not None else {}),
+                metrics=failure_metrics,
                 session=session,
             )
 
@@ -879,6 +881,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
 
+        failure_metrics = result.get("metrics") or {}
         await self._run_derived_step(
             "completion-metrics",
             lambda: self._record_completion_metrics(
@@ -886,6 +889,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 org_id=org_id,
                 status=status.value,
                 duration_ms=duration_ms,
+                peak_memory_bytes=failure_metrics.get("peak_memory_bytes"),
+                cpu_total_seconds=failure_metrics.get("cpu_total_seconds"),
             ),
         )
 

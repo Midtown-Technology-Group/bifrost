@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.log_safety import log_safe
 from src.core.principal import UserPrincipal
+from src.jobs.queue_names import TUNE_CHAT_QUEUE
 from src.jobs.rabbitmq import publish_message
 from src.models.orm.agent_prompt_history import AgentPromptHistory
 from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
@@ -52,8 +53,6 @@ from src.services.llm import LLMMessage
 from src.services.work_delivery_store import current_delivery, require_delivery_ownership
 
 logger = logging.getLogger(__name__)
-
-TUNE_CHAT_QUEUE = "agent-tuning-chat"
 
 
 FLAG_DIAGNOSE_SYSTEM = """You help users refine AI agent prompts. Given a flagged agent run (one that produced a wrong result), the user's note about what went wrong, and the conversation so far, respond naturally:

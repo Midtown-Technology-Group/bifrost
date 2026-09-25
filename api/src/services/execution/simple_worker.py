@@ -4,9 +4,8 @@ Execution helpers for forked worker processes.
 This module provides the helpers that forked children (spawned by
 TemplateProcess via os.fork) use to run an execution:
 
-- install_requirements(): called once at pool startup to pip-install
-  user requirements. All forked children inherit the resulting
-  filesystem, so installing once in the parent is sufficient.
+- install_requirements(): called by the setup helper before the template
+  starts. Forked children inherit the resulting filesystem.
 - _clear_workspace_modules(): called before each execution so workflow
   code changes are picked up from Redis.
 - _execute_sync() / _execute_async(): run a single execution using context
@@ -15,9 +14,9 @@ TemplateProcess via os.fork) use to run an execution:
   per-process memory/resource reporting used by the pool for recycling
   bloated children.
 
-All callers live in template_process.py (fork path) and process_pool.py
-(install_requirements at pool startup). There is no longer a
-multiprocessing.spawn code path — forked children are created by
+Execution callers live in template_process.py. Requirements installation is
+invoked by requirements_setup_helper.py before any template starts. There is
+no multiprocessing.spawn code path — forked children are created by
 template_process.fork() and communicate via pipe-backed send/recv queues.
 """
 
@@ -29,40 +28,15 @@ import os
 import resource
 import subprocess
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from src.services.execution.workspace_modules import (
     clear_workspace_modules as _clear_workspace_modules,
 )
+from src.services.execution.requirements_setup_result import FailedPackage, RequirementsInstallResult
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class FailedPackage:
-    """One requirements line that failed to install."""
-
-    package: str
-    error: str
-
-
-@dataclass
-class RequirementsInstallResult:
-    """Outcome of a pool requirements install attempt.
-
-    `ok` is True when nothing failed (including the trivial no-requirements
-    case). `installed` + `failed` partition `attempted`.
-    """
-
-    attempted: list[str] = field(default_factory=list)
-    installed: list[str] = field(default_factory=list)
-    failed: list[FailedPackage] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        return not self.failed
 
 
 def _parse_requirement_lines(content: str) -> list[str]:
@@ -245,6 +219,8 @@ async def _execute_async(
     """
     start_time = datetime.now(timezone.utc)
 
+    baseline_pss = _get_pss_bytes()
+
     # Activate THIS execution's Solution import root, THEN evict workspace
     # modules — in that order. The cross-solution eviction in
     # _clear_workspace_modules keys off the active install (get_solution_context);
@@ -304,9 +280,6 @@ async def _execute_async(
     try:
         from src.services.execution.worker import _run_execution
 
-        # Capture baseline PSS before execution so we can measure the delta
-        baseline_pss = _get_pss_bytes()
-
         result = await _run_execution(execution_id, context)
 
         # Calculate duration
@@ -361,6 +334,10 @@ async def _execute_async(
             "error_type": type(e).__name__,
             "duration_ms": duration_ms,
             "worker_id": worker_id,
+            # A failure snapshot, not a peak: PSS growth from before the
+            # execution started to the failure point. Absent (None) values
+            # mean "unknown", never zero usage.
+            "metrics": _capture_failure_metrics(baseline_pss),
         }
 
 
@@ -398,6 +375,28 @@ def _get_process_rss() -> int:
         # /proc not available (macOS) or unexpected line format — caller treats 0 as unknown
         logger.debug(f"could not read /proc/self/status VmRSS: {e}")
     return 0
+
+
+def _capture_failure_metrics(baseline_pss: int) -> dict[str, Any]:
+    """Capture a best-effort resource snapshot for a failed execution.
+
+    Returns PSS growth since ``baseline_pss`` when both readings are
+    available, plus cumulative CPU time. Uses ``None`` (not ``0``) for
+    unknown memory so downstream aggregation can distinguish "no sample"
+    from "no usage".
+    """
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    end_pss = _get_pss_bytes()
+    if baseline_pss > 0 and end_pss > 0:
+        peak_memory_bytes: int | None = max(0, end_pss - baseline_pss)
+    else:
+        peak_memory_bytes = None
+    return {
+        "peak_memory_bytes": peak_memory_bytes,
+        "cpu_user_seconds": round(usage.ru_utime, 4),
+        "cpu_system_seconds": round(usage.ru_stime, 4),
+        "cpu_total_seconds": round(usage.ru_utime + usage.ru_stime, 4),
+    }
 
 
 def _capture_resource_metrics() -> dict[str, Any]:

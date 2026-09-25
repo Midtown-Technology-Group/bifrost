@@ -3,11 +3,12 @@
 Validates that the consumer uses short-lived sessions (no persistent session).
 """
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from uuid import UUID
+
+import pytest
 
 
 class TestCompletionMetadataRecovery:

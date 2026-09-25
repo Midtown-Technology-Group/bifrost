@@ -223,8 +223,8 @@ class TestRecycleWorkers:
             mock_pool.drain_and_restart_template.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handles_pool_error_gracefully(self, consumer: PackageInstallConsumer):
-        """Test that pool errors are handled gracefully."""
+    async def test_propagates_pool_error_for_failure_reporting(self, consumer: PackageInstallConsumer):
+        """A failed restart must reach the caller that reports install progress."""
         with patch(
             "src.services.execution.process_pool.get_process_pool",
             side_effect=RuntimeError("Pool not initialized"),

@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.pubsub import publish_agent_run_update
 from src.core.cache import get_shared_redis
+from src.jobs.queue_names import SUMMARIZE_QUEUE
 from src.jobs.rabbitmq import RetryableConsumerError, publish_message
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent
@@ -39,9 +40,6 @@ from src.services.work_delivery_store import (
 )
 
 logger = logging.getLogger(__name__)
-
-SUMMARIZE_QUEUE = "agent-summarization"
-SUMMARIZE_BACKFILL_QUEUE = "agent-summarization-backfill"
 
 # Version tag written to AgentRun.summary_prompt_version on successful
 # summarization. Bump this string whenever ``SUMMARIZE_SYSTEM_PROMPT`` or the

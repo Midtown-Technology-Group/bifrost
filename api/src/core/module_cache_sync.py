@@ -33,7 +33,7 @@ from uuid import UUID, uuid4
 
 import redis
 
-from src.core.module_cache import (
+from src.core.module_cache_contract import (
     MODULE_INDEX_KEY,
     MODULE_INDEX_GENERATION_KEY,
     MODULE_KEY_PREFIX,

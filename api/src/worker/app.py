@@ -157,6 +157,7 @@ class Worker:
         self._stop_error: Exception | None = None
         self._maintenance_task: asyncio.Task[None] | None = None
         self._maintenance_paused = False
+        self._startup_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Start the worker.
@@ -173,40 +174,43 @@ class Worker:
         logger.info(f"Environment: {self.settings.environment}")
 
         try:
-            validate_worker_runtime()
+            async with self._startup_lock:
+                if not self._stopping:
+                    validate_worker_runtime()
+                    logger.info("Initializing database connection...")
+                    await init_db()
 
-            # Initialize database connection
-            logger.info("Initializing database connection...")
-            await init_db()
-            # Configure the ORM before accepting queue messages. Lazy mapper
-            # setup otherwise lands on the first execution-row insert and can
-            # add hundreds of milliseconds to the first workflow after start.
-            from sqlalchemy.orm import configure_mappers
+                if not self._stopping:
+                    from sqlalchemy.orm import configure_mappers
+                    from src.services.execution_attempts import (
+                        require_execution_operations_schema,
+                    )
 
-            configure_mappers()
-            from src.services.execution_attempts import (
-                require_execution_operations_schema,
-            )
+                    configure_mappers()
+                    await require_execution_operations_schema()
+                    logger.info("Database connection established")
 
-            await require_execution_operations_schema()
-            logger.info("Database connection established")
-
-            logger.info(
-                "Starting %s work consumers...", self.settings.work_delivery_backend
-            )
-            await self._start_consumers()
-            if self.settings.work_delivery_backend == "postgres":
-                self._maintenance_task = asyncio.create_task(
-                    self._maintenance_loop(), name="runtime-maintenance"
-                )
-                self._maintenance_task.add_done_callback(self._maintenance_task_done)
+                if not self._stopping:
+                    logger.info(
+                        "Starting %s work consumers...",
+                        self.settings.work_delivery_backend,
+                    )
+                    await self._start_consumers()
+                    if self.settings.work_delivery_backend == "postgres" and not self._stopping:
+                        self._maintenance_task = asyncio.create_task(
+                            self._maintenance_loop(), name="runtime-maintenance"
+                        )
+                        self._maintenance_task.add_done_callback(
+                            self._maintenance_task_done
+                        )
         except Exception:
             logger.error("Startup failed; tearing down partially-started worker")
             await self._cleanup_after_failed_start()
             raise
 
-        logger.info("Bifrost Worker started")
-        logger.info("Waiting for messages... (Ctrl+C to stop)")
+        if not self._stopping:
+            logger.info("Bifrost Worker started")
+            logger.info("Waiting for messages... (Ctrl+C to stop)")
 
         # Keep running until shutdown
         await self._shutdown_event.wait()
@@ -258,8 +262,18 @@ class Worker:
 
         # Start each consumer
         for consumer in self._consumers:
+            if self._stopping:
+                logger.info(
+                    "Worker stop requested during startup; skipping remaining consumers"
+                )
+                break
             try:
                 await consumer.start()
+                if self._stopping:
+                    logger.info(
+                        f"Worker stop requested after starting {consumer.queue_name}"
+                    )
+                    break
                 logger.info(f"Started consumer: {consumer.queue_name}")
             except Exception as e:
                 logger.error(f"Failed to start consumer {consumer.queue_name}: {e}")
@@ -340,6 +354,9 @@ class Worker:
             self._maintenance_task.cancel()
             await asyncio.gather(self._maintenance_task, return_exceptions=True)
         self._maintenance_task = None
+
+        async with self._startup_lock:
+            pass
 
         # Drain consumers in parallel — each cancels its consumer tag, waits on
         # its in-flight tasks, then closes its channel.
