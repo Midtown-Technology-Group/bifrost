@@ -32,6 +32,7 @@ async def test_runner_restores_requesting_actor_for_handler(monkeypatch) -> None
         payload_version=1,
         payload={"value": "ok"},
         encrypted_payload=None,
+        result=None,
         organization_id=organization_id,
         requested_by_user_id=str(user_id),
         requested_by_email="operator@example.com",
