@@ -33,3 +33,12 @@ jobs:
           import src.services.execution.process_pool
           print("ARM64 worker imports passed")
           '
+
+      - name: Exercise worker and PostgreSQL delivery on ARM64
+        run: |
+          docker run --rm --platform linux/arm64 \
+            --mount type=bind,source="$PWD/api/tests",target=/app/tests,readonly \
+            --entrypoint python bifrost-worker:arm64-probe \
+            -m pytest -q \
+            /app/tests/unit/worker/test_app.py \
+            /app/tests/unit/jobs/test_postgres_delivery_maintenance.py
