@@ -152,16 +152,6 @@ export interface HistoryUpdate {
 	timestamp: string;
 }
 
-export interface PackageLog {
-	level: string;
-	message: string;
-}
-
-export interface PackageComplete {
-	status: "success" | "error";
-	message: string;
-}
-
 export interface PackageProgress {
 	action: "install" | "uninstall";
 	line: string;
@@ -405,30 +395,6 @@ type WebSocketMessage =
 				error: string | null;
 			}[];
 	  }
-	| { type: "git_log"; jobId: string; level: string; message: string }
-	| {
-			type: "git_progress";
-			jobId: string;
-			phase: string;
-			current: number;
-			total: number;
-			path?: string | null;
-	  }
-	| {
-			type: "git_complete";
-			jobId: string;
-			status: "success" | "error";
-			message: string;
-			[key: string]: unknown;
-	  }
-	| {
-			type: "git_op_complete";
-			jobId: string;
-			status: string;
-			resultType: string;
-			data?: Record<string, unknown>;
-			error?: string;
-	  }
 	| {
 			type: "devrun_state_update";
 			state: LocalRunnerStateUpdate | null;
@@ -473,27 +439,6 @@ type ServiceLogCallback = (log: ServiceLog) => void;
 type NewExecutionCallback = (execution: NewExecution) => void;
 type HistoryUpdateCallback = (update: HistoryUpdate) => void;
 type PackageProgressCallback = (p: PackageProgress) => void;
-// Git sync progress type
-export interface GitProgress {
-	phase: string;
-	current: number;
-	total: number;
-	path?: string | null;
-}
-
-// Git operation complete type
-export interface GitOpComplete {
-	status: string;
-	resultType: string;
-	data?: Record<string, unknown>;
-	error?: string;
-}
-
-type GitLogCallback = (log: PackageLog) => void;
-type GitProgressCallback = (progress: GitProgress) => void;
-type GitCompleteCallback = (
-	complete: PackageComplete & Record<string, unknown>,
-) => void;
 type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
 type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 type ChatStreamCallback = (event: ChatStreamEnvelope) => void;
@@ -561,13 +506,6 @@ class WebSocketService {
 	private newExecutionCallbacks = new Set<NewExecutionCallback>();
 	private historyUpdateCallbacks = new Set<HistoryUpdateCallback>();
 	private packageProgressCallbacks = new Set<PackageProgressCallback>();
-	private gitLogCallbacks = new Map<string, Set<GitLogCallback>>();
-	private gitProgressCallbacks = new Map<string, Set<GitProgressCallback>>();
-	private gitCompleteCallbacks = new Map<string, Set<GitCompleteCallback>>();
-	private gitOpCompleteCallbacks = new Map<
-		string,
-		Set<(complete: GitOpComplete) => void>
-	>();
 	private localRunnerStateCallbacks = new Set<LocalRunnerStateCallback>();
 	private eventSourceUpdateCallbacks = new Map<
 		string,
@@ -1357,121 +1295,6 @@ class WebSocketService {
 		this.packageProgressCallbacks.add(callback);
 		return () => {
 			this.packageProgressCallbacks.delete(callback);
-		};
-	}
-
-	/**
-	 * Connect to a git sync channel for progress updates
-	 */
-	async connectToGitSync(connectionId: string): Promise<void> {
-		const channel = `git:${connectionId}`;
-		if (this.subscribedChannels.has(channel)) {
-			return;
-		}
-
-		if (this.ws?.readyState === WebSocket.OPEN) {
-			await this.subscribe(channel);
-			return;
-		}
-
-		await this.connect([channel]);
-	}
-
-	/**
-	 * Subscribe to git sync log messages for a specific connection
-	 */
-	onGitSyncLog(connectionId: string, callback: GitLogCallback): () => void {
-		if (!this.gitLogCallbacks.has(connectionId)) {
-			this.gitLogCallbacks.set(connectionId, new Set());
-		}
-		this.gitLogCallbacks.get(connectionId)!.add(callback);
-
-		// Return unsubscribe function
-		return () => {
-			this.gitLogCallbacks.get(connectionId)?.delete(callback);
-			if (this.gitLogCallbacks.get(connectionId)?.size === 0) {
-				this.gitLogCallbacks.delete(connectionId);
-			}
-		};
-	}
-
-	/**
-	 * Subscribe to git sync progress updates for a specific connection
-	 */
-	onGitSyncProgress(
-		connectionId: string,
-		callback: GitProgressCallback,
-	): () => void {
-		if (!this.gitProgressCallbacks.has(connectionId)) {
-			this.gitProgressCallbacks.set(connectionId, new Set());
-		}
-		this.gitProgressCallbacks.get(connectionId)!.add(callback);
-
-		// Return unsubscribe function
-		return () => {
-			this.gitProgressCallbacks.get(connectionId)?.delete(callback);
-			if (this.gitProgressCallbacks.get(connectionId)?.size === 0) {
-				this.gitProgressCallbacks.delete(connectionId);
-			}
-		};
-	}
-
-	/**
-	 * Subscribe to git sync completion for a specific connection
-	 */
-	onGitSyncComplete(
-		connectionId: string,
-		callback: GitCompleteCallback,
-	): () => void {
-		if (!this.gitCompleteCallbacks.has(connectionId)) {
-			this.gitCompleteCallbacks.set(connectionId, new Set());
-		}
-		this.gitCompleteCallbacks.get(connectionId)!.add(callback);
-
-		// Return unsubscribe function
-		return () => {
-			this.gitCompleteCallbacks.get(connectionId)?.delete(callback);
-			if (this.gitCompleteCallbacks.get(connectionId)?.size === 0) {
-				this.gitCompleteCallbacks.delete(connectionId);
-			}
-		};
-	}
-
-	/**
-	 * Subscribe to git operation progress updates for a specific job
-	 */
-	onGitProgress(jobId: string, callback: GitProgressCallback): () => void {
-		if (!this.gitProgressCallbacks.has(jobId)) {
-			this.gitProgressCallbacks.set(jobId, new Set());
-		}
-		this.gitProgressCallbacks.get(jobId)!.add(callback);
-
-		return () => {
-			this.gitProgressCallbacks.get(jobId)?.delete(callback);
-			if (this.gitProgressCallbacks.get(jobId)?.size === 0) {
-				this.gitProgressCallbacks.delete(jobId);
-			}
-		};
-	}
-
-	/**
-	 * Subscribe to git operation completion for a specific job
-	 */
-	onGitOpComplete(
-		jobId: string,
-		callback: (complete: GitOpComplete) => void,
-	): () => void {
-		if (!this.gitOpCompleteCallbacks.has(jobId)) {
-			this.gitOpCompleteCallbacks.set(jobId, new Set());
-		}
-		this.gitOpCompleteCallbacks.get(jobId)!.add(callback);
-
-		// Return unsubscribe function
-		return () => {
-			this.gitOpCompleteCallbacks.get(jobId)?.delete(callback);
-			if (this.gitOpCompleteCallbacks.get(jobId)?.size === 0) {
-				this.gitOpCompleteCallbacks.delete(jobId);
-			}
 		};
 	}
 

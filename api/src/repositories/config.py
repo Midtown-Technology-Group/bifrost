@@ -121,6 +121,8 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
                     else None,
                     integration_name=integration_name,
                     description=config.description,
+                    required=config.required,
+                    position=config.position,
                     updated_at=config.updated_at,
                     updated_by=config.updated_by,
                 )
@@ -322,6 +324,8 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
             scope="org" if config.organization_id else "GLOBAL",
             org_id=str(config.organization_id) if config.organization_id else None,
             description=config.description,
+            required=config.required,
+            position=config.position,
             updated_at=config.updated_at,
             updated_by=config.updated_by,
         )
@@ -395,6 +399,8 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
             scope="org" if config.organization_id else "GLOBAL",
             org_id=str(config.organization_id) if config.organization_id else None,
             description=config.description,
+            required=config.required,
+            position=config.position,
             updated_at=config.updated_at,
             updated_by=config.updated_by,
         )

@@ -33,7 +33,6 @@ from src.models.orm.solutions import Solution
 from src.services.solutions.deploy import (
     DeployResult,
     SolutionBundle,
-    SolutionFinalizeIncomplete,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,12 +206,13 @@ async def sync(
     solution: Solution,
     *,
     accountability_organization_id: UUID | None = None,
-) -> None:
+) -> bool:
     """Clone the connected install's repo at its configured ref and deploy.
 
     Called by the auto-pull trigger (webhook/poll) on a new commit. The clone
     uses the install's ``git_ref`` when set, or the repo's default branch when
-    none is configured.
+    none is configured. Returns whether this call performed the requested
+    update; an existing writer leaves a pending-rerun marker and returns false.
 
     When ``accountability_organization_id`` is configured, a verified deploy
     closes the matching reviewed-source ``SolutionDeployObligation`` exactly as a
@@ -263,7 +263,7 @@ async def sync(
             logger.info(
                 "Sync already in progress for solution %s; queued a rerun", solution.id
             )
-            return
+            return False
 
         # Released the lock. If a trigger arrived while we held it, run again so
         # the newest commit lands (bounded: each pass clears the flag under lock,
@@ -271,7 +271,7 @@ async def sync(
         if await redis.delete(pending_key):
             logger.info("Rerunning sync for solution %s (newer commit queued)", solution.id)
             continue
-        return
+        return True
 
 
 async def clone_repo_to_dir(repo_url: str, dest: Path, ref: str | None = None) -> None:
@@ -320,15 +320,14 @@ async def _run_sync_once(
     try:
         await result.finalize_s3()
     except SolutionFinalizeIncomplete:
-        # finalize_s3 already retried; storage is down. Auto-pull runs in a
-        # background job with no caller to surface a 502 to, and the deploy is
-        # full-replace + idempotent — the next sync trigger re-runs and heals it.
+        # The DB phase is committed; the durable caller records a retryable
+        # failure so a later full-replace sync can finish publication.
         logger.error(
             "Solution %s synced (DB committed) but storage finalize failed "
-            "after retries; the next sync will re-run and heal it.",
+            "after retries; a later sync must complete publication.",
             solution.id,
         )
-        return
+        raise
     if accountability_organization_id is not None:
         await _reconcile_synced_obligation(
             db,

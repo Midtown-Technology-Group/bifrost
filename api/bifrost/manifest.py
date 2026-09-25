@@ -773,6 +773,8 @@ class ManifestConfig(EntityCodec, BaseModel):
     key: str = Field(description="Config key name", **classify(FieldClass.CONTENT, match_key=True))
     config_type: str = Field(default="string", description="string | int | bool | json | secret", **classify(FieldClass.CONTENT))
     description: str | None = Field(default=None, description="Human-readable description", **classify(FieldClass.CONTENT))
+    required: bool = Field(default=False, description="Whether this config needs a value", **classify(FieldClass.CONTENT))
+    position: int = Field(default=0, description="Display order", **classify(FieldClass.CONTENT))
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)", **classify(FieldClass.ENVIRONMENT, match_key=True))
     value: object | None = Field(default=None, description="Config value (null for secret type)", **classify(FieldClass.CONTENT, predicate="config_value"))
 
@@ -797,6 +799,8 @@ class ManifestConfig(EntityCodec, BaseModel):
             key=cfg.key,
             config_type=config_type,
             description=cfg.description,
+            required=cfg.required,
+            position=cfg.position,
             organization_id=str(cfg.organization_id) if cfg.organization_id else None,
             value=value,
         )
@@ -813,6 +817,8 @@ class ManifestConfig(EntityCodec, BaseModel):
                 "config_type": self.config_type,
                 "value": self.value,
                 "description": self.description,
+                "required": self.required,
+                "position": self.position,
             },
             indexer_content={},
             restamp={},
@@ -975,7 +981,9 @@ class ManifestCustomClaim(EntityCodec, BaseModel):
     id: str = Field(description="Custom Claim UUID", **classify(FieldClass.IDENTITY))
     name: str = Field(description="Claim name, unique per org", **classify(FieldClass.CONTENT, match_key=True))
     description: str | None = Field(default=None, description="Human-readable description", **classify(FieldClass.CONTENT))
-    organization_id: str = Field(description="Org UUID", **classify(FieldClass.ENVIRONMENT, match_key=True))
+    # Null = global (unattached workspace content). Install and git-sync
+    # manifests always carry an org UUID; only the workspace projection clears it.
+    organization_id: str | None = Field(default=None, description="Org UUID (null = global)", **classify(FieldClass.ENVIRONMENT, match_key=True))
     type: Literal["list", "scalar"] = Field(default="list", description="list | scalar", **classify(FieldClass.CONTENT))
     query: ClaimQuery = Field(description="Source table query that resolves the claim", **classify(FieldClass.CONTENT))
 
@@ -1756,9 +1764,9 @@ def validate_manifest(manifest: Manifest) -> list[str]:
         if cfg.organization_id and cfg.organization_id not in org_ids:
             errors.append(f"Config '{key}' references unknown organization: {cfg.organization_id}")
 
-    # Claims: organization_id
+    # Claims: organization_id (null = global workspace content, always valid)
     for _key, claim in manifest.claims.items():
-        if claim.organization_id not in org_ids:
+        if claim.organization_id and claim.organization_id not in org_ids:
             errors.append(
                 f"Custom claim '{claim.name}' references unknown organization: "
                 f"{claim.organization_id}"

@@ -19,12 +19,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from collections.abc import AsyncIterator, Awaitable, Iterable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Iterable, Iterator
+from contextlib import aclosing, asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import redis.asyncio as redis
+from anyio import open_file
 
 from src.config import Settings, get_settings
 
@@ -33,9 +35,46 @@ logger = logging.getLogger(__name__)
 
 GIT_LOCK_KEY = "bifrost:git-lock"
 GIT_LOCK_TIMEOUT = 300  # 5 minutes
+WORKSPACE_CHECKPOINT_PREFIX = "_workspace_sync_checkpoints"
 
 PERSISTENT_WORK_DIR = Path("/tmp/git")
 OBJECT_STORAGE_CONCURRENCY = 16
+TREE_HASH_CHUNK_SIZE = 8 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class TreeEntryMetadata:
+    """Content-independent metadata for a workspace file."""
+
+    path: str
+    size: int
+    sha256: str
+
+
+def iter_repo_files(root: Path) -> Iterator[Path]:
+    """Yield workspace files without descending into Git internals."""
+    for path in root.rglob("*"):
+        if not path.is_file() or ".git" in path.relative_to(root).parts:
+            continue
+        yield path
+
+
+def hash_file(path: Path) -> tuple[int, str]:
+    """Stream one file's hash without retaining its content."""
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as source:
+        while chunk := source.read(TREE_HASH_CHUNK_SIZE):
+            digest.update(chunk)
+            size += len(chunk)
+    return size, digest.hexdigest()
+
+
+def iter_tree_metadata(root: Path) -> Iterator[TreeEntryMetadata]:
+    """Yield metadata for each workspace file while retaining bounded memory."""
+    for path in iter_repo_files(root):
+        size, sha256 = hash_file(path)
+        yield TreeEntryMetadata(path.relative_to(root).as_posix(), size, sha256)
 
 
 class GitRepoManager:
@@ -275,6 +314,103 @@ class GitRepoManager:
             temporary.replace(destination)
         finally:
             temporary.unlink(missing_ok=True)
+    async def checkpoint_workspace(self, source: Path) -> str:
+        """Persist an exact workspace snapshot for a post-DB publication retry."""
+        checkpoint_id = str(uuid4())
+        if self._settings.object_storage_provider == "azure_blob":
+            from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
+
+            prefix = self._checkpoint_prefix(checkpoint_id)
+            async with AzureBlobStorageClient(self._settings).get_client() as storage:
+                for path in source.rglob("*"):
+                    if path.is_symlink():
+                        raise ValueError(f"Symlinks are not supported: {path}")
+                    if not path.is_file():
+                        continue
+
+                    async def chunks() -> AsyncIterator[bytes]:
+                        async with await open_file(path, "rb") as file:
+                            while chunk := await file.read(TREE_HASH_CHUNK_SIZE):
+                                yield chunk
+
+                    await storage.put_object_from_chunks(
+                        prefix + path.relative_to(source).as_posix(),
+                        chunks(),
+                    )
+            return checkpoint_id
+        uri = self._checkpoint_uri(checkpoint_id)
+        await self._run_aws_cli(self._build_sync_cmd(str(source), uri, delete=True))
+        return checkpoint_id
+
+    async def restore_workspace_checkpoint(self, checkpoint_id: str, target: Path) -> None:
+        """Restore a checkpoint exactly, including Git objects and uncommitted files."""
+        target.mkdir(parents=True, exist_ok=True)
+        if self._settings.object_storage_provider == "azure_blob":
+            from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
+
+            prefix = self._checkpoint_prefix(checkpoint_id)
+            bucket = self._settings.azure_blob_container or ""
+            async with AzureBlobStorageClient(self._settings).get_client() as storage:
+                keys: list[str] = []
+                token: str | None = None
+                while True:
+                    page = await storage.list_objects_v2(
+                        Bucket=bucket, Prefix=prefix, ContinuationToken=token
+                    )
+                    keys.extend(entry["Key"] for entry in page.get("Contents", []))
+                    token = page.get("NextContinuationToken")
+                    if not token:
+                        break
+                paths = {
+                    key: self._safe_local_path(target, key.removeprefix(prefix))
+                    for key in keys
+                }
+                local_files = {
+                    path.relative_to(target).as_posix(): path
+                    for path in target.rglob("*")
+                    if path.is_file() or path.is_symlink()
+                }
+                for relative, path in local_files.items():
+                    if prefix + relative not in paths:
+                        path.unlink()
+                for key, destination in paths.items():
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+                    try:
+                        async with await open_file(temporary, "wb") as file:
+                            async with aclosing(storage.iter_object_chunks(key)) as chunks:
+                                async for chunk in chunks:
+                                    await file.write(chunk)
+                        temporary.replace(destination)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+            return
+        await self._run_aws_cli(
+            self._build_sync_cmd(self._checkpoint_uri(checkpoint_id), str(target), delete=True)
+        )
+
+    async def delete_workspace_checkpoint(self, checkpoint_id: str) -> None:
+        """Remove a checkpoint only after successful publication."""
+        if self._settings.object_storage_provider == "azure_blob":
+            from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
+
+            prefix = self._checkpoint_prefix(checkpoint_id)
+            bucket = self._settings.azure_blob_container or ""
+            async with AzureBlobStorageClient(self._settings).get_client() as storage:
+                while True:
+                    page = await storage.list_objects_v2(Bucket=bucket, Prefix=prefix)
+                    keys = [entry["Key"] for entry in page.get("Contents", [])]
+                    if not keys:
+                        break
+                    for key in keys:
+                        await storage.delete_object(Bucket=bucket, Key=key)
+            return
+        cmd = ["aws", "s3", "rm", self._checkpoint_uri(checkpoint_id), "--recursive"]
+        endpoint_url = self._settings.s3_endpoint_url
+        if endpoint_url:
+            cmd.extend(["--endpoint-url", endpoint_url])
+        cmd.append("--only-show-errors")
+        await self._run_aws_cli(cmd)
 
     async def has_git_dir(self) -> bool:
         """Check if .git/HEAD exists in S3 _repo/ (quick existence check)."""
@@ -287,6 +423,18 @@ class GitRepoManager:
         """Build the S3 URI for _repo/."""
         bucket = self._settings.s3_bucket
         return f"s3://{bucket}/_repo/"
+
+    def _checkpoint_uri(self, checkpoint_id: str) -> str:
+        """Build a bounded, validated prefix for one workspace checkpoint."""
+        return f"s3://{self._settings.s3_bucket}/{self._checkpoint_prefix(checkpoint_id)}"
+
+    @staticmethod
+    def _checkpoint_prefix(checkpoint_id: str) -> str:
+        try:
+            checkpoint = UUID(checkpoint_id)
+        except ValueError as error:
+            raise ValueError("Invalid workspace checkpoint ID") from error
+        return f"{WORKSPACE_CHECKPOINT_PREFIX}/{checkpoint}/"
 
     def _build_sync_cmd(
         self,
