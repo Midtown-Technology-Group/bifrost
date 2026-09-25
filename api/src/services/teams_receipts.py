@@ -99,7 +99,7 @@ async def _send_receipt(
     conversation_id: str, inbound_activity_id: str,
     update_activity_id: str | None = None,
     message: str = "Received. Working on it…",
-) -> str:
+) -> str | None:
     base = _service_url(service_url)
     path = f"/v3/conversations/{quote(conversation_id, safe='')}/activities/"
     path += quote(update_activity_id or inbound_activity_id, safe="")
@@ -139,27 +139,28 @@ async def _send_receipt(
         )
         if response.status_code not in (200, 201, 202):
             raise ValueError(f"Bot Framework receipt returned {response.status_code}")
-        reply_id = response.json().get("id") if response.content else update_activity_id
-        if not isinstance(reply_id, str) or not reply_id:
-            raise ValueError("Bot Framework receipt had no activity ID")
-        return reply_id
+        try:
+            reply_id = response.json().get("id") if response.content else update_activity_id
+        except (ValueError, AttributeError):
+            reply_id = update_activity_id
+        return reply_id if isinstance(reply_id, str) and reply_id else None
 
 
 async def send_fast_teams_receipt(
     db: AsyncSession, event_id: UUID, webhook_source: WebhookSource,
-) -> bool:
+) -> str | None:
     """Send before worker admission; failure never rejects a verified webhook."""
     event = await db.get(Event, event_id)
     if event is None or webhook_source.adapter_name != "microsoft_bot_framework":
-        return False
+        return None
     scope = _receipt_scope(event)
     if scope is None:
-        return False
+        return None
     claim = await claim_operation_receipt(
         namespace=_NAMESPACE, scope_key=scope, request_fingerprint=scope,
     )
     if claim.disposition != OperationReceiptDisposition.OWNER:
-        return True
+        return "duplicate"
     assert claim.owner_token is not None
     await record_operation_receipt_handle(
         claim.receipt_id, claim.owner_token,
@@ -188,7 +189,9 @@ async def send_fast_teams_receipt(
             conversation_id=receipt["conversation_id"],
             inbound_activity_id=receipt["inbound_activity_id"],
         )
-        receipt.update(status="sent", reply_activity_id=reply_id)
+        receipt["status"] = "sent" if reply_id else "accepted_unaddressable"
+        if reply_id:
+            receipt["reply_activity_id"] = reply_id
         await complete_operation_receipt_success(
             claim.receipt_id, claim.owner_token,
             {"canonical_event_id": str(event_id), "reply_activity_id": reply_id},
@@ -203,7 +206,7 @@ async def send_fast_teams_receipt(
         )
     event.data = {**data, "teams_receipt": receipt}
     await db.commit()
-    return True
+    return "owner"
 
 
 async def finish_rejected_teams_receipt(

@@ -216,8 +216,11 @@ async def receive_webhook(
         skip_reason = "teams_direct_ingress"
         if result.event_id and getattr(webhook_source, "adapter_name", None) == "microsoft_bot_framework":
             try:
-                eligible = await send_fast_teams_receipt(db, result.event_id, webhook_source)
-                if eligible:
+                receipt_mode = await send_fast_teams_receipt(db, result.event_id, webhook_source)
+                if receipt_mode == "duplicate":
+                    direct_handled = True
+                    skip_reason = "teams_duplicate_ingress"
+                elif receipt_mode == "owner":
                     # Commit before AgentRun publication: a fast completion callback
                     # must see both the receipt and this direct-ingress marker.
                     event = await db.get(Event, result.event_id)

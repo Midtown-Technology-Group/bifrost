@@ -78,7 +78,7 @@ async def test_verified_teams_direct_run_skips_legacy_worker_delivery():
     with (
         patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
         patch("src.routers.hooks.EventProcessor") as processor_class,
-        patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value=True),
+        patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value="owner"),
         patch("src.routers.hooks.submit_teams_chat_event", new_callable=AsyncMock) as submit,
     ):
         processor = processor_class.return_value
@@ -117,7 +117,7 @@ async def test_teams_direct_failure_falls_back_to_legacy_queue():
     with (
         patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
         patch("src.routers.hooks.EventProcessor") as processor_class,
-        patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value=True),
+        patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value="owner"),
         patch("src.routers.hooks.submit_teams_chat_event", new_callable=AsyncMock, side_effect=RuntimeError("queue unavailable")),
     ):
         processor = processor_class.return_value

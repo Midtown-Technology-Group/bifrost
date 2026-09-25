@@ -21,7 +21,7 @@ def _event(*, verified=True):
         authenticated_actor={"provider": "microsoft_teams", "external_scope_id": "tenant"},
         data={
             "channel_id": "msteams", "activity_id": "activity", "conversation_id": "conversation",
-            "service_url": "https://amer.ng.msg.teams.microsoft.com/",
+            "service_url": "https://smba.trafficmanager.net/amer/",
             "activity": {"text": "ping"},
         },
     )
@@ -36,11 +36,11 @@ def test_only_verified_text_messages_get_receipt_scope():
 
 
 def test_connector_url_is_host_bounded():
-    assert receipts._service_url("https://amer.ng.msg.teams.microsoft.com/") == "https://amer.ng.msg.teams.microsoft.com"
+    assert receipts._service_url("https://smba.trafficmanager.net/amer/") == "https://smba.trafficmanager.net/amer"
     for url in (
-        "http://amer.ng.msg.teams.microsoft.com",
-        "https://amer.ng.msg.teams.microsoft.com.evil.test",
-        "https://amer.ng.msg.teams.microsoft.com:444",
+        "http://smba.trafficmanager.net",
+        "https://smba.trafficmanager.net.evil.test",
+        "https://smba.trafficmanager.net:444",
         "https://evil.test/bad/path",
     ):
         with pytest.raises(ValueError):
