@@ -295,7 +295,7 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # compatible fields (2026-09-16). Existing v11 clients retain their scope.
     # PlatformJobPublic gained execution_backend (2026-09-17). ADDITIVE:
     # existing clients ignore the placement detail.
-    "af17d295582d085f3f77c33b4d4b99884167650d83f6d21183b3a7aa3bab33ce"
+    "10e2367d8c9c2cc2218be2f544badb8c4dc3fac860f02520bc6f54f18439dae3"
 )
 
 
