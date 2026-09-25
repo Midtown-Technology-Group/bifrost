@@ -504,7 +504,7 @@ async def list_service_logs(
     (for UI "showing N of M" copy). Returns (rows, total,
     next_continuation_token).
     """
-    from src.repositories.execution_logs import encode_execution_log_cursor
+    from src.repositories.execution_logs import encode_log_cursor
 
     filters = [ServiceLog.service_id == service_id]
     if attempt_id is not None:
@@ -560,7 +560,7 @@ async def list_service_logs(
     if has_more:
         rows = rows[:limit]
     next_token = (
-        encode_execution_log_cursor(rows[-1].timestamp, rows[-1].id)
+        encode_log_cursor(rows[-1].timestamp, rows[-1].id)
         if has_more and rows
         else None
     )

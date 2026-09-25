@@ -362,7 +362,7 @@ async def list_service_logs(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="order must be chronological or newest_first",
         )
-    from src.repositories.execution_logs import decode_execution_log_cursor
+    from src.repositories.execution_logs import decode_log_cursor
 
     # Strict like the executions logs endpoint: a token that decodes to
     # nothing is corruption (or a hand-typed value), and silently
@@ -370,7 +370,7 @@ async def list_service_logs(
     # No legacy-offset fallback: this endpoint only ever minted keysets.
     cursor = None
     if continuation_token:
-        cursor = decode_execution_log_cursor(continuation_token)
+        cursor = decode_log_cursor(continuation_token)
         if cursor is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { LayoutGrid, RefreshCw, Table as TableIcon } from "lucide-react";
 
 import { useIsDesktop } from "@/hooks/useMediaQuery";
