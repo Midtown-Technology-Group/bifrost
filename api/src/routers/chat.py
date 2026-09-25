@@ -526,6 +526,7 @@ async def upload_attachments(
         for attachment in stored:
             await storage.delete_raw_from_s3(attachment.s3_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await db.commit()
     return AttachmentUploadResponse(
         attachments=[
             AttachmentPublic(

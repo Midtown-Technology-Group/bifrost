@@ -475,6 +475,8 @@ def main() -> int:
         "python": platform.python_version(),
         "architecture": platform.machine(),
         "api_processes": int(os.environ.get("BIFROST_BENCH_API_PROCESSES", "1")),
+        "client_image": os.environ.get("BIFROST_BENCH_CLIENT_IMAGE"),
+        "renderer_image": os.environ.get("BIFROST_BENCH_RENDERER_IMAGE"),
         "levels": [],
     }
     for concurrency in args.concurrency:
