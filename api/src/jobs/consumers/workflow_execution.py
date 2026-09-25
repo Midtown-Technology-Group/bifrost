@@ -169,6 +169,14 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     await asyncio.sleep(0.1 * (2**attempt))
         return False
 
+    @staticmethod
+    async def _emit_teams_action_completion(execution_id: str) -> None:
+        from src.core.database import get_session_factory
+        from src.services.teams_action_completion import emit_teams_action_completion
+
+        async with get_session_factory()() as db:
+            await emit_teams_action_completion(db, UUID(execution_id))
+
     async def start(self) -> None:
         """Start the process pool, then begin consuming messages.
 
@@ -557,6 +565,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
         if is_sync:
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
 
+        await self._run_derived_step(
+            "teams-action-completion",
+            lambda: self._emit_teams_action_completion(execution_id),
+        )
+
         metrics_data = result.get("metrics") or {}
         await self._run_derived_step(
             "completion-metrics",
@@ -882,6 +895,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
 
         failure_metrics = result.get("metrics") or {}
+        await self._run_derived_step(
+            "teams-action-completion",
+            lambda: self._emit_teams_action_completion(execution_id),
+        )
+
         await self._run_derived_step(
             "completion-metrics",
             lambda: self._record_completion_metrics(
