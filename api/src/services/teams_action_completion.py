@@ -127,6 +127,7 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
         )
     ).all()
     started = False
+    registered: set[UUID] = set()
     for message in messages:
         if str(message.id) == str(user_message_id):
             started = True
@@ -146,11 +147,13 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
                 execution_id = UUID(str(result["execution_id"]))
             except (KeyError, TypeError, ValueError):
                 continue
+            if execution_id in registered:
+                continue
             await register_teams_action_completion(
                 db, execution_id=execution_id, run_id=run.id,
                 webhook_event_id=UUID(str(event_id)),
             )
-            return
+            registered.add(execution_id)
 
 
 async def emit_teams_action_completion(db, execution_id: UUID) -> None:

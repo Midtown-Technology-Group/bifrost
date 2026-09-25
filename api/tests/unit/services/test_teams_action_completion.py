@@ -9,6 +9,7 @@ from src.models.enums import ExecutionStatus
 from src.models.orm import AgentRun, Event, EventSource, Execution
 from src.services.teams_action_completion import (
     emit_teams_action_completion,
+    register_teams_action_for_run,
     register_teams_action_completion,
 )
 from src.services.teams_chat_bridge import (
@@ -126,3 +127,27 @@ async def test_transient_registration_failure_remains_recoverable() -> None:
         assert await recover_teams_chat_completions() == 1
         assert "teams_completion_emitted_at" in run.run_metadata
         assert register.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_registers_each_distinct_approved_action_in_turn() -> None:
+    run = SimpleNamespace(
+        id=uuid4(), input={"teams_event_id": str(uuid4()), "user_message_id": str(uuid4())},
+        status="completed", conversation_id=uuid4(),
+    )
+    first, second = uuid4(), uuid4()
+    messages = [SimpleNamespace(id=run.input["user_message_id"])] + [
+        SimpleNamespace(
+            id=uuid4(), role="tool_call", tool_name="wf_teams_run_remote_powershell",
+            tool_input={"apply": True}, tool_result={"execution_id": str(execution_id)},
+        )
+        for execution_id in (first, first, second)
+    ]
+    db = AsyncMock()
+    db.scalars.return_value = SimpleNamespace(all=lambda: messages)
+    with patch(
+        "src.services.teams_action_completion.register_teams_action_completion",
+        new_callable=AsyncMock,
+    ) as register:
+        await register_teams_action_for_run(db, run)
+    assert [call.kwargs["execution_id"] for call in register.await_args_list] == [first, second]
