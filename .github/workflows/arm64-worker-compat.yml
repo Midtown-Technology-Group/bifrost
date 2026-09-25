@@ -40,5 +40,5 @@ jobs:
             --mount type=bind,source="$PWD/api/tests",target=/app/tests,readonly \
             --entrypoint python bifrost-worker:arm64-probe \
             -m pytest -q \
-            /app/tests/unit/worker/test_app.py \
+            /app/tests/unit/worker/test_worker_main.py \
             /app/tests/unit/jobs/test_postgres_delivery_maintenance.py
