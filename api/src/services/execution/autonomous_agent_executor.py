@@ -60,16 +60,14 @@ from src.services.agent_runtime import (
     AgentRunCancelled,
     BifrostToolset,
     ModelCallEvent,
-    ObservedModel,
     ToolEvent,
-    agent_model_settings,
+    build_chain_model,
     build_runtime_capabilities,
-    create_agent_model,
     provider_reported_cost,
 )
 from src.services.agent_runtime.empty_output import EmptyOutputCircuitBreaker
 from src.services.llm import ToolCallRequest
-from src.services.llm.factory import get_llm_config
+from src.services.llm.factory import get_llm_configs
 from src.services.knowledge.search_budget import (
     KNOWLEDGE_FULL_CONTENT_HINT,
     KnowledgeSearchBudget,
@@ -252,7 +250,8 @@ class AutonomousAgentExecutor:
                     "is_provider_org": principal.is_provider_org,
                     "roles": principal.roles,
                 }
-            llm_config = await get_llm_config(db, profile_id=agent.llm_profile_id)
+            llm_configs = await get_llm_configs(db, profile_id=agent.llm_profile_id)
+        llm_config = llm_configs[0]
         model_name = llm_config.model
 
         # Short-circuit if agent is paused. Runs already past this point continue
@@ -432,12 +431,18 @@ class AutonomousAgentExecutor:
                 duration_ms=event.duration_ms,
             )
 
-        base_model = create_agent_model(llm_config, model=model_name)
-        observed_model = ObservedModel(
-            base_model,
+        chain = build_chain_model(
+            llm_configs,
             record_model_event,
             retry_surface="autonomous_agent",
+            model_override=model_name,
+            max_tokens=agent.llm_max_tokens,
+            session_id=run_id,
         )
+        # llm_config already carries the resolved profile's
+        # default_max_tokens; agent.llm_max_tokens wins when set,
+        # otherwise the profile default (or provider default) applies.
+        # Fallbacks resolve from their own profile defaults.
         toolset = BifrostToolset(
             tool_definitions,
             execute_tool,
@@ -453,7 +458,7 @@ class AutonomousAgentExecutor:
         # charged to the shared UsageLimits ledger by ObservedModel.
         empty_output_guard = EmptyOutputCircuitBreaker()
         runtime = PydanticAgent(
-            observed_model,
+            chain.model,
             system_prompt=build_agent_system_prompt(
                 agent,
                 execution_context={"mode": "autonomous"},
@@ -463,15 +468,7 @@ class AutonomousAgentExecutor:
                 *build_runtime_capabilities(budget),
                 empty_output_guard,
             ],
-            model_settings=agent_model_settings(
-                llm_config,
-                max_tokens=agent.llm_max_tokens,
-                session_id=run_id,
-                # llm_config already carries the resolved profile's
-                # default_max_tokens; agent.llm_max_tokens wins when set,
-                # otherwise the profile default (or provider default) applies.
-                agent_kind="worker",
-            ),
+            model_settings=chain.primary_settings,
             # One bounded correction for malformed tool names/arguments. The
             # shared UsageLimits ledger charges the retry to the parent run.
             retries=1,
@@ -577,6 +574,8 @@ class AutonomousAgentExecutor:
         }
         if error and status == "failed":
             response["error"] = error
+        if chain.failover is not None and (path := chain.failover.fallback_path()):
+            response["failover_path"] = path
         return response
 
     # ------------------------------------------------------------------
@@ -1280,6 +1279,12 @@ class AutonomousAgentExecutor:
             sub_run_obj.duration_ms = duration_ms
             sub_run_obj.completed_at = datetime.now(timezone.utc)
             sub_run_obj.error = error
+            if sub_result.get("failover_path"):
+                sub_run_obj.run_metadata = {
+                    **(sub_run_obj.run_metadata or {}),
+                    # String-valued map on the wire; encode the path.
+                    "failover_path": json.dumps(sub_result["failover_path"]),
+                }
 
             await sub_executor.flush_to_db(db)
             await db.commit()

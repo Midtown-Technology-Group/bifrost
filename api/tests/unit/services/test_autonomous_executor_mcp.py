@@ -66,9 +66,9 @@ def mock_session_factory():
 def mock_runtime_config():
     with (
         patch(
-            "src.services.execution.autonomous_agent_executor.get_llm_config",
+            "src.services.execution.autonomous_agent_executor.get_llm_configs",
             new_callable=AsyncMock,
-            return_value=LLMConfig(provider="openai", model="test-model", api_key="test-key"),
+            return_value=[LLMConfig(provider="openai", model="test-model", api_key="test-key")],
         ),
         patch(
             "src.services.execution.autonomous_agent_executor.agent_mcp_granted",
@@ -352,7 +352,7 @@ async def test_external_grant_is_rechecked_before_non_workflow_tool(
 
 @pytest.mark.asyncio
 @patch(
-    "src.services.execution.autonomous_agent_executor.create_agent_model"
+    "src.services.agent_runtime.model_factory.create_agent_model"
 )
 @patch(
     "src.services.execution.autonomous_agent_executor.resolve_agent_tools"
@@ -464,7 +464,7 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
 
 @pytest.mark.asyncio
 @patch(
-    "src.services.execution.autonomous_agent_executor.create_agent_model"
+    "src.services.agent_runtime.model_factory.create_agent_model"
 )
 @patch(
     "src.services.execution.autonomous_agent_executor.resolve_agent_tools"
@@ -503,7 +503,7 @@ async def test_run_treats_missing_caller_as_autonomous(
 
 @pytest.mark.asyncio
 @patch(
-    "src.services.execution.autonomous_agent_executor.create_agent_model"
+    "src.services.agent_runtime.model_factory.create_agent_model"
 )
 @patch(
     "src.services.execution.autonomous_agent_executor.resolve_agent_tools"
@@ -543,7 +543,7 @@ async def test_run_treats_caller_without_user_id_as_autonomous(
 
 @pytest.mark.asyncio
 @patch(
-    "src.services.execution.autonomous_agent_executor.create_agent_model"
+    "src.services.agent_runtime.model_factory.create_agent_model"
 )
 @patch(
     "src.services.execution.autonomous_agent_executor.resolve_agent_tools"
