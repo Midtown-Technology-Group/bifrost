@@ -187,6 +187,139 @@ def prepare(url: str, scenario: str) -> tuple[dict[str, str], dict[str, str], st
         return user.headers, admin.headers, workflow["id"], org_id
 
 
+async def _sample_pool(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    samples: list[dict],
+    stop: asyncio.Event,
+) -> None:
+    while not stop.is_set():
+        try:
+            response = await client.get("/api/platform/workers/stats", headers=headers)
+            response.raise_for_status()
+            stats = response.json()
+            samples.append(
+                {
+                    "time": datetime.now(UTC).isoformat(),
+                    "capacity": stats["total_configured_capacity"],
+                    "busy": stats["total_busy"],
+                    "available": stats["total_available_slots"],
+                    "saturated_workers": stats["saturated_workers"],
+                    "admission_rejections": stats["admission_rejections"],
+                }
+            )
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            samples.append({"error": type(exc).__name__})
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=1.0)
+        except TimeoutError:
+            pass
+
+
+async def _run_workflow(
+    client: httpx.AsyncClient,
+    scenario: str,
+    headers: dict[str, str],
+    workflow_id: str,
+    org_id: str,
+    index: int,
+) -> str:
+    input_data = {"value": index}
+    if scenario == "external-http":
+        input_data["delay_ms"] = (20, 50, 100)[index % 3]
+    response = await client.post(
+        "/api/workflows/execute",
+        headers=headers,
+        json={
+            "workflow_id": workflow_id,
+            "input_data": input_data,
+            "sync": True,
+            "org_id": org_id,
+        },
+    )
+    response.raise_for_status()
+    result = response.json()
+    deadline = time.monotonic() + 120
+    while result.get("status") not in {"Success", "Failed", "Completed"}:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("workflow completion exceeded 120 seconds")
+        await asyncio.sleep(0.1)
+        polled = await client.get(
+            f"/api/executions/{result['execution_id']}", headers=headers
+        )
+        polled.raise_for_status()
+        result = polled.json()
+    if result["status"] not in {"Success", "Completed"}:
+        raise ValueError(f"workflow ended as {result['status']}")
+    expected = (
+        {"value": index, "source": "fixture"}
+        if scenario == "external-http"
+        else {"value": index, "ok": True}
+    )
+    if result.get("result") != expected:
+        raise ValueError("workflow returned the wrong result")
+    return result["execution_id"]
+
+
+async def _run_request(
+    client: httpx.AsyncClient,
+    scenario: str,
+    read_headers: dict[str, str],
+    admin_headers: dict[str, str],
+    workflow_id: str,
+    org_id: str,
+    index: int,
+) -> str | None:
+    if scenario == "api-read":
+        response = await client.get("/api/profile", headers=read_headers)
+        response.raise_for_status()
+        if response.json()["organization_id"] != org_id:
+            raise ValueError("tenant mismatch in profile response")
+        return None
+    if scenario == "agent":
+        response = await client.post(
+            "/api/agent-runs/execute",
+            headers=admin_headers,
+            json={
+                "agent_name": workflow_id,
+                "input": {"task": f"Run tool for item {index}"},
+                "timeout": 120,
+            },
+        )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("status") != "completed":
+            raise ValueError(f"agent ended as {result.get('status')}")
+        if result.get("iterations_used", 0) < 2:
+            raise ValueError("agent did not complete a tool-call loop")
+        return None
+    return await _run_workflow(
+        client, scenario, admin_headers, workflow_id, org_id, index
+    )
+
+
+async def _sample_attempt_stages(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    execution_ids: list[str],
+) -> tuple[list[dict[str, float]], int]:
+    samples: list[dict[str, float]] = []
+    errors = 0
+    if not execution_ids:
+        return samples, errors
+    stride = max(1, len(execution_ids) // 30)
+    for execution_id in execution_ids[::stride][:30]:
+        try:
+            response = await client.get(f"/api/executions/{execution_id}", headers=headers)
+            response.raise_for_status()
+            for attempt in response.json()["attempt_history"]["attempts"]:
+                if attempt["status"] == "succeeded":
+                    samples.append(attempt_intervals(attempt))
+        except (httpx.HTTPError, KeyError, ValueError):
+            errors += 1
+    return samples, errors
+
+
 async def run_level(
     url: str,
     scenario: str,
@@ -213,102 +346,22 @@ async def run_level(
         ),
     ) as client:
 
-        async def sample_pool(stop: asyncio.Event) -> None:
-            while not stop.is_set():
-                try:
-                    response = await client.get(
-                        "/api/platform/workers/stats", headers=admin_headers
-                    )
-                    response.raise_for_status()
-                    stats = response.json()
-                    pool_samples.append(
-                        {
-                            "time": datetime.now(UTC).isoformat(),
-                            "capacity": stats["total_configured_capacity"],
-                            "busy": stats["total_busy"],
-                            "available": stats["total_available_slots"],
-                            "saturated_workers": stats["saturated_workers"],
-                            "admission_rejections": stats["admission_rejections"],
-                        }
-                    )
-                except (httpx.HTTPError, KeyError, ValueError) as exc:
-                    pool_samples.append({"error": type(exc).__name__})
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=1.0)
-                except TimeoutError:
-                    pass
-
         async def one(index: int) -> None:
             nonlocal failures
             async with semaphore:
                 started = time.perf_counter()
                 try:
-                    if scenario == "api-read":
-                        response = await client.get(
-                            "/api/profile", headers=read_headers
-                        )
-                        response.raise_for_status()
-                        if response.json()["organization_id"] != org_id:
-                            raise ValueError("tenant mismatch in profile response")
-                    elif scenario == "agent":
-                        response = await client.post(
-                            "/api/agent-runs/execute",
-                            headers=admin_headers,
-                            json={
-                                "agent_name": workflow_id,
-                                "input": {"task": f"Run tool for item {index}"},
-                                "timeout": 120,
-                            },
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-                        if result.get("status") != "completed":
-                            raise ValueError(f"agent ended as {result.get('status')}")
-                        if result.get("iterations_used", 0) < 2:
-                            raise ValueError("agent did not complete a tool-call loop")
-                    else:
-                        input_data = {"value": index}
-                        if scenario == "external-http":
-                            input_data["delay_ms"] = (20, 50, 100)[index % 3]
-                        response = await client.post(
-                            "/api/workflows/execute",
-                            headers=admin_headers,
-                            json={
-                                "workflow_id": workflow_id,
-                                "input_data": input_data,
-                                "sync": True,
-                                "org_id": org_id,
-                            },
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-                        deadline = time.monotonic() + 120
-                        while result.get("status") not in {
-                            "Success",
-                            "Failed",
-                            "Completed",
-                        }:
-                            if time.monotonic() >= deadline:
-                                raise TimeoutError(
-                                    "workflow completion exceeded 120 seconds"
-                                )
-                            await asyncio.sleep(0.1)
-                            polled = await client.get(
-                                f"/api/executions/{result['execution_id']}",
-                                headers=admin_headers,
-                            )
-                            polled.raise_for_status()
-                            result = polled.json()
-                        if result["status"] not in {"Success", "Completed"}:
-                            raise ValueError(f"workflow ended as {result['status']}")
-                        expected = (
-                            {"value": index, "source": "fixture"}
-                            if scenario == "external-http"
-                            else {"value": index, "ok": True}
-                        )
-                        if result.get("result") != expected:
-                            raise ValueError("workflow returned the wrong result")
-                        execution_ids.append(result["execution_id"])
+                    execution_id = await _run_request(
+                        client,
+                        scenario,
+                        read_headers,
+                        admin_headers,
+                        workflow_id,
+                        org_id,
+                        index,
+                    )
+                    if execution_id:
+                        execution_ids.append(execution_id)
                     latencies.append(time.perf_counter() - started)
                 except (httpx.HTTPError, ValueError, KeyError, TimeoutError) as exc:
                     failures += 1
@@ -320,7 +373,9 @@ async def run_level(
         client_cpu_started = time.process_time()
         stop_sampling = asyncio.Event()
         pool_task = (
-            asyncio.create_task(sample_pool(stop_sampling))
+            asyncio.create_task(
+                _sample_pool(client, admin_headers, pool_samples, stop_sampling)
+            )
             if scenario != "api-read"
             else None
         )
@@ -331,21 +386,9 @@ async def run_level(
         elapsed = time.perf_counter() - started
         client_cpu_seconds = time.process_time() - client_cpu_started
         finished_at = datetime.now(UTC).isoformat()
-        stage_samples: list[dict[str, float]] = []
-        stage_errors = 0
-        if execution_ids:
-            stride = max(1, len(execution_ids) // 30)
-            for execution_id in execution_ids[::stride][:30]:
-                try:
-                    response = await client.get(
-                        f"/api/executions/{execution_id}", headers=admin_headers
-                    )
-                    response.raise_for_status()
-                    for attempt in response.json()["attempt_history"]["attempts"]:
-                        if attempt["status"] == "succeeded":
-                            stage_samples.append(attempt_intervals(attempt))
-                except (httpx.HTTPError, KeyError, ValueError):
-                    stage_errors += 1
+        stage_samples, stage_errors = await _sample_attempt_stages(
+            client, admin_headers, execution_ids
+        )
         stage_summary = {
             name: {
                 "p50_seconds": percentile(values, 0.50),
@@ -379,7 +422,7 @@ def main() -> int:
     )
     parser.add_argument("--operations", type=int, default=1000)
     parser.add_argument(
-        "--output", type=Path, default=Path("/tmp/bifrost/issue-890-load.json")
+        "--output", type=Path, default=Path("/bifrost-results/issue-890-load.json")
     )
     args = parser.parse_args()
     url = os.environ.get("TEST_API_URL", "")
@@ -394,6 +437,8 @@ def main() -> int:
         parser.error("operations and concurrency must be positive")
     if args.operations < max(args.concurrency):
         parser.error("operations must be at least the highest concurrency level")
+    if args.output.parent != Path("/bifrost-results"):
+        parser.error("output must be in the isolated results mount")
 
     read_headers, admin_headers, workflow_id, org_id = prepare(url, args.scenario)
     result = {
@@ -419,8 +464,13 @@ def main() -> int:
         )
         result["levels"].append(level)
         print(json.dumps(level), flush=True)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2) + "\n")
+    fd = os.open(
+        args.output,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+        0o600,
+    )
+    with os.fdopen(fd, "w") as output:
+        output.write(json.dumps(result, indent=2) + "\n")
     return 1 if any(level["failed"] for level in result["levels"]) else 0
 
 

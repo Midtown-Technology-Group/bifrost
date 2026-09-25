@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import signal
 import subprocess
 import time
@@ -34,12 +35,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True)
     args = parser.parse_args()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", args.project):
+        parser.error("project must be a Docker Compose name")
 
     cgroups = {}
     for role in ROLES:
         container = f"{args.project}-{role}-1"
         pid = subprocess.check_output(
-            ["docker", "inspect", "-f", "{{.State.Pid}}", container], text=True
+            ["docker", "inspect", "-f", "{{.State.Pid}}", "--", container], text=True
         ).strip()
         relative = Path(f"/proc/{pid}/cgroup").read_text().split("::", 1)[1].strip()
         cgroups[role] = Path("/sys/fs/cgroup") / relative.lstrip("/")

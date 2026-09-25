@@ -57,3 +57,26 @@ def test_sweep_requires_enough_operations_for_highest_concurrency(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 2
+
+
+def test_sweep_rejects_output_outside_results_mount(monkeypatch):
+    monkeypatch.setenv("BIFROST_ENVIRONMENT", "testing")
+    monkeypatch.setenv("TEST_API_URL", "http://api:8000")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "issue_890_load.py",
+            "--scenario",
+            "api-read",
+            "--concurrency",
+            "1",
+            "--operations",
+            "1",
+            "--output",
+            "/tmp/bifrost/unsafe.json",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 2

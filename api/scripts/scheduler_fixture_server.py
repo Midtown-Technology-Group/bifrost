@@ -323,7 +323,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 value = request["value"]
                 if type(delay_ms) is not int or not 0 <= delay_ms <= 1000 or type(value) is not int:
                     raise ValueError("invalid fixture request")
-            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            except (KeyError, TypeError, ValueError):
                 self._json(400, {"error": "invalid_request"})
                 return
             time.sleep(delay_ms / 1000)
