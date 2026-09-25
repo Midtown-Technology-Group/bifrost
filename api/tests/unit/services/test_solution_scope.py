@@ -95,7 +95,7 @@ async def test_file_read_tiers_for_closed_solution_only_returns_solution_tier() 
     solution = SimpleNamespace(
         id=solution_id,
         organization_id=org_id,
-        global_repo_access=False,
+        allow_outbound_access=False,
     )
 
     tiers = await solution_scope.file_read_tiers(
@@ -122,7 +122,7 @@ async def test_file_read_tiers_for_open_solution_adds_org_then_global_fallbacks(
     solution = SimpleNamespace(
         id=solution_id,
         organization_id=org_id,
-        global_repo_access=True,
+        allow_outbound_access=True,
     )
 
     tiers = await solution_scope.file_read_tiers(
@@ -156,7 +156,7 @@ async def test_resolve_solution_table_by_name_returns_own_solution_table_first()
     org_id = uuid4()
     table = SimpleNamespace(id=uuid4(), name="customers")
     db = _FakeDb(
-        get_values=[SimpleNamespace(status="active", global_repo_access=True)],
+        get_values=[SimpleNamespace(status="active", allow_outbound_access=True)],
         execute_values=[table],
     )
 
@@ -177,7 +177,7 @@ async def test_resolve_solution_table_by_name_closed_solution_does_not_fallback(
 ) -> None:
     solution_id = uuid4()
     db = _FakeDb(
-        get_values=[SimpleNamespace(status="active", global_repo_access=False)],
+        get_values=[SimpleNamespace(status="active", allow_outbound_access=False)],
         execute_values=[None],
     )
 
@@ -205,7 +205,7 @@ async def test_resolve_solution_table_by_name_open_solution_uses_repo_fallback(
     user_id = uuid4()
     fallback = SimpleNamespace(id=uuid4(), name="customers")
     db = _FakeDb(
-        get_values=[SimpleNamespace(status="active", global_repo_access=True)],
+        get_values=[SimpleNamespace(status="active", allow_outbound_access=True)],
         execute_values=[None],
     )
     calls = []

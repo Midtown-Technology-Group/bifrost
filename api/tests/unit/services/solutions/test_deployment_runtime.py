@@ -92,7 +92,7 @@ async def test_active_pointer_selects_runtime_without_reading_mutable_definition
         id=solution_id,
         status="active",
         organization_id=None,
-        global_repo_access=False,
+        allow_outbound_access=False,
         active_deployment_id=old_id,
     )
     session = SimpleNamespace(
@@ -142,7 +142,7 @@ async def test_solution_without_active_deployment_never_falls_back_to_mutable_ro
         id=solution_id,
         status="active",
         organization_id=None,
-        global_repo_access=False,
+        allow_outbound_access=False,
         active_deployment_id=None,
         execution_runtime_mode="deployment-v1",
     )
@@ -162,7 +162,7 @@ async def test_explicit_legacy_solution_without_deployment_uses_repo_compatibili
         id=solution_id,
         status="active",
         organization_id=None,
-        global_repo_access=False,
+        allow_outbound_access=False,
         active_deployment_id=None,
         execution_runtime_mode="repo-v1",
     )
@@ -195,7 +195,7 @@ async def test_child_call_inherits_superseded_parent_deployment(monkeypatch):
         id=solution_id,
         status="active",
         organization_id=None,
-        global_repo_access=False,
+        allow_outbound_access=False,
         active_deployment_id=active_id,
     )
     old = _closure(
@@ -249,7 +249,7 @@ async def test_cross_solution_child_uses_exact_dependency_deployment(monkeypatch
         id=target_solution_id,
         status="active",
         organization_id=None,
-        global_repo_access=False,
+        allow_outbound_access=False,
         active_deployment_id=current_target_id,
     )
     caller = SimpleNamespace(
