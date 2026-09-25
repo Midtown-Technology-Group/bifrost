@@ -204,11 +204,12 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> bool:
     binding = (execution.execution_context or {}).get("teams_action_completion")
     if not isinstance(binding, dict) or binding.get("emitted_at"):
         return False
-    from src.services.events import emit_event
+    from src.services.events.processor import EventProcessor
 
-    _event_id, subscribers = await emit_event(
-        TOPIC,
-        {
+    processor = EventProcessor(db)
+    event_id, subscribers = await processor.emit_topic(
+        topic=TOPIC,
+        data={
             "execution_id": str(execution_id),
             "run_id": binding["run_id"],
             "webhook_event_id": binding["webhook_event_id"],
@@ -226,13 +227,14 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> bool:
     }
     execution.execution_context = context
     await db.commit()
+    if subscribers:
+        await processor.queue_event_deliveries(event_id)
+        await db.commit()
     return bool(subscribers)
 
 
 async def recover_teams_action_completions(*, limit: int = 50) -> int:
     """Retry only tagged terminal actions whose topic emission was not recorded."""
-    import logging
-
     from src.core.database import get_session_factory
 
     async with get_session_factory()() as db:

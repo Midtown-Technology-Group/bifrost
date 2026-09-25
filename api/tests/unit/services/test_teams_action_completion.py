@@ -34,16 +34,19 @@ async def test_only_tagged_terminal_execution_emits() -> None:
     )()
     db = AsyncMock()
     db.get.return_value = row
+    processor = SimpleNamespace(
+        emit_topic=AsyncMock(return_value=(uuid4(), 1)),
+        queue_event_deliveries=AsyncMock(),
+    )
     with (
-        patch("src.services.events.emit_event", new_callable=AsyncMock) as emit,
+        patch("src.services.events.processor.EventProcessor", return_value=processor),
         patch(
             "src.services.teams_action_completion._lock_execution",
             new_callable=AsyncMock,
         ),
     ):
-        emit.return_value = (uuid4(), 1)
         await emit_teams_action_completion(db, execution_id)
-        emit.assert_not_awaited()
+        processor.emit_topic.assert_not_awaited()
         row.execution_context = {
             "teams_action_completion": {
                 "run_id": str(run_id),
@@ -51,12 +54,17 @@ async def test_only_tagged_terminal_execution_emits() -> None:
             }
         }
         await emit_teams_action_completion(db, execution_id)
-        emit.assert_awaited_once()
+        processor.emit_topic.assert_awaited_once()
         assert db.get.await_args.kwargs == {"populate_existing": True}
-        assert emit.await_args.args[0] == "microsoft_teams.action_completed"
-        assert emit.await_args.args[1]["execution_id"] == str(execution_id)
+        assert processor.emit_topic.await_args.kwargs["topic"] == (
+            "microsoft_teams.action_completed"
+        )
+        assert processor.emit_topic.await_args.kwargs["data"]["execution_id"] == str(
+            execution_id
+        )
+        processor.queue_event_deliveries.assert_awaited_once()
         await emit_teams_action_completion(db, execution_id)
-        emit.assert_awaited_once()
+        processor.emit_topic.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -74,14 +82,17 @@ async def test_no_subscriber_attempt_stays_retryable() -> None:
     )
     db = AsyncMock()
     db.get.return_value = row
+    processor = SimpleNamespace(
+        emit_topic=AsyncMock(side_effect=[(uuid4(), 0), (uuid4(), 1)]),
+        queue_event_deliveries=AsyncMock(),
+    )
     with (
-        patch("src.services.events.emit_event", new_callable=AsyncMock) as emit,
+        patch("src.services.events.processor.EventProcessor", return_value=processor),
         patch(
             "src.services.teams_action_completion._lock_execution",
             new_callable=AsyncMock,
         ),
     ):
-        emit.side_effect = [(uuid4(), 0), (uuid4(), 1)]
         assert not await emit_teams_action_completion(db, execution_id)
         binding = row.execution_context["teams_action_completion"]
         assert binding["last_attempt_at"]
@@ -89,7 +100,40 @@ async def test_no_subscriber_attempt_stays_retryable() -> None:
         assert await emit_teams_action_completion(db, execution_id)
         assert row.execution_context["teams_action_completion"]["emitted_at"]
         assert not await emit_teams_action_completion(db, execution_id)
-        assert emit.await_count == 2
+        assert processor.emit_topic.await_count == 2
+        processor.queue_event_deliveries.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_event_is_not_queued_when_marker_commit_fails() -> None:
+    execution_id = uuid4()
+    db = AsyncMock()
+    db.get.return_value = SimpleNamespace(
+        status=ExecutionStatus.SUCCESS,
+        organization_id=uuid4(),
+        execution_context={
+            "teams_action_completion": {
+                "run_id": str(uuid4()),
+                "webhook_event_id": str(uuid4()),
+            }
+        },
+    )
+    db.commit.side_effect = RuntimeError("commit failed")
+    processor = SimpleNamespace(
+        emit_topic=AsyncMock(return_value=(uuid4(), 1)),
+        queue_event_deliveries=AsyncMock(),
+    )
+    with (
+        patch("src.services.events.processor.EventProcessor", return_value=processor),
+        patch(
+            "src.services.teams_action_completion._lock_execution",
+            new_callable=AsyncMock,
+        ),
+        pytest.raises(RuntimeError, match="commit failed"),
+    ):
+        await emit_teams_action_completion(db, execution_id)
+    processor.emit_topic.assert_awaited_once()
+    processor.queue_event_deliveries.assert_not_awaited()
 
 
 @pytest.mark.asyncio
