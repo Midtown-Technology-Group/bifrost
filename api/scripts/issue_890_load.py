@@ -85,6 +85,45 @@ def attempt_intervals(attempt: dict) -> dict[str, float]:
     }
 
 
+def summarize_fresh_pools(payload: dict, now: datetime) -> dict:
+    """Aggregate only live worker heartbeats; never export worker identities."""
+    pools = []
+    for pool in payload["pools"]:
+        try:
+            heartbeat = datetime.fromisoformat(pool["last_heartbeat"])
+            age = (now - heartbeat).total_seconds()
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if heartbeat.tzinfo is not None and 0 <= age <= 30:
+            pools.append(pool)
+    admission = [pool.get("admission") or {} for pool in pools]
+    rejections: dict[str, int] = {}
+    for item in admission:
+        for reason, count in item.get("rejections", {}).items():
+            rejections[reason] = rejections.get(reason, 0) + int(count)
+    capacities = [pool.get("configured_capacity") for pool in pools]
+    return {
+        "fresh_pools": len(pools),
+        "stale_pools": len(payload["pools"]) - len(pools),
+        "capacity": sum(capacities)
+        if pools and all(value is not None for value in capacities)
+        else None,
+        "busy": sum(pool["busy_count"] for pool in pools) if pools else None,
+        "available": sum(pool["available_slots"] for pool in pools)
+        if pools and all(pool.get("available_slots") is not None for pool in pools)
+        else None,
+        "admission_attempts": sum(item.get("attempts", 0) for item in admission),
+        "admission_successes": sum(item.get("successes", 0) for item in admission),
+        "admission_wait_seconds_total": round(
+            sum(item.get("wait_seconds_total", 0) for item in admission), 4
+        ),
+        "admission_wait_seconds_max": max(
+            (item.get("wait_seconds_max", 0) for item in admission), default=0
+        ),
+        "admission_rejections": rejections,
+    }
+
+
 def prepare(url: str, scenario: str) -> tuple[dict[str, str], dict[str, str], str, str]:
     from tests.e2e.conftest import write_and_register
     from tests.e2e.fixtures.setup import _register_and_authenticate_user
@@ -195,18 +234,11 @@ async def _sample_pool(
 ) -> None:
     while not stop.is_set():
         try:
-            response = await client.get("/api/platform/workers/stats", headers=headers)
+            response = await client.get("/api/platform/workers", headers=headers)
             response.raise_for_status()
-            stats = response.json()
+            now = datetime.now(UTC)
             samples.append(
-                {
-                    "time": datetime.now(UTC).isoformat(),
-                    "capacity": stats["total_configured_capacity"],
-                    "busy": stats["total_busy"],
-                    "available": stats["total_available_slots"],
-                    "saturated_workers": stats["saturated_workers"],
-                    "admission_rejections": stats["admission_rejections"],
-                }
+                {"time": now.isoformat(), **summarize_fresh_pools(response.json(), now)}
             )
         except (httpx.HTTPError, KeyError, ValueError) as exc:
             samples.append({"error": type(exc).__name__})
