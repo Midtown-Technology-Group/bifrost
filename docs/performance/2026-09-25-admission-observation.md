@@ -13,4 +13,6 @@ On `bifrost-platform-test-debian13-01`, commit `4a77e73d7e52a0d55221225896b94ed5
 
 Worker admission attempts and accumulated wait increased during the sweep, with no slot-timeout or memory-pressure rejections. The c64 latency increase was mainly in publish-to-claim, while throughput rose only modestly; the recovery bracket returned to low latency with no correctness loss. Heartbeat counters update less often than the one-second sampler, so per-level counter differences are approximate and should not be interpreted as exact operation counts. This result reinforces the need to attribute queue and admission time before selecting a language port.
 
+During the c64 window, sampled container CPU counters imply about 1.73 cores for the worker, 0.33 for the API, 0.22 for PostgreSQL, and 0.03 for the scheduler. Peak sampled memory was 356, 347, 269, and 162 MiB respectively. The API replica was idle at about 0.02 core. These are container samples on a shared host, not process RSS or production B3 measurements. Worker CPU did not fill the four pinned cores, so this run does not establish Python CPU saturation; the growing queue wait needs further attribution.
+
 Raw output: [load and heartbeat samples](results/2026-09-25-admission-observation-4-16-64-4.json) and [per-role resource samples](results/2026-09-25-admission-observation-resources.jsonl).
