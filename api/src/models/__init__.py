@@ -70,7 +70,6 @@ if TYPE_CHECKING:
         MFAMethodStatus,
     )
     from src.models.contracts import (  # noqa: F401
-        RetryPolicy,
         DataProviderInputMode,
         IntegrationType,
         generate_entity_id,

@@ -2,7 +2,6 @@
 
 
 CONTRACT_ALL: tuple[str, ...] = (
-    'RetryPolicy',
     'DataProviderInputMode',
     'IntegrationType',
     'generate_entity_id',
@@ -584,7 +583,6 @@ ENUM_EXPORTS: tuple[str, ...] = (
 )
 
 CONTRACT_EXPORTS: dict[str, tuple[str, str]] = {
-    'RetryPolicy': ('src.models.contracts.base', 'RetryPolicy'),
     'DataProviderInputMode': ('src.models.contracts.base', 'DataProviderInputMode'),
     'IntegrationType': ('src.models.contracts.base', 'IntegrationType'),
     'generate_entity_id': ('src.models.contracts.base', 'generate_entity_id'),
