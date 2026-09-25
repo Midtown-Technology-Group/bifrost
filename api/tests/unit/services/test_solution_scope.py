@@ -165,7 +165,8 @@ async def test_file_read_tiers_rejects_workspace_inside_solution_context() -> No
 
 
 @pytest.mark.asyncio
-async def test_resolve_solution_table_by_name_returns_own_solution_table_first() -> None:
+async def test_resolve_solution_table_by_name_returns_own_solution_table_first(monkeypatch) -> None:
+    monkeypatch.setattr(solution_scope, "check_inbound_allowed", AsyncMock(return_value=True))
     solution_id = uuid4()
     org_id = uuid4()
     table = SimpleNamespace(id=uuid4(), name="customers")
@@ -189,6 +190,7 @@ async def test_resolve_solution_table_by_name_returns_own_solution_table_first()
 async def test_resolve_solution_table_by_name_closed_solution_does_not_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(solution_scope, "check_inbound_allowed", AsyncMock(return_value=True))
     solution_id = uuid4()
     db = _FakeDb(
         get_values=[SimpleNamespace(status="active", allow_outbound_access=False)],
@@ -215,6 +217,7 @@ async def test_resolve_solution_table_by_name_closed_solution_does_not_fallback(
 async def test_resolve_solution_table_by_name_open_solution_uses_repo_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(solution_scope, "check_inbound_allowed", AsyncMock(return_value=True))
     org_id = uuid4()
     user_id = uuid4()
     fallback = SimpleNamespace(id=uuid4(), name="customers")
