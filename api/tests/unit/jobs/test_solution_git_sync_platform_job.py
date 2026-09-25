@@ -33,6 +33,7 @@ def test_solution_git_sync_definition_has_durable_per_install_policy() -> None:
 async def test_solution_git_sync_runs_the_existing_single_writer_and_clears_update_badge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    accountability_org = uuid4()
     solution = Solution(
         id=uuid4(),
         slug="managed-git",
@@ -57,11 +58,19 @@ async def test_solution_git_sync_runs_the_existing_single_writer_and_clears_upda
     )
 
     result = await run_solution_git_sync(
-        context, SolutionGitSyncPayload(solution_id=solution.id)
+        context,
+        SolutionGitSyncPayload(
+            solution_id=solution.id,
+            accountability_organization_id=accountability_org,
+        ),
     )
 
     assert result == {"solution_id": str(solution.id), "status": "synced"}
-    sync.assert_awaited_once_with(db, solution)
+    sync.assert_awaited_once_with(
+        db,
+        solution,
+        accountability_organization_id=accountability_org,
+    )
     assert solution.update_available_version is None
     db.commit.assert_awaited_once()
     assert context.report.await_args_list[-1].kwargs == {"percent": 100}

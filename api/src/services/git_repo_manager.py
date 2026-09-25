@@ -328,14 +328,14 @@ class GitRepoManager:
                     if not path.is_file():
                         continue
 
-                    async def chunks() -> AsyncIterator[bytes]:
-                        async with await open_file(path, "rb") as file:
+                    async def chunks(file_path: Path) -> AsyncIterator[bytes]:
+                        async with await open_file(file_path, "rb") as file:
                             while chunk := await file.read(TREE_HASH_CHUNK_SIZE):
                                 yield chunk
 
                     await storage.put_object_from_chunks(
                         prefix + path.relative_to(source).as_posix(),
-                        chunks(),
+                        chunks(path),
                     )
             return checkpoint_id
         uri = self._checkpoint_uri(checkpoint_id)

@@ -115,7 +115,6 @@ from src.jobs.platform.solution_git_sync import (
     SOLUTION_GIT_SYNC_DEFINITION,
     SolutionGitSyncPayload,
 )
-from src.models.contracts.platform_jobs import PlatformJobAccepted, PlatformJobStatus
 from src.jobs.platform.workspace_bundle_import import (
     WORKSPACE_BUNDLE_IMPORT_DEFINITION,
     WorkspaceBundleImportPayload,
