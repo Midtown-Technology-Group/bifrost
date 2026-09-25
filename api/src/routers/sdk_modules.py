@@ -28,7 +28,7 @@ from weakref import WeakValueDictionary
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from src.core.auth import get_current_superuser
+from src.core.auth import get_current_active_user, get_current_superuser
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.log_safety import log_safe
 from src.core.module_cache import (
@@ -54,6 +54,20 @@ _RESOLUTION_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary(
 class _EngineModuleScope:
     solution_id: str | None
     global_repo_access: bool
+
+
+async def _module_reader(
+    user: Annotated[UserPrincipal, Depends(get_current_active_user)],
+) -> UserPrincipal:
+    """Admit platform admins and signed service attempts to scoped source reads."""
+    if user.is_superuser or (
+        user.user_id == SYSTEM_USER_UUID
+        and user.service_id is not None
+        and user.service_attempt_id is not None
+        and str(user.engine_execution_id) == user.service_attempt_id
+    ):
+        return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Module access denied")
 
 
 def _engine_module_scope(
@@ -252,7 +266,7 @@ async def _resolve_module_name(
 async def fetch_module(
     path: str,
     request: Request,
-    user: Annotated[UserPrincipal, Depends(get_current_superuser)],
+    user: Annotated[UserPrincipal, Depends(_module_reader)],
 ) -> JSONResponse:
     """
     Fetch a workspace module by path.
@@ -287,7 +301,7 @@ async def fetch_module(
 @router.get("/modules-resolve")
 async def resolve_module(
     request: Request,
-    user: Annotated[UserPrincipal, Depends(get_current_superuser)],
+    user: Annotated[UserPrincipal, Depends(_module_reader)],
     name: str,
     solution_id: str | None = None,
     global_repo_access: bool = False,

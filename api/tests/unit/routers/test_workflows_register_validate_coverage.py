@@ -461,6 +461,10 @@ async def test_register_workflow_validates_and_preserves_promoted_uuid() -> None
             return_value=indexer,
         ),
         patch("src.services.mcp_server.server.refresh_workflow_tools", AsyncMock()),
+        patch(
+            "src.services.service_lifecycle.sync_definition_for_registration",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await workflows.register_workflow(
             RegisterWorkflowRequest(
@@ -519,6 +523,10 @@ async def test_register_workflow_reactivation_preserves_omitted_retry_policy() -
             new=AsyncMock(),
         ),
         patch("src.services.mcp_server.server.refresh_workflow_tools", AsyncMock()),
+        patch(
+            "src.services.service_lifecycle.sync_definition_for_registration",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await workflows.register_workflow(
             RegisterWorkflowRequest(path="workflows/run.py", function_name="run"),

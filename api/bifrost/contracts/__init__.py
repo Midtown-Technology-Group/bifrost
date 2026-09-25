@@ -51,6 +51,7 @@ from bifrost.contracts.integrations import (
     IntegrationUpdate,
 )
 from bifrost.contracts.organizations import OrganizationCreate, OrganizationUpdate
+from bifrost.contracts.services import ServicePolicyUpdate
 from bifrost.contracts.solutions import SolutionCandidateDeployEnqueued
 from bifrost.contracts.tables import TableCreate, TableUpdate
 from bifrost.contracts.users import RoleCreate, RoleUpdate
@@ -109,6 +110,8 @@ __all__ = [
     # Tables
     "TableCreate",
     "TableUpdate",
+    # Services
+    "ServicePolicyUpdate",
     # Events
     "EventSourceCreate",
     "EventSourceUpdate",

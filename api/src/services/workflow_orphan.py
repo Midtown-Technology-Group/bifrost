@@ -337,7 +337,7 @@ class WorkflowOrphanService:
                 if node.name == function_name:
                     for decorator in node.decorator_list:
                         dec_name = self._get_decorator_name(decorator)
-                        if dec_name in ("workflow", "tool", "data_provider"):
+                        if dec_name in ("workflow", "tool", "data_provider", "service"):
                             return dec_name
         return None
 
@@ -913,10 +913,10 @@ class WorkflowOrphanService:
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name == function_name:
-                    # Check for workflow/tool/data_provider decorator
+                    # Check for workflow/tool/data_provider/service decorator
                     for decorator in node.decorator_list:
                         dec_name = self._get_decorator_name(decorator)
-                        if dec_name in ("workflow", "tool", "data_provider"):
+                        if dec_name in ("workflow", "tool", "data_provider", "service"):
                             return True
 
         return False
