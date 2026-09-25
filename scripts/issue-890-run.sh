@@ -14,6 +14,15 @@ export BIFROST_LAB_RENDERER_IMAGE="${BIFROST_LAB_RENDERER_IMAGE:-ghcr.io/mtg-tho
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 export COMPOSE_PROJECT_NAME
 export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+sampler_pid=""
+cleanup() {
+    if [[ -n "$sampler_pid" ]]; then
+        kill "$sampler_pid" 2>/dev/null || true
+        wait "$sampler_pid" 2>/dev/null || true
+    fi
+    docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile client rm -sf client renderer
+}
+trap cleanup EXIT
 
 ./test.sh stack up
 ./test.sh stack reset
@@ -24,7 +33,6 @@ sleep 10
 sample_file="$LOG_DIR/issue-890-resources-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
 python3 api/scripts/issue_890_sample.py --project "$COMPOSE_PROJECT_NAME" > "$sample_file" &
 sampler_pid=$!
-trap 'kill "$sampler_pid" 2>/dev/null || true; wait "$sampler_pid" 2>/dev/null || true' EXIT
 echo "Resource samples: $sample_file"
 docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile test run --rm --no-deps \
     -e "BIFROST_BENCH_SOURCE_SHA=$(git rev-parse HEAD)" \
