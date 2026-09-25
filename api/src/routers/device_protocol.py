@@ -128,7 +128,11 @@ async def heartbeat_route(
         return agent
     now = await _touch(db, agent)
     owned = await renew_from_heartbeat(
-        db, device_id=agent.id, agent_session_id=body.agent_session_id, now=now
+        db,
+        device_id=agent.id,
+        agent_session_id=body.agent_session_id,
+        agent_version=body.agent_version,
+        now=now,
     )
     pending = (
         await db.execute(

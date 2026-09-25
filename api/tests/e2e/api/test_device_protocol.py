@@ -302,3 +302,89 @@ async def test_heartbeat_reports_cooperative_cancel(
     )
     assert hb.status_code == 200, hb.text
     assert hb.json()["cancel_requested"] is True
+
+
+async def test_heartbeat_persists_agent_version(
+    e2e_client, platform_admin, org1, db_session
+):
+    """Additive observability field (epic #818): the heartbeat may report
+    the agent version; the registry stores it and keeps it when a later
+    heartbeat omits the field."""
+    device_id, key = _enroll(
+        e2e_client, platform_admin.headers, org1["id"], "proto-agent-version"
+    )
+    headers = _key_headers(key)
+    session_id = str(uuid4())
+
+    # Freshly enrolled device has no recorded version.
+    fresh = e2e_client.get(
+        f"/api/devices/{device_id}", headers=platform_admin.headers
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["agent_version"] is None
+
+    # (a) Heartbeat WITH agent_version -> visible on GET /api/devices/{id}.
+    # Control characters are stripped before storage.
+    hb = e2e_client.post(
+        "/api/device/heartbeat",
+        headers=headers,
+        json={
+            "agent_session_id": session_id,
+            "agent_version": " 1.2.3\x07 ",
+        },
+    )
+    assert hb.status_code == 200, hb.text
+    got = e2e_client.get(
+        f"/api/devices/{device_id}", headers=platform_admin.headers
+    )
+    assert got.status_code == 200, got.text
+    assert got.json()["agent_version"] == "1.2.3"
+
+    # (b) Subsequent heartbeat WITHOUT the field -> stored value unchanged.
+    hb2 = e2e_client.post(
+        "/api/device/heartbeat",
+        headers=headers,
+        json={"agent_session_id": session_id},
+    )
+    assert hb2.status_code == 200, hb2.text
+    got2 = e2e_client.get(
+        f"/api/devices/{device_id}", headers=platform_admin.headers
+    )
+    assert got2.status_code == 200, got2.text
+    assert got2.json()["agent_version"] == "1.2.3"
+
+    # An explicitly empty value also leaves the stored column alone.
+    empty = e2e_client.post(
+        "/api/device/heartbeat",
+        headers=headers,
+        json={"agent_session_id": session_id, "agent_version": "   "},
+    )
+    assert empty.status_code == 200, empty.text
+    got3 = e2e_client.get(
+        f"/api/devices/{device_id}", headers=platform_admin.headers
+    )
+    assert got3.json()["agent_version"] == "1.2.3"
+
+    # Non-empty overwrites the previous value.
+    update = e2e_client.post(
+        "/api/device/heartbeat",
+        headers=headers,
+        json={"agent_session_id": session_id, "agent_version": "2.0.0"},
+    )
+    assert update.status_code == 200, update.text
+    got4 = e2e_client.get(
+        f"/api/devices/{device_id}", headers=platform_admin.headers
+    )
+    assert got4.json()["agent_version"] == "2.0.0"
+
+    # (c) More than 64 characters -> pydantic 422 (field never persists).
+    too_long = e2e_client.post(
+        "/api/device/heartbeat",
+        headers=headers,
+        json={"agent_session_id": session_id, "agent_version": "9" * 65},
+    )
+    assert too_long.status_code == 422, too_long.text
+    got5 = e2e_client.get(
+        f"/api/devices/{device_id}", headers=platform_admin.headers
+    )
+    assert got5.json()["agent_version"] == "2.0.0"

@@ -5,17 +5,35 @@ docs/architecture/device-control-plane/*.schema.json). User-side job
 contracts (create/list) land with #836 in this same module.
 """
 
+import re
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# ASCII control chars (C0 + DEL): never valid inside a version string.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class DeviceHeartbeatRequest(BaseModel):
-    """POST /api/device/heartbeat body (M0: session-gated activity renewal)."""
+    """POST /api/device/heartbeat body (M0: session-gated activity renewal).
+
+    `agent_version` is an additive observability field (epic #818): when
+    absent or empty the stored `devices.agent_version` is left untouched.
+    """
 
     agent_session_id: UUID
+    agent_version: str | None = Field(default=None, max_length=64)
+
+    @field_validator("agent_version", mode="before")
+    @classmethod
+    def _strip_control_chars(cls, value: object) -> object:
+        """Strip control characters; empty/whitespace-only means 'absent'."""
+        if not isinstance(value, str):
+            return value  # let pydantic produce the type error
+        cleaned = _CONTROL_CHARS_RE.sub("", value).strip()
+        return cleaned or None
 
 
 class DeviceHeartbeatResponse(BaseModel):

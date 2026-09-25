@@ -441,13 +441,24 @@ async def renew_from_heartbeat(
     *,
     device_id: UUID,
     agent_session_id: UUID,
+    agent_version: str | None = None,
     now: datetime | None = None,
 ) -> DeviceJob | None:
     """M0 heartbeat contract: renew activity only for the job this agent
     session owns. Returns the active job (so the route can report
     `cancel_requested`) or None when there is nothing to renew.
+
+    Additive observability (epic #818): a non-empty ``agent_version``
+    overwrites ``devices.agent_version``; absent/empty never touches it.
     """
     current = now if now is not None else datetime.now(timezone.utc)
+    if agent_version:
+        # Persist before the job query so the value survives the
+        # no-active-job early return below.
+        device = await db.get(Device, device_id)
+        if device is not None and device.agent_version != agent_version:
+            device.agent_version = agent_version
+            await db.commit()
     result = await db.execute(
         select(DeviceJob)
         .where(
