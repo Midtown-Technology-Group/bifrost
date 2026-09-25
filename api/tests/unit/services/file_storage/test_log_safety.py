@@ -41,10 +41,16 @@ async def test_replacement_function_name_is_log_safe() -> None:
 @pytest.mark.asyncio
 async def test_deactivated_file_path_is_log_safe() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(rowcount=1)
+    db.execute.side_effect = [
+        SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [])),
+        SimpleNamespace(rowcount=1),
+    ]
     service = DeactivationProtectionService(db)
 
-    with patch("src.services.file_storage.deactivation.logger.info") as info:
+    with patch("src.services.file_storage.deactivation.logger.info") as info, patch(
+        "src.services.service_lifecycle.park_definitions_for_workflows",
+        new_callable=AsyncMock,
+    ):
         await service.deactivate_removed_workflows("workflow\nforged.py", set())
 
     _assert_single_line(info.call_args.args[0])

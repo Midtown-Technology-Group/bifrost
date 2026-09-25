@@ -83,6 +83,11 @@ class UserPrincipal:
     token_exp: int | None = None
     # Signed caller install on short-lived engine tokens; None is _repo/global.
     engine_solution_id: str | None = None
+    # Service identity claims (mint_service_token). Present only on
+    # renewable service-scoped credentials: the definition and attempt the
+    # token was minted for. See is_service_principal (solution_scope).
+    service_id: str | None = None
+    service_attempt_id: str | None = None
 
     @property
     def is_platform_admin(self) -> bool:

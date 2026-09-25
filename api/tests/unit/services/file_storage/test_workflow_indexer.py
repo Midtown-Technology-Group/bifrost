@@ -318,6 +318,7 @@ async def test_index_python_file_initializes_missing_fields_without_overwriting_
         time_saved=12,
         value=50,
         execution_mode="async",
+        type="workflow",
     )
     refreshed = SimpleNamespace(**vars(existing))
     refreshed.name = "Existing Ticket Sync"
@@ -413,6 +414,7 @@ def sync_tickets(
         time_saved=12,
         value=50,
         execution_mode="async",
+        type="workflow",
     )
 
 
@@ -432,6 +434,7 @@ async def test_index_python_file_preserves_curated_fields_and_marks_tools() -> N
         time_saved=0,
         value=0,
         execution_mode="sync",
+        type="workflow",
     )
 
     db = AsyncMock()
@@ -522,6 +525,7 @@ async def test_index_python_file_logs_cache_failures_without_blocking(
         time_saved=12,
         value=50,
         execution_mode="async",
+        type="workflow",
     )
 
     db = AsyncMock()

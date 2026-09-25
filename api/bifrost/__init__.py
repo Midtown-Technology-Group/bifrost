@@ -125,6 +125,7 @@ from .models import (
 
 # ExecutionContext lives in bifrost/ — available in both CLI and platform
 from ._execution_context import ExecutionContext
+from ._service_runtime import attach_service_runtime as _attach_service_runtime
 
 # Workspace promotion source declarations. Platform execution uses the shared
 # runtime classes so decorator validation and isinstance checks agree; the
@@ -136,10 +137,10 @@ except ImportError:
 
 # Import decorators - try platform module first, fall back to local SDK version
 try:
-    from src.sdk.decorators import workflow, data_provider, tool
+    from src.sdk.decorators import workflow, data_provider, tool, service
 except ImportError:
     # CLI/standalone mode - use local decorators
-    from .decorators import workflow, data_provider, tool
+    from .decorators import workflow, data_provider, tool, service
     _ = WorkflowMetadata  # noqa: F401 - re-exported from .models above
 
 # Import context proxy for accessing ExecutionContext without parameter
@@ -295,6 +296,7 @@ __all__ = [
     'workflow',
     'data_provider',
     'tool',
+    'service',
     # Context
     'context',
     'ExecutionContext',
@@ -328,3 +330,10 @@ def _compute_version() -> str:
 
 
 __version__ = _compute_version()
+
+# Bind the supervision namespace (service.ready/is_stopping/...) to
+# whichever `service` object the decorator import above selected, so the
+# namespace exists immediately after `import bifrost` in every mode
+# (platform and CLI/standalone). Kept down here with the other late
+# statements so module-level imports above stay E402-clean.
+_attach_service_runtime(service)
