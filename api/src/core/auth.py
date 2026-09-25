@@ -7,24 +7,67 @@ Supports JWT bearer token authentication with user context injection.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated
+from datetime import timedelta
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
-from src.core.security import decode_token
+from src.core.security import (
+    NO_TIMEOUT_TOKEN_SECONDS,
+    create_access_token,
+    decode_renewable_engine_token,
+    decode_token,
+)
+from src.models.orm.executions import WorkflowExecutionAttempt
 from shared.role_cache import get_user_roles
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 # HTTP Bearer token scheme
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def _active_engine_attempt(
+    db: AsyncSession, execution_id: UUID, attempt_token: UUID
+) -> bool:
+    active_attempt_id = await db.scalar(
+        select(WorkflowExecutionAttempt.id).where(
+            WorkflowExecutionAttempt.execution_id == execution_id,
+            WorkflowExecutionAttempt.claim_token == attempt_token,
+            WorkflowExecutionAttempt.completed_at.is_(None),
+            WorkflowExecutionAttempt.status.in_({"claimed", "running"}),
+        )
+    )
+    return active_attempt_id is not None
+
+
+async def renew_engine_access_token(db: AsyncSession, token: str) -> str | None:
+    """Renew a signed no-timeout token only while its attempt is active."""
+    payload = decode_renewable_engine_token(token)
+    if payload is None:
+        return None
+    try:
+        execution_id = UUID(str(payload["engine_execution_id"]))
+        attempt_token = UUID(str(payload["engine_attempt_token"]))
+    except (KeyError, ValueError):
+        return None
+    if not await _active_engine_attempt(db, execution_id, attempt_token):
+        return None
+    claims = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"exp", "type", "iss", "aud"}
+    }
+    return create_access_token(
+        claims,
+        expires_delta=timedelta(seconds=NO_TIMEOUT_TOKEN_SECONDS + 300),
+    )
 
 
 def _parse_delegated_user_id(payload: dict, token_user_id: UUID) -> tuple[UUID | None, bool]:
@@ -369,24 +412,14 @@ async def get_execution_context(
         ExecutionContext with user and organization scope
     """
     if user.is_engine_token and user.engine_execution_id is not None:
-        from sqlalchemy import select
-
-        from src.models.orm.executions import WorkflowExecutionAttempt
-
         if user.engine_attempt_token is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Execution attempt lease is missing or revoked",
             )
-        active_attempt_id = await db.scalar(
-            select(WorkflowExecutionAttempt.id).where(
-                WorkflowExecutionAttempt.execution_id == user.engine_execution_id,
-                WorkflowExecutionAttempt.claim_token == user.engine_attempt_token,
-                WorkflowExecutionAttempt.completed_at.is_(None),
-                WorkflowExecutionAttempt.status.in_({"claimed", "running"}),
-            )
-        )
-        if active_attempt_id is None:
+        if not await _active_engine_attempt(
+            db, user.engine_execution_id, user.engine_attempt_token
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Execution attempt lease is missing or revoked",
