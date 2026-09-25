@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { waitFor } from "@testing-library/react";
 import { renderWithProviders, screen } from "@/test-utils";
 import { makeAttempt, makeService } from "@/components/services/serviceTestUtils";
