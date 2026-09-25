@@ -2,17 +2,27 @@
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from src.services import teams_chat_bridge as bridge
+from src.services import teams_receipts
 
 EVENT_ID = UUID("92f93bcd-03c3-4948-8c0d-f309edbc87f8")
 ORG_ID = UUID("00000000-0000-0000-0000-000000000002")
 USER_ID = UUID("e7f3cdad-1c8b-45d8-a813-7e33bd9590f9")
 AGENT_ID = UUID("83fe1e44-7c4e-43be-aaab-7684ebc23810")
+
+
+@pytest.fixture(autouse=True)
+def canonical_event(monkeypatch):
+    monkeypatch.setattr(
+        teams_receipts,
+        "resolve_canonical_teams_event_id",
+        AsyncMock(side_effect=lambda _db, event_id: event_id),
+    )
 
 
 def _event_row(*, adapter="microsoft_bot_framework", sender_id="aad-user"):
@@ -147,7 +157,85 @@ async def test_linked_sender_runs_chat_with_their_own_principal(monkeypatch):
     assert request.agent_id == AGENT_ID
     assert request.content == "ping"
     assert create.await_args.kwargs["channel"] == "teams"
+    assert create.await_args.kwargs["run_metadata"] == {"teams_event_id": str(EVENT_ID)}
     assert result["run_id"] == str(UUID(int=3))
+
+
+@pytest.mark.asyncio
+async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
+    from src.services import events
+
+    emit = AsyncMock(return_value=(UUID(int=4), 0))
+    monkeypatch.setattr(events, "emit_event", emit)
+    run = SimpleNamespace(
+        id=UUID(int=3),
+        status="completed",
+        org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+    )
+    await bridge.emit_teams_chat_completion(run)
+    assert emit.await_args.args[0] == "microsoft_teams.chat_run_completed"
+    assert emit.await_args.args[1] == {
+        "run_id": str(run.id),
+        "webhook_event_id": str(EVENT_ID),
+        "organization_id": str(ORG_ID),
+    }
+    emit.reset_mock()
+    run.input = {}
+    await bridge.emit_teams_chat_completion(run)
+    emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_completion_emit_failure_leaves_run_eligible_for_recovery(monkeypatch):
+    from src.services import events
+
+    emit = AsyncMock(side_effect=RuntimeError("topic unavailable"))
+    monkeypatch.setattr(events, "emit_event", emit)
+    run = SimpleNamespace(
+        id=UUID(int=3),
+        status="failed",
+        org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+        run_metadata={},
+    )
+    with pytest.raises(RuntimeError, match="topic unavailable"):
+        await bridge.emit_teams_chat_completion(run)
+    assert "teams_completion_emitted_at" not in run.run_metadata
+
+
+@pytest.mark.asyncio
+async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(monkeypatch):
+    from src.core import database
+    from src.models.enums import EventDeliveryStatus
+    from src.services import events
+
+    run = SimpleNamespace(
+        id=UUID(int=3),
+        status="completed",
+        org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+        run_metadata={},
+    )
+    emit = AsyncMock(return_value=(UUID(int=4), 1))
+    monkeypatch.setattr(events, "emit_event", emit)
+    db = SimpleNamespace(
+        scalars=AsyncMock(return_value=_Result([EventDeliveryStatus.FAILED])),
+        get=AsyncMock(),
+        commit=AsyncMock(),
+    )
+
+    class _Session:
+        async def __aenter__(self):
+            return db
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(database, "get_session_factory", lambda: lambda: _Session())
+    await bridge.emit_teams_chat_completion(run)
+    db.get.assert_not_awaited()
+    assert "teams_completion_emitted_at" not in run.run_metadata
 
 
 @pytest.mark.asyncio
@@ -193,3 +281,76 @@ async def test_conversation_race_rechecks_binding_after_rollback(monkeypatch):
     assert exc.value.status_code == 409
     db.rollback.assert_awaited_once()
     create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retried_event_uses_one_canonical_agent_run_id(monkeypatch):
+    """A retry after receipt commit resumes the original run identity."""
+    retry_id = UUID("43f9c9b2-e38d-480a-a910-7d85242df644")
+    user = SimpleNamespace(
+        id=USER_ID,
+        email="thomas@example.com",
+        name="Thomas",
+        organization_id=ORG_ID,
+        is_active=True,
+        is_superuser=False,
+        is_verified=True,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _Result(_event_row()),
+                _Result([(UUID(int=1), "operator")]),
+                _Result(_event_row()),
+                _Result([(UUID(int=1), "operator")]),
+            ]
+        ),
+        scalar=AsyncMock(
+            side_effect=[
+                SimpleNamespace(id=UUID(int=2)),
+                user,
+                SimpleNamespace(id=UUID(int=2)),
+                user,
+            ]
+        ),
+        scalars=AsyncMock(side_effect=[_Result([ORG_ID]), _Result([ORG_ID])]),
+        get=AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        teams_receipts,
+        "resolve_canonical_teams_event_id",
+        AsyncMock(return_value=EVENT_ID),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "IntegrationsRepository",
+        lambda _db: SimpleNamespace(
+            get_integration_defaults=AsyncMock(return_value={"agent_id": str(AGENT_ID)})
+        ),
+    )
+    monkeypatch.setattr(bridge, "resolve_external_claim", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        bridge, "resolve_provider_org_claim", AsyncMock(return_value=True)
+    )
+    submitted = SimpleNamespace(
+        run_id=UUID(int=3),
+        conversation=SimpleNamespace(id=UUID(int=4)),
+        status="queued",
+        idempotent=True,
+    )
+    create = AsyncMock(return_value=submitted)
+    monkeypatch.setattr(bridge, "create_chat_run", create)
+
+    first = await bridge.submit_teams_chat_event(db, EVENT_ID)
+    retried = await bridge.submit_teams_chat_event(db, retry_id)
+
+    expected_run_id = uuid5(NAMESPACE_URL, f"bifrost-teams-event:{EVENT_ID}")
+    assert [call.args[2].client_run_id for call in create.await_args_list] == [
+        expected_run_id,
+        expected_run_id,
+    ]
+    assert first["run_id"] == retried["run_id"]
+    assert all(
+        call.kwargs["run_metadata"]["teams_event_id"] == str(EVENT_ID)
+        for call in create.await_args_list
+    )
