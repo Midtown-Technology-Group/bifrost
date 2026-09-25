@@ -1054,7 +1054,7 @@ class TestProcessPoolManagerResultHandling:
 
         release_callback.set()
         assert await shutdown_task is None
-        await result_task
+        assert await result_task is None
 
         assert len(results) == 1
         assert handle.result_reported is True
