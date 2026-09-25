@@ -91,6 +91,45 @@ class FakeCommands:
         return subprocess.CompletedProcess(command, 0, "verified\n", "")
 
 
+def test_worker_index_requires_matching_arm64_labels(monkeypatch) -> None:
+    fake = FakeCommands()
+    image = IMAGE.replace("bifrost-api", "bifrost-worker")
+    arm_digest = "sha256:" + "e" * 64
+
+    def index_commands(command, *, text, capture_output, check, shell):
+        command = list(command)
+        if command[:4] == ["docker", "buildx", "imagetools", "inspect"]:
+            if command[-2:] == ["--format", "{{json .Image.Config.Labels}}"] and command[4].endswith(f":candidate-tree-{TREE_SHA}"):
+                return subprocess.CompletedProcess(command, 0, "null", "")
+            if command[-1] == "--raw":
+                entries = [
+                    {"platform": {"os": "linux", "architecture": arch}, "digest": digest}
+                    for arch, digest in (("amd64", DIGEST), ("arm64", arm_digest))
+                ]
+                return subprocess.CompletedProcess(command, 0, json.dumps({"manifests": entries}), "")
+        return fake(command, text=text, capture_output=capture_output, check=check, shell=shell)
+
+    monkeypatch.setattr(candidate_image.subprocess, "run", index_commands)
+    candidate = candidate_image.verify_candidate(
+        image=image, tree_sha=TREE_SHA, version=VERSION, source_sha=SOURCE_SHA
+    )
+    assert candidate.digest == DIGEST
+
+    def missing_arm(command, *, text, capture_output, check, shell):
+        result = index_commands(command, text=text, capture_output=capture_output, check=check, shell=shell)
+        if list(command)[-1] == "--raw":
+            manifest = json.loads(result.stdout)
+            manifest["manifests"].pop()
+            return subprocess.CompletedProcess(command, 0, json.dumps(manifest), "")
+        return result
+
+    monkeypatch.setattr(candidate_image.subprocess, "run", missing_arm)
+    with pytest.raises(candidate_image.CandidateImageError, match="arm64"):
+        candidate_image.verify_candidate(
+            image=image, tree_sha=TREE_SHA, version=VERSION, source_sha=SOURCE_SHA
+        )
+
+
 def test_verify_candidate_binds_tree_source_version_signature(monkeypatch) -> None:
     fake = FakeCommands()
     monkeypatch.setattr(candidate_image.subprocess, "run", fake)
