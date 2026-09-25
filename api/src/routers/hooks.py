@@ -11,12 +11,11 @@ Security is handled by:
 
 import json
 import logging
-from datetime import datetime, timezone
-
-from sqlalchemy import update
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import update
 
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
@@ -24,13 +23,13 @@ from src.core.rate_limit import RateLimiter
 from src.models.enums import EventDeliveryStatus, EventStatus
 from src.models.orm import Event, EventDelivery
 from src.services.events.processor import EventProcessor, resolve_webhook_source
-from src.services.teams_receipts import (
-    finish_rejected_teams_receipt,
-    send_fast_teams_receipt,
-)
 from src.services.teams_chat_bridge import (
     submit_teams_chat_event,
     validate_teams_chat_event,
+)
+from src.services.teams_receipts import (
+    finish_rejected_teams_receipt,
+    send_fast_teams_receipt,
 )
 from src.services.webhooks.protocol import (
     Deliver,
@@ -177,7 +176,7 @@ async def receive_webhook(
     try:
         result = await processor.process_webhook(event_source, webhook_source, webhook_request)
     except Exception as e:
-        logger.error(f"Error processing webhook: {log_safe(e)}", exc_info=True)
+        logger.error("Error processing webhook: %s", log_safe(e), exc_info=True)  # noqa: G201
         # Return 500 but don't expose internal error details
         return Response(
             content="Internal server error",
@@ -238,7 +237,7 @@ async def receive_webhook(
                         await submit_teams_chat_event(db, result.event_id)
                         await db.commit()
                         direct_handled = True
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - preserve legacy queue fallback
                 logger.warning(
                     "Teams direct ingress unavailable for event %s: %s",
                     result.event_id, type(exc).__name__,
@@ -271,7 +270,7 @@ async def receive_webhook(
                                     db, result.event_id, webhook_source,
                                     message=guidance, sent_status="guidance",
                                 )
-                            except Exception as guide_exc:
+                            except Exception as guide_exc:  # noqa: BLE001 - best-effort Teams reply
                                 logger.warning(
                                     "Teams guidance unavailable for event %s: %s",
                                     result.event_id, type(guide_exc).__name__,
@@ -288,7 +287,7 @@ async def receive_webhook(
                                 event.data = {**event.data, "teams_direct_enqueued": True}
                                 await db.commit()
                                 skip_reason = "teams_direct_rejected"
-                        except Exception as update_exc:
+                        except Exception as update_exc:  # noqa: BLE001 - preserve legacy queue fallback
                             logger.warning(
                                 "Teams rejection update unavailable for event %s: %s",
                                 result.event_id, type(update_exc).__name__,
@@ -306,14 +305,14 @@ async def receive_webhook(
                         .values(
                             status=EventDeliveryStatus.SKIPPED,
                             error_message=skip_reason,
-                            completed_at=datetime.now(timezone.utc),
+                            completed_at=datetime.now(UTC),
                         )
                     )
                     event = await db.get(Event, result.event_id)
                     if event is not None:
                         event.status = EventStatus.COMPLETED
                     await db.commit()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - duplicate execution is worse than audit failure
                     logger.error(
                         "Teams legacy delivery suppression failed for event %s: %s",
                         result.event_id, type(exc).__name__,
@@ -338,7 +337,7 @@ async def receive_webhook(
                     },
                 )
         except Exception as e:
-            logger.error(f"Error queueing deliveries: {log_safe(e)}", exc_info=True)
+            logger.error("Error queueing deliveries: %s", log_safe(e), exc_info=True)  # noqa: G201
             # Event was recorded, just couldn't queue - don't fail the webhook
 
         # Return 202 Accepted

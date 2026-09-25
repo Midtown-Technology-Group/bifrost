@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
-
 from src.services import teams_receipts as receipts
 
 EVENT_ID = UUID("d43b6040-94af-4e54-a60c-f454e2fb4283")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote, urlparse
 from uuid import UUID
 
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm import Event, WebhookSource
+from src.models.orm.operation_receipts import OperationReceipt
 from src.repositories.integrations import IntegrationsRepository
 from src.services.operation_receipts import (
     OperationReceiptDisposition,
@@ -21,7 +22,6 @@ from src.services.operation_receipts import (
     complete_operation_receipt_success,
     record_operation_receipt_handle,
 )
-from src.models.orm.operation_receipts import OperationReceipt
 
 logger = logging.getLogger(__name__)
 _NAMESPACE = "teams.ingress.receipt"
@@ -192,7 +192,7 @@ async def send_fast_teams_receipt(
             inbound_activity_id=receipt["inbound_activity_id"],
             message=message,
         )
-        receipt["sent_at"] = datetime.now(timezone.utc).isoformat()
+        receipt["sent_at"] = datetime.now(UTC).isoformat()
         receipt["status"] = sent_status if reply_id else "accepted_unaddressable"
         if reply_id:
             receipt["reply_activity_id"] = reply_id
@@ -200,7 +200,7 @@ async def send_fast_teams_receipt(
             claim.receipt_id, claim.owner_token,
             {"canonical_event_id": str(event_id), "reply_activity_id": reply_id},
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - receipt failure cannot reject an accepted webhook
         # Connector accepts can be ambiguous after a timeout; at-most-once avoids
         # an accidental second card. Completion may send its own final reply.
         logger.warning("Teams fast receipt failed event=%s error=%s", event_id, type(exc).__name__)
@@ -238,7 +238,7 @@ async def finish_rejected_teams_receipt(
             update_activity_id=receipt["reply_activity_id"],
             message="I couldn't start that request. Check your Bifrost access or bot setup.",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - failed card update falls back to legacy reply
         logger.warning("Teams rejection card update failed event=%s error=%s", event_id, type(exc).__name__)
         return False
     event.data = {

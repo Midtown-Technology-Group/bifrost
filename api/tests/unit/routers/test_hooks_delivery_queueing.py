@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-
 from src.routers.hooks import receive_webhook
 from src.services.webhooks.protocol import Deliver
 
