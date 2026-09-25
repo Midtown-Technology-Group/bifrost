@@ -543,10 +543,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             await session.commit()
         durable_ms = (time.perf_counter() - completion_started) * 1000
-        await self._run_derived_step(
-            "teams-action-completion",
-            lambda: self._emit_teams_action_completion(execution_id),
-        )
 
         # Wake sync callers as soon as their result and buffered SDK writes are
         # durably committed.  Everything below is terminal-event fan-out or
@@ -568,6 +564,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         if is_sync:
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
+
+        await self._run_derived_step(
+            "teams-action-completion",
+            lambda: self._emit_teams_action_completion(execution_id),
+        )
 
         metrics_data = result.get("metrics") or {}
         await self._run_derived_step(
@@ -875,11 +876,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             await session.commit()
 
-        await self._run_derived_step(
-            "teams-action-completion",
-            lambda: self._emit_teams_action_completion(execution_id),
-        )
-
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
         # terminal fan-out are derived follow-up work.
@@ -899,6 +895,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
 
         failure_metrics = result.get("metrics") or {}
+        await self._run_derived_step(
+            "teams-action-completion",
+            lambda: self._emit_teams_action_completion(execution_id),
+        )
+
         await self._run_derived_step(
             "completion-metrics",
             lambda: self._record_completion_metrics(

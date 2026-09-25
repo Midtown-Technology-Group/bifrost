@@ -12,7 +12,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select, and_, desc, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +54,6 @@ from src.services.execution.retry_policy import snapshot_retry_policy
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/executions", tags=["Executions"])
-
 
 _EXECUTION_QUERY_PARAM_ALIASES: dict[str, tuple[str, ...]] = {
     "workflowName": ("workflow_name",),

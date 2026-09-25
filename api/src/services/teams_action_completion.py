@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -9,6 +10,7 @@ from sqlalchemy import select, text
 
 from src.models.enums import ExecutionStatus
 from src.models.orm import AgentRun, Event, EventSource, Execution, Message, WebhookSource
+from src.repositories.executions import EXECUTION_ADVISORY_LOCK_SQL
 
 TOPIC = "microsoft_teams.action_completed"
 ACTION_TOOLS = {"wf_teams_run_remote_powershell", "wf_teams_run_ninjaone_script"}
@@ -24,7 +26,7 @@ TERMINAL = {
 
 async def _lock_execution(db, execution_id: UUID) -> None:
     await db.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || :execution_id))"),
+        text(EXECUTION_ADVISORY_LOCK_SQL),
         {"execution_id": str(execution_id)},
     )
 
@@ -98,9 +100,12 @@ async def register_teams_action_completion(
     }
     context = dict(execution.execution_context or {})
     previous = context.get("teams_action_completion")
-    if previous is not None and previous != binding:
+    if previous is not None and (
+        not isinstance(previous, dict)
+        or any(previous.get(key) != value for key, value in binding.items())
+    ):
         raise HTTPException(409, "Execution already has a different Teams binding")
-    context["teams_action_completion"] = binding
+    context["teams_action_completion"] = previous or binding
     execution.execution_context = context
     await db.commit()
     if execution.status in TERMINAL:
@@ -150,15 +155,16 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
 
 async def emit_teams_action_completion(db, execution_id: UUID) -> None:
     """Emit only for executions explicitly registered by a verified Teams turn."""
+    await _lock_execution(db, execution_id)
     execution = await db.get(Execution, execution_id)
     if execution is None or execution.status not in TERMINAL:
         return
     binding = (execution.execution_context or {}).get("teams_action_completion")
-    if not isinstance(binding, dict):
+    if not isinstance(binding, dict) or binding.get("emitted_at"):
         return
     from src.services.events import emit_event
 
-    await emit_event(
+    _event_id, subscribers = await emit_event(
         TOPIC,
         {
             "execution_id": str(execution_id),
@@ -169,3 +175,10 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> None:
         organization_id=execution.organization_id,
         triggered_by=f"execution:{execution_id}",
     )
+    if subscribers:
+        context = dict(execution.execution_context or {})
+        context["teams_action_completion"] = {
+            **binding, "emitted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        execution.execution_context = context
+        await db.commit()

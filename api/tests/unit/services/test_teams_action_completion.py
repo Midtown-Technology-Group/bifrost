@@ -26,7 +26,10 @@ async def test_only_tagged_terminal_execution_emits() -> None:
     })()
     db = AsyncMock()
     db.get.return_value = row
-    with patch("src.services.events.emit_event", new_callable=AsyncMock) as emit:
+    with patch("src.services.events.emit_event", new_callable=AsyncMock) as emit, patch(
+        "src.services.teams_action_completion._lock_execution", new_callable=AsyncMock
+    ):
+        emit.return_value = (uuid4(), 1)
         await emit_teams_action_completion(db, execution_id)
         emit.assert_not_awaited()
         row.execution_context = {"teams_action_completion": {
@@ -36,6 +39,8 @@ async def test_only_tagged_terminal_execution_emits() -> None:
         emit.assert_awaited_once()
         assert emit.await_args.args[0] == "microsoft_teams.action_completed"
         assert emit.await_args.args[1]["execution_id"] == str(execution_id)
+        await emit_teams_action_completion(db, execution_id)
+        emit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

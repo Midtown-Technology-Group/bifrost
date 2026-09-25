@@ -35,6 +35,10 @@ from src.repositories.base import BaseRepository
 from src.services.execution.retry_policy import snapshot_retry_policy
 
 logger = logging.getLogger(__name__)
+EXECUTION_ADVISORY_LOCK_SQL = (
+    "SELECT pg_advisory_xact_lock("
+    "hashtext('bifrost:workflow-execution:' || :execution_id))"
+)
 
 
 def _make_json_safe(value: Any) -> Any:
@@ -235,10 +239,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         # the accepted cancellation instead of resurrecting the execution as
         # successful or failed.
         await self.session.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtext('bifrost:workflow-execution:' || :execution_id))"
-            ),
+            text(EXECUTION_ADVISORY_LOCK_SQL),
             {"execution_id": execution_id},
         )
         current_status_result = await self.session.execute(
