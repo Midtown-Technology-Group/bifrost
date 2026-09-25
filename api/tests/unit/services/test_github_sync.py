@@ -16,6 +16,7 @@ from src.models.contracts.github import (
     OrphanInfo,
     PreflightIssue,
     PreflightResult,
+    WorkingTreeStatus,
     WorkflowReference,
 )
 from src.services.github_sync import GitStatusError, SyncError
@@ -48,7 +49,7 @@ async def test_desktop_status_returns_empty_only_for_uninitialized_workspace(tmp
     service = _status_service(tmp_path)
     service.repo_manager = _StatusRepoManager(tmp_path, is_initialized=False)
 
-    assert await service.desktop_status() == await service.desktop_status()
+    assert await service.desktop_status() == WorkingTreeStatus()
 
 
 @pytest.mark.asyncio

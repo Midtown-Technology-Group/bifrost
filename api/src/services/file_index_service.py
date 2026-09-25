@@ -13,6 +13,7 @@ import hashlib
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+from anyio import open_file
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,15 +105,15 @@ class FileIndexService:
     async def write_file(self, path: str, source: Path, *, expected_hash: str) -> str:
         """Stream a staged file into _repo/ and index only bounded text."""
         digest = hashlib.sha256()
-        with source.open("rb") as handle:
-            while chunk := handle.read(FILE_COPY_CHUNK_SIZE):
+        async with await open_file(source, "rb") as handle:
+            while chunk := await handle.read(FILE_COPY_CHUNK_SIZE):
                 digest.update(chunk)
         if digest.hexdigest() != expected_hash:
             raise ValueError(f"staged source hash mismatch for {path}")
 
         async def chunks() -> AsyncIterator[bytes]:
-            with source.open("rb") as handle:
-                while chunk := handle.read(FILE_COPY_CHUNK_SIZE):
+            async with await open_file(source, "rb") as handle:
+                while chunk := await handle.read(FILE_COPY_CHUNK_SIZE):
                     yield chunk
 
         storage = S3StorageClient(self.repo_storage._settings)
@@ -125,7 +126,8 @@ class FileIndexService:
             await self.db.execute(delete(FileIndex).where(FileIndex.path == path))
             await _invalidate_python_module_cache(path)
             return content_hash
-        content = source.read_bytes()
+        async with await open_file(source, "rb") as handle:
+            content = await handle.read()
         content_hash = await self.write(path, content)
         if path.endswith(".py"):
             from src.core.module_cache import set_module

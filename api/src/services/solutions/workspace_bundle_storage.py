@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
+from anyio import open_file
+
 from src.config import Settings, get_settings
 from src.services.file_storage.s3_client import S3StorageClient
 
@@ -36,8 +38,8 @@ class WorkspaceBundleStorage:
 
     async def stage_package(self, source: Path) -> tuple[str, int]:
         async def chunks() -> AsyncIterator[bytes]:
-            with source.open("rb") as handle:
-                while chunk := handle.read(CHUNK_SIZE):
+            async with await open_file(source, "rb") as handle:
+                while chunk := await handle.read(CHUNK_SIZE):
                     yield chunk
 
         return await self._storage.put_object_from_chunks(
@@ -47,12 +49,12 @@ class WorkspaceBundleStorage:
     async def copy_package_to(self, destination: Path, *, expected_sha256: str) -> int:
         digest = hashlib.sha256()
         size = 0
-        with destination.open("wb") as handle:
+        async with await open_file(destination, "wb") as handle:
             async for chunk in self._storage.iter_object_chunks(
                 self.package_key, chunk_size=CHUNK_SIZE
             ):
                 digest.update(chunk)
-                handle.write(chunk)
+                await handle.write(chunk)
                 size += len(chunk)
         if digest.hexdigest() != expected_sha256:
             destination.unlink(missing_ok=True)
