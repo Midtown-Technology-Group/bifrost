@@ -381,7 +381,7 @@ async def _complete_operation_receipt(
 def _validate_durable_handle(handle: dict[str, str]) -> dict[str, str]:
     kind = handle.get("kind")
     durable_id = handle.get("id")
-    if kind not in {"platform-job", "execution", "agent-run"}:
+    if kind not in {"platform-job", "execution", "agent-run", "teams-event"}:
         raise ValueError("Unsupported durable handle kind")
     if not isinstance(durable_id, str) or not durable_id or len(durable_id) > 100:
         raise ValueError("Invalid durable handle id")

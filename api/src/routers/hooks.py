@@ -11,14 +11,26 @@ Security is handled by:
 
 import json
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import update
 
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.rate_limit import RateLimiter
+from src.models.enums import EventDeliveryStatus, EventStatus
+from src.models.orm import Event, EventDelivery
 from src.services.events.processor import EventProcessor, resolve_webhook_source
+from src.services.teams_chat_bridge import (
+    submit_teams_chat_event,
+    validate_teams_chat_event,
+)
+from src.services.teams_receipts import (
+    finish_rejected_teams_receipt,
+    send_fast_teams_receipt,
+)
 from src.services.webhooks.protocol import (
     Deliver,
     Rejected,
@@ -164,7 +176,7 @@ async def receive_webhook(
     try:
         result = await processor.process_webhook(event_source, webhook_source, webhook_request)
     except Exception as e:
-        logger.error(f"Error processing webhook: {log_safe(e)}", exc_info=True)
+        logger.error("Error processing webhook: %s", log_safe(e), exc_info=True)  # noqa: G201
         # Return 500 but don't expose internal error details
         return Response(
             content="Internal server error",
@@ -202,10 +214,123 @@ async def receive_webhook(
         # Event accepted - commit transaction and queue deliveries
         await db.commit()
 
+        direct_handled = False
+        skip_reason = "teams_direct_ingress"
+        if result.event_id and getattr(webhook_source, "adapter_name", None) == "microsoft_bot_framework":
+            try:
+                event = await db.get(Event, result.event_id)
+                if event and event.event_type == "microsoft_teams.message":
+                    # The webhook adapter verifies the bearer token. The chat
+                    # bridge additionally checks the tenant, linked Bifrost
+                    # user, agent, and conversation binding before any reply.
+                    await validate_teams_chat_event(db, result.event_id)
+                    receipt_mode = await send_fast_teams_receipt(db, result.event_id, webhook_source)
+                    if receipt_mode == "duplicate":
+                        # The first webhook may have died after persisting its
+                        # receipt and direct marker but before creating a run.
+                        # The bridge canonicalizes the event and the run ID is
+                        # fenced by enqueue_agent_run_once.
+                        await submit_teams_chat_event(db, result.event_id)
+                        await db.commit()
+                        direct_handled = True
+                        skip_reason = "teams_duplicate_ingress"
+                    elif receipt_mode == "owner":
+                        # Commit before AgentRun publication: a fast completion callback
+                        # must see both the receipt and this direct-ingress marker.
+                        event = await db.get(Event, result.event_id)
+                        event.data = {**event.data, "teams_direct_enqueued": True}
+                        await db.commit()
+                        await submit_teams_chat_event(db, result.event_id)
+                        await db.commit()
+                        direct_handled = True
+            except Exception as exc:  # noqa: BLE001 - preserve legacy queue fallback
+                logger.warning(
+                    "Teams direct ingress unavailable for event %s: %s",
+                    result.event_id, type(exc).__name__,
+                )
+                await db.rollback()
+                event = await db.get(Event, result.event_id)
+                if event is not None and event.data.get("teams_direct_enqueued"):
+                    event.data = {**event.data, "teams_direct_enqueued": False}
+                    await db.commit()
+                if isinstance(exc, HTTPException) and exc.status_code in (400, 403, 404, 409):
+                    if event is not None and "teams_receipt" not in event.data:
+                        # Preserve the previous router's mapped-tenant guidance.
+                        # An unmapped tenant remains silent.
+                        guidance = None
+                        if exc.status_code == 403 and exc.detail == (
+                            "Teams sender has no linked Bifrost user in this organization"
+                        ):
+                            guidance = (
+                                "I can't connect this Teams account to a Bifrost user in this "
+                                "organization. Sign in to Bifrost with your Microsoft account first."
+                            )
+                        elif exc.status_code == 409:
+                            guidance = (
+                                "Bifrost chat is not configured for Teams yet. "
+                                "Please ask your Bifrost admin."
+                            )
+                        if guidance:
+                            try:
+                                await send_fast_teams_receipt(
+                                    db, result.event_id, webhook_source,
+                                    message=guidance, sent_status="guidance",
+                                )
+                            except Exception as guide_exc:  # noqa: BLE001 - best-effort Teams reply
+                                logger.warning(
+                                    "Teams guidance unavailable for event %s: %s",
+                                    result.event_id, type(guide_exc).__name__,
+                                )
+                        direct_handled = True
+                        skip_reason = "teams_chat_preflight_rejected"
+                    else:
+                        try:
+                            direct_handled = await finish_rejected_teams_receipt(
+                                db, result.event_id, webhook_source,
+                            )
+                            if direct_handled:
+                                event = await db.get(Event, result.event_id)
+                                event.data = {**event.data, "teams_direct_enqueued": True}
+                                await db.commit()
+                                skip_reason = "teams_direct_rejected"
+                        except Exception as update_exc:  # noqa: BLE001 - preserve legacy queue fallback
+                            logger.warning(
+                                "Teams rejection update unavailable for event %s: %s",
+                                result.event_id, type(update_exc).__name__,
+                            )
+                            await db.rollback()
+
+            if direct_handled:
+                try:
+                    await db.execute(
+                        update(EventDelivery)
+                        .where(
+                            EventDelivery.event_id == result.event_id,
+                            EventDelivery.status == EventDeliveryStatus.PENDING,
+                        )
+                        .values(
+                            status=EventDeliveryStatus.SKIPPED,
+                            error_message=skip_reason,
+                            completed_at=datetime.now(UTC),
+                        )
+                    )
+                    event = await db.get(Event, result.event_id)
+                    if event is not None:
+                        event.status = EventStatus.COMPLETED
+                    await db.commit()
+                except Exception as exc:  # noqa: BLE001 - duplicate execution is worse than audit failure
+                    logger.error(
+                        "Teams legacy delivery suppression failed for event %s: %s",
+                        result.event_id, type(exc).__name__,
+                    )
+                    await db.rollback()
+                    # A direct AgentRun already exists; do not queue another
+                    # route just because the audit status update failed.
+
         # Queue workflow executions asynchronously
         # This is done after commit to ensure delivery records exist
         try:
-            if result.event_id:
+            if result.event_id and not direct_handled:
                 queued = await processor.queue_event_deliveries(result.event_id)
                 await db.commit()
 
@@ -218,7 +343,7 @@ async def receive_webhook(
                     },
                 )
         except Exception as e:
-            logger.error(f"Error queueing deliveries: {log_safe(e)}", exc_info=True)
+            logger.error("Error queueing deliveries: %s", log_safe(e), exc_info=True)  # noqa: G201
             # Event was recorded, just couldn't queue - don't fail the webhook
 
         # Return 202 Accepted
