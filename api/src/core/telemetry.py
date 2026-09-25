@@ -10,6 +10,17 @@ _trace_provider = None
 _meter_provider = None
 
 
+def _event_loop_lag_view():
+    from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
+
+    return View(
+        instrument_name="bifrost.event_loop.lag",
+        aggregation=ExplicitBucketHistogramAggregation(
+            boundaries=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0)
+        ),
+    )
+
+
 def configure_opentelemetry(service_name: str, *, span_processor: str = "batch") -> None:
     """Configure OTLP trace and metric export when an endpoint is provided."""
     global _meter_provider, _trace_provider
@@ -51,7 +62,11 @@ def configure_opentelemetry(service_name: str, *, span_processor: str = "batch")
         OTLPMetricExporter(endpoint=endpoint),
         export_interval_millis=15_000,
     )
-    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    meter_provider = MeterProvider(
+        resource=resource,
+        metric_readers=[metric_reader],
+        views=[_event_loop_lag_view()],
+    )
     metrics.set_meter_provider(meter_provider)
     _meter_provider = meter_provider
 
