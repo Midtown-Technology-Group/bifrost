@@ -28,9 +28,9 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 # Stack-worker service slots to occupy. Must match the worker's
-# max_service_workers setting (default 20; the test compose sets no
-# override). If it drifts, the target claim below fails loudly.
-STACK_SERVICE_SLOTS = 20
+# max_service_workers setting in the test compose. If it drifts, the target
+# claim below fails loudly.
+STACK_SERVICE_SLOTS = 4
 
 _FILLER_SOURCE = '''"""Slot filler: healthy service that idles forever."""
 
