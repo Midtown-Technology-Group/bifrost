@@ -39,7 +39,7 @@ async def emit_teams_chat_completion(run) -> None:
         return
     from src.services.events import emit_event
 
-    _event_id, subscribers = await emit_event(
+    completion_event_id, subscribers = await emit_event(
         "microsoft_teams.chat_run_completed",
         {"run_id": str(run.id), "webhook_event_id": str(event_id), "organization_id": str(run.org_id)},
         organization_id=run.org_id,
@@ -47,9 +47,16 @@ async def emit_teams_chat_completion(run) -> None:
     )
     if subscribers:
         from src.core.database import get_session_factory
+        from src.models.enums import EventDeliveryStatus
         from src.models.orm.agent_runs import AgentRun
+        from src.models.orm.events import EventDelivery
 
         async with get_session_factory()() as db:
+            statuses = (await db.scalars(
+                select(EventDelivery.status).where(EventDelivery.event_id == completion_event_id)
+            )).all()
+            if not statuses or EventDeliveryStatus.FAILED in statuses:
+                return
             stored = await db.get(AgentRun, run.id, with_for_update=True)
             if stored is not None:
                 stored.run_metadata = {
