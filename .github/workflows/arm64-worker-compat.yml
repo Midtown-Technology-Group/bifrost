@@ -1,0 +1,44 @@
+name: ARM64 worker compatibility
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/arm64-worker-compat.yml
+      - api/Dockerfile
+      - requirements.lock
+      - api/src/worker/**
+      - api/src/services/execution/**
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  worker:
+    name: Build and smoke test ARM64 worker
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build production worker image natively
+        run: docker build --platform linux/arm64 --target runtime --file api/Dockerfile --tag bifrost-worker:arm64-probe .
+
+      - name: Verify worker runtime on ARM64
+        run: |
+          docker run --rm --platform linux/arm64 --entrypoint python bifrost-worker:arm64-probe -c '
+          import platform
+          assert platform.machine() == "aarch64", platform.machine()
+          import src.worker.main
+          import src.services.execution.process_pool
+          print("ARM64 worker imports passed")
+          '
+
+      - name: Exercise worker and PostgreSQL delivery on ARM64
+        run: |
+          docker run --rm --platform linux/arm64 \
+            --mount type=bind,source="$PWD/api/tests",target=/app/tests,readonly \
+            --entrypoint python bifrost-worker:arm64-probe \
+            -m pytest -q \
+            /app/tests/unit/worker/test_worker_main.py \
+            /app/tests/unit/jobs/test_postgres_delivery_maintenance.py

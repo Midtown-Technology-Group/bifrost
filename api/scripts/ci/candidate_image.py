@@ -114,6 +114,35 @@ def _image_digest(ref: str) -> str:
     return digest
 
 
+def _image_labels(image: str, ref: str) -> dict[str, str]:
+    labels = _inspect_json(ref, "{{json .Image.Config.Labels}}")
+    if isinstance(labels, dict):
+        return labels
+
+    raw = _run(["docker", "buildx", "imagetools", "inspect", ref, "--raw"])
+    try:
+        manifest = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CandidateImageError(f"{ref} returned malformed image metadata") from exc
+    entries = manifest.get("manifests", []) if isinstance(manifest, dict) else []
+    platforms: dict[str, str] = {}
+    for entry in entries:
+        platform = entry.get("platform", {}) if isinstance(entry, dict) else {}
+        if platform.get("os") != "linux":
+            continue
+        architecture = platform.get("architecture")
+        digest = entry.get("digest")
+        if architecture in ("amd64", "arm64") and isinstance(digest, str) and SHA256_RE.fullmatch(digest):
+            platforms[architecture] = digest
+    required = {"amd64", "arm64"} if image.endswith("/bifrost-worker") else {"amd64"}
+    if not required.issubset(platforms):
+        raise CandidateImageError(f"{ref} lacks required Linux platforms: {sorted(required - platforms.keys())}")
+    children = [_inspect_json(f"{image}@{platforms[arch]}", "{{json .Image.Config.Labels}}") for arch in sorted(platforms)]
+    if not all(isinstance(child, dict) and child == children[0] for child in children):
+        raise CandidateImageError(f"{ref} has missing or inconsistent platform image labels")
+    return children[0]
+
+
 def verify_candidate(
     *,
     image: str,
@@ -134,9 +163,7 @@ def verify_candidate(
     digest = _image_digest(ref)
     if expected_digest is not None and digest != expected_digest:
         raise CandidateImageError(f"{ref} does not resolve to the newly built digest")
-    labels = _inspect_json(ref, "{{json .Image.Config.Labels}}")
-    if not isinstance(labels, dict):
-        raise CandidateImageError(f"{ref} has no inspectable image labels")
+    labels = _image_labels(image, ref)
 
     source = labels.get("org.opencontainers.image.source")
     repository = str(source).removeprefix("https://github.com/")
