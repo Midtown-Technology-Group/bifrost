@@ -398,6 +398,7 @@ services:
       - ./doc_renderer_service:/app/doc_renderer_service:ro
       - ./api/fuzz:/app/fuzz:ro
       - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities
+      - ./api/benchmarks:/app/benchmarks:ro  # CodSpeed fixture smoke tests
       - ./api/tests:/app/tests:ro
       - ./docs/architecture/execution-operations.md:/app/docs/architecture/execution-operations.md:ro
       - ./scripts:/repo/scripts:ro

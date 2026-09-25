@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -114,6 +115,50 @@ def prepare_solution_repository() -> None:
 
 
 def chat_completion_payload(request: dict[str, object]) -> dict[str, object]:
+    tools = request.get("tools")
+    messages = request.get("messages")
+    is_summary = (
+        request.get("model") == "issue-890-agent"
+        and isinstance(messages, list)
+        and any(
+            isinstance(message, dict)
+            and "You summarize what an AI agent did" in str(message.get("content", ""))
+            for message in messages
+        )
+    )
+    if (
+        request.get("model") == "issue-890-agent"
+        and isinstance(tools, list)
+        and tools
+        and isinstance(tools[0], dict)
+        and isinstance(tools[0].get("function"), dict)
+        and isinstance(messages, list)
+    ):
+        tool = tools[0]["function"]
+        if not any(
+            isinstance(message, dict) and message.get("role") == "tool"
+            for message in messages
+        ):
+            return {
+                "id": "chatcmpl-fixture-tool",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "issue-890-agent",
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "call_issue890",
+                            "type": "function",
+                            "function": {"name": tool["name"], "arguments": '{"value":1}'},
+                        }],
+                    },
+                    "finish_reason": "tool_calls",
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
     return {
         "id": "chatcmpl-fixture",
         "object": "chat.completion",
@@ -122,7 +167,17 @@ def chat_completion_payload(request: dict[str, object]) -> dict[str, object]:
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": "ok"},
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps({
+                        "asked": "Run the fixture tool",
+                        "did": "I called [issue_890_agent_tool].",
+                        "answered": "ok",
+                        "confidence": 1.0,
+                        "confidence_reason": "The fixture completed.",
+                        "metadata": {},
+                    }) if is_summary else "ok",
+                },
                 "finish_reason": "stop",
             }
         ],
@@ -261,6 +316,20 @@ class FixtureHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
 
+        if self.path == "/issue-890/external-http":
+            try:
+                request = json.loads(body)
+                delay_ms = request["delay_ms"]
+                value = request["value"]
+                if type(delay_ms) is not int or not 0 <= delay_ms <= 1000 or type(value) is not int:
+                    raise ValueError("invalid fixture request")
+            except (KeyError, TypeError, ValueError):
+                self._json(400, {"error": "invalid_request"})
+                return
+            time.sleep(delay_ms / 1000)
+            self._json(200, {"value": value, "source": "fixture"})
+            return
+
         if self.path == "/v1/embeddings":
             request = json.loads(body or b"{}")
             raw_input = request.get("input", [])
@@ -292,6 +361,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/chat/completions":
             request = json.loads(body or b"{}")
+            if request.get("model") == "issue-890-agent":
+                time.sleep(0.05)
             if request.get("stream") is True:
                 body_bytes = encode_sse_events(chat_completion_stream_events(request))
                 self.send_response(200)

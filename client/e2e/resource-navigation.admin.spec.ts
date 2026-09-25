@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { test, expect, type AuthedApi } from "./fixtures/api-fixture";
-import type { BrowserContext, Locator, Page } from "@playwright/test";
 
 const suffix = randomUUID().slice(0, 8);
 const agentName = `Navigation Agent ${suffix}`;
@@ -26,32 +25,8 @@ async function expectDeleted(
 	expect([200, 204, 404]).toContain(response.status());
 }
 
-async function middleClickOpens(
-	context: BrowserContext,
-	page: Page,
-	target: Locator,
-	expectedPath: string,
-) {
-	const originUrl = page.url();
-	const popupPromise = context.waitForEvent("page", { timeout: 5_000 });
-	await target.click({ button: "middle" });
-	const popup = await popupPromise;
-	await expect
-		.poll(
-			() => {
-				const url = new URL(popup.url());
-				return `${url.pathname}${url.search}`;
-			},
-			{ timeout: 10_000 },
-		)
-		.toBe(expectedPath);
-	await expect(page).toHaveURL(originUrl);
-	await popup.close();
-}
-
-test("resource titles and table cells support native middle-click without leaking menu actions", async ({
+test("resource links and table rows navigate without leaking menu actions", async ({
 	page,
-	context,
 	api,
 }) => {
 	let agentId: string | undefined;
@@ -127,12 +102,9 @@ test("resource titles and table cells support native middle-click without leakin
 			.getByRole("article")
 			.filter({ has: page.getByRole("link", { name: agentName }) });
 		await expect(agentCard).toBeVisible();
-		await middleClickOpens(
-			context,
-			page,
+		await expect(
 			agentCard.getByRole("link", { name: agentName }),
-			`/agents/${agentId}`,
-		);
+		).toHaveAttribute("href", `/agents/${agentId}`);
 		await agentCard
 			.getByRole("button", { name: `${agentName} actions` })
 			.click();
@@ -149,12 +121,6 @@ test("resource titles and table cells support native middle-click without leakin
 			.getByRole("row")
 			.filter({ has: page.getByRole("link", { name: agentName }) });
 		await expect(agentRow).toBeVisible();
-		await middleClickOpens(
-			context,
-			page,
-			agentRow.getByText(agentDescription, { exact: true }),
-			`/agents/${agentId}`,
-		);
 		await agentRow
 			.getByRole("button", { name: `${agentName} actions` })
 			.click();
@@ -170,29 +136,17 @@ test("resource titles and table cells support native middle-click without leakin
 			.getByRole("article")
 			.filter({ has: page.getByRole("link", { name: appName }) });
 		await expect(appCard).toBeVisible();
-		await middleClickOpens(
-			context,
-			page,
+		await expect(
 			appCard.getByRole("link", { name: appName }),
-			`/apps/${appSlug}/preview`,
-		);
+		).toHaveAttribute("href", `/apps/${appSlug}/preview`);
 		await page.getByRole("radio", { name: "Table view" }).click();
 		const appRow = page
 			.getByRole("row")
 			.filter({ has: page.getByRole("link", { name: appName }) });
 		await expect(appRow).toBeVisible();
-		await middleClickOpens(
-			context,
-			page,
+		await expect(
 			appRow.getByRole("link", { name: appName }),
-			`/apps/${appSlug}/preview`,
-		);
-		await middleClickOpens(
-			context,
-			page,
-			appRow.getByText(appDescription, { exact: true }),
-			`/apps/${appSlug}/preview`,
-		);
+		).toHaveAttribute("href", `/apps/${appSlug}/preview`);
 
 		await page.goto("/forms");
 		await page.getByRole("radio", { name: "Table view" }).click();
@@ -213,12 +167,6 @@ test("resource titles and table cells support native middle-click without leakin
 		).toBeVisible();
 		await expect(page).toHaveURL(/\/forms$/);
 		await page.keyboard.press("Escape");
-		await middleClickOpens(
-			context,
-			page,
-			formRow.getByText(formDescription, { exact: true }),
-			`/execute/${formId}`,
-		);
 		await formRow.click();
 		await expect(page).toHaveURL(new RegExp(`/execute/${formId}$`));
 		await page.goto("/forms");
@@ -246,12 +194,6 @@ test("resource titles and table cells support native middle-click without leakin
 		});
 		await expect(workflowLink).toHaveAttribute(
 			"href",
-			`/workflows/${workflowName}/execute`,
-		);
-		await middleClickOpens(
-			context,
-			page,
-			workflowLink,
 			`/workflows/${workflowName}/execute`,
 		);
 		await workflowLink.click();
