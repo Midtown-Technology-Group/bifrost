@@ -54,6 +54,8 @@ A [second API sweep](results/2026-09-25-api-read-70b0daa10.json) with [cgroup sa
 
 Scheduler CPU briefly reached about two cores around its startup jobs during this short sweep, then settled. This repeat began immediately after recreating services, so startup work is a plausible confounder, but the cause of the two read errors remains unproven. The harness now waits ten seconds after readiness and records load-client CPU for the next repeat. Keep both successful and failed runs; do not classify this discrepancy as a Python bottleneck or ignore it as random noise.
 
+A [warmed 128-to-1 repeat](results/2026-09-25-api-recovery-d8526a684.json) with [role samples](results/2026-09-25-api-recovery-resources-d8526a684.jsonl) had no failures. At concurrency 128 it delivered 127 requests/s with p95 3.55 seconds, while the API averaged 0.40 CPU cores and the load client used 6.57 CPU seconds in 7.88 wall seconds. Back at concurrency 1 it delivered 190 requests/s with p95 6.5 ms. The load client approached one busy core during the high-load level; the server-side role counters fell. This supports a load-generator or shared-harness limit as a live hypothesis, not a proved diagnosis. A separate driver or distributed load source is needed before treating 128-concurrency results as Bifrost capacity.
+
 ## Next measurement gate
 
 Repeat both sweeps from a clean committed revision and retain JSON outputs. Observe actual production route and workflow-shape distributions through bounded telemetry, then make anonymized fixtures. Attribute worker, API, scheduler, database, and external wait before tuning Python or building a semantically equivalent Go spike. Do not treat a small synchronous workflow's queue ceiling as proof of a Python language limit.
