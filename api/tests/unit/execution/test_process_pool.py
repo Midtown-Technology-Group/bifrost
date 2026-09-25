@@ -246,6 +246,19 @@ class TestProcessPoolManagerInit:
         assert pool.on_result is callback
 
 
+def test_reported_process_highwater_survives_lower_parent_sample():
+    pool = ProcessPoolManager()
+    handle = MagicMock()
+    handle.cpu_sampler.peak_cpu_cores = 0.8
+    handle.cpu_sampler.peak_process_rss_bytes = 80 * 1024 * 1024
+    result = {"metrics": {"peak_process_rss_bytes": 120 * 1024 * 1024}}
+
+    pool._attach_resource_peaks(handle, result)
+
+    assert result["metrics"]["peak_process_rss_bytes"] == 120 * 1024 * 1024
+    assert result["metrics"]["peak_cpu_cores"] == 0.8
+
+
 class TestProcessPoolManagerStart:
     """Tests for pool startup."""
 
@@ -381,8 +394,11 @@ class TestProcessPoolManagerRouting:
         assert h.state == ProcessState.BUSY
         assert h.current_execution is not None
         assert h.current_execution.execution_id == "exec-123"
-        h.work_queue.put_nowait.assert_called_once_with(
-            ("exec-123", {"timeout_seconds": 300})
+        queued_id, queued_context = h.work_queue.put_nowait.call_args.args[0]
+        assert queued_id == "exec-123"
+        assert queued_context["timeout_seconds"] == 300
+        assert datetime.fromisoformat(queued_context["workflow_deadline"]) == (
+            h.current_execution.started_at + timedelta(seconds=300)
         )
 
     @pytest.mark.asyncio
@@ -1265,8 +1281,11 @@ class TestProcessPoolManagerIntegration:
 
         handle = pool.processes["process-1"]
         assert handle.state == ProcessState.BUSY
-        mock_work_queue.put_nowait.assert_called_once_with(
-            ("exec-123", {"timeout_seconds": 300})
+        queued_id, queued_context = mock_work_queue.put_nowait.call_args.args[0]
+        assert queued_id == "exec-123"
+        assert queued_context["timeout_seconds"] == 300
+        assert datetime.fromisoformat(queued_context["workflow_deadline"]) == (
+            handle.current_execution.started_at + timedelta(seconds=300)
         )
 
         result_data = {

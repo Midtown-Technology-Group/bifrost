@@ -353,6 +353,8 @@ jobs:
 
       - name: Check MTG CI boundaries
         run: python3 api/scripts/check_mtg_ci_boundaries.py
+      - name: Check E2E shard allocation
+        run: python3 -m unittest scripts.test_e2e_shard
 
       # Codex skill mirrors (plugins/bifrost/skills/, .codex/skills/) are
       # generated from the canonical .claude/skills/ source.
@@ -664,9 +666,8 @@ jobs:
   # =============================================================================
   # E2E Tests - Sharded across 4 parallel runners. Each shard boots its own
   # isolated test stack (no xdist, no shared services between shards).
-  # scripts/e2e_shard.py deterministically allocates test files: heavies
-  # bin-packed first, then round-robin in sorted order — adding a file only
-  # moves files in shards downstream of the insertion point.
+  # scripts/e2e_shard.py deterministically assigns larger source files first
+  # to the shard with the least assigned source, with no maintained timing map.
   #
   # The internal matrix job (test-e2e) uses shard names like
   # "E2E Tests (shard 1/4)". The aggregate gate job below (test-e2e-gate)

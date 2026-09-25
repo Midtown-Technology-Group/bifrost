@@ -184,7 +184,7 @@ class integrations:
         response = await client.post(
             "/api/sdk/integrations/get",
             json=request_data,
-            retry_safe=oauth_scope is None,
+            retry_transient=oauth_scope is None,
         )
 
         if response.status_code == 200:
@@ -247,7 +247,7 @@ class integrations:
         response = await client.post(
             "/api/sdk/integrations/list_mappings",
             json={"name": name, "scope": effective_scope},
-            retry_safe=True,
+            retry_transient=True,
         )
 
         if response.status_code == 200:
@@ -302,7 +302,7 @@ class integrations:
         response = await client.post(
             "/api/sdk/integrations/get_mapping",
             json={"name": name, "scope": effective_scope, "entity_id": entity_id},
-            retry_safe=True,
+            retry_transient=True,
         )
 
         if response.status_code == 200:
