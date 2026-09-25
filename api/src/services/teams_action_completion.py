@@ -9,7 +9,14 @@ from fastapi import HTTPException
 from sqlalchemy import select, text
 
 from src.models.enums import ExecutionStatus
-from src.models.orm import AgentRun, Event, EventSource, Execution, Message, WebhookSource
+from src.models.orm import (
+    AgentRun,
+    Event,
+    EventSource,
+    Execution,
+    Message,
+    WebhookSource,
+)
 from src.repositories.executions import EXECUTION_ADVISORY_LOCK_SQL
 
 TOPIC = "microsoft_teams.action_completed"
@@ -56,9 +63,16 @@ async def register_teams_action_completion(
         raise HTTPException(403, "Teams action binding mismatch")
     source = await db.get(EventSource, event.event_source_id)
     webhook = await db.scalar(
-        select(WebhookSource).where(WebhookSource.event_source_id == event.event_source_id)
+        select(WebhookSource).where(
+            WebhookSource.event_source_id == event.event_source_id
+        )
     )
-    if source is None or not source.is_active or webhook is None or webhook.adapter_name != "microsoft_bot_framework":
+    if (
+        source is None
+        or not source.is_active
+        or webhook is None
+        or webhook.adapter_name != "microsoft_bot_framework"
+    ):
         raise HTTPException(403, "Teams action requires an authenticated bot event")
     input_message_id = (run.input or {}).get("user_message_id")
     if not input_message_id:
@@ -78,13 +92,15 @@ async def register_teams_action_completion(
             continue
         if not started:
             continue
-        if str(message.role.value if hasattr(message.role, "value") else message.role) == "user":
+        if (
+            str(message.role.value if hasattr(message.role, "value") else message.role)
+            == "user"
+        ):
             break
         result = message.tool_result or {}
         if (
             message.tool_name in ACTION_TOOLS
-            and
-            isinstance(result, dict)
+            and isinstance(result, dict)
             and result.get("execution_id") == str(execution_id)
             and result.get("workflow_id") == str(execution.workflow_id)
             and isinstance(message.tool_input, dict)
@@ -93,7 +109,9 @@ async def register_teams_action_completion(
             matched = True
             break
     if not matched:
-        raise HTTPException(403, "Execution was not an approved action in this Teams turn")
+        raise HTTPException(
+            403, "Execution was not an approved action in this Teams turn"
+        )
     binding = {
         "run_id": str(run_id),
         "webhook_event_id": str(webhook_event_id),
@@ -117,7 +135,12 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
     """Server-side discovery avoids granting a workflow callback an admin API."""
     event_id = (run.input or {}).get("teams_event_id")
     user_message_id = (run.input or {}).get("user_message_id")
-    if run.status != "completed" or not event_id or not user_message_id or not run.conversation_id:
+    if (
+        run.status != "completed"
+        or not event_id
+        or not user_message_id
+        or not run.conversation_id
+    ):
         return
     messages = (
         await db.scalars(
@@ -134,7 +157,10 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
             continue
         if not started:
             continue
-        if str(message.role.value if hasattr(message.role, "value") else message.role) == "user":
+        if (
+            str(message.role.value if hasattr(message.role, "value") else message.role)
+            == "user"
+        ):
             break
         result = message.tool_result or {}
         if (
@@ -150,7 +176,9 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
             if execution_id in registered:
                 continue
             await register_teams_action_completion(
-                db, execution_id=execution_id, run_id=run.id,
+                db,
+                execution_id=execution_id,
+                run_id=run.id,
                 webhook_event_id=UUID(str(event_id)),
             )
             registered.add(execution_id)
@@ -181,7 +209,8 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> None:
     if subscribers:
         context = dict(execution.execution_context or {})
         context["teams_action_completion"] = {
-            **binding, "emitted_at": datetime.now(timezone.utc).isoformat(),
+            **binding,
+            "emitted_at": datetime.now(timezone.utc).isoformat(),
         }
         execution.execution_context = context
         await db.commit()
@@ -200,8 +229,11 @@ async def recover_teams_action_completions(*, limit: int = 50) -> int:
                 .where(
                     Execution.status.in_(TERMINAL),
                     Execution.execution_context.has_key("teams_action_completion"),
-                    Execution.execution_context["teams_action_completion"]["emitted_at"].astext.is_(None),
-                    Execution.completed_at < datetime.now(timezone.utc) - timedelta(seconds=15),
+                    Execution.execution_context["teams_action_completion"][
+                        "emitted_at"
+                    ].astext.is_(None),
+                    Execution.completed_at
+                    < datetime.now(timezone.utc) - timedelta(seconds=15),
                 )
                 .order_by(Execution.completed_at)
                 .limit(limit)
