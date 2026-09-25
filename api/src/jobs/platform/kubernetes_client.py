@@ -236,7 +236,9 @@ class KubernetesJobClient:
             raise KubernetesConfigurationError("Kubernetes service-account CA is missing")
         if not SERVICE_ACCOUNT_TOKEN_PATH.is_file():
             raise KubernetesConfigurationError("Kubernetes service-account token is missing")
-        ssl_context = ssl.create_default_context(cafile=str(SERVICE_ACCOUNT_CA_PATH))
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        ssl_context.load_verify_locations(cafile=str(SERVICE_ACCOUNT_CA_PATH))
         return httpx.AsyncClient(
             base_url=_service_host_url(host, port),
             verify=ssl_context,

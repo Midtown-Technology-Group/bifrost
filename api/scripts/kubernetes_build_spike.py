@@ -516,10 +516,6 @@ async def run_build_mode(args: argparse.Namespace) -> dict[str, Any]:
                 "sdk_update_outcome": asdict(_safe_job_snapshot(sdk_done)),
                 "sdk_update_deployment_check": sdk_check,
             }
-            if args.artifact_output:
-                Path(args.artifact_output).write_text(
-                    json.dumps(result, indent=2, default=_json_default)
-                )
             return result
     finally:
         try:
@@ -548,10 +544,6 @@ async def run_build_mode(args: argparse.Namespace) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["build"], default="build")
-    parser.add_argument(
-        "--artifact-output",
-        help="Optional path for the final JSON result. Fixture rows/artifacts are preserved.",
-    )
     parser.add_argument(
         "--hold-seconds",
         type=int,
