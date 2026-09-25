@@ -104,6 +104,16 @@ def _invoke_cli(group, args: list):
 # Test 1: CLI export --mode full captures file sidecars in secrets.enc
 # ---------------------------------------------------------------------------
 
+def test_file_slug_target_is_rejected_before_shared_scope_fallback(e2e_client, platform_admin):
+    response = e2e_client.post(
+        "/api/files/read?solution=unknown-slug",
+        headers=platform_admin.headers,
+        json={"location": "solutions", "path": "probe.txt", "mode": "cloud"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "File solution target must be an install UUID"
+
+
 @pytest.mark.e2e
 def test_solution_export_full_contains_secrets_enc_with_file(
     e2e_client, platform_admin, cli_client, tmp_path, db_session

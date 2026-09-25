@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -89,7 +90,19 @@ async def test_file_read_tiers_without_solution_uses_workspace_global_scope() ->
 
 
 @pytest.mark.asyncio
-async def test_file_read_tiers_for_closed_solution_only_returns_solution_tier() -> None:
+async def test_file_read_tiers_does_not_fall_back_for_unresolved_target() -> None:
+    tiers = await solution_scope.file_read_tiers(
+        _FakeDb(),
+        _ctx(solution_id="unknown-slug"),
+        location="files",
+        requested_scope=None,
+    )
+    assert tiers == []
+
+
+@pytest.mark.asyncio
+async def test_file_read_tiers_for_closed_solution_only_returns_solution_tier(monkeypatch) -> None:
+    monkeypatch.setattr(solution_scope, "check_inbound_allowed", AsyncMock(return_value=True))
     org_id = uuid4()
     solution_id = uuid4()
     solution = SimpleNamespace(
@@ -116,7 +129,8 @@ async def test_file_read_tiers_for_closed_solution_only_returns_solution_tier() 
 
 
 @pytest.mark.asyncio
-async def test_file_read_tiers_for_open_solution_adds_org_then_global_fallbacks() -> None:
+async def test_file_read_tiers_for_open_solution_adds_org_then_global_fallbacks(monkeypatch) -> None:
+    monkeypatch.setattr(solution_scope, "check_inbound_allowed", AsyncMock(return_value=True))
     org_id = uuid4()
     solution_id = uuid4()
     solution = SimpleNamespace(

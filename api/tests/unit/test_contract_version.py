@@ -291,6 +291,8 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # status gained an optional state enum, and the new retire request/response
     # DTOs are not CLI-fingerprinted. Existing v11 clients ignore the extra
     # fields and retain their prior pending/locked/not_queued handling.
+    # Solution access flags and caller identity gained additive, dual-name
+    # compatible fields (2026-09-16). Existing v11 clients retain their scope.
     "abdee692ee5eb20869e1fefe96a318dbb445fdd670127b0652cd92e3e2814de5"
 )
 

@@ -20,7 +20,7 @@ import {
  * Both sources share the read-only confirmation card (`PreviewConfirmation`):
  * the entity summary / upgrade diff / declared config values.
  *
- * Edit mode: name + Organization + outbound access + the git section.
+ * Edit mode: name + Organization + outbound/inbound access + the git section.
  *
  * Git connection is driven by GitHub being configured in Settings (a saved
  * token) — there is no manual "git connected" toggle. An install is
@@ -1648,9 +1648,11 @@ function EditBody({
 		solution.organization_id ?? null,
 	);
 	const [allowOutboundAccess, setAllowOutboundAccess] = useState(
-		// New API key with fallback to the deprecated one (removed on regen).
-		(solution as { allow_outbound_access?: boolean }).allow_outbound_access ??
-			solution.global_repo_access,
+		// Deprecated global_repo_access still read during the transition.
+		solution.allow_outbound_access ?? solution.global_repo_access,
+	);
+	const [allowInboundAccess, setAllowInboundAccess] = useState(
+		solution.allow_inbound_access ?? true,
 	);
 	const [gitRepoUrl, setGitRepoUrl] = useState(solution.git_repo_url ?? "");
 	const [gitSubpath, setGitSubpath] = useState(solution.repo_subpath ?? "");
@@ -1662,8 +1664,8 @@ function EditBody({
 	const [connected, setConnected] = useState(solution.git_connected);
 
 	const outboundInitial =
-		(solution as { allow_outbound_access?: boolean }).allow_outbound_access ??
-		solution.global_repo_access;
+		solution.allow_outbound_access ?? solution.global_repo_access;
+	const inboundInitial = solution.allow_inbound_access ?? true;
 
 	const saveMut = useMutation({
 		mutationFn: () => {
@@ -1672,8 +1674,9 @@ function EditBody({
 			if (orgId !== (solution.organization_id ?? null))
 				update.organization_id = orgId;
 			if (allowOutboundAccess !== outboundInitial)
-				(update as { allow_outbound_access?: boolean }).allow_outbound_access =
-					allowOutboundAccess;
+				update.allow_outbound_access = allowOutboundAccess;
+			if (allowInboundAccess !== inboundInitial)
+				update.allow_inbound_access = allowInboundAccess;
 
 			const trimmedUrl = gitRepoUrl.trim();
 			// Connect when there's a URL and the user hasn't disconnected;
@@ -1788,6 +1791,25 @@ function EditBody({
 									id="edit-outbound-access"
 									checked={allowOutboundAccess}
 									onCheckedChange={setAllowOutboundAccess}
+								/>
+							</div>
+
+							<div className="flex items-center justify-between gap-3 rounded-[var(--bf-radius-surface)] border p-3">
+								<div className="space-y-0.5">
+									<Label htmlFor="edit-inbound-access">
+										Allow inbound access
+									</Label>
+									<p className="text-xs text-muted-foreground">
+										Allow other solutions and workflows to
+										call this install&apos;s workflows,
+										tables, and files. Off means only this
+										install&apos;s own calls resolve.
+									</p>
+								</div>
+								<Switch
+									id="edit-inbound-access"
+									checked={allowInboundAccess}
+									onCheckedChange={setAllowInboundAccess}
 								/>
 							</div>
 
