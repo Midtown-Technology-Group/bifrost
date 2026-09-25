@@ -2,20 +2,25 @@
 
 import json
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-LAB_BASE = Path("/tmp")
+LAB_BASE = Path(tempfile.gettempdir())
 
 
-def _lag_points(exports: list[dict]):
+def _metrics(exports: list[dict]):
     for export in exports:
         for resource in export.get("resourceMetrics", []):
             for scope in resource.get("scopeMetrics", []):
-                for metric in scope.get("metrics", []):
-                    histogram = metric.get("histogram", {})
-                    if metric.get("name") == "bifrost.event_loop.lag" and histogram.get("aggregationTemporality") == 2:
-                        yield from histogram.get("dataPoints", [])
+                yield from scope.get("metrics", [])
+
+
+def _lag_points(exports: list[dict]):
+    for metric in _metrics(exports):
+        histogram = metric.get("histogram", {})
+        if metric.get("name") == "bifrost.event_loop.lag" and histogram.get("aggregationTemporality") == 2:
+            yield from histogram.get("dataPoints", [])
 
 
 def has_load_window_growth(report: dict, exports: list[dict]) -> bool:
