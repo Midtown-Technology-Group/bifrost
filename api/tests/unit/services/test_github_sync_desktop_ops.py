@@ -155,13 +155,8 @@ async def test_desktop_commit_returns_error_result_when_core_commit_raises(tmp_p
 
 @pytest.mark.asyncio
 async def test_do_pull_returns_structured_conflicts_with_missing_stage_content(
-    tmp_path, monkeypatch
+    tmp_path
 ):
-    from src.services import github_sync
-
-    monkeypatch.setattr(
-        github_sync, "_auto_resolve_manifest_conflicts", lambda *_: set()
-    )
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "MERGE_HEAD").write_text("merge")
 
@@ -203,70 +198,6 @@ async def test_do_pull_returns_structured_conflicts_with_missing_stage_content(
     assert conflict.display_name == "conflict.py"
     assert conflict.entity_type == "workflow"
     assert conflict.conflict_type == "deleted_by_them"
-
-
-@pytest.mark.asyncio
-async def test_do_pull_commits_when_all_conflicts_auto_resolve(tmp_path, monkeypatch):
-    from src.services import github_sync
-
-    calls: list[str] = []
-
-    def auto_resolve(repo, work_dir, unmerged):
-        calls.append("auto")
-        repo.index._unmerged = {}
-        return {".bifrost/workflows.yaml"}
-
-    monkeypatch.setattr(github_sync, "_auto_resolve_manifest_conflicts", auto_resolve)
-    (tmp_path / ".git").mkdir()
-    merge_head = tmp_path / ".git" / "MERGE_HEAD"
-    merge_head.write_text("merge")
-
-    class Origin:
-        def fetch(self, branch):
-            return None
-
-    class Git:
-        def merge(self, ref):
-            raise RuntimeError("conflict")
-
-    class Index:
-        def __init__(self):
-            self._unmerged = {".bifrost/workflows.yaml": [(1, object()), (2, object())]}
-            self.commits = []
-
-        def unmerged_blobs(self):
-            return self._unmerged
-
-        def commit(self, message, parent_commits):
-            self.commits.append((message, parent_commits))
-
-    class Repo:
-        remotes = type("Remotes", (), {"origin": Origin()})()
-        git = Git()
-        index = Index()
-        head = _Head(valid=True, hexsha="feedface")
-
-        def commit(self, ref):
-            assert ref == "MERGE_HEAD"
-            return "merge-head-commit"
-
-    service = object.__new__(GitHubSyncService)
-    service.branch = "main"
-    service._sync_app_previews = AsyncMock()
-
-    result = await service._do_pull(tmp_path, Repo())
-
-    assert result.success is True
-    assert result.commit_sha == "feedface"
-    assert calls == ["auto"]
-    assert Repo.index.commits == [
-        (
-            "Merge remote-tracking branch (auto-resolved)",
-            [Repo.head.commit, "merge-head-commit"],
-        )
-    ]
-    assert not merge_head.exists()
-    service._sync_app_previews.assert_awaited_once_with(tmp_path)
 
 
 @pytest.mark.asyncio

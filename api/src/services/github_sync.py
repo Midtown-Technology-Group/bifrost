@@ -263,66 +263,6 @@ def _deleted_paths_in_head(repo: GitRepo) -> set[str]:
     return deleted
 
 
-def _three_way_merge_dicts(
-    base: dict, ours: dict, theirs: dict
-) -> dict:
-    """3-way merge two dicts against a common base.
-
-    - Keys deleted by either side (present in base but absent in ours/theirs)
-      stay deleted unless the other side modified the value.
-    - Keys added by either side are included.
-    - When both sides modify the same key, theirs wins.
-    """
-    merged = {}
-    # Preserve key ordering: ours first, then theirs additions, then base-only
-    seen: set = set()
-    ordered_keys: list = []
-    for key in ours:
-        if key not in seen:
-            ordered_keys.append(key)
-            seen.add(key)
-    for key in theirs:
-        if key not in seen:
-            ordered_keys.append(key)
-            seen.add(key)
-    for key in base:
-        if key not in seen:
-            ordered_keys.append(key)
-            seen.add(key)
-
-    for key in ordered_keys:
-        in_base = key in base
-        in_ours = key in ours
-        in_theirs = key in theirs
-
-        if in_ours and in_theirs:
-            # Both have it — if both are dicts, recurse; otherwise theirs wins
-            if isinstance(ours[key], dict) and isinstance(theirs[key], dict):
-                base_val = base.get(key, {}) if isinstance(base.get(key), dict) else {}
-                merged[key] = _three_way_merge_dicts(base_val, ours[key], theirs[key])
-            else:
-                merged[key] = theirs[key]
-        elif in_ours and not in_theirs:
-            if in_base:
-                # Theirs deleted it — honor the deletion unless ours modified it
-                if base.get(key) != ours[key]:
-                    merged[key] = ours[key]  # Ours modified, keep it
-                # else: theirs deleted, ours unchanged → delete
-            else:
-                merged[key] = ours[key]  # Added by ours
-        elif in_theirs and not in_ours:
-            if in_base:
-                # Ours deleted it — honor the deletion unless theirs modified it
-                if base.get(key) != theirs[key]:
-                    merged[key] = theirs[key]  # Theirs modified, keep it
-                # else: ours deleted, theirs unchanged → delete
-            else:
-                merged[key] = theirs[key]  # Added by theirs
-        # else: neither has it (shouldn't happen since key came from one of them)
-
-    return merged
-
-
 def _connect_shape_conflicts(
     local: Mapping[str, str], remote: Mapping[str, str],
 ) -> list[str]:

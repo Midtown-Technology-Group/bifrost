@@ -14,11 +14,7 @@ from src.services.github_sync import (
     GitHubSyncService,
     SyncError,
     _run_ruff_check,
-    _auto_resolve_manifest_conflicts,
-    _classify_conflict_type,
     _deleted_paths_in_head,
-    _three_way_merge_dicts,
-    _walk_tree,
 )
 
 
@@ -91,21 +87,6 @@ def _service(tmp_path: Path, repo: object) -> GitHubSyncService:
     return service
 
 
-def test_walk_tree_returns_repo_relative_files_and_skips_git_dir(tmp_path: Path) -> None:
-    (tmp_path / ".git" / "objects").mkdir(parents=True)
-    (tmp_path / ".git" / "objects" / "ignored").write_text("git internals")
-    (tmp_path / "workflows").mkdir()
-    (tmp_path / "workflows" / "demo.py").write_text("print('ok')")
-    (tmp_path / "README.md").write_text("docs")
-
-    result = _walk_tree(tmp_path)
-
-    assert result == {
-        "README.md": b"docs",
-        "workflows/demo.py": b"print('ok')",
-    }
-
-
 def test_deleted_paths_in_head_returns_only_deleted_entries() -> None:
     class Git:
         def diff_tree(self, *args):
@@ -123,120 +104,6 @@ def test_deleted_paths_in_head_treats_git_errors_as_no_deletes() -> None:
             raise RuntimeError("no commits yet")
 
     assert _deleted_paths_in_head(SimpleNamespace(git=Git())) == set()
-
-
-def test_three_way_merge_preserves_independent_edits_and_deletions() -> None:
-    merged = _three_way_merge_dicts(
-        base={
-            "kept": {"owner": "base", "enabled": True},
-            "theirs_deleted": "same",
-            "ours_deleted": "same",
-            "ours_changed": "base",
-        },
-        ours={
-            "kept": {"owner": "ours", "enabled": True},
-            "theirs_deleted": "same",
-            "ours_changed": "ours",
-            "ours_added": 1,
-        },
-        theirs={
-            "kept": {"owner": "theirs", "enabled": False},
-            "ours_deleted": "same",
-            "ours_changed": "base",
-            "theirs_added": 2,
-        },
-    )
-
-    assert merged == {
-        "kept": {"owner": "theirs", "enabled": False},
-        "ours_changed": "base",
-        "ours_added": 1,
-        "theirs_added": 2,
-    }
-
-
-@pytest.mark.parametrize(
-    ("entries", "expected"),
-    [
-        ([(1, _Blob()), (2, _Blob()), (3, _Blob())], "both_modified"),
-        ([(2, _Blob()), (3, _Blob())], "both_added"),
-        ([(1, _Blob()), (3, _Blob())], "deleted_by_us"),
-        ([(1, _Blob()), (2, _Blob())], "deleted_by_them"),
-        ([], "both_modified"),
-    ],
-)
-def test_classify_conflict_type_from_git_stages(entries, expected) -> None:
-    assert _classify_conflict_type({"workflows/demo.py": entries}, "workflows/demo.py") == expected
-
-
-def test_auto_resolve_manifest_conflicts_merges_yaml_and_adds_file(
-    tmp_path: Path,
-) -> None:
-    shown = {
-        ":1:.bifrost/workflows.yaml": "demo:\n  name: Demo\n  enabled: true\n",
-        ":2:.bifrost/workflows.yaml": (
-            "demo:\n  name: Demo Local\n  enabled: true\nlocal_only: 1\n"
-        ),
-        ":3:.bifrost/workflows.yaml": (
-            "demo:\n  name: Demo Remote\n  enabled: false\nremote_only: 2\n"
-        ),
-    }
-
-    class Git:
-        def __init__(self) -> None:
-            self.added = []
-
-        def show(self, ref: str) -> str:
-            return shown[ref]
-
-        def add(self, path: str) -> None:
-            self.added.append(path)
-
-    git = Git()
-    repo = SimpleNamespace(git=git)
-
-    resolved = _auto_resolve_manifest_conflicts(
-        repo,
-        tmp_path,
-        {".bifrost/workflows.yaml": [(1, _Blob()), (2, _Blob()), (3, _Blob())]},
-    )
-
-    assert resolved == {".bifrost/workflows.yaml"}
-    assert git.added == [".bifrost/workflows.yaml"]
-    merged = (tmp_path / ".bifrost" / "workflows.yaml").read_text()
-    assert "Demo Remote" in merged
-    assert "enabled: false" in merged
-    assert "local_only: 1" in merged
-    assert "remote_only: 2" in merged
-
-
-def test_auto_resolve_manifest_conflicts_accepts_theirs_when_merge_fails(
-    tmp_path: Path,
-) -> None:
-    class Git:
-        def __init__(self) -> None:
-            self.added = []
-
-        def show(self, ref: str) -> str:
-            if ref.startswith(":3:"):
-                return "- remote\n- list\n"
-            return "- local\n- list\n"
-
-        def add(self, path: str) -> None:
-            self.added.append(path)
-
-    git = Git()
-    repo = SimpleNamespace(git=git)
-
-    resolved = _auto_resolve_manifest_conflicts(
-        repo,
-        tmp_path,
-        {".bifrost/forms.yaml": [(1, _Blob()), (2, _Blob()), (3, _Blob())]},
-    )
-
-    assert resolved == {".bifrost/forms.yaml"}
-    assert (tmp_path / ".bifrost" / "forms.yaml").read_text() == "- remote\n- list\n"
-    assert git.added == [".bifrost/forms.yaml"]
 
 
 @pytest.mark.asyncio

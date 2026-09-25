@@ -285,25 +285,6 @@ class _Head:
         return self._valid
 
 
-def test_content_hash_is_stable_sha256():
-    from src.services.github_sync import _content_hash
-
-    assert _content_hash(b"bifrost") == (
-        "0dbe5eed7bf15a420a2a6a7356654aea49eb6c506d544ae1460ff41dc840a100"
-    )
-
-
-def test_walk_tree_reads_files_and_skips_git_internals(tmp_path):
-    from src.services.github_sync import _walk_tree
-
-    (tmp_path / "workflows").mkdir()
-    (tmp_path / "workflows" / "daily.py").write_bytes(b"print('ok')\n")
-    (tmp_path / ".git" / "objects").mkdir(parents=True)
-    (tmp_path / ".git" / "config").write_bytes(b"[core]\n")
-
-    assert _walk_tree(tmp_path) == {"workflows/daily.py": b"print('ok')\n"}
-
-
 class TestDeletedPathsInHead:
     def test_returns_deleted_paths_from_diff_tree(self):
         from src.services.github_sync import _deleted_paths_in_head
@@ -332,76 +313,6 @@ class TestDeletedPathsInHead:
             git = Git()
 
         assert _deleted_paths_in_head(Repo()) == set()
-
-
-class TestManifestConflictAutoResolve:
-    def test_auto_resolves_dict_yaml_conflict(self, tmp_path):
-        from src.services.github_sync import _auto_resolve_manifest_conflicts
-
-        class Git:
-            added = []
-
-            def show(self, ref):
-                return {
-                    ":1:.bifrost/workflows.yaml": "wf:\n  name: old\n  local: keep\n",
-                    ":2:.bifrost/workflows.yaml": "wf:\n  name: ours\n  local: keep\n",
-                    ":3:.bifrost/workflows.yaml": "wf:\n  name: theirs\n  remote: add\n",
-                }[ref]
-
-            def add(self, path):
-                self.added.append(path)
-
-        class Repo:
-            git = Git()
-
-        resolved = _auto_resolve_manifest_conflicts(
-            Repo(),
-            tmp_path,
-            {".bifrost/workflows.yaml": [(1, object()), (2, object()), (3, object())]},
-        )
-
-        assert resolved == {".bifrost/workflows.yaml"}
-        merged = (tmp_path / ".bifrost" / "workflows.yaml").read_text()
-        assert "name: theirs" in merged
-        assert "remote: add" in merged
-        assert Repo.git.added == [".bifrost/workflows.yaml"]
-
-    def test_auto_resolve_falls_back_to_theirs_on_bad_yaml(self, tmp_path):
-        from src.services.github_sync import _auto_resolve_manifest_conflicts
-
-        class Git:
-            added = []
-
-            def show(self, ref):
-                if ref == ":3:.bifrost/apps.yaml":
-                    return "apps:\n- theirs\n"
-                return "- not\n- a\n- dict\n"
-
-            def add(self, path):
-                self.added.append(path)
-
-        class Repo:
-            git = Git()
-
-        resolved = _auto_resolve_manifest_conflicts(
-            Repo(),
-            tmp_path,
-            {".bifrost/apps.yaml": [(1, object()), (2, object()), (3, object())]},
-        )
-
-        assert resolved == {".bifrost/apps.yaml"}
-        assert (tmp_path / ".bifrost" / "apps.yaml").read_text() == "apps:\n- theirs\n"
-
-    def test_auto_resolve_ignores_non_manifest_conflicts(self, tmp_path):
-        from src.services.github_sync import _auto_resolve_manifest_conflicts
-
-        resolved = _auto_resolve_manifest_conflicts(
-            object(),
-            tmp_path,
-            {"workflows/conflict.py": [(1, object()), (2, object()), (3, object())]},
-        )
-
-        assert resolved == set()
 
 
 class TestGitHubSyncFetchAndPush:
@@ -1207,76 +1118,6 @@ class TestGitHubSyncStatusAndResolve:
         Repo.git.add.assert_any_call("workflows/a.py")
         Repo.git.rm.assert_called_once_with("workflows/deleted.py")
         Repo.index.commit.assert_called_once_with("Merge with conflict resolution")
-
-
-class TestThreeWayMergeDicts:
-    def test_theirs_wins_when_both_modify_scalar(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"name": "Old"},
-            {"name": "Ours"},
-            {"name": "Theirs"},
-        ) == {"name": "Theirs"}
-
-    def test_preserves_ours_when_theirs_deletes_modified_value(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"settings": {"enabled": False}},
-            {"settings": {"enabled": True}},
-            {},
-        ) == {"settings": {"enabled": True}}
-
-    def test_honors_theirs_delete_when_ours_unchanged(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"settings": {"enabled": False}},
-            {"settings": {"enabled": False}},
-            {},
-        ) == {}
-
-    def test_merges_nested_dicts_and_additions(self):
-        from src.services.github_sync import _three_way_merge_dicts
-
-        assert _three_way_merge_dicts(
-            {"access": {"level": "private"}},
-            {"access": {"level": "private"}, "local": True},
-            {"access": {"level": "public"}, "remote": True},
-        ) == {
-            "access": {"level": "public"},
-            "local": True,
-            "remote": True,
-        }
-
-
-@pytest.mark.parametrize(
-    ("entries", "expected"),
-    [
-        ({1: object(), 2: object(), 3: object()}, "both_modified"),
-        ({2: object(), 3: object()}, "both_added"),
-        ({1: object(), 3: object()}, "deleted_by_us"),
-        ({1: object(), 2: object()}, "deleted_by_them"),
-        ({2: object()}, "both_modified"),
-    ],
-)
-def test_classify_conflict_type(entries, expected):
-    from src.services.github_sync import _classify_conflict_type
-
-    assert (
-        _classify_conflict_type(
-            {"workflows/conflict.py": list(entries.items())},
-            "workflows/conflict.py",
-        )
-        == expected
-    )
-
-
-def test_classify_conflict_type_defaults_when_path_missing():
-    from src.services.github_sync import _classify_conflict_type
-
-    assert _classify_conflict_type({}, "missing.py") == "both_modified"
 
 
 def test_manifest_regeneration_filters_inline_forms_and_agents_to_repo_scope(tmp_path):
