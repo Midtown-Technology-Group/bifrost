@@ -49,7 +49,7 @@ def _load_alembic_env(
     )
     context.is_offline_mode = lambda: True
     context.configure = MagicMock()
-    context.begin_transaction = lambda: nullcontext()
+    context.begin_transaction = nullcontext
     context.run_migrations = MagicMock()
     context.get_context = MagicMock()
 

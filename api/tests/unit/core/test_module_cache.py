@@ -1067,13 +1067,14 @@ async def test_set_module_invalidates_resolution_cache_for_exact_and_ancestors()
     ]
     assert deleted == [f"cached:{pattern}" for pattern in patterns]
 
-    def test_key_patterns_consistent(self):
-        """Verify async and sync modules use same key patterns."""
-        from src.core.module_cache import MODULE_INDEX_KEY as ASYNC_INDEX
-        from src.core.module_cache import MODULE_KEY_PREFIX as ASYNC_PREFIX
-        from src.core.module_cache_sync import MODULE_INDEX_KEY as SYNC_INDEX
-        from src.core.module_cache_sync import MODULE_KEY_PREFIX as SYNC_PREFIX
 
-        # Both modules should import from module_cache, so these should be identical
-        assert ASYNC_PREFIX == SYNC_PREFIX
-        assert ASYNC_INDEX == SYNC_INDEX
+def test_key_patterns_consistent():
+    """Verify async and sync modules use same key patterns."""
+    from src.core.module_cache import MODULE_INDEX_KEY as ASYNC_INDEX
+    from src.core.module_cache import MODULE_KEY_PREFIX as ASYNC_PREFIX
+    from src.core.module_cache_sync import MODULE_INDEX_KEY as SYNC_INDEX
+    from src.core.module_cache_sync import MODULE_KEY_PREFIX as SYNC_PREFIX
+
+    # Both modules should import from module_cache, so these should be identical
+    assert ASYNC_PREFIX == SYNC_PREFIX
+    assert ASYNC_INDEX == SYNC_INDEX

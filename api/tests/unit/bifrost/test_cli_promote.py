@@ -96,13 +96,6 @@ def test_legacy_promote_spelling_is_a_reviewed_preview_alias(
     monkeypatch.setattr(promote, "refresh_protected_main", lambda root: None)
     captured = {}
 
-    class Response:
-        is_success = True
-
-        @staticmethod
-        def json():
-            return {"candidate_id": "sha256:" + "a" * 64, "closure": []}
-
     class Client:
         def post_sync(self, endpoint, **kwargs):
             captured["endpoint"] = endpoint
@@ -222,13 +215,6 @@ def test_preview_can_include_all_reviewed_executable_changes(
         lambda _root: SimpleNamespace(commit_sha=head),
     )
     captured = {}
-
-    class Response:
-        is_success = True
-
-        @staticmethod
-        def json():
-            return {"candidate_id": "sha256:" + "a" * 64, "closure": []}
 
     class Client:
         def post_sync(self, endpoint, **kwargs):
@@ -386,13 +372,6 @@ def test_declared_helper_change_uses_unchanged_workflow_anchor(
         lambda _root: SimpleNamespace(commit_sha=head),
     )
     captured = {}
-
-    class Response:
-        is_success = True
-
-        @staticmethod
-        def json():
-            return {"candidate_id": "sha256:" + "a" * 64, "closure": []}
 
     class Client:
         def post_sync(self, _endpoint, **kwargs):

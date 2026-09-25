@@ -1519,8 +1519,6 @@ class GitHubSyncService:
         if not manifest.apps:
             return
 
-        import asyncio
-
         app_storage = AppStorageService(self.repo_manager._settings)
 
         async def _sync_one_app(mapp_id: str, source_dir: str) -> None:

@@ -721,8 +721,6 @@ class BifrostClient:
             # No auth available
             raise RuntimeError("Not logged in. Run 'bifrost login' to authenticate.")
 
-        return instance
-
     def _fetch_context_sync(self) -> dict[str, Any]:
         """Fetch development context synchronously."""
         if self._context is None:
