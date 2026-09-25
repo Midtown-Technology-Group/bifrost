@@ -270,7 +270,7 @@ OAuth device grant):
 
 | Route | Contract |
 | --- | --- |
-| `POST /api/device/heartbeat` | Body `{agent_session_id}`; updates `last_seen_at`, renews the active job's activity iff the session owns it; returns `server_time`, `last_seen_at`, `poll_interval_seconds` (5 when a pending job exists, else 10), `cancel_requested` |
+| `POST /api/device/heartbeat` | Body `{agent_session_id}`; updates `last_seen_at`, renews the active job's activity iff the session owns it; returns `server_time`, `last_seen_at`, `poll_interval_seconds` (5 when a pending job exists, else 10), `cancel_requested`. The body also accepts an optional `agent_version` (≤ 64 chars), an additive observability field recorded on the device record (epic #818). |
 | `POST /api/device/jobs/claim` | 204 (no work) or [claim-response.schema.json](./device-control-plane/claim-response.schema.json) |
 | `POST /api/device/jobs/{id}/logs` | [log-batch.schema.json](./device-control-plane/log-batch.schema.json); fenced + idempotent on `(job, seq)`; fanout on `device_job:{id}` |
 | `POST /api/device/jobs/{id}/result` | [job-result.schema.json](./device-control-plane/job-result.schema.json); fenced; late/lost -> 409 |
