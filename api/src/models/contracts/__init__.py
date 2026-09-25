@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from src.models.contracts.base import (  # noqa: F401
         DataProviderInputMode,
         IntegrationType,
-        RetryPolicy,
         generate_entity_id,
     )
     from src.models.contracts.ai_models import (  # noqa: F401
