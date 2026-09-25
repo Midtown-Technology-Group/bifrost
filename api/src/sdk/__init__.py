@@ -22,7 +22,7 @@ Usage:
 
 from shared.workspace_effects import WorkflowBounds, WorkflowEffect
 
-from src.sdk.decorators import data_provider, tool, workflow
+from src.sdk.decorators import data_provider, service, tool, workflow
 
 __all__ = [
     "workflow",
@@ -30,4 +30,5 @@ __all__ = [
     "data_provider",
     "WorkflowBounds",
     "WorkflowEffect",
+    "service",
 ]

@@ -854,6 +854,16 @@ class EventProcessor:
         if "approval_required" in (getattr(workflow, "tags", None) or []):
             raise ValueError("Approval-required workflows cannot run directly from events")
 
+        # Safety net: services cannot be one-shot targets. Creation paths
+        # reject them, but rows converted after subscribing (or written around
+        # the guards) must fail loudly here instead of executing as workflows.
+        if workflow.type == "service":
+            raise ValueError(
+                f"Delivery {delivery.id} targets service '{workflow.name}' "
+                "(type='service'), which cannot be executed one-shot. "
+                "Remove the subscription or convert the workflow."
+            )
+
         # Get subscription for input_mapping
         subscription = delivery.subscription
 

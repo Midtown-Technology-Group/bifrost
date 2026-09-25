@@ -1,5 +1,6 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -15,6 +16,28 @@ def _system_user() -> UserPrincipal:
         organization_id=None,
         is_superuser=True,
     )
+
+
+async def test_module_reader_allows_scoped_service_but_denies_regular_user():
+    from src.routers.sdk_modules import _module_reader
+
+    attempt_id = uuid4()
+    service = UserPrincipal(
+        user_id=SYSTEM_USER_UUID,
+        email="service@bifrost.internal",
+        organization_id=uuid4(),
+        service_id=str(uuid4()),
+        service_attempt_id=str(attempt_id),
+        engine_execution_id=attempt_id,
+    )
+    assert await _module_reader(service) is service
+
+    regular = UserPrincipal(
+        user_id=uuid4(), email="user@example.com", organization_id=uuid4()
+    )
+    with pytest.raises(HTTPException) as denied:
+        await _module_reader(regular)
+    assert denied.value.status_code == 403
 
 
 async def test_system_resolver_uses_signed_scope_not_query_scope():
