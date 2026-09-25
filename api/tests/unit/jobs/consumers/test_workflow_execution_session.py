@@ -4,7 +4,6 @@ Validates that the consumer uses short-lived sessions (no persistent session).
 """
 
 import asyncio
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

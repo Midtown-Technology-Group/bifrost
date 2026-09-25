@@ -9,7 +9,6 @@ NOTE: These tests use mocks to avoid spawning real processes.
 """
 
 import asyncio
-import signal
 import subprocess
 import json
 import signal

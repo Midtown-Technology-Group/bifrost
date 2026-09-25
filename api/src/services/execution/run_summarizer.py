@@ -22,11 +22,11 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.pubsub import publish_agent_run_update
 from src.core.cache import get_shared_redis
-from src.jobs.queue_names import SUMMARIZE_BACKFILL_QUEUE, SUMMARIZE_QUEUE
+from src.jobs.queue_names import SUMMARIZE_QUEUE
 from src.jobs.rabbitmq import RetryableConsumerError, publish_message
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent
