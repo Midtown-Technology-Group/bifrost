@@ -70,6 +70,21 @@ Scheduler CPU briefly reached about two cores around its startup jobs during thi
 
 A [warmed 128-to-1 repeat](results/2026-09-25-api-recovery-d8526a684.json) with [role samples](results/2026-09-25-api-recovery-resources-d8526a684.jsonl) had no failures. At concurrency 128 it delivered 127 requests/s with p95 3.55 seconds, while the API averaged 0.40 CPU cores and the load client used 6.57 CPU seconds in 7.88 wall seconds. Back at concurrency 1 it delivered 190 requests/s with p95 6.5 ms. The load client approached one busy core during the high-load level; the server-side role counters fell. This supports a load-generator or shared-harness limit as a live hypothesis, not a proved diagnosis. A separate driver or distributed load source is needed before treating 128-concurrency results as Bifrost capacity.
 
+### Controlled outbound HTTP workflow, four shared runtime cores, clean commit `12f7cc538`
+
+Command: `bash scripts/issue-890-run.sh --scenario external-http --operations 200 --output /tmp/bifrost/issue-890-external-http-12f7cc538.json`. The registered workflow made a real HTTP call from the worker to the test-only fixture server. The fixture delayed responses by 20, 50, or 100 ms in round-robin order. All 1,200 executions returned the expected payload with no failures. The [raw result](results/2026-09-25-external-http-12f7cc538.json) and [one-second role samples](results/2026-09-25-external-http-resources-12f7cc538.jsonl) preserve the evidence.
+
+| Concurrency | Executions/s | p95 (s) | Worker CPU cores | API CPU cores | Worker max cgroup memory (MiB) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 5.45 | 0.23 | 0.55 | 0.11 | 309 |
+| 4 | 17.30 | 0.30 | 1.81 | 0.33 | 356 |
+| 16 | 17.35 | 1.02 | 1.92 | 0.37 | 355 |
+| 32 | 18.57 | 1.79 | 1.95 | 0.38 | 360 |
+| 64 | 18.18 | 3.62 | 1.92 | 0.37 | 366 |
+| 128 | 15.96 | 7.97 | 1.89 | 0.34 | 365 |
+
+The worker uses about two of the four available cores while throughput plateaus, and the client uses at most 0.58 CPU seconds in the 12.53-second highest-load level. This does not demonstrate host CPU or load-client saturation. Four process slots plus per-execution setup and I/O are plausible constraints; pool occupancy and queue depth need direct capture before declaring the first saturated resource. The delays are controlled sensitivity inputs, not observed Graph, NinjaOne, or model latencies. The test VM's CPU, local dependencies, and missing renderer still differ from production B3.
+
 ## Next measurement gate
 
 Repeat both sweeps from a clean committed revision and retain JSON outputs. Observe actual production route and workflow-shape distributions through bounded telemetry, then make anonymized fixtures. Attribute worker, API, scheduler, database, and external wait before tuning Python or building a semantically equivalent Go spike. Do not treat a small synchronous workflow's queue ceiling as proof of a Python language limit.
