@@ -65,18 +65,29 @@ async def test_get_llm_config_hides_internal_resolution_errors(monkeypatch) -> N
 @pytest.mark.asyncio
 async def test_get_llm_client_uses_provider_neutral_client(monkeypatch) -> None:
     config = LLMConfig(provider="anthropic", model="claude-test", api_key="key")
-    monkeypatch.setattr(factory, "get_llm_config", AsyncMock(return_value=config))
+    fallback = LLMConfig(provider="openai", model="gpt-test", api_key="other-key")
+    resolve = AsyncMock(return_value=[config, fallback])
+    monkeypatch.setattr(factory, "get_llm_configs", resolve)
 
     class Client:
-        def __init__(self, resolved: LLMConfig) -> None:
+        def __init__(self, resolved: LLMConfig, *, fallback_configs=()) -> None:
             self.config = resolved
+            self.fallback_configs = fallback_configs
 
     monkeypatch.setattr("src.services.llm.pydantic_client.PydanticAIClient", Client)
 
-    client = await factory.get_llm_client(object())  # type: ignore[arg-type]
+    object_session = object()
+    client = await factory.get_llm_client(object_session)  # type: ignore[arg-type]
 
     assert isinstance(client, Client)
     assert client.config is config
+    assert client.fallback_configs == [fallback]
+    resolve.assert_awaited_once_with(
+        object_session,
+        profile_id=None,
+        profile_name=None,
+        assignment_key="primary",
+    )
 
 
 def test_create_llm_client_uses_default_model(monkeypatch) -> None:

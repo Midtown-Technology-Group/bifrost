@@ -56,6 +56,12 @@ async def emit_teams_chat_completion(run) -> None:
         organization_id=run.org_id,
         triggered_by=f"agent_run:{run.id}",
     )
+    if run.status == "completed":
+        from src.core.database import get_session_factory
+        from src.services.teams_action_completion import register_teams_action_for_run
+
+        async with get_session_factory()() as db:
+            await register_teams_action_for_run(db, run)
     if subscribers:
         from src.core.database import get_session_factory
         from src.models.enums import EventDeliveryStatus
