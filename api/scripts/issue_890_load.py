@@ -118,7 +118,10 @@ async def run_level(
     async with httpx.AsyncClient(
         base_url=url,
         timeout=120.0,
-        limits=httpx.Limits(max_connections=concurrency),
+        limits=httpx.Limits(
+            max_connections=concurrency,
+            max_keepalive_connections=concurrency,
+        ),
     ) as client:
 
         async def one(index: int) -> None:
@@ -190,7 +193,7 @@ def main() -> int:
     parser.add_argument(
         "--concurrency", type=int, nargs="+", default=[1, 4, 16, 32, 64, 128]
     )
-    parser.add_argument("--operations", type=int, default=100)
+    parser.add_argument("--operations", type=int, default=1000)
     parser.add_argument(
         "--output", type=Path, default=Path("/tmp/bifrost/issue-890-load.json")
     )
@@ -205,6 +208,8 @@ def main() -> int:
         )
     if args.operations < 1 or any(value < 1 for value in args.concurrency):
         parser.error("operations and concurrency must be positive")
+    if args.operations < max(args.concurrency):
+        parser.error("operations must be at least the highest concurrency level")
 
     read_headers, admin_headers, workflow_id, org_id = prepare(url)
     result = {

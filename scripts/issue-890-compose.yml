@@ -1,0 +1,9 @@
+services:
+  api:
+    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+  scheduler:
+    command: ["python", "-m", "src.scheduler.main"]
+  worker:
+    environment:
+      BIFROST_MAX_CONCURRENCY: "4"
+      BIFROST_MAX_WORKERS: "4"
