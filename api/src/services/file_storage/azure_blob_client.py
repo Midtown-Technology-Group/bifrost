@@ -416,10 +416,12 @@ class AzureBlobStorageClient:
         self,
         path: str,
         content_type: str,
+        content_length: int | None = None,
         expires_in: int = 600,
     ) -> str:
         from azure.storage.blob import BlobSasPermissions
 
+        _ = content_length  # Azure SAS cannot bind request content length.
         await self._ensure_client()
         sas = await self._generate_blob_sas(
             path,

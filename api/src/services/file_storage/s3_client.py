@@ -111,6 +111,7 @@ class S3StorageClient:
         self,
         path: str,
         content_type: str,
+        content_length: int | None = None,
         expires_in: int = 600,
     ) -> str:
         """
@@ -122,19 +123,23 @@ class S3StorageClient:
         Args:
             path: Target path in S3 (e.g., "uploads/{form_id}/{uuid}/{filename}")
             content_type: MIME type of the file being uploaded
+            content_length: Exact upload size to bind to the signature
             expires_in: URL expiration time in seconds (default 10 minutes)
 
         Returns:
             Presigned PUT URL for direct browser upload
         """
         async with self.get_client() as s3:
+            params: dict[str, object] = {
+                "Bucket": self.settings.s3_bucket,
+                "Key": path,
+                "ContentType": content_type,
+            }
+            if content_length is not None:
+                params["ContentLength"] = content_length
             url = await s3.generate_presigned_url(
                 "put_object",
-                Params={
-                    "Bucket": self.settings.s3_bucket,
-                    "Key": path,
-                    "ContentType": content_type,
-                },
+                Params=params,
                 ExpiresIn=expires_in,
             )
         return self._rewrite_presigned_url(url)
