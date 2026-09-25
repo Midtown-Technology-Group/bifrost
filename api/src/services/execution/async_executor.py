@@ -1,10 +1,10 @@
 """
 Async Workflow Execution
-Handles queueing of workflows via Redis + RabbitMQ
+Handles workflow dispatch via Redis ephemeral context plus the configured durable delivery backend
 
 Flow for durable workflows:
 1. API pins the logical execution and dispatching attempt in PostgreSQL
-2. API stores ephemeral context in Redis and publishes to RabbitMQ
+2. API stores ephemeral context in Redis and publishes through the configured delivery backend
 3. Broker confirmation advances the execution/attempt to Pending/published
 4. Worker claims the published attempt and executes in an isolated child
 
@@ -458,7 +458,7 @@ async def _publish_pending(
 ) -> None:
     """
     Write a pending-execution blob to Redis, register with the queue tracker,
-    and publish the minimal dispatch message to RabbitMQ.
+    and publish the minimal dispatch message through the configured delivery backend.
 
     Shared by the run-now path (enqueue_workflow_execution) and the deferred
     execution promoter. Callers are responsible for generating execution_id
@@ -563,7 +563,7 @@ async def enqueue_workflow_execution_once(
     """
     Enqueue a workflow for async execution.
 
-    Stores pending execution in Redis, publishes to RabbitMQ,
+    Stores pending execution in Redis and publishes through the configured delivery backend,
     and returns execution ID immediately (<100ms target).
 
     Args:
