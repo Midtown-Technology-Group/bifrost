@@ -277,9 +277,9 @@ test("reviews collisions and replaces workspace content without installing a Sol
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect(dialog.getByRole("combobox", { name: "Target scope" })).toBeVisible();
 		expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
-		const mobileReview = dialog.locator("[data-testid=workspace-import-config-section]").locator("..");
-		await mobileReview.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-		await expect(dialog.getByTestId("workspace-import-scroller").getByText(configKey, { exact: true })).toBeInViewport();
+		const mobileConfig = dialog.getByTestId("workspace-import-scroller").getByText(configKey, { exact: true });
+		await mobileConfig.scrollIntoViewIfNeeded();
+		await expect(mobileConfig).toBeInViewport();
 		const [mobileDialogBox, mobileHeaderBox, mobileFooterBox, mobileStartBox] = await Promise.all([
 			dialog.boundingBox(),
 			dialog.getByRole("heading", { name: "Review workspace import" }).boundingBox(),

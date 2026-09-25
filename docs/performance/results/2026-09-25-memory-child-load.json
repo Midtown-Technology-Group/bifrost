@@ -1,0 +1,257 @@
+{
+  "scenario": "external-http",
+  "source_sha": "a681a848b7e44030b85365ea2dc55a0ec33fed0a",
+  "resource_samples": null,
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "api_processes": 1,
+  "client_image": null,
+  "renderer_image": null,
+  "levels": [
+    {
+      "concurrency": 64,
+      "requested": 200,
+      "started_at": "2026-09-25T16:40:07.592473+00:00",
+      "finished_at": "2026-09-25T16:40:21.487760+00:00",
+      "client_cpu_seconds": 0.3952,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T16:40:08.355343+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:09.514536+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:10.564022+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:11.659562+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:12.725431+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:13.766260+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:14.827169+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:15.872238+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:16.916091+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "admission_attempts": 0,
+          "admission_successes": 0,
+          "admission_wait_seconds_total": 0.0,
+          "admission_wait_seconds_max": 0.0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:17.927263+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "admission_attempts": 142,
+          "admission_successes": 140,
+          "admission_wait_seconds_total": 28.0892,
+          "admission_wait_seconds_max": 0.40239683500112733,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:18.937858+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "admission_attempts": 142,
+          "admission_successes": 140,
+          "admission_wait_seconds_total": 28.0892,
+          "admission_wait_seconds_max": 0.40239683500112733,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:19.949297+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "admission_attempts": 142,
+          "admission_successes": 140,
+          "admission_wait_seconds_total": 28.0892,
+          "admission_wait_seconds_max": 0.40239683500112733,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T16:40:20.960639+00:00",
+          "fresh_pools": 1,
+          "stale_pools": 0,
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "admission_attempts": 142,
+          "admission_successes": 140,
+          "admission_wait_seconds_total": 28.0892,
+          "admission_wait_seconds_max": 0.40239683500112733,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.0105,
+          "p95_seconds": 0.4466
+        },
+        "queue": {
+          "p50_seconds": 3.3346,
+          "p95_seconds": 3.5558
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.2477,
+          "p95_seconds": 0.3175
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.1213,
+          "p95_seconds": 0.2181
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 14.393,
+      "p50_seconds": 3.8325,
+      "p95_seconds": 5.0228,
+      "p99_seconds": 5.5154,
+      "wall_seconds": 13.895,
+      "failure_examples": []
+    }
+  ]
+}

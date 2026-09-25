@@ -1322,17 +1322,19 @@ class GitHubSyncService:
         configs_touched_before = self._resolver.configs_touched.copy()
         try:
             async with self.db.begin_nested() as validation:
-                _imported, entity_changes, removed_entity_ids = await self._import_all_entities(
+                _imported, entity_changes, _ = await self._import_all_entities(
                     work_dir,
                     progress_fn=progress_fn,
                     validate_only=True,
                 )
                 if progress_fn:
                     await progress_fn("Checking for removed entities...")
+                # Git sync owns the full workspace. Partial Solution imports pass
+                # explicit IDs so they cannot sweep unrelated workspace rows.
                 pending_deletes = await self._resolver._resolve_deletions(
                     work_dir=work_dir,
                     dry_run=True,
-                    removed_entity_ids=removed_entity_ids,
+                    removed_entity_ids=None,
                     removed_paths=removed_paths,
                 )
                 await validation.rollback()
@@ -1390,7 +1392,7 @@ class GitHubSyncService:
                 change.path for change in plan.file_changes if change.action == "delete"
             }
             async with self.db.begin_nested():
-                entities_imported, entity_changes, removed_entity_ids = await self._import_all_entities(
+                entities_imported, entity_changes, _ = await self._import_all_entities(
                     work_dir, progress_fn=progress_fn,
                 )
                 all_entity_changes = list(entity_changes)
@@ -1401,7 +1403,7 @@ class GitHubSyncService:
                     current_deletes = await self._resolver._resolve_deletions(
                         work_dir=work_dir,
                         dry_run=True,
-                        removed_entity_ids=removed_entity_ids,
+                        removed_entity_ids=None,
                         removed_paths=removed_paths,
                         lock_rows=True,
                     )
@@ -1415,7 +1417,7 @@ class GitHubSyncService:
                     all_entity_changes.extend(
                         await self._resolver._resolve_deletions(
                             work_dir=work_dir,
-                            removed_entity_ids=removed_entity_ids,
+                            removed_entity_ids=None,
                             removed_paths=removed_paths,
                             approved_deletes=approved_deletes,
                             lock_rows=True,
@@ -1925,10 +1927,10 @@ class GitHubSyncService:
 
             # Import entities atomically with savepoint
             async with self.db.begin_nested():
-                count, _changes, removed_entity_ids = await self._import_all_entities(work_dir)
+                count, _changes, _ = await self._import_all_entities(work_dir)
                 await self._resolver._resolve_deletions(
                     work_dir=work_dir,
-                    removed_entity_ids=removed_entity_ids,
+                    removed_entity_ids=None,
                 )
                 await self._update_file_index(work_dir)
             await self.db.commit()
