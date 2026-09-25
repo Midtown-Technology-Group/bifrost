@@ -17,6 +17,8 @@ export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
 ./test.sh stack reset
 docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --profile e2e \
     up -d --no-deps --no-build --wait api scheduler worker
+# Let scheduler startup jobs finish before measuring a steady-state request curve.
+sleep 10
 sample_file="$LOG_DIR/issue-890-resources-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
 python3 api/scripts/issue_890_sample.py --project "$COMPOSE_PROJECT_NAME" > "$sample_file" &
 sampler_pid=$!

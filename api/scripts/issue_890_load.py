@@ -179,14 +179,17 @@ async def run_level(
 
         started_at = datetime.now(UTC).isoformat()
         started = time.perf_counter()
+        client_cpu_started = time.process_time()
         await asyncio.gather(*(one(index) for index in range(operations)))
         elapsed = time.perf_counter() - started
+        client_cpu_seconds = time.process_time() - client_cpu_started
         finished_at = datetime.now(UTC).isoformat()
     return {
         "concurrency": concurrency,
         "requested": operations,
         "started_at": started_at,
         "finished_at": finished_at,
+        "client_cpu_seconds": round(client_cpu_seconds, 4),
         **summarize(latencies, failures, elapsed),
         "failure_examples": examples,
     }

@@ -6,6 +6,8 @@ On 2026-09-24/25 UTC, a read-only Azure Monitor query over the preceding 24 hour
 
 This is App Service aggregate telemetry, including its API, scheduler, worker, client, and renderer containers. It provides neither endpoint mix nor per-role CPU. All three `OTEL_*_EXPORTER` settings are `none`; the code's required `OTEL_EXPORTER_OTLP_ENDPOINT` is absent. There are no App Service diagnostic settings. Consequently the current production deployment cannot yet provide the span and role attribution required for a Go decision. The 5xx count is an observation, not an attributed failure cause.
 
+App Service application and HTTP file/blob logging are also disabled. The Talos observability cluster has an OTLP collector and Tempo, but its gRPC receiver is currently exposed as a cluster-only service; a secure, reachable production export path has not been proven. Production tracing should start only after that route, sampling, retention, and export overhead are checked.
+
 Source: `az monitor metrics list` for the production App Service resource with `--metric Requests Http5xx MemoryWorkingSet --interval PT1H --offset 1d --aggregation Total Average Maximum`, plus read-only `az webapp`, `az appservice plan`, and site-container configuration queries.
 
 ## Isolated lab scope
@@ -30,6 +32,27 @@ Command: `bash scripts/issue-890-run.sh --scenario api-read --output /tmp/bifros
 | 128 | 266 | 661 | 925 |
 
 This narrow API read did not show a material throughput collapse through concurrency 128 after the client pool was fixed. Tail latency still rises with contention. This result does not determine whether Python CPU, database, or another component is limiting a production workload.
+
+### Small workflow, clean commit `70b0daa10`
+
+Command: `bash scripts/issue-890-run.sh --scenario workflow --operations 200 --output /tmp/bifrost/issue-890-workflow-70b0daa10.json`. All 1,200 executions returned the expected result, with zero failures. [Raw results](results/2026-09-25-workflow-70b0daa10.json) and [one-second cgroup samples](results/2026-09-25-workflow-resources-70b0daa10.jsonl) preserve the observations.
+
+| Concurrency | Executions/s | p95 (s) | Worker CPU cores | API CPU cores | PostgreSQL CPU cores |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 10.5 | 0.11 | 0.72 | 0.20 | 0.14 |
+| 4 | 22.3 | 0.21 | 1.57 | 0.40 | 0.26 |
+| 16 | 24.6 | 0.76 | 1.79 | 0.45 | 0.26 |
+| 32 | 25.3 | 1.31 | 1.79 | 0.43 | 0.25 |
+| 64 | 24.3 | 2.74 | 1.77 | 0.41 | 0.25 |
+| 128 | 22.2 | 6.10 | 1.57 | 0.42 | 0.24 |
+
+CPU cores are the difference in cgroup `usage_usec` divided by time between the first and last one-second samples wholly inside each load level. The worker is the largest measured CPU consumer during this tiny workflow, but it averages under two cores when throughput plateaus. These counters do not distinguish Python CPU from native-library CPU, process startup, DB wait, queue wait, or other blocking. The scheduler briefly consumed CPU during startup and was near idle in the sustained levels. The workflow payload is too small to represent integrations, agents, or production workflow mix.
+
+### API repeat with resource sampling: high-load discrepancy
+
+A [second API sweep](results/2026-09-25-api-read-70b0daa10.json) with [cgroup samples](results/2026-09-25-api-read-resources-70b0daa10.jsonl) completed levels 1–64 at roughly 224–301 requests/s with zero failures. At concurrency 128 it completed 998/1,000 requests at 129 requests/s, p95 3.80 seconds, and two connection read errors. The API container was not OOM-killed or restarted. During that level it averaged about 0.44 CPU cores, down from about one core at levels 16–64; PostgreSQL and PgBouncer CPU also fell. This does not look like sustained API CPU saturation.
+
+Scheduler CPU briefly reached about two cores around its startup jobs during this short sweep, then settled. This repeat began immediately after recreating services, so startup work is a plausible confounder, but the cause of the two read errors remains unproven. The harness now waits ten seconds after readiness and records load-client CPU for the next repeat. Keep both successful and failed runs; do not classify this discrepancy as a Python bottleneck or ignore it as random noise.
 
 ## Next measurement gate
 
