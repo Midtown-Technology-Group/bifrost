@@ -1,6 +1,6 @@
 services:
   api:
-    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${BIFROST_LAB_API_PROCESSES:-1}"]
     cpuset: "0-3"
   scheduler:
     command: ["python", "-m", "src.scheduler.main"]
@@ -8,5 +8,5 @@ services:
   worker:
     cpuset: "0-3"
     environment:
-      BIFROST_MAX_CONCURRENCY: "4"
-      BIFROST_MAX_WORKERS: "4"
+      BIFROST_MAX_CONCURRENCY: "${BIFROST_LAB_SLOTS:-4}"
+      BIFROST_MAX_WORKERS: "${BIFROST_LAB_SLOTS:-4}"

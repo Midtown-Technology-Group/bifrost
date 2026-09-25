@@ -1,0 +1,505 @@
+{
+  "scenario": "external-http",
+  "source_sha": "d253b5bef8cdd81315da195b8fc8fe6c055fc7c3",
+  "resource_samples": "/tmp/bifrost/issue-890-resources-20260925T062257Z.jsonl",
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "levels": [
+    {
+      "concurrency": 4,
+      "requested": 200,
+      "started_at": "2026-09-25T06:23:05.128753+00:00",
+      "finished_at": "2026-09-25T06:23:18.454242+00:00",
+      "client_cpu_seconds": 0.3169,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T06:23:05.688103+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:06.753353+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:07.832807+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:08.884472+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:09.969587+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:11.012749+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:12.037667+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:13.102264+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:14.139735+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:15.194455+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:16.204916+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:17.234920+00:00",
+          "capacity": 4,
+          "busy": 0,
+          "available": 4,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:18.256306+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.0083,
+          "p95_seconds": 0.0139
+        },
+        "queue": {
+          "p50_seconds": 0.0264,
+          "p95_seconds": 0.0401
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.0352,
+          "p95_seconds": 0.0636
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.1181,
+          "p95_seconds": 0.2167
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 15.009,
+      "p50_seconds": 0.2421,
+      "p95_seconds": 0.3917,
+      "p99_seconds": 0.9958,
+      "wall_seconds": 13.325,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 16,
+      "requested": 200,
+      "started_at": "2026-09-25T06:23:18.767523+00:00",
+      "finished_at": "2026-09-25T06:23:29.771835+00:00",
+      "client_cpu_seconds": 0.3097,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T06:23:18.817704+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:19.843524+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:20.859510+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:21.888600+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:22.926423+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:24.021145+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:25.067021+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:26.134761+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:27.185501+00:00",
+          "capacity": 4,
+          "busy": 4,
+          "available": 0,
+          "saturated_workers": 1,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:28.227268+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:29.233743+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.0075,
+          "p95_seconds": 0.0918
+        },
+        "queue": {
+          "p50_seconds": 0.4774,
+          "p95_seconds": 0.5254
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.1963,
+          "p95_seconds": 0.2556
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.1213,
+          "p95_seconds": 0.1907
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 18.175,
+      "p50_seconds": 0.8482,
+      "p95_seconds": 0.9367,
+      "p99_seconds": 1.1181,
+      "wall_seconds": 11.004,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 64,
+      "requested": 200,
+      "started_at": "2026-09-25T06:23:30.076659+00:00",
+      "finished_at": "2026-09-25T06:23:41.340839+00:00",
+      "client_cpu_seconds": 0.3716,
+      "pool_samples": [
+        {
+          "time": "2026-09-25T06:23:30.324410+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:31.384161+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:32.454109+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:33.484363+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:34.504579+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:35.545972+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:36.556207+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:37.577055+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:38.587136+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:39.597228+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        },
+        {
+          "time": "2026-09-25T06:23:40.608049+00:00",
+          "capacity": 4,
+          "busy": 3,
+          "available": 1,
+          "saturated_workers": 0,
+          "admission_rejections": {
+            "slot_timeout": 0,
+            "memory_pressure": 0
+          }
+        }
+      ],
+      "attempt_stage_samples": 30,
+      "attempt_stage_errors": 0,
+      "attempt_stages": {
+        "dispatch": {
+          "p50_seconds": 0.011,
+          "p95_seconds": 0.4908
+        },
+        "queue": {
+          "p50_seconds": 2.9601,
+          "p95_seconds": 3.1056
+        },
+        "claim_to_start": {
+          "p50_seconds": 0.1829,
+          "p95_seconds": 0.2565
+        },
+        "running_to_terminal": {
+          "p50_seconds": 0.1447,
+          "p95_seconds": 0.1917
+        }
+      },
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 17.755,
+      "p50_seconds": 3.3475,
+      "p95_seconds": 3.755,
+      "p99_seconds": 4.0697,
+      "wall_seconds": 11.264,
+      "failure_examples": []
+    }
+  ]
+}
