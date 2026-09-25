@@ -27,6 +27,8 @@ The issue-specific Compose override pins API, scheduler, and worker to the same 
 
 CodSpeed's current Python 3.12 simulation workflow is useful for small helpers but cannot establish B3 capacity or cost. Measure CI variance before considering dedicated runners. Use the current supported CodSpeed walltime/memory interface when those cases are implemented; do not assume the illustrative commands in the issue are supported. Record tool versions and modes with results.
 
+The first CodSpeed macro slice validates and serializes an actual `ExecutionsListResponse` page of 1,000 synthetic metadata rows and a `WorkflowExecutionResponse` with a nested result of about 1.5 MB. The sizes come from the production list page limit and the largest result in the bounded production detail sample; the contents are entirely synthetic. `.github/workflows/codspeed.yml` retains the existing simulation microbenchmarks and runs these two contract paths in the action's supported `walltime,memory` modes. This measures serialization costs, not database reads, worker dispatch, or whole-system density.
+
 ## Decision record
 
 For every candidate, report the Python baseline, the first saturated resource, the measured end-to-end gain at realistic I/O latency, p95/p99 and recovery behavior, memory per role, and cost per useful execution. A synthetic CPU speedup alone does not pass the issue's decision gates. Keep the current Python product surface unless a bounded extraction demonstrably changes real capacity, latency, density, or operations enough to justify its migration cost.
