@@ -1,0 +1,9 @@
+# Issue 890: API event-loop lag during load
+
+The existing `bifrost.event_loop.lag` API histogram now reaches an isolated file collector in the issue 890 lab. The collector keeps only that metric; traces go to a no-op exporter. `scripts/issue-890-run.sh` records the per-run file path in each load report and checks that the histogram was written.
+
+On VM101, source `90e070646f42dc406204a49381a93e42b5875d2d`, an authenticated `/api/profile` run completed 10,000/10,000 requests at concurrency 16. Throughput was 257.11 requests/s; p95 request latency was 83.6 ms. The [load report](results/2026-09-25-event-loop-lag-load-90e070646.json) and [raw metric exports](results/2026-09-25-event-loop-lag-90e070646.jsonl) retain the timestamps and histogram buckets.
+
+The 15:43:10 and 15:43:40 UTC cumulative exports bracket 30 seconds of the 15:43:08–15:43:47 load. Subtracting their bucket counts gives 290 lag observations: 30 at or below 1 ms, 236 at 1–5 ms, 23 at 5–10 ms, and one at 100–250 ms. Thus the bucketed p95 was at or below 10 ms during that interval. The two observations above 2 seconds appeared between 15:42:55 and 15:43:10, overlapping startup and the first two seconds of load. They cannot be attributed to steady-state load from this export cadence.
+
+This confirms metric delivery and a load-window lag distribution for one API route. It does not identify a CPU hot function, cover the worker or scheduler loops, or quantify exporter overhead: an earlier uninstrumented run on the same shared VM reached 271.94 requests/s, but host and stack conditions differed. The collector uses CPUs 4–7, outside the four pinned application CPUs. No production setting was changed.
