@@ -137,6 +137,7 @@
 | GET | `/api/chat/model-profiles` |
 | POST | `/api/chat/runs` |
 | POST | `/api/chat/runs/{run_id}/cancel` |
+| POST | `/api/chat/teams/events` |
 | GET | `/api/claims` |
 | POST | `/api/claims` |
 | DELETE | `/api/claims/{name}` |

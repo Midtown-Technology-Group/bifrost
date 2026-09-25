@@ -1953,11 +1953,12 @@ class SolutionDeployer:
         via Core statements (the always-on read-only guard rejects ORM-object
         mutation of managed rows — Core insert/update/delete is the contract).
         Subscription ``workflow_id``/``agent_id`` were already remapped by
-        ``_remapped_bundle``; webhook instance secrets are absent (capture scrubs
-        them) so the install starts the webhook from a clean, unauthenticated
-        shell the operator re-establishes.
+        ``_remapped_bundle``. Webhook instance secrets are absent (capture scrubs
+        them); the install keeps an existing integration binding but otherwise
+        starts from a clean shell the operator re-establishes.
         """
         from src.models.enums import ScheduleOverlapPolicy
+        from src.models.orm.integrations import Integration
 
         from bifrost.manifest import ManifestEventSource
         from bifrost.manifest_codec import Destination
@@ -1966,6 +1967,27 @@ class SolutionDeployer:
         for mevent in events:
             source_id = UUID(str(mevent["id"]))
             await self._guard_owner(EventSource, source_id, sid)
+
+            # This install-owned binding is set after the first deploy and must
+            # survive later full-replace deploys of portable Solution source.
+            bound_integration_id = (
+                await self.db.execute(
+                    select(WebhookSource.integration_id).where(
+                        WebhookSource.event_source_id == source_id
+                    ).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if bound_integration_id and mevent.get("adapter_name") == "microsoft_bot_framework":
+                integration_name = await self.db.scalar(
+                    select(Integration.name).where(
+                        Integration.id == bound_integration_id,
+                        Integration.is_deleted.is_(False),
+                    )
+                )
+                if integration_name != "Microsoft Teams Bot":
+                    raise SolutionDeployConflict(
+                        "Microsoft Bot Framework webhook requires a Microsoft Teams Bot integration binding"
+                    )
 
             # Full-replace children + subs for a clean idempotent redeploy.
             await self.db.execute(
@@ -2027,14 +2049,14 @@ class SolutionDeployer:
                     )
                 )
             elif mevent.get("source_type") == "webhook":
-                # Webhook shell: portable adapter/config only. external_id/state/
-                # expires_at are instance secrets (scrubbed at capture); the
-                # operator re-establishes the external subscription post-install.
+                # Webhook shell: portable adapter/config plus the existing
+                # install-owned integration binding. external_id/state/expires_at
+                # remain scrubbed instance secrets.
                 await self.db.execute(
                     insert(WebhookSource).values(
                         event_source_id=source_id,
                         adapter_name=mevent.get("adapter_name"),
-                        integration_id=None,
+                        integration_id=bound_integration_id,
                         config=mevent.get("webhook_config") or {},
                         rate_limit_per_minute=mevent.get("rate_limit_per_minute", 60),
                         rate_limit_window_seconds=mevent.get(
