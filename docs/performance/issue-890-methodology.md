@@ -23,6 +23,8 @@ This is the execution plan for [issue #890](https://github.com/Midtown-Technolog
 
 The `external-http` lab scenario calls the existing Compose fixture server from an actual workflow process. Its deterministic 20/50/100 ms delays exercise the workflow's outbound HTTP and queue/persistence path without a live integration credential. These delays are sensitivity points, **not** measured Graph, NinjaOne, or model latency. Replace or weight them only after a bounded production trace gives an external-wait distribution. Run `scripts/issue-890-run.sh --scenario external-http --operations 200` on the isolated Linux VM; the endpoint and server exist only in the test Compose network.
 
+The issue-specific Compose override pins API, scheduler, and worker to the same four host CPUs, matching B3's core count as a shared CPU budget. This is an approximation: the VM's processor is not Azure's B3 processor, its host has 16 GiB RAM, PostgreSQL/Redis/RabbitMQ remain local test services rather than production dependencies, and the renderer is absent. Report measured role memory and do not call this a literal B3 capacity number until the remaining resource and dependency differences are bounded.
+
 CodSpeed's current Python 3.12 simulation workflow is useful for small helpers but cannot establish B3 capacity or cost. Measure CI variance before considering dedicated runners. Use the current supported CodSpeed walltime/memory interface when those cases are implemented; do not assume the illustrative commands in the issue are supported. Record tool versions and modes with results.
 
 ## Decision record
