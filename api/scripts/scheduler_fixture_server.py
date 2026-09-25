@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -260,6 +261,20 @@ class FixtureHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
+
+        if self.path == "/issue-890/external-http":
+            try:
+                request = json.loads(body)
+                delay_ms = request["delay_ms"]
+                value = request["value"]
+                if type(delay_ms) is not int or not 0 <= delay_ms <= 1000 or type(value) is not int:
+                    raise ValueError("invalid fixture request")
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                self._json(400, {"error": "invalid_request"})
+                return
+            time.sleep(delay_ms / 1000)
+            self._json(200, {"value": value, "source": "fixture"})
+            return
 
         if self.path == "/v1/embeddings":
             request = json.loads(body or b"{}")

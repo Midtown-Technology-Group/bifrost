@@ -24,6 +24,20 @@ async def issue_890_small(value: int) -> dict:
     return {"value": value, "ok": True}
 """
 
+EXTERNAL_HTTP_SOURCE = """import httpx
+from bifrost import workflow
+
+@workflow(name="issue_890_external_http", description="Capacity-lab fixture")
+async def issue_890_external_http(value: int, delay_ms: int) -> dict:
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.post(
+            "http://scheduler-fixtures:8080/issue-890/external-http",
+            json={"value": value, "delay_ms": delay_ms},
+        )
+        response.raise_for_status()
+        return response.json()
+"""
+
 
 def percentile(values: list[float], fraction: float) -> float:
     if not values:
@@ -45,7 +59,7 @@ def summarize(latencies: list[float], failures: int, elapsed: float) -> dict:
     }
 
 
-def prepare(url: str) -> tuple[dict[str, str], dict[str, str], str, str]:
+def prepare(url: str, scenario: str) -> tuple[dict[str, str], dict[str, str], str, str]:
     from tests.e2e.conftest import write_and_register
     from tests.e2e.fixtures.setup import _register_and_authenticate_user
     from tests.e2e.fixtures.users import E2EUser
@@ -86,12 +100,13 @@ def prepare(url: str) -> tuple[dict[str, str], dict[str, str], str, str]:
         )
         stub.raise_for_status()
         user = _register_and_authenticate_user(client, user)
+        is_external_http = scenario == "external-http"
         workflow = write_and_register(
             client,
             admin.headers,
-            "issue_890_small.py",
-            WORKFLOW_SOURCE,
-            "issue_890_small",
+            "issue_890_external_http.py" if is_external_http else "issue_890_small.py",
+            EXTERNAL_HTTP_SOURCE if is_external_http else WORKFLOW_SOURCE,
+            "issue_890_external_http" if is_external_http else "issue_890_small",
             organization_id=org_id,
         )
         profile = client.get("/api/profile", headers=user.headers)
@@ -138,12 +153,15 @@ async def run_level(
                         if response.json()["organization_id"] != org_id:
                             raise ValueError("tenant mismatch in profile response")
                     else:
+                        input_data = {"value": index}
+                        if scenario == "external-http":
+                            input_data["delay_ms"] = (20, 50, 100)[index % 3]
                         response = await client.post(
                             "/api/workflows/execute",
                             headers=admin_headers,
                             json={
                                 "workflow_id": workflow_id,
-                                "input_data": {"value": index},
+                                "input_data": input_data,
                                 "sync": True,
                                 "org_id": org_id,
                             },
@@ -169,7 +187,12 @@ async def run_level(
                             result = polled.json()
                         if result["status"] not in {"Success", "Completed"}:
                             raise ValueError(f"workflow ended as {result['status']}")
-                        if result.get("result") != {"value": index, "ok": True}:
+                        expected = (
+                            {"value": index, "source": "fixture"}
+                            if scenario == "external-http"
+                            else {"value": index, "ok": True}
+                        )
+                        if result.get("result") != expected:
                             raise ValueError("workflow returned the wrong result")
                     latencies.append(time.perf_counter() - started)
                 except (httpx.HTTPError, ValueError, KeyError, TimeoutError) as exc:
@@ -197,7 +220,9 @@ async def run_level(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", choices=("api-read", "workflow"), required=True)
+    parser.add_argument(
+        "--scenario", choices=("api-read", "workflow", "external-http"), required=True
+    )
     parser.add_argument(
         "--concurrency", type=int, nargs="+", default=[1, 4, 16, 32, 64, 128]
     )
@@ -219,7 +244,7 @@ def main() -> int:
     if args.operations < max(args.concurrency):
         parser.error("operations must be at least the highest concurrency level")
 
-    read_headers, admin_headers, workflow_id, org_id = prepare(url)
+    read_headers, admin_headers, workflow_id, org_id = prepare(url, args.scenario)
     result = {
         "scenario": args.scenario,
         "source_sha": os.environ.get("BIFROST_BENCH_SOURCE_SHA", "unknown"),

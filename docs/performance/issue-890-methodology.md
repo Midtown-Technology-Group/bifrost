@@ -21,6 +21,8 @@ This is the execution plan for [issue #890](https://github.com/Midtown-Technolog
 | External load harness | Whole-system saturation, overload, and recovery | Fixed production-shaped fixture, bounded concurrency ramp, B3 resource limits, per-role measurements. |
 | Production telemetry | Check whether the fixture resembles real workload shape | Compare anonymized distributions and role resource use; do not replay customer data. |
 
+The `external-http` lab scenario calls the existing Compose fixture server from an actual workflow process. Its deterministic 20/50/100 ms delays exercise the workflow's outbound HTTP and queue/persistence path without a live integration credential. These delays are sensitivity points, **not** measured Graph, NinjaOne, or model latency. Replace or weight them only after a bounded production trace gives an external-wait distribution. Run `scripts/issue-890-run.sh --scenario external-http --operations 200` on the isolated Linux VM; the endpoint and server exist only in the test Compose network.
+
 CodSpeed's current Python 3.12 simulation workflow is useful for small helpers but cannot establish B3 capacity or cost. Measure CI variance before considering dedicated runners. Use the current supported CodSpeed walltime/memory interface when those cases are implemented; do not assume the illustrative commands in the issue are supported. Record tool versions and modes with results.
 
 ## Decision record
