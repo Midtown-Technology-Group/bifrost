@@ -94,9 +94,10 @@ def test_configure_opentelemetry_registers_simple_trace_and_metric_providers(
             self.processors.append(processor)
 
     class MeterProvider:
-        def __init__(self, resource, metric_readers):
+        def __init__(self, resource, metric_readers, views):
             self.resource = resource
             self.metric_readers = metric_readers
+            self.views = views
 
     class OTLPSpanExporter:
         def __init__(self, endpoint):
@@ -168,6 +169,8 @@ def test_configure_opentelemetry_registers_simple_trace_and_metric_providers(
     monkeypatch.setattr(telemetry, "_configured_services", set())
     monkeypatch.setattr(telemetry, "_trace_provider", None)
     monkeypatch.setattr(telemetry, "_meter_provider", None)
+    lag_view = object()
+    monkeypatch.setattr(telemetry, "_event_loop_lag_view", lambda: lag_view)
 
     telemetry.configure_opentelemetry("worker", span_processor="simple")
 
@@ -175,6 +178,32 @@ def test_configure_opentelemetry_registers_simple_trace_and_metric_providers(
     assert isinstance(telemetry._trace_provider.processors[0], SimpleSpanProcessor)
     assert telemetry._trace_provider.processors[0].exporter.endpoint == "http://collector:4317"
     assert telemetry._meter_provider.metric_readers[0].export_interval_millis == 15_000
+    assert telemetry._meter_provider.views == [lag_view]
     assert ("resource", {"service.name": "worker"}) in calls
     assert calls[-2][0] == "trace"
     assert calls[-1][0] == "metrics"
+
+
+def test_event_loop_lag_histogram_distinguishes_short_stalls():
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(
+        metric_readers=[reader], views=[telemetry._event_loop_lag_view()]
+    )
+    provider.get_meter("test").create_histogram(
+        "bifrost.event_loop.lag", unit="s"
+    ).record(0.012)
+
+    metrics_data = reader.get_metrics_data()
+    assert metrics_data is not None
+    point = (
+        metrics_data.resource_metrics[0]
+        .scope_metrics[0]
+        .metrics[0]
+        .data.data_points[0]
+    )
+    assert tuple(point.explicit_bounds[:4]) == (0.001, 0.005, 0.01, 0.025)
+    assert point.bucket_counts[3] == 1
+    provider.shutdown()

@@ -1,0 +1,39 @@
+{
+  "scenario": "external-http",
+  "source_sha": "314cb00e0da1d597825a12cc11514733a256482e",
+  "resource_samples": "/tmp/bifrost/issue-890-resources-20260925T044415Z.jsonl",
+  "python": "3.14.7",
+  "architecture": "x86_64",
+  "levels": [
+    {
+      "concurrency": 128,
+      "requested": 200,
+      "started_at": "2026-09-25T04:44:24.880879+00:00",
+      "finished_at": "2026-09-25T04:44:43.613460+00:00",
+      "client_cpu_seconds": 0.6958,
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 10.677,
+      "p50_seconds": 9.3524,
+      "p95_seconds": 14.437,
+      "p99_seconds": 15.1414,
+      "wall_seconds": 18.733,
+      "failure_examples": []
+    },
+    {
+      "concurrency": 1,
+      "requested": 200,
+      "started_at": "2026-09-25T04:44:43.624847+00:00",
+      "finished_at": "2026-09-25T04:45:21.557788+00:00",
+      "client_cpu_seconds": 0.2835,
+      "completed": 200,
+      "failed": 0,
+      "throughput_per_second": 5.272,
+      "p50_seconds": 0.1813,
+      "p95_seconds": 0.2412,
+      "p99_seconds": 0.252,
+      "wall_seconds": 37.933,
+      "failure_examples": []
+    }
+  ]
+}
