@@ -35,6 +35,10 @@ from src.repositories.base import BaseRepository
 from src.services.execution.retry_policy import snapshot_retry_policy
 
 logger = logging.getLogger(__name__)
+EXECUTION_ADVISORY_LOCK_SQL = (
+    "SELECT pg_advisory_xact_lock("
+    "hashtext('bifrost:workflow-execution:' || :execution_id))"
+)
 
 
 def _make_json_safe(value: Any) -> Any:
@@ -235,10 +239,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         # the accepted cancellation instead of resurrecting the execution as
         # successful or failed.
         await self.session.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtext('bifrost:workflow-execution:' || :execution_id))"
-            ),
+            text(EXECUTION_ADVISORY_LOCK_SQL),
             {"execution_id": execution_id},
         )
         current_status_result = await self.session.execute(
@@ -294,7 +295,16 @@ class ExecutionRepository(BaseRepository[Execution]):
             )
 
         if execution_context is not None:
-            update_values["execution_context"] = _make_json_safe(execution_context)
+            # A Teams completion subscription may be registered while the
+            # workflow runs. Preserve that server-owned key when the worker
+            # projects its execution context at terminal state.
+            existing_context = await self.session.scalar(
+                select(Execution.execution_context).where(Execution.id == UUID(execution_id))
+            ) or {}
+            merged_context = _make_json_safe(execution_context)
+            if "teams_action_completion" in existing_context:
+                merged_context["teams_action_completion"] = existing_context["teams_action_completion"]
+            update_values["execution_context"] = merged_context
 
         # Resource metrics
         if metrics is not None:

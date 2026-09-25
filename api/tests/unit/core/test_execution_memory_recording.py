@@ -218,6 +218,11 @@ async def test_process_failure_forwards_reported_metrics() -> None:
                 "src.services.events.builtins.emit_workflow_failure_events",
                 new_callable=AsyncMock,
             ),
+            patch.object(
+                consumer,
+                "_emit_teams_action_completion",
+                new_callable=AsyncMock,
+            ),
         ):
             await consumer._process_failure(
                 str(uuid4()),

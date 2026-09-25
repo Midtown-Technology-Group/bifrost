@@ -614,7 +614,7 @@ async def test_list_newest_first_pages_by_continuation_token(db_session):
         )
     await db_session.flush()
 
-    from src.repositories.execution_logs import decode_execution_log_cursor
+    from src.repositories.execution_logs import decode_log_cursor
 
     rows, total, token = await service_lifecycle.list_service_logs(
         db_session, definition.id, newest_first=True, limit=2
@@ -628,7 +628,7 @@ async def test_list_newest_first_pages_by_continuation_token(db_session):
         definition.id,
         newest_first=True,
         limit=2,
-        cursor=decode_execution_log_cursor(token),
+        cursor=decode_log_cursor(token),
     )
     assert total == 5
     assert [r.message for r in rows] == ["line-2", "line-1"]
@@ -639,7 +639,7 @@ async def test_list_newest_first_pages_by_continuation_token(db_session):
         definition.id,
         newest_first=True,
         limit=2,
-        cursor=decode_execution_log_cursor(token),
+        cursor=decode_log_cursor(token),
     )
     assert [r.message for r in rows] == ["line-0"]
     assert token is None

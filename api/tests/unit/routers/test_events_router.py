@@ -22,7 +22,7 @@ def _now() -> datetime:
 
 
 def _user() -> SimpleNamespace:
-    return SimpleNamespace(user_id=uuid4(), email="admin@example.com")
+    return SimpleNamespace(user_id=uuid4(), email="admin@example.com", is_superuser=True)
 
 
 def _ctx() -> SimpleNamespace:
