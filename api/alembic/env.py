@@ -20,6 +20,9 @@ from src.core.database import Base
 
 # Import all models so they're registered with Base.metadata
 from src.models import (  # noqa: F401
+    ServiceDefinition,
+    ServiceAttempt,
+    ServiceLog,
     # Applications (App Builder)
     Application,
     AppRole,

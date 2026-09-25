@@ -410,6 +410,7 @@ async def register_workflow(
 
             found = False
             decorator_type = None
+            found_is_async = False
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -421,16 +422,17 @@ async def register_workflow(
                         dec_name = dec.id
                     elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name):
                         dec_name = dec.func.id
-                    if dec_name in ("workflow", "tool", "data_provider"):
+                    if dec_name in ("workflow", "tool", "data_provider", "service"):
                         found = True
                         decorator_type = dec_name
+                        found_is_async = isinstance(node, ast.AsyncFunctionDef)
                         break
                 if found:
                     break
 
             if not found:
                 return error_result(
-                    f"No @workflow/@tool/@data_provider decorated function '{function_name}' found in {path}"
+                    f"No @workflow/@tool/@data_provider/@service decorated function '{function_name}' found in {path}"
                 )
 
             # Check already registered. Scope to _repo/ rows (solution_id IS
@@ -457,8 +459,15 @@ async def register_workflow(
 
             # Create record
             wf_type = "data_provider" if decorator_type == "data_provider" else (
-                "tool" if decorator_type == "tool" else "workflow"
+                "tool" if decorator_type == "tool" else (
+                    "service" if decorator_type == "service" else "workflow"
+                )
             )
+            if wf_type == "service" and not found_is_async:
+                return error_result(
+                    f"Service '{function_name}' must be declared with 'async def'. "
+                    "Long-lived services run on the worker event loop."
+                )
             org_uuid = UUID(organization_id) if organization_id else None
             workflow_id = uuid4()
             resolved_retry_policy = ExecutionRetryPolicy.model_validate(
@@ -486,6 +495,18 @@ async def register_workflow(
                 select(WorkflowORM).where(WorkflowORM.id == workflow_id)
             )
             workflow = result.scalar_one()
+
+            # Reconcile the service definition (service rows ensured; rows
+            # converting away from service parked). See routers/workflows.
+            from src.services.service_lifecycle import (
+                sync_definition_for_registration,
+            )
+
+            await sync_definition_for_registration(
+                db,
+                workflow,
+                created_by=getattr(context, "user_email", None) or "mcp",
+            )
 
             return success_result(
                 f"Registered {wf_type} '{workflow.name}' from {path}::{function_name}",

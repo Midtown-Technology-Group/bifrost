@@ -83,6 +83,28 @@ def _source_in_scope(context: Any, source_org_id: UUID | None) -> bool:
     return True
 
 
+async def _reject_service_target(db: Any, workflow_id: str) -> ToolResult | None:
+    """Reject service workflows as subscription targets.
+
+    Services run under supervision and cannot be one-shot event targets.
+    Returns an error result when rejected, None when the target is fine
+    (including when the workflow row does not exist — the FK owns that).
+    """
+    from src.models.orm.workflows import Workflow as WorkflowORM
+
+    try:
+        target = await db.get(WorkflowORM, UUID(workflow_id))
+    except (ValueError, AttributeError):
+        return None
+    if target is not None and target.type == "service":
+        return error_result(
+            f"Workflow '{target.name}' is a long-lived service "
+            "(type='service') and cannot be an event subscription target. "
+            "Services emit events; workflows and agents consume them."
+        )
+    return None
+
+
 async def list_event_sources(
     context: Any,
     source_type: str | None = None,
@@ -349,6 +371,9 @@ async def create_event_source(
             # Auto-create subscription if workflow_id provided
             subscription_data = None
             if workflow_id:
+                service_rejection = await _reject_service_target(db, workflow_id)
+                if service_rejection is not None:
+                    return service_rejection
                 # Check if subscription already exists
                 existing_sub = await db.execute(
                     select(EventSubscription)
@@ -759,6 +784,11 @@ async def create_event_subscription(
             # a foreign-org source by id, and an external gets no global tier.
             if not _source_in_scope(context, source.organization_id):
                 return error_result(f"Event source not found: {source_id}")
+
+            # Services run under supervision and cannot be one-shot targets.
+            service_rejection = await _reject_service_target(db, workflow_id)
+            if service_rejection is not None:
+                return service_rejection
 
             validated_criteria = (
                 EventCriteria.model_validate(criteria).model_dump(mode="json")

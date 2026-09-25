@@ -992,3 +992,28 @@ async def test_queue_agent_run_raises_when_subscription_agent_missing():
 
     with pytest.raises(ValueError, match="subscription has no agent"):
         await p.EventProcessor(AsyncMock())._queue_agent_run(delivery, event)
+
+
+@pytest.mark.asyncio
+async def test_queue_service_target_fails_loudly():
+    """A delivery targeting a service fails with an attributable error."""
+    session = AsyncMock()
+    session.add = MagicMock()
+    processor = p.EventProcessor(session)
+    workflow_id = uuid.uuid4()
+    delivery = SimpleNamespace(
+        id=uuid.uuid4(),
+        workflow=SimpleNamespace(id=workflow_id, type="service", name="telegram_bridge"),
+    )
+    event = SimpleNamespace(
+        id=uuid.uuid4(),
+        event_type="telegram.message",
+        data={},
+        headers=None,
+        received_at=None,
+        source_ip=None,
+        organization_id=None,
+    )
+
+    with pytest.raises(ValueError, match="type='service'"):
+        await processor._queue_workflow_execution(delivery, event)

@@ -70,6 +70,7 @@ from src.models.contracts.solutions import (  # noqa: E402
     SolutionDeployJobStatus,
 )
 from src.models.contracts.policy_rule import PolicyRuleCreate, PolicyRuleUpdate  # noqa: E402
+from src.models.contracts.services import ServicePolicyUpdate  # noqa: E402
 from src.models.contracts.tables import (  # noqa: E402
     ConditionalDocumentUpdate,
     DocumentBatchCreate,
@@ -139,6 +140,7 @@ _COMMAND_DTOS: list[type] = [
     SolutionDeployJobStatus,
     PolicyRuleCreate,
     PolicyRuleUpdate,
+    ServicePolicyUpdate,
     WorkspacePromotionPreviewRequest,
     WorkspacePromotionPreviewResponse,
     WorkspacePromotionArtifactResponse,
@@ -295,6 +297,7 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # compatible fields (2026-09-16). Existing v11 clients retain their scope.
     # PlatformJobPublic gained execution_backend (2026-09-17). ADDITIVE:
     # existing clients ignore the placement detail.
+    # ServicePolicyUpdate is a new CLI contract for supervised services.
     "10e2367d8c9c2cc2218be2f544badb8c4dc3fac860f02520bc6f54f18439dae3"
 )
 
