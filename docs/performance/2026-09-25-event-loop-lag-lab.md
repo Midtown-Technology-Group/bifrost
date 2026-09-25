@@ -1,6 +1,6 @@
 # Issue 890: API event-loop lag during load
 
-The existing `bifrost.event_loop.lag` API histogram now reaches an isolated file collector in the issue 890 lab. The collector keeps only that metric; traces go to a no-op exporter. `scripts/issue-890-run.sh` records the per-run file path in each load report and checks that the histogram was written.
+The existing `bifrost.event_loop.lag` API histogram now reaches an isolated file collector in the issue 890 lab. The collector keeps only that metric; traces go to a no-op exporter. `scripts/issue-890-run.sh` records the per-run file path in each load report and requires cumulative histogram count growth between exports fully inside a load level. Very short levels may need more operations to span two 15-second exports.
 
 On VM101, source `90e070646f42dc406204a49381a93e42b5875d2d`, an authenticated `/api/profile` run completed 10,000/10,000 requests at concurrency 16. Throughput was 257.11 requests/s; p95 request latency was 83.6 ms. The [load report](results/2026-09-25-event-loop-lag-load-90e070646.json) and [raw metric exports](results/2026-09-25-event-loop-lag-90e070646.jsonl) retain the timestamps and histogram buckets.
 
