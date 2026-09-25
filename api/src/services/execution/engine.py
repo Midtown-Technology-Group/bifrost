@@ -166,6 +166,7 @@ class ExecutionRequest:
     # entity — own-first, then _repo/. None for plain _repo/ executions.
     solution_id: str | None = None
     solution_deployment_id: str | None = None
+    artifact_workspace_id: str | None = None
 
     # Service mode (Slice 3): set for supervised @service runs. The engine
     # invokes the service coroutine with cooperative stop (no timeout kill,
