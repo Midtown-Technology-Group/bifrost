@@ -424,7 +424,7 @@ async def test_verified_provider_actor_uses_customer_scope_for_tools(
         patch("src.services.execution.autonomous_agent_executor.resolve_external_actor", new=AsyncMock(return_value=(principal, identity_id))),
         patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=mock_agent)),
         patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools", new=AsyncMock(return_value=([], {}))) as tools,
-        patch("src.services.execution.autonomous_agent_executor.create_agent_model", return_value=LegacyMockModel(mock_llm)),
+        patch("src.services.agent_runtime.model_factory.create_agent_model", return_value=LegacyMockModel(mock_llm)),
     ):
         await executor.run(
             agent=mock_agent, input_data={"task": "PC123"}, run_id=str(uuid4()),
