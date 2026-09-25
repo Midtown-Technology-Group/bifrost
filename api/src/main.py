@@ -146,7 +146,7 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info("Starting Bifrost API...")
     settings = get_settings()
-    configure_opentelemetry("bifrost-api")
+    configure_opentelemetry("bifrost-api", container_resources=True)
 
     # Initialize database
     logger.info("Initializing database connection...")

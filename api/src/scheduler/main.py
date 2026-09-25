@@ -818,7 +818,10 @@ class Scheduler:
 
 async def main() -> None:
     """Main entry point."""
+    from src.core.telemetry import configure_opentelemetry
+
     scheduler = Scheduler()
+    configure_opentelemetry("bifrost-scheduler", container_resources=True)
 
     # Register signal handlers
     def make_handler(s: signal.Signals) -> None:
