@@ -31,6 +31,8 @@ The issue-specific Compose override pins API, scheduler, and worker to the same 
 
 CodSpeed's current Python 3.12 simulation workflow is useful for small helpers but cannot establish B3 capacity or cost. Measure CI variance before considering dedicated runners. Use the current supported CodSpeed walltime/memory interface when those cases are implemented; do not assume the illustrative commands in the issue are supported. Record tool versions and modes with results.
 
+[PR #918](https://github.com/Midtown-Technology-Group/bifrost/pull/918) changed only documentation, yet its hosted-runner CodSpeed report marked the nested-result walltime benchmark 97.85% faster (2.6 ms versus 1.3 ms) and warned that the execution environment is inconsistent. This is a no-code-change control showing that a single hosted walltime comparison is not decision-grade. It does not quantify the full variance distribution; repeat identical-code runs on a controlled runner before using a small benchmark difference to justify an extraction.
+
 The first CodSpeed macro slice validates and serializes an actual `ExecutionsListResponse` page of 1,000 synthetic metadata rows and a `WorkflowExecutionResponse` with a nested result of about 1.5 MB. The sizes come from the production list page limit and the largest result in the bounded production detail sample; the contents are entirely synthetic. `.github/workflows/codspeed.yml` retains the existing simulation microbenchmarks and runs these two contract paths in the action's supported `walltime,memory` modes. This measures serialization costs, not database reads, worker dispatch, or whole-system density.
 
 ## Decision record
