@@ -605,7 +605,7 @@ function SolutionEntityGrid({
 				return (
 					<Card
 						key={entity.id}
-						className="hover:border-primary transition-colors flex flex-col"
+						className="relative hover:border-primary transition-colors flex flex-col"
 					>
 						<CardHeader className="pb-2">
 							<div className="mb-3 flex items-center justify-between gap-2">

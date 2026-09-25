@@ -117,6 +117,9 @@ describe("FormListSurface", () => {
 		expect(
 			screen.queryByRole("link", { name: "Dispatch Intake" }),
 		).not.toBeInTheDocument();
+		expect(screen.getByTitle("Checking launch requirements…")).toHaveTextContent(
+			"Dispatch Intake",
+		);
 	});
 
 	it("explains invalid table titles without exposing a launch link", async () => {

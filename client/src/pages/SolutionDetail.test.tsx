@@ -636,6 +636,9 @@ describe("SolutionDetail", () => {
 				.getAllByRole("link", { name: "Ticket Intake" })
 				.map((link) => link.getAttribute("href")),
 		).toContain("/execute/form-1?from=solution:sol-1");
+		expect(
+			screen.getAllByRole("link", { name: "Ticket Intake" })[0].closest('[data-slot="card"]'),
+		).toHaveClass("relative");
 	});
 
 	it("opens sharing for a solution-managed form without exposing edit controls", async () => {
