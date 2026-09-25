@@ -22,7 +22,7 @@ def _stat_value(path: Path, key: str) -> int | None:
             if len(parts) == 2 and parts[0] == key:
                 return int(parts[1])
     except (OSError, ValueError):
-        pass
+        return None
     return None
 
 
