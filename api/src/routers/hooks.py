@@ -226,6 +226,12 @@ async def receive_webhook(
                     await validate_teams_chat_event(db, result.event_id)
                     receipt_mode = await send_fast_teams_receipt(db, result.event_id, webhook_source)
                     if receipt_mode == "duplicate":
+                        # The first webhook may have died after persisting its
+                        # receipt and direct marker but before creating a run.
+                        # The bridge canonicalizes the event and the run ID is
+                        # fenced by enqueue_agent_run_once.
+                        await submit_teams_chat_event(db, result.event_id)
+                        await db.commit()
                         direct_handled = True
                         skip_reason = "teams_duplicate_ingress"
                     elif receipt_mode == "owner":

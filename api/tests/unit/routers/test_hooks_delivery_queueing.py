@@ -134,7 +134,7 @@ async def test_teams_direct_failure_falls_back_to_legacy_queue():
 
 
 @pytest.mark.asyncio
-async def test_duplicate_teams_event_skips_run_and_legacy_delivery():
+async def test_duplicate_teams_event_resumes_direct_run_after_receipt_crash():
     source_id = uuid4()
     event_id = uuid4()
     event_source = SimpleNamespace(id=source_id, is_active=True)
@@ -165,7 +165,10 @@ async def test_duplicate_teams_event_skips_run_and_legacy_delivery():
         response = await receive_webhook(str(source_id), request, db)
 
     assert response.status_code == 202
-    submit.assert_not_awaited()
+    # The first delivery may have committed its receipt and marker, then died
+    # before creating an AgentRun. Retrying must call the bridge again; its
+    # canonical event UUID and enqueue_agent_run_once fence make one run.
+    submit.assert_awaited_once_with(db, event_id)
     processor.queue_event_deliveries.assert_not_awaited()
     assert event.data.get("teams_direct_enqueued") is None
 
