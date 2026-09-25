@@ -335,6 +335,29 @@ class Scheduler:
             **misfire_options,
         )
 
+        # Device-job lost watchdog - every 30 seconds (run immediately at
+        # startup). Transitions running jobs whose agent went silent to the
+        # terminal `lost` state so the device single-active slot recovers.
+        from src.jobs.schedulers.device_jobs_sweep import (
+            SWEEP_INTERVAL_SECONDS,
+            sweep_lost_device_jobs,
+        )
+
+        scheduler.add_job(
+            self._run_scheduled_task,
+            IntervalTrigger(seconds=SWEEP_INTERVAL_SECONDS),
+            id="device_jobs_lost_sweep",
+            name="Sweep device jobs whose agent went silent",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),  # Run immediately at startup
+            args=["device_jobs_lost_sweep", sweep_lost_device_jobs],
+            **misfire_options,
+        )
+        logger.info(
+            "Device-job lost watchdog scheduled (every %ss)",
+            SWEEP_INTERVAL_SECONDS,
+        )
+
         # OAuth token refresh - every 15 minutes (run immediately at startup)
         try:
             from src.jobs.platform.system_maintenance import (

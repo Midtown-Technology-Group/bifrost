@@ -105,6 +105,33 @@ async def test_start_scheduler_adds_core_jobs_and_starts_scheduler(
 
 
 @pytest.mark.asyncio
+async def test_start_scheduler_registers_device_job_lost_watchdog(
+    monkeypatch: pytest.MonkeyPatch,
+    scheduler,
+) -> None:
+    """The device-job lost watchdog must be scheduled, not just test-invoked."""
+    FakeApscheduler.instances = []
+    monkeypatch.setattr(scheduler_main, "AsyncIOScheduler", FakeApscheduler)
+    monkeypatch.setattr(scheduler_main, "publish_task_states", AsyncMock())
+
+    await scheduler._start_scheduler()
+
+    fake = FakeApscheduler.instances[0]
+    sweep_jobs = [job for job in fake.jobs if job["id"] == "device_jobs_lost_sweep"]
+    assert len(sweep_jobs) == 1
+    sweep = sweep_jobs[0]
+    assert sweep["trigger"].interval.total_seconds() == 30
+    task_id, callback = sweep["args"]
+    assert task_id == "device_jobs_lost_sweep"
+    from src.jobs.schedulers.device_jobs_sweep import sweep_lost_device_jobs
+
+    assert callback is sweep_lost_device_jobs
+    from src.scheduler.registry import SCHEDULED_TASKS_BY_ID
+
+    assert "device_jobs_lost_sweep" in SCHEDULED_TASKS_BY_ID
+
+
+@pytest.mark.asyncio
 async def test_stop_stops_scheduler_and_db(
     monkeypatch: pytest.MonkeyPatch,
     scheduler,
