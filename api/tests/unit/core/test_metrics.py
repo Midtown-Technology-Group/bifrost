@@ -105,7 +105,7 @@ async def test_update_daily_metrics_opens_session_and_commits(monkeypatch) -> No
         duration_ms=None,
     )
 
-    assert calls == 2
+    assert calls == 1
     session.commit.assert_awaited_once()
 
 

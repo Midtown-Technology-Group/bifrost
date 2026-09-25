@@ -64,7 +64,6 @@ from src.services.execution.memory_monitor import get_cgroup_memory, has_suffici
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
 from src.services.notification_service import get_notification_service
 from src.services.execution.template_process import TemplateProcess
-from src.core.module_cache import WORKSPACE_GENERATION_CHANNEL
 
 logger = logging.getLogger(__name__)
 
@@ -567,80 +566,6 @@ class ProcessPoolManager:
             # Restart template with fresh sys.modules — future forks
             # (driven by route_execution) will see newly installed packages.
             await self.restart_template()
-
-    def active_execution_count(self) -> int:
-        """Return child executions still owned by the parent drain path."""
-        return sum(
-            1
-            for handle in self.processes.values()
-            if (
-                handle.state == ProcessState.BUSY
-                and handle.current_execution is not None
-            )
-        )
-
-    async def drain_active_executions(self, drain_timeout: float) -> bool:
-        """Wait for active workflow children to finish within a bounded grace.
-
-        Shutdown needs to keep the parent process, database, Redis, and broker
-        alive long enough for child results to reach ``on_result``. Normal
-        ``stop()`` remains a hard pool close; this method is the graceful
-        pre-stop phase used by the workflow consumer.
-        """
-        deadline = time.monotonic() + drain_timeout
-        while self.active_execution_count() > 0:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                logger.warning(
-                    "Process pool drain deadline exceeded with %s active execution(s)",
-                    self.active_execution_count(),
-                )
-                try:
-                    await asyncio.wait_for(
-                        self._report_shutdown_for_active_executions(),
-                        timeout=self.graceful_shutdown_seconds,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "Shutdown terminal result finalization exceeded %ss",
-                        self.graceful_shutdown_seconds,
-                    )
-                return False
-            await asyncio.sleep(min(0.2, remaining))
-
-        if self._result_tasks:
-            pending = [task for task in self._result_tasks if not task.done()]
-            if pending:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    logger.warning(
-                        "Process pool drain deadline exceeded with %s result task(s)",
-                        len(pending),
-                    )
-                    return False
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(*pending, return_exceptions=True),
-                        timeout=remaining,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "Process pool drain deadline exceeded while waiting for result callbacks"
-                    )
-                    return False
-
-        return True
-
-    async def _report_shutdown_for_active_executions(self) -> None:
-        """Record terminal failure for acked executions abandoned by shutdown."""
-        for handle in list(self.processes.values()):
-            if (
-                handle.state != ProcessState.BUSY
-                or handle.current_execution is None
-                or handle.result_reported
-            ):
-                continue
-            await self._report_shutdown(handle)
 
     def _fork_process(self) -> ProcessHandle:
         """
@@ -1365,6 +1290,8 @@ class ProcessPoolManager:
         outer loop so a dropped Redis connection results in a fresh pubsub
         on the next iteration rather than looping on a dead one.
         """
+        from src.core.module_cache import WORKSPACE_GENERATION_CHANNEL
+
         channel = f"bifrost:pool:{self.worker_id}:commands"
         channels = [channel, WORKSPACE_GENERATION_CHANNEL]
         logger.info(f"Command listener loop started on channels {channels}")
