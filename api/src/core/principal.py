@@ -81,12 +81,7 @@ class UserPrincipal:
     verified_context: dict[str, str] | None = None
     capability_fingerprint: str | None = None
     token_exp: int | None = None
-    # Engine execution claims (mint_engine_token). Present only on the
-    # short-lived execution-scoped engine token: the SIGNED caller install
-    # for per-call solution inbound attestation. Ordinary user/admin JWTs
-    # carry neither; request-supplied caller ids from those callers are
-    # untrusted. None solution_id = _repo/global execution (outside).
-    engine_execution_id: str | None = None
+    # Signed caller install on short-lived engine tokens; None is _repo/global.
     engine_solution_id: str | None = None
 
     @property
