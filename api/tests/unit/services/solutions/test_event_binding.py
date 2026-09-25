@@ -6,11 +6,12 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.solutions.deploy import SolutionDeployer
+from src.services.solutions.deploy import SolutionDeployer, SolutionDeployConflict
 
 
 @pytest.mark.asyncio
-async def test_redeploy_keeps_existing_webhook_integration_binding():
+@pytest.mark.parametrize("integration_name", ["Microsoft Teams Bot", "NinjaOne"])
+async def test_redeploy_keeps_only_valid_teams_webhook_binding(integration_name):
     source_id = uuid4()
     integration_id = uuid4()
     statements = []
@@ -23,9 +24,10 @@ async def test_redeploy_keeps_existing_webhook_integration_binding():
         return result
 
     db.execute.side_effect = execute
+    db.scalar.return_value = integration_name
     deployer = SolutionDeployer(db)
     deployer._guard_owner = AsyncMock()
-    await deployer._upsert_events(
+    deploy = deployer._upsert_events(
         SimpleNamespace(id=uuid4(), organization_id=None),
         [{
             "id": str(source_id),
@@ -36,6 +38,12 @@ async def test_redeploy_keeps_existing_webhook_integration_binding():
             "subscriptions": [],
         }],
     )
+    if integration_name != "Microsoft Teams Bot":
+        with pytest.raises(SolutionDeployConflict, match="Microsoft Teams Bot integration"):
+            await deploy
+        assert not any(getattr(statement, "is_delete", False) for statement in statements)
+        return
+    await deploy
 
     webhook_insert = next(
         statement for statement in statements

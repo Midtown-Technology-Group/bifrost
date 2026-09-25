@@ -706,6 +706,7 @@ async def update_source(
     # Reload with relationships
     result = await db.execute(
         select(EventSource)
+        .execution_options(populate_existing=True)
         .options(
             joinedload(EventSource.webhook_source).joinedload(
                 WebhookSource.integration

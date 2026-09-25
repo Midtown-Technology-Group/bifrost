@@ -1958,6 +1958,7 @@ class SolutionDeployer:
         starts from a clean shell the operator re-establishes.
         """
         from src.models.enums import ScheduleOverlapPolicy
+        from src.models.orm.integrations import Integration
 
         from bifrost.manifest import ManifestEventSource
         from bifrost.manifest_codec import Destination
@@ -1973,9 +1974,20 @@ class SolutionDeployer:
                 await self.db.execute(
                     select(WebhookSource.integration_id).where(
                         WebhookSource.event_source_id == source_id
-                    )
+                    ).with_for_update()
                 )
             ).scalar_one_or_none()
+            if bound_integration_id and mevent.get("adapter_name") == "microsoft_bot_framework":
+                integration_name = await self.db.scalar(
+                    select(Integration.name).where(
+                        Integration.id == bound_integration_id,
+                        Integration.is_deleted.is_(False),
+                    )
+                )
+                if integration_name != "Microsoft Teams Bot":
+                    raise SolutionDeployConflict(
+                        "Microsoft Bot Framework webhook requires a Microsoft Teams Bot integration binding"
+                    )
 
             # Full-replace children + subs for a clean idempotent redeploy.
             await self.db.execute(
