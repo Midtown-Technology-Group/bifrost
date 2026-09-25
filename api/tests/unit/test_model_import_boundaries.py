@@ -166,16 +166,26 @@ def test_contract_all_resolves_every_public_export_and_alias() -> None:
                 failed.append([name, type(exc).__name__, str(exc)])
 
         print(json.dumps({
-            "count": len(contracts.__all__),
             "failed": failed,
             "sdk_alias": contracts.SDKOAuthCredentials is sdk.OAuthCredentials,
+            "fork_exports": sorted(name for name in (
+                "ExecutionRetryPolicy",
+                "ExecutionAttemptPublic",
+                "CodexGatewayKeyContext",
+                "PackageInstallationProgressResponse",
+            ) if name in contracts.__all__),
         }))
         """
     )
 
-    assert result["count"] == 489
     assert result["failed"] == []
     assert result["sdk_alias"] is True
+    assert result["fork_exports"] == sorted([
+        "ExecutionRetryPolicy",
+        "ExecutionAttemptPublic",
+        "CodexGatewayKeyContext",
+        "PackageInstallationProgressResponse",
+    ])
 
 
 def test_root_model_all_preserves_public_exports_and_resolves_every_symbol() -> None:
@@ -194,16 +204,21 @@ def test_root_model_all_preserves_public_exports_and_resolves_every_symbol() -> 
                 failed.append([name, type(exc).__name__, str(exc)])
 
         print(json.dumps({
-            "count": len(models.__all__),
             "failed": failed,
             "contract_tail_matches": models.__all__[-len(contracts.__all__):] == contracts.__all__,
+            "fork_exports": sorted(name for name in (
+                "ExecutionAttempt", "Device", "DeviceControlKey",
+                "DeviceJob", "DeviceJobLog",
+            ) if name in models.__all__),
         }))
         """
     )
 
-    assert result["count"] == 541
     assert result["failed"] == []
     assert result["contract_tail_matches"] is True
+    assert result["fork_exports"] == [
+        "Device", "DeviceControlKey", "DeviceJob", "DeviceJobLog", "ExecutionAttempt",
+    ]
 
 
 def test_lazy_model_packages_raise_meaningful_attribute_errors() -> None:

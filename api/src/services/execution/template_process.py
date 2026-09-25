@@ -142,7 +142,7 @@ def _reap_children(exit_statuses: dict[int, int]) -> None:
 def _template_main(
     pipe: Connection,
     preload_modules: list[str] | None = None,
-    install_requirements_on_startup: bool = True,
+    install_requirements_on_startup: bool = False,
 ) -> None:
     """
     Entry point for the template process.
@@ -591,7 +591,7 @@ class TemplateProcess:
     holds all heavy dependencies in memory and forks children on request.
     """
 
-    def __init__(self, install_requirements_on_startup: bool = True) -> None:
+    def __init__(self, install_requirements_on_startup: bool = False) -> None:
         self.install_requirements_on_startup = install_requirements_on_startup
         self._process: subprocess.Popen[bytes] | None = None
         self._pipe: Connection | None = None

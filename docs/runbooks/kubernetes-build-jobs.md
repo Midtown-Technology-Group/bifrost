@@ -1,9 +1,8 @@
 # Kubernetes App Build Jobs
 
 This guide covers the opt-in Kubernetes execution path for isolated App build
-Jobs. The normal production manifests keep local execution by default, there is
-no Settings UI for this yet, and the broader Elastic Runtime is still not
-implemented.
+Jobs. The normal production manifests keep local execution by default. The
+broader Elastic Runtime is still not implemented.
 
 The implemented scope is narrow. The warm scheduler remains online for ordinary
 PlatformJob work, using its existing local capacity. Build-class PlatformJobs
@@ -38,11 +37,11 @@ normal manifests keeps local scheduler execution.
 
 ## Configuration
 
-Replace the image placeholder with the exact Bifrost API image tag compatible
-with the deployed API and scheduler:
+For this fork, replace the image placeholder with the exact API image digest
+deployed through `bifrost-infra` to Azure. Do not use the upstream image:
 
 ```yaml
-BIFROST_KUBERNETES_BUILD_IMAGE: "ghcr.io/gobifrost/bifrost-api:<compatible-tag>"
+BIFROST_KUBERNETES_BUILD_IMAGE: "<fork-registry>/bifrost-api@sha256:<digest>"
 ```
 
 Initial settings:
