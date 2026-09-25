@@ -324,7 +324,8 @@ stack_status() {
 # =============================================================================
 
 run_pytest() {
-    local runner_lock_fd runner_name runner_status target unit_only
+    local runner_lock_fd runner_name runner_status target unit_only running_services
+    local stopped_services=()
 
     unit_only="${BIFROST_TEST_UNIT_ONLY:-0}"
     if [[ "${1:-}" == tests/unit/* ]]; then
@@ -360,6 +361,10 @@ run_pytest() {
 
     cleanup_pytest_runner() {
         docker rm -f "$runner_name" > /dev/null 2>&1 || true
+        if [ "${#stopped_services[@]}" -gt 0 ]; then
+            docker compose -f "$COMPOSE_FILE" start "${stopped_services[@]}" > /dev/null
+            stopped_services=()
+        fi
     }
     trap cleanup_pytest_runner INT TERM
 
@@ -373,7 +378,15 @@ run_pytest() {
         # Unit tests create committed service rows while exercising claim
         # logic. A live scheduler/worker can claim those rows before the test
         # loop does, making the result depend on an unrelated process tick.
-        docker compose -f "$COMPOSE_FILE" stop worker scheduler > /dev/null
+        running_services="$(docker compose -f "$COMPOSE_FILE" ps --status running --services)"
+        for target in worker scheduler; do
+            if grep -Fxq "$target" <<< "$running_services"; then
+                stopped_services+=("$target")
+            fi
+        done
+        if [ "${#stopped_services[@]}" -gt 0 ]; then
+            docker compose -f "$COMPOSE_FILE" stop "${stopped_services[@]}" > /dev/null
+        fi
     fi
     # LOG_DIR is mkdir'd on the host as the runner/host user, then bind-mounted
     # into the test-runner container at /tmp/bifrost. The container runs as
@@ -388,9 +401,11 @@ run_pytest() {
         echo "BIFROST_SKIP_BUILD=1 — using pre-built test-runner image from local docker."
     fi
 
+    set +e
     docker compose -f "$COMPOSE_FILE" --profile test run "${build_args[@]}" --rm test-runner \
         pytest "$@" --durations=25 --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
     runner_status="${PIPESTATUS[0]}"
+    set -e
     trap - INT TERM
     cleanup_pytest_runner
     exec {runner_lock_fd}>&-
