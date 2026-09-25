@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import HTTPException
@@ -38,12 +39,50 @@ async def emit_teams_chat_completion(run) -> None:
         return
     from src.services.events import emit_event
 
-    await emit_event(
+    _event_id, subscribers = await emit_event(
         "microsoft_teams.chat_run_completed",
         {"run_id": str(run.id), "webhook_event_id": str(event_id), "organization_id": str(run.org_id)},
         organization_id=run.org_id,
         triggered_by=f"agent_run:{run.id}",
     )
+    if subscribers:
+        from src.core.database import get_session_factory
+        from src.models.orm.agent_runs import AgentRun
+
+        async with get_session_factory()() as db:
+            stored = await db.get(AgentRun, run.id, with_for_update=True)
+            if stored is not None:
+                stored.run_metadata = {
+                    **(stored.run_metadata or {}),
+                    "teams_completion_emitted_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await db.commit()
+
+
+async def recover_teams_chat_completions(*, limit: int = 50) -> int:
+    """Retry terminal notifications missed by a worker crash or topic outage."""
+    from src.core.database import get_session_factory
+    from src.models.orm.agent_runs import AgentRun
+
+    async with get_session_factory()() as db:
+        runs = (await db.scalars(
+            select(AgentRun).where(
+                AgentRun.status.in_(("completed", "failed", "cancelled", "paused", "budget_exceeded", "timeout")),
+                AgentRun.input.has_key("teams_event_id"),
+                ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
+                AgentRun.completed_at < datetime.now(timezone.utc) - timedelta(seconds=15),
+            ).order_by(AgentRun.completed_at).limit(limit)
+        )).all()
+    recovered = 0
+    for run in runs:
+        try:
+            await emit_teams_chat_completion(run)
+            recovered += 1
+        except Exception:
+            # The next scheduler pass retries without replaying the AgentRun.
+            import logging
+            logging.getLogger(__name__).exception("Teams completion recovery failed for %s", run.id)
+    return recovered
 
 
 def _message_text(activity: dict) -> str:

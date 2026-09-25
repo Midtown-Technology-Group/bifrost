@@ -165,7 +165,7 @@ async def test_linked_sender_runs_chat_with_their_own_principal(monkeypatch):
 async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
     from src.services import events
 
-    emit = AsyncMock(return_value=(UUID(int=4), 1))
+    emit = AsyncMock(return_value=(UUID(int=4), 0))
     monkeypatch.setattr(events, "emit_event", emit)
     run = SimpleNamespace(
         id=UUID(int=3), status="completed", org_id=ORG_ID,
@@ -181,6 +181,22 @@ async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
     run.input = {}
     await bridge.emit_teams_chat_completion(run)
     emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_completion_emit_failure_leaves_run_eligible_for_recovery(monkeypatch):
+    from src.services import events
+
+    emit = AsyncMock(side_effect=RuntimeError("topic unavailable"))
+    monkeypatch.setattr(events, "emit_event", emit)
+    run = SimpleNamespace(
+        id=UUID(int=3), status="failed", org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+        run_metadata={},
+    )
+    with pytest.raises(RuntimeError, match="topic unavailable"):
+        await bridge.emit_teams_chat_completion(run)
+    assert "teams_completion_emitted_at" not in run.run_metadata
 
 
 @pytest.mark.asyncio
