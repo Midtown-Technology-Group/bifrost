@@ -11,6 +11,9 @@ Security is handled by:
 
 import json
 import logging
+from datetime import datetime, timezone
+
+from sqlalchemy import update
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
@@ -18,8 +21,14 @@ from fastapi.responses import PlainTextResponse
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.rate_limit import RateLimiter
+from src.models.enums import EventDeliveryStatus, EventStatus
+from src.models.orm import Event, EventDelivery
 from src.services.events.processor import EventProcessor, resolve_webhook_source
-from src.services.teams_receipts import send_fast_teams_receipt
+from src.services.teams_receipts import (
+    finish_rejected_teams_receipt,
+    send_fast_teams_receipt,
+)
+from src.services.teams_chat_bridge import submit_teams_chat_event
 from src.services.webhooks.protocol import (
     Deliver,
     Rejected,
@@ -203,19 +212,78 @@ async def receive_webhook(
         # Event accepted - commit transaction and queue deliveries
         await db.commit()
 
-        if result.event_id and webhook_source.adapter_name == "microsoft_bot_framework":
+        direct_handled = False
+        skip_reason = "teams_direct_ingress"
+        if result.event_id and getattr(webhook_source, "adapter_name", None) == "microsoft_bot_framework":
             try:
-                await send_fast_teams_receipt(db, result.event_id, webhook_source)
+                eligible = await send_fast_teams_receipt(db, result.event_id, webhook_source)
+                if eligible:
+                    # Commit before AgentRun publication: a fast completion callback
+                    # must see both the receipt and this direct-ingress marker.
+                    event = await db.get(Event, result.event_id)
+                    event.data = {**event.data, "teams_direct_enqueued": True}
+                    await db.commit()
+                    await submit_teams_chat_event(db, result.event_id)
+                    await db.commit()
+                    direct_handled = True
             except Exception as exc:
                 logger.warning(
-                    "Teams receipt unavailable for event %s: %s",
+                    "Teams direct ingress unavailable for event %s: %s",
                     result.event_id, type(exc).__name__,
                 )
+                await db.rollback()
+                event = await db.get(Event, result.event_id)
+                if event is not None and event.data.get("teams_direct_enqueued"):
+                    event.data = {**event.data, "teams_direct_enqueued": False}
+                    await db.commit()
+                if isinstance(exc, HTTPException) and exc.status_code in (400, 403, 404, 409):
+                    try:
+                        direct_handled = await finish_rejected_teams_receipt(
+                            db, result.event_id, webhook_source,
+                        )
+                        if direct_handled:
+                            event = await db.get(Event, result.event_id)
+                            event.data = {**event.data, "teams_direct_enqueued": True}
+                            await db.commit()
+                            skip_reason = "teams_direct_rejected"
+                    except Exception as update_exc:
+                        logger.warning(
+                            "Teams rejection update unavailable for event %s: %s",
+                            result.event_id, type(update_exc).__name__,
+                        )
+                        await db.rollback()
+
+            if direct_handled:
+                try:
+                    await db.execute(
+                        update(EventDelivery)
+                        .where(
+                            EventDelivery.event_id == result.event_id,
+                            EventDelivery.status == EventDeliveryStatus.PENDING,
+                        )
+                        .values(
+                            status=EventDeliveryStatus.SKIPPED,
+                            error_message=skip_reason,
+                            completed_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    event = await db.get(Event, result.event_id)
+                    if event is not None:
+                        event.status = EventStatus.COMPLETED
+                    await db.commit()
+                except Exception as exc:
+                    logger.error(
+                        "Teams legacy delivery suppression failed for event %s: %s",
+                        result.event_id, type(exc).__name__,
+                    )
+                    await db.rollback()
+                    # A direct AgentRun already exists; do not queue another
+                    # route just because the audit status update failed.
 
         # Queue workflow executions asynchronously
         # This is done after commit to ensure delivery records exist
         try:
-            if result.event_id:
+            if result.event_id and not direct_handled:
                 queued = await processor.queue_event_deliveries(result.event_id)
                 await db.commit()
 

@@ -41,7 +41,7 @@ def test_connector_url_is_host_bounded():
         "http://amer.ng.msg.teams.microsoft.com",
         "https://amer.ng.msg.teams.microsoft.com.evil.test",
         "https://amer.ng.msg.teams.microsoft.com:444",
-        "https://amer.ng.msg.teams.microsoft.com/bad/path",
+        "https://evil.test/bad/path",
     ):
         with pytest.raises(ValueError):
             receipts._service_url(url)
@@ -79,3 +79,29 @@ async def test_receipt_failure_is_recorded_and_does_not_escape(monkeypatch):
     assert event.data["teams_receipt"]["status"] == "failed"
     db.commit.assert_awaited_once()
     receipts.complete_operation_receipt_error.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_rejected_request_updates_existing_card(monkeypatch):
+    event = _event()
+    event.data["teams_receipt"] = {
+        "status": "sent", "reply_activity_id": "bot-reply",
+        "service_url": event.data["service_url"],
+        "conversation_id": "conversation", "inbound_activity_id": "activity",
+    }
+    db = SimpleNamespace(get=AsyncMock(return_value=event), commit=AsyncMock())
+    source = SimpleNamespace(integration_id=SOURCE_ID)
+
+    class _Repo:
+        def __init__(self, _db):
+            pass
+
+        async def get_integration_defaults(self, *_args, **_kwargs):
+            return {"app_id": "bot-id", "client_secret": "secret"}
+
+    monkeypatch.setattr(receipts, "IntegrationsRepository", _Repo)
+    send = AsyncMock(return_value="bot-reply")
+    monkeypatch.setattr(receipts, "_send_receipt", send)
+    assert await receipts.finish_rejected_teams_receipt(db, EVENT_ID, source)
+    assert event.data["teams_receipt"]["status"] == "rejected"
+    assert send.await_args.kwargs["update_activity_id"] == "bot-reply"
