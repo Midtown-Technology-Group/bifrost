@@ -28,7 +28,10 @@ from src.services.teams_receipts import (
     finish_rejected_teams_receipt,
     send_fast_teams_receipt,
 )
-from src.services.teams_chat_bridge import submit_teams_chat_event
+from src.services.teams_chat_bridge import (
+    submit_teams_chat_event,
+    validate_teams_chat_event,
+)
 from src.services.webhooks.protocol import (
     Deliver,
     Rejected,
@@ -216,19 +219,25 @@ async def receive_webhook(
         skip_reason = "teams_direct_ingress"
         if result.event_id and getattr(webhook_source, "adapter_name", None) == "microsoft_bot_framework":
             try:
-                receipt_mode = await send_fast_teams_receipt(db, result.event_id, webhook_source)
-                if receipt_mode == "duplicate":
-                    direct_handled = True
-                    skip_reason = "teams_duplicate_ingress"
-                elif receipt_mode == "owner":
-                    # Commit before AgentRun publication: a fast completion callback
-                    # must see both the receipt and this direct-ingress marker.
-                    event = await db.get(Event, result.event_id)
-                    event.data = {**event.data, "teams_direct_enqueued": True}
-                    await db.commit()
-                    await submit_teams_chat_event(db, result.event_id)
-                    await db.commit()
-                    direct_handled = True
+                event = await db.get(Event, result.event_id)
+                if event and event.event_type == "microsoft_teams.message":
+                    # The webhook adapter verifies the bearer token. The chat
+                    # bridge additionally checks the tenant, linked Bifrost
+                    # user, agent, and conversation binding before any reply.
+                    await validate_teams_chat_event(db, result.event_id)
+                    receipt_mode = await send_fast_teams_receipt(db, result.event_id, webhook_source)
+                    if receipt_mode == "duplicate":
+                        direct_handled = True
+                        skip_reason = "teams_duplicate_ingress"
+                    elif receipt_mode == "owner":
+                        # Commit before AgentRun publication: a fast completion callback
+                        # must see both the receipt and this direct-ingress marker.
+                        event = await db.get(Event, result.event_id)
+                        event.data = {**event.data, "teams_direct_enqueued": True}
+                        await db.commit()
+                        await submit_teams_chat_event(db, result.event_id)
+                        await db.commit()
+                        direct_handled = True
             except Exception as exc:
                 logger.warning(
                     "Teams direct ingress unavailable for event %s: %s",
@@ -240,21 +249,27 @@ async def receive_webhook(
                     event.data = {**event.data, "teams_direct_enqueued": False}
                     await db.commit()
                 if isinstance(exc, HTTPException) and exc.status_code in (400, 403, 404, 409):
-                    try:
-                        direct_handled = await finish_rejected_teams_receipt(
-                            db, result.event_id, webhook_source,
-                        )
-                        if direct_handled:
-                            event = await db.get(Event, result.event_id)
-                            event.data = {**event.data, "teams_direct_enqueued": True}
-                            await db.commit()
-                            skip_reason = "teams_direct_rejected"
-                    except Exception as update_exc:
-                        logger.warning(
-                            "Teams rejection update unavailable for event %s: %s",
-                            result.event_id, type(update_exc).__name__,
-                        )
-                        await db.rollback()
+                    if event is not None and "teams_receipt" not in event.data:
+                        # An unlinked sender receives no bot message. The old
+                        # queued router must not bypass that boundary.
+                        direct_handled = True
+                        skip_reason = "teams_unlinked_sender"
+                    else:
+                        try:
+                            direct_handled = await finish_rejected_teams_receipt(
+                                db, result.event_id, webhook_source,
+                            )
+                            if direct_handled:
+                                event = await db.get(Event, result.event_id)
+                                event.data = {**event.data, "teams_direct_enqueued": True}
+                                await db.commit()
+                                skip_reason = "teams_direct_rejected"
+                        except Exception as update_exc:
+                            logger.warning(
+                                "Teams rejection update unavailable for event %s: %s",
+                                result.event_id, type(update_exc).__name__,
+                            )
+                            await db.rollback()
 
             if direct_handled:
                 try:

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
 from src.routers.hooks import receive_webhook
 from src.services.webhooks.protocol import Deliver
@@ -71,7 +72,7 @@ async def test_verified_teams_direct_run_skips_legacy_worker_delivery():
     request.query_params = {}
     request.client = None
     request.body = AsyncMock(return_value=b"{}")
-    event = SimpleNamespace(data={"activity_id": "inbound"})
+    event = SimpleNamespace(event_type="microsoft_teams.message", data={"activity_id": "inbound"})
     db = AsyncMock()
     db.get.return_value = event
 
@@ -79,6 +80,7 @@ async def test_verified_teams_direct_run_skips_legacy_worker_delivery():
         patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
         patch("src.routers.hooks.EventProcessor") as processor_class,
         patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value="owner"),
+        patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock),
         patch("src.routers.hooks.submit_teams_chat_event", new_callable=AsyncMock) as submit,
     ):
         processor = processor_class.return_value
@@ -110,7 +112,7 @@ async def test_teams_direct_failure_falls_back_to_legacy_queue():
     request.query_params = {}
     request.client = None
     request.body = AsyncMock(return_value=b"{}")
-    event = SimpleNamespace(data={"activity_id": "inbound"})
+    event = SimpleNamespace(event_type="microsoft_teams.message", data={"activity_id": "inbound"})
     db = AsyncMock()
     db.get.return_value = event
 
@@ -118,6 +120,7 @@ async def test_teams_direct_failure_falls_back_to_legacy_queue():
         patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
         patch("src.routers.hooks.EventProcessor") as processor_class,
         patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value="owner"),
+        patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock),
         patch("src.routers.hooks.submit_teams_chat_event", new_callable=AsyncMock, side_effect=RuntimeError("queue unavailable")),
     ):
         processor = processor_class.return_value
@@ -128,3 +131,38 @@ async def test_teams_direct_failure_falls_back_to_legacy_queue():
     assert response.status_code == 202
     processor.queue_event_deliveries.assert_awaited_once_with(event_id)
     assert event.data["teams_direct_enqueued"] is False
+
+
+@pytest.mark.asyncio
+async def test_unlinked_teams_sender_gets_no_receipt_or_legacy_route():
+    source_id = uuid4()
+    event_id = uuid4()
+    event_source = SimpleNamespace(id=source_id, is_active=True)
+    webhook_source = SimpleNamespace(
+        adapter_name="microsoft_bot_framework", rate_limit_enabled=False,
+        rate_limit_per_minute=None, rate_limit_window_seconds=60,
+    )
+    request = MagicMock()
+    request.method = "POST"
+    request.headers = {}
+    request.query_params = {}
+    request.client = None
+    request.body = AsyncMock(return_value=b"{}")
+    event = SimpleNamespace(event_type="microsoft_teams.message", data={"activity_id": "inbound"})
+    db = AsyncMock()
+    db.get.return_value = event
+
+    with (
+        patch("src.routers.hooks.resolve_webhook_source", return_value=(event_source, webhook_source)),
+        patch("src.routers.hooks.EventProcessor") as processor_class,
+        patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock, side_effect=HTTPException(403, "unlinked")),
+        patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock) as receipt,
+    ):
+        processor = processor_class.return_value
+        processor.process_webhook = AsyncMock(return_value=Deliver(data={}, event_type="microsoft_teams.message", event_id=event_id))
+        processor.queue_event_deliveries = AsyncMock()
+        response = await receive_webhook(str(source_id), request, db)
+
+    assert response.status_code == 202
+    receipt.assert_not_awaited()
+    processor.queue_event_deliveries.assert_not_awaited()
