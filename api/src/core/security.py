@@ -187,6 +187,31 @@ def decode_token(
         return None
 
 
+def decode_renewable_engine_token(token: str) -> dict[str, Any] | None:
+    """Verify a no-timeout engine token for renewal after its access expiry."""
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"verify_exp": False},
+        )
+    except jwt.InvalidTokenError:
+        return None
+    if (
+        payload.get("type") != "access"
+        or payload.get("engine") is not True
+        or payload.get("engine_renewable") is not True
+        or payload.get("sub") != ENGINE_USER_ID
+        or not isinstance(payload.get("exp"), int)
+    ):
+        return None
+    return payload
+
+
 def create_mfa_token(user_id: str, purpose: str = "mfa_verify") -> str:
     """
     Create a short-lived token for MFA verification step.
@@ -450,7 +475,7 @@ def mint_engine_token(
     endpoints. A child cannot broaden its source-code scope by changing query
     parameters. The token lifetime covers the workflow timeout plus five
     minutes for startup and completion flushing; a workflow with no timeout
-    (timeout_seconds=0) gets a 24h token, matching the engine's wait cap.
+    (timeout_seconds=0) gets a renewable 24h token.
 
     Returns:
         (token, expires_at_iso): JWT string and ISO-8601 expiry timestamp.
@@ -465,6 +490,7 @@ def mint_engine_token(
         "engine_attempt_token": attempt_token,
         "engine_solution_id": solution_id,
         "engine_global_repo_access": bool(global_repo_access),
+        "engine_renewable": timeout_seconds == 0,
     }
     if organization_id is not None:
         token_data["org_id"] = str(organization_id)

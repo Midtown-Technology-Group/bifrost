@@ -39,6 +39,7 @@ from src.core.auth import (
     CurrentSuperuser,
     UserPrincipal,
     get_current_user_optional,
+    renew_engine_access_token,
 )
 from src.core.cache import get_shared_redis
 from src.core.cache.keys import (
@@ -927,6 +928,12 @@ async def refresh_token(
     payload = decode_token(refresh_token_value, expected_type="refresh")
 
     if not payload:
+        renewed_engine_token = await renew_engine_access_token(db, refresh_token_value)
+        if renewed_engine_token is not None:
+            return Token(
+                access_token=renewed_engine_token,
+                refresh_token=renewed_engine_token,
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
