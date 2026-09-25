@@ -10,10 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROLES = (
+    "client",
     "api",
     "api-replica",
     "worker",
     "scheduler",
+    "renderer",
     "postgres",
     "pgbouncer",
     "redis",
