@@ -5,9 +5,6 @@ import pytest
 
 from bifrost import git_commands
 from bifrost.git_commands import (
-    EXIT_CLEAN,
-    EXIT_CONFLICTS,
-    EXIT_ERROR,
     RESOLUTION_MAP,
     _format_sync_result,
 )
