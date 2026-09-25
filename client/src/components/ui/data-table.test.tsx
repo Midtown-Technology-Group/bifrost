@@ -109,6 +109,19 @@ describe("DataTableRow row action guard", () => {
 		expect(onClick).not.toHaveBeenCalled();
 	});
 
+	it("does not intercept middle-click on a nested link", () => {
+		const open = vi.spyOn(window, "open").mockImplementation(() => null);
+		const onMouseUp = vi.fn();
+		renderClickableRow({ href: "/records/123", onMouseUp });
+
+		fireEvent.mouseUp(screen.getByRole("link", { name: "Nested link" }), {
+			button: 1,
+		});
+
+		expect(open).not.toHaveBeenCalled();
+		expect(onMouseUp).toHaveBeenCalledTimes(1);
+	});
+
 	it("still calls caller mouseup for ordinary mouseup events", () => {
 		const onMouseUp = vi.fn();
 		renderClickableRow({ href: "/records/123", onMouseUp });

@@ -203,63 +203,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
         # Call parent stop
         await super().stop()
 
-    async def drain(self, deadline: float = 300.0) -> None:
-        """Stop deliveries, wait for active child results, then close.
-
-        Workflow messages are acknowledged after dispatch to the forked child,
-        before the child completes. During worker shutdown we therefore need an
-        extra execution-aware phase after RabbitMQ dispatch tasks finish and
-        before the process pool is stopped.
-        """
-        if self._draining:
-            return
-        self._draining = True
-
-        try:
-            if self._queue is not None and self._consumer_tag is not None:
-                try:
-                    await self._queue.cancel(self._consumer_tag)
-                    logger.info(f"Cancelled consumer for {self.queue_name}")
-                except Exception as e:
-                    logger.warning(f"Error cancelling consumer for {self.queue_name}: {e}")
-
-            deadline_at = time.monotonic() + deadline
-            if self._inflight:
-                pending = list(self._inflight)
-                logger.info(
-                    f"Draining {len(pending)} in-flight dispatch task(s) on "
-                    f"{self.queue_name} (deadline={deadline}s)"
-                )
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(*pending, return_exceptions=True),
-                        timeout=deadline,
-                    )
-                    logger.info(f"Dispatch drain complete for {self.queue_name}")
-                except asyncio.TimeoutError:
-                    still_running = [task for task in pending if not task.done()]
-                    logger.warning(
-                        f"Drain deadline exceeded on {self.queue_name}: "
-                        f"{len(still_running)} dispatch task(s) still running"
-                    )
-
-            remaining = max(0.0, deadline_at - time.monotonic())
-            if self._pool_started:
-                drained = await self._pool.drain_active_executions(remaining)
-                active_count = self._pool.active_execution_count()
-                if drained:
-                    logger.info(f"Execution drain complete for {self.queue_name}")
-                else:
-                    logger.warning(
-                        f"Execution drain deadline exceeded for {self.queue_name}: "
-                        f"{active_count} active execution(s) remain"
-                    )
-                await self._pool.stop()
-                self._pool_started = False
-                logger.info("Process pool stopped")
-        finally:
-            await super().stop()
-
     async def _handle_result(self, result: dict[str, Any]) -> None:
         """
         Handle result from process pool.

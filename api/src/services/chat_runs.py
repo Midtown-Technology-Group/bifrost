@@ -139,6 +139,7 @@ async def create_chat_run(
     *,
     channel: str = "chat",
     conversation_extra_data: dict | None = None,
+    run_metadata: dict | None = None,
 ) -> ChatRunCreateResponse:
     """Create or resume a chat run submission."""
     client_run_id = request.client_run_id or uuid4()
@@ -183,6 +184,7 @@ async def create_chat_run(
                 request.agent_id is None
                 or stored_input.get("agent_id") == str(request.agent_id)
             )
+            and all(stored_input.get(key) == value for key, value in (run_metadata or {}).items())
         )
         if not submitted_identity_matches:
             raise HTTPException(
@@ -323,6 +325,7 @@ async def create_chat_run(
                 "agent_id": (
                     str(conversation.agent_id) if conversation.agent_id else None
                 ),
+                **(run_metadata or {}),
             },
             org_id=str(user.organization_id) if user.organization_id else None,
             caller_user_id=str(user.user_id),

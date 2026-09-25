@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import HTTPException
@@ -29,6 +30,98 @@ from src.services.chat_runs import create_chat_run
 
 INTEGRATION_NAME = "Microsoft Teams Bot"
 _LEADING_MENTION = re.compile(r"^\s*<at\b[^>]*>.*?</at>\s*", re.IGNORECASE | re.DOTALL)
+
+
+async def emit_teams_chat_completion(run) -> None:
+    """Notify the Teams Solution after a linked chat run reaches a terminal state."""
+    event_id = (run.input or {}).get("teams_event_id")
+    if not event_id or run.status not in {
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+        "budget_exceeded",
+        "timeout",
+    }:
+        return
+    from src.services.events import emit_event
+
+    completion_event_id, subscribers = await emit_event(
+        "microsoft_teams.chat_run_completed",
+        {
+            "run_id": str(run.id),
+            "webhook_event_id": str(event_id),
+            "organization_id": str(run.org_id),
+        },
+        organization_id=run.org_id,
+        triggered_by=f"agent_run:{run.id}",
+    )
+    if subscribers:
+        from src.core.database import get_session_factory
+        from src.models.enums import EventDeliveryStatus
+        from src.models.orm.agent_runs import AgentRun
+        from src.models.orm.events import EventDelivery
+
+        async with get_session_factory()() as db:
+            statuses = (
+                await db.scalars(
+                    select(EventDelivery.status).where(
+                        EventDelivery.event_id == completion_event_id
+                    )
+                )
+            ).all()
+            if not statuses or EventDeliveryStatus.FAILED in statuses:
+                return
+            stored = await db.get(AgentRun, run.id, with_for_update=True)
+            if stored is not None:
+                stored.run_metadata = {
+                    **(stored.run_metadata or {}),
+                    "teams_completion_emitted_at": datetime.now(UTC).isoformat(),
+                }
+                await db.commit()
+
+
+async def recover_teams_chat_completions(*, limit: int = 50) -> int:
+    """Retry terminal notifications missed by a worker crash or topic outage."""
+    from src.core.database import get_session_factory
+    from src.models.orm.agent_runs import AgentRun
+
+    async with get_session_factory()() as db:
+        runs = (
+            await db.scalars(
+                select(AgentRun)
+                .where(
+                    AgentRun.status.in_(
+                        (
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "paused",
+                            "budget_exceeded",
+                            "timeout",
+                        )
+                    ),
+                    AgentRun.input.has_key("teams_event_id"),
+                    ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
+                    AgentRun.completed_at < datetime.now(UTC) - timedelta(seconds=15),
+                )
+                .order_by(AgentRun.completed_at)
+                .limit(limit)
+            )
+        ).all()
+    recovered = 0
+    for run in runs:
+        try:
+            await emit_teams_chat_completion(run)
+            recovered += 1
+        except Exception:
+            # The next scheduler pass retries without replaying the AgentRun.
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Teams completion recovery failed for %s", run.id
+            )
+    return recovered
 
 
 def _message_text(activity: dict) -> str:
@@ -60,6 +153,18 @@ def _message_text(activity: dict) -> str:
 
 async def submit_teams_chat_event(db, event_id: UUID) -> dict:
     """Create one user-attributed chat run from a stored, verified Teams event."""
+    return await _resolve_teams_chat_event(db, event_id, validate_only=False)
+
+
+async def validate_teams_chat_event(db, event_id: UUID) -> dict:
+    """Reject an unlinked sender or unconfigured agent before showing a receipt."""
+    return await _resolve_teams_chat_event(db, event_id, validate_only=True)
+
+
+async def _resolve_teams_chat_event(db, event_id: UUID, *, validate_only: bool) -> dict:
+    from src.services.teams_receipts import resolve_canonical_teams_event_id
+
+    event_id = await resolve_canonical_teams_event_id(db, event_id)
     row = await db.execute(
         select(Event, EventSource, WebhookSource)
         .join(EventSource, Event.event_source_id == EventSource.id)
@@ -183,6 +288,13 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
 
     await validate_binding()
 
+    if validate_only:
+        return {
+            "webhook_event_id": str(event_id),
+            "organization_id": str(linked_org_id),
+            "caller_user_id": str(linked_user_id),
+        }
+
     request = ChatRunCreateRequest(
         conversation_id=conversation_id,
         client_run_id=uuid5(NAMESPACE_URL, f"bifrost-teams-event:{event_id}"),
@@ -191,14 +303,24 @@ async def submit_teams_chat_event(db, event_id: UUID) -> dict:
     )
     try:
         submitted = await create_chat_run(
-            db, principal, request, channel="teams", conversation_extra_data=metadata
+            db,
+            principal,
+            request,
+            channel="teams",
+            conversation_extra_data=metadata,
+            run_metadata={"teams_event_id": str(event_id)},
         )
     except IntegrityError:
         # Two first messages may race to create the same Teams conversation.
         await db.rollback()
         await validate_binding()
         submitted = await create_chat_run(
-            db, principal, request, channel="teams", conversation_extra_data=metadata
+            db,
+            principal,
+            request,
+            channel="teams",
+            conversation_extra_data=metadata,
+            run_metadata={"teams_event_id": str(event_id)},
         )
     return {
         "run_id": str(submitted.run_id),

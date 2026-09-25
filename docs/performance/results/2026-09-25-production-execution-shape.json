@@ -1,0 +1,241 @@
+{
+  "source": "production /api/executions list; aggregate only; excludes local executions",
+  "requested_start_utc": "2026-09-24T04:00:00Z",
+  "pages": 4,
+  "truncated": false,
+  "count": 3203,
+  "earliest_created_at": "2026-09-24T04:00:00.940567Z",
+  "latest_created_at": "2026-09-25T04:06:45.727922Z",
+  "statuses": [
+    {
+      "status": "CompletedWithErrors",
+      "count": 5
+    },
+    {
+      "status": "Failed",
+      "count": 104
+    },
+    {
+      "status": "Pending",
+      "count": 17
+    },
+    {
+      "status": "Running",
+      "count": 8
+    },
+    {
+      "status": "Success",
+      "count": 3069
+    }
+  ],
+  "execution_models": [
+    {
+      "model": "",
+      "count": 3203
+    }
+  ],
+  "result_types": [
+    {
+      "type": "",
+      "count": 129
+    },
+    {
+      "type": "json",
+      "count": 3074
+    }
+  ],
+  "duration_count": 3178,
+  "duration_ms": {
+    "p50": 3082.0,
+    "p95": 34849.0,
+    "p99": 157079.0
+  },
+  "duration_bins": {
+    "under_100ms": 315,
+    "from_100ms_to_1s": 1018,
+    "from_1s_to_5s": 433,
+    "from_5s_to_30s": 1028,
+    "from_30s_to_120s": 347,
+    "over_120s": 37
+  },
+  "max_overlapping_completed_executions": 10,
+  "distinct_workflow_count": 77,
+  "top_workflow_counts_without_names": [
+    571,
+    281,
+    281,
+    279,
+    213,
+    162,
+    162,
+    162,
+    146,
+    108
+  ],
+  "top_workflow_profiles_without_names": [
+    {
+      "rank": 1,
+      "count": 571,
+      "duration_ms_p50": 304.0,
+      "duration_ms_p95": 9890.0
+    },
+    {
+      "rank": 2,
+      "count": 281,
+      "duration_ms_p50": 495.0,
+      "duration_ms_p95": 6316.0
+    },
+    {
+      "rank": 3,
+      "count": 281,
+      "duration_ms_p50": 10696.0,
+      "duration_ms_p95": 13873.0
+    },
+    {
+      "rank": 4,
+      "count": 279,
+      "duration_ms_p50": 28363.0,
+      "duration_ms_p95": 50241.0
+    },
+    {
+      "rank": 5,
+      "count": 213,
+      "duration_ms_p50": 4184.0,
+      "duration_ms_p95": 16343.0
+    },
+    {
+      "rank": 6,
+      "count": 162,
+      "duration_ms_p50": 32243.0,
+      "duration_ms_p95": 39701.0
+    },
+    {
+      "rank": 7,
+      "count": 162,
+      "duration_ms_p50": 17624.0,
+      "duration_ms_p95": 30688.0
+    },
+    {
+      "rank": 8,
+      "count": 162,
+      "duration_ms_p50": 9.0,
+      "duration_ms_p95": 18.0
+    },
+    {
+      "rank": 9,
+      "count": 146,
+      "duration_ms_p50": 2914.0,
+      "duration_ms_p95": 16271.0
+    },
+    {
+      "rank": 10,
+      "count": 108,
+      "duration_ms_p50": 364.0,
+      "duration_ms_p95": 821.0
+    }
+  ],
+  "with_cpu": 0,
+  "with_memory": 0,
+  "hourly_created": [
+    {
+      "hour_utc": "2026-09-24T04",
+      "count": 117
+    },
+    {
+      "hour_utc": "2026-09-24T05",
+      "count": 72
+    },
+    {
+      "hour_utc": "2026-09-24T06",
+      "count": 96
+    },
+    {
+      "hour_utc": "2026-09-24T07",
+      "count": 78
+    },
+    {
+      "hour_utc": "2026-09-24T08",
+      "count": 71
+    },
+    {
+      "hour_utc": "2026-09-24T09",
+      "count": 69
+    },
+    {
+      "hour_utc": "2026-09-24T10",
+      "count": 96
+    },
+    {
+      "hour_utc": "2026-09-24T11",
+      "count": 95
+    },
+    {
+      "hour_utc": "2026-09-24T12",
+      "count": 175
+    },
+    {
+      "hour_utc": "2026-09-24T13",
+      "count": 133
+    },
+    {
+      "hour_utc": "2026-09-24T14",
+      "count": 163
+    },
+    {
+      "hour_utc": "2026-09-24T15",
+      "count": 94
+    },
+    {
+      "hour_utc": "2026-09-24T16",
+      "count": 104
+    },
+    {
+      "hour_utc": "2026-09-24T17",
+      "count": 378
+    },
+    {
+      "hour_utc": "2026-09-24T18",
+      "count": 146
+    },
+    {
+      "hour_utc": "2026-09-24T19",
+      "count": 121
+    },
+    {
+      "hour_utc": "2026-09-24T20",
+      "count": 134
+    },
+    {
+      "hour_utc": "2026-09-24T21",
+      "count": 143
+    },
+    {
+      "hour_utc": "2026-09-24T22",
+      "count": 136
+    },
+    {
+      "hour_utc": "2026-09-24T23",
+      "count": 182
+    },
+    {
+      "hour_utc": "2026-09-25T00",
+      "count": 96
+    },
+    {
+      "hour_utc": "2026-09-25T01",
+      "count": 128
+    },
+    {
+      "hour_utc": "2026-09-25T02",
+      "count": 161
+    },
+    {
+      "hour_utc": "2026-09-25T03",
+      "count": 120
+    },
+    {
+      "hour_utc": "2026-09-25T04",
+      "count": 95
+    }
+  ]
+}

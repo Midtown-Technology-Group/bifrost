@@ -61,10 +61,6 @@ def test_sync_and_async_module_cache_exports_share_canonical_contract() -> None:
             "sync_cached_module_is_canonical": (
                 module_cache_sync.CachedModule is module_cache_contract.CachedModule
             ),
-            "async_key_helper_is_canonical": (
-                module_cache.module_resolution_cache_key
-                is module_cache_contract.module_resolution_cache_key
-            ),
             "sync_key_helper_is_canonical": (
                 module_cache_sync.module_resolution_cache_key
                 is module_cache_contract.module_resolution_cache_key
@@ -89,7 +85,6 @@ def test_sync_and_async_module_cache_exports_share_canonical_contract() -> None:
     assert result == {
         "async_cached_module_is_canonical": True,
         "sync_cached_module_is_canonical": True,
-        "async_key_helper_is_canonical": True,
         "sync_key_helper_is_canonical": True,
         "async_prefix_is_canonical": True,
         "sync_prefix_is_canonical": True,

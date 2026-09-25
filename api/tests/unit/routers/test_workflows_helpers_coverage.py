@@ -1,13 +1,13 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
 from src.models.enums import ExecutionStatus
 from src.routers import workflows
-from src.services.solution_scope import derive_execution_solution_scope
+from src.services.solution_scope import SolutionInboundDenied, derive_execution_solution_scope
 
 
 class _ScalarResult:
@@ -119,31 +119,35 @@ def test_convert_workflow_orm_to_schema_normalizes_defaults():
 async def test_derive_solution_scope_prefers_valid_explicit_solution_id():
     solution_id = uuid4()
 
-    result = await derive_execution_solution_scope(
-        _Db(),
-        SimpleNamespace(solution_id=None, app_id=None),
-        solution_id=str(solution_id),
-        form_id=str(uuid4()),
-        app_id=str(uuid4()),
-    )
+    with patch(
+        "src.services.solution_scope.check_inbound_allowed",
+        new=AsyncMock(return_value=True),
+    ):
+        result = await derive_execution_solution_scope(
+            _Db(),
+            SimpleNamespace(solution_id=None, app_id=None),
+            solution_id=str(solution_id),
+            form_id=str(uuid4()),
+            app_id=str(uuid4()),
+        )
 
     assert result == solution_id
 
 
 @pytest.mark.asyncio
-async def test_derive_solution_scope_returns_none_for_bad_ids():
+async def test_derive_solution_scope_rejects_bad_explicit_ref_and_ignores_bad_context_ids():
     ctx = SimpleNamespace(solution_id=None, app_id=None)
 
-    assert (
+    with (
+        patch(
+            "src.services.solution_scope.resolve_solution_ref",
+            new=AsyncMock(return_value=None),
+        ),
+        pytest.raises(SolutionInboundDenied),
+    ):
         await derive_execution_solution_scope(
-            _Db(),
-            ctx,
-            solution_id="not-a-uuid",
-            form_id=None,
-            app_id=None,
+            _Db(), ctx, solution_id="not-a-uuid", form_id=None, app_id=None
         )
-        is None
-    )
 
     assert (
         await derive_execution_solution_scope(
@@ -174,27 +178,31 @@ async def test_derive_solution_scope_uses_form_then_app_lookup():
     app_solution = uuid4()
     ctx = SimpleNamespace(solution_id=None, app_id=None)
 
-    assert (
-        await derive_execution_solution_scope(
-            _Db(form_solution),
-            ctx,
-            solution_id=None,
-            form_id=str(uuid4()),
-            app_id=None,
+    with patch(
+        "src.services.solution_scope.check_inbound_allowed",
+        new=AsyncMock(return_value=True),
+    ):
+        assert (
+            await derive_execution_solution_scope(
+                _Db(form_solution),
+                ctx,
+                solution_id=None,
+                form_id=str(uuid4()),
+                app_id=None,
+            )
+            == form_solution
         )
-        == form_solution
-    )
 
-    assert (
-        await derive_execution_solution_scope(
-            _Db(app_solution),
-            ctx,
-            solution_id=None,
-            form_id=None,
-            app_id=str(uuid4()),
+        assert (
+            await derive_execution_solution_scope(
+                _Db(app_solution),
+                ctx,
+                solution_id=None,
+                form_id=None,
+                app_id=str(uuid4()),
+            )
+            == app_solution
         )
-        == app_solution
-    )
 
     assert (
         await derive_execution_solution_scope(

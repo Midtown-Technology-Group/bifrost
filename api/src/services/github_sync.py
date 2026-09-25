@@ -1929,7 +1929,6 @@ class GitHubSyncService:
                 await self._resolver._resolve_deletions(
                     work_dir=work_dir,
                     removed_entity_ids=removed_entity_ids,
-                    removed_paths=_deleted_paths_in_head(GitRepo(str(work_dir))),
                 )
                 await self._update_file_index(work_dir)
             await self.db.commit()
