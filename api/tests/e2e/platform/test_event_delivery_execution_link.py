@@ -25,6 +25,19 @@ from src.services.execution import async_executor
 from src.sdk.context import EventContext
 
 
+def _future_date_new_executions(monkeypatch):
+    """Keep locally driven recovery rows out of the live scheduler scan."""
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    original_init = Execution.__init__
+
+    def init_with_future(self, **kwargs):
+        kwargs.setdefault("created_at", future)
+        original_init(self, **kwargs)
+
+    monkeypatch.setattr(Execution, "__init__", init_with_future)
+    return future
+
+
 @pytest_asyncio.fixture
 async def linked_event(async_session_factory):
     workflow_id, source_id, subscription_id, event_id, delivery_id = [
@@ -350,8 +363,7 @@ async def test_promoter_recovers_unpublished_event_without_losing_context(
     monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
     monkeypatch.setattr(events.EventProcessor, "_broadcast_event_update", AsyncMock())
     # Keep the live scheduler from claiming the row; this test drives recovery.
-    future = datetime.now(timezone.utc) + timedelta(days=1)
-    monkeypatch.setattr(Execution.__table__.c.created_at.default, "arg", lambda _ctx: future)
+    future = _future_date_new_executions(monkeypatch)
     from types import SimpleNamespace
     monkeypatch.setattr(async_executor, "get_settings", lambda: SimpleNamespace(work_delivery_backend=backend))
     publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
@@ -412,8 +424,7 @@ async def test_recovery_never_publishes_unsafe_or_terminal_event(
     monkeypatch.setattr(promoter, "get_db_context", db_context)
     monkeypatch.setattr(promoter, "_capacity_aware_batch_limit", AsyncMock(return_value=500))
     # Keep the live scheduler from publishing before unsafe state is staged.
-    future = datetime.now(timezone.utc) + timedelta(days=1)
-    monkeypatch.setattr(Execution.__table__.c.created_at.default, "arg", lambda _ctx: future)
+    future = _future_date_new_executions(monkeypatch)
     publish = AsyncMock(side_effect=ConnectionError("publisher unavailable"))
     monkeypatch.setattr(async_executor, "_publish_pending", publish)
     dispatch = dict(
