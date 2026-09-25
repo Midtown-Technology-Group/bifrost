@@ -12,9 +12,9 @@ from tests.e2e.fixtures.users import E2EUser
 AUTH_SECRET_FIELD = "pass" + "word"
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def org_admin(e2e_client, platform_admin, org1) -> E2EUser:
-    """Create an org-bound superuser so Custom Claims have org context."""
+    """Share one org-bound superuser across independent Custom Claims cases."""
     suffix = uuid4().hex[:8]
     user = E2EUser(
         email=f"claims-admin-{suffix}@gobifrost.dev",

@@ -1,5 +1,6 @@
 """Terminal callback failures retain safe evidence without replaying workflows."""
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -74,7 +75,12 @@ async def test_original_callback_class_survives_synthetic_failure_without_messag
 async def test_success_after_transient_failure_clears_diagnostics():
     callback = AsyncMock(side_effect=[TimeoutError("temporary"), None])
     pool = ProcessPoolManager(max_workers=1, on_result=callback)
-    handle = MagicMock(result_callback_diagnostics=None)
+    handle = MagicMock(
+        result_callback_diagnostics=None,
+        result_reported=False,
+        result_callback_lock=asyncio.Lock(),
+        cpu_sampler=None,
+    )
     with patch("asyncio.sleep", new_callable=AsyncMock):
         assert await pool._deliver_result({"success": True}, handle=handle)
     assert handle.result_callback_diagnostics is None

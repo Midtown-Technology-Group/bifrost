@@ -28,9 +28,9 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 # Stack-worker service slots to occupy. Must match the worker's
-# max_service_workers setting (default 20; the test compose sets no
-# override). If it drifts, the target claim below fails loudly.
-STACK_SERVICE_SLOTS = 20
+# max_service_workers setting in the test compose. If it drifts, the target
+# claim below fails loudly.
+STACK_SERVICE_SLOTS = 4
 
 _FILLER_SOURCE = '''"""Slot filler: healthy service that idles forever."""
 
@@ -136,9 +136,9 @@ def _make_loop(pool, **overrides):
 def slot_fillers(e2e_client, platform_admin):
     """Occupy every stack-worker service slot with healthy dummies.
 
-    Registers STACK_SERVICE_SLOTS idle services and waits until each has a
-    live attempt (i.e. the stack worker owns them all). The mechanical-test
-    target registered afterwards stays eligible-but-unclaimed until the
+    Registers STACK_SERVICE_SLOTS idle services and waits until the stack
+    slots are occupied, including services left running by earlier tests.
+    The target registered afterwards stays eligible-but-unclaimed until the
     test-local loop claims it. Disabled afterwards to release the slots.
 
     Sync (module-scoped): the HTTP client is sync and no local loop runs
@@ -169,18 +169,26 @@ def slot_fillers(e2e_client, platform_admin):
 
     deadline = time.monotonic() + 180.0
     while time.monotonic() < deadline:
-        states = [
-            e2e_client.get(f"/api/services/{fid}", headers=headers).json()[
-                "observed_state"
-            ]
-            for fid in filler_ids
+        resp = e2e_client.get("/api/services", params={"limit": 1000}, headers=headers)
+        assert resp.status_code == 200, resp.text
+        services = resp.json()
+        assert services["total"] == len(services["items"]), services["total"]
+        running = [
+            item for item in services["items"] if item["observed_state"] == "running"
         ]
-        if all(s == "running" for s in states):
+        if len(running) >= STACK_SERVICE_SLOTS:
             break
         time.sleep(2.0)
     else:
+        filler_states = [
+            (item["id"], item["observed_state"])
+            for item in services["items"]
+            if item["id"] in filler_ids
+        ]
         raise AssertionError(
-            f"stack slots never filled (STACK_SERVICE_SLOTS={STACK_SERVICE_SLOTS}): {states}"
+            f"stack slots never filled (STACK_SERVICE_SLOTS={STACK_SERVICE_SLOTS}): "
+            f"running={[item['id'] for item in running]}, "
+            f"filler_states={filler_states}"
         )
     yield filler_ids
     for fid in filler_ids:
