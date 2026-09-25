@@ -213,12 +213,9 @@ class EmptyOutputCircuitBreaker(AbstractCapability[object]):
                 self._seen_fingerprints.add(response_fingerprint(response))
             return response
 
-        if empty:
-            self._consecutive_empty += 1
-        else:
-            # A repeated no-tool completion is progress-free even when the
-            # first copy looked fine; treat it like a blank for budgeting.
-            self._consecutive_empty += 1
+        # A repeated no-tool completion is progress-free even when the
+        # first copy looked fine; treat it like a blank for budgeting.
+        self._consecutive_empty += 1
 
         if self._fallbacks_used < self.max_fallbacks:
             self._fallbacks_used += 1
