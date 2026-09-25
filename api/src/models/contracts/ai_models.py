@@ -62,6 +62,17 @@ class AIModelProfileCreate(BaseModel):
     model: str = Field(..., min_length=1, max_length=200)
     capabilities: ModelCapabilities | None = None
     enabled_for_chat: bool = False
+    default_max_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        le=200000,
+        description="Profile-level default max output tokens (null = provider default)",
+    )
+    failover_profile_id: UUID | None = Field(
+        default=None,
+        description="Fallback profile tried when this profile's provider fails "
+        "with a retryable transport error after retries are exhausted",
+    )
 
 
 class AIModelProfileUpdate(BaseModel):
@@ -70,6 +81,17 @@ class AIModelProfileUpdate(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=200)
     capabilities: ModelCapabilities | None = None
     enabled_for_chat: bool | None = None
+    default_max_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        le=200000,
+        description="Profile-level default max output tokens (null = provider default)",
+    )
+    failover_profile_id: UUID | None = Field(
+        default=None,
+        description="Fallback profile tried when this profile's provider fails "
+        "with a retryable transport error after retries are exhausted",
+    )
 
 
 class AIModelProfileMergeRequest(BaseModel):
@@ -92,6 +114,9 @@ class AIModelProfileResponse(BaseModel):
     model: str
     capabilities: ModelCapabilities | None = None
     enabled_for_chat: bool
+    default_max_tokens: int | None = None
+    failover_profile_id: UUID | None = None
+    failover_profile_name: str | None = None
     connection: AIProviderConnectionSummary
     assignment_keys: list[AIModelAssignmentKey] = Field(default_factory=list)
     referenced_agent_count: int = 0
