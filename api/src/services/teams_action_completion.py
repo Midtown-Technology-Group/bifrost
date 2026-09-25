@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -45,7 +46,7 @@ async def register_teams_action_completion(
     await _lock_execution(db, execution_id)
     run = await db.get(AgentRun, run_id)
     event = await db.get(Event, webhook_event_id)
-    execution = await db.get(Execution, execution_id)
+    execution = await db.get(Execution, execution_id, populate_existing=True)
     if run is None or event is None or execution is None:
         raise HTTPException(404, "Teams action binding not found")
     if (
@@ -175,24 +176,34 @@ async def register_teams_action_for_run(db, run: AgentRun) -> None:
                 continue
             if execution_id in registered:
                 continue
-            await register_teams_action_completion(
-                db,
-                execution_id=execution_id,
-                run_id=run.id,
-                webhook_event_id=UUID(str(event_id)),
-            )
+            try:
+                await register_teams_action_completion(
+                    db,
+                    execution_id=execution_id,
+                    run_id=run.id,
+                    webhook_event_id=UUID(str(event_id)),
+                )
+            except HTTPException as exc:
+                await db.rollback()
+                logging.getLogger(__name__).warning(
+                    "Skipping invalid Teams action %s for run %s: %s",
+                    execution_id,
+                    run.id,
+                    exc.detail,
+                )
+                continue
             registered.add(execution_id)
 
 
-async def emit_teams_action_completion(db, execution_id: UUID) -> None:
+async def emit_teams_action_completion(db, execution_id: UUID) -> bool:
     """Emit only for executions explicitly registered by a verified Teams turn."""
     await _lock_execution(db, execution_id)
-    execution = await db.get(Execution, execution_id)
+    execution = await db.get(Execution, execution_id, populate_existing=True)
     if execution is None or execution.status not in TERMINAL:
-        return
+        return False
     binding = (execution.execution_context or {}).get("teams_action_completion")
     if not isinstance(binding, dict) or binding.get("emitted_at"):
-        return
+        return False
     from src.services.events import emit_event
 
     _event_id, subscribers = await emit_event(
@@ -206,14 +217,16 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> None:
         organization_id=execution.organization_id,
         triggered_by=f"execution:{execution_id}",
     )
-    if subscribers:
-        context = dict(execution.execution_context or {})
-        context["teams_action_completion"] = {
-            **binding,
-            "emitted_at": datetime.now(timezone.utc).isoformat(),
-        }
-        execution.execution_context = context
-        await db.commit()
+    context = dict(execution.execution_context or {})
+    now = datetime.now(timezone.utc).isoformat()
+    context["teams_action_completion"] = {
+        **binding,
+        "last_attempt_at": now,
+        **({"emitted_at": now} if subscribers else {}),
+    }
+    execution.execution_context = context
+    await db.commit()
+    return bool(subscribers)
 
 
 async def recover_teams_action_completions(*, limit: int = 50) -> int:
@@ -235,7 +248,14 @@ async def recover_teams_action_completions(*, limit: int = 50) -> int:
                     Execution.completed_at
                     < datetime.now(timezone.utc) - timedelta(seconds=15),
                 )
-                .order_by(Execution.completed_at)
+                .order_by(
+                    Execution.execution_context["teams_action_completion"][
+                        "last_attempt_at"
+                    ]
+                    .astext.asc()
+                    .nullsfirst(),
+                    Execution.completed_at,
+                )
                 .limit(limit)
             )
         ).all()
@@ -243,8 +263,8 @@ async def recover_teams_action_completions(*, limit: int = 50) -> int:
     for execution_id in execution_ids:
         try:
             async with get_session_factory()() as db:
-                await emit_teams_action_completion(db, execution_id)
-            recovered += 1
+                if await emit_teams_action_completion(db, execution_id):
+                    recovered += 1
         except Exception:
             logging.getLogger(__name__).exception(
                 "Teams action completion recovery failed for %s", execution_id

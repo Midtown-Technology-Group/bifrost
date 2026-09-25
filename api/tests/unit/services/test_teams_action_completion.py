@@ -52,10 +52,44 @@ async def test_only_tagged_terminal_execution_emits() -> None:
         }
         await emit_teams_action_completion(db, execution_id)
         emit.assert_awaited_once()
+        assert db.get.await_args.kwargs == {"populate_existing": True}
         assert emit.await_args.args[0] == "microsoft_teams.action_completed"
         assert emit.await_args.args[1]["execution_id"] == str(execution_id)
         await emit_teams_action_completion(db, execution_id)
         emit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_no_subscriber_attempt_stays_retryable() -> None:
+    execution_id = uuid4()
+    row = SimpleNamespace(
+        status=ExecutionStatus.SUCCESS,
+        organization_id=uuid4(),
+        execution_context={
+            "teams_action_completion": {
+                "run_id": str(uuid4()),
+                "webhook_event_id": str(uuid4()),
+            }
+        },
+    )
+    db = AsyncMock()
+    db.get.return_value = row
+    with (
+        patch("src.services.events.emit_event", new_callable=AsyncMock) as emit,
+        patch(
+            "src.services.teams_action_completion._lock_execution",
+            new_callable=AsyncMock,
+        ),
+    ):
+        emit.side_effect = [(uuid4(), 0), (uuid4(), 1)]
+        assert not await emit_teams_action_completion(db, execution_id)
+        binding = row.execution_context["teams_action_completion"]
+        assert binding["last_attempt_at"]
+        assert "emitted_at" not in binding
+        assert await emit_teams_action_completion(db, execution_id)
+        assert row.execution_context["teams_action_completion"]["emitted_at"]
+        assert not await emit_teams_action_completion(db, execution_id)
+        assert emit.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -97,7 +131,7 @@ async def test_registration_requires_original_linked_user_and_org() -> None:
         },
     )
     db = AsyncMock()
-    db.get.side_effect = lambda cls, _id: {
+    db.get.side_effect = lambda cls, _id, **_kwargs: {
         AgentRun: run,
         Event: event,
         Execution: execution,
@@ -208,3 +242,37 @@ async def test_registers_each_distinct_approved_action_in_turn() -> None:
         first,
         second,
     ]
+
+
+@pytest.mark.asyncio
+async def test_invalid_action_does_not_block_later_approved_action() -> None:
+    run = SimpleNamespace(
+        id=uuid4(),
+        input={"teams_event_id": str(uuid4()), "user_message_id": str(uuid4())},
+        status="completed",
+        conversation_id=uuid4(),
+    )
+    invalid_id, valid_id = uuid4(), uuid4()
+    messages = [SimpleNamespace(id=run.input["user_message_id"])] + [
+        SimpleNamespace(
+            id=uuid4(),
+            role="tool_call",
+            tool_name="wf_teams_run_remote_powershell",
+            tool_input={"apply": True},
+            tool_result={"execution_id": str(execution_id)},
+        )
+        for execution_id in (invalid_id, valid_id)
+    ]
+    db = AsyncMock()
+    db.scalars.return_value = SimpleNamespace(all=lambda: messages)
+    with patch(
+        "src.services.teams_action_completion.register_teams_action_completion",
+        new_callable=AsyncMock,
+    ) as register:
+        register.side_effect = [HTTPException(403, "invalid binding"), None]
+        await register_teams_action_for_run(db, run)
+    assert [call.kwargs["execution_id"] for call in register.await_args_list] == [
+        invalid_id,
+        valid_id,
+    ]
+    db.rollback.assert_awaited_once()
