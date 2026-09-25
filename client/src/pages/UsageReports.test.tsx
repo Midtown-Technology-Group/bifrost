@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders, screen } from "@/test-utils";
 import { UsageReports } from "./UsageReports";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 
 function LocationProbe() {
 	const location = useLocation();

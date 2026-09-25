@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { format, isValid, parse, subDays } from "date-fns";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import type { DateRange } from "react-day-picker";
 import { AlertCircle, Sparkles, Workflow as WorkflowIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";

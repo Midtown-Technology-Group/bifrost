@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import { WorkflowResourcesReport } from "./WorkflowResourcesReport";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 
 function LocationProbe() {
 	const location = useLocation();

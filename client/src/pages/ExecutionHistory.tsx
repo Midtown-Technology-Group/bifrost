@@ -488,7 +488,7 @@ export function ExecutionHistory() {
 						"Execution is not visible on the currently loaded page",
 					);
 				}
-				handleViewDetails(executionId);
+				setSelectedExecutionId(executionId);
 				return { openedExecutionId: executionId };
 			},
 		}),

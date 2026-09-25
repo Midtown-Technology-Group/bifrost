@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Eye } from "lucide-react";
 import { RunStatusBadge } from "@/components/execution";
 import { Button } from "@/components/ui/button";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import type { components } from "@/lib/v1";
 import { formatRunDuration, formatRunTime } from "./historyView";
 import {

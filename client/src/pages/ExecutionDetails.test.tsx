@@ -4,7 +4,7 @@ import { ExecutionDetails } from "./ExecutionDetails";
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import {
 	makeQueryClient,
 	renderWithProviders,
