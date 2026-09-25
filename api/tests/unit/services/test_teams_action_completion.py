@@ -311,7 +311,7 @@ async def test_invalid_action_does_not_block_later_approved_action() -> None:
                 "tool_input",
                 "tool_result",
             }:
-                raise AssertionError("ORM message read after rollback")
+                raise AttributeError("ORM message read after rollback")
             return super().__getattribute__(name)
 
     messages = [GuardedMessage(id=run.input["user_message_id"])] + [
