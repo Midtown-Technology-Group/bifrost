@@ -51,5 +51,5 @@ docker compose -f docker-compose.test.yml -f scripts/issue-890-compose.yml --pro
 kill -0 "$sampler_pid"
 sleep 16
 test -s "$BIFROST_LAB_OTEL_DIR/metrics.jsonl"
-rg -q 'bifrost.event_loop.lag' "$BIFROST_LAB_OTEL_DIR/metrics.jsonl"
+grep -q 'bifrost.event_loop.lag' "$BIFROST_LAB_OTEL_DIR/metrics.jsonl"
 echo "Event-loop lag metrics: $BIFROST_LAB_OTEL_DIR/metrics.jsonl"
