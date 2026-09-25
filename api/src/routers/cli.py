@@ -2321,6 +2321,7 @@ async def sdk_store_artifact(
         workspace_id=workspace_id,
         logical_path=filename,
     )
+    await db.commit()
     return artifact_ref(artifact)
 
 
@@ -2390,6 +2391,7 @@ async def sdk_render_document_artifact(
         workspace_id=workspace_id,
         logical_path=generated.filename,
     )
+    await db.commit()
     return artifact_ref(artifact)
 
 
@@ -2415,6 +2417,7 @@ async def sdk_render_spreadsheet_artifact(
         workspace_id=workspace_id,
         logical_path=generated.filename,
     )
+    await db.commit()
     return artifact_ref(artifact)
 
 
@@ -2440,6 +2443,7 @@ async def sdk_render_text_artifact(
         workspace_id=workspace_id,
         logical_path=generated.filename,
     )
+    await db.commit()
     return artifact_ref(artifact)
 
 
@@ -2477,6 +2481,7 @@ async def sdk_generate_image_artifact(
         organization_id=current_user.organization_id,
         user_id=current_user.user_id,
     )
+    await db.commit()
     return artifact_ref(artifact)
 
 

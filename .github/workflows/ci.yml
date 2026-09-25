@@ -831,12 +831,25 @@ jobs:
             ./test.sh client e2e "${targets[@]}"
           fi
 
+      - name: Export browser service logs and stop stack
+        if: always() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
+        run: ./test.sh stack down
+
       - name: Upload Playwright failure artifacts
         if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-results
           path: client/playwright-results
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve browser service logs on failure
+        if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-service-logs
+          path: /tmp/bifrost-bifrost-test-*/*.log
           if-no-files-found: warn
           retention-days: 7
 

@@ -1,4 +1,7 @@
 services:
+  client:
+    image: ${BIFROST_LAB_CLIENT_IMAGE:?}
+    cpuset: "0-3"
   api:
     command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${BIFROST_LAB_API_PROCESSES:-1}"]
     cpuset: "0-3"
@@ -10,3 +13,8 @@ services:
     environment:
       BIFROST_MAX_CONCURRENCY: "${BIFROST_LAB_SLOTS:-4}"
       BIFROST_MAX_WORKERS: "${BIFROST_LAB_SLOTS:-4}"
+  renderer:
+    image: ${BIFROST_LAB_RENDERER_IMAGE:?}
+    cpuset: "0-3"
+    environment:
+      DOC_RENDERER_API_TOKEN: issue-890-lab-token
