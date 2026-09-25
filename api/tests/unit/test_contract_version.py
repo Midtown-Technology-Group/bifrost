@@ -298,7 +298,8 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # PlatformJobPublic gained execution_backend (2026-09-17). ADDITIVE:
     # existing clients ignore the placement detail.
     # ServicePolicyUpdate is a new CLI contract for supervised services.
-    "91ea13bc946a83d67433f06a8d76b70918ad486d60ef1f07d339012b4d1e3684"
+    # PlatformJobStatus.requires_action breaks older CLI job pollers; contract 13.
+    "3db82b5ac581f8f38bbe504d934637546749565e2c9bcc52670484c0f979e630"
 )
 
 

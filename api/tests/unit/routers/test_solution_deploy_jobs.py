@@ -40,7 +40,7 @@ def test_solution_accountability_uses_the_producer_organization(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_deploy_stages_before_lock_and_cleans_artifact_on_sdk_conflict(monkeypatch):
+async def test_deploy_rejects_sdk_conflict_before_staging(monkeypatch):
     events = []
     app_id = uuid4()
 
@@ -78,7 +78,7 @@ async def test_deploy_stages_before_lock_and_cleans_artifact_on_sdk_conflict(mon
             requested_by_name="Admin", input_bytes=b"input",
         )
     assert raised.value.status_code == 409
-    assert events == ["stage", "lock", "conflict", "rollback", "delete"]
+    assert events == ["lock", "conflict"]
 
 
 @pytest.mark.asyncio
@@ -318,6 +318,7 @@ async def test_deploy_snapshots_slug_before_commit_expires_solution(tmp_path, mo
         id = job.install_id
         organization_id = uuid4()
         repo_subpath = None
+        git_connected = False
         _expired = False
 
         @property
