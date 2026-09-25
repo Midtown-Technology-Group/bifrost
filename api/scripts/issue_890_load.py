@@ -442,6 +442,7 @@ def main() -> int:
         "resource_samples": os.environ.get("BIFROST_BENCH_RESOURCE_FILE"),
         "python": platform.python_version(),
         "architecture": platform.machine(),
+        "api_processes": int(os.environ.get("BIFROST_BENCH_API_PROCESSES", "1")),
         "levels": [],
     }
     for concurrency in args.concurrency:
