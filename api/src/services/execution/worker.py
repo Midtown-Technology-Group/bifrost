@@ -648,17 +648,34 @@ async def run_service(
     start_time = datetime.now(timezone.utc)
     attempt_id = str(service_cfg.get("attempt_id", context_data.get("execution_id")))
 
-    from src.core.module_cache_sync import clear_solution_context, set_solution_context
+    from src.core.module_cache_sync import (
+        clear_solution_context,
+        clear_workspace_generation_context,
+        set_solution_context,
+        set_workspace_generation_context,
+    )
+    from src.services.execution.virtual_import import (
+        get_virtual_finder,
+        install_virtual_import_hook,
+        remove_virtual_import_hook,
+    )
+    from src.services.execution.workspace_modules import clear_workspace_modules
 
     _exec_solution_id = context_data.get("solution_id")
     if _exec_solution_id:
         set_solution_context(
             _exec_solution_id,
             global_repo_access=bool(context_data.get("solution_global_repo_access", False)),
+            runtime_storage_prefix=context_data.get("runtime_storage_prefix"),
+            source_hashes=context_data.get("deployment_source_hashes"),
         )
 
+    owns_virtual_import_hook = False
     try:
-        _clear_workspace_modules()
+        workspace_refresh = clear_workspace_modules()
+        set_workspace_generation_context(workspace_refresh.generation)
+        owns_virtual_import_hook = get_virtual_finder() is None
+        install_virtual_import_hook()
 
         org = None
         org_data = context_data.get("organization")
@@ -692,18 +709,17 @@ async def run_service(
         file_path = context_data.get("file_path")
         if function_name and file_path:
             try:
-                from src.core.module_cache_sync import get_module_sync
-                from src.services.execution.module_loader import load_workflow_from_db
-
-                cached = get_module_sync(file_path)
-                if cached:
-                    loaded_code = cached["content"]
-                    service_func, _, load_error = load_workflow_from_db(
-                        code=loaded_code,
-                        path=file_path,
-                        function_name=function_name,
-                    )
-                else:
+                (
+                    service_func,
+                    _,
+                    load_error,
+                    loaded_code,
+                ) = _load_workspace_workflow(
+                    file_path=file_path,
+                    function_name=function_name,
+                    workspace_generation=workspace_refresh.generation,
+                )
+                if not loaded_code:
                     load_error = (
                         f"Service code not found in cache or S3: "
                         f"function_name={function_name}, file_path={file_path}"
@@ -721,12 +737,9 @@ async def run_service(
             import hashlib
 
             actual_hash = hashlib.sha256(loaded_code.encode("utf-8")).hexdigest()
-            if actual_hash != content_hash:
-                logger.warning(
-                    "Content hash mismatch for %s: expected=%s... actual=%s...",
-                    file_path,
-                    content_hash[:12],
-                    actual_hash[:12],
+            if actual_hash != str(content_hash).removeprefix("sha256:"):
+                raise RuntimeError(
+                    f"service source integrity mismatch for {file_path}"
                 )
 
         if service_func is None:
@@ -784,6 +797,9 @@ async def run_service(
         )
     finally:
         clear_solution_context()
+        clear_workspace_generation_context()
+        if owns_virtual_import_hook:
+            remove_virtual_import_hook()
 
 
 def _service_result(
