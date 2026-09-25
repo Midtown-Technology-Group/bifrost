@@ -228,7 +228,8 @@ def test_solution_init_writes_descriptor_binds_remote_and_refuses_overwrite(
         async def post(self, path, json=None, **kwargs):
             assert path == "/api/solutions"
             assert json["slug"] == "desk"
-            assert json["global_repo_access"] is True
+            assert json["allow_outbound_access"] is True
+            assert json["allow_inbound_access"] is True
             assert kwargs == {}
             return Response()
 
@@ -262,7 +263,8 @@ def test_solution_init_writes_descriptor_binds_remote_and_refuses_overwrite(
         "slug": "desk",
         "name": "Desk",
         "version": "1.2.3",
-        "global_repo_access": True,
+        "allow_outbound_access": True,
+        "allow_inbound_access": True,
     }
     assert "BIFROST_SOLUTION_ID=sol-1" in (tmp_path / ".env").read_text()
 
