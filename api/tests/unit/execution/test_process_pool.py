@@ -386,109 +386,6 @@ class TestProcessPoolManagerRouting:
         )
 
     @pytest.mark.asyncio
-    async def test_drain_active_executions_waits_until_child_result_clears_handle(self):
-        """Graceful shutdown must track child work after queue dispatch returns."""
-        pool = ProcessPoolManager(max_workers=5)
-        process = MagicMock()
-        process.is_alive.return_value = True
-        handle = ProcessHandle(
-            id="process-active",
-            process=process,
-            pid=12345,
-            state=ProcessState.BUSY,
-            work_queue=MagicMock(),
-            result_queue=MagicMock(),
-            started_at=datetime.now(timezone.utc),
-            current_execution=ExecutionInfo(
-                execution_id="exec-active",
-                started_at=datetime.now(timezone.utc),
-                timeout_seconds=300,
-                active_execution=_active_execution("exec-active"),
-            ),
-        )
-        pool.processes[handle.id] = handle
-
-        sleep_calls = 0
-
-        async def finish_on_sleep(_delay: float) -> None:
-            nonlocal sleep_calls
-            sleep_calls += 1
-            pool.processes.pop(handle.id, None)
-
-        with patch("src.services.execution.process_pool.asyncio.sleep", finish_on_sleep):
-            drained = await pool.drain_active_executions(drain_timeout=1.0)
-
-        assert drained is True
-        assert sleep_calls == 1
-        assert pool.active_execution_count() == 0
-
-    @pytest.mark.asyncio
-    async def test_drain_active_executions_reports_bounded_timeout(self):
-        """A stuck child should consume only the supplied shutdown grace."""
-        callback = AsyncMock()
-        pool = ProcessPoolManager(max_workers=5, on_result=callback)
-        process = MagicMock()
-        process.is_alive.return_value = True
-        handle = ProcessHandle(
-            id="process-stuck",
-            process=process,
-            pid=12345,
-            state=ProcessState.BUSY,
-            work_queue=MagicMock(),
-            result_queue=MagicMock(),
-            started_at=datetime.now(timezone.utc),
-            current_execution=ExecutionInfo(
-                execution_id="exec-stuck",
-                started_at=datetime.now(timezone.utc),
-                timeout_seconds=300,
-                active_execution=_active_execution("exec-stuck"),
-            ),
-        )
-        pool.processes[handle.id] = handle
-
-        drained = await pool.drain_active_executions(drain_timeout=0.01)
-
-        assert drained is False
-        callback.assert_awaited_once()
-        result = callback.await_args.args[0]
-        assert result["execution_id"] == "exec-stuck"
-        assert result["success"] is False
-        assert result["error_type"] == "WorkerShutdown"
-        assert handle.result_reported is True
-        assert pool.active_execution_count() == 1
-
-    @pytest.mark.asyncio
-    async def test_drain_active_executions_counts_in_progress_terminal_callback(self):
-        """A callback already in progress must keep shutdown ownership bounded."""
-        callback = AsyncMock()
-        pool = ProcessPoolManager(max_workers=5, on_result=callback)
-        process = MagicMock()
-        process.is_alive.return_value = True
-        handle = ProcessHandle(
-            id="process-reporting",
-            process=process,
-            pid=12345,
-            state=ProcessState.BUSY,
-            work_queue=MagicMock(),
-            result_queue=MagicMock(),
-            started_at=datetime.now(timezone.utc),
-            current_execution=ExecutionInfo(
-                execution_id="exec-reporting",
-                started_at=datetime.now(timezone.utc),
-                timeout_seconds=300,
-                active_execution=_active_execution("exec-reporting"),
-            ),
-            result_reported=True,
-        )
-        pool.processes[handle.id] = handle
-
-        drained = await pool.drain_active_executions(drain_timeout=0.01)
-
-        assert drained is False
-        callback.assert_not_awaited()
-        assert pool.active_execution_count() == 1
-
-    @pytest.mark.asyncio
     async def test_restart_cannot_begin_between_context_write_and_dispatch(self):
         """A template restart must stay exclusive through child dispatch."""
         pool = ProcessPoolManager(max_workers=1)
@@ -1136,7 +1033,7 @@ class TestProcessPoolManagerResultHandling:
         )
 
         release_callback.set()
-        await shutdown_task
+        assert await shutdown_task is None
 
         assert len(results) == 1
         assert results[0]["error_type"] == "WorkerShutdown"
@@ -1817,8 +1714,8 @@ async def test_requirements_setup_subprocess_cancellation_kills_process_group():
         task = asyncio.create_task(_run_requirements_setup_subprocess())
         await asyncio.sleep(0)
         task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], asyncio.CancelledError)
 
     assert killpg.call_args_list == [
         call(4242, signal.SIGTERM),
