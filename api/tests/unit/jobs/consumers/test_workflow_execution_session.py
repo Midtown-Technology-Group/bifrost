@@ -300,6 +300,15 @@ class TestSuccessfulExecutionCompletionOrder:
                     publish_history,
                 ),
                 patch("src.core.cache.cleanup_execution_cache", cleanup_cache),
+                patch.object(
+                    consumer,
+                    "_emit_teams_action_completion",
+                    new=AsyncMock(
+                        side_effect=lambda _execution_id: call_order.append(
+                            "teams_action"
+                        )
+                    ),
+                ),
             ):
                 await consumer._process_success(
                     "00000000-0000-0000-0000-000000000004",
@@ -314,6 +323,7 @@ class TestSuccessfulExecutionCompletionOrder:
                 )
 
         assert call_order[:2] == ["durable_commit", "push_result"]
+        assert call_order.index("push_result") < call_order.index("teams_action")
         assert call_order.index("push_result") < call_order.index("daily_metrics")
         assert call_order.index("push_result") < call_order.index("workflow_metrics")
         assert call_order.index("push_result") < call_order.index("metrics_commit")
@@ -440,6 +450,15 @@ class TestFailedExecutionCompletionOrder:
                     "src.services.events.builtins.emit_workflow_failure_events",
                     new_callable=AsyncMock,
                 ),
+                patch.object(
+                    consumer,
+                    "_emit_teams_action_completion",
+                    new=AsyncMock(
+                        side_effect=lambda _execution_id: call_order.append(
+                            "teams_action"
+                        )
+                    ),
+                ),
             ):
                 await consumer._process_failure(
                     "00000000-0000-0000-0000-000000000004",
@@ -455,6 +474,7 @@ class TestFailedExecutionCompletionOrder:
                 )
 
         assert call_order[:2] == ["durable_commit", "push_result"]
+        assert call_order.index("push_result") < call_order.index("teams_action")
         assert call_order.index("push_result") < call_order.index("daily_metrics")
         assert call_order.index("push_result") < call_order.index("metrics_commit")
         assert call_order.index("push_result") < call_order.index("publish_execution")
