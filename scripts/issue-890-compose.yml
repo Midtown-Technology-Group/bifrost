@@ -5,6 +5,8 @@ services:
   api:
     command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${BIFROST_LAB_API_PROCESSES:-1}"]
     cpuset: "0-3"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
   scheduler:
     command: ["python", "-m", "src.scheduler.main"]
     cpuset: "0-3"
@@ -18,3 +20,11 @@ services:
     cpuset: "0-3"
     environment:
       DOC_RENDERER_API_TOKEN: issue-890-lab-token
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    cpuset: "4-7"
+    user: "${BIFROST_LAB_UID:-1000}:${BIFROST_LAB_GID:-1000}"
+    volumes:
+      - ./scripts/issue-890-otel.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ${BIFROST_LAB_OTEL_DIR:?}:/results

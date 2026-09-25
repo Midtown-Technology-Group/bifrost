@@ -472,6 +472,7 @@ def main() -> int:
         "scenario": args.scenario,
         "source_sha": os.environ.get("BIFROST_BENCH_SOURCE_SHA", "unknown"),
         "resource_samples": os.environ.get("BIFROST_BENCH_RESOURCE_FILE"),
+        "event_loop_lag_metrics": os.environ.get("BIFROST_BENCH_OTEL_FILE"),
         "python": platform.python_version(),
         "architecture": platform.machine(),
         "api_processes": int(os.environ.get("BIFROST_BENCH_API_PROCESSES", "1")),
