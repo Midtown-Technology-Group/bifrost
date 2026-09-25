@@ -63,9 +63,10 @@ descriptions on the persisted workflow through the Bifrost UI or API.
 contract, supervision SDK, lifecycle CLI, ownership, handoff checklist).
 The one rule that decides the decorator: if the work holds a connection,
 subscription, or listener indefinitely instead of returning a result, it is
-a service — register it with `bifrost workflows register` like a workflow
-(the platform detects `@service` and ensures the supervised definition)
-and manage it with `bifrost services ...`.
+a service. Register a loose file with `bifrost workflows register` (the
+platform detects `@service` and ensures the supervised definition). For
+Solution-owned source, add its `.bifrost/workflows.yaml` entry and run
+`bifrost solution deploy`. Manage either with `bifrost services ...`.
 
 ## Test-driven iteration
 
