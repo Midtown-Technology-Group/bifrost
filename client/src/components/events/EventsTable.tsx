@@ -320,6 +320,7 @@ export function EventsTable({
 										<DataTableRow
 											key={event.id}
 											clickable
+											href={eventHref(event)}
 											onClick={() =>
 												navigate(eventHref(event))
 											}

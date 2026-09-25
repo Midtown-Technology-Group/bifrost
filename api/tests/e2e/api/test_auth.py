@@ -8,11 +8,80 @@ Note: The platform_admin fixture handles registration and MFA setup.
 These tests verify the flows work correctly and test security aspects.
 """
 
-import jwt
-import pytest
+from datetime import datetime, timezone
 from uuid import uuid4
 
+import jwt
+import pytest
+from sqlalchemy import delete, select
+
+from src.config import get_settings
+from src.core.security import decode_token, mint_engine_token
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from tests.helpers.totp import generate_totp_code
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_no_timeout_engine_token_refresh_requires_active_attempt(
+    e2e_client, async_session_factory
+):
+    execution_id, attempt_token = uuid4(), uuid4()
+    now = datetime.now(timezone.utc)
+    async with async_session_factory() as db:
+        db.add(
+            Execution(
+                id=execution_id,
+                workflow_name="engine_refresh_test",
+                executed_by_name="test",
+            )
+        )
+        await db.flush()
+        db.add(
+            WorkflowExecutionAttempt(
+                execution_id=execution_id,
+                attempt_number=1,
+                claim_token=attempt_token,
+                status="running",
+                phase="execution",
+                published_at=now,
+                claimed_at=now,
+                started_at=now,
+            )
+        )
+        await db.commit()
+    try:
+        token, _ = mint_engine_token(
+            execution_id=str(execution_id),
+            attempt_token=str(attempt_token),
+            timeout_seconds=0,
+        )
+        payload = decode_token(token, expected_type="access")
+        assert payload is not None
+        payload["exp"] = int(now.timestamp()) - 1
+        settings = get_settings()
+        expired = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+        renewed = e2e_client.post("/auth/refresh", json={"refresh_token": expired})
+        assert renewed.status_code == 200
+        assert decode_token(renewed.json()["access_token"], expected_type="access")
+
+        async with async_session_factory() as db:
+            attempt = await db.scalar(
+                select(WorkflowExecutionAttempt).where(
+                    WorkflowExecutionAttempt.execution_id == execution_id
+                )
+            )
+            assert attempt is not None
+            attempt.status = "succeeded"
+            attempt.completed_at = datetime.now(timezone.utc)
+            await db.commit()
+        denied = e2e_client.post("/auth/refresh", json={"refresh_token": expired})
+        assert denied.status_code == 401
+    finally:
+        async with async_session_factory() as db:
+            await db.execute(delete(Execution).where(Execution.id == execution_id))
+            await db.commit()
 
 
 @pytest.mark.e2e

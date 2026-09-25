@@ -187,6 +187,31 @@ def decode_token(
         return None
 
 
+def decode_renewable_engine_token(token: str) -> dict[str, Any] | None:
+    """Verify a no-timeout engine token for renewal after its access expiry."""
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"verify_exp": False},
+        )
+    except jwt.InvalidTokenError:
+        return None
+    if (
+        payload.get("type") != "access"
+        or payload.get("engine") is not True
+        or payload.get("engine_renewable") is not True
+        or payload.get("sub") != ENGINE_USER_ID
+        or not isinstance(payload.get("exp"), int)
+    ):
+        return None
+    return payload
+
+
 def create_mfa_token(user_id: str, purpose: str = "mfa_verify") -> str:
     """
     Create a short-lived token for MFA verification step.
@@ -418,6 +443,10 @@ def validate_csrf_token(cookie_token: str, header_token: str) -> bool:
     return secrets.compare_digest(cookie_token, header_token)
 
 
+NO_TIMEOUT_TOKEN_SECONDS = 300
+"""Engine-token base lifetime for workflows configured with timeout_seconds=0 (no timeout)."""
+
+
 def mint_engine_token(
     *,
     execution_id: str | None = None,
@@ -445,7 +474,8 @@ def mint_engine_token(
     The signed Solution claims are authoritative for internal module-fetch
     endpoints. A child cannot broaden its source-code scope by changing query
     parameters. The token lifetime covers the workflow timeout plus five
-    minutes for startup and completion flushing.
+    minutes for startup and completion flushing; a workflow with no timeout
+    (timeout_seconds=0) gets a renewable ten-minute token.
 
     Returns:
         (token, expires_at_iso): JWT string and ISO-8601 expiry timestamp.
@@ -460,6 +490,7 @@ def mint_engine_token(
         "engine_attempt_token": attempt_token,
         "engine_solution_id": solution_id,
         "engine_global_repo_access": bool(global_repo_access),
+        "engine_renewable": timeout_seconds == 0,
     }
     if organization_id is not None:
         token_data["org_id"] = str(organization_id)
@@ -475,7 +506,12 @@ def mint_engine_token(
             }
         )
 
-    lifetime = timedelta(seconds=max(timeout_seconds, 1) + 300)
+    # timeout_seconds == 0 means "no timeout" everywhere else in the engine
+    # (process_pool and execution_cleanup). The active-attempt refresh path
+    # renews these tokens after expiry, so a completed execution does not
+    # leave a privileged token valid for a full day.
+    effective_timeout = timeout_seconds if timeout_seconds > 0 else NO_TIMEOUT_TOKEN_SECONDS
+    lifetime = timedelta(seconds=effective_timeout + 300)
     expires_at = datetime.now(timezone.utc) + lifetime
     token = create_access_token(token_data, expires_delta=lifetime)
 

@@ -39,6 +39,7 @@ from src.core.auth import (
     CurrentSuperuser,
     UserPrincipal,
     get_current_user_optional,
+    renew_engine_access_token,
 )
 from src.core.cache import get_shared_redis
 from src.core.cache.keys import (
@@ -57,6 +58,7 @@ from src.core.security import (
     create_mfa_token,
     create_refresh_token,
     decode_mfa_token,
+    decode_renewable_engine_token,
     decode_token,
     generate_csrf_token,
     get_password_hash,
@@ -892,7 +894,8 @@ async def refresh_token(
     1. Request body (API clients): {"refresh_token": "..."}
     2. HttpOnly cookie (browser clients): Automatically sent
 
-    Rate limited: 10 requests per minute per IP address.
+    Rate limited: 10 requests per minute per IP for ordinary refreshes,
+    or per execution attempt for signed engine tokens.
 
     Args:
         request: FastAPI request object
@@ -905,16 +908,23 @@ async def refresh_token(
     Raises:
         HTTPException: If refresh token is invalid or revoked
     """
-    # Rate limiting
-    client_ip = get_client_ip(request)
-    await auth_limiter.check("refresh", client_ip)
-
     # Get refresh token from body (API clients) or cookie (browser clients)
     refresh_token_value = None
     if token_data and token_data.refresh_token:
         refresh_token_value = token_data.refresh_token
     else:
         refresh_token_value = request.cookies.get("refresh_token")
+
+    engine_claims = (
+        decode_renewable_engine_token(refresh_token_value) if refresh_token_value else None
+    )
+    if engine_claims is not None:
+        await auth_limiter.check(
+            "engine_refresh",
+            f"{engine_claims.get('engine_execution_id')}:{engine_claims.get('engine_attempt_token')}",
+        )
+    else:
+        await auth_limiter.check("refresh", get_client_ip(request))
 
     if not refresh_token_value:
         raise HTTPException(
@@ -927,6 +937,12 @@ async def refresh_token(
     payload = decode_token(refresh_token_value, expected_type="refresh")
 
     if not payload:
+        renewed_engine_token = await renew_engine_access_token(db, refresh_token_value)
+        if renewed_engine_token is not None:
+            return Token(
+                access_token=renewed_engine_token,
+                refresh_token=renewed_engine_token,
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
