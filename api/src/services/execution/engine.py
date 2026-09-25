@@ -906,11 +906,7 @@ async def execute_service(
     finally:
         if supervisor_task is not None:
             supervisor_task.cancel()
-            try:
-                await supervisor_task
-            except asyncio.CancelledError:
-                # Expected: we just cancelled it and awaited shutdown.
-                pass
+            await asyncio.gather(supervisor_task, return_exceptions=True)
         for sig in installed_signals:
             try:
                 loop.remove_signal_handler(sig)
@@ -975,8 +971,6 @@ async def _service_supervisor(
                             install_service_credentials(payload["token"])
                             current_expires_at = payload["expires_at"]
                             cfg.token_expires_at = current_expires_at
-        except asyncio.CancelledError:
-            break
         except Exception as e:
             logger.debug("service supervisor tick failed: %s", e)
         try:
@@ -1105,11 +1099,7 @@ async def _execute_service_with_trace(
             service_logger.info("service stopping")
             if not user_task.done():
                 user_task.cancel()
-                try:
-                    await user_task
-                except asyncio.CancelledError:
-                    # Expected: we just cancelled it and awaited shutdown.
-                    pass
+                await asyncio.gather(user_task, return_exceptions=True)
             return None, service_logs, True
 
         return user_task.result(), service_logs, False

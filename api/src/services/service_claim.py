@@ -99,11 +99,7 @@ class ServiceClaimLoop:
         """
         self._running = False
         if self._task is not None:
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                # Killed without handover (owner-death path): nothing to wait for.
-                pass
+            await asyncio.gather(self._task, return_exceptions=True)
             self._task = None
         await self._handover_owned()
 
