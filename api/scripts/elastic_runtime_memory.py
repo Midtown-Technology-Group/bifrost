@@ -346,14 +346,13 @@ def _candidate_repo_roots() -> list[Path]:
 def _run_stage(stage: Stage, args: argparse.Namespace) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = _repo_pythonpath()
+    env["BIFROST_MEMORY_PLATFORM_JOB_TYPE"] = args.platform_job_type
     cmd = [
         sys.executable,
         "-m",
         "scripts.elastic_runtime_memory",
         "--_child-stage",
         stage.name,
-        "--platform-job-type",
-        args.platform_job_type,
     ]
     proc = subprocess.run(
         cmd,
@@ -440,7 +439,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--platform-job-type",
-        default="application.sdk_update",
+        default=os.environ.get("BIFROST_MEMORY_PLATFORM_JOB_TYPE", "application.sdk_update"),
         help="PlatformJob type for the selected-platform-job stage.",
     )
     parser.add_argument(
