@@ -41,7 +41,11 @@ class FakeConsumer:
 
 @pytest.fixture
 def settings() -> SimpleNamespace:
-    return SimpleNamespace(environment="test", work_delivery_backend="rabbitmq")
+    return SimpleNamespace(
+        environment="test",
+        work_delivery_backend="rabbitmq",
+        service_claim_interval_seconds=5,
+    )
 
 
 def test_configured_consumers_default_to_all(monkeypatch: pytest.MonkeyPatch) -> None:
