@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import subprocess
 import sys
 
@@ -32,7 +31,7 @@ def _get_installed_packages() -> list[dict[str, str]]:
 
 
 def _requirement_name(line: str) -> str:
-    return canonicalize_name(Requirement(re.split(r"\s+#", line, maxsplit=1)[0]).name)
+    return canonicalize_name(Requirement(line.split(" #", 1)[0]).name)
 
 
 def _update_requirements_status(result: RequirementsInstallResult) -> None:
