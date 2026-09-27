@@ -123,6 +123,7 @@ async def recover_teams_chat_completions(*, limit: int = 50) -> int:
                     AgentRun.input.has_key("teams_event_id"),
                     ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
                     AgentRun.completed_at < datetime.now(UTC) - timedelta(seconds=15),
+                    AgentRun.completed_at > datetime.now(UTC) - timedelta(hours=24),
                 )
                 .order_by(AgentRun.completed_at)
                 .limit(limit)

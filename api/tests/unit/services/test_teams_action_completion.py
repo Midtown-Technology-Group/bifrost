@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -255,6 +256,16 @@ async def test_transient_registration_failure_remains_recoverable() -> None:
             await emit_teams_chat_completion(run)
         assert "teams_completion_emitted_at" not in run.run_metadata
         assert await recover_teams_chat_completions() == 1
+        query = db.scalars.await_args.args[0]
+        cutoffs = [
+            value
+            for value in query.compile().params.values()
+            if isinstance(value, datetime)
+        ]
+        assert any(
+            timedelta(hours=23) < datetime.now(UTC) - cutoff < timedelta(hours=25)
+            for cutoff in cutoffs
+        )
         assert "teams_completion_emitted_at" in run.run_metadata
         assert register.await_count == 2
 
