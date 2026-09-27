@@ -10,6 +10,7 @@ from src.services import teams_receipts as receipts
 
 EVENT_ID = UUID("d43b6040-94af-4e54-a60c-f454e2fb4283")
 SOURCE_ID = UUID("1c14fd9f-537f-4f96-8217-a14262c4f439")
+TOKEN_URL = "https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/oauth2/v2.0/token"
 
 
 def _event(*, verified=True):
@@ -47,6 +48,19 @@ def test_connector_url_is_host_bounded():
             receipts._service_url(url)
 
 
+def test_single_tenant_token_url_is_home_tenant_and_host_bounded():
+    assert receipts._token_url(TOKEN_URL) == TOKEN_URL
+    assert receipts._token_url(None) == receipts._TOKEN_URL
+    for bad in (
+        TOKEN_URL.replace("https://", "http://", 1),
+        TOKEN_URL.replace("login.microsoftonline.com", "login.microsoftonline.com.evil.test", 1),
+        "https://login.microsoftonline.com/attacker/oauth2/v2.0/token",
+        TOKEN_URL + "?next=evil",
+    ):
+        with pytest.raises(ValueError, match="Untrusted"):
+            receipts._token_url(bad)
+
+
 @pytest.mark.asyncio
 async def test_duplicate_event_resolves_to_receipt_owner(monkeypatch):
     event = _event()
@@ -71,7 +85,7 @@ async def test_receipt_failure_is_recorded_and_does_not_escape(monkeypatch):
             pass
 
         async def get_integration_defaults(self, *_args, **_kwargs):
-            return {"app_id": "bot-id", "client_secret": "secret"}
+            return {"app_id": "bot-id", "client_secret": "secret", "token_url": TOKEN_URL}
 
     monkeypatch.setattr(receipts, "IntegrationsRepository", _Repo)
     monkeypatch.setattr(receipts, "_send_receipt", AsyncMock(side_effect=ValueError("failed")))
@@ -79,6 +93,7 @@ async def test_receipt_failure_is_recorded_and_does_not_escape(monkeypatch):
     assert event.data["teams_receipt"]["status"] == "failed"
     db.commit.assert_awaited_once()
     receipts.complete_operation_receipt_error.assert_awaited_once()
+    assert receipts._send_receipt.await_args.kwargs["token_url"] == TOKEN_URL
 
 
 @pytest.mark.asyncio
