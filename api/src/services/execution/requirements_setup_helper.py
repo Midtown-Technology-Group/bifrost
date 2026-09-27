@@ -7,6 +7,9 @@ import logging
 import subprocess
 import sys
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
 
 logger = logging.getLogger(__name__)
@@ -28,7 +31,7 @@ def _get_installed_packages() -> list[dict[str, str]]:
 
 
 def _requirement_name(line: str) -> str:
-    return line.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip().lower()
+    return canonicalize_name(Requirement(line.split(" #", 1)[0]).name)
 
 
 def _update_requirements_status(result: RequirementsInstallResult) -> None:
@@ -44,7 +47,7 @@ def _update_requirements_status(result: RequirementsInstallResult) -> None:
     required = {_requirement_name(line) for line in _parse_requirement_lines(content)}
     result.requirements_total = len(required)
 
-    installed = {p["name"].lower() for p in _get_installed_packages()}
+    installed = {canonicalize_name(p["name"]) for p in _get_installed_packages()}
     result.requirements_installed = len(required & installed)
 
     missing = required - installed
