@@ -255,8 +255,9 @@ async def test_transient_registration_failure_remains_recoverable() -> None:
         with pytest.raises(RuntimeError, match="transient"):
             await emit_teams_chat_completion(run)
         assert "teams_completion_emitted_at" not in run.run_metadata
+        prior_queries = db.scalars.await_count
         assert await recover_teams_chat_completions() == 1
-        query = db.scalars.await_args.args[0]
+        query = db.scalars.await_args_list[prior_queries].args[0]
         cutoffs = [
             value
             for value in query.compile().params.values()
