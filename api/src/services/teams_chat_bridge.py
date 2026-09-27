@@ -91,7 +91,7 @@ async def emit_teams_chat_completion(run) -> None:
             ).all()
             if not statuses or EventDeliveryStatus.FAILED in statuses:
                 return
-            stored = await db.get(AgentRun, run.id, with_for_update=True)
+            stored = await db.get(AgentRun, run.id, with_for_update={"of": AgentRun})
             if stored is not None:
                 stored.run_metadata = {
                     **(stored.run_metadata or {}),
