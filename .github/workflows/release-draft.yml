@@ -87,16 +87,35 @@ jobs:
             "$PRS")"
           # Read the REST issue list rather than using --search: GitHub's search
           # index is eventually consistent, so a push landing right after a
-          # draft was created would not see it yet and open a duplicate. Keep
-          # exactly one open draft by editing the newest and closing any
-          # stragglers (as "not planned", so release-tag.yml cannot fire).
-          mapfile -t drafts < <(gh issue list --state open --limit 300 \
-            --json number,title \
-            --jq '[.[] | select(.title | startswith("Release v"))] | sort_by(.number) | .[].number')
+          # draft was created would not see it and open a duplicate.
+          #
+          # Paginate every page (never a fixed cap) and check the listing's
+          # status: a failed fetch must not be mistaken for "no drafts", which
+          # would create a duplicate.
+          if ! draft_numbers="$(gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" \
+              --jq '.[] | select(.pull_request == null)
+                    | select(.title | startswith("Release v")) | .number' \
+              | sort -n)"; then
+            echo "::error::could not list open issues; refusing to create a draft"
+            exit 1
+          fi
+
+          # mapfile always yields one element, so drop the empty one.
+          mapfile -t drafts <<<"$draft_numbers"
+          if [[ "${#drafts[@]}" -eq 1 && -z "${drafts[0]}" ]]; then
+            drafts=()
+          fi
+
           if [[ "${#drafts[@]}" -gt 0 ]]; then
+            # Keep the newest draft and retire the stragglers as "not planned",
+            # so release-tag.yml's completed guard cannot fire from cleanup.
             existing="${drafts[-1]}"
             for stale in "${drafts[@]:0:${#drafts[@]}-1}"; do
-              gh issue close "$stale" --reason "not planned" || true
+              if ! gh issue close "$stale" --reason "not planned"; then
+                echo "::error::could not close duplicate release issue #$stale"
+                exit 1
+              fi
             done
             gh issue edit "$existing" --title "$title" --body "$body"
           else
