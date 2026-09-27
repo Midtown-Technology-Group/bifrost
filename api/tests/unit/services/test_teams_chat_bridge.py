@@ -266,6 +266,45 @@ async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(
 
 
 @pytest.mark.asyncio
+async def test_successful_completion_locks_only_agent_run(
+    monkeypatch, completion_solution
+):
+    from src.core import database
+    from src.models.enums import EventDeliveryStatus
+    from src.models.orm.agent_runs import AgentRun
+    from src.services import events
+
+    run = SimpleNamespace(
+        id=UUID(int=3),
+        status="failed",
+        org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+        run_metadata={},
+    )
+    monkeypatch.setattr(events, "emit_event", AsyncMock(return_value=(UUID(int=4), 1)))
+    db = SimpleNamespace(
+        scalars=AsyncMock(return_value=_Result([EventDeliveryStatus.SUCCESS])),
+        get=AsyncMock(return_value=run),
+        commit=AsyncMock(),
+    )
+
+    class _Session:
+        async def __aenter__(self):
+            return db
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(database, "get_session_factory", lambda: lambda: _Session())
+    await bridge.emit_teams_chat_completion(run)
+    db.get.assert_awaited_once_with(
+        AgentRun, run.id, with_for_update={"of": AgentRun}
+    )
+    assert "teams_completion_emitted_at" in run.run_metadata
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_conversation_race_rechecks_binding_after_rollback(monkeypatch):
     user = SimpleNamespace(
         id=USER_ID,
