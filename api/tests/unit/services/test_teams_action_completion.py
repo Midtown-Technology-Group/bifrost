@@ -34,6 +34,8 @@ async def test_only_tagged_terminal_execution_emits() -> None:
     )()
     db = AsyncMock()
     db.get.return_value = row
+    solution_id = uuid4()
+    db.scalar.return_value = solution_id
     processor = SimpleNamespace(
         emit_topic=AsyncMock(return_value=(uuid4(), 1)),
         queue_event_deliveries=AsyncMock(),
@@ -59,6 +61,7 @@ async def test_only_tagged_terminal_execution_emits() -> None:
         assert processor.emit_topic.await_args.kwargs["topic"] == (
             "microsoft_teams.action_completed"
         )
+        assert processor.emit_topic.await_args.kwargs["solution_id"] == solution_id
         assert processor.emit_topic.await_args.kwargs["data"]["execution_id"] == str(
             execution_id
         )

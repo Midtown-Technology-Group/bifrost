@@ -32,6 +32,15 @@ INTEGRATION_NAME = "Microsoft Teams Bot"
 _LEADING_MENTION = re.compile(r"^\s*<at\b[^>]*>.*?</at>\s*", re.IGNORECASE | re.DOTALL)
 
 
+async def teams_solution_id_for_event(db, event_id: UUID) -> UUID | None:
+    """Emit terminal topics into the install that owns the verified webhook."""
+    return await db.scalar(
+        select(EventSource.solution_id)
+        .join(Event, Event.event_source_id == EventSource.id)
+        .where(Event.id == event_id)
+    )
+
+
 async def emit_teams_chat_completion(run) -> None:
     """Notify the Teams Solution after a linked chat run reaches a terminal state."""
     event_id = (run.input or {}).get("teams_event_id")
@@ -44,8 +53,11 @@ async def emit_teams_chat_completion(run) -> None:
         "timeout",
     }:
         return
+    from src.core.database import get_session_factory
     from src.services.events import emit_event
 
+    async with get_session_factory()() as db:
+        solution_id = await teams_solution_id_for_event(db, UUID(str(event_id)))
     completion_event_id, subscribers = await emit_event(
         "microsoft_teams.chat_run_completed",
         {
@@ -54,6 +66,7 @@ async def emit_teams_chat_completion(run) -> None:
             "organization_id": str(run.org_id),
         },
         organization_id=run.org_id,
+        solution_id=solution_id,
         triggered_by=f"agent_run:{run.id}",
     )
     if run.status == "completed":
