@@ -85,11 +85,19 @@ jobs:
             "### Merged PRs since the last tag" \
             "" \
             "$PRS")"
-          existing="$(gh issue list --state open --limit 50 \
-            --search 'in:title "Release v"' \
+          # Read the REST issue list rather than using --search: GitHub's search
+          # index is eventually consistent, so a push landing right after a
+          # draft was created would not see it yet and open a duplicate. Keep
+          # exactly one open draft by editing the newest and closing any
+          # stragglers (as "not planned", so release-tag.yml cannot fire).
+          mapfile -t drafts < <(gh issue list --state open --limit 300 \
             --json number,title \
-            --jq '.[] | select(.title | startswith("Release v")) | .number' | head -1)"
-          if [[ -n "$existing" ]]; then
+            --jq '[.[] | select(.title | startswith("Release v"))] | sort_by(.number) | .[].number')
+          if [[ "${#drafts[@]}" -gt 0 ]]; then
+            existing="${drafts[-1]}"
+            for stale in "${drafts[@]:0:${#drafts[@]}-1}"; do
+              gh issue close "$stale" --reason "not planned" || true
+            done
             gh issue edit "$existing" --title "$title" --body "$body"
           else
             gh issue create --title "$title" --body "$body"
