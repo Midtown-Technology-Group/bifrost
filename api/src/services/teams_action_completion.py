@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -207,8 +207,12 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> bool:
     if not isinstance(binding, dict) or binding.get("emitted_at"):
         return False
     from src.services.events.processor import EventProcessor
+    from src.services.teams_chat_bridge import teams_solution_id_for_event
 
     processor = EventProcessor(db)
+    solution_id = await teams_solution_id_for_event(
+        db, UUID(binding["webhook_event_id"])
+    )
     event_id, subscribers = await processor.emit_topic(
         topic=TOPIC,
         data={
@@ -218,10 +222,11 @@ async def emit_teams_action_completion(db, execution_id: UUID) -> bool:
             "organization_id": str(execution.organization_id),
         },
         organization_id=execution.organization_id,
+        solution_id=solution_id,
         triggered_by=f"execution:{execution_id}",
     )
     context = dict(execution.execution_context or {})
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     context["teams_action_completion"] = {
         **binding,
         "last_attempt_at": now,
@@ -249,10 +254,8 @@ async def recover_teams_action_completions(*, limit: int = 50) -> int:
                     Execution.execution_context["teams_action_completion"][
                         "emitted_at"
                     ].astext.is_(None),
-                    Execution.completed_at
-                    < datetime.now(timezone.utc) - timedelta(seconds=15),
-                    Execution.completed_at
-                    > datetime.now(timezone.utc) - RECOVERY_MAX_AGE,
+                    Execution.completed_at < datetime.now(UTC) - timedelta(seconds=15),
+                    Execution.completed_at > datetime.now(UTC) - RECOVERY_MAX_AGE,
                 )
                 .order_by(
                     Execution.execution_context["teams_action_completion"][
