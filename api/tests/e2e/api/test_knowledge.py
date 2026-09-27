@@ -945,3 +945,34 @@ class TestKnowledgeDocumentUpdate:
         assert body["content"] == "short v2"
         assert body["metadata"] == {"v": 2}
         assert body["created_at"] == created["created_at"]
+
+
+class TestKnowledgeDocumentByIdOrgScope:
+    """GET /api/knowledge-sources/{ns}/documents/{id} honors the caller's org."""
+
+    def test_other_org_document_is_not_found(
+        self,
+        e2e_client,
+        platform_admin,
+        org2,
+        org1_user,
+        org2_user,
+        embedding_config_setup,
+        knowledge_cleanup,
+    ):
+        create = e2e_client.post(
+            "/api/knowledge-sources/e2e-test/documents",
+            headers=platform_admin.headers,
+            params={"scope": org2["id"]},
+            json={"content": "org2 only", "key": "org2-by-id"},
+        )
+        assert create.status_code == 201, create.text
+        doc_id = create.json()["id"]
+        path = f"/api/knowledge-sources/e2e-test/documents/{doc_id}"
+
+        other_org = e2e_client.get(path, headers=org1_user.headers)
+        assert other_org.status_code == 404, other_org.text
+
+        own_org = e2e_client.get(path, headers=org2_user.headers)
+        assert own_org.status_code == 200, own_org.text
+        assert own_org.json()["content"] == "org2 only"
