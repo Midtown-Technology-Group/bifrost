@@ -444,14 +444,10 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (
-                await self.db.execute(
-                    select(Workflow).where(Workflow.solution_id == solution_id)
-                )
+            await self.db.execute(
+                select(Workflow).where(Workflow.solution_id == solution_id)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         out: list[dict[str, Any]] = []
         for w in rows:
             role_ids = await self._role_ids(WorkflowRole, "workflow_id", w.id)
@@ -479,14 +475,10 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         sources = (
-            (
-                await self.db.execute(
-                    select(EventSource).where(EventSource.solution_id == solution_id)
-                )
+            await self.db.execute(
+                select(EventSource).where(EventSource.solution_id == solution_id)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         out: list[dict[str, Any]] = []
         for es in sources:
             schedule = (
@@ -498,25 +490,19 @@ class SolutionCaptureService:
             ).scalar_one_or_none()
             webhook = (
                 await self.db.execute(
-                    select(WebhookSource).where(WebhookSource.event_source_id == es.id)
+                    select(WebhookSource).where(
+                        WebhookSource.event_source_id == es.id
+                    )
                 )
             ).scalar_one_or_none()
             subs = (
-                (
-                    await self.db.execute(
-                        select(EventSubscription).where(
-                            EventSubscription.event_source_id == es.id
-                        )
+                await self.db.execute(
+                    select(EventSubscription).where(
+                        EventSubscription.event_source_id == es.id
                     )
                 )
-                .scalars()
-                .all()
-            )
-            out.append(
-                ManifestEventSource.from_row(
-                    es, schedule=schedule, webhook=webhook, subscriptions=list(subs)
-                ).view(Destination.INSTALL)
-            )
+            ).scalars().all()
+            out.append(ManifestEventSource.from_row(es, schedule=schedule, webhook=webhook, subscriptions=list(subs)).view(Destination.INSTALL))
         return out
 
     async def _table_entries(self, solution_id: UUID) -> list[dict[str, Any]]:
@@ -524,14 +510,8 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (
-                await self.db.execute(
-                    select(Table).where(Table.solution_id == solution_id)
-                )
-            )
-            .scalars()
-            .all()
-        )
+            await self.db.execute(select(Table).where(Table.solution_id == solution_id))
+        ).scalars().all()
         return [ManifestTable.from_row(t).view(Destination.INSTALL) for t in rows]
 
     async def _claim_entries(self, solution_id: UUID) -> list[dict[str, Any]]:
@@ -539,14 +519,10 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (
-                await self.db.execute(
-                    select(CustomClaim).where(CustomClaim.solution_id == solution_id)
-                )
+            await self.db.execute(
+                select(CustomClaim).where(CustomClaim.solution_id == solution_id)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         return [ManifestCustomClaim.from_row(c).view(Destination.INSTALL) for c in rows]
 
     async def _app_entries(self, solution_id: UUID) -> list[dict[str, Any]]:
@@ -554,14 +530,10 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (
-                await self.db.execute(
-                    select(Application).where(Application.solution_id == solution_id)
-                )
+            await self.db.execute(
+                select(Application).where(Application.solution_id == solution_id)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         out: list[dict[str, Any]] = []
         for app in rows:
             src_files, bin_files = await self._app_source_files(app)
@@ -632,23 +604,17 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (await self.db.execute(select(Form).where(Form.solution_id == solution_id)))
-            .scalars()
-            .all()
-        )
+            await self.db.execute(select(Form).where(Form.solution_id == solution_id))
+        ).scalars().all()
         out: list[dict[str, Any]] = []
         for form in rows:
             fields = (
-                (
-                    await self.db.execute(
-                        select(FormField)
-                        .where(FormField.form_id == form.id)
-                        .order_by(FormField.position)
-                    )
+                await self.db.execute(
+                    select(FormField)
+                    .where(FormField.form_id == form.id)
+                    .order_by(FormField.position)
                 )
-                .scalars()
-                .all()
-            )
+            ).scalars().all()
             roles = await self._role_ids(FormRole, "form_id", form.id)
             # form_schema for install uses _form_field_entry (includes position) — passed
             # via extras to override the model's schema (built without position).
@@ -671,20 +637,12 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (
-                await self.db.execute(
-                    select(Agent).where(Agent.solution_id == solution_id)
-                )
-            )
-            .scalars()
-            .all()
-        )
+            await self.db.execute(select(Agent).where(Agent.solution_id == solution_id))
+        ).scalars().all()
         out: list[dict[str, Any]] = []
         for agent in rows:
             roles = await self._role_ids(AgentRole, "agent_id", agent.id)
-            tool_ids = await self._junction_ids(
-                AgentTool, "agent_id", "workflow_id", agent.id
-            )
+            tool_ids = await self._junction_ids(AgentTool, "agent_id", "workflow_id", agent.id)
             delegated_agent_ids = await self._junction_ids(
                 AgentDelegation, "parent_agent_id", "child_agent_id", agent.id
             )
@@ -711,16 +669,12 @@ class SolutionCaptureService:
         from bifrost.manifest_codec import Destination
 
         rows = (
-            (
-                await self.db.execute(
-                    select(SolutionConfigSchema)
-                    .where(SolutionConfigSchema.solution_id == solution_id)
-                    .order_by(SolutionConfigSchema.position)
-                )
+            await self.db.execute(
+                select(SolutionConfigSchema)
+                .where(SolutionConfigSchema.solution_id == solution_id)
+                .order_by(SolutionConfigSchema.position)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         return [
             ManifestSolutionConfigSchema.from_row(c).view(Destination.INSTALL)
             for c in rows
@@ -750,16 +704,12 @@ class SolutionCaptureService:
         from src.services.solutions.ref_scanner import scan_integration_refs
 
         persisted = (
-            (
-                await self.db.execute(
-                    select(SolutionConnectionSchema)
-                    .where(SolutionConnectionSchema.solution_id == solution_id)
-                    .order_by(SolutionConnectionSchema.position)
-                )
+            await self.db.execute(
+                select(SolutionConnectionSchema)
+                .where(SolutionConnectionSchema.solution_id == solution_id)
+                .order_by(SolutionConnectionSchema.position)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         if persisted:
             return [
                 {
@@ -771,14 +721,10 @@ class SolutionCaptureService:
             ]
 
         wfs = (
-            (
-                await self.db.execute(
-                    select(Workflow).where(Workflow.solution_id == solution_id)
-                )
+            await self.db.execute(
+                select(Workflow).where(Workflow.solution_id == solution_id)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         names: set[str] = set()
         for wf in wfs:
             if not wf.path:
@@ -800,9 +746,7 @@ class SolutionCaptureService:
             ).scalar_one_or_none()
             if integ is None:
                 template: dict[str, Any] = {
-                    "name": name,
-                    "config_schema": [],
-                    "oauth": None,
+                    "name": name, "config_schema": [], "oauth": None,
                 }
             else:
                 template = build_integration_template(integ)
@@ -818,14 +762,10 @@ class SolutionCaptureService:
                 )
             ).scalar_one_or_none()
             if existing is None:
-                self.db.add(
-                    SolutionConnectionSchema(
-                        solution_id=solution_id,
-                        integration_name=name,
-                        template=template,
-                        position=pos,
-                    )
-                )
+                self.db.add(SolutionConnectionSchema(
+                    solution_id=solution_id, integration_name=name,
+                    template=template, position=pos,
+                ))
             else:
                 existing.template = template
                 existing.position = pos
@@ -848,16 +788,12 @@ class SolutionCaptureService:
 
         # Get all declared keys and their types from SolutionConfigSchema.
         schema_rows = (
-            (
-                await self.db.execute(
-                    select(SolutionConfigSchema)
-                    .where(SolutionConfigSchema.solution_id == solution.id)
-                    .order_by(SolutionConfigSchema.position)
-                )
+            await self.db.execute(
+                select(SolutionConfigSchema)
+                .where(SolutionConfigSchema.solution_id == solution.id)
+                .order_by(SolutionConfigSchema.position)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
 
         out: dict[str, str] = {}
         for schema in schema_rows:
@@ -888,9 +824,7 @@ class SolutionCaptureService:
             # (mirrors zip_install._config_type) so a stored "SECRET" still
             # matches and the secret is never exported still-encrypted.
             schema_type = schema.type
-            is_secret = (
-                bool(schema_type) and schema_type.lower() == ConfigTypeEnum.SECRET.value
-            )
+            is_secret = bool(schema_type) and schema_type.lower() == ConfigTypeEnum.SECRET.value
             if is_secret:
                 raw = decrypt_secret(str(raw))
 
@@ -916,30 +850,20 @@ class SolutionCaptureService:
         # Query owned tables directly — _table_entries returns serialized dicts,
         # but here we need ORM Table objects for their id + name.
         table_rows = (
-            (
-                await self.db.execute(
-                    select(Table).where(Table.solution_id == solution.id)
-                )
-            )
-            .scalars()
-            .all()
-        )
+            await self.db.execute(select(Table).where(Table.solution_id == solution.id))
+        ).scalars().all()
 
         out: dict[str, list[dict[str, Any]]] = {}
         for tbl in table_rows:
             # Fetch all rows; apply the cap after counting so we can log accurately.
             docs = (
-                (
-                    await self.db.execute(
-                        select(Document)
-                        .where(Document.table_id == tbl.id)
-                        .order_by(Document.created_at.asc(), Document.id)
-                        .limit(TABLE_ROW_CAP + 1)
-                    )
+                await self.db.execute(
+                    select(Document)
+                    .where(Document.table_id == tbl.id)
+                    .order_by(Document.created_at.asc(), Document.id)
+                    .limit(TABLE_ROW_CAP + 1)
                 )
-                .scalars()
-                .all()
-            )
+            ).scalars().all()
 
             if not docs:
                 # Empty table — omit the key (keep blob lean).
@@ -963,7 +887,9 @@ class SolutionCaptureService:
 
         return out
 
-    async def _solution_file_entries(self, solution: Solution) -> list[Any]:
+    async def _solution_file_entries(
+        self, solution: Solution
+    ) -> list[Any]:
         """Return solution-owned file metadata for a full-backup export.
 
         Enumerates via the Task-17 service (metadata-only, no S3). File bytes
@@ -997,18 +923,12 @@ class SolutionCaptureService:
         from src.models.orm.solution_file_location import SolutionFileLocation
 
         rows = (
-            (
-                await self.db.execute(
-                    select(SolutionFileLocation.location)
-                    .where(SolutionFileLocation.solution_id == solution_id)
-                    .order_by(
-                        SolutionFileLocation.position, SolutionFileLocation.location
-                    )
-                )
+            await self.db.execute(
+                select(SolutionFileLocation.location)
+                .where(SolutionFileLocation.solution_id == solution_id)
+                .order_by(SolutionFileLocation.position, SolutionFileLocation.location)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         return list(rows)
 
     async def _file_policy_entries(self, solution_id: UUID) -> list[dict[str, Any]]:
@@ -1027,16 +947,12 @@ class SolutionCaptureService:
         from src.models.orm.file_metadata import FilePolicy
 
         rows = (
-            (
-                await self.db.execute(
-                    select(FilePolicy)
-                    .where(FilePolicy.solution_id == solution_id)
-                    .order_by(FilePolicy.location, FilePolicy.path)
-                )
+            await self.db.execute(
+                select(FilePolicy)
+                .where(FilePolicy.solution_id == solution_id)
+                .order_by(FilePolicy.location, FilePolicy.path)
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         return [
             ManifestFilePolicy.from_row(fp).view(Destination.INSTALL) for fp in rows
         ]
@@ -1103,7 +1019,7 @@ class SolutionCaptureService:
         src_files: dict[str, str] = {}
         bin_files: dict[str, str] = {}
         for path in sorted(paths):
-            rel = path[len(prefix) :]
+            rel = path[len(prefix):]
             if not rel:
                 continue
             # Skip build output, caches, editor turds, and SECRET files
@@ -1118,9 +1034,7 @@ class SolutionCaptureService:
                 bin_files[rel] = base64.b64encode(data).decode("ascii")
         return src_files, bin_files
 
-    async def _role_ids(
-        self, junction: type, fk_col: str, entity_id: UUID
-    ) -> list[str]:
+    async def _role_ids(self, junction: type, fk_col: str, entity_id: UUID) -> list[str]:
         return [
             str(v)
             for v in await self._junction_ids(junction, fk_col, "role_id", entity_id)
@@ -1151,42 +1065,34 @@ class SolutionCaptureService:
         self, junction: type, fk_col: str, value_col: str, entity_id: UUID
     ) -> list[UUID]:
         rows = (
-            (
-                await self.db.execute(
-                    select(getattr(junction, value_col)).where(
-                        getattr(junction, fk_col) == entity_id
-                    )
+            await self.db.execute(
+                select(getattr(junction, value_col)).where(
+                    getattr(junction, fk_col) == entity_id
                 )
             )
-            .scalars()
-            .all()
-        )
+        ).scalars().all()
         return list(rows)
 
     @staticmethod
     def _form_field_entry(field: FormField) -> dict[str, Any]:
-        return _drop_none(
-            {
-                "name": field.name,
-                "label": field.label,
-                "type": field.type,
-                "required": field.required,
-                "position": field.position,
-                "placeholder": field.placeholder,
-                "help_text": field.help_text,
-                "default_value": field.default_value,
-                "options": field.options,
-                "data_provider_id": str(field.data_provider_id)
-                if field.data_provider_id
-                else None,
-                "data_provider_inputs": field.data_provider_inputs,
-                "visibility_expression": field.visibility_expression,
-                "validation": field.validation,
-                "allowed_types": field.allowed_types,
-                "multiple": field.multiple,
-                "max_size_mb": field.max_size_mb,
-                "content": field.content,
-                "allow_as_query_param": field.allow_as_query_param,
-                "auto_fill": field.auto_fill,
-            }
-        )
+        return _drop_none({
+            "name": field.name,
+            "label": field.label,
+            "type": field.type,
+            "required": field.required,
+            "position": field.position,
+            "placeholder": field.placeholder,
+            "help_text": field.help_text,
+            "default_value": field.default_value,
+            "options": field.options,
+            "data_provider_id": str(field.data_provider_id) if field.data_provider_id else None,
+            "data_provider_inputs": field.data_provider_inputs,
+            "visibility_expression": field.visibility_expression,
+            "validation": field.validation,
+            "allowed_types": field.allowed_types,
+            "multiple": field.multiple,
+            "max_size_mb": field.max_size_mb,
+            "content": field.content,
+            "allow_as_query_param": field.allow_as_query_param,
+            "auto_fill": field.auto_fill,
+        })
