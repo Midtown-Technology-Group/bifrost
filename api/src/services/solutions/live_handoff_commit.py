@@ -26,6 +26,7 @@ from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightConflict,
     WorkspaceLiveHandoffPreflightError,
     WorkspaceLiveHandoffPreflightService,
+    _require_empty_solution_install,
     _require_live_identity,
     _require_workflow_binding,
     _verify_source_archive,
@@ -72,13 +73,7 @@ class WorkspaceLiveHandoffCommitService:
             raise WorkspaceLiveHandoffPreflightConflict(
                 "handoff activation requires a fresh Solution pointer"
             )
-        installed = await self.db.scalar(
-            select(Workflow.id).where(Workflow.solution_id == solution_id).limit(1)
-        )
-        if installed is not None:
-            raise WorkspaceLiveHandoffPreflightConflict(
-                "Solution gained an installed workflow after candidate staging"
-            )
+        await _require_empty_solution_install(self.db, solution_id)
         inspection = await WorkspaceLiveHandoffPreflightService(self.db).inspect(
             solution_id, deployment_id, request, lock_selected=True
         )
@@ -228,6 +223,9 @@ class WorkspaceLiveHandoffCommitService:
             raise WorkspaceLiveHandoffPreflightConflict(
                 "Solution gained or lost workflows after handoff activation"
             )
+        await _require_empty_solution_install(
+            self.db, solution_id, allow_workflows=True
+        )
         for workflow in selected:
             _require_workflow_binding(
                 workflow,
