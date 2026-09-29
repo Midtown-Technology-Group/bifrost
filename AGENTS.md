@@ -2,6 +2,18 @@
 
 Tool-neutral guidance for AI coding agents in `MTG-Thomas/bifrost`. This fork tracks [upstream](https://github.com/gobifrost/bifrost); `CLAUDE.md` remains the detailed **platform** playbook for Persona B work.
 
+## Shared engineering route
+
+For work beyond a direct edit, use the `mtg-engineering-flow` skill from
+[MTG Codex skills](https://github.com/Midtown-Technology-Group/mtg-codex-skills/tree/main/skills/mtg-engineering-flow)
+when available. Make an understood small change directly; diagnose an uncertain
+bug against a failing signal; settle behavior and acceptance criteria before
+splitting a larger feature into build slices. Review the result against the
+request and this repo's rules, then run its checks. For live work, follow the
+environment's authorization and release lane. If the skill is unavailable,
+follow this route and say so in the handoff. This guide and `CLAUDE.md` own the
+platform-specific gates.
+
 **New teammates and workspace-only work:** start with MTG onboarding, not this file alone.
 
 - [Develop at MTG (Windows)](https://github.com/MTG-Thomas/bifrost-ops/blob/main/docs/develop-at-mtg-windows.md) — Persona A (default) and Persona B overview (`MTG-Thomas/bifrost-ops`)
