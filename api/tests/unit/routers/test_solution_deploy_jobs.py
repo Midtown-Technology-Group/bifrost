@@ -303,6 +303,12 @@ async def test_deploy_accountability_runs_after_storage_finalize(
             "state": "attention_required",
             "reason": "post-deploy accountability reconciliation failed",
             "error_type": "RuntimeError",
+            "error_detail": "readback failed",
+            "solution_id": str(solution.id),
+            "solution_slug": "reviewed-solution",
+            "deploy_job_id": str(job.id),
+            "candidate_id": "sha256:" + "a" * 64,
+            "accountability_organization_id": str(solution.organization_id),
         }
         assert events.count("commit") == 1
         assert events.count("rollback") == 1

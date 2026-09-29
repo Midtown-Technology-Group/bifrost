@@ -2431,7 +2431,10 @@ async def _run_deploy_job(
                         )
                         # Reconciliation owns only post-deploy evidence. Clear a
                         # potentially failed transaction without rolling back the
-                        # already committed Solution resources.
+                        # already committed Solution resources. Record structured
+                        # diagnostic detail (error + the exact obligation
+                        # identity a retry must resolve) so the failure is
+                        # diagnosable from the job result alone.
                         try:
                             await db.rollback()
                         except Exception:  # noqa: BLE001 - preserve deploy truth
@@ -2443,6 +2446,16 @@ async def _run_deploy_job(
                             "state": "attention_required",
                             "reason": "post-deploy accountability reconciliation failed",
                             "error_type": type(exc).__name__,
+                            "error_detail": str(exc),
+                            "solution_id": str(solution_id),
+                            "solution_slug": solution_slug,
+                            "deploy_job_id": str(job_id),
+                            "candidate_id": candidate_id,
+                            "accountability_organization_id": (
+                                str(accountability_organization_id)
+                                if accountability_organization_id is not None
+                                else None
+                            ),
                         }
                     else:
                         await db.commit()
