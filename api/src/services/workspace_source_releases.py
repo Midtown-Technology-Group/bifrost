@@ -24,7 +24,10 @@ from src.models.orm.workspace_promotions import (
     WorkspacePromotionRelease,
     WorkspaceSourceRelease,
 )
+from src.models.orm.solutions import Solution
+from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.github_actions_oidc import WorkspaceSourceReleaseProducer
+from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solution_deploy_obligations import (
     declare_solution_deploy_obligations,
     solution_deploy_obligation_declaration,
@@ -286,27 +289,110 @@ class WorkspaceSourceReleaseService:
                 raise WorkspaceSourceReleaseConflict(
                     "supersession needs production readback from the last day"
                 )
-            later = await self._get(supersession_evidence.superseding_source_release_id)
-            if (
-                later is None
-                or later.id == record.id
-                or later.disposition != "released"
-                or later.created_at <= record.created_at
-                or not later.completion_evidence
-                or later.completion_evidence.get("schema_version")
-                != COMPLETION_EVIDENCE_SCHEMA
-            ):
-                raise WorkspaceSourceReleaseConflict(
-                    "supersession requires a later verified source release"
+            later = None
+            if supersession_evidence.superseding_source_release_id is not None:
+                later = await self._get(
+                    supersession_evidence.superseding_source_release_id
                 )
+                if (
+                    later is None
+                    or later.id == record.id
+                    or later.disposition != "released"
+                    or later.created_at <= record.created_at
+                    or not later.completion_evidence
+                    or later.completion_evidence.get("schema_version")
+                    != COMPLETION_EVIDENCE_SCHEMA
+                ):
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession requires a later verified source release"
+                    )
+            deployments = {}
+            repository = SolutionDeploymentRepository(self.db)
+            for (
+                deployment_id
+            ) in supersession_evidence.superseding_solution_deployment_ids:
+                deployment = await repository.get_by_id_for_runtime(deployment_id)
+                if (
+                    deployment is None
+                    or deployment.organization_id != self.organization_id
+                    or deployment.state != "active"
+                    or (deployment.validation_result or {}).get("schema_version")
+                    not in {
+                        "bifrost.workspace-live-handoff/v1",
+                        "bifrost.solution-source-revision/v1",
+                    }
+                ):
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Solution deployment is not active and reviewed"
+                    )
+                solution = await self.db.scalar(
+                    select(Solution)
+                    .where(Solution.id == deployment.solution_id)
+                    .with_for_update()
+                )
+                if (
+                    solution is None
+                    or solution.status != "active"
+                    or solution.active_deployment_id != deployment_id
+                ):
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Solution pointer changed"
+                    )
+                try:
+                    _, resolution = validate_runtime_closure(
+                        deployment.compiled_manifest,
+                        deployment.resolution_map,
+                        deployment.dependencies,
+                        expected_manifest_hash=deployment.compiled_manifest_hash,
+                        expected_resolution_hash=deployment.resolution_map_hash,
+                    )
+                except ValueError as exc:
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Solution closure is invalid"
+                    ) from exc
+                deployments[deployment_id] = resolution
+            for old_path, path_review in supersession_evidence.paths.items():
+                if path_review.runtime_owner == "workspace":
+                    completion = (later.completion_evidence or {}) if later else {}
+                    runtime_path = path_review.runtime_path or old_path
+                    if (
+                        later is None
+                        or path_review.runtime_ref
+                        != completion.get("workspace_release_id")
+                        or (completion.get("runtime_sha256") or {}).get(runtime_path)
+                        != path_review.runtime_source_sha256
+                    ):
+                        raise WorkspaceSourceReleaseConflict(
+                            f"Workspace runtime source is unverified: {old_path}"
+                        )
+                elif path_review.runtime_owner == "solution":
+                    try:
+                        deployment_id = UUID(path_review.runtime_ref or "")
+                    except ValueError as exc:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"Solution runtime reference is invalid: {old_path}"
+                        ) from exc
+                    resolution = deployments.get(deployment_id)
+                    runtime_path = path_review.runtime_path or old_path
+                    if (
+                        resolution is None
+                        or runtime_path not in resolution.sources
+                        or resolution.sources[runtime_path].content_hash
+                        != f"sha256:{path_review.runtime_source_sha256}"
+                    ):
+                        raise WorkspaceSourceReleaseConflict(
+                            f"Solution runtime hash is unverified: {old_path}"
+                        )
             evidence = {
                 "schema_version": "bifrost.workspace-source-release-supersession/v1",
                 "source_release_id": str(record.id),
                 "source_commit_sha": record.source_commit_sha,
-                "superseding_source_release_id": str(later.id),
-                "superseding_source_commit_sha": later.source_commit_sha,
-                "superseding_completion_evidence_id": later.completion_evidence.get(
-                    "evidence_id"
+                "superseding_source_release_id": str(later.id) if later else None,
+                "superseding_source_commit_sha": (
+                    later.source_commit_sha if later else None
+                ),
+                "superseding_completion_evidence_id": (
+                    later.completion_evidence.get("evidence_id") if later else None
                 ),
                 "review": supersession_evidence.model_dump(
                     mode="json", exclude_none=True

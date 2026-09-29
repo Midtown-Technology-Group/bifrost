@@ -643,11 +643,16 @@ class WorkspaceSourceSupersessionPath(BaseModel):
     runtime_owner: Literal["workspace", "solution", "removed"]
     runtime_source_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     runtime_ref: str | None = Field(default=None, min_length=1, max_length=255)
+    runtime_path: str | None = Field(default=None, min_length=1, max_length=1000)
 
     @model_validator(mode="after")
     def validate_runtime(self):
         if self.runtime_owner == "removed":
-            if self.runtime_source_sha256 is not None or self.runtime_ref is not None:
+            if (
+                self.runtime_source_sha256 is not None
+                or self.runtime_ref is not None
+                or self.runtime_path is not None
+            ):
                 raise ValueError("removed source cannot have a runtime reference")
         elif self.runtime_source_sha256 is None or self.runtime_ref is None:
             raise ValueError("active source requires a runtime hash and reference")
@@ -655,16 +660,34 @@ class WorkspaceSourceSupersessionPath(BaseModel):
 
 
 class WorkspaceSourceSupersessionEvidence(BaseModel):
-    """Operator review of a later released commit and every affected old path."""
+    """Operator review of a later verified release or active Solution deployment."""
 
     model_config = ConfigDict(extra="forbid")
 
-    superseding_source_release_id: UUID
+    superseding_source_release_id: UUID | None = None
+    superseding_solution_deployment_ids: list[UUID] = Field(
+        default_factory=list, max_length=50
+    )
     production_readback_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     verified_at: datetime
     paths: dict[str, WorkspaceSourceSupersessionPath] = Field(
         min_length=1, max_length=4000
     )
+
+    @model_validator(mode="after")
+    def validate_anchors(self):
+        if (
+            self.superseding_source_release_id is None
+            and not self.superseding_solution_deployment_ids
+        ):
+            raise ValueError(
+                "supersession needs a verified release or Solution deployment"
+            )
+        if len(set(self.superseding_solution_deployment_ids)) != len(
+            self.superseding_solution_deployment_ids
+        ):
+            raise ValueError("Solution deployment IDs must be unique")
+        return self
 
 
 class WorkspaceSourceReleaseDispositionRequest(BaseModel):
