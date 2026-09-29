@@ -96,9 +96,6 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						configured_capacity: message.configured_capacity ?? null,
 						max_workers: message.max_workers ?? null,
 						processes,
-						requirements_installed:
-							message.requirements_installed ?? null,
-						requirements_total: message.requirements_total ?? null,
 						memory_current_bytes:
 							message.memory_current_bytes ?? -1,
 						memory_max_bytes: message.memory_max_bytes ?? -1,
@@ -132,8 +129,6 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 							started_at: message.started_at || null,
 							last_heartbeat: null,
 							processes: [],
-							requirements_installed: null,
-							requirements_total: null,
 						},
 					];
 				});
@@ -158,7 +153,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 					const updated = [...prev];
 					const pool = { ...updated[idx] };
-					pool.processes = pool.processes.map((proc) =>
+					pool.processes = (pool.processes ?? []).map((proc) =>
 						proc.process_id === message.process_id
 							? { ...proc, state: message.new_state }
 							: proc,
