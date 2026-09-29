@@ -203,6 +203,13 @@ _SENSITIVE_ERROR_TEXT = (
             None,
             SOLUTION_MANAGED_MESSAGE,
         ),
+        (
+            SolutionManagedWriteError(
+                "managed write refused: password='s3cr3t-p@ss' host=db.internal"
+            ),
+            None,
+            SOLUTION_MANAGED_MESSAGE,
+        ),
     ],
 )
 async def test_deploy_accountability_runs_after_storage_finalize(
@@ -328,9 +335,10 @@ async def test_deploy_accountability_runs_after_storage_finalize(
             "candidate_id": "sha256:" + "a" * 64,
             "accountability_organization_id": str(solution.organization_id),
         }
-        if expected_detail is None:
-            # Raw unexpected exception text must never reach the job result,
-            # even when it carries operational detail like credentials.
+        if str(reconcile_error) != expected_detail:
+            # Exception text must never reach the job result unless it is
+            # exactly the persisted fixed wording — even when a guard error
+            # carries operational detail like credentials.
             assert str(reconcile_error) not in json.dumps(accountability)
         assert events.count("commit") == 1
         assert events.count("rollback") == 1

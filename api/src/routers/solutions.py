@@ -156,7 +156,10 @@ from src.services.solutions.export_jobs import (
     list_export_jobs,
     public_job,
 )
-from src.services.solutions.guard import SolutionManagedWriteError
+from src.services.solutions.guard import (
+    SOLUTION_MANAGED_MESSAGE,
+    SolutionManagedWriteError,
+)
 
 if TYPE_CHECKING:
     from src.services.solutions.zip_install import PreviewResult
@@ -2318,14 +2321,6 @@ async def delete_solution(
     return summary
 
 
-# Reconciliation failures whose str() is a fixed public wording that is safe
-# to persist in a job result. Any other exception may carry SQL parameters,
-# paths, or operational detail: it is logged server-side and never echoed.
-_ACCOUNTABILITY_SAFE_ERROR_DETAIL_TYPES: tuple[type[Exception], ...] = (
-    SolutionManagedWriteError,
-)
-
-
 async def _run_deploy_job(
     job_id: UUID,
     solution_id: UUID,
@@ -2443,9 +2438,11 @@ async def _run_deploy_job(
                         # already committed Solution resources. Persist only safe
                         # diagnostics: the error type plus the deploy-attempt
                         # identity a retry uses to locate the stuck obligation
-                        # set. Raw exception text is allowlisted by type; anything
-                        # unexpected is logged server-side under the deploy job
-                        # id (returned as error_reference) instead of echoed.
+                        # set. The guard error persists its fixed public wording
+                        # (never the exception's own text, which any raise site
+                        # could have constructed with operational detail);
+                        # anything else is logged server-side under the deploy
+                        # job id (returned as error_reference) instead of echoed.
                         # The failed write never identified a single obligation,
                         # so obligation_id is always null here.
                         try:
@@ -2455,17 +2452,15 @@ async def _run_deploy_job(
                                 "Solution deploy job %s accountability rollback failed",
                                 job_id,
                             )
+                        if isinstance(exc, SolutionManagedWriteError):
+                            error_detail: str | None = SOLUTION_MANAGED_MESSAGE
+                        else:
+                            error_detail = None
                         accountability = {
                             "state": "attention_required",
                             "reason": "post-deploy accountability reconciliation failed",
                             "error_type": type(exc).__name__,
-                            "error_detail": (
-                                str(exc)
-                                if isinstance(
-                                    exc, _ACCOUNTABILITY_SAFE_ERROR_DETAIL_TYPES
-                                )
-                                else None
-                            ),
+                            "error_detail": error_detail,
                             "error_reference": str(job_id),
                             "obligation_id": None,
                             "solution_id": str(solution_id),
