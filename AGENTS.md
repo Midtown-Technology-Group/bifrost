@@ -80,9 +80,9 @@ Tips:
 
 ## Technologies
 
--   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, RabbitMQ, Redis
+-   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, Redis (RabbitMQ retained for compatibility/test coverage)
 -   **Frontend**: TypeScript 4.9+, React, Vite
--   **Storage**: PostgreSQL (data), Redis (cache/sessions), RabbitMQ (message queue)
+-   **Storage**: PostgreSQL (data + production work delivery via `work_deliveries`, selected by promoted production configuration; the checked-in default in `api/src/config.py` is still `rabbitmq` and the deployed value is not verified from this repo), Redis (cache/sessions/ephemeral execution context), RabbitMQ (legacy/compatibility transport, still covered by the test stack)
 -   **Infrastructure**: Docker, Docker Compose, GitHub Actions for CI/CD
 
 ## Development Environment (CRITICAL - READ FIRST)
