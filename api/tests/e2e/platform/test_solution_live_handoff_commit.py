@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete, update
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffCommitRequest,
@@ -47,6 +50,22 @@ from src.services.workspace_release_runtime import (
 )
 
 pytestmark = pytest.mark.e2e
+
+
+@pytest_asyncio.fixture
+async def db_session(async_engine):
+    async with async_engine.connect() as connection:
+        outer = await connection.begin()
+        async with AsyncSession(
+            bind=connection,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        ) as session:
+            try:
+                yield session
+            finally:
+                await session.rollback()
+                await outer.rollback()
 
 
 @pytest.mark.asyncio
@@ -228,10 +247,18 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         await db_session.flush()
         db_session.add(deployment)
         await db_session.flush()
+        repository = SolutionDeploymentRepository(db_session)
+        previous_state = "draft"
         for next_state in ("building", "validated", "ready"):
-            deployment.state = next_state
-            await db_session.flush()
+            await repository.transition(
+                deployment_id,
+                PROVIDER_ORG_ID,
+                expected_state=previous_state,
+                new_state=next_state,
+            )
+            previous_state = next_state
         await db_session.commit()
+        await db_session.refresh(deployment)
 
         base = WorkspaceLiveHandoffPreflightRequest(
             expected_release_row_id=release.release_row_id,
@@ -332,14 +359,3 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
             )
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            update(Solution)
-            .where(Solution.id == solution_id)
-            .values(active_deployment_id=None)
-        )
-        await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
-        await db_session.execute(
-            delete(SolutionDeployment).where(SolutionDeployment.id == deployment_id)
-        )
-        await db_session.execute(delete(Solution).where(Solution.id == solution_id))
-        await db_session.commit()
