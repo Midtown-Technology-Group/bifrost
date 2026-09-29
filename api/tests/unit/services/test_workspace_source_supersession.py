@@ -75,6 +75,16 @@ async def test_supersession_records_immutable_later_release_and_path_readback(
     service = WorkspaceSourceReleaseService(db, uuid4())
     service._get = AsyncMock(side_effect=[old, later, old, later])
     monkeypatch.setattr(
+        workspace_source_releases,
+        "active_workspace_release",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                release_id="sha256:" + "e" * 64,
+                source_hashes={"features/a.py": "c" * 64},
+            )
+        ),
+    )
+    monkeypatch.setattr(
         workspace_source_releases, "source_release_response", lambda record: record
     )
 
@@ -109,6 +119,34 @@ async def test_supersession_records_immutable_later_release_and_path_readback(
     )
     assert replay is old
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_supersession_rejects_changed_live_pointer(monkeypatch):
+    evidence = _evidence()
+    old, later = _records(evidence)
+    db = AsyncMock()
+    service = WorkspaceSourceReleaseService(db, uuid4())
+    service._get = AsyncMock(side_effect=[old, later])
+    monkeypatch.setattr(
+        workspace_source_releases,
+        "active_workspace_release",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                release_id="sha256:" + "f" * 64,
+                source_hashes={"features/a.py": "c" * 64},
+            )
+        ),
+    )
+
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="Workspace runtime"):
+        await service.set_manual_disposition(
+            old.id,
+            disposition="superseded",
+            reason="Later source replaced old source",
+            supersession_evidence=evidence,
+        )
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

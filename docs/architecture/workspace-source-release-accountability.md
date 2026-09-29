@@ -101,7 +101,8 @@ protected-Git hash, current runtime owner, runtime
 source hash and runtime reference, or records that the source was removed. The
 platform checks the later released source record or active immutable Solution
 pointer, checks source hashes against the corresponding release or Solution
-closure, and requires every old path to be reviewed. It stores an immutable
+closure and the current Live pointer for Workspace-owned paths, and requires
+every old path to be reviewed. It stores an immutable
 digest of the review. The operator must independently
 compare those stated hashes and runtime references with live source,
 registration, dependency, and signed-history readback. A changed Git hash alone

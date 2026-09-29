@@ -32,6 +32,10 @@ from src.services.solution_deploy_obligations import (
     declare_solution_deploy_obligations,
     solution_deploy_obligation_declaration,
 )
+from src.services.workspace_release_runtime import (
+    WorkspaceReleaseRuntimeError,
+    active_workspace_release,
+)
 
 DEFAULT_RELEASE_DUE_AFTER = timedelta(minutes=30)
 COMPLETION_EVIDENCE_SCHEMA = "bifrost.workspace-source-release-completion/v1"
@@ -351,6 +355,17 @@ class WorkspaceSourceReleaseService:
                         "supersession Solution closure is invalid"
                     ) from exc
                 deployments[deployment_id] = resolution
+            live = None
+            if any(
+                path.runtime_owner == "workspace"
+                for path in supersession_evidence.paths.values()
+            ):
+                try:
+                    live = await active_workspace_release(self.db, self.organization_id)
+                except WorkspaceReleaseRuntimeError as exc:
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Live release is invalid"
+                    ) from exc
             for old_path, path_review in supersession_evidence.paths.items():
                 if path_review.runtime_owner == "workspace":
                     completion = (later.completion_evidence or {}) if later else {}
@@ -360,6 +375,10 @@ class WorkspaceSourceReleaseService:
                         or path_review.runtime_ref
                         != completion.get("workspace_release_id")
                         or (completion.get("runtime_sha256") or {}).get(runtime_path)
+                        != path_review.runtime_source_sha256
+                        or live is None
+                        or live.release_id != path_review.runtime_ref
+                        or live.source_hashes.get(runtime_path)
                         != path_review.runtime_source_sha256
                     ):
                         raise WorkspaceSourceReleaseConflict(
