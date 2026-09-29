@@ -112,7 +112,12 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 			}
 
 			case "worker_online": {
-				// Add new pool
+				// Add new pool. The online event carries no process data, so
+				// the placeholder omits `processes` (it is optional on the
+				// generated PoolDetail): the merged REST summary keeps
+				// reporting its active count until a real heartbeat arrives.
+				// A heartbeat always sets `processes` (possibly empty), so an
+				// empty process list still displays zero once observed.
 				setPools((prev) => {
 					// Check if already exists
 					if (prev.some((p) => p.worker_id === message.worker_id)) {
@@ -128,7 +133,6 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 							status: "online",
 							started_at: message.started_at || null,
 							last_heartbeat: null,
-							processes: [],
 						},
 					];
 				});
