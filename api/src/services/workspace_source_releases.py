@@ -320,6 +320,8 @@ class WorkspaceSourceReleaseService:
                     deployment is None
                     or deployment.organization_id != self.organization_id
                     or deployment.state != "active"
+                    or deployment.activated_at is None
+                    or deployment.activated_at <= record.created_at
                     or (deployment.validation_result or {}).get("schema_version")
                     not in {
                         "bifrost.workspace-live-handoff/v1",

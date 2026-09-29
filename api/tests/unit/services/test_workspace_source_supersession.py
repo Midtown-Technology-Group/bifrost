@@ -150,7 +150,7 @@ async def test_supersession_rejects_changed_live_pointer(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("defect", [None, "pointer", "source_hash"])
+@pytest.mark.parametrize("defect", [None, "pointer", "source_hash", "stale_deployment"])
 async def test_supersession_checks_active_reviewed_solution_runtime(
     monkeypatch, defect
 ):
@@ -177,6 +177,11 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
         organization_id=organization_id,
         solution_id=solution_id,
         state="active",
+        activated_at=(
+            old.created_at - timedelta(days=1)
+            if defect == "stale_deployment"
+            else datetime.now(UTC)
+        ),
         validation_result={"schema_version": "bifrost.workspace-live-handoff/v1"},
         compiled_manifest={},
         resolution_map={},
