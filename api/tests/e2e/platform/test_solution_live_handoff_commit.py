@@ -172,7 +172,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         id=deployment_id,
         organization_id=PROVIDER_ORG_ID,
         solution_id=solution_id,
-        state="ready",
+        state="draft",
         bundle_hash=manifest.bundle_hash,
         compiled_manifest=manifest.model_dump(mode="json", exclude_none=True),
         compiled_manifest_hash=manifest.content_hash(),
@@ -227,6 +227,10 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         db_session.add_all([solution, workflow])
         await db_session.flush()
         db_session.add(deployment)
+        await db_session.flush()
+        for next_state in ("building", "validated", "ready"):
+            deployment.state = next_state
+            await db_session.flush()
         await db_session.commit()
 
         base = WorkspaceLiveHandoffPreflightRequest(
