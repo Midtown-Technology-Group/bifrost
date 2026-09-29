@@ -580,8 +580,10 @@
 | GET | `/api/solutions/{solution_id}/deployments/capabilities` |
 | GET | `/api/solutions/{solution_id}/deployments/{deployment_id}` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/activate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/candidate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/rollback` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/rollback` |
 | GET | `/api/solutions/{solution_id}/entities` |
 | POST | `/api/solutions/{solution_id}/export` |
