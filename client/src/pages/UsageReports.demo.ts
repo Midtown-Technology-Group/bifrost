@@ -190,8 +190,10 @@ function pickOrg(orgs: Array<{ id: string; name: string }>, index: number) {
 	return orgs[index % orgs.length];
 }
 
-function randomUnit(): number {
-	return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+// Stable variation keeps sample reports consistent across renders and uses no
+// randomness for identifiers, access decisions, or other security purposes.
+function demoUnit(index: number, offset: number): number {
+	return ((index * 37 + offset) % 101) / 101;
 }
 
 export function generateUsageDemoData(
@@ -204,7 +206,7 @@ export function generateUsageDemoData(
 	const allWorkflows: DemoWorkflowUsage[] = DEMO_WORKFLOW_TEMPLATES.map(
 		(template, index) => {
 			const org = pickOrg(orgs, index);
-			const variance = 0.9 + randomUnit() * 0.2;
+			const variance = 0.9 + demoUnit(index, 11) * 0.2;
 			const executions = Math.floor(template.baseCount * variance);
 
 			return {
@@ -229,7 +231,7 @@ export function generateUsageDemoData(
 	const allConversations: DemoConversationUsage[] =
 		DEMO_CONVERSATION_TEMPLATES.map((template, index) => {
 			const org = pickOrg(orgs, index);
-			const variance = 0.85 + randomUnit() * 0.3;
+			const variance = 0.85 + demoUnit(index, 53) * 0.3;
 
 			return {
 				conversation_id: `demo-conv-${index + 1}`,
@@ -245,7 +247,7 @@ export function generateUsageDemoData(
 	const allAgents: DemoAgentUsage[] = DEMO_AGENT_TEMPLATES.map(
 		(template, index) => {
 			const org = pickOrg(orgs, index);
-			const variance = 0.9 + randomUnit() * 0.25;
+			const variance = 0.9 + demoUnit(index, 79) * 0.25;
 			const runCount = Math.floor(template.baseCount * variance);
 
 			return {
@@ -336,7 +338,7 @@ export function generateUsageDemoData(
 			currentDate.getDay() === 0 || currentDate.getDay() === 6;
 		const baseMultiplier = isWeekend ? 0.5 : 1;
 		const trendMultiplier = 1 + dayIndex * 0.003;
-		const variance = 0.85 + randomUnit() * 0.3;
+		const variance = 0.85 + demoUnit(dayIndex, 43) * 0.3;
 		const dayFactor = baseMultiplier * trendMultiplier * variance;
 
 		trends.push({
