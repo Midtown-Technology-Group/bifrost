@@ -4,7 +4,8 @@ import base64
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete, update
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.solution_deployments import (
@@ -16,6 +17,7 @@ from src.models.contracts.solution_deployments import (
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
+from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentResolutionMap,
@@ -41,6 +43,22 @@ from src.services.solutions.source_revision import (
 )
 
 pytestmark = pytest.mark.e2e
+
+
+@pytest_asyncio.fixture
+async def db_session(async_engine):
+    async with async_engine.connect() as connection:
+        outer = await connection.begin()
+        async with AsyncSession(
+            bind=connection,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        ) as session:
+            try:
+                yield session
+            finally:
+                await session.rollback()
+                await outer.rollback()
 
 
 @pytest.mark.asyncio
@@ -193,11 +211,19 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         await db_session.flush()
         db_session.add_all([workflow, base])
         await db_session.flush()
+        repository = SolutionDeploymentRepository(db_session)
+        previous_state = "draft"
         for next_state in ("building", "validated", "ready", "activating", "active"):
-            base.state = next_state
-            await db_session.flush()
+            await repository.transition(
+                base_id,
+                PROVIDER_ORG_ID,
+                expected_state=previous_state,
+                new_state=next_state,
+            )
+            previous_state = next_state
         solution.active_deployment_id = base_id
         await db_session.commit()
+        await db_session.refresh(base)
 
         old_pin = await pin_workflow_runtime(db_session, workflow_id)
         assert old_pin is not None and old_pin.deployment_id == base_id
@@ -274,17 +300,3 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         assert queued_pin.queue_evidence() == old_pin.queue_evidence()
     finally:
         await db_session.rollback()
-        await db_session.execute(
-            update(Solution)
-            .where(Solution.id == solution_id)
-            .values(active_deployment_id=None)
-        )
-        await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
-        await db_session.execute(
-            delete(SolutionDeployment).where(SolutionDeployment.id == revision_id)
-        )
-        await db_session.execute(
-            delete(SolutionDeployment).where(SolutionDeployment.id == base_id)
-        )
-        await db_session.execute(delete(Solution).where(Solution.id == solution_id))
-        await db_session.commit()
