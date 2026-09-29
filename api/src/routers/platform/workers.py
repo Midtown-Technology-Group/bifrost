@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.worker_heartbeat import normalize_heartbeat
 from src.core.auth import CurrentSuperuser, get_current_superuser
 from src.core.database import get_db, get_db_context
 from src.core.log_safety import log_safe
@@ -208,30 +209,21 @@ async def get_pool_stats(
         if heartbeat_data:
             try:
                 hb = json.loads(heartbeat_data)
-                total_processes += hb.get("active_process_count", hb.get("pool_size", 0))
+                norm = normalize_heartbeat(hb)
+                total_processes += norm.active_process_count
                 workers_with_heartbeat += 1
-                configured_capacity = hb.get("configured_capacity", hb.get("max_workers"))
-                if configured_capacity is not None:
-                    try:
-                        total_configured_capacity += int(configured_capacity)
-                        workers_reporting_capacity += 1
-                    except (TypeError, ValueError):
-                        logger.debug(
-                            f"invalid configured_capacity for worker {log_safe(worker_id)}: "
-                            f"{log_safe(configured_capacity)}"
-                        )
-                total_idle += hb.get("idle_count", 0)
-                total_busy += hb.get("busy_count", 0)
-                available = hb.get("available_slots")
-                if available is not None:
-                    total_available_slots += int(available)
-                if hb.get("saturation_ratio") == 1 or available == 0:
+                if norm.configured_capacity is not None:
+                    total_configured_capacity += norm.configured_capacity
+                    workers_reporting_capacity += 1
+                total_idle += norm.idle_count
+                total_busy += norm.busy_count
+                if norm.available_slots is not None:
+                    total_available_slots += norm.available_slots
+                if norm.saturation_ratio == 1 or norm.available_slots == 0:
                     saturated_workers += 1
-                for reason, count in (hb.get("admission") or {}).get(
-                    "rejections", {}
-                ).items():
+                for reason, count in norm.admission_rejections.items():
                     admission_rejections[reason] = (
-                        admission_rejections.get(reason, 0) + int(count)
+                        admission_rejections.get(reason, 0) + count
                     )
             except json.JSONDecodeError as e:
                 # Corrupted heartbeat JSON for this worker — skip its contribution
@@ -317,15 +309,13 @@ async def list_pools(
         if heartbeat_data:
             try:
                 hb = json.loads(heartbeat_data)
-                pool_info.pool_size = hb.get("pool_size", 0)
-                pool_info.active_process_count = hb.get(
-                    "active_process_count",
-                    pool_info.pool_size,
-                )
-                pool_info.configured_capacity = hb.get("configured_capacity", hb.get("max_workers"))
-                pool_info.max_workers = hb.get("max_workers", pool_info.configured_capacity)
-                pool_info.idle_count = hb.get("idle_count", 0)
-                pool_info.busy_count = hb.get("busy_count", 0)
+                norm = normalize_heartbeat(hb)
+                pool_info.pool_size = norm.pool_size
+                pool_info.active_process_count = norm.active_process_count
+                pool_info.configured_capacity = norm.configured_capacity
+                pool_info.max_workers = norm.max_workers
+                pool_info.idle_count = norm.idle_count
+                pool_info.busy_count = norm.busy_count
                 if (rt := hb.get("runtime")) is not None:
                     runtime_changed = rt != pool_info.runtime
                     pool_info.runtime = rt
@@ -334,8 +324,8 @@ async def list_pools(
                 if (rtl := hb.get("runtime_label")) is not None:
                     pool_info.runtime_label = rtl
                 pool_info.last_heartbeat = hb.get("timestamp")
-                pool_info.requirements_installed = hb.get("requirements_installed")
-                pool_info.requirements_total = hb.get("requirements_total")
+                pool_info.requirements_installed = norm.requirements_installed
+                pool_info.requirements_total = norm.requirements_total
                 pool_info.memory_current_bytes = hb.get("memory_current_bytes")
                 pool_info.memory_max_bytes = hb.get("memory_max_bytes")
                 pool_info.available_slots = hb.get("available_slots")
@@ -402,9 +392,10 @@ async def get_pool(
     if heartbeat_data:
         try:
             hb = json.loads(heartbeat_data)
+            norm = normalize_heartbeat(hb)
             result.last_heartbeat = hb.get("timestamp")
-            result.configured_capacity = hb.get("configured_capacity", hb.get("max_workers"))
-            result.max_workers = hb.get("max_workers", result.configured_capacity)
+            result.configured_capacity = norm.configured_capacity
+            result.max_workers = norm.max_workers
             result.available_slots = hb.get("available_slots")
             result.saturation_ratio = hb.get("saturation_ratio")
             result.memory_current_bytes = hb.get("memory_current_bytes")
@@ -565,7 +556,7 @@ async def recycle_all_processes(
     if heartbeat_data:
         try:
             hb = json.loads(heartbeat_data)
-            processes_affected = hb.get("pool_size", 0)
+            processes_affected = normalize_heartbeat(hb).active_process_count
         except json.JSONDecodeError as e:
             # Corrupted heartbeat JSON — processes_affected stays 0, recycle proceeds
             logger.debug(f"invalid heartbeat JSON for worker {log_safe(worker_id)}: {log_safe(e)}")

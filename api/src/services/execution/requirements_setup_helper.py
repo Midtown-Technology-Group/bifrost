@@ -7,7 +7,7 @@ import logging
 import subprocess
 import sys
 
-from packaging.requirements import Requirement
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
@@ -30,8 +30,24 @@ def _get_installed_packages() -> list[dict[str, str]]:
     return []
 
 
-def _requirement_name(line: str) -> str:
-    return canonicalize_name(Requirement(line.split(" #", 1)[0]).name)
+def _strip_inline_comment(line: str) -> str:
+    """Remove a ``#`` comment that starts after whitespace (space or tab)."""
+    for index, char in enumerate(line):
+        if char == "#" and index > 0 and line[index - 1] in (" ", "\t"):
+            return line[:index]
+    return line
+
+
+def _requirement_name(line: str) -> str | None:
+    """Canonical package name for one requirements line, or None to skip it.
+
+    Returns None (instead of raising) for lines packaging cannot parse so a
+    single odd line cannot abort the whole heartbeat requirements count.
+    """
+    try:
+        return canonicalize_name(Requirement(_strip_inline_comment(line).strip()).name)
+    except (InvalidRequirement, ValueError):
+        return None
 
 
 def _update_requirements_status(result: RequirementsInstallResult) -> None:
@@ -44,7 +60,9 @@ def _update_requirements_status(result: RequirementsInstallResult) -> None:
         result.requirements_installed = 0
         return
 
-    required = {_requirement_name(line) for line in _parse_requirement_lines(content)}
+    required = {
+        name for line in _parse_requirement_lines(content) if (name := _requirement_name(line)) is not None
+    }
     result.requirements_total = len(required)
 
     installed = {canonicalize_name(p["name"]) for p in _get_installed_packages()}

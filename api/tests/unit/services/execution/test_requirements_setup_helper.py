@@ -18,3 +18,21 @@ def test_status_matches_installed_distribution_names(monkeypatch):
 
     assert result.requirements_total == 3
     assert result.requirements_installed == 3
+
+
+def test_tab_comment_and_unparseable_line_do_not_abort_count(monkeypatch):
+    monkeypatch.setattr(
+        "src.core.requirements_cache.get_requirements_sync",
+        lambda: "requests==2.28\t# tab comment\nnot-a-valid!!!\nDjango>=3\n",
+    )
+    monkeypatch.setattr(
+        requirements_setup_helper,
+        "_get_installed_packages",
+        lambda: [{"name": name} for name in ("requests", "Django")],
+    )
+    result = RequirementsInstallResult()
+
+    requirements_setup_helper._update_requirements_status(result)
+
+    assert result.requirements_total == 2
+    assert result.requirements_installed == 2
