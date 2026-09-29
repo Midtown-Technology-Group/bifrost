@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
@@ -69,3 +69,38 @@ class SolutionDeploymentCapabilities(BaseModel):
     server_side_compilation: bool = False
     activation_configured: bool = False
     safe_for_end_to_end_cs_deploy: bool = False
+
+
+class WorkspaceLiveHandoffPreflightRequest(BaseModel):
+    """Expected Live and Solution state for a read-only adoption inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_release_row_id: UUID
+    expected_release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    expected_artifact_id: UUID
+    expected_governed_manifest_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    expected_registration_state_fingerprint: str = Field(
+        pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+    expected_active_deployment_id: UUID | None
+    workflow_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_workflows(self):
+        if len(self.workflow_ids) != len(set(self.workflow_ids)):
+            raise ValueError("workflow IDs must be unique")
+        return self
+
+
+class WorkspaceLiveHandoffPreflightResponse(BaseModel):
+    solution_id: UUID
+    deployment_id: UUID
+    release_row_id: UUID
+    release_id: str
+    governed_manifest_id: str
+    registration_state_fingerprint: str
+    workflow_ids: list[UUID]
+    verified_source_paths: list[str]
+    expected_active_deployment_id: UUID | None
+    evidence_id: str

@@ -11,9 +11,11 @@ from src.core.auth import Context, CurrentSuperuser
 from src.models.contracts.solution_deployments import (
     DeploymentActivationPublic,
     DeploymentPointerRequest,
-    SolutionDeploymentCreate,
     SolutionDeploymentCapabilities,
+    SolutionDeploymentCreate,
     SolutionDeploymentPublic,
+    WorkspaceLiveHandoffPreflightRequest,
+    WorkspaceLiveHandoffPreflightResponse,
 )
 from src.models.orm.solutions import Solution
 from src.repositories.solution_deployments import SolutionDeploymentRepository
@@ -21,8 +23,15 @@ from src.services.solutions.deployment_activation import (
     ActivationResult,
     SolutionDeploymentActivationService,
 )
-from src.services.solutions.deployment_api import SolutionDeploymentAPIService
-from src.services.solutions.deployment_api import DeploymentRegistrationConflict
+from src.services.solutions.deployment_api import (
+    DeploymentRegistrationConflict,
+    SolutionDeploymentAPIService,
+)
+from src.services.solutions.live_handoff_preflight import (
+    WorkspaceLiveHandoffPreflightConflict,
+    WorkspaceLiveHandoffPreflightError,
+    WorkspaceLiveHandoffPreflightService,
+)
 from src.services.solutions.write_lock import (
     SolutionWriteLockHeld,
     SolutionWriteLockLost,
@@ -144,6 +153,34 @@ async def inspect_deployment(
     if row is None or row.solution_id != solution_id:
         raise HTTPException(status_code=404, detail="Deployment not found")
     return row
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/preflight",
+    response_model=WorkspaceLiveHandoffPreflightResponse,
+    responses={
+        404: {"description": "Solution or deployment not found"},
+        409: {"description": "Live or Solution state changed"},
+        422: {"description": "Candidate cannot own the requested workflows"},
+    },
+)
+async def preflight_live_handoff(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffPreflightRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    """Inspect a staged candidate without changing ownership or execution."""
+    del user
+    try:
+        return await WorkspaceLiveHandoffPreflightService(ctx.db).inspect(
+            solution_id, deployment_id, body
+        )
+    except WorkspaceLiveHandoffPreflightConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkspaceLiveHandoffPreflightError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(

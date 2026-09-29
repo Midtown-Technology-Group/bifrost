@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.solutions.deployment_storage import (
     DeploymentArtifactIntegrityError,
     SolutionDeploymentStorage,
@@ -32,6 +32,9 @@ class FakeClient:
         if Key in self.objects:
             raise ResourceExistsError(Key)
         self.objects[Key] = Body
+
+    async def get_object(self, *, Key, **kwargs):
+        return {"Body": SimpleNamespace(read=AsyncMock(return_value=self.objects[Key]))}
 
 
 def make_storage(client: FakeClient):
@@ -62,6 +65,9 @@ async def test_finalized_source_manifest_and_runtime_keys_are_revision_addressed
     assert f"/{storage.deployment_id}/" in manifest_key
     assert runtime_key == f"{storage.runtime_prefix}workflows/run.py"
     assert client.objects[runtime_key] == b"code"
+    assert await storage.read_source_artifact() == b"zip"
+    assert await storage.read_compiled_manifest() == b"{}"
+    assert await storage.read_runtime_file("workflows/run.py") == b"code"
 
 
 @pytest.mark.asyncio
@@ -81,6 +87,8 @@ async def test_runtime_path_rejects_traversal():
     storage = make_storage(FakeClient())
     with pytest.raises(ValueError):
         await storage.write_runtime_file("../mutable.py", b"code")
+    with pytest.raises(ValueError):
+        await storage.read_runtime_file("../mutable.py")
 
 
 @pytest.mark.parametrize(
