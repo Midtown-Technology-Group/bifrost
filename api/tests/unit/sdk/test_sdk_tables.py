@@ -242,7 +242,7 @@ async def test_tables_query_forwards_document_id_pagination_and_skip_count(monke
             "document_ids": ["tenant|drive|item-001", "tenant|drive|item-002"],
             "skip_count": True,
         },
-        retry_safe=True,
+        retry_transient=True,
     )
 
 
@@ -431,6 +431,7 @@ class FakeTablesClient:
         json: dict[str, Any] | None = None,
         *,
         retry_safe: bool = False,
+        retry_transient: bool = False,
     ) -> FakeResponse:
         self.calls.append(("POST", url, json))
         return self.responses.pop(0)
@@ -439,7 +440,9 @@ class FakeTablesClient:
         self.calls.append(("GET", url, None))
         return self.responses.pop(0)
 
-    async def patch(self, url: str, json: dict[str, Any] | None = None) -> FakeResponse:
+    async def patch(
+        self, url: str, json: dict[str, Any] | None = None, *, retry_transient: bool = False,
+    ) -> FakeResponse:
         self.calls.append(("PATCH", url, json))
         return self.responses.pop(0)
 

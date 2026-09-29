@@ -39,7 +39,7 @@ import sys
 import time
 import uuid
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from queue import Empty
@@ -60,6 +60,7 @@ from src.services.execution.fault_injection import (
 from src.core.cache.keys import TTL_ACTIVE_EXECUTION, active_execution_key
 from src.core.redis_client import ActiveExecution
 from src.models.contracts.notifications import NotificationCategory, NotificationCreate, NotificationStatus
+from src.services.execution.cpu_sampler import CPUSampler, get_clock_ticks
 from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
 from src.services.notification_service import get_notification_service
@@ -334,9 +335,12 @@ class ProcessHandle:
     result_reader_fd: int | None = None
     result_callback_failed: bool = False
     result_callback_diagnostics: dict[str, Any] | None = None
+    result_callback_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     # Set for supervised service children (which live in service_processes).
     # None for one-shot workflow children.
     service: ServiceInfo | None = None
+    # CPU/RSS sampler for workflow children. None for service children.
+    cpu_sampler: CPUSampler | None = None
 
     @property
     def is_alive(self) -> bool:
@@ -810,7 +814,8 @@ class ProcessPoolManager:
                         "duration_ms": int(exec_info.elapsed_seconds * 1000),
                         "attempt_token": exec_info.attempt_token,
                         "sync": exec_info.active_execution["sync"],
-                    }
+                    },
+                    handle=handle,
                 )
                 if not handle.result_reported:
                     failed_surrenders.append(exec_info.execution_id)
@@ -1040,14 +1045,25 @@ class ProcessPoolManager:
             # returns a handle already in BUSY.
             handle = self._fork_process()
 
+        started_at = datetime.now(timezone.utc)
+        context["workflow_deadline"] = (
+            (started_at + timedelta(seconds=timeout)).isoformat()
+            if timeout > 0 else None
+        )
         handle.current_execution = ExecutionInfo(
             execution_id=execution_id,
-            started_at=datetime.now(timezone.utc),
+            started_at=started_at,
             timeout_seconds=timeout,
             active_execution=active_execution,
             attempt_token=attempt_token,
         )
         handle.result_reported = False
+        if handle.pid is not None:
+            handle.cpu_sampler = CPUSampler(
+                pid=handle.pid,
+                clock_ticks=get_clock_ticks(),
+            )
+            handle.cpu_sampler.set_baseline(time.monotonic())
 
         if attempt_token:
             from src.services.execution.attempts import mark_attempt_running_token
@@ -1156,6 +1172,9 @@ class ProcessPoolManager:
                 lease_token=lease_token,
                 graceful_shutdown_seconds=graceful_shutdown_seconds,
             )
+            # Service children are not workflow executions; CPU sampling is
+            # scoped to workflow children only.
+            handle.cpu_sampler = None
             # Service children live under service-slot accounting, not the
             # workflow pool.
             del self.processes[handle.id]
@@ -1313,6 +1332,7 @@ class ProcessPoolManager:
 
                 await self._check_timeouts()
                 await self._check_process_health()
+                self._sample_resources()
 
                 # Periodic stale queue cleanup
                 now = _time.monotonic()
@@ -1329,6 +1349,32 @@ class ProcessPoolManager:
             await asyncio.sleep(1.0)
 
         logger.info("Monitor loop stopped")
+
+    def _sample_resources(self) -> None:
+        """Sample CPU and RSS for BUSY workflow children.
+
+        Runs synchronously inside the monitor loop. A /proc read per running
+        child per second is acceptable; missing or unreadable entries are
+        ignored so telemetry never blocks completion.
+        """
+        now = time.monotonic()
+        for handle in self.processes.values():
+            if handle.state != ProcessState.BUSY:
+                continue
+            if handle.service is not None:
+                continue
+            sampler = handle.cpu_sampler
+            if sampler is None:
+                if handle.pid is None:
+                    continue
+                sampler = CPUSampler(pid=handle.pid, clock_ticks=get_clock_ticks())
+                sampler.set_baseline(now)
+                handle.cpu_sampler = sampler
+                continue
+            try:
+                sampler.sample(now)
+            except Exception as e:
+                logger.debug(f"Resource sample failed for {handle.id}: {e}")
 
     async def _check_timeouts(self) -> None:
         """
@@ -1401,6 +1447,25 @@ class ProcessPoolManager:
                 pass
             handle.process.join(timeout=1)
 
+    def _attach_resource_peaks(self, handle: ProcessHandle, result: dict[str, Any]) -> None:
+        """Attach this execution's sampled CPU and process memory peaks."""
+        sampler = handle.cpu_sampler
+        if sampler is None:
+            return
+        # A final sample captures short runs that finish between monitor ticks.
+        sampler.sample(time.monotonic())
+        if sampler.peak_cpu_cores is None and sampler.peak_process_rss_bytes is None:
+            return
+        metrics = result.setdefault("metrics", {})
+        if isinstance(metrics, dict):
+            if sampler.peak_cpu_cores is not None:
+                metrics["peak_cpu_cores"] = sampler.peak_cpu_cores
+            if sampler.peak_process_rss_bytes is not None:
+                metrics["peak_process_rss_bytes"] = max(
+                    metrics.get("peak_process_rss_bytes") or 0,
+                    sampler.peak_process_rss_bytes,
+                )
+
     async def _report_timeout(self, handle: ProcessHandle) -> None:
         """
         Report a timeout to the result callback.
@@ -1424,7 +1489,8 @@ class ProcessPoolManager:
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
                 "sync": exec_info.active_execution["sync"],
-            }
+            },
+            handle=handle,
         )
 
     async def _cancel_listener_loop(self) -> None:
@@ -1800,7 +1866,8 @@ class ProcessPoolManager:
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
                 "sync": exec_info.active_execution["sync"],
-            }
+            },
+            handle=handle,
         )
 
     async def _report_shutdown(self, handle: ProcessHandle) -> None:
@@ -1814,18 +1881,16 @@ class ProcessPoolManager:
         exec_info = handle.current_execution
         if self.on_result is None or exec_info is None:
             return
-        handle.result_reported = True
-        try:
-            await self.on_result(exec_info.attach_transport_metadata({
-                "type": "result",
-                "execution_id": exec_info.execution_id,
-                "success": False,
-                "error": "Execution interrupted by worker shutdown",
-                "error_type": "WorkerShutdown",
-                "duration_ms": int(exec_info.elapsed_seconds * 1000),
-            }))
-        except Exception as e:
-            logger.exception(f"Error reporting shutdown interruption: {e}")
+        result = exec_info.attach_transport_metadata({
+            "type": "result",
+            "execution_id": exec_info.execution_id,
+            "success": False,
+            "error": "Execution interrupted by worker shutdown",
+            "error_type": "WorkerShutdown",
+            "duration_ms": int(exec_info.elapsed_seconds * 1000),
+        })
+        result["attempt_token"] = exec_info.attempt_token
+        handle.result_reported = await self._deliver_result(result, handle=handle)
 
     async def _check_process_health(self) -> None:
         """
@@ -2023,7 +2088,8 @@ class ProcessPoolManager:
                 "execution_context": {
                     "result_persistence_failure": handle.result_callback_diagnostics
                 } if handle.result_callback_failed and handle.result_callback_diagnostics else None,
-            }
+            },
+            handle=handle,
         )
 
     async def _report_crash(self, handle: ProcessHandle) -> None:
@@ -2058,7 +2124,8 @@ class ProcessPoolManager:
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
                 "sync": exec_info.active_execution["sync"],
-            }
+            },
+            handle=handle,
         )
 
     async def _deliver_result(
@@ -2074,25 +2141,32 @@ class ProcessPoolManager:
 
         if self.on_result is None:
             return False
-        for attempt in range(3):
-            try:
-                await self.on_result(result)
-                if handle is not None:
-                    handle.result_callback_diagnostics = None
-                return True
-            except Exception as exc:
-                if handle is not None:
-                    handle.result_callback_diagnostics = {
-                        "exception_class": type(exc).__name__[:80],
-                        "phase": "terminal_callback",
-                        "attempt_count": attempt + 1,
-                    }
-                logger.exception(
-                    "Result callback attempt %s/3 failed: %s", attempt + 1, exc
-                )
-                if attempt < 2:
-                    await asyncio.sleep(0.1 * (2**attempt))
-        return False
+        lock = handle.result_callback_lock if handle is not None else asyncio.Lock()
+        async with lock:
+            if handle is not None:
+                if handle.result_reported:
+                    return True
+                self._attach_resource_peaks(handle, result)
+            for attempt in range(3):
+                try:
+                    await self.on_result(result)
+                    if handle is not None:
+                        handle.result_callback_diagnostics = None
+                        handle.result_reported = True
+                    return True
+                except Exception as exc:
+                    if handle is not None:
+                        handle.result_callback_diagnostics = {
+                            "exception_class": type(exc).__name__[:80],
+                            "phase": "terminal_callback",
+                            "attempt_count": attempt + 1,
+                        }
+                    logger.exception(
+                        "Result callback attempt %s/3 failed: %s", attempt + 1, exc
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(0.1 * (2**attempt))
+            return False
 
     def _register_result_reader(self, handle: ProcessHandle) -> None:
         """Wake immediately when a one-shot child's result pipe is readable."""

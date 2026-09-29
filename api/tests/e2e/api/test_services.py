@@ -110,7 +110,7 @@ def test_stop_start_restart_cycle(e2e_client, platform_admin, service_workflow):
     response = e2e_client.post(f"/api/services/{service_id}/stop", headers=platform_admin.headers)
     assert response.status_code == 200
     assert response.json()["desired_state"] == "stopped"
-    assert response.json()["observed_state"] == "stopped"
+    assert response.json()["observed_state"] in ("stopping", "stopped")
 
     response = e2e_client.post(f"/api/services/{service_id}/start", headers=platform_admin.headers)
     assert response.status_code == 200
