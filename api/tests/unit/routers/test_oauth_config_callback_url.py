@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models.contracts.oauth_config import OAuthLoginPreference
 from src.routers import oauth_config
 
 
@@ -27,8 +28,13 @@ def test_get_callback_url_uses_public_url(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_list_oauth_configs_ignores_spoofed_host_headers(monkeypatch):
-    """Spoofed Host / X-Forwarded-Host must not leak into the callback URL."""
+async def test_list_oauth_configs_returns_public_url_callback(monkeypatch):
+    """Endpoint returns the deployment-owned callback URL.
+
+    Spoofed-header coverage lives in the e2e HTTP test
+    (test_callback_url_ignores_spoofed_host_headers), which sends real
+    Host / X-Forwarded-Host headers over HTTP.
+    """
     monkeypatch.setattr(
         oauth_config,
         "get_settings",
@@ -36,7 +42,11 @@ async def test_list_oauth_configs_ignores_spoofed_host_headers(monkeypatch):
     )
     service = MagicMock()
     service.get_all_provider_configs = AsyncMock(return_value=[])
-    service.get_login_preference = AsyncMock(return_value=None)
+    service.get_login_preference = AsyncMock(
+        return_value=OAuthLoginPreference(
+            auto_redirect_to_sso=False, default_sso_provider=None
+        )
+    )
     with patch.object(oauth_config, "OAuthConfigService", return_value=service):
         result = await oauth_config.list_oauth_configs(
             ctx=SimpleNamespace(),
@@ -45,7 +55,6 @@ async def test_list_oauth_configs_ignores_spoofed_host_headers(monkeypatch):
         )
 
     assert result.callback_url == "https://bifrost.example.com/auth/oauth/callback"
-    assert "evil" not in result.callback_url
 
 
 @pytest.mark.parametrize(

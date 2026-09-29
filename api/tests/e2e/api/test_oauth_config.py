@@ -89,6 +89,27 @@ class TestOAuthLoginPreference:
                 headers=headers,
             )
 
+    def test_callback_url_ignores_spoofed_host_headers(
+        self,
+        e2e_client,
+        platform_admin,
+    ) -> None:
+        headers = {
+            **platform_admin.headers,
+            "Host": "evil.test",
+            "X-Forwarded-Host": "evil.test",
+            "X-Forwarded-Proto": "http",
+        }
+
+        response = e2e_client.get("/api/settings/oauth", headers=headers)
+
+        assert response.status_code == 200
+        assert (
+            response.json()["callback_url"]
+            == "http://api:8000/auth/oauth/callback"
+        )
+        assert "evil" not in response.json()["callback_url"]
+
     def test_non_admin_cannot_update_login_preference(
         self,
         e2e_client,
