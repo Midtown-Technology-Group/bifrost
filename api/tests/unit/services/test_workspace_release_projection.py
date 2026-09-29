@@ -401,13 +401,20 @@ async def test_lock_projects_only_base_paths_and_records_signed_readback(
     )
     file_writer = FileWriter(repo)
     db = Database()
+    source_updates = []
+
+    @asynccontextmanager
+    async def source_update(**kwargs):
+        source_updates.append(kwargs["changed_paths"])
+        yield
+
     monkeypatch.setattr(
         "src.services.workspace_release_projection.acquire_workspace_release_lock",
         AsyncMock(),
     )
     monkeypatch.setattr(
         "src.services.workspace_release_projection.workspace_source_update",
-        _source_update,
+        source_update,
     )
     reconcile = AsyncMock(return_value=[])
     monkeypatch.setattr(
@@ -435,6 +442,7 @@ async def test_lock_projects_only_base_paths_and_records_signed_readback(
     assert release.lock_state == "locked"
     assert release.attention_deadline is None
     assert file_writer.writes == [first]
+    assert source_updates == [[first]]
     assert len(history.requests) == 1
     assert [item.path for item in history.requests[0].files][0] == first
     assert [item.path for item in history.requests[0].files][1].startswith(
@@ -470,13 +478,20 @@ async def test_ungoverned_snapshot_mismatch_is_not_projected_or_claimed(
         {path: _hash(content) for path, content in target_files.items()}
     )
     file_writer = FileWriter(repo)
+    source_updates = []
+
+    @asynccontextmanager
+    async def source_update(**kwargs):
+        source_updates.append(kwargs["changed_paths"])
+        yield
+
     monkeypatch.setattr(
         "src.services.workspace_release_projection.acquire_workspace_release_lock",
         AsyncMock(),
     )
     monkeypatch.setattr(
         "src.services.workspace_release_projection.workspace_source_update",
-        _source_update,
+        source_update,
     )
     service = WorkspaceReleaseProjectionService(
         Database(),
@@ -496,6 +511,7 @@ async def test_ungoverned_snapshot_mismatch_is_not_projected_or_claimed(
 
     assert release.lock_state == "locked"
     assert file_writer.writes == []
+    assert source_updates == [[]]
     assert inherited_path not in evidence["repo_after_sha256"]
     assert inherited_path not in evidence["history_after"]["file_sha256"]
     assert evidence["governed_paths"] == sorted(paths)

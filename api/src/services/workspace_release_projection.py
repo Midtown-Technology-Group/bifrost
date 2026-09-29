@@ -607,7 +607,7 @@ class WorkspaceReleaseProjectionService:
         storage = self.file_storage_factory(self.db)
         async with workspace_source_update(
             reason="workspace_release_projection",
-            changed_paths=list(paths),
+            changed_paths=[item.path for item in repo_writes],
             broadcast=True,
         ):
             for item in repo_writes:
