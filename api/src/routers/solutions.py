@@ -156,6 +156,7 @@ from src.services.solutions.export_jobs import (
     list_export_jobs,
     public_job,
 )
+from src.services.solutions.guard import SolutionManagedWriteError
 
 if TYPE_CHECKING:
     from src.services.solutions.zip_install import PreviewResult
@@ -2317,6 +2318,14 @@ async def delete_solution(
     return summary
 
 
+# Reconciliation failures whose str() is a fixed public wording that is safe
+# to persist in a job result. Any other exception may carry SQL parameters,
+# paths, or operational detail: it is logged server-side and never echoed.
+_ACCOUNTABILITY_SAFE_ERROR_DETAIL_TYPES: tuple[type[Exception], ...] = (
+    SolutionManagedWriteError,
+)
+
+
 async def _run_deploy_job(
     job_id: UUID,
     solution_id: UUID,
@@ -2431,10 +2440,14 @@ async def _run_deploy_job(
                         )
                         # Reconciliation owns only post-deploy evidence. Clear a
                         # potentially failed transaction without rolling back the
-                        # already committed Solution resources. Record structured
-                        # diagnostic detail (error + the exact obligation
-                        # identity a retry must resolve) so the failure is
-                        # diagnosable from the job result alone.
+                        # already committed Solution resources. Persist only safe
+                        # diagnostics: the error type plus the deploy-attempt
+                        # identity a retry uses to locate the stuck obligation
+                        # set. Raw exception text is allowlisted by type; anything
+                        # unexpected is logged server-side under the deploy job
+                        # id (returned as error_reference) instead of echoed.
+                        # The failed write never identified a single obligation,
+                        # so obligation_id is always null here.
                         try:
                             await db.rollback()
                         except Exception:  # noqa: BLE001 - preserve deploy truth
@@ -2446,7 +2459,15 @@ async def _run_deploy_job(
                             "state": "attention_required",
                             "reason": "post-deploy accountability reconciliation failed",
                             "error_type": type(exc).__name__,
-                            "error_detail": str(exc),
+                            "error_detail": (
+                                str(exc)
+                                if isinstance(
+                                    exc, _ACCOUNTABILITY_SAFE_ERROR_DETAIL_TYPES
+                                )
+                                else None
+                            ),
+                            "error_reference": str(job_id),
+                            "obligation_id": None,
                             "solution_id": str(solution_id),
                             "solution_slug": solution_slug,
                             "deploy_job_id": str(job_id),
