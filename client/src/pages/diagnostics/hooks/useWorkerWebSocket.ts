@@ -96,9 +96,6 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						configured_capacity: message.configured_capacity ?? null,
 						max_workers: message.max_workers ?? null,
 						processes,
-						requirements_installed:
-							message.requirements_installed ?? null,
-						requirements_total: message.requirements_total ?? null,
 						memory_current_bytes:
 							message.memory_current_bytes ?? -1,
 						memory_max_bytes: message.memory_max_bytes ?? -1,
@@ -115,7 +112,12 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 			}
 
 			case "worker_online": {
-				// Add new pool
+				// Add new pool. The online event carries no process data, so
+				// the placeholder omits `processes` (it is optional on the
+				// generated PoolDetail): the merged REST summary keeps
+				// reporting its active count until a real heartbeat arrives.
+				// A heartbeat always sets `processes` (possibly empty), so an
+				// empty process list still displays zero once observed.
 				setPools((prev) => {
 					// Check if already exists
 					if (prev.some((p) => p.worker_id === message.worker_id)) {
@@ -131,9 +133,6 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 							status: "online",
 							started_at: message.started_at || null,
 							last_heartbeat: null,
-							processes: [],
-							requirements_installed: null,
-							requirements_total: null,
 						},
 					];
 				});
@@ -158,7 +157,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 					const updated = [...prev];
 					const pool = { ...updated[idx] };
-					pool.processes = pool.processes.map((proc) =>
+					pool.processes = (pool.processes ?? []).map((proc) =>
 						proc.process_id === message.process_id
 							? { ...proc, state: message.new_state }
 							: proc,

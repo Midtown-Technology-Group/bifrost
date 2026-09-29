@@ -2,8 +2,16 @@
 
 Distributed execution system for running workflows, scripts, and data providers
 in fresh isolated processes. PostgreSQL is authoritative for durable workflow
-identity and status. RabbitMQ transports work, while Redis carries bounded
-ephemeral context, live logs, cancellation signals, and synchronous results.
+identity and status **and** for production work delivery: with
+`BIFROST_WORK_DELIVERY_BACKEND=postgres`, dispatchers enqueue into the
+`work_deliveries` table and workers claim deliveries under a 90-second
+ownership lease. The checked-in default is still `rabbitmq`
+(`api/src/config.py:100`); PostgreSQL is selected by promoted production
+configuration (runbook: `bifrost-infra`), whose deployed value is not verified
+from this repository. Redis carries
+bounded ephemeral context, live logs, cancellation signals, and synchronous
+results. RabbitMQ remains only as a legacy/compatibility transport for the
+same consumer contract.
 
 ## Architecture Overview
 
@@ -15,22 +23,26 @@ ephemeral context, live logs, cancellation signals, and synchronous results.
 |        service.py         |  |  |      async_executor.py    |
 |  - Workflow lookup        |<-+->|  - Pin PostgreSQL run     |
 |  - Metadata resolution    |     |  - Store Redis context    |
-|  - Sync/async dispatch    |     |  - Confirm Rabbit publish |
+|  - Sync/async dispatch    |     |  - Enqueue delivery       |
 +---------------------------+     +---------------------------+
                                               |
                          execution-ID advisory transaction fence
                                               |
                                               v
-                                     +----------------+
-                                     |   RabbitMQ     |
-                                     |    Queue       |
-                                     +----------------+
+                                     +------------------+
+                                     |   PostgreSQL     |
+                                     | work_deliveries  |
+                                     | (RabbitMQ when   |
+                                     |  legacy mode)    |
+                                     +------------------+
                                               |
+                       poll + 90s lease claim (prod) /
+                       broker delivery (legacy)
                                               v
 +------------------------------------------------------------------+
 |                  workflow_execution.py (Consumer)                 |
 |  - Read pending execution from Redis                              |
-|  - Claim PostgreSQL execution + durable attempt                   |
+|  - Claim delivery lease + PostgreSQL execution + durable attempt  |
 |  - Pre-warm SDK cache                                             |
 |  - Route to ProcessPoolManager                                    |
 +------------------------------------------------------------------+
@@ -93,18 +105,19 @@ ephemeral context, live logs, cancellation signals, and synchronous results.
 |------|----------------|
 | `service.py` | High-level orchestration. Workflow lookup by ID, metadata caching, sync/async dispatch routing, and PostgreSQL fallback when a synchronous Redis wait expires. Entry point for `run_workflow()` and `run_code()`. |
 | `engine.py` | Unified execution engine. Handles workflows, inline scripts, and data providers. Sets up SDK context, captures variables via `sys.settrace()`, streams logs to Redis, handles data provider caching. |
-| `async_executor.py` | Dispatch management. Pins immutable execution/runtime evidence in PostgreSQL, stores ephemeral context in Redis, publishes a minimal RabbitMQ message, and returns the execution ID. |
+| `async_executor.py` | Dispatch management. Pins immutable execution/runtime evidence in PostgreSQL, stores ephemeral context in Redis, enqueues the minimal dispatch message via `publish_message` (PostgreSQL `work_deliveries` in production mode, RabbitMQ in legacy mode), and returns the execution ID. |
 | `process_pool.py` | One-shot child lifecycle management. Forks on demand up to `max_workers`, handles timeouts (SIGTERM -> SIGKILL), detects crashes, and publishes heartbeats. |
 | `simple_worker.py` | Isolated subprocess entry point. Receives one parent-assembled context over a private pipe, clears workspace modules, delegates to `engine.py`, returns one result, and exits. |
-| `workflow_execution.py` | RabbitMQ consumer. Claims a durable attempt, resolves pinned metadata, routes to the process pool, token-fences results, flushes data, and publishes updates. |
+| `workflow_execution.py` | Work consumer (both transports). Claims a delivery — a PostgreSQL lease in production mode, a broker delivery in legacy RabbitMQ mode — then claims a durable attempt, resolves pinned metadata, routes to the process pool, token-fences results, flushes data, and publishes updates. |
 
 ## Execution States
 
 ```text
-SCHEDULED   Durable execution exists; publication is unconfirmed or deferred
+SCHEDULED   Durable execution exists; delivery enqueue is unconfirmed or deferred
     |
     v
-PENDING     Broker publication confirmed
+PENDING     Delivery enqueue confirmed (PostgreSQL `work_deliveries` row in
+            production mode, broker publication in legacy RabbitMQ mode)
     |
     v
 RUNNING     Consumer claimed the run (attempt records claim/start separately)
@@ -131,26 +144,70 @@ An authorized cancellation may project `CANCELLING` between `RUNNING` and
 1. API calls `run_workflow()` or `run_code()`
 2. `async_executor.py` creates a PostgreSQL `SCHEDULED` row and `dispatching`
    attempt with immutable dispatch/runtime evidence under the execution lock
-3. Ephemeral context is stored in Redis and a minimal message is published with
-   broker confirmation
-4. The same fenced transaction advances the logical row to `PENDING` and the
-   attempt to `published`
-5. Consumer atomically claims `PENDING`, assigning the durable attempt an
-   internal capability token and worker incarnation
+3. Ephemeral context is stored in Redis and a minimal dispatch message is
+   enqueued — a `work_deliveries` row in production PostgreSQL mode, a broker
+   publication with confirmation in legacy RabbitMQ mode
+4. In PostgreSQL mode the enqueue happens in the same fenced transaction that
+   advances the logical row to `PENDING` and the attempt to `published`, so a
+   consumer can never race an uncommitted row. In legacy RabbitMQ mode the
+   broker publication happens before the DB commit, so that atomicity
+   guarantee does not apply
+5. Consumer claims the delivery — a `SELECT ... FOR UPDATE SKIP LOCKED` lease
+   claim on `work_deliveries` in production mode — assigning the durable
+   attempt an internal capability token and worker incarnation
 6. Consumer resolves pinned metadata and routes a fresh child through
    `ProcessPoolManager`
-7. RabbitMQ acknowledges the delivery after durable claim and successful child
-   routing, before tenant code completes. Recovery after that boundary comes
-   from the durable attempt lease, not broker redelivery.
+7. The delivery is settled after durable claim and successful child routing,
+   before tenant code completes. In production mode this releases the
+   PostgreSQL lease (`completed`); recovery after that boundary comes from the
+   durable attempt lease and heartbeat, not transport redelivery. In legacy
+   mode the broker acknowledges the message.
 8. The pool copies the token into real and synthetic timeout/cancel/crash
    results returned over the private result pipe
 9. Consumer accepts only the active token, terminalizing attempt and logical
    execution before publishing updates
 10. Client treats WebSocket updates as live hints and reloads durable detail
 
-Rabbit delayed retries apply only to failures before child execution, such as
-admission pressure. Exhausted or malformed deliveries go to poison handling.
-Tenant workflow code is never automatically replayed.
+Delayed retries apply only to failures before child execution, such as
+admission pressure: production mode requeues the delivery with
+`available_at` delayed, legacy mode uses Rabbit delayed-retry queues.
+Exhausted or malformed deliveries go to poison handling. Tenant workflow code
+is never automatically replayed.
+
+## Production delivery: leases, heartbeats, recovery, settlement
+
+In PostgreSQL mode (`BIFROST_WORK_DELIVERY_BACKEND=postgres`, the production
+transport), every delivery is a row in `work_deliveries`
+(`api/src/services/work_delivery_store.py`):
+
+- **Lease claim.** `claim_deliveries` assigns each claimed row an owner, a
+  unique lease token, and a 90-second expiry (`LEASE_SECONDS`). The same
+  consumer outcome contract (retry, poison, domain finalization) runs on both
+  transports, but the transports differ beyond claim mechanics: PostgreSQL
+  mode adds lease heartbeats with ownership fencing, PostgreSQL-backed
+  settlement, and interrupted-delivery recovery, while legacy mode relies on
+  broker delivery and acknowledgement.
+- **Heartbeat / ownership.** The worker renews the lease while the delivery
+  is in flight. `require_delivery_ownership` fences domain admission inside
+  its own transaction: if the row is no longer `claimed` under the same token
+  with a live expiry, it raises `DeliveryOwnershipLost` and the handler must
+  not admit or settle domain work.
+- **Interrupted-delivery recovery.** A maintenance sweep
+  (`interrupt_expired_deliveries`) marks leases whose expiry passed as
+  `interrupted`. `recover_interrupted_delivery` then recovers each one under
+  the domain lock: derived LLM queues retry within the existing retry-header
+  budget, an exhausted summary is durably failed, and agent execution loss is
+  terminalized as `worker_lost` without replaying tools.
+- **Settlement / retry boundary.** `settle_delivery` atomically resolves a
+  delivery to `completed`, `poison`, or `queued` (delayed retry via
+  `delay_seconds`) — but only while the caller still owns the lease; a lost
+  lease returns `False` and the caller must not claim settlement. Retry
+  budgets bound recovery signals; they do not guarantee an interrupted domain
+  operation can resume automatically.
+- **What stays Redis-backed.** Pending execution context, the sync-result
+  `BLPOP` list, log streams, cancellation pub/sub, and worker
+  registration/heartbeats remain ephemeral in Redis and are not durable
+  delivery state.
 
 Persisted inline-code execution retains a legacy Redis-first creation path and
 therefore reports unavailable attempt coverage until that path is reconciled.

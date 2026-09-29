@@ -2,6 +2,18 @@
 
 Tool-neutral guidance for AI coding agents in `MTG-Thomas/bifrost`. This fork tracks [upstream](https://github.com/gobifrost/bifrost); `CLAUDE.md` remains the detailed **platform** playbook for Persona B work.
 
+## Shared engineering route
+
+For work beyond a direct edit, use the `mtg-engineering-flow` skill from
+[MTG Codex skills](https://github.com/Midtown-Technology-Group/mtg-codex-skills/tree/main/skills/mtg-engineering-flow)
+when available. Make an understood small change directly; diagnose an uncertain
+bug against a failing signal; settle behavior and acceptance criteria before
+splitting a larger feature into build slices. Review the result against the
+request and this repo's rules, then run its checks. For live work, follow the
+environment's authorization and release lane. If the skill is unavailable,
+follow this route and say so in the handoff. This guide and `CLAUDE.md` own the
+platform-specific gates.
+
 **New teammates and workspace-only work:** start with MTG onboarding, not this file alone.
 
 - [Develop at MTG (Windows)](https://github.com/MTG-Thomas/bifrost-ops/blob/main/docs/develop-at-mtg-windows.md) — Persona A (default) and Persona B overview (`MTG-Thomas/bifrost-ops`)
@@ -80,9 +92,9 @@ Tips:
 
 ## Technologies
 
--   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, RabbitMQ, Redis
+-   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, Redis (RabbitMQ retained for compatibility/test coverage)
 -   **Frontend**: TypeScript 4.9+, React, Vite
--   **Storage**: PostgreSQL (data), Redis (cache/sessions), RabbitMQ (message queue)
+-   **Storage**: PostgreSQL (data + production work delivery via `work_deliveries`, selected by promoted production configuration; the checked-in default in `api/src/config.py` is still `rabbitmq` and the deployed value is not verified from this repo), Redis (cache/sessions/ephemeral execution context), RabbitMQ (legacy/compatibility transport, still covered by the test stack)
 -   **Infrastructure**: Docker, Docker Compose, GitHub Actions for CI/CD
 
 ## Development Environment (CRITICAL - READ FIRST)
