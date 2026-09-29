@@ -66,8 +66,10 @@ jobs:
           ./.venv/bin/pip install --require-hashes -r requirements.lock
           ./.venv/bin/pip install --no-deps --require-hashes -r .github/requirements/codspeed.txt
 
-      - name: Run walltime and memory benchmarks
+      # Serialization is CPU bound. Simulate CPU work on the hosted runner so
+      # comparisons are independent of other tenants' load; retain allocation tracking.
+      - name: Run CPU simulation and memory benchmarks
         uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
         with:
-          mode: walltime,memory
+          mode: simulation,memory
           run: cd api && PYTHONPATH=. ../.venv/bin/python -m pytest benchmarks/test_issue_890_macro.py --codspeed
