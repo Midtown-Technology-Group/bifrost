@@ -144,28 +144,40 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
     def runtime_prefix(self) -> str:
         return deployment_runtime_prefix(self.solution_id, self.deployment_id)
 
-    async def write_source_artifact(self, content: bytes) -> str:
-        await self._create(self.source_artifact_key, content, "application/zip")
+    async def write_source_artifact(
+        self, content: bytes, *, idempotent: bool = False
+    ) -> str:
+        await self._create(
+            self.source_artifact_key, content, "application/zip", idempotent=idempotent
+        )
         return self.source_artifact_key
 
     async def read_source_artifact(self) -> bytes:
         return await self._read(self.source_artifact_key)
 
-    async def write_compiled_manifest(self, content: bytes) -> str:
-        await self._create(self.manifest_key, content, "application/json")
+    async def write_compiled_manifest(
+        self, content: bytes, *, idempotent: bool = False
+    ) -> str:
+        await self._create(
+            self.manifest_key, content, "application/json", idempotent=idempotent
+        )
         return self.manifest_key
 
     async def read_compiled_manifest(self) -> bytes:
         return await self._read(self.manifest_key)
 
-    async def write_runtime_file(self, path: str, content: bytes) -> str:
+    async def write_runtime_file(
+        self, path: str, content: bytes, *, idempotent: bool = False
+    ) -> str:
         normalized = path.replace("\\", "/").lstrip("/")
         if not normalized or any(
             part in {"", ".", ".."} for part in normalized.split("/")
         ):
             raise ValueError(f"Invalid deployment runtime path: {path!r}")
         key = f"{self.runtime_prefix}{normalized}"
-        await self._create(key, content, "application/octet-stream")
+        await self._create(
+            key, content, "application/octet-stream", idempotent=idempotent
+        )
         return key
 
     async def read_runtime_file(self, path: str) -> bytes:

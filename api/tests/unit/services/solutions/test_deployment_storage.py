@@ -83,6 +83,15 @@ async def test_finalized_objects_are_create_only():
 
 
 @pytest.mark.asyncio
+async def test_idempotent_candidate_retry_accepts_only_identical_bytes():
+    storage = make_storage(FakeClient())
+    await storage.write_source_artifact(b"same", idempotent=True)
+    await storage.write_source_artifact(b"same", idempotent=True)
+    with pytest.raises(DeploymentArtifactIntegrityError):
+        await storage.write_source_artifact(b"different", idempotent=True)
+
+
+@pytest.mark.asyncio
 async def test_runtime_path_rejects_traversal():
     storage = make_storage(FakeClient())
     with pytest.raises(ValueError):

@@ -67,7 +67,8 @@ async def test_create_registers_complete_reference_only_ready_draft(monkeypatch)
         def __init__(self, *_args):
             pass
 
-        async def write_compiled_manifest(self, content):
+        async def write_compiled_manifest(self, content, *, idempotent=False):
+            assert idempotent is True
             written.append(content)
 
     monkeypatch.setattr(

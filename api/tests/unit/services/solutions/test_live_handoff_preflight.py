@@ -208,7 +208,7 @@ async def test_preflight_compares_stored_runtime_bytes_before_returning_evidence
     deployment_id = uuid4()
     workflow_id = uuid4()
     path = "features/example.py"
-    content = b"reviewed source\n"
+    content = b"def run():\n    return 1\n"
     from src.services.solutions.deployment_manifest import sha256_digest
 
     runtime_prefix = f"_solutions/{solution_id}/{deployment_id}/"
@@ -259,13 +259,14 @@ async def test_preflight_compares_stored_runtime_bytes_before_returning_evidence
         status="active",
         setup_complete=True,
         allow_outbound_access=False,
+        git_connected=False,
         organization_id=uuid4(),
         active_deployment_id=None,
     )
 
     class Rows:
         def all(self):
-            return [SimpleNamespace(id=workflow_id)]
+            return [SimpleNamespace(id=workflow_id, path=path)]
 
         def scalars(self):
             return self

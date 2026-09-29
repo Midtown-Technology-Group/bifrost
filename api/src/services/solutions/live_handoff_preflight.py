@@ -28,6 +28,11 @@ from src.services.solutions.deployment_storage import (
     deployment_runtime_prefix,
     deployment_source_artifact_key,
 )
+from src.services.solutions.live_handoff_source import (
+    MAX_ARCHIVE_BYTES,
+    LiveHandoffSourceError,
+    source_closure,
+)
 from src.services.workspace_release_files import WorkspaceReleaseFileView
 from src.services.workspace_release_runtime import (
     WorkspaceReleaseDescriptor,
@@ -35,8 +40,6 @@ from src.services.workspace_release_runtime import (
     _registration_binding,
     active_workspace_release,
 )
-
-_MAX_SOURCE_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
 class WorkspaceLiveHandoffPreflightError(ValueError):
@@ -69,21 +72,8 @@ def _require_workflow_binding(
     release: WorkspaceReleaseDescriptor,
     resolution: DeploymentResolutionMap,
 ) -> None:
-    if workflow.solution_id is not None:
-        raise WorkspaceLiveHandoffPreflightError(
-            f"workflow {workflow.id} already has a Solution owner"
-        )
-    if workflow.organization_id != solution.organization_id:
-        raise WorkspaceLiveHandoffPreflightError(
-            f"workflow {workflow.id} does not match the Solution scope"
-        )
-    if (
-        not workflow.is_active
-        or _registration_binding(workflow, release).status != "bound"
-    ):
-        raise WorkspaceLiveHandoffPreflightError(
-            f"workflow {workflow.id} is not bound to the expected Live release"
-        )
+    path, registration = require_live_workflow(workflow, solution, release)
+    runtime_bounds = registration["runtime_bounds"]
     try:
         entity = resolution.resolve_workflow_id(workflow.id)
     except KeyError as exc:
@@ -91,9 +81,6 @@ def _require_workflow_binding(
             f"candidate lacks workflow {workflow.id}"
         ) from exc
     definition = entity.definition
-    path = workflow.path.replace("\\", "/").lstrip("/")
-    registration = release.effective_registrations[f"{path}::{workflow.function_name}"]
-    runtime_bounds = registration["runtime_bounds"]
     expected = {
         "path": path,
         "function_name": workflow.function_name,
@@ -124,8 +111,34 @@ def _require_workflow_binding(
         )
 
 
+def require_live_workflow(
+    workflow: Workflow,
+    solution: Solution,
+    release: WorkspaceReleaseDescriptor,
+) -> tuple[str, dict]:
+    """Prove that a loose UUID still has the reviewed Live owner and scope."""
+    if workflow.solution_id is not None:
+        raise WorkspaceLiveHandoffPreflightError(
+            f"workflow {workflow.id} already has a Solution owner"
+        )
+    if workflow.organization_id != solution.organization_id:
+        raise WorkspaceLiveHandoffPreflightError(
+            f"workflow {workflow.id} does not match the Solution scope"
+        )
+    if (
+        not workflow.is_active
+        or _registration_binding(workflow, release).status != "bound"
+    ):
+        raise WorkspaceLiveHandoffPreflightError(
+            f"workflow {workflow.id} is not bound to the expected Live release"
+        )
+    path = workflow.path.replace("\\", "/").lstrip("/")
+    registration = release.effective_registrations[f"{path}::{workflow.function_name}"]
+    return path, registration
+
+
 def _verify_source_archive(archive: bytes, source_bytes: dict[str, bytes]) -> None:
-    if len(archive) > _MAX_SOURCE_ARCHIVE_BYTES:
+    if len(archive) > MAX_ARCHIVE_BYTES:
         raise WorkspaceLiveHandoffPreflightError(
             "candidate source archive is too large"
         )
@@ -136,7 +149,7 @@ def _verify_source_archive(archive: bytes, source_bytes: dict[str, bytes]) -> No
             if (
                 len(names) != len(set(names))
                 or set(names) != set(source_bytes)
-                or sum(item.file_size for item in files) > _MAX_SOURCE_ARCHIVE_BYTES
+                or sum(item.file_size for item in files) > MAX_ARCHIVE_BYTES
             ):
                 raise WorkspaceLiveHandoffPreflightError(
                     "candidate archive does not match the reviewed source closure"
@@ -168,9 +181,13 @@ class WorkspaceLiveHandoffPreflightService:
         solution = await self.db.get(Solution, solution_id)
         if solution is None or solution.status != "active":
             raise WorkspaceLiveHandoffPreflightError("Solution is not active")
-        if not solution.setup_complete or solution.allow_outbound_access:
+        if (
+            not solution.setup_complete
+            or solution.allow_outbound_access
+            or solution.git_connected
+        ):
             raise WorkspaceLiveHandoffPreflightError(
-                "Solution must be configured and sealed from mutable Workspace source"
+                "Solution must be configured, disconnected, and sealed from mutable Workspace source"
             )
         repository = SolutionDeploymentRepository(self.db)
         deployment = await repository.get_runtime_closure(
@@ -252,13 +269,32 @@ class WorkspaceLiveHandoffPreflightService:
                 "candidate source closure is not entirely governed by Live"
             )
         try:
-            source_bytes = await WorkspaceReleaseFileView.from_release(
+            live_bytes = await WorkspaceReleaseFileView.from_release(
                 release
-            ).read_many(source_paths)
+            ).read_many(list(release.governed_paths))
         except (FileNotFoundError, WorkspaceReleaseRuntimeError) as exc:
             raise WorkspaceLiveHandoffPreflightError(
                 "Live source bytes differ from the active descriptor"
             ) from exc
+        entry_paths = {
+            workflow.path.replace("\\", "/").lstrip("/") for workflow in selected
+        }
+        if installed_ids:
+            entry_paths.update(
+                (
+                    await self.db.scalars(
+                        select(Workflow.path).where(Workflow.id.in_(installed_ids))
+                    )
+                ).all()
+            )
+        try:
+            source_bytes = source_closure(live_bytes, entry_paths)
+        except LiveHandoffSourceError as exc:
+            raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
+        if set(source_paths) != set(source_bytes):
+            raise WorkspaceLiveHandoffPreflightError(
+                "candidate source paths differ from the complete Live dependency closure"
+            )
         for path in source_paths:
             source = resolution.sources[path]
             if (

@@ -27,6 +27,10 @@ from src.services.solutions.deployment_api import (
     DeploymentRegistrationConflict,
     SolutionDeploymentAPIService,
 )
+from src.services.solutions.deployment_storage import DeploymentArtifactIntegrityError
+from src.services.solutions.live_handoff_candidate import (
+    WorkspaceLiveHandoffCandidateService,
+)
 from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightConflict,
     WorkspaceLiveHandoffPreflightError,
@@ -180,6 +184,56 @@ async def preflight_live_handoff(
     except WorkspaceLiveHandoffPreflightConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkspaceLiveHandoffPreflightError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/candidate",
+    response_model=WorkspaceLiveHandoffPreflightResponse,
+    status_code=201,
+    responses={
+        409: {"description": "Live state, Solution state, or immutable object changed"},
+        422: {"description": "The Live source closure cannot be proven"},
+        503: {"description": "Solution write lock was lost"},
+    },
+)
+async def build_live_handoff_candidate(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffPreflightRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    """Copy verified Live bytes into a new immutable Solution candidate."""
+    try:
+        async with solution_write_lock(solution_id):
+            result = await WorkspaceLiveHandoffCandidateService(ctx.db).build(
+                solution_id, deployment_id, user.user_id, body
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=409, detail={"code": "solution_write_lock_held"}
+        ) from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "solution_write_lock_lost", "retryable": True},
+        ) from exc
+    except WorkspaceLiveHandoffPreflightConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (DeploymentRegistrationConflict, DeploymentArtifactIntegrityError) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkspaceLiveHandoffPreflightError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        await ctx.db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

@@ -122,7 +122,7 @@ class SolutionDeploymentAPIService:
         try:
             await SolutionDeploymentStorage(
                 solution_id, manifest.deployment_id
-            ).write_compiled_manifest(manifest.canonical_bytes())
+            ).write_compiled_manifest(manifest.canonical_bytes(), idempotent=True)
         except DeploymentArtifactIntegrityError as exc:
             raise DeploymentRegistrationConflict(
                 "manifest storage already exists; inspect the deployment before retrying"
