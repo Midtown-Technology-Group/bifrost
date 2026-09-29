@@ -1,28 +1,27 @@
-from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import inspect
-
 from bifrost.workspace_release import (
     workspace_manifest_id,
     workspace_registration_manifest_id,
 )
+from sqlalchemy import inspect
+from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
 )
-from src.models.orm.workflows import Workflow
 from src.services.workspace_release_runtime import (
+    PinnedWorkspaceRuntime,
     WorkspaceReleaseBindingError,
     WorkspaceReleaseDescriptor,
     WorkspaceReleaseRuntimeError,
     inspect_workspace_release_coherence,
     pin_workspace_runtime,
-    PinnedWorkspaceRuntime,
     resolve_pinned_workspace_runtime,
     verify_workspace_runtime_evidence,
     workflow_data_from_workspace_evidence,
@@ -352,6 +351,32 @@ async def test_global_live_governed_path_pins_exact_global_registration() -> Non
     assert pinned is not None
     assert pinned.organization_id is None
     assert pinned.queue_evidence()["workflow_organization_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_pin_rechecks_solution_if_handoff_committed_between_dispatch_reads(
+    monkeypatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from src.services.solutions import deployment_runtime
+
+    release, artifact = _rows()
+    registration = next(iter(artifact.manifest["effective_registrations"].values()))
+    workflow = _workflow_for_registration(
+        registration, organization_id=release.organization_id
+    )
+    workflow.solution_id = uuid4()
+    session = _PinSession(workflow, release, artifact)
+    pinned_solution = object()
+    recheck = AsyncMock(return_value=pinned_solution)
+    monkeypatch.setattr(deployment_runtime, "pin_workflow_runtime", recheck)
+
+    pinned = await pin_workspace_runtime(session, workflow.id)
+
+    assert pinned is pinned_solution
+    recheck.assert_awaited_once_with(session, workflow.id)
+    assert session.populate_existing is True
 
 
 @pytest.mark.asyncio

@@ -64,9 +64,10 @@ class PinnedWorkflowRuntime:
     organization_id: str | None
     can_access_global_repo: bool
     source_hashes: dict[str, str]
+    runtime_bounds: dict[str, int] | None = None
 
     def queue_evidence(self) -> dict[str, Any]:
-        return {
+        evidence = {
             "solution_id": str(self.solution_id),
             "solution_deployment_id": str(self.deployment_id),
             "bundle_hash": self.bundle_hash,
@@ -88,6 +89,29 @@ class PinnedWorkflowRuntime:
             "solution_global_repo_access": self.can_access_global_repo,
             "deployment_source_hashes": self.source_hashes,
         }
+        if self.runtime_bounds is not None:
+            evidence["workflow_runtime_bounds"] = self.runtime_bounds
+        return evidence
+
+
+def _validated_runtime_bounds(value: Any) -> dict[str, int]:
+    required = {
+        "max_duration_seconds",
+        "max_external_calls",
+        "max_records_read",
+        "max_output_bytes",
+    }
+    if not isinstance(value, dict) or not required.issubset(value):
+        raise DeploymentRuntimeError("deployment runtime bounds are incomplete")
+    if any(
+        not isinstance(key, str)
+        or not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or limit <= 0
+        for key, limit in value.items()
+    ):
+        raise DeploymentRuntimeError("deployment runtime bounds are invalid")
+    return dict(sorted(value.items()))
 
 
 def workflow_data_from_evidence(
@@ -104,7 +128,7 @@ def workflow_data_from_evidence(
     )
     if any(not evidence.get(key) for key in required):
         raise DeploymentRuntimeError("pinned execution runtime evidence is incomplete")
-    return {
+    data = {
         "name": evidence["workflow_name"],
         "function_name": evidence["workflow_function_name"],
         "path": evidence["workflow_path"],
@@ -119,6 +143,18 @@ def workflow_data_from_evidence(
         "can_access_global_repo": evidence.get("solution_global_repo_access", False),
         "runtime_storage_prefix": evidence["runtime_storage_prefix"],
     }
+    if "workflow_runtime_bounds" in evidence:
+        bounds = _validated_runtime_bounds(evidence["workflow_runtime_bounds"])
+        timeout = data["timeout_seconds"]
+        if (
+            not isinstance(timeout, int)
+            or isinstance(timeout, bool)
+            or timeout <= 0
+            or timeout > bounds["max_duration_seconds"]
+        ):
+            raise DeploymentRuntimeError("deployment timeout exceeds immutable bound")
+        data["workflow_runtime_bounds"] = bounds
+    return data
 
 
 def _required(definition: dict[str, Any], key: str) -> Any:
@@ -185,6 +221,17 @@ async def pin_workflow_runtime(
     )
     entity = _resolve_workflow_entity(resolution, workflow.id)
     definition = entity.definition
+    runtime_bounds = (
+        _validated_runtime_bounds(definition["runtime_bounds"])
+        if "runtime_bounds" in definition
+        else None
+    )
+    if (
+        runtime_bounds is not None
+        and int(_number(definition, "timeout_seconds", 1800))
+        > runtime_bounds["max_duration_seconds"]
+    ):
+        raise DeploymentRuntimeError("deployment timeout exceeds immutable bound")
     source_ref = entity.source_ref or str(_required(definition, "path"))
     try:
         source = resolution.resolve_source(source_ref)
@@ -222,6 +269,7 @@ async def pin_workflow_runtime(
         ),
         can_access_global_repo=bool(solution.allow_outbound_access),
         source_hashes={key: item.content_hash for key, item in resolution.sources.items()},
+        runtime_bounds=runtime_bounds,
     )
 
 

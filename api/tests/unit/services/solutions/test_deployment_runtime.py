@@ -18,6 +18,7 @@ from src.services.solutions.deployment_runtime import (
     DeploymentRuntimeError,
     pin_workflow_runtime,
     verify_runtime_evidence,
+    workflow_data_from_evidence,
 )
 
 
@@ -29,7 +30,7 @@ class _Result:
         return self.row
 
 
-def _closure(*, deployment_id, solution_id, workflow_id, source_text):
+def _closure(*, deployment_id, solution_id, workflow_id, source_text, runtime_bounds=None):
     source_hash = sha256_digest(source_text.encode())
     entity = RuntimeEntityDefinition(
         portable_ref="workflows/demo.py::demo",
@@ -42,6 +43,7 @@ def _closure(*, deployment_id, solution_id, workflow_id, source_text):
             "path": "workflows/demo.py",
             "timeout_seconds": 30,
             "type": "workflow",
+            **({"runtime_bounds": runtime_bounds} if runtime_bounds else {}),
         },
     )
     resolution = DeploymentResolutionMap(
@@ -132,6 +134,49 @@ async def test_active_pointer_selects_runtime_without_reading_mutable_definition
     assert new.name == "demo-new"
     # The already materialized queue evidence remains pinned after promotion.
     assert old.queue_evidence()["solution_deployment_id"] == str(old_id)
+
+
+@pytest.mark.asyncio
+async def test_bounded_deployment_pin_preserves_live_duration_and_output_limits(monkeypatch):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id)
+    solution = SimpleNamespace(
+        id=solution_id,
+        status="active",
+        organization_id=None,
+        allow_outbound_access=False,
+        active_deployment_id=deployment_id,
+    )
+    bounds = {
+        "max_duration_seconds": 30,
+        "max_external_calls": 10,
+        "max_records_read": 100,
+        "max_output_bytes": 2048,
+    }
+    deployment = _closure(
+        deployment_id=deployment_id,
+        solution_id=solution_id,
+        workflow_id=workflow_id,
+        source_text="bounded",
+        runtime_bounds=bounds,
+    )
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+
+    async def get_closure(_repo, _deployment_id, _org):
+        return deployment
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        get_closure,
+    )
+    pinned = await pin_workflow_runtime(session, workflow_id)
+
+    assert pinned is not None
+    evidence = pinned.queue_evidence()
+    assert evidence["workflow_runtime_bounds"] == bounds
+    assert workflow_data_from_evidence(str(deployment_id), evidence)[
+        "workflow_runtime_bounds"
+    ] == bounds
 
 
 @pytest.mark.asyncio

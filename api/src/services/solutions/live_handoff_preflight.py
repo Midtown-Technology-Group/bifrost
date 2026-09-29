@@ -92,6 +92,8 @@ def _require_workflow_binding(
         ) from exc
     definition = entity.definition
     path = workflow.path.replace("\\", "/").lstrip("/")
+    registration = release.effective_registrations[f"{path}::{workflow.function_name}"]
+    runtime_bounds = registration["runtime_bounds"]
     expected = {
         "path": path,
         "function_name": workflow.function_name,
@@ -100,8 +102,15 @@ def _require_workflow_binding(
         "organization_id": (
             str(workflow.organization_id) if workflow.organization_id else None
         ),
-        "timeout_seconds": workflow.timeout_seconds,
+        "timeout_seconds": min(
+            workflow.timeout_seconds or 1800,
+            runtime_bounds["max_duration_seconds"],
+        ),
         "execution_mode": workflow.execution_mode,
+        "time_saved": workflow.time_saved or 0,
+        "value": float(workflow.value or 0),
+        "cache_ttl_seconds": workflow.cache_ttl_seconds or 0,
+        "runtime_bounds": runtime_bounds,
     }
     if any(definition.get(key) != value for key, value in expected.items()):
         raise WorkspaceLiveHandoffPreflightError(
@@ -231,9 +240,9 @@ class WorkspaceLiveHandoffPreflightService:
             ).all()
         )
         candidate_ids = {item.resolved_id for item in resolution.workflows.values()}
-        if not installed_ids.issubset(candidate_ids):
+        if candidate_ids != installed_ids | set(request.workflow_ids):
             raise WorkspaceLiveHandoffPreflightError(
-                "candidate omits an existing Solution workflow"
+                "candidate workflow IDs differ from the reviewed handoff set"
             )
         source_paths = sorted(resolution.sources)
         if not source_paths or any(

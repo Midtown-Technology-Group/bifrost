@@ -75,6 +75,9 @@ def test_workflow_binding_keeps_uuid_scope_and_runtime_metadata() -> None:
         roles=[],
         timeout_seconds=30,
         execution_mode="async",
+        time_saved=0,
+        value=0,
+        cache_ttl_seconds=0,
     )
     solution = SimpleNamespace(id=solution_id, organization_id=organization_id)
     release = WorkspaceReleaseDescriptor(
@@ -102,6 +105,12 @@ def test_workflow_binding_keeps_uuid_scope_and_runtime_metadata() -> None:
                 "api_key_enabled": False,
                 "access_level": "role_based",
                 "role_ids": [],
+                "runtime_bounds": {
+                    "max_duration_seconds": 20,
+                    "max_external_calls": 10,
+                    "max_records_read": 100,
+                    "max_output_bytes": 4096,
+                },
             }
         },
         effective_registration_manifest_id="sha256:" + "e" * 64,
@@ -115,8 +124,12 @@ def test_workflow_binding_keeps_uuid_scope_and_runtime_metadata() -> None:
         "name": "Example",
         "type": "workflow",
         "organization_id": str(organization_id),
-        "timeout_seconds": 30,
+        "timeout_seconds": 20,
         "execution_mode": "async",
+        "time_saved": 0,
+        "value": 0.0,
+        "cache_ttl_seconds": 0,
+        "runtime_bounds": release.effective_registrations[f"{path}::run"]["runtime_bounds"],
     }
 
     def resolution(source_hash_value: str) -> DeploymentResolutionMap:
@@ -150,6 +163,30 @@ def test_workflow_binding_keeps_uuid_scope_and_runtime_metadata() -> None:
             cast(Any, solution),
             release,
             resolution("sha256:" + "0" * 64),
+        )
+    changed_bounds = dict(definition)
+    changed_bounds["runtime_bounds"] = {
+        **definition["runtime_bounds"],
+        "max_output_bytes": 8192,
+    }
+    changed = resolution("sha256:" + source_hash)
+    with pytest.raises(WorkspaceLiveHandoffPreflightError, match="metadata differs"):
+        _require_workflow_binding(
+            cast(Any, workflow),
+            cast(Any, solution),
+            release,
+            DeploymentResolutionMap(
+                workflows={
+                    "example": RuntimeEntityDefinition(
+                        portable_ref="example",
+                        resolved_id=workflow_id,
+                        definition=changed_bounds,
+                        source_ref=path,
+                        source_hash="sha256:" + source_hash,
+                    )
+                },
+                sources=changed.sources,
+            ),
         )
     workflow.endpoint_enabled = True
     with pytest.raises(WorkspaceLiveHandoffPreflightError, match="not bound"):
@@ -205,7 +242,7 @@ async def test_preflight_compares_stored_runtime_bytes_before_returning_evidence
                 content_hash=sha256_digest(content),
             )
         },
-        workflows={},
+        workflows={"example": SimpleNamespace(resolved_id=workflow_id)},
     )
     deployment = SimpleNamespace(
         state="ready",
@@ -291,6 +328,13 @@ async def test_preflight_compares_stored_runtime_bytes_before_returning_evidence
     assert response.workflow_ids == [workflow_id]
     assert response.verified_source_paths == [path]
     assert response.evidence_id.startswith("sha256:")
+
+    resolution.workflows["unreviewed"] = SimpleNamespace(resolved_id=uuid4())
+    with pytest.raises(WorkspaceLiveHandoffPreflightError, match="handoff set"):
+        await WorkspaceLiveHandoffPreflightService(cast(Any, DB())).inspect(
+            solution_id, deployment_id, request
+        )
+    del resolution.workflows["unreviewed"]
 
     storage.runtime_bytes = b"unreviewed source\n"
     with pytest.raises(WorkspaceLiveHandoffPreflightError, match="runtime bytes"):

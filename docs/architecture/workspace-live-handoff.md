@@ -15,9 +15,10 @@ and workflow UUIDs. The service checks that:
 - the candidate is ready on the expected Solution base and its DB manifest,
   stored manifest, source archive, and runtime files agree;
 - every selected UUID is still loose, active, in the Solution scope, bound to
-  the expected Live registration, and present with the same source and runtime
-  metadata in the candidate;
-- the candidate preserves all workflows already installed in that Solution;
+  the expected Live registration, and present with the same source, runtime
+  metadata, and Live duration and output limits in the candidate;
+- the candidate contains exactly the selected UUIDs and workflows already
+  installed in that Solution;
 - every candidate source path is governed by Live and its stored bytes equal
   the verified Live bytes. The source archive contains exactly those paths.
 
@@ -27,6 +28,13 @@ evidence, not an activation token. Live and Solution state must be rechecked
 under their write locks before any ownership change. The endpoint does not
 change registry rows, runtime pointers, event subscriptions, or source-release
 obligations.
+
+Dispatch rechecks Solution ownership if it changes between the initial Solution
+lookup and the Live lookup. A candidate copied from Live carries the bounded
+timeout and the full Live runtime bounds in its immutable workflow definition.
+The Solution queue pin carries those bounds to the worker; the worker enforces
+the duration and output limits. Existing Solution deployments without bounds
+retain their current behavior.
 
 The current immutable deployment API registers references to an already
 stored candidate. It does not build or upload that candidate, and its generic
