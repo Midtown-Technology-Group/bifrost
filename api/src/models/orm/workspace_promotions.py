@@ -387,7 +387,7 @@ class WorkspaceSourceRelease(Base):
         ),
         CheckConstraint(
             "disposition IN ('pending', 'attention_required', 'released', "
-            "'deferred', 'non_production')",
+            "'deferred', 'non_production', 'superseded')",
             name="ck_workspace_source_release_disposition",
         ),
         CheckConstraint(
@@ -446,6 +446,12 @@ class WorkspaceSourceRelease(Base):
             "disposition NOT IN ('deferred', 'non_production') OR "
             "(reason IS NOT NULL AND resolved_at IS NOT NULL)",
             name="ck_workspace_source_release_manual_reason",
+        ),
+        CheckConstraint(
+            "disposition <> 'superseded' OR "
+            "(reason IS NOT NULL AND completion_evidence IS NOT NULL "
+            "AND resolved_at IS NOT NULL)",
+            name="ck_workspace_source_release_superseded_evidence",
         ),
     )
 

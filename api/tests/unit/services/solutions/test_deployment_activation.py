@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.repositories.solution_deployments import (
     InvalidDeploymentTransition,
@@ -267,3 +266,25 @@ async def test_pointer_cas_marks_solution_as_deployment_runtime():
     values = {column.key: value.value for column, value in statement._values.items()}
     assert values["execution_runtime_mode"] == "deployment-v1"
     assert "active_deployment_id" in values
+
+
+@pytest.mark.asyncio
+async def test_pointer_cas_restores_repo_mode_for_live_handoff_rollback():
+    session = MagicMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = uuid4()
+    session.execute = AsyncMock(return_value=result)
+    repository = SolutionDeploymentRepository(cast(Any, session))
+
+    moved = await repository.compare_and_set_active_deployment(
+        uuid4(),
+        None,
+        expected_active_deployment_id=uuid4(),
+        new_active_deployment_id=None,
+    )
+
+    assert moved is True
+    statement = session.execute.await_args.args[0]
+    values = {column.key: value.value for column, value in statement._values.items()}
+    assert values["active_deployment_id"] is None
+    assert values["execution_runtime_mode"] == "repo-v1"

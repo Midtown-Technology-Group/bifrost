@@ -118,8 +118,12 @@ def _require_workflow_binding(
     solution: Solution,
     release: WorkspaceReleaseDescriptor,
     resolution: DeploymentResolutionMap,
+    *,
+    expected_owner_id: UUID | None = None,
 ) -> None:
-    path, registration = require_live_workflow(workflow, solution, release)
+    path, registration = require_live_workflow(
+        workflow, solution, release, expected_owner_id=expected_owner_id
+    )
     runtime_bounds = registration["runtime_bounds"]
     try:
         entity = resolution.resolve_workflow_id(workflow.id)
@@ -159,11 +163,13 @@ def require_live_workflow(
     workflow: Workflow,
     solution: Solution,
     release: WorkspaceReleaseDescriptor,
+    *,
+    expected_owner_id: UUID | None = None,
 ) -> tuple[str, dict]:
     """Prove that a loose UUID still has the reviewed Live owner and scope."""
-    if workflow.solution_id is not None:
+    if workflow.solution_id != expected_owner_id:
         raise WorkspaceLiveHandoffPreflightError(
-            f"workflow {workflow.id} already has a Solution owner"
+            f"workflow {workflow.id} changed owner"
         )
     if workflow.organization_id != solution.organization_id:
         raise WorkspaceLiveHandoffPreflightError(
@@ -233,6 +239,8 @@ class WorkspaceLiveHandoffPreflightService:
         solution_id: UUID,
         deployment_id: UUID,
         request: WorkspaceLiveHandoffPreflightRequest,
+        *,
+        lock_selected: bool = False,
     ) -> WorkspaceLiveHandoffPreflightResponse:
         release = _require_live_identity(
             await active_workspace_release(self.db, None), request
@@ -292,17 +300,14 @@ class WorkspaceLiveHandoffPreflightService:
             raise WorkspaceLiveHandoffPreflightError(
                 "stored candidate manifest differs from its reviewed closure"
             )
-        selected = (
-            (
-                await self.db.execute(
-                    select(Workflow)
-                    .options(selectinload(Workflow.roles))
-                    .where(Workflow.id.in_(request.workflow_ids))
-                )
-            )
-            .scalars()
-            .all()
+        selected_query = (
+            select(Workflow)
+            .options(selectinload(Workflow.roles))
+            .where(Workflow.id.in_(request.workflow_ids))
         )
+        if lock_selected:
+            selected_query = selected_query.with_for_update(of=Workflow)
+        selected = (await self.db.execute(selected_query)).scalars().all()
         if {row.id for row in selected} != set(request.workflow_ids):
             raise WorkspaceLiveHandoffPreflightError(
                 "a requested workflow registration is missing"

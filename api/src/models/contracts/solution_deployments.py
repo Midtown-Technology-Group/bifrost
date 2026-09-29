@@ -71,6 +71,14 @@ class SolutionDeploymentCapabilities(BaseModel):
     safe_for_end_to_end_cs_deploy: bool = False
 
 
+class SolutionDeploymentRuntimeState(BaseModel):
+    """Independent readback of the installed runtime pointer."""
+
+    solution_id: UUID
+    active_deployment_id: UUID | None
+    execution_runtime_mode: str
+
+
 class WorkspaceLiveHandoffPreflightRequest(BaseModel):
     """Expected Live and Solution state for a read-only adoption inspection."""
 
@@ -104,3 +112,60 @@ class WorkspaceLiveHandoffPreflightResponse(BaseModel):
     verified_source_paths: list[str]
     expected_active_deployment_id: UUID | None
     evidence_id: str
+
+
+class WorkspaceLiveHandoffCommitRequest(WorkspaceLiveHandoffPreflightRequest):
+    """Preflight expectation that must still hold at the locked commit."""
+
+    expected_evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class WorkspaceLiveHandoffCommitResponse(BaseModel):
+    solution_id: UUID
+    deployment_id: UUID
+    release_row_id: UUID
+    release_id: str
+    workflow_ids: list[UUID]
+    evidence_id: str
+    state: str
+
+
+class SolutionSourceFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    content_base64: str
+
+
+class SolutionSourceRevisionRequest(BaseModel):
+    """A source-only revision of the exact workflows in an active deployment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_active_deployment_id: UUID
+    expected_active_manifest_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    source_commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    files: list[SolutionSourceFile] = Field(min_length=1, max_length=256)
+
+
+class SolutionSourceRevisionInspectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_active_deployment_id: UUID
+    expected_active_manifest_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class SolutionSourceRevisionInspectResponse(BaseModel):
+    solution_id: UUID
+    deployment_id: UUID
+    active_deployment_id: UUID
+    source_commit_sha: str
+    workflow_ids: list[UUID]
+    active_subscription_ids: list[UUID]
+    source_hashes: dict[str, str]
+    evidence_id: str
+    state: str
+
+
+class SolutionSourceRevisionCommitRequest(SolutionSourceRevisionInspectRequest):
+    expected_evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
