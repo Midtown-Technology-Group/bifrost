@@ -1679,7 +1679,7 @@ class MCPAgentGatewayService:
         run_id = self._operation_execution_id(agent, tool, operation_id)
         _run_id, reused = await enqueue_agent_run_once(
             agent_id=str(delegated.id),
-            trigger_type="mcp_gateway",
+            trigger_type="delegation",
             trigger_source=str(agent.id),
             input_data={"task": task, "_delegated_from": agent.name},
             org_id=str(agent.organization_id) if agent.organization_id else None,
