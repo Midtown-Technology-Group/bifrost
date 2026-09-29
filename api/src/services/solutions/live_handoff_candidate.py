@@ -31,6 +31,7 @@ from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightError,
     WorkspaceLiveHandoffPreflightService,
+    _require_empty_solution_install,
     _require_live_identity,
     live_workflow_timeout,
     require_live_workflow,
@@ -76,13 +77,7 @@ class WorkspaceLiveHandoffCandidateService:
             raise WorkspaceLiveHandoffPreflightError(
                 "candidate builder requires a new, configured, disconnected Solution"
             )
-        installed = await self.db.scalar(
-            select(Workflow.id).where(Workflow.solution_id == solution_id).limit(1)
-        )
-        if installed is not None:
-            raise WorkspaceLiveHandoffPreflightError(
-                "candidate builder requires a Solution without installed workflows"
-            )
+        await _require_empty_solution_install(self.db, solution_id)
         selected = (
             (
                 await self.db.execute(

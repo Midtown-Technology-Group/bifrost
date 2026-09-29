@@ -8,6 +8,7 @@ from uuid import uuid4
 from zipfile import ZipFile
 
 import pytest
+from src.models.orm.applications import Application
 from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffPreflightRequest,
 )
@@ -17,8 +18,10 @@ from src.services.solutions.deployment_manifest import (
     RuntimeSourceResolution,
 )
 from src.services.solutions.live_handoff_preflight import (
+    WorkspaceLiveHandoffPreflightConflict,
     WorkspaceLiveHandoffPreflightError,
     WorkspaceLiveHandoffPreflightService,
+    _require_empty_solution_install,
     _require_workflow_binding,
     _verify_source_archive,
 )
@@ -31,6 +34,18 @@ def _archive(files: list[tuple[str, bytes]]) -> bytes:
         for path, content in files:
             output.writestr(path, content)
     return buffer.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_handoff_rejects_solution_with_existing_app():
+    class DB:
+        async def scalar(self, statement):
+            if statement.column_descriptions[0]["entity"] is Application:
+                return uuid4()
+            return None
+
+    with pytest.raises(WorkspaceLiveHandoffPreflightConflict, match="Application"):
+        await _require_empty_solution_install(cast(Any, DB()), uuid4())
 
 
 def test_source_archive_requires_exact_live_closure() -> None:
@@ -129,7 +144,9 @@ def test_workflow_binding_keeps_uuid_scope_and_runtime_metadata() -> None:
         "time_saved": 0,
         "value": 0.0,
         "cache_ttl_seconds": 0,
-        "runtime_bounds": release.effective_registrations[f"{path}::run"]["runtime_bounds"],
+        "runtime_bounds": release.effective_registrations[f"{path}::run"][
+            "runtime_bounds"
+        ],
     }
 
     def resolution(source_hash_value: str) -> DeploymentResolutionMap:
@@ -283,6 +300,9 @@ async def test_preflight_compares_stored_runtime_bytes_before_returning_evidence
     class DB:
         async def get(self, _model, _id):
             return solution
+
+        async def scalar(self, _statement):
+            return None
 
         async def execute(self, _statement):
             return Rows()

@@ -16,7 +16,20 @@ from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffPreflightRequest,
     WorkspaceLiveHandoffPreflightResponse,
 )
+from src.models.orm.agents import Agent
+from src.models.orm.applications import Application
+from src.models.orm.custom_claims import CustomClaim
+from src.models.orm.events import EventSource, EventSubscription
+from src.models.orm.file_metadata import FileMetadata, FilePolicy
+from src.models.orm.forms import Form
+from src.models.orm.pending_capture import PendingCaptureORM
+from src.models.orm.policy_rule import PolicyRule
+from src.models.orm.services import ServiceDefinition
+from src.models.orm.solution_config_schema import SolutionConfigSchema
+from src.models.orm.solution_connection_schema import SolutionConnectionSchema
+from src.models.orm.solution_file_location import SolutionFileLocation
 from src.models.orm.solutions import Solution
+from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solutions.deployment_manifest import (
@@ -49,6 +62,39 @@ class WorkspaceLiveHandoffPreflightError(ValueError):
 
 class WorkspaceLiveHandoffPreflightConflict(WorkspaceLiveHandoffPreflightError):
     """The release or Solution pointer differs from the reviewed expectation."""
+
+
+async def _require_empty_solution_install(
+    db: AsyncSession, solution_id: UUID, *, allow_workflows: bool = False
+) -> None:
+    """A workflow-only candidate must not strand existing Solution entities."""
+    models = (
+        Agent,
+        Application,
+        CustomClaim,
+        EventSource,
+        EventSubscription,
+        FileMetadata,
+        FilePolicy,
+        Form,
+        PendingCaptureORM,
+        PolicyRule,
+        ServiceDefinition,
+        SolutionConfigSchema,
+        SolutionConnectionSchema,
+        SolutionFileLocation,
+        Table,
+    )
+    if not allow_workflows:
+        models = (Workflow, *models)
+    for model in models:
+        installed = await db.scalar(
+            select(model.id).where(model.solution_id == solution_id).limit(1)
+        )
+        if installed is not None:
+            raise WorkspaceLiveHandoffPreflightConflict(
+                f"Solution has installed {model.__name__} entities"
+            )
 
 
 def _require_live_identity(
@@ -137,9 +183,7 @@ def require_live_workflow(
 
 def live_workflow_timeout(workflow: Workflow, registration: dict) -> int:
     configured = (
-        workflow.timeout_seconds
-        if workflow.timeout_seconds is not None
-        else 1800
+        workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
     )
     if (
         not isinstance(configured, int)
@@ -219,6 +263,7 @@ class WorkspaceLiveHandoffPreflightService:
             raise WorkspaceLiveHandoffPreflightConflict(
                 "Solution active deployment changed"
             )
+        await _require_empty_solution_install(self.db, solution_id)
         try:
             manifest, resolution = validate_runtime_closure(
                 deployment.compiled_manifest,
@@ -284,9 +329,9 @@ class WorkspaceLiveHandoffPreflightService:
                 "candidate source closure is not entirely governed by Live"
             )
         try:
-            live_bytes = await WorkspaceReleaseFileView.from_release(
-                release
-            ).read_many(list(release.governed_paths))
+            live_bytes = await WorkspaceReleaseFileView.from_release(release).read_many(
+                list(release.governed_paths)
+            )
         except (FileNotFoundError, WorkspaceReleaseRuntimeError) as exc:
             raise WorkspaceLiveHandoffPreflightError(
                 "Live source bytes differ from the active descriptor"
