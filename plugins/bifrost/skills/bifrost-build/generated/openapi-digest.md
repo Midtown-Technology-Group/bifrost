@@ -586,6 +586,9 @@
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/rollback` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/rollback` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/candidate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/preflight` |
 | GET | `/api/solutions/{solution_id}/entities` |
 | POST | `/api/solutions/{solution_id}/export` |
 | GET | `/api/solutions/{solution_id}/export-jobs` |

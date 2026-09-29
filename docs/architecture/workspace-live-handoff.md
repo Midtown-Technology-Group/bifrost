@@ -66,11 +66,39 @@ immutable deployment pin; new dispatch pins Live again. If the Solution write
 lock is lost near commit, the API reports an ambiguous outcome and requires
 pointer and owner readback before any retry.
 
+## Source revisions after handoff
+
+`POST /api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/candidate`
+accepts the active deployment ID and manifest hash, a Git commit SHA, and the
+exact Python file closure with base64 encoded contents. This is a source-only
+path for adopted workflow identities. It keeps each workflow's registration,
+runtime bounds, and UUID fixed. The server rejects paths outside the closure,
+dynamic or unresolved imports, changed workflow identities or metadata, and
+files larger than the bounded archive. It stages a new source archive, runtime
+files, manifest, and ready deployment at create-only keys. The old pointer
+continues serving production.
+
+The staging response and `/source-revision/preflight` include the Git commit,
+source hashes, workflow UUIDs, active subscription UUIDs, and an evidence ID.
+Review the exact source bytes against that commit, the changes to behavior,
+callers and active triggers, the runtime bounds, and any source-release
+obligation before activating. The API records the asserted Git SHA but does
+not fetch Git to prove the assertion. A merge or stage call does not activate
+production code.
+
+`/source-revision/activate` takes the Solution write lock and workflow row
+locks, repeats the stored byte, import closure, registration, trigger, and
+pointer checks, then compares the reviewed evidence ID. One database
+transaction moves the active pointer and marks the old deployment superseded.
+Queued work retains its old immutable pin. To restore old source, stage its
+exact archive as a new candidate against the current pointer and review and
+activate it the same way. This path keeps registration metadata fixed; adding
+or renaming workflows requires a separately reviewed install path.
+
 The generic immutable deployment API still registers references to already
 stored objects, and its activation hooks are unconfigured. Legacy Solution
 full-replace deploy refuses an install with an active immutable pointer: it
 could otherwise change registration rows while execution kept using the old
-closure. Before production uses this handoff, a reviewed successor deployment
-path must be available for later source updates, and the current Live history,
+closure. Before production uses this handoff, the current Live history,
 trigger, dependency, and obligation evidence must be reconciled. Do not use
 direct SQL ownership updates or generic Solution capture as a substitute.

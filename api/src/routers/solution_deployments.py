@@ -15,6 +15,10 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentCreate,
     SolutionDeploymentPublic,
     SolutionDeploymentRuntimeState,
+    SolutionSourceRevisionCommitRequest,
+    SolutionSourceRevisionInspectRequest,
+    SolutionSourceRevisionInspectResponse,
+    SolutionSourceRevisionRequest,
     WorkspaceLiveHandoffCommitRequest,
     WorkspaceLiveHandoffCommitResponse,
     WorkspaceLiveHandoffPreflightRequest,
@@ -39,6 +43,11 @@ from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightConflict,
     WorkspaceLiveHandoffPreflightError,
     WorkspaceLiveHandoffPreflightService,
+)
+from src.services.solutions.source_revision import (
+    SolutionSourceRevisionConflict,
+    SolutionSourceRevisionError,
+    SolutionSourceRevisionService,
 )
 from src.services.solutions.write_lock import (
     SolutionWriteLockHeld,
@@ -350,6 +359,106 @@ async def rollback_live_handoff(
     return await _commit_live_handoff(
         ctx, solution_id, deployment_id, body, rollback=True
     )
+
+
+@router.post(
+    "/{deployment_id}/source-revision/candidate",
+    response_model=SolutionSourceRevisionInspectResponse,
+)
+async def stage_source_revision(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: SolutionSourceRevisionRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    """Stage exact source bytes while the current immutable pointer stays live."""
+    try:
+        async with solution_write_lock(solution_id):
+            result = await SolutionSourceRevisionService(ctx.db).stage(
+                solution_id, deployment_id, user.user_id, body
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Inspect the candidate and Solution pointer before retrying",
+        ) from exc
+    except SolutionSourceRevisionConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await ctx.db.rollback()
+        raise
+
+
+@router.post(
+    "/{deployment_id}/source-revision/preflight",
+    response_model=SolutionSourceRevisionInspectResponse,
+)
+async def inspect_source_revision(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: SolutionSourceRevisionInspectRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    try:
+        return await SolutionSourceRevisionService(ctx.db).inspect(
+            solution_id, deployment_id, body
+        )
+    except SolutionSourceRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SolutionSourceRevisionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{deployment_id}/source-revision/activate",
+    response_model=SolutionSourceRevisionInspectResponse,
+)
+async def activate_source_revision(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: SolutionSourceRevisionCommitRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    try:
+        async with solution_write_lock(solution_id):
+            result = await SolutionSourceRevisionService(ctx.db).activate(
+                solution_id, deployment_id, body
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Inspect the Solution pointer and candidate before retrying",
+        ) from exc
+    except SolutionSourceRevisionConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SolutionSourceRevisionError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await ctx.db.rollback()
+        raise
 
 
 @router.post(
