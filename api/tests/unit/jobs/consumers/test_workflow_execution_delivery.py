@@ -29,8 +29,8 @@ from src.jobs.rabbitmq import (  # noqa: E402
     MalformedMessage,
     RetryableConsumerError,
 )
-from src.services.execution.process_pool import (
-    ProcessPoolAdmissionRejected,  # noqa: E402
+from src.services.execution.process_pool import (  # noqa: E402
+    ProcessPoolAdmissionRejected,
 )
 
 
