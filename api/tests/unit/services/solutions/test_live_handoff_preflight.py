@@ -188,6 +188,15 @@ def test_workflow_binding_keeps_uuid_scope_and_runtime_metadata() -> None:
                 sources=changed.sources,
             ),
         )
+    workflow.timeout_seconds = 0
+    with pytest.raises(WorkspaceLiveHandoffPreflightError, match="invalid timeout"):
+        _require_workflow_binding(
+            cast(Any, workflow),
+            cast(Any, solution),
+            release,
+            resolution("sha256:" + source_hash),
+        )
+    workflow.timeout_seconds = 30
     workflow.endpoint_enabled = True
     with pytest.raises(WorkspaceLiveHandoffPreflightError, match="not bound"):
         _require_workflow_binding(

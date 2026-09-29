@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from io import BytesIO
 from uuid import UUID
 from zipfile import BadZipFile, ZipFile
@@ -89,10 +90,7 @@ def _require_workflow_binding(
         "organization_id": (
             str(workflow.organization_id) if workflow.organization_id else None
         ),
-        "timeout_seconds": min(
-            workflow.timeout_seconds or 1800,
-            runtime_bounds["max_duration_seconds"],
-        ),
+        "timeout_seconds": live_workflow_timeout(workflow, registration),
         "execution_mode": workflow.execution_mode,
         "time_saved": workflow.time_saved or 0,
         "value": float(workflow.value or 0),
@@ -135,6 +133,23 @@ def require_live_workflow(
     path = workflow.path.replace("\\", "/").lstrip("/")
     registration = release.effective_registrations[f"{path}::{workflow.function_name}"]
     return path, registration
+
+
+def live_workflow_timeout(workflow: Workflow, registration: dict) -> int:
+    configured = (
+        workflow.timeout_seconds
+        if workflow.timeout_seconds is not None
+        else 1800
+    )
+    if (
+        not isinstance(configured, int)
+        or isinstance(configured, bool)
+        or configured <= 0
+    ):
+        raise WorkspaceLiveHandoffPreflightError(
+            f"workflow {workflow.id} has an invalid timeout"
+        )
+    return min(configured, registration["runtime_bounds"]["max_duration_seconds"])
 
 
 def _verify_source_archive(archive: bytes, source_bytes: dict[str, bytes]) -> None:
@@ -295,16 +310,25 @@ class WorkspaceLiveHandoffPreflightService:
             raise WorkspaceLiveHandoffPreflightError(
                 "candidate source paths differ from the complete Live dependency closure"
             )
-        for path in source_paths:
+        read_slots = asyncio.Semaphore(16)
+
+        async def verify_runtime(path: str) -> None:
             source = resolution.sources[path]
             if (
                 source.object_key != f"{storage.runtime_prefix}{path}"
                 or source.content_hash != sha256_digest(source_bytes[path])
-                or await storage.read_runtime_file(path) != source_bytes[path]
             ):
                 raise WorkspaceLiveHandoffPreflightError(
                     f"candidate runtime bytes differ from Live: {path}"
                 )
+            async with read_slots:
+                runtime_bytes = await storage.read_runtime_file(path)
+            if runtime_bytes != source_bytes[path]:
+                raise WorkspaceLiveHandoffPreflightError(
+                    f"candidate runtime bytes differ from Live: {path}"
+                )
+
+        await asyncio.gather(*(verify_runtime(path) for path in source_paths))
         _verify_source_archive(await storage.read_source_artifact(), source_bytes)
         _require_live_identity(await active_workspace_release(self.db, None), request)
         workflow_ids = sorted(request.workflow_ids, key=str)

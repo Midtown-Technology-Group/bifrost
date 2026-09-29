@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from sqlalchemy import select
@@ -31,6 +32,7 @@ from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightError,
     WorkspaceLiveHandoffPreflightService,
     _require_live_identity,
+    live_workflow_timeout,
     require_live_workflow,
 )
 from src.services.solutions.live_handoff_source import (
@@ -143,10 +145,7 @@ class WorkspaceLiveHandoffCandidateService:
                         if workflow.organization_id
                         else None
                     ),
-                    "timeout_seconds": min(
-                        workflow.timeout_seconds or 1800,
-                        bounds["max_duration_seconds"],
-                    ),
+                    "timeout_seconds": live_workflow_timeout(workflow, registration),
                     "execution_mode": workflow.execution_mode,
                     "time_saved": workflow.time_saved or 0,
                     "value": float(workflow.value or 0),
@@ -181,8 +180,15 @@ class WorkspaceLiveHandoffCandidateService:
             git=DeploymentGitProvenance(commit_sha=release.source_commit_sha),
         )
         await storage.write_source_artifact(archive, idempotent=True)
-        for path, content in files.items():
-            await storage.write_runtime_file(path, content, idempotent=True)
+        upload_slots = asyncio.Semaphore(16)
+
+        async def write_runtime(path: str, content: bytes) -> None:
+            async with upload_slots:
+                await storage.write_runtime_file(path, content, idempotent=True)
+
+        await asyncio.gather(
+            *(write_runtime(path, content) for path, content in files.items())
+        )
         await SolutionDeploymentAPIService(self.db).create_ready_draft(
             solution_id,
             created_by,
