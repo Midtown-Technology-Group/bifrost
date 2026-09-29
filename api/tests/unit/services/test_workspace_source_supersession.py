@@ -296,12 +296,16 @@ def test_supersession_request_requires_evidence_and_active_runtime_hash():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("owner", ["workspace", "solution"])
+@pytest.mark.parametrize("owner", ["workspace", "solution", "root"])
 async def test_removed_disposition_rejects_source_still_in_immutable_runtime(monkeypatch, owner):
     evidence = _evidence(paths={"features/a.py": WorkspaceSourceSupersessionPath(runtime_owner="removed")})
     old, later = _records(evidence)
     db = AsyncMock()
-    db.scalar.return_value = uuid4() if owner == "solution" else None
+    db.scalar.side_effect = [None, uuid4() if owner == "solution" else None]
+    monkeypatch.setattr(
+        workspace_source_releases, "RepoStorage",
+        lambda: SimpleNamespace(list=AsyncMock(return_value=["features/a.py"] if owner == "root" else [])),
+    )
     service = WorkspaceSourceReleaseService(db, uuid4())
     service._get = AsyncMock(side_effect=[old, later])
     monkeypatch.setattr(
