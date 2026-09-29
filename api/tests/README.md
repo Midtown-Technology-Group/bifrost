@@ -9,7 +9,7 @@ tests/
 │   ├── services/   # Service layer unit tests
 │   ├── handlers/   # HTTP handler unit tests
 │   └── ...
-├── e2e/            # Tests requiring Docker stack (DB, Redis, RabbitMQ)
+├── e2e/            # Tests requiring Docker stack (Postgres, Redis, and compatibility RabbitMQ)
 │   ├── engine/     # Engine tests that need process execution
 │   ├── platform/   # Platform service tests with real DB
 │   ├── mcp/        # MCP protocol tests
@@ -37,12 +37,12 @@ tests/
 
 ### Unit Tests (`tests/unit/`)
 - Test business logic in isolation
-- Mock all external dependencies (DB, Redis, RabbitMQ)
+- Mock external dependencies such as PostgreSQL delivery/storage, Redis, and compatibility RabbitMQ paths as appropriate
 - No Docker required
 - Marker: `@pytest.mark.unit`
 
 ### E2E Tests (`tests/e2e/`)
-- Test with real database, message queue, and services
+- Test with real database and services; PostgreSQL is the active production work-delivery backend, while RabbitMQ remains available for compatibility/transport-specific coverage
 - Docker stack started by `test.sh`
 - Includes platform service tests, API endpoint tests, engine execution tests
 - Marker: `@pytest.mark.e2e`

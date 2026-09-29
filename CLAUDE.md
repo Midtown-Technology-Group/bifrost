@@ -81,9 +81,9 @@ Tips:
 
 ## Technologies
 
--   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, RabbitMQ, Redis
+-   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, Redis; RabbitMQ remains as a compatibility/test transport
 -   **Frontend**: TypeScript 4.9+, React, Vite
--   **Storage**: PostgreSQL (data), Redis (cache/sessions), RabbitMQ (message queue)
+-   **Storage**: PostgreSQL (durable data + active production work delivery), Redis (cache/sessions + bounded ephemeral execution state); RabbitMQ is retained for compatibility/test coverage
 -   **Infrastructure**: Docker, Docker Compose, GitHub Actions for CI/CD
 
 ## Development Environment (CRITICAL - READ FIRST)
@@ -106,7 +106,7 @@ The default mode allocates a free local port for the client (deterministic per w
 
 **Forcing port mode for browser/Playwright work:** Chrome/Playwright cannot drive netbird stacks (Vite HMR websocket hangs). If your `~/.config/bifrost/debug.env` has `NETBIRD_SETUP_KEY`, run `BIFROST_FORCE_PORT=1 ./debug.sh up` to force port mode for that boot without editing the global config. `env -u NETBIRD_SETUP_KEY ./debug.sh up` does **not** work — `debug.sh` re-sources the global `debug.env` under `set -a`, re-introducing the key.
 
-Stack contains: API (port 8000 internal), Client (port 80 internal), Scheduler, Worker, Postgres, RabbitMQ, Redis, SeaweedFS. All Bifrost services build from `api/Dockerfile.dev` / `client/Dockerfile.dev` (source build, not public images).
+Stack contains: API (port 8000 internal), Client (port 80 internal), Scheduler, Worker, Postgres, RabbitMQ, Redis, SeaweedFS. PostgreSQL is the active production work-delivery backend; RabbitMQ remains in the development stack for compatibility and transport-specific test coverage. All Bifrost services build from `api/Dockerfile.dev` / `client/Dockerfile.dev` (source build, not public images).
 
 ### Hot Reload is Automatic
 
