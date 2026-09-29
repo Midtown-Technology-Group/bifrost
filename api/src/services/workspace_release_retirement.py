@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from bifrost.workspace_release import canonical_digest
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.contracts.workspace_promotions import (
     WorkspaceLiveRetireRequest,
     WorkspaceLiveRetireResponse,
 )
+from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
+    WorkspaceSourceRelease,
 )
 from src.services.audit import emit_audit
 from src.services.workspace_release_projection import acquire_workspace_release_lock
@@ -87,7 +89,13 @@ class WorkspaceReleaseRetirementService:
             raise WorkspaceReleaseRetirementError(str(exc)) from exc
         if descriptor.governed_manifest_id != request.governed_manifest_id:
             raise WorkspaceReleaseRetirementError("governed manifest CAS mismatch")
-        now = datetime.now(timezone.utc)
+        if release.lock_state != "locked":
+            raise WorkspaceReleaseRetirementError(
+                "Live release history is not locked; repair signed history before retirement"
+            )
+        await self._require_no_loose_consumers(descriptor)
+        await self._require_resolved_source_obligations()
+        now = datetime.now(UTC)
         evidence = {
             "schema_version": RETIREMENT_EVIDENCE_SCHEMA,
             "release_row_id": str(release.id),
@@ -130,6 +138,48 @@ class WorkspaceReleaseRetirementService:
             governed_path_count=len(descriptor.governed_paths),
             evidence_id=evidence["evidence_id"],
         )
+
+    async def _require_no_loose_consumers(
+        self, descriptor: WorkspaceReleaseDescriptor
+    ) -> None:
+        registration_ids = [
+            UUID(item["workflow_id"])
+            for item in descriptor.effective_registrations.values()
+        ]
+        predicates = [Workflow.path.in_(descriptor.governed_paths)]
+        if registration_ids:
+            predicates.append(Workflow.id.in_(registration_ids))
+        rows = (
+            await self.db.execute(
+                select(Workflow.id)
+                .where(Workflow.solution_id.is_(None), or_(*predicates))
+                .limit(1)
+            )
+        ).first()
+        if rows is not None:
+            raise WorkspaceReleaseRetirementError(
+                "Live release still has loose workflow registrations; "
+                "complete and verify their guarded handoff before retirement"
+            )
+
+    async def _require_resolved_source_obligations(self) -> None:
+        row = (
+            await self.db.execute(
+                select(WorkspaceSourceRelease.id)
+                .where(
+                    WorkspaceSourceRelease.organization_id == self.organization_id,
+                    WorkspaceSourceRelease.disposition.in_(
+                        ("pending", "attention_required", "deferred")
+                    ),
+                )
+                .limit(1)
+            )
+        ).first()
+        if row is not None:
+            raise WorkspaceReleaseRetirementError(
+                "unresolved Workspace source-release obligations remain; "
+                "read back and resolve each disposition before retirement"
+            )
 
     def _retired_response(
         self,

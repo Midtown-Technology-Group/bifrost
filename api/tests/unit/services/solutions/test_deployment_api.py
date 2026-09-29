@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.models.contracts.solution_deployments import SolutionDeploymentCreate
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
 from src.services.solutions.deployment_manifest import (
@@ -14,8 +13,8 @@ from src.services.solutions.deployment_manifest import (
     sha256_digest,
 )
 from src.services.solutions.deployment_storage import (
-    deployment_source_artifact_key,
     deployment_runtime_prefix,
+    deployment_source_artifact_key,
 )
 
 
@@ -92,7 +91,7 @@ async def test_create_registers_complete_reference_only_ready_draft(monkeypatch)
         ("building", "validated"),
         ("validated", "ready"),
     ]
-    assert solution.execution_runtime_mode == "deployment-v1"
+    assert solution.execution_runtime_mode == "repo-v1"
     assert written == [manifest.canonical_bytes()]
 
 

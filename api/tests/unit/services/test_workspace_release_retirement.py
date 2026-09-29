@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from bifrost.workspace_release import canonical_digest
 from src.models.contracts.workspace_promotions import WorkspaceLiveRetireRequest
 from src.services import workspace_release_retirement as retirement_module
@@ -50,9 +49,10 @@ def _rows():
         artifact_id=artifact_id,
         organization_id=organization_id,
         activation_state="live",
+        lock_state="locked",
         retired_at=None,
         retirement_evidence=None,
-        attention_deadline=datetime.now(timezone.utc),
+        attention_deadline=datetime.now(UTC),
     )
     request = WorkspaceLiveRetireRequest(
         expected_release_id=release_id,
@@ -77,6 +77,8 @@ def _service(release, artifact, *, live, retired, monkeypatch):
     service = WorkspaceReleaseRetirementService(db, release.organization_id)
     service._live_release = AsyncMock(return_value=live)  # type: ignore[method-assign]
     service._retired_release = AsyncMock(return_value=retired)  # type: ignore[method-assign]
+    service._require_no_loose_consumers = AsyncMock()  # type: ignore[method-assign]
+    service._require_resolved_source_obligations = AsyncMock()  # type: ignore[method-assign]
     monkeypatch.setattr(
         retirement_module, "acquire_workspace_release_lock", AsyncMock()
     )
@@ -189,7 +191,7 @@ async def test_retire_without_live_release_fails(monkeypatch) -> None:
 async def test_retire_already_retired_release_is_idempotent(monkeypatch) -> None:
     release, artifact, _descriptor, request = _rows()
     release.activation_state = "retired"
-    release.retired_at = datetime.now(timezone.utc)
+    release.retired_at = datetime.now(UTC)
     release.retirement_evidence = {
         "schema_version": retirement_module.RETIREMENT_EVIDENCE_SCHEMA,
         "reason": request.reason,
@@ -218,7 +220,7 @@ async def test_retire_already_retired_release_is_idempotent(monkeypatch) -> None
 async def test_retire_idempotent_retry_rejects_wrong_identity(monkeypatch) -> None:
     release, artifact, descriptor, request = _rows()
     release.activation_state = "retired"
-    release.retired_at = datetime.now(timezone.utc)
+    release.retired_at = datetime.now(UTC)
     release.retirement_evidence = {
         "schema_version": retirement_module.RETIREMENT_EVIDENCE_SCHEMA,
         "reason": request.reason,
@@ -226,7 +228,7 @@ async def test_retire_idempotent_retry_rejects_wrong_identity(monkeypatch) -> No
         "governed_path_count": 1,
         "evidence_id": "sha256:" + "7" * 64,
     }
-    db, service, _audit = _service(
+    _db, service, _audit = _service(
         release,
         artifact,
         live=None,
