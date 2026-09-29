@@ -104,3 +104,19 @@ class WorkspaceLiveHandoffPreflightResponse(BaseModel):
     verified_source_paths: list[str]
     expected_active_deployment_id: UUID | None
     evidence_id: str
+
+
+class WorkspaceLiveHandoffCommitRequest(WorkspaceLiveHandoffPreflightRequest):
+    """Preflight expectation that must still hold at the locked commit."""
+
+    expected_evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class WorkspaceLiveHandoffCommitResponse(BaseModel):
+    solution_id: UUID
+    deployment_id: UUID
+    release_row_id: UUID
+    release_id: str
+    workflow_ids: list[UUID]
+    evidence_id: str
+    state: str

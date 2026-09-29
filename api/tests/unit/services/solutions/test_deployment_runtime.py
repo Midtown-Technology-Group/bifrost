@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentGitProvenance,
@@ -17,6 +16,7 @@ from src.services.solutions.deployment_manifest import (
 from src.services.solutions.deployment_runtime import (
     DeploymentRuntimeError,
     pin_workflow_runtime,
+    resolve_pinned_workflow_runtime,
     verify_runtime_evidence,
     workflow_data_from_evidence,
 )
@@ -177,6 +177,52 @@ async def test_bounded_deployment_pin_preserves_live_duration_and_output_limits(
     assert workflow_data_from_evidence(str(deployment_id), evidence)[
         "workflow_runtime_bounds"
     ] == bounds
+
+
+@pytest.mark.asyncio
+async def test_queued_handoff_pin_survives_owner_rollback_to_live(monkeypatch):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=None)
+    solution = SimpleNamespace(
+        id=solution_id,
+        status="active",
+        organization_id=None,
+        allow_outbound_access=False,
+        active_deployment_id=None,
+    )
+    deployment = _closure(
+        deployment_id=deployment_id,
+        solution_id=solution_id,
+        workflow_id=workflow_id,
+        source_text="old handoff",
+    )
+    deployment.state = "superseded"
+    deployment.validation_result = {
+        "schema_version": "bifrost.workspace-live-handoff/v1",
+        "workflow_ids": [str(workflow_id)],
+    }
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=_Result((workflow, None))),
+        get=AsyncMock(return_value=solution),
+    )
+
+    async def get_by_id(_repo, requested_id):
+        return deployment if requested_id == deployment_id else None
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_by_id_for_runtime",
+        get_by_id,
+    )
+
+    assert await pin_workflow_runtime(session, workflow_id) is None
+    pinned = await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+    assert pinned.deployment_id == deployment_id
+    assert pinned.workflow_id == workflow_id
+    assert pinned.source_hash == deployment.resolution_map["sources"]["workflows/demo.py"]["content_hash"]
+
+    deployment.validation_result = None
+    with pytest.raises(DeploymentRuntimeError, match="does not belong"):
+        await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
 
 
 @pytest.mark.asyncio

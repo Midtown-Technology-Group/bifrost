@@ -14,6 +14,8 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentCapabilities,
     SolutionDeploymentCreate,
     SolutionDeploymentPublic,
+    WorkspaceLiveHandoffCommitRequest,
+    WorkspaceLiveHandoffCommitResponse,
     WorkspaceLiveHandoffPreflightRequest,
     WorkspaceLiveHandoffPreflightResponse,
 )
@@ -31,6 +33,7 @@ from src.services.solutions.deployment_storage import DeploymentArtifactIntegrit
 from src.services.solutions.live_handoff_candidate import (
     WorkspaceLiveHandoffCandidateService,
 )
+from src.services.solutions.live_handoff_commit import WorkspaceLiveHandoffCommitService
 from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightConflict,
     WorkspaceLiveHandoffPreflightError,
@@ -235,6 +238,97 @@ async def build_live_handoff_candidate(
     except ValueError as exc:
         await ctx.db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def _commit_live_handoff(
+    ctx: Context,
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffCommitRequest,
+    *,
+    rollback: bool,
+) -> WorkspaceLiveHandoffCommitResponse:
+    try:
+        async with solution_write_lock(solution_id):
+            service = WorkspaceLiveHandoffCommitService(ctx.db)
+            result = (
+                await service.rollback(solution_id, deployment_id, body)
+                if rollback
+                else await service.activate(solution_id, deployment_id, body)
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=409, detail={"code": "solution_write_lock_held"}
+        ) from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "solution_write_lock_lost",
+                "retryable": False,
+                "message": "Inspect the Solution pointer and workflow owners before retrying",
+            },
+        ) from exc
+    except WorkspaceLiveHandoffPreflightConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkspaceLiveHandoffPreflightError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:  # Always release the failed database transaction.
+        await ctx.db.rollback()
+        raise
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/activate",
+    response_model=WorkspaceLiveHandoffCommitResponse,
+    responses={
+        409: {"description": "Reviewed Live, Solution, or workflow state changed"},
+        422: {"description": "Candidate is not safe to activate"},
+        503: {"description": "Commit outcome needs readback after write-lock loss"},
+    },
+)
+async def activate_live_handoff(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffCommitRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    return await _commit_live_handoff(
+        ctx, solution_id, deployment_id, body, rollback=False
+    )
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/rollback",
+    response_model=WorkspaceLiveHandoffCommitResponse,
+    responses={
+        409: {"description": "Reviewed Live, Solution, or workflow state changed"},
+        422: {"description": "Live rollback source is not safe"},
+        503: {"description": "Commit outcome needs readback after write-lock loss"},
+    },
+)
+async def rollback_live_handoff(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffCommitRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    return await _commit_live_handoff(
+        ctx, solution_id, deployment_id, body, rollback=True
+    )
 
 
 @router.post(

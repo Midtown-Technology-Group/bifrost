@@ -355,6 +355,12 @@ class SolutionDeployer:
         solution = bundle.solution
         sid = solution.id
 
+        if getattr(solution, "active_deployment_id", None) is not None:
+            raise SolutionDeployConflict(
+                "Solution has an active immutable deployment; stage and review a "
+                "successor deployment before changing its workflows"
+            )
+
         # Source portability artifact: the exact workspace shape export/install
         # consume. Build it from the author-time bundle before per-install UUID
         # remapping, then store it only after the DB commit in finalize_s3.

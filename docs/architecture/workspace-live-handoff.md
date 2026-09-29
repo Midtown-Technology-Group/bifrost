@@ -34,11 +34,9 @@ checks that:
   equal the verified Live bytes. The source archive contains exactly those paths.
 
 The response binds this inspection to a digest of the release, registration,
-candidate, Solution base, selected UUIDs, and source hashes. It is review
-evidence, not an activation token. Live and Solution state must be rechecked
-under their write locks before any ownership change. The endpoint does not
-change registry rows, runtime pointers, event subscriptions, or source-release
-obligations.
+candidate, Solution base, selected UUIDs, and source hashes. The endpoint does
+not change registry rows, runtime pointers, event subscriptions, or
+source-release obligations.
 
 Dispatch rechecks Solution ownership if it changes between the initial Solution
 lookup and the Live lookup. A candidate copied from Live carries the bounded
@@ -47,9 +45,32 @@ The Solution queue pin carries those bounds to the worker; the worker enforces
 the duration and output limits. Existing Solution deployments without bounds
 retain their current behavior.
 
+`POST /api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/activate`
+accepts those exact expectations plus the preflight evidence ID. It takes the
+Solution write lock and the global Live transaction lock, locks the Solution
+and selected workflow rows, and repeats preflight against the stored runtime
+bytes. The transaction compares the empty Solution pointer, then marks the
+candidate active and transfers the selected UUIDs to the Solution together.
+A failed check rolls the entire transaction back. Dispatch before the commit
+can keep a durable Live pin; dispatch after the commit gets the Solution
+deployment pin. The selected UUIDs, roles, endpoint settings, event
+subscriptions, and API callers remain the same registry identities.
+
+`POST /api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/rollback`
+requires the active pointer and original handoff evidence. It verifies that
+the same Live release is still active, that the Solution owns exactly the
+selected UUIDs, and that the Live bytes and candidate runtime still match.
+One transaction clears the pointer, restores the loose owners, and marks the
+deployment superseded. Already queued Solution executions retain their
+immutable deployment pin; new dispatch pins Live again. If the Solution write
+lock is lost near commit, the API reports an ambiguous outcome and requires
+pointer and owner readback before any retry.
+
 The generic immutable deployment API still registers references to already
-stored objects, and its activation hooks are unconfigured. A later stage must
-implement atomic pointer and owner movement with a rollback path and prove
-queued and running execution behavior before production uses the handoff. Do
-not use direct SQL ownership updates or the generic Solution capture route as
-a substitute.
+stored objects, and its activation hooks are unconfigured. Legacy Solution
+full-replace deploy refuses an install with an active immutable pointer: it
+could otherwise change registration rows while execution kept using the old
+closure. Before production uses this handoff, a reviewed successor deployment
+path must be available for later source updates, and the current Live history,
+trigger, dependency, and obligation evidence must be reconciled. Do not use
+direct SQL ownership updates or generic Solution capture as a substitute.
