@@ -2,8 +2,12 @@
 
 Distributed execution system for running workflows, scripts, and data providers
 in fresh isolated processes. PostgreSQL is authoritative for durable workflow
-identity and status. RabbitMQ transports work, while Redis carries bounded
+identity and status and is the active production work-delivery backend. Delivery
+rows are claimed with leases, renewed by heartbeats, fenced by ownership, and
+recovered through explicit interrupted-delivery handling. Redis carries bounded
 ephemeral context, live logs, cancellation signals, and synchronous results.
+RabbitMQ remains a supported compatibility transport and test surface, but it is
+not the current production delivery path.
 
 ## Architecture Overview
 
@@ -131,26 +135,32 @@ An authorized cancellation may project `CANCELLING` between `RUNNING` and
 1. API calls `run_workflow()` or `run_code()`
 2. `async_executor.py` creates a PostgreSQL `SCHEDULED` row and `dispatching`
    attempt with immutable dispatch/runtime evidence under the execution lock
-3. Ephemeral context is stored in Redis and a minimal message is published with
-   broker confirmation
+3. Ephemeral context is stored in Redis and the durable work envelope is inserted
+   into PostgreSQL in the same fenced dispatch flow
 4. The same fenced transaction advances the logical row to `PENDING` and the
    attempt to `published`
-5. Consumer atomically claims `PENDING`, assigning the durable attempt an
+5. The PostgreSQL delivery runner claims available rows with an owner-scoped lease.
+   Each active delivery is heartbeat-renewed; loss or uncertainty of ownership
+   cancels the handler rather than allowing an unfenced result.
+6. Consumer atomically claims `PENDING`, assigning the durable attempt an
    internal capability token and worker incarnation
-6. Consumer resolves pinned metadata and routes a fresh child through
+7. Consumer resolves pinned metadata and routes a fresh child through
    `ProcessPoolManager`
-7. RabbitMQ acknowledges the delivery after durable claim and successful child
-   routing, before tenant code completes. Recovery after that boundary comes
-   from the durable attempt lease, not broker redelivery.
-8. The pool copies the token into real and synthetic timeout/cancel/crash
+8. Delivery settlement occurs only while lease ownership is still valid. Worker
+   shutdown or lease expiry marks work interrupted so the delivery layer can
+   recover it deliberately rather than assuming an external side effect is safe
+   to replay.
+9. The pool copies the token into real and synthetic timeout/cancel/crash
    results returned over the private result pipe
-9. Consumer accepts only the active token, terminalizing attempt and logical
-   execution before publishing updates
-10. Client treats WebSocket updates as live hints and reloads durable detail
+10. Consumer accepts only the active token, terminalizing attempt and logical
+    execution before publishing updates
+11. Client treats WebSocket updates as live hints and reloads durable detail
 
-Rabbit delayed retries apply only to failures before child execution, such as
-admission pressure. Exhausted or malformed deliveries go to poison handling.
-Tenant workflow code is never automatically replayed.
+PostgreSQL delivery retries are bounded to pre-execution failures selected by the
+shared consumer policy. Interrupted rows are recovered through the durable
+lease/recovery path. Tenant workflow code is never automatically replayed after
+execution begins. RabbitMQ retains analogous retry/poison behavior when the
+legacy/compatibility transport is selected.
 
 Persisted inline-code execution retains a legacy Redis-first creation path and
 therefore reports unavailable attempt coverage until that path is reconciled.

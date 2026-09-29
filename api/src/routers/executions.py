@@ -1194,15 +1194,14 @@ async def cancel_execution(
     """
     Cancel an execution.
 
-    With Redis-first architecture, the execution may be in one of three states:
-    1. In Redis pending only (worker hasn't picked it up yet)
-    2. In PostgreSQL as Running (worker is executing)
-    3. In PostgreSQL as completed (already done - return error)
+    PostgreSQL is authoritative for durable execution state. Redis carries
+    bounded ephemeral execution context and the live cancellation signal.
 
-    We handle all cases by:
-    1. First check PostgreSQL for authorization and status
-    2. If found and Running/Pending, set Redis cancel flag for pool
-    3. If not in PostgreSQL yet, try to cancel Redis pending record
+    We handle cancellation by:
+    1. Checking PostgreSQL for authorization and durable status
+    2. Terminalizing Scheduled/Pending work or moving Running work to CANCELLING
+    3. Publishing the Redis cancel flag/event for a running process
+    4. Retaining the legacy Redis-only fallback for older/non-durable pending work
     """
     redis_client = get_redis_client()
     repo = ExecutionRepository(ctx.db)
