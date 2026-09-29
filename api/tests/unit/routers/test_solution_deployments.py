@@ -1,9 +1,11 @@
 from types import SimpleNamespace
 from typing import Any, cast
 from uuid import uuid4
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from src.models.contracts.solution_deployments import SolutionDeploymentCapabilities
 from src.routers.solution_deployments import inspect_active_deployment, router
@@ -61,3 +63,25 @@ def test_capabilities_fail_closed_for_unconfigured_end_to_end_deployment():
     assert capabilities.server_side_compilation is False
     assert capabilities.activation_configured is False
     assert capabilities.safe_for_end_to_end_cs_deploy is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["stage", "activate"])
+async def test_source_revision_transition_conflict_rolls_back_and_returns_409(monkeypatch, operation):
+    from src.routers import solution_deployments as module
+    from src.repositories.solution_deployments import InvalidDeploymentTransition
+
+    @asynccontextmanager
+    async def lock(_solution_id):
+        yield
+
+    service = SimpleNamespace(**{operation: AsyncMock(side_effect=InvalidDeploymentTransition("state changed"))})
+    monkeypatch.setattr(module, "solution_write_lock", lock)
+    monkeypatch.setattr(module, "SolutionSourceRevisionService", lambda _db: service)
+    db = AsyncMock()
+    endpoint = module.stage_source_revision if operation == "stage" else module.activate_source_revision
+    with pytest.raises(HTTPException) as caught:
+        await endpoint(uuid4(), uuid4(), cast(Any, object()), cast(Any, SimpleNamespace(db=db)), cast(Any, SimpleNamespace(user_id=uuid4())))
+    assert caught.value.status_code == 409
+    db.rollback.assert_awaited_once()
+    db.commit.assert_not_awaited()

@@ -293,3 +293,23 @@ def test_supersession_request_requires_evidence_and_active_runtime_hash():
         )
     with pytest.raises(ValidationError):
         WorkspaceSourceSupersessionPath(runtime_owner="solution")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", ["workspace", "solution"])
+async def test_removed_disposition_rejects_source_still_in_immutable_runtime(monkeypatch, owner):
+    evidence = _evidence(paths={"features/a.py": WorkspaceSourceSupersessionPath(runtime_owner="removed")})
+    old, later = _records(evidence)
+    db = AsyncMock()
+    db.scalar.return_value = uuid4() if owner == "solution" else None
+    service = WorkspaceSourceReleaseService(db, uuid4())
+    service._get = AsyncMock(side_effect=[old, later])
+    monkeypatch.setattr(
+        workspace_source_releases, "active_workspace_release",
+        AsyncMock(return_value=SimpleNamespace(source_hashes={"features/a.py": "c" * 64} if owner == "workspace" else {})),
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="still present"):
+        await service.set_manual_disposition(
+            old.id, disposition="superseded", reason="Reviewed removal", supersession_evidence=evidence,
+        )
+    db.commit.assert_not_awaited()
