@@ -17,7 +17,13 @@ from src.models.contracts.solution_deployments import (
 )
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
+from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
+from src.services.solutions.capture import (
+    SolutionCaptureConflict,
+    SolutionCaptureSelectors,
+    SolutionCaptureService,
+)
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentResolutionMap,
@@ -305,6 +311,37 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         solution_pin = await pin_workflow_runtime(db_session, workflow_id)
         assert solution_pin is not None
         original_evidence = solution_pin.queue_evidence()
+
+        loose_table = Table(
+            id=uuid4(),
+            name=f"handoff_capture_{uuid4().hex}",
+            organization_id=PROVIDER_ORG_ID,
+        )
+        db_session.add(loose_table)
+        await db_session.flush()
+        stale_solution = Solution(
+            id=solution_id,
+            slug=solution.slug,
+            name=solution.name,
+            active_deployment_id=None,
+        )
+        with pytest.raises(SolutionCaptureConflict, match="active immutable"):
+            await SolutionCaptureService(db_session).capture(
+                stale_solution,
+                SolutionCaptureSelectors(
+                    workflows=[],
+                    tables=[loose_table.id],
+                    apps=[],
+                    forms=[],
+                    agents=[],
+                    claims=[],
+                    configs=[],
+                ),
+            )
+        await db_session.refresh(loose_table)
+        assert loose_table.solution_id is None
+        assert solution.active_deployment_id == deployment_id
+        await db_session.commit()
 
         rollback = WorkspaceLiveHandoffCommitRequest(
             **{

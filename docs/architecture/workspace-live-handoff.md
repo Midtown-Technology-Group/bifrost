@@ -105,8 +105,10 @@ or renaming workflows requires a separately reviewed install path.
 
 The generic immutable deployment API still registers references to already
 stored objects, and its activation hooks are unconfigured. Legacy Solution
-full-replace deploy refuses an install with an active immutable pointer: it
-could otherwise change registration rows while execution kept using the old
-closure. Before production uses this handoff, the current Live history,
+full-replace deploy and ordinary capture refuse an install with an active
+immutable pointer. Either operation could change registration rows while
+execution kept using the old closure. Capture reads and locks the current
+database pointer, even when its caller loaded the Solution before activation.
+Before production uses this handoff, the current Live history,
 trigger, dependency, and obligation evidence must be reconciled. Do not use
 direct SQL ownership updates or generic Solution capture as a substitute.
