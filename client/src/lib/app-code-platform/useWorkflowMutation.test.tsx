@@ -78,4 +78,23 @@ describe("useWorkflowMutation", () => {
 			expect(unsubscribe).toHaveBeenCalledOnce();
 		});
 	});
+
+	it("records a thrown transport failure instead of staying in loading", async () => {
+		(apiClient.POST as Mock).mockRejectedValue(
+			new Error("Authentication required"),
+		);
+
+		const { result } = renderHook(() => useWorkflowMutation("workflow-1"));
+
+		await act(async () => {
+			await expect(result.current.execute()).rejects.toThrow(
+				"Authentication required",
+			);
+		});
+
+		expect(result.current.isError).toBe(true);
+		expect(result.current.errorMessage).toBe("Authentication required");
+		expect(result.current.isLoading).toBe(false);
+		expect(result.current.data).toBeNull();
+	});
 });
