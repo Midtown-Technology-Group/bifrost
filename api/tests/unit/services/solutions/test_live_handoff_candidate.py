@@ -55,6 +55,38 @@ def test_candidate_archive_is_deterministic_and_contains_exact_bytes():
         assert {path: archive.read(path) for path in archive.namelist()} == files
 
 
+@pytest.mark.parametrize(
+    "sdk_import",
+    [
+        "from bifrost import tables as state",
+        "from bifrost.tables import upsert",
+        "import bifrost.tables as state",
+        "from bifrost import files",
+        "from bifrost.files import read",
+        "import bifrost as sdk",
+        "import bifrost.workflows",
+        "from bifrost import *",
+    ],
+)
+def test_empty_handoff_rejects_unbound_resources_in_imported_helpers(sdk_import):
+    files = {
+        "features/demo.py": b"from modules.helper import run\n",
+        "modules/helper.py": f"{sdk_import}\nasync def run(): pass\n".encode(),
+    }
+    with pytest.raises(LiveHandoffSourceError, match="resource bindings: modules/helper.py"):
+        source_closure(files, {"features/demo.py"})
+
+
+def test_resource_imports_outside_selected_closure_do_not_block_handoff():
+    files = {
+        "features/demo.py": b"from bifrost import workflow, integrations, config\n",
+        "features/unselected.py": b"from bifrost import tables\n",
+    }
+    assert source_closure(files, {"features/demo.py"}) == {
+        "features/demo.py": files["features/demo.py"]
+    }
+
+
 @pytest.mark.asyncio
 async def test_builder_stages_live_bytes_and_preserves_uuid_and_bounds(monkeypatch):
     from src.services.solutions import live_handoff_candidate as module

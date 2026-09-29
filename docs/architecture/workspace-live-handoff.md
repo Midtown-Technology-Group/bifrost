@@ -18,6 +18,19 @@ builder registers the candidate as ready and returns the preflight evidence.
 It does not move ownership or a runtime pointer. An orphaned immutable object
 can remain if staging fails after an object write; it cannot affect execution.
 
+The workflow-only candidate has no installed tables or file locations. Its
+complete Python closure therefore rejects imports of `bifrost.tables` and
+`bifrost.files`, including aliases and imports in helpers. Bare `import bifrost`
+and wildcard SDK imports also fail because they conceal which SDK resources
+the code uses. Import supported SDK APIs explicitly. The same check applies
+during preflight and source revision, before activation. This conservative
+check is an unsupported-resource boundary, not proof of arbitrary Python's
+resource behavior. Review runtime dependencies and external effects separately.
+
+Meraki's shared tables require a reviewed resource-aware deployment before
+handoff. Copying their Python source into an empty Solution cannot preserve
+table resolution. Do not enable broad outbound access to bypass this boundary.
+
 `POST /api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight`
 is a read-only inspection of that immutable Solution deployment. The service
 checks that:

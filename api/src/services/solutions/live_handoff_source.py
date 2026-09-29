@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from io import BytesIO
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
@@ -14,6 +15,35 @@ class LiveHandoffSourceError(ValueError):
 
 
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+
+
+def _require_resource_free_source(path: str, raw: bytes) -> None:
+    """Empty workflow installs cannot resolve shared tables or file locations."""
+    tree = ast.parse(raw, filename=path)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            unsupported = any(
+                alias.name == "bifrost"
+                or alias.name.startswith("bifrost.") and alias.asname is None
+                or alias.name.split(".")[:2]
+                in (["bifrost", "tables"], ["bifrost", "files"])
+                for alias in node.names
+            )
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            unsupported = node.level == 0 and (
+                module.split(".")[:2]
+                in (["bifrost", "tables"], ["bifrost", "files"])
+                or module == "bifrost"
+                and any(alias.name in {"tables", "files", "*"} for alias in node.names)
+            )
+        else:
+            continue
+        if unsupported:
+            raise LiveHandoffSourceError(
+                f"Workflow-only handoff cannot prove table/file resource bindings: {path}. "
+                "Use a reviewed resource-aware deployment; import supported SDK APIs explicitly."
+            )
 
 
 def source_closure(
@@ -43,6 +73,8 @@ def source_closure(
             raise LiveHandoffSourceError(
                 f"Live source dependency closure cannot be proven: {path}"
             )
+        if path.endswith(".py"):
+            _require_resource_free_source(path, source_bytes[path])
     return {path: source_bytes[path] for path in sorted(paths)}
 
 
