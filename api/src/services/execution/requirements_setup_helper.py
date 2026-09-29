@@ -39,7 +39,7 @@ def _strip_inline_comment(line: str) -> str:
 
 
 def _requirement_name(line: str) -> str | None:
-    """Canonical package name for one requirements line, or None to skip it.
+    """Canonical package name for one requirements line, or None if unparseable.
 
     Returns None (instead of raising) for lines packaging cannot parse so a
     single odd line cannot abort the whole heartbeat requirements count.
@@ -48,6 +48,25 @@ def _requirement_name(line: str) -> str | None:
         return canonicalize_name(Requirement(_strip_inline_comment(line).strip()).name)
     except (InvalidRequirement, ValueError):
         return None
+
+
+def _egg_fragment_name(line: str) -> str | None:
+    """Canonical name from a pip ``#egg=<name>`` fragment, if present.
+
+    The installer feeds raw requirements content to ``pip install -r``, which
+    accepts VCS and archive-URL lines (e.g.
+    ``git+https://github.com/example/pkg.git#egg=sample``) that
+    ``packaging.Requirement`` rejects. Matching on the egg fragment keeps
+    those lines counted against the installed distributions.
+    """
+    _, _, fragment = line.partition("#")
+    for param in fragment.split("&"):
+        key, sep, value = param.partition("=")
+        if sep and key.strip() == "egg":
+            name = value.split("[", 1)[0].strip()
+            if name:
+                return canonicalize_name(name)
+    return None
 
 
 def _update_requirements_status(result: RequirementsInstallResult) -> None:
@@ -60,10 +79,18 @@ def _update_requirements_status(result: RequirementsInstallResult) -> None:
         result.requirements_installed = 0
         return
 
-    required = {
-        name for line in _parse_requirement_lines(content) if (name := _requirement_name(line)) is not None
-    }
-    result.requirements_total = len(required)
+    required: set[str] = set()
+    unverifiable = 0
+    for line in _parse_requirement_lines(content):
+        name = _requirement_name(line) or _egg_fragment_name(line)
+        if name is None:
+            # No derivable package name (bare archive URL, local path, or
+            # garbage): count it so the heartbeat reports unknown/incomplete
+            # instead of a false-healthy total.
+            unverifiable += 1
+        else:
+            required.add(name)
+    result.requirements_total = len(required) + unverifiable
 
     installed = {canonicalize_name(p["name"]) for p in _get_installed_packages()}
     result.requirements_installed = len(required & installed)
@@ -71,7 +98,12 @@ def _update_requirements_status(result: RequirementsInstallResult) -> None:
     missing = required - installed
     if missing:
         logger.warning(f"[pool] Missing required packages: {', '.join(sorted(missing))}")
-    else:
+    if unverifiable:
+        logger.warning(
+            f"[pool] {unverifiable} requirement line(s) with no verifiable "
+            "package name counted as not installed"
+        )
+    if not missing and not unverifiable:
         logger.info(f"[pool] All {result.requirements_total} required packages installed")
 
 

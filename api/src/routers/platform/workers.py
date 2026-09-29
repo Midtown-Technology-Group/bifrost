@@ -328,8 +328,8 @@ async def list_pools(
                 pool_info.requirements_total = norm.requirements_total
                 pool_info.memory_current_bytes = hb.get("memory_current_bytes")
                 pool_info.memory_max_bytes = hb.get("memory_max_bytes")
-                pool_info.available_slots = hb.get("available_slots")
-                pool_info.saturation_ratio = hb.get("saturation_ratio")
+                pool_info.available_slots = norm.available_slots
+                pool_info.saturation_ratio = norm.saturation_ratio
                 pool_info.memory_utilization = hb.get("memory_utilization")
                 pool_info.estimated_drain_seconds = hb.get(
                     "estimated_drain_seconds"
@@ -396,8 +396,8 @@ async def get_pool(
             result.last_heartbeat = hb.get("timestamp")
             result.configured_capacity = norm.configured_capacity
             result.max_workers = norm.max_workers
-            result.available_slots = hb.get("available_slots")
-            result.saturation_ratio = hb.get("saturation_ratio")
+            result.available_slots = norm.available_slots
+            result.saturation_ratio = norm.saturation_ratio
             result.memory_current_bytes = hb.get("memory_current_bytes")
             result.memory_max_bytes = hb.get("memory_max_bytes")
             result.memory_utilization = hb.get("memory_utilization")
