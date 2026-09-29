@@ -17,7 +17,7 @@ interface QueueBadgeProps {
 	isRetrying?: boolean;
 }
 
-function formatRelativeTime(dateStr: string | null): string {
+function formatRelativeTime(dateStr: string | null | undefined): string {
 	if (!dateStr) return "Time unavailable";
 	const timestamp = new Date(dateStr).getTime();
 	if (!Number.isFinite(timestamp)) return "Time unavailable";
