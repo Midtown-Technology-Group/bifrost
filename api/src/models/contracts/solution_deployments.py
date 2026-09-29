@@ -71,6 +71,14 @@ class SolutionDeploymentCapabilities(BaseModel):
     safe_for_end_to_end_cs_deploy: bool = False
 
 
+class SolutionDeploymentRuntimeState(BaseModel):
+    """Independent readback of the installed runtime pointer."""
+
+    solution_id: UUID
+    active_deployment_id: UUID | None
+    execution_runtime_mode: str
+
+
 class WorkspaceLiveHandoffPreflightRequest(BaseModel):
     """Expected Live and Solution state for a read-only adoption inspection."""
 

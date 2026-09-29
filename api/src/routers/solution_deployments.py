@@ -14,6 +14,7 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentCapabilities,
     SolutionDeploymentCreate,
     SolutionDeploymentPublic,
+    SolutionDeploymentRuntimeState,
     WorkspaceLiveHandoffCommitRequest,
     WorkspaceLiveHandoffCommitResponse,
     WorkspaceLiveHandoffPreflightRequest,
@@ -68,6 +69,26 @@ async def _scope(ctx: Context, solution_id: UUID) -> UUID | None:
     if solution is None:
         raise HTTPException(status_code=404, detail="Solution not found")
     return solution.organization_id
+
+
+@router.get(
+    "/active",
+    response_model=SolutionDeploymentRuntimeState,
+    responses={404: {"description": "Solution not found"}},
+)
+async def inspect_active_deployment(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> SolutionDeploymentRuntimeState:
+    """Read the committed pointer independently of an activation response."""
+    del user
+    solution = await ctx.db.get(Solution, solution_id)
+    if solution is None:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    return SolutionDeploymentRuntimeState(
+        solution_id=solution.id,
+        active_deployment_id=solution.active_deployment_id,
+        execution_runtime_mode=solution.execution_runtime_mode,
+    )
 
 
 def get_activation_service(ctx: Context) -> SolutionDeploymentActivationService:
