@@ -374,3 +374,119 @@ describe.each(["authFetch", "apiClient"] as const)(
 		});
 	},
 );
+
+describe("apiClient 401 refresh replay for bodied requests", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		localStorage.setItem(ACCESS_TOKEN_KEY, buildFakeToken());
+		window.history.replaceState(null, "", "/login");
+		fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		localStorage.clear();
+		sessionStorage.clear();
+		window.history.replaceState(null, "", "/");
+	});
+
+	/**
+	 * A real `fetch()` consumes the request body before the middleware ever
+	 * sees the 401, so the replay in `handleAuthResponse` must be built from
+	 * the pre-send clone — not from the Request fetch already read.
+	 *
+	 * This is the exact path `POST /api/workflows/execute` takes when a page
+	 * refresh races token expiry: the setup-status query dies here, and the
+	 * app's cards stay on their empty ("Not Connected") state even though a
+	 * direct execution of the same workflow succeeds.
+	 */
+	it("replays the POST body and fresh token after a 401 refresh retry", async () => {
+		// happy-dom's Request tolerates re-sending a body `fetch` already
+		// consumed; real engines do not — browsers drop the body (the replay
+		// reaches the server as an empty POST) and Node throws
+		// "Cannot construct a Request with a Request whose body is used".
+		// Model that contract so the replay can't regress onto the live,
+		// already-sent Request.
+		const RealRequest = globalThis.Request;
+		class StrictRequest extends RealRequest {
+			constructor(input: RequestInfo | URL, init?: RequestInit) {
+				if (input instanceof RealRequest && input.bodyUsed) {
+					throw new TypeError(
+						"Cannot construct a Request with a Request whose body is used",
+					);
+				}
+				super(input, init);
+			}
+		}
+		vi.stubGlobal("Request", StrictRequest);
+
+		const refreshedToken = (() => {
+			const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
+			const payload = btoa(
+				JSON.stringify({
+					exp: Math.floor(Date.now() / 1000) + 60 * 60,
+				}),
+			);
+			return `${header}.${payload}.refreshed`;
+		})();
+
+		let executeAttempts = 0;
+		const replayed: { body: string; auth: string | null }[] = [];
+
+		fetchMock.mockImplementation(async (input: Request | string) => {
+			// Identity + refresh calls are issued as plain URL strings.
+			if (typeof input === "string") {
+				if (input === "/auth/me") return mockResponse(401);
+				if (input === "/api/auth/refresh")
+					return mockJsonResponse(200, {
+						access_token: refreshedToken,
+					});
+				return mockResponse(404);
+			}
+			const pathname = new URL(input.url).pathname;
+			if (pathname === "/auth/me") return mockResponse(401);
+			if (pathname === "/api/auth/refresh")
+				return mockJsonResponse(200, { access_token: refreshedToken });
+			if (pathname === "/api/workflows/execute") {
+				const body = await input.text();
+				executeAttempts += 1;
+				if (executeAttempts === 1) return mockResponse(401);
+				replayed.push({
+					body,
+					auth: input.headers.get("Authorization"),
+				});
+				return mockJsonResponse(200, {
+					execution_id: "exec-setup-1",
+					status: "Success",
+				});
+			}
+			return mockResponse(404);
+		});
+
+		const { data, response } = await apiClient.POST(
+			"/api/workflows/execute",
+			{
+				body: {
+					workflow_id: "check_microsoft_setup",
+					input_data: {},
+				},
+				fetch: fetchMock,
+			} as never,
+		);
+
+		expect(response.status).toBe(200);
+		expect(executeAttempts).toBe(2);
+		expect(replayed).toHaveLength(1);
+		expect(JSON.parse(replayed[0].body)).toEqual({
+			workflow_id: "check_microsoft_setup",
+			input_data: {},
+		});
+		expect(replayed[0].auth).toBe(`Bearer ${refreshedToken}`);
+		expect(data).toEqual({
+			execution_id: "exec-setup-1",
+			status: "Success",
+		});
+	});
+});
