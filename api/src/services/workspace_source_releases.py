@@ -18,6 +18,7 @@ from src.models.contracts.workspace_promotions import (
     WorkspaceSourceReleaseDeclareRequest,
     WorkspaceSourceReleaseListResponse,
     WorkspaceSourceReleaseResponse,
+    WorkspaceSourceSupersessionEvidence,
 )
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionRelease,
@@ -261,18 +262,77 @@ class WorkspaceSourceReleaseService:
         *,
         disposition: str,
         reason: str,
+        supersession_evidence: WorkspaceSourceSupersessionEvidence | None = None,
     ) -> WorkspaceSourceReleaseResponse:
         record = await self._get(record_id, for_update=True)
         if record is None:
             raise KeyError(record_id)
-        if record.disposition == "released":
-            raise WorkspaceSourceReleaseConflict(
-                "released source accountability evidence is immutable"
-            )
-        if record.disposition == disposition and record.reason == reason:
+        if disposition == "superseded":
+            if supersession_evidence is None:
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession requires per-path production readback"
+                )
+            if set(supersession_evidence.paths) != set(record.paths or {}):
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession must review every declared source path"
+                )
+            now = _utc_now()
+            verified_at = supersession_evidence.verified_at
+            if (
+                verified_at.tzinfo is None
+                or verified_at > now + timedelta(minutes=5)
+                or verified_at < now - timedelta(days=1)
+            ):
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession needs production readback from the last day"
+                )
+            later = await self._get(supersession_evidence.superseding_source_release_id)
+            if (
+                later is None
+                or later.id == record.id
+                or later.disposition != "released"
+                or later.created_at <= record.created_at
+                or not later.completion_evidence
+                or later.completion_evidence.get("schema_version")
+                != COMPLETION_EVIDENCE_SCHEMA
+            ):
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession requires a later verified source release"
+                )
+            evidence = {
+                "schema_version": "bifrost.workspace-source-release-supersession/v1",
+                "source_release_id": str(record.id),
+                "source_commit_sha": record.source_commit_sha,
+                "superseding_source_release_id": str(later.id),
+                "superseding_source_commit_sha": later.source_commit_sha,
+                "superseding_completion_evidence_id": later.completion_evidence.get(
+                    "evidence_id"
+                ),
+                "review": supersession_evidence.model_dump(
+                    mode="json", exclude_none=True
+                ),
+                "reason": reason,
+            }
+            evidence["evidence_id"] = canonical_digest(evidence)
+        else:
+            if supersession_evidence is not None:
+                raise WorkspaceSourceReleaseConflict(
+                    "review evidence is only valid for supersession"
+                )
+            evidence = None
+        if (
+            record.disposition == disposition
+            and record.reason == reason
+            and record.completion_evidence == evidence
+        ):
             return source_release_response(record)
+        if record.disposition in {"released", "superseded"}:
+            raise WorkspaceSourceReleaseConflict(
+                "completed source accountability evidence is immutable"
+            )
         record.disposition = disposition
         record.reason = reason
+        record.completion_evidence = evidence
         record.resolved_at = _utc_now()
         await self.db.commit()
         await self.db.refresh(record)
