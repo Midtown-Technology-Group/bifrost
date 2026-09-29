@@ -33,8 +33,10 @@ from src.services.solutions.deployment_storage import (
     deployment_runtime_prefix,
     deployment_source_artifact_key,
 )
+from src.services.solutions.live_handoff_source import source_archive
 from src.services.solutions.source_revision import (
     SolutionSourceRevisionConflict,
+    SolutionSourceRevisionError,
     SolutionSourceRevisionService,
 )
 
@@ -146,7 +148,9 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         created_by=platform_admin.user_id,
         validation_result={"schema_version": "bifrost.workspace-live-handoff/v1"},
     )
-    objects: dict[tuple[str, str], bytes] = {}
+    objects: dict[tuple[str, str], bytes] = {
+        (str(base_id), "source"): source_archive({path: old_source})
+    }
 
     class Storage:
         def __init__(self, _solution_id, deployment_id):
@@ -205,6 +209,26 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
                 )
             ],
         )
+        missing_entrypoint = request.model_copy(
+            update={
+                "files": [
+                    SolutionSourceFile(
+                        path=path,
+                        content_base64=base64.b64encode(
+                            new_source.replace(b"run", b"renamed")
+                        ).decode("ascii"),
+                    )
+                ]
+            }
+        )
+        with pytest.raises(SolutionSourceRevisionError, match="function"):
+            await SolutionSourceRevisionService(db_session).stage(
+                solution_id,
+                revision_id,
+                platform_admin.user_id,
+                missing_entrypoint,
+            )
+        await db_session.rollback()
         inspection = await SolutionSourceRevisionService(db_session).stage(
             solution_id, revision_id, platform_admin.user_id, request
         )

@@ -73,10 +73,10 @@ accepts the active deployment ID and manifest hash, a Git commit SHA, and the
 exact Python file closure with base64 encoded contents. This is a source-only
 path for adopted workflow identities. It keeps each workflow's registration,
 runtime bounds, and UUID fixed. The server rejects paths outside the closure,
-dynamic or unresolved imports, changed workflow identities or metadata, and
-files larger than the bounded archive. It stages a new source archive, runtime
-files, manifest, and ready deployment at create-only keys. The old pointer
-continues serving production.
+dynamic or unresolved imports, changed workflow identities, signatures,
+decorators or metadata, and files larger than the bounded archive. It stages a
+new source archive, runtime files, manifest, and ready deployment at create-only
+keys. The old pointer continues serving production.
 
 The staging response and `/source-revision/preflight` include the Git commit,
 source hashes, workflow UUIDs, active subscription UUIDs, and an evidence ID.

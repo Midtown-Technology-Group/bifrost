@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import base64
 import binascii
 import re
@@ -148,12 +149,90 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
         )
 
 
+def _archive_files(archive: bytes, expected_paths: set[str]) -> dict[str, bytes]:
+    if len(archive) > MAX_ARCHIVE_BYTES:
+        raise SolutionSourceRevisionError("revision archive is too large")
+    try:
+        with ZipFile(BytesIO(archive)) as source_zip:
+            members = [item for item in source_zip.infolist() if not item.is_dir()]
+            paths = [item.filename for item in members]
+            if (
+                len(paths) != len(set(paths))
+                or set(paths) != expected_paths
+                or sum(item.file_size for item in members) > MAX_ARCHIVE_BYTES
+            ):
+                raise SolutionSourceRevisionError("revision archive paths differ")
+            return {item.filename: source_zip.read(item) for item in members}
+    except (BadZipFile, RuntimeError) as exc:
+        raise SolutionSourceRevisionError("revision archive is invalid") from exc
+
+
+def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
+    path = workflow.path.replace("\\", "/").lstrip("/")
+    try:
+        tree = ast.parse(files[path], filename=path)
+    except (KeyError, SyntaxError) as exc:
+        raise SolutionSourceRevisionError(
+            f"workflow entrypoint is missing or invalid: {workflow.id}"
+        ) from exc
+    matches = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name == workflow.function_name
+    ]
+    if len(matches) != 1:
+        raise SolutionSourceRevisionError(
+            f"workflow function is missing or ambiguous: {workflow.id}"
+        )
+    node = matches[0]
+    return (
+        ast.dump(node.args, include_attributes=False)
+        + ":"
+        + ":".join(
+            ast.dump(item, include_attributes=False) for item in node.decorator_list
+        )
+        + (":async" if isinstance(node, ast.AsyncFunctionDef) else ":sync")
+    )
+
+
+def _require_entrypoint_compatibility(
+    base_files: dict[str, bytes], new_files: dict[str, bytes], workflows: list[Workflow]
+) -> None:
+    for workflow in workflows:
+        if _entrypoint_signature(base_files, workflow) != _entrypoint_signature(
+            new_files, workflow
+        ):
+            raise SolutionSourceRevisionError(
+                f"workflow signature or decorators changed: {workflow.id}"
+            )
+
+
 class SolutionSourceRevisionService:
     """Keep source updates reviewable without changing workflow identities."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repository = SolutionDeploymentRepository(db)
+
+    async def _base_files(
+        self,
+        solution_id: UUID,
+        deployment_id: UUID,
+        resolution: DeploymentResolutionMap,
+    ) -> dict[str, bytes]:
+        archive = await SolutionDeploymentStorage(
+            solution_id, deployment_id
+        ).read_source_artifact()
+        files = _archive_files(archive, set(resolution.sources))
+        if any(
+            sha256_digest(content) != resolution.sources[path].content_hash
+            for path, content in files.items()
+        ):
+            raise SolutionSourceRevisionError(
+                "active source archive differs from its immutable hashes"
+            )
+        return files
 
     async def _base(
         self,
@@ -329,6 +408,11 @@ class SolutionSourceRevisionService:
             raise SolutionSourceRevisionError(
                 "uploaded files differ from the exact workflow dependency closure"
             )
+        _require_entrypoint_compatibility(
+            await self._base_files(solution_id, base.id, old_resolution),
+            closure,
+            workflows,
+        )
         storage = SolutionDeploymentStorage(solution_id, deployment_id)
         sources = {
             path: RuntimeSourceResolution(
@@ -458,22 +542,9 @@ class SolutionSourceRevisionService:
             raise SolutionSourceRevisionError(
                 "revision manifest differs from stored bytes"
             )
-        archive = await storage.read_source_artifact()
-        if len(archive) > MAX_ARCHIVE_BYTES:
-            raise SolutionSourceRevisionError("revision archive is too large")
-        try:
-            with ZipFile(BytesIO(archive)) as source_zip:
-                members = [item for item in source_zip.infolist() if not item.is_dir()]
-                paths = [item.filename for item in members]
-                if (
-                    len(paths) != len(set(paths))
-                    or set(paths) != set(resolution.sources)
-                    or sum(item.file_size for item in members) > MAX_ARCHIVE_BYTES
-                ):
-                    raise SolutionSourceRevisionError("revision archive paths differ")
-                files = {item.filename: source_zip.read(item) for item in members}
-        except (BadZipFile, RuntimeError) as exc:
-            raise SolutionSourceRevisionError("revision archive is invalid") from exc
+        files = _archive_files(
+            await storage.read_source_artifact(), set(resolution.sources)
+        )
         try:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows}
@@ -484,6 +555,11 @@ class SolutionSourceRevisionService:
             raise SolutionSourceRevisionError(
                 "revision source dependency closure changed"
             )
+        _require_entrypoint_compatibility(
+            await self._base_files(solution_id, base.id, old_resolution),
+            closure,
+            workflows,
+        )
         slots = asyncio.Semaphore(16)
 
         async def verify(path: str, content: bytes) -> None:
