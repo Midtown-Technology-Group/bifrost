@@ -137,7 +137,7 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         id=base_id,
         organization_id=PROVIDER_ORG_ID,
         solution_id=solution_id,
-        state="active",
+        state="draft",
         bundle_hash=manifest.bundle_hash,
         compiled_manifest=manifest.model_dump(mode="json", exclude_none=True),
         compiled_manifest_hash=manifest.content_hash(),
@@ -193,6 +193,9 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         await db_session.flush()
         db_session.add_all([workflow, base])
         await db_session.flush()
+        for next_state in ("building", "validated", "ready", "activating", "active"):
+            base.state = next_state
+            await db_session.flush()
         solution.active_deployment_id = base_id
         await db_session.commit()
 
