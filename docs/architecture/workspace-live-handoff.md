@@ -7,7 +7,8 @@ The current capture guard therefore remains in force.
 
 `POST /api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/candidate`
 stages a candidate for a new, configured, disconnected Solution with no
-installed workflows. An administrator supplies a fresh deployment ID, the
+installed entities, schema declarations, or pending captures. An administrator
+supplies a fresh deployment ID, the
 expected Live release row, release ID, artifact ID, governed manifest ID,
 registration fingerprint, and the workflow UUIDs. The server reads the verified
 Live bytes, computes the static import and workflow-reference closure, rejects
@@ -21,14 +22,14 @@ can remain if staging fails after an object write; it cannot affect execution.
 is a read-only inspection of that immutable Solution deployment. The service
 checks that:
 
-- the Solution is active, configured, and sealed from mutable Workspace source;
+- the Solution is active, configured, empty, and sealed from mutable Workspace
+  source;
 - the candidate is ready on the expected Solution base and its DB manifest,
   stored manifest, source archive, and runtime files agree;
 - every selected UUID is still loose, active, in the Solution scope, bound to
   the expected Live registration, and present with the same source, runtime
   metadata, and Live duration and output limits in the candidate;
-- the candidate contains exactly the selected UUIDs and workflows already
-  installed in that Solution;
+- the candidate contains exactly the selected UUIDs;
 - the candidate source paths equal the complete static dependency closure of
   the selected workflows, every path is governed by Live, and its stored bytes
   equal the verified Live bytes. The source archive contains exactly those paths.
@@ -65,6 +66,13 @@ deployment superseded. Already queued Solution executions retain their
 immutable deployment pin; new dispatch pins Live again. If the Solution write
 lock is lost near commit, the API reports an ambiguous outcome and requires
 pointer and owner readback before any retry.
+
+`GET /api/solutions/{solution_id}/deployments/active` independently reads the
+committed active deployment ID and runtime mode. After activation, compare that
+pointer with the reviewed candidate, inspect its deployment record, and read
+back the selected registry owners and triggers. After rollback, confirm the
+empty pointer and loose owners. An activation response alone does not prove the
+current installed state.
 
 ## Source revisions after handoff
 
