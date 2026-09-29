@@ -190,6 +190,10 @@ function pickOrg(orgs: Array<{ id: string; name: string }>, index: number) {
 	return orgs[index % orgs.length];
 }
 
+function randomUnit(): number {
+	return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+}
+
 export function generateUsageDemoData(
 	params: UsageDemoDataParams,
 ): UsageReportResponse {
@@ -200,7 +204,7 @@ export function generateUsageDemoData(
 	const allWorkflows: DemoWorkflowUsage[] = DEMO_WORKFLOW_TEMPLATES.map(
 		(template, index) => {
 			const org = pickOrg(orgs, index);
-			const variance = 0.9 + Math.random() * 0.2;
+			const variance = 0.9 + randomUnit() * 0.2;
 			const executions = Math.floor(template.baseCount * variance);
 
 			return {
@@ -225,7 +229,7 @@ export function generateUsageDemoData(
 	const allConversations: DemoConversationUsage[] =
 		DEMO_CONVERSATION_TEMPLATES.map((template, index) => {
 			const org = pickOrg(orgs, index);
-			const variance = 0.85 + Math.random() * 0.3;
+			const variance = 0.85 + randomUnit() * 0.3;
 
 			return {
 				conversation_id: `demo-conv-${index + 1}`,
@@ -241,7 +245,7 @@ export function generateUsageDemoData(
 	const allAgents: DemoAgentUsage[] = DEMO_AGENT_TEMPLATES.map(
 		(template, index) => {
 			const org = pickOrg(orgs, index);
-			const variance = 0.9 + Math.random() * 0.25;
+			const variance = 0.9 + randomUnit() * 0.25;
 			const runCount = Math.floor(template.baseCount * variance);
 
 			return {
@@ -332,7 +336,7 @@ export function generateUsageDemoData(
 			currentDate.getDay() === 0 || currentDate.getDay() === 6;
 		const baseMultiplier = isWeekend ? 0.5 : 1;
 		const trendMultiplier = 1 + dayIndex * 0.003;
-		const variance = 0.85 + Math.random() * 0.3;
+		const variance = 0.85 + randomUnit() * 0.3;
 		const dayFactor = baseMultiplier * trendMultiplier * variance;
 
 		trends.push({
