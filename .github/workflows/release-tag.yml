@@ -15,9 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  issues: write
-  actions: read
+  contents: read
 
 jobs:
   tag:
@@ -27,6 +25,10 @@ jobs:
       startsWith(github.event.issue.title, 'Release v') &&
       github.event.issue.state_reason == 'completed'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read # read check-runs to gate tagging on green main
+      contents: write # create the release tag ref via the git API
+      issues: write # comment the tagged version on the release issue
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
