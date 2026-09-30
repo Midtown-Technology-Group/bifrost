@@ -1,7 +1,7 @@
 """A reviewed workflow recipe can create the first immutable Solution runtime."""
 
 import base64
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -14,6 +14,7 @@ from src.models.contracts.solution_deployments import (
     SolutionSourceFile,
 )
 from src.models.orm.solutions import Solution
+from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.workflows import Workflow
 from src.services.solutions.deployment_storage import (
     deployment_runtime_prefix,
@@ -276,4 +277,112 @@ async def test_initial_activation_cas_loss_rolls_back_registrations(db_session, 
         select(Solution.active_deployment_id).where(Solution.id == solution.id)
     ) is None
     assert await db_session.scalar(select(Workflow.id).where(Workflow.solution_id == solution.id)) is None
+
+
+@pytest.mark.asyncio
+async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_store(
+    e2e_client, platform_admin, db_session,
+):
+    """Exercise candidate, preflight, and activation through the running Docker stack."""
+    from src.models.orm.executions import Execution
+    from src.services.solutions.deployment_storage import (
+        SolutionDeploymentStorage,
+        deployment_manifest_key,
+    )
+
+    headers = platform_admin.headers
+    token = uuid4().hex[:12]
+    slug = f"initial-http-{token}"
+    path = f"solutions/initial_http_{token}.py"
+    workflow_id, deployment_id = uuid4(), uuid4()
+    source = (
+        "from bifrost import workflow\n"
+        "@workflow(name='Initial HTTP reviewed task', effects=[])\n"
+        "async def run(user: str = 'system'):\n"
+        "    return user\n"
+    )
+    solution_id = None
+    created_solution = False
+    try:
+        created = e2e_client.post("/api/solutions", headers=headers, json={
+            "slug": slug, "name": "Initial HTTP reviewed install", "organization_id": None,
+        })
+        assert created.status_code == 201, created.text
+        solution_id = UUID(created.json()["id"])
+        created_solution = True
+
+        recipe = _recipe(solution_id, workflow_id, path, None)
+        candidate_body = {
+            "source_commit_sha": "b" * 40,
+            "reviewed_recipe": recipe.model_dump(mode="json"),
+            "files": [{
+                "path": path,
+                "content_base64": base64.b64encode(source.encode()).decode(),
+            }],
+            "resources": [],
+        }
+        base = f"/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow"
+        staged = e2e_client.post(f"{base}/candidate", headers=headers, json=candidate_body)
+        assert staged.status_code == 200, staged.text
+        staged_body = staged.json()
+        assert staged_body["state"] == "ready"
+        assert staged_body["workflow_ids"] == [str(workflow_id)]
+
+        inspect_body = {"reviewed_recipe": recipe.model_dump(mode="json")}
+        inspected = e2e_client.post(f"{base}/preflight", headers=headers, json=inspect_body)
+        assert inspected.status_code == 200, inspected.text
+        evidence_id = inspected.json()["evidence_id"]
+        assert evidence_id == staged_body["evidence_id"]
+
+        # Prove the staged closure crossed the HTTP handler into real object storage.
+        storage = SolutionDeploymentStorage(solution_id, deployment_id)
+        source_archive_bytes = await storage.read_source_artifact()
+        runtime_bytes = await storage.read_runtime_file(path)
+        manifest_bytes = await storage.read_compiled_manifest()
+        assert source.encode() in source_archive_bytes
+        assert runtime_bytes == source.encode()
+        assert str(deployment_id).encode() in manifest_bytes
+
+        activated = e2e_client.post(
+            f"{base}/activate", headers=headers,
+            json={**inspect_body, "expected_evidence_id": evidence_id},
+        )
+        assert activated.status_code == 200, activated.text
+        assert activated.json()["state"] == "active"
+
+        solution = await db_session.get(Solution, solution_id)
+        workflow = await db_session.get(Workflow, workflow_id)
+        deployment = await db_session.get(SolutionDeployment, deployment_id)
+        assert solution is not None
+        assert solution.execution_runtime_mode == "deployment-v1"
+        assert solution.active_deployment_id == deployment_id
+        assert workflow is not None
+        assert workflow.solution_id == solution_id
+        assert workflow.endpoint_enabled is False
+        assert workflow.public_endpoint is False
+        assert workflow.access_level == "role_based"
+        assert deployment is not None and deployment.state == "active"
+        # The live worker stack is running, but reviewed initial activation has
+        # no execution/trigger side effect and must not enqueue a run.
+        assert await db_session.scalar(
+            select(Execution.id).where(Execution.solution_deployment_id == deployment_id)
+        ) is None
+    finally:
+        if created_solution and solution_id is not None:
+            # Immutable deployment history intentionally prevents public
+            # hard-delete. Confirm that guard, then remove only this test's local
+            # object bytes; the isolated test stack resets its database after run.
+            deletion = e2e_client.delete(
+                f"/api/solutions/{solution_id}", headers=headers, params={"confirm": slug},
+            )
+            assert deletion.status_code == 409, deletion.text
+            assert "Referenced resource" in deletion.text
+            storage = SolutionDeploymentStorage(solution_id, deployment_id)
+            async with storage._client_factory() as client:
+                for key in (
+                    storage.source_artifact_key,
+                    deployment_manifest_key(solution_id, deployment_id),
+                    f"{storage.runtime_prefix}{path}",
+                ):
+                    await client.delete_object(Bucket=storage._bucket, Key=key)
 
