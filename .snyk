@@ -1,1 +1,12 @@
 version: v1.25.0
+ignore:
+  SNYK-PYTHON-AUTHLIB-20257410:
+    - '*':
+        reason: >-
+          Temporary reviewed exception for CVE-2026-96760. Bounded Bifrost,
+          workspace, fastmcp-slim and mcp source inspection found no Authlib
+          JWS JSON verification calls. Bifrost token verification uses PyJWT;
+          inspected FastMCP Authlib imports are token randomness and OAuth
+          error helpers. Reassess any Authlib JOSE consumer before deployment
+          and remove this exception when an upstream fix is available.
+        expires: '2026-10-14T00:00:00.000Z'
