@@ -120,7 +120,18 @@ class ProtectedGitReader:
         self.policy, self.token, self.client = policy, token, client
 
     async def document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> dict:
-        url = f"https://api.github.com/repos/{self.policy.repository}" + (f"/{suffix}" if suffix else "")
+        if re.fullmatch(
+            r"(?:branches/main|actions/runs/[1-9][0-9]*|git/(?:commits|blobs)/[0-9a-f]{40}"
+            r"|git/trees/[0-9a-f]{40}\?recursive=1)?", suffix
+        ) is None:
+            raise GitDeliverySourceError("Protected Git endpoint is outside the delivery allowlist")
+        path, _, query = suffix.partition("?")
+        # Build authority from a constant URL. Only the validated repository
+        # path can vary, never the scheme, host, port or a redirect destination.
+        url = httpx.URL("https://api.github.com").copy_with(
+            path=f"/repos/{self.policy.repository}" + (f"/{path}" if path else ""),
+            query=query.encode("ascii") if query else None,
+        )
         try:
             async with self.client.stream("GET", url, headers={"Authorization": f"Bearer {self.token}",
                 "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},

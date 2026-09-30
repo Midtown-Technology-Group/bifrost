@@ -396,7 +396,8 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
         reader.cancel_after_stage = False
         result = await service.deliver(solution_id, request, GitDeliveryIdentity("456", 2))
         assert result.state == "active" and result.deployment_id == staged_id
-        assert result.source_verified and result.runtime_verified is False
+        assert result.model_dump(mode="json")["source_verified"] is True
+        assert result.model_dump(mode="json")["runtime_verified"] is False
         assert objects == snapshot_objects  # Same create-only staging bytes.
         active = await db_session.get(SolutionDeployment, result.deployment_id)
         assert active.validation_result["github_delivery"]["ci_run_id"] == 123

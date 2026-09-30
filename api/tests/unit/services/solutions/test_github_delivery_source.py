@@ -230,3 +230,14 @@ async def test_redirect_does_not_forward_job_token():
         with pytest.raises(GitDeliverySourceError, match="HTTP 302"):
             await ProtectedGitReader(policy(), "ephemeral-job-token", client).verify_ci(SHA, 123, 2)
     assert calls == [""]
+
+
+@pytest.mark.parametrize("suffix", ["https://attacker.invalid", "//attacker.invalid", "../other",
+    "git/blobs/../../other", "branches/main?redirect=attacker", "actions/runs/1/../../other"])
+@pytest.mark.asyncio
+async def test_unapproved_endpoint_never_sends_job_credentials(suffix):
+    calls = []
+    async with httpx.AsyncClient(transport=transport({}, calls)) as client:
+        with pytest.raises(GitDeliverySourceError, match="allowlist"):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).document(suffix)
+    assert calls == []
