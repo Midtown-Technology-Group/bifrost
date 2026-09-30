@@ -11,6 +11,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+WORKFLOW_PARAMETERS_SCHEMA_CONTRACT = "bifrost.workflow-parameters-schema/v1"
+
 
 class FrozenDict(dict):
     """JSON-compatible dict whose contents cannot change after validation."""

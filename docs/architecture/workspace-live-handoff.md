@@ -200,6 +200,9 @@ The server compiles names, types, descriptions, tags, effects and parameter
 schemas from the carried AST without importing user code. Legacy decorator
 `id` values must agree with the recipe. Dynamic declaration/default expressions,
 additional wrappers, services and positional-only entrypoints fail explicitly.
+Parameter defaults may also reference a single module-level literal scalar
+constant defined before the function. Reassigned, imported, conditional,
+mutable or computed constants fail; compilation never executes source.
 
 This first registration adapter supports new UUIDs, changed literal argument
 defaults, additional optional keyword arguments, descriptions/categories/tags,
@@ -217,6 +220,10 @@ transaction. Post-commit readback verifies the complete installed registration
 definition, archive and table contracts. New admissions also validate inputs
 against the immutable schema selected for that execution, so earlier API
 metadata cannot authorize incompatible arguments after a pointer switch.
+Only new workflow recipes stamp `parameters_schema_contract` with
+`bifrost.workflow-parameters-schema/v1` in the immutable definition. Older
+deployments retain their original queue evidence even when they already carry
+parameter metadata, so a platform rollout preserves accepted evidence hashes.
 Accepted executions resolve their original active/superseded deployment even
 if the current registration is inactive. Fresh dispatch still requires an
 active registration; Solution status and ownership checks remain mandatory.

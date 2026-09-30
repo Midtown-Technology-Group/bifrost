@@ -19,7 +19,9 @@ from shared.workspace_effects import normalize_workflow_bounds, normalize_workfl
 from src.core.solution_delivery_policy import delivery_path
 from src.models.contracts.base import ExecutionRetryPolicy
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
-from src.services.solutions.deployment_manifest import RuntimeEntityDefinition, SharedRootTableBinding, sha256_digest
+from src.services.solutions.deployment_manifest import (
+    WORKFLOW_PARAMETERS_SCHEMA_CONTRACT, RuntimeEntityDefinition, SharedRootTableBinding, sha256_digest,
+)
 
 WORKFLOW_RECIPE_SCHEMA = "bifrost.solution-workflow-delivery/v1"
 WORKFLOW_REVISION_MARKER = "bifrost.solution-workflow-revision/v1"
@@ -122,6 +124,42 @@ def _literal(node: ast.AST) -> Any:
         raise WorkflowRecipeError("Registration declarations and defaults must be literal JSON values") from exc
 
 
+def _parameter_default(default: ast.expr, tree: ast.Module,
+                       entrypoint: ast.FunctionDef | ast.AsyncFunctionDef) -> Any:
+    if not isinstance(default, ast.Name):
+        return _literal(default)
+    # Common authored defaults refer to a module-level scalar constant. Resolve
+    # only one direct literal assignment before the function, with no other
+    # binding or mutation anywhere in the source. Never import or evaluate it.
+    name = default.id
+    declarations = []
+    for statement in tree.body[:tree.body.index(entrypoint)]:
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign):
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        if len(targets) == 1 and isinstance(targets[0], ast.Name) and targets[0].id == name:
+            if value is None:
+                raise WorkflowRecipeError("Parameter default constant has no literal value")
+            declarations.append(value)
+    writes = sum(isinstance(node, ast.Name) and node.id == name
+        and isinstance(node.ctx, ast.Store | ast.Del) for node in ast.walk(tree))
+    rebound = any(
+        isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == name
+        or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and node.name == name
+        or isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar) and node.name == name
+        for node in ast.walk(tree)
+    )
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", name) or len(declarations) != 1 or writes != 1 or rebound:
+        raise WorkflowRecipeError("Parameter default constant is missing, mutable or ambiguous")
+    value = _literal(declarations[0])
+    if not isinstance(value, str | int | float | bool | type(None)):
+        raise WorkflowRecipeError("Parameter default constant must be a literal scalar")
+    return value
+
+
 def _decorator(tree: ast.Module, node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, dict[str, Any]]:
     bindings: dict[str, str] = {}
     modules: set[str] = set()
@@ -189,8 +227,10 @@ def compile_workflow_registrations(
         node = matches[0]
         if node.args.posonlyargs or node.args.vararg:
             raise WorkflowRecipeError("Positional-only and variadic positional entrypoints are unsupported")
-        for default in [*node.args.defaults, *(value for value in node.args.kw_defaults if value is not None)]:
-            _literal(default)
+        positional_defaults = [None] * (len(node.args.args) - len(node.args.defaults)) + list(node.args.defaults)
+        defaults = {arg.arg: _parameter_default(default, tree, node)
+            for arg, default in [*zip(node.args.args, positional_defaults),
+                                 *zip(node.args.kwonlyargs, node.args.kw_defaults)] if default is not None}
         kind, declarations = _decorator(tree, node)
         if "id" in declarations:
             try:
@@ -225,6 +265,9 @@ def compile_workflow_registrations(
         parameters = indexer.extract_parameters_from_source(files[item.path], item.function_name, path=item.path)
         if parameters is None:
             raise WorkflowRecipeError("Workflow parameter schema cannot be inferred")
+        for parameter_name, value in defaults.items():
+            if parameter_name in parameters["properties"]:
+                parameters["properties"][parameter_name]["default"] = value
         controls = item.controls.model_dump(mode="json")
         controls["role_ids"] = sorted(controls["role_ids"])
         controls["allowed_methods"] = sorted(controls["allowed_methods"])
@@ -235,6 +278,7 @@ def compile_workflow_registrations(
             "type": workflow_type, "tool_description": description if workflow_type == "tool" else None,
             "organization_id": str(item.organization_id) if item.organization_id else None,
             "parameters_schema": parameters, "runtime_bounds": bounds,
+            "parameters_schema_contract": WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
             "effects": [asdict(effect) for effect in effects] if effects is not None else None,
             "source_enforced_bounds": asdict(enforced) if enforced else None,
             "source_requested_bounds": asdict(requested) if requested else None}

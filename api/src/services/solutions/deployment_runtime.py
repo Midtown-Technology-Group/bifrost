@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models import Workflow
 from src.models.orm.solutions import Solution
 from src.repositories.solution_deployments import SolutionDeploymentRepository
-from src.services.solutions.deployment_manifest import validate_runtime_closure
+from src.services.solutions.deployment_manifest import (
+    WORKFLOW_PARAMETERS_SCHEMA_CONTRACT, validate_runtime_closure,
+)
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -242,6 +244,15 @@ def _pin_from_deployment(
     )
     entity = _resolve_workflow_entity(resolution, workflow_id)
     definition = entity.definition
+    # Older manifests may carry parameter metadata, but their accepted work did
+    # not include it in queue evidence. Only a new immutable contract opts in;
+    # deploying this code must preserve those existing durable evidence hashes.
+    parameters_schema = None
+    if "parameters_schema_contract" in definition:
+        if (definition["parameters_schema_contract"] != WORKFLOW_PARAMETERS_SCHEMA_CONTRACT
+                or not isinstance(definition.get("parameters_schema"), dict)):
+            raise DeploymentRuntimeError("deployment parameter schema contract is invalid")
+        parameters_schema = json.loads(canonical_json(definition["parameters_schema"]))
     runtime_bounds = (
         _validated_runtime_bounds(definition["runtime_bounds"])
         if "runtime_bounds" in definition
@@ -291,8 +302,7 @@ def _pin_from_deployment(
         can_access_global_repo=bool(solution.allow_outbound_access),
         source_hashes={key: item.content_hash for key, item in resolution.sources.items()},
         runtime_bounds=runtime_bounds,
-        parameters_schema=(json.loads(canonical_json(definition["parameters_schema"]))
-            if isinstance(definition.get("parameters_schema"), dict) else None),
+        parameters_schema=parameters_schema,
     )
 
 

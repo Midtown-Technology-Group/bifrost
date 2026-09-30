@@ -73,6 +73,34 @@ def test_recipe_cannot_weaken_bounds_declared_by_source():
         compile_source('from bifrost import workflow\n@workflow(enforced_bounds={"max_duration_seconds": 10})\nasync def run(): pass')
 
 
+def test_named_literal_scalar_defaults_are_carried_without_importing_source():
+    entity = compile_source('''from bifrost import workflow
+DEFAULT_MAX_TENANTS: int = 10
+DEFAULT_MODE = "inspect"
+@workflow
+async def run(max_tenants: int = DEFAULT_MAX_TENANTS, *, mode: str = DEFAULT_MODE):
+    raise RuntimeError("must never execute")
+''')
+    schema = entity.definition["parameters_schema"]
+    assert schema["properties"]["max_tenants"]["default"] == 10
+    assert schema["properties"]["mode"]["default"] == "inspect"
+    assert "required" not in schema
+
+
+@pytest.mark.parametrize("before,after", [
+    ("DEFAULT_LIMIT = get_limit()", ""),
+    ("DEFAULT_LIMIT = 10\nDEFAULT_LIMIT = 20", ""),
+    ("if enabled:\n    DEFAULT_LIMIT = 10", ""),
+    ("DEFAULT_LIMIT = [10]", ""),
+    ("", "DEFAULT_LIMIT = 10"),
+    ("DEFAULT_LIMIT = 10", "del DEFAULT_LIMIT"),
+    ("from other import DEFAULT_LIMIT\nDEFAULT_LIMIT = 10", ""),
+])
+def test_default_constant_resolution_rejects_dynamic_mutable_or_ambiguous_bindings(before, after):
+    with pytest.raises(WorkflowRecipeError):
+        compile_source(f"from bifrost import workflow\n{before}\n@workflow\nasync def run(limit: int = DEFAULT_LIMIT): pass\n{after}")
+
+
 def test_legacy_source_id_must_match_the_existing_reviewed_uuid():
     spec = recipe()
     identity = spec["workflows"][0]["id"]

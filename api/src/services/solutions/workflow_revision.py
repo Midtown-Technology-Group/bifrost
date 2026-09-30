@@ -212,7 +212,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         for entity in DeploymentResolutionMap.model_validate(candidate.resolution_map).workflows.values():
             definition: dict[str, Any] = json.loads(canonical_json(entity.definition))
             roles = [UUID(value) for value in definition.pop("role_ids")]
-            for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds"):
+            for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
+                        "parameters_schema_contract"):
                 definition.pop(key)
             # Immutable nested tuples must become ordinary JSON lists/dicts for
             # the SQL JSONB serializer, matching the canonical contract.
