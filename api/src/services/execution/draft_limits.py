@@ -13,7 +13,9 @@ class WorkspaceDraftOutputLimitExceeded(RuntimeError):
 def enforce_draft_output_limit(context_data: dict[str, Any], result: Any) -> None:
     """Enforce output size before immutable results cross the worker boundary."""
     runtime_mode = context_data.get("runtime_mode")
-    if runtime_mode not in {"workspace-canary-v1", "workspace-release-v1"}:
+    if runtime_mode == "deployment-v1" and context_data.get("runtime_max_output_bytes") is None:
+        return
+    if runtime_mode not in {"workspace-canary-v1", "workspace-release-v1", "deployment-v1"}:
         return
     limit = context_data.get("runtime_max_output_bytes")
     if limit is None and runtime_mode == "workspace-canary-v1":

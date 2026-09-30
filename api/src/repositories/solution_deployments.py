@@ -193,7 +193,7 @@ class SolutionDeploymentRepository:
         organization_id: UUID | None,
         *,
         expected_active_deployment_id: UUID | None,
-        new_active_deployment_id: UUID,
+        new_active_deployment_id: UUID | None,
     ) -> bool:
         """Atomically move the active pointer only when the expected base still wins."""
         scope_clause = (
@@ -211,7 +211,9 @@ class SolutionDeploymentRepository:
             .where(Solution.id == solution_id, scope_clause, active_clause)
             .values(
                 active_deployment_id=new_active_deployment_id,
-                execution_runtime_mode="deployment-v1",
+                execution_runtime_mode=(
+                    "deployment-v1" if new_active_deployment_id is not None else "repo-v1"
+                ),
             )
             .returning(Solution.id)
         )

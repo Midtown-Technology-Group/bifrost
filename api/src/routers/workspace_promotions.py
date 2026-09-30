@@ -707,7 +707,7 @@ async def set_workspace_source_release_disposition(
     db: DbSession,
     user: CurrentSuperuser,
 ) -> WorkspaceSourceReleaseResponse:
-    """Explicitly defer or classify a reviewed source commit as non-production."""
+    """Record a deferred, non-production, or evidenced superseded decision."""
     if ctx.org_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -720,6 +720,7 @@ async def set_workspace_source_release_disposition(
             source_release_id,
             disposition=request.disposition,
             reason=request.reason,
+            supersession_evidence=request.supersession_evidence,
         )
     except KeyError as exc:
         raise HTTPException(

@@ -4017,7 +4017,7 @@ export interface paths {
         put?: never;
         /**
          * Set Workspace Source Release Disposition
-         * @description Explicitly defer or classify a reviewed source commit as non-production.
+         * @description Record a deferred, non-production, or evidenced superseded decision.
          */
         post: operations["set_workspace_source_release_disposition_api_workspace_promotions_source_releases__source_release_id__disposition_post"];
         delete?: never;
@@ -10660,6 +10660,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/shared-tables/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Shared Table Bindings
+         * @description Read exact existing Root contracts; document data and ownership stay unchanged.
+         */
+        post: operations["preview_shared_table_bindings_api_solutions__solution_id__deployments_shared_tables_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect Active Deployment
+         * @description Read the committed pointer independently of an activation response.
+         */
+        get: operations["inspect_active_deployment_api_solutions__solution_id__deployments_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments": {
         parameters: {
             query?: never;
@@ -10688,6 +10728,134 @@ export interface paths {
         get: operations["inspect_deployment_api_solutions__solution_id__deployments__deployment_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preflight Live Handoff
+         * @description Inspect a staged candidate without changing ownership or execution.
+         */
+        post: operations["preflight_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build Live Handoff Candidate
+         * @description Copy verified Live bytes into a new immutable Solution candidate.
+         */
+        post: operations["build_live_handoff_candidate_api_solutions__solution_id__deployments__deployment_id__live_handoff_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Live Handoff */
+        post: operations["activate_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Live Handoff */
+        post: operations["rollback_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage Source Revision
+         * @description Stage exact source bytes while the current immutable pointer stays live.
+         */
+        post: operations["stage_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Source Revision */
+        post: operations["inspect_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Source Revision */
+        post: operations["activate_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_activate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16699,6 +16867,10 @@ export interface components {
             tables?: {
                 [key: string]: components["schemas"]["RuntimeEntityDefinition"];
             };
+            /** Shared Tables */
+            shared_tables?: {
+                [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
             /** File Locations */
             file_locations?: {
                 [key: string]: {
@@ -17717,6 +17889,10 @@ export interface components {
             sources?: {
                 [key: string]: components["schemas"]["RuntimeSourceResolution"];
             };
+            /** Shared Tables */
+            shared_tables?: {
+                [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
         };
         /** DeploymentSource */
         DeploymentSource: {
@@ -17973,6 +18149,9 @@ export interface components {
         /**
          * DeviceHeartbeatRequest
          * @description POST /api/device/heartbeat body (M0: session-gated activity renewal).
+         *
+         *     `agent_version` is an additive observability field (epic #818): when
+         *     absent or empty the stored `devices.agent_version` is left untouched.
          */
         DeviceHeartbeatRequest: {
             /**
@@ -17980,6 +18159,8 @@ export interface components {
              * Format: uuid
              */
             agent_session_id: string;
+            /** Agent Version */
+            agent_version?: string | null;
         };
         /** DeviceHeartbeatResponse */
         DeviceHeartbeatResponse: {
@@ -29021,6 +29202,30 @@ export interface components {
             token_type: string;
         };
         /**
+         * SharedRootTableBinding
+         * @description Reviewed access to one existing global Root table without adopting its data.
+         */
+        SharedRootTableBinding: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Metadata Hash */
+            metadata_hash: string;
+            /**
+             * Access
+             * @default read
+             * @enum {string}
+             */
+            access: "read" | "read-write";
+        };
+        /** SharedTableBindingPreviewRequest */
+        SharedTableBindingPreviewRequest: {
+            /** Table Ids */
+            table_ids: string[];
+        };
+        /**
          * SignedUploadCompleteRequest
          * @description Request to finalize metadata after a successful browser presigned PUT.
          */
@@ -29753,7 +29958,7 @@ export interface components {
             /** Declared Version */
             declared_version?: string | null;
             /** Source Files */
-            source_files?: components["schemas"]["SolutionSourceFile"][];
+            source_files?: components["schemas"]["src__models__contracts__workspace_promotions__SolutionSourceFile"][];
             /** Changed Paths */
             changed_paths: {
                 [key: string]: string | null;
@@ -29835,7 +30040,7 @@ export interface components {
             /** Declared Version */
             declared_version?: string | null;
             /** Source Files */
-            source_files: components["schemas"]["SolutionSourceFile"][];
+            source_files: components["schemas"]["SolutionSourceFile-Output"][];
             /** Changed Paths */
             changed_paths: {
                 [key: string]: string | null;
@@ -29975,6 +30180,21 @@ export interface components {
             failure_detail?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * SolutionDeploymentRuntimeState
+         * @description Independent readback of the installed runtime pointer.
+         */
+        SolutionDeploymentRuntimeState: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /** Active Deployment Id */
+            active_deployment_id: string | null;
+            /** Execution Runtime Mode */
+            execution_runtime_mode: string;
         };
         /**
          * SolutionEntities
@@ -30467,7 +30687,7 @@ export interface components {
             items: components["schemas"]["SolutionSetupItem"][];
         };
         /** SolutionSourceFile */
-        SolutionSourceFile: {
+        "SolutionSourceFile-Output": {
             /** Sha256 */
             sha256: string;
             /**
@@ -30479,6 +30699,77 @@ export interface components {
             path: string;
             /** Size */
             size: number;
+        };
+        /** SolutionSourceRevisionCommitRequest */
+        SolutionSourceRevisionCommitRequest: {
+            /**
+             * Expected Active Deployment Id
+             * Format: uuid
+             */
+            expected_active_deployment_id: string;
+            /** Expected Active Manifest Hash */
+            expected_active_manifest_hash: string;
+            /** Expected Evidence Id */
+            expected_evidence_id: string;
+        };
+        /** SolutionSourceRevisionInspectRequest */
+        SolutionSourceRevisionInspectRequest: {
+            /**
+             * Expected Active Deployment Id
+             * Format: uuid
+             */
+            expected_active_deployment_id: string;
+            /** Expected Active Manifest Hash */
+            expected_active_manifest_hash: string;
+        };
+        /** SolutionSourceRevisionInspectResponse */
+        SolutionSourceRevisionInspectResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /**
+             * Active Deployment Id
+             * Format: uuid
+             */
+            active_deployment_id: string;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Active Subscription Ids */
+            active_subscription_ids: string[];
+            /** Source Hashes */
+            source_hashes: {
+                [key: string]: string;
+            };
+            /** Evidence Id */
+            evidence_id: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * SolutionSourceRevisionRequest
+         * @description A source-only revision of the exact workflows in an active deployment.
+         */
+        SolutionSourceRevisionRequest: {
+            /**
+             * Expected Active Deployment Id
+             * Format: uuid
+             */
+            expected_active_deployment_id: string;
+            /** Expected Active Manifest Hash */
+            expected_active_manifest_hash: string;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Files */
+            files: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
         };
         /**
          * SolutionUpdate
@@ -33066,6 +33357,130 @@ export interface components {
             /** Ready To Write */
             ready_to_write: boolean;
         };
+        /**
+         * WorkspaceLiveHandoffCommitRequest
+         * @description Preflight expectation that must still hold at the locked commit.
+         */
+        WorkspaceLiveHandoffCommitRequest: {
+            /**
+             * Expected Release Row Id
+             * Format: uuid
+             */
+            expected_release_row_id: string;
+            /** Expected Release Id */
+            expected_release_id: string;
+            /**
+             * Expected Artifact Id
+             * Format: uuid
+             */
+            expected_artifact_id: string;
+            /** Expected Governed Manifest Id */
+            expected_governed_manifest_id: string;
+            /** Expected Registration State Fingerprint */
+            expected_registration_state_fingerprint: string;
+            /** Expected Active Deployment Id */
+            expected_active_deployment_id: string | null;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Shared Tables */
+            shared_tables?: {
+                [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Expected Evidence Id */
+            expected_evidence_id: string;
+        };
+        /** WorkspaceLiveHandoffCommitResponse */
+        WorkspaceLiveHandoffCommitResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /**
+             * Release Row Id
+             * Format: uuid
+             */
+            release_row_id: string;
+            /** Release Id */
+            release_id: string;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Evidence Id */
+            evidence_id: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * WorkspaceLiveHandoffPreflightRequest
+         * @description Expected Live and Solution state for a read-only adoption inspection.
+         */
+        WorkspaceLiveHandoffPreflightRequest: {
+            /**
+             * Expected Release Row Id
+             * Format: uuid
+             */
+            expected_release_row_id: string;
+            /** Expected Release Id */
+            expected_release_id: string;
+            /**
+             * Expected Artifact Id
+             * Format: uuid
+             */
+            expected_artifact_id: string;
+            /** Expected Governed Manifest Id */
+            expected_governed_manifest_id: string;
+            /** Expected Registration State Fingerprint */
+            expected_registration_state_fingerprint: string;
+            /** Expected Active Deployment Id */
+            expected_active_deployment_id: string | null;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Shared Tables */
+            shared_tables?: {
+                [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+        };
+        /** WorkspaceLiveHandoffPreflightResponse */
+        WorkspaceLiveHandoffPreflightResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /**
+             * Release Row Id
+             * Format: uuid
+             */
+            release_row_id: string;
+            /** Release Id */
+            release_id: string;
+            /** Governed Manifest Id */
+            governed_manifest_id: string;
+            /** Registration State Fingerprint */
+            registration_state_fingerprint: string;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Verified Source Paths */
+            verified_source_paths: string[];
+            /** Verified Shared Tables */
+            verified_shared_tables?: {
+                [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Expected Active Deployment Id */
+            expected_active_deployment_id: string | null;
+            /** Evidence Id */
+            evidence_id: string;
+        };
         /** WorkspaceLiveRetireRequest */
         WorkspaceLiveRetireRequest: {
             /** Expected Release Id */
@@ -34071,9 +34486,10 @@ export interface components {
              * Disposition
              * @enum {string}
              */
-            disposition: "deferred" | "non_production";
+            disposition: "deferred" | "non_production" | "superseded";
             /** Reason */
             reason: string;
+            supersession_evidence?: components["schemas"]["WorkspaceSourceSupersessionEvidence"] | null;
         };
         /** WorkspaceSourceReleaseListResponse */
         WorkspaceSourceReleaseListResponse: {
@@ -34156,7 +34572,7 @@ export interface components {
              * Disposition
              * @enum {string}
              */
-            disposition: "pending" | "attention_required" | "released" | "deferred" | "non_production";
+            disposition: "pending" | "attention_required" | "released" | "deferred" | "non_production" | "superseded";
             /** Reason */
             reason?: string | null;
             /** Release Row Id */
@@ -34185,6 +34601,46 @@ export interface components {
             updated_at: string;
             /** Solution Deploy Obligations */
             solution_deploy_obligations?: components["schemas"]["SolutionDeployObligationDeclare-Output"][];
+        };
+        /**
+         * WorkspaceSourceSupersessionEvidence
+         * @description Operator review of a later verified release or active Solution deployment.
+         */
+        WorkspaceSourceSupersessionEvidence: {
+            /** Superseding Source Release Id */
+            superseding_source_release_id?: string | null;
+            /** Superseding Solution Deployment Ids */
+            superseding_solution_deployment_ids?: string[];
+            /** Production Readback Id */
+            production_readback_id: string;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at: string;
+            /** Paths */
+            paths: {
+                [key: string]: components["schemas"]["WorkspaceSourceSupersessionPath"];
+            };
+        };
+        /**
+         * WorkspaceSourceSupersessionPath
+         * @description Reviewed protected-Git and production readback for one old path.
+         */
+        WorkspaceSourceSupersessionPath: {
+            /** Current Git Sha256 */
+            current_git_sha256?: string | null;
+            /**
+             * Runtime Owner
+             * @enum {string}
+             */
+            runtime_owner: "workspace" | "solution" | "removed";
+            /** Runtime Source Sha256 */
+            runtime_source_sha256?: string | null;
+            /** Runtime Ref */
+            runtime_ref?: string | null;
+            /** Runtime Path */
+            runtime_path?: string | null;
         };
         /**
          * OAuthProviderInfo
@@ -34231,6 +34687,13 @@ export interface components {
                 [key: string]: string;
             } | null;
         };
+        /** SolutionSourceFile */
+        src__models__contracts__solution_deployments__SolutionSourceFile: {
+            /** Path */
+            path: string;
+            /** Content Base64 */
+            content_base64: string;
+        };
         /**
          * UserCreate
          * @description Input for creating a user.
@@ -34269,6 +34732,20 @@ export interface components {
             invite: boolean;
             /** Trigger Automation */
             trigger_automation?: boolean | null;
+        };
+        /** SolutionSourceFile */
+        src__models__contracts__workspace_promotions__SolutionSourceFile: {
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "100644" | "100755";
+            /** Path */
+            path: string;
+            /** Size */
+            size: number;
         };
         /**
          * MFASetupResponse
@@ -53647,6 +54124,81 @@ export interface operations {
             };
         };
     };
+    preview_shared_table_bindings_api_solutions__solution_id__deployments_shared_tables_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SharedTableBindingPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["SharedRootTableBinding"];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_active_deployment_api_solutions__solution_id__deployments_active_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionDeploymentRuntimeState"];
+                };
+            };
+            /** @description Solution not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_deployment_api_solutions__solution_id__deployments_post: {
         parameters: {
             query?: never;
@@ -53721,6 +54273,306 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preflight_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceLiveHandoffPreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveHandoffPreflightResponse"];
+                };
+            };
+            /** @description Solution or deployment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Live or Solution state changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Candidate cannot own the requested workflows */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    build_live_handoff_candidate_api_solutions__solution_id__deployments__deployment_id__live_handoff_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceLiveHandoffPreflightRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveHandoffPreflightResponse"];
+                };
+            };
+            /** @description Live state, Solution state, or immutable object changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The Live source closure cannot be proven */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Solution write lock was lost */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    activate_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceLiveHandoffCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveHandoffCommitResponse"];
+                };
+            };
+            /** @description Reviewed Live, Solution, or workflow state changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Candidate is not safe to activate */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Commit outcome needs readback after write-lock loss */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rollback_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceLiveHandoffCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveHandoffCommitResponse"];
+                };
+            };
+            /** @description Reviewed Live, Solution, or workflow state changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Live rollback source is not safe */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Commit outcome needs readback after write-lock loss */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    stage_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionSourceRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionSourceRevisionInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionSourceRevisionCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

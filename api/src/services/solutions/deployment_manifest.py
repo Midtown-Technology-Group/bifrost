@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from typing import Any, Literal
 from uuid import UUID
@@ -100,6 +101,14 @@ class DeploymentGitProvenance(ImmutableContract):
     commit_sha: str | None = None
 
 
+class SharedRootTableBinding(ImmutableContract):
+    """Reviewed access to one existing global Root table without adopting its data."""
+
+    table_id: UUID
+    metadata_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    access: Literal["read", "read-write"] = "read"
+
+
 class CompiledDeploymentManifest(ImmutableContract):
     schema_version: Literal[1] = 1
     solution_id: UUID
@@ -113,6 +122,9 @@ class CompiledDeploymentManifest(ImmutableContract):
     events: dict[str, RuntimeEntityDefinition] = Field(default_factory=dict)
     applications: dict[str, RuntimeEntityDefinition] = Field(default_factory=dict)
     tables: dict[str, RuntimeEntityDefinition] = Field(default_factory=dict)
+    shared_tables: dict[str, SharedRootTableBinding] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
     file_locations: dict[str, dict[str, Any]] = Field(default_factory=dict)
     connections: dict[str, dict[str, Any]] = Field(default_factory=dict)
     config_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
@@ -137,6 +149,9 @@ class DeploymentResolutionMap(ImmutableContract):
     applications: dict[str, RuntimeEntityDefinition] = Field(default_factory=dict)
     dependencies: dict[str, DependencyResolution] = Field(default_factory=dict)
     sources: dict[str, RuntimeSourceResolution] = Field(default_factory=dict)
+    shared_tables: dict[str, SharedRootTableBinding] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
 
     def resolve_workflow(self, portable_ref: str) -> RuntimeEntityDefinition:
         return self.workflows[portable_ref]
@@ -217,6 +232,14 @@ def _validate_manifest_resolution_agreement(
             raise ValueError(f"manifest/resolution mismatch for {kind}")
     if manifest.dependencies != resolution.dependencies:
         raise ValueError("manifest/resolution dependency mismatch")
+    if manifest.shared_tables != resolution.shared_tables:
+        raise ValueError("manifest/resolution shared table mismatch")
+    if len({item.table_id for item in manifest.shared_tables.values()}) != len(manifest.shared_tables):
+        raise ValueError("shared table IDs must be unique")
+    if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in manifest.shared_tables):
+        raise ValueError("shared table binding name is invalid")
+    if set(manifest.shared_tables) & set(manifest.tables):
+        raise ValueError("shared table binding conflicts with an owned table")
 
 
 def _validate_entity_sources(resolution: DeploymentResolutionMap) -> None:

@@ -131,6 +131,19 @@ class SolutionCaptureService:
         ``captured_by`` is the acting user, recorded on each ``pending_captures``
         queue row so a deploy can name who captured an un-pulled entity.
         """
+        # The route loads its Solution before taking the install write lock.
+        # Read the pointer from the database so a stale ORM object cannot allow
+        # capture after a concurrent immutable deployment activation.
+        active_deployment_id = await self.db.scalar(
+            select(Solution.active_deployment_id)
+            .where(Solution.id == solution.id)
+            .with_for_update()
+        )
+        if active_deployment_id is not None:
+            raise SolutionCaptureConflict(
+                "Solution has an active immutable deployment; capture requires a "
+                "reviewed deployment that includes the new entities"
+            )
         await self._reject_inline_apps(selectors.apps)
         await self._reject_governed_workflows(solution, selectors.workflows)
         await self._capture_model(Workflow, solution, selectors.workflows)

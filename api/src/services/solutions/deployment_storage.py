@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID
 
 from src.config import Settings, get_settings
@@ -63,7 +64,7 @@ class CreateOnlyArtifactStorage:
                     ContentType=content_type,
                     IfNoneMatch="*",
                 )
-            except Exception as exc:  # noqa: BLE001 - storage backends differ
+            except Exception as exc:
                 if not self._is_already_exists(exc):
                     raise
                 if idempotent:
@@ -75,6 +76,11 @@ class CreateOnlyArtifactStorage:
                     if idempotent
                     else f"Finalized deployment object already exists: {key}"
                 ) from exc
+
+    async def _read(self, key: str) -> bytes:
+        async with self._client_factory() as client:
+            response = await client.get_object(Bucket=self._bucket, Key=key)
+            return await response["Body"].read()
 
     @staticmethod
     def _is_already_exists(exc: Exception) -> bool:
@@ -138,20 +144,46 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
     def runtime_prefix(self) -> str:
         return deployment_runtime_prefix(self.solution_id, self.deployment_id)
 
-    async def write_source_artifact(self, content: bytes) -> str:
-        await self._create(self.source_artifact_key, content, "application/zip")
+    async def write_source_artifact(
+        self, content: bytes, *, idempotent: bool = False
+    ) -> str:
+        await self._create(
+            self.source_artifact_key, content, "application/zip", idempotent=idempotent
+        )
         return self.source_artifact_key
 
-    async def write_compiled_manifest(self, content: bytes) -> str:
-        await self._create(self.manifest_key, content, "application/json")
+    async def read_source_artifact(self) -> bytes:
+        return await self._read(self.source_artifact_key)
+
+    async def write_compiled_manifest(
+        self, content: bytes, *, idempotent: bool = False
+    ) -> str:
+        await self._create(
+            self.manifest_key, content, "application/json", idempotent=idempotent
+        )
         return self.manifest_key
 
-    async def write_runtime_file(self, path: str, content: bytes) -> str:
+    async def read_compiled_manifest(self) -> bytes:
+        return await self._read(self.manifest_key)
+
+    async def write_runtime_file(
+        self, path: str, content: bytes, *, idempotent: bool = False
+    ) -> str:
         normalized = path.replace("\\", "/").lstrip("/")
         if not normalized or any(
             part in {"", ".", ".."} for part in normalized.split("/")
         ):
             raise ValueError(f"Invalid deployment runtime path: {path!r}")
         key = f"{self.runtime_prefix}{normalized}"
-        await self._create(key, content, "application/octet-stream")
+        await self._create(
+            key, content, "application/octet-stream", idempotent=idempotent
+        )
         return key
+
+    async def read_runtime_file(self, path: str) -> bytes:
+        normalized = path.replace("\\", "/").lstrip("/")
+        if not normalized or any(
+            part in {"", ".", ".."} for part in normalized.split("/")
+        ):
+            raise ValueError(f"Invalid deployment runtime path: {path!r}")
+        return await self._read(f"{self.runtime_prefix}{normalized}")

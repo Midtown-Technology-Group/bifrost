@@ -18,7 +18,10 @@ sys.modules.setdefault(
 )
 
 from src.jobs.consumers import workflow_execution  # noqa: E402
-from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer, workflow_prefetch_count  # noqa: E402
+from src.jobs.consumers.workflow_execution import (  # noqa: E402
+    WorkflowExecutionConsumer,
+    workflow_prefetch_count,
+)
 from src.jobs.rabbitmq import (  # noqa: E402
     DeliveryContext,
     DomainFailureHandled,
@@ -26,7 +29,9 @@ from src.jobs.rabbitmq import (  # noqa: E402
     MalformedMessage,
     RetryableConsumerError,
 )
-from src.services.execution.process_pool import ProcessPoolAdmissionRejected  # noqa: E402
+from src.services.execution.process_pool import (  # noqa: E402
+    ProcessPoolAdmissionRejected,
+)
 
 
 def make_consumer() -> WorkflowExecutionConsumer:
@@ -791,6 +796,96 @@ async def test_workspace_release_routes_with_verified_immutable_duration_bound()
         ),
         patch(
             "src.services.workspace_release_runtime.workflow_data_from_workspace_evidence",
+            return_value=workflow_data,
+        ),
+        patch.object(workflow_execution, "create_execution", new_callable=AsyncMock),
+        patch.object(workflow_execution, "update_execution", new_callable=AsyncMock),
+        patch(
+            "src.jobs.consumers.workflow_execution.publish_execution_update",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "src.jobs.consumers.workflow_execution.publish_history_update",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "src.core.security.mint_engine_token",
+            return_value=("engine-token", "2099-01-01T00:00:00Z"),
+        ),
+    ):
+        await consumer.process_message(
+            {"execution_id": execution_id, "workflow_id": workflow_id}
+        )
+
+    routed_context = consumer._pool.route_execution.await_args.kwargs["context"]
+    assert routed_context["timeout_seconds"] == 11
+    assert routed_context["runtime_max_duration_seconds"] == 47
+    assert routed_context["runtime_max_output_bytes"] == 2048
+
+
+@pytest.mark.asyncio
+async def test_live_handoff_deployment_routes_with_pinned_runtime_bounds() -> None:
+    consumer = make_consumer()
+    consumer._pool = AsyncMock()
+    execution_id, workflow_id, deployment_id = (str(uuid4()) for _ in range(3))
+    runtime_evidence = {"solution_deployment_id": deployment_id}
+    pending = pending_context()
+    pending.update(
+        {
+            "runtime_mode": "deployment-v1",
+            "solution_deployment_id": deployment_id,
+            "runtime_evidence": runtime_evidence,
+        }
+    )
+    consumer._redis_client.get_pending_execution.return_value = pending
+    db = AsyncMock()
+    db.get.return_value = SimpleNamespace(
+        runtime_mode="deployment-v1",
+        solution_deployment_id=UUID(deployment_id),
+        runtime_evidence=runtime_evidence,
+        runtime_evidence_hash="sha256:" + "b" * 64,
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    workflow_data = {
+        "name": "Handoff workflow",
+        "function_name": "run",
+        "path": "features/demo.py",
+        "type": "workflow",
+        "cache_ttl_seconds": 0,
+        "timeout_seconds": 11,
+        "time_saved": 0,
+        "value": 0,
+        "content_hash": "c" * 64,
+        "organization_id": None,
+        "solution_id": str(uuid4()),
+        "can_access_global_repo": False,
+        "runtime_storage_prefix": "_solutions/solution/deployment/",
+        "workflow_runtime_bounds": {
+            "max_duration_seconds": 47,
+            "max_external_calls": 1,
+            "max_records_read": 10,
+            "max_output_bytes": 2048,
+        },
+    }
+    pinned = SimpleNamespace(queue_evidence=lambda: runtime_evidence)
+
+    with (
+        patch(
+            "src.services.execution.queue_tracker.remove_from_queue",
+            new_callable=AsyncMock,
+        ),
+        patch.object(workflow_execution, "get_db_context", side_effect=db_context),
+        patch(
+            "src.services.solutions.deployment_runtime.resolve_pinned_workflow_runtime",
+            new=AsyncMock(return_value=pinned),
+        ),
+        patch("src.services.solutions.deployment_runtime.verify_runtime_evidence"),
+        patch(
+            "src.services.solutions.deployment_runtime.workflow_data_from_evidence",
             return_value=workflow_data,
         ),
         patch.object(workflow_execution, "create_execution", new_callable=AsyncMock),
