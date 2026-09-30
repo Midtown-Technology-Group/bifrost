@@ -32,6 +32,7 @@ def _tree_digest(root: Path) -> str:
             h.update(b"\0")
             h.update(path.read_bytes())
             h.update(b"\0")
+            h.update(b"x" if path.stat().st_mode & 0o111 else b"-")
     return h.hexdigest()
 
 

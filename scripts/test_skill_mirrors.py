@@ -1,5 +1,6 @@
 """Repository discovery contracts without Docker or model calls."""
 from pathlib import Path
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -8,6 +9,16 @@ from scripts import check_skill_mirrors as guard
 
 
 class DiscoveryTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX executable-bit contract")
+    def test_mirror_digest_detects_executable_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "pack.py"
+            path.write_text("print('pack')\n")
+            path.chmod(0o644)
+            before = guard._tree_digest(root)
+            path.chmod(0o755)
+            self.assertNotEqual(before, guard._tree_digest(root))
     def write_skill(self, root: Path, directory: str, name: str, description: str) -> Path:
         path = root / directory / "SKILL.md"
         path.parent.mkdir(parents=True, exist_ok=True)
