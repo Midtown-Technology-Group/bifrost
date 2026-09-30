@@ -12,38 +12,66 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import insert, select, update
-
-from bifrost.workspace_release import canonical_digest
 from bifrost.solution_delivery_review import (
     PROTECTED_REGISTRATION_FIELDS,
+)
+from bifrost.solution_delivery_review import (
     require_compatible_parameters as _require_compatible_parameters,
 )
+from bifrost.workspace_release import canonical_digest
+from sqlalchemy import insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models.contracts.solution_deployments import (
-    SolutionDeploymentCreate, SolutionSourceRevisionCommitRequest,
-    SolutionSourceRevisionInspectRequest, SolutionSourceRevisionInspectResponse,
+    SolutionDeploymentCreate,
+    SolutionSourceRevisionCommitRequest,
+    SolutionSourceRevisionInspectRequest,
+    SolutionSourceRevisionInspectResponse,
 )
-from src.models.orm.workflows import Workflow
 from src.models.orm.users import Role
 from src.models.orm.workflow_roles import WorkflowRole
+from src.models.orm.workflows import Workflow
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
 from src.services.solutions.deployment_manifest import (
-    CompiledDeploymentManifest, DeploymentGitProvenance, DeploymentResolutionMap,
-    DeploymentSource, RuntimeSourceResolution, RuntimeResourceResolution,
-    canonical_json, sha256_digest, validate_runtime_closure,
+    CompiledDeploymentManifest,
+    DeploymentGitProvenance,
+    DeploymentResolutionMap,
+    DeploymentSource,
+    RuntimeEntityDefinition,
+    RuntimeResourceResolution,
+    RuntimeSourceResolution,
+    canonical_json,
+    sha256_digest,
+    validate_runtime_closure,
 )
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
-from src.services.solutions.live_handoff_source import LiveHandoffSourceError, source_archive, source_closure
-from src.services.solutions.shared_table_bindings import SharedTableBindingError, require_shared_tables
+from src.services.solutions.live_handoff_source import (
+    LiveHandoffSourceError,
+    source_archive,
+    source_closure,
+)
+from src.services.solutions.resource_delivery import (
+    read_deployment_resources,
+    validate_resource_files,
+)
+from src.services.solutions.shared_table_bindings import (
+    SharedTableBindingError,
+    require_shared_tables,
+)
 from src.services.solutions.source_revision import (
-    SolutionSourceRevisionConflict, SolutionSourceRevisionError, SolutionSourceRevisionService,
-    _archive_files, _workflow_snapshot,
+    SolutionSourceRevisionConflict,
+    SolutionSourceRevisionError,
+    SolutionSourceRevisionService,
+    _archive_files,
+    _workflow_snapshot,
 )
 from src.services.solutions.workflow_revision_recipe import (
-    WORKFLOW_REVISION_MARKER, ReviewedWorkflowRecipe, WorkflowRecipeError, compile_workflow_registrations,
+    WORKFLOW_REVISION_MARKER,
+    ReviewedWorkflowRecipe,
+    WorkflowRecipeError,
+    compile_workflow_registrations,
 )
-from src.services.solutions.resource_delivery import read_deployment_resources, validate_resource_files
 
 
 def require_compatible_parameters(old: dict, new: dict) -> None:
@@ -51,6 +79,33 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
         _require_compatible_parameters(old, new)
     except WorkflowRecipeError as exc:
         raise SolutionSourceRevisionError(str(exc)) from exc
+
+
+async def project_workflow_registrations(
+    db: AsyncSession, solution_id: UUID, entities: dict[str, RuntimeEntityDefinition],
+    current_ids: set[UUID],
+) -> None:
+    """Apply the reviewed workflow projection used by revision and initial install."""
+    for entity in entities.values():
+        definition: dict[str, Any] = json.loads(canonical_json(entity.definition))
+        roles = [UUID(value) for value in definition.pop("role_ids")]
+        for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
+                    "parameters_schema_contract"):
+            definition.pop(key)
+        values = {**definition, "is_active": True, "is_orphaned": False,
+            "updated_at": datetime.now(UTC)}
+        values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
+        if entity.resolved_id in current_ids:
+            result = await db.execute(update(Workflow).where(Workflow.id == entity.resolved_id,
+                Workflow.solution_id == solution_id, Workflow.is_active.is_(True)).values(**values))
+            if result.rowcount != 1:
+                raise SolutionSourceRevisionConflict("Workflow registration changed")
+        else:
+            await db.execute(insert(Workflow).values(id=entity.resolved_id, solution_id=solution_id, **values))
+            if roles:
+                await db.execute(insert(WorkflowRole), [
+                    {"workflow_id": entity.resolved_id, "role_id": role} for role in roles
+                ])
 
 
 class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
@@ -218,26 +273,11 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         assert candidate is not None
         rows = (await self.db.scalars(select(Workflow).where(Workflow.solution_id == solution_id))).all()
         current_ids = {row.id for row in rows}
-        for entity in DeploymentResolutionMap.model_validate(candidate.resolution_map).workflows.values():
-            definition: dict[str, Any] = json.loads(canonical_json(entity.definition))
-            roles = [UUID(value) for value in definition.pop("role_ids")]
-            for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
-                        "parameters_schema_contract"):
-                definition.pop(key)
-            # Immutable nested tuples must become ordinary JSON lists/dicts for
-            # the SQL JSONB serializer, matching the canonical contract.
-            values = {**definition, "is_active": True,
-                "is_orphaned": False, "updated_at": datetime.now(UTC)}
-            values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
-            if entity.resolved_id in current_ids:
-                result = await self.db.execute(update(Workflow).where(Workflow.id == entity.resolved_id,
-                    Workflow.solution_id == solution_id, Workflow.is_active.is_(True)).values(**values))
-                if result.rowcount != 1:
-                    raise SolutionSourceRevisionConflict("Workflow registration changed")
-            else:
-                await self.db.execute(insert(Workflow).values(id=entity.resolved_id, solution_id=solution_id, **values))
-                if roles:
-                    await self.db.execute(insert(WorkflowRole), [{"workflow_id": entity.resolved_id, "role_id": role} for role in roles])
+        await project_workflow_registrations(
+            self.db, solution_id,
+            DeploymentResolutionMap.model_validate(candidate.resolution_map).workflows,
+            current_ids,
+        )
         marker = {"schema_version": WORKFLOW_REVISION_MARKER, "preflight_evidence_id": inspected.evidence_id,
             "workflow_ids": [str(value) for value in inspected.workflow_ids], "source_hashes": inspected.source_hashes}
         await self.repository.transition(deployment_id, solution.organization_id,
