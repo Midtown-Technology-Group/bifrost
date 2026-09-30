@@ -247,6 +247,8 @@ For test authoring conventions, fixture layout, and debugging tips, see [`CLAUDE
 
 For detailed documentation on architecture, development, deployment, and usage:
 
+-   **Build & Install**: [docs/BUILD.md](./docs/BUILD.md) (reproducible builds, standard variables, install paths)
+
 -   **API Documentation**: http://localhost:8000/docs (when running)
 -   **Frontend Repository**: Included in `client/` directory
 

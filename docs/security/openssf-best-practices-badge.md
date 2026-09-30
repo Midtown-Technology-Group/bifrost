@@ -72,6 +72,27 @@ python .\scripts\submit-openssf-badge.py
 
 Cookie lifetime is ~48 hours. `BADGE_LEVEL` defaults to `passing`.
 
+## Silver build/install criteria
+
+Build/install evidence lives in [docs/BUILD.md](../BUILD.md). The eight
+Silver criteria below are answered **Met** in `.bestpractices.json`
+(overrides in `scripts/generate-bestpractices-json.py`); regenerate with
+`python scripts/generate-bestpractices-json.py` before a Silver form save.
+Note: upstream renamed the old `build_reproducible` field to
+`build_repeatable` on the Silver form -- both IDs are kept Met in the JSON
+so the import applies cleanly either way.
+
+| Criterion | Basis |
+|-----------|-------|
+| `build_reproducible` | Hash-pinned lockfiles, digest-pinned bases, clean-checkout CI rebuilds |
+| `build_repeatable` | Same commit + pinned inputs resolve the identical dependency closure |
+| `build_standard_variables` | Env/build-arg parameterization; no native compilation takes CC/CFLAGS |
+| `build_preserve_debug` | Dev images strip nothing; reload/HMR/debugger attach preserved |
+| `build_non_recursive` | No Makefiles; bounded multi-stage Dockerfiles + linear CI lanes |
+| `installation_standard_variables` | Version-tagged images, compose project isolation, layered env |
+| `installation_development_quick` | `./debug.sh` / `./test.sh stack up` boot full stacks in one command |
+| `installation_common` | `setup.sh` + compose, `./debug.sh`, pipx CLI; `down -v` / `pipx uninstall` removal |
+
 ## Related issues
 
 - [#289](https://github.com/MTG-Thomas/bifrost/issues/289) — Passing badge (closed)

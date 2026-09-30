@@ -190,13 +190,64 @@ def main() -> None:
             f"External contributors are explicitly welcome via PR/issue flow; see "
             f"{BASE}/blob/main/GOVERNANCE.md and {BASE}/blob/main/CONTRIBUTING.md."
         ),
+        # OSPS-BR-01.02 is obsolete upstream; N/A is the stable fork answer.
+        "OSPS-BR-01.02_justification": "Obsolete",
+        # Silver build/install criteria - evidence in docs/BUILD.md.
+        "build_reproducible_justification": (
+            f"Hash-pinned lockfiles (requirements.lock, client/package-lock.json), "
+            f"digest-pinned base images, and clean-checkout CI rebuilds. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_repeatable_justification": (
+            f"Same commit plus pinned inputs resolves the identical dependency "
+            f"closure: npm ci from package-lock.json, pip install "
+            f"--require-hashes --only-binary :all:, digest-pinned bases, CI "
+            f"rebuilds from clean checkouts. See {BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_standard_variables_justification": (
+            f"All build parameterization flows through documented env/build-args "
+            f"(BIFROST_VERSION, VITE_BIFROST_VERSION, COMPOSE_PROJECT_NAME). No "
+            f"native compilation takes CC/CFLAGS (wheels-only pip, prebuilt JS "
+            f"toolchain). See {BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_preserve_debug_justification": (
+            f"Dev images preserve debug info: no stripping, -O, or install -s; "
+            f"uvicorn --reload, watchmedo restarts, Vite HMR, optional debugger "
+            f"attach (ENABLE_DEBUG=true). See {BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_non_recursive_justification": (
+            f"No Makefiles and no recursive/subdirectory builds; bounded "
+            f"multi-stage Dockerfiles plus linear CI lanes with commit-pinned "
+            f"Actions and digest-pinned base images. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "installation_standard_variables_justification": (
+            f"Container-native conventions: version-tagged images, "
+            f"COMPOSE_PROJECT_NAME isolation, layered env (.env, .env.debug, "
+            f"user overrides), standard ports. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "installation_development_quick_justification": (
+            f"./debug.sh boots the full dev stack in one command and ./test.sh "
+            f"stack up boots the test stack, both per-worktree isolated. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "installation_common_justification": (
+            f"setup.sh plus docker compose (operator), ./debug.sh (dev), pipx "
+            f"CLI install from the dev instance; uninstall via docker compose "
+            f"down -v / pipx uninstall. See {BASE}/blob/main/docs/BUILD.md."
+        ),
     }
 
     release_pending_statuses: set[str] = set()
+    na_statuses: set[str] = {"OSPS-BR-01.02_status"}
 
     for key, value in overrides.items():
         status_key = key.replace("_justification", "_status")
-        output[status_key] = "Unmet" if status_key in release_pending_statuses else "Met"
+        if status_key in na_statuses:
+            output[status_key] = "N/A"
+        else:
+            output[status_key] = "Unmet" if status_key in release_pending_statuses else "Met"
         output[key] = value
 
     OUTPUT.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
