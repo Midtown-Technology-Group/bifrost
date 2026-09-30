@@ -218,6 +218,14 @@ class SolutionSourceRevisionService:
         self.db = db
         self.repository = SolutionDeploymentRepository(db)
 
+    async def verify_current_source(
+        self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest
+    ) -> None:
+        """An idempotent delivery must still validate the current adopted base."""
+        _solution, base, resolution = await self._base(solution_id, request)
+        await self._registrations(solution_id, resolution, lock=False)
+        await self._base_files(solution_id, base.id, resolution)
+
     async def _base_files(
         self,
         solution_id: UUID,

@@ -64,10 +64,9 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-@pytest.mark.asyncio
-async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
-    db_session, platform_admin, monkeypatch
-):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch):
+    """One synthetic adopted runtime shared by source and Git delivery proofs."""
+    from types import SimpleNamespace
     from src.services.solutions import deployment_api, source_revision
 
     solution_id, base_id, revision_id, workflow_id = (
@@ -213,25 +212,37 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
 
     monkeypatch.setattr(source_revision, "SolutionDeploymentStorage", Storage)
     monkeypatch.setattr(deployment_api, "SolutionDeploymentStorage", Storage)
-    try:
-        db_session.add(solution)
-        await db_session.flush()
-        db_session.add_all([workflow, base, table])
-        await db_session.flush()
-        repository = SolutionDeploymentRepository(db_session)
-        previous_state = "draft"
-        for next_state in ("building", "validated", "ready", "activating", "active"):
-            await repository.transition(
-                base_id,
-                PROVIDER_ORG_ID,
-                expected_state=previous_state,
-                new_state=next_state,
-            )
-            previous_state = next_state
-        solution.active_deployment_id = base_id
-        await db_session.commit()
-        await db_session.refresh(base)
+    db_session.add(solution)
+    await db_session.flush()
+    db_session.add_all([workflow, base, table])
+    await db_session.flush()
+    repository = SolutionDeploymentRepository(db_session)
+    previous_state = "draft"
+    for next_state in ("building", "validated", "ready", "activating", "active"):
+        await repository.transition(
+            base_id,
+            PROVIDER_ORG_ID,
+            expected_state=previous_state,
+            new_state=next_state,
+        )
+        previous_state = next_state
+    solution.active_deployment_id = base_id
+    await db_session.commit()
+    await db_session.refresh(base)
 
+    return SimpleNamespace(solution_id=solution_id, base_id=base_id, revision_id=revision_id, workflow_id=workflow_id, path=path, old_source=old_source, new_source=new_source, bindings=bindings, manifest=manifest, objects=objects, solution=solution, base=base, workflow=workflow, table=table)
+
+
+@pytest.mark.asyncio
+async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
+    db_session, platform_admin, monkeypatch
+):
+    fixture = await _seed_adopted_revision(db_session, platform_admin, monkeypatch)
+    (solution_id, base_id, revision_id, workflow_id, path, new_source, manifest, solution, base) = (
+        fixture.solution_id, fixture.base_id, fixture.revision_id, fixture.workflow_id,
+        fixture.path, fixture.new_source, fixture.manifest, fixture.solution, fixture.base
+    )
+    try:
         old_pin = await pin_workflow_runtime(db_session, workflow_id)
         assert old_pin is not None and old_pin.deployment_id == base_id
         request = SolutionSourceRevisionRequest(
@@ -310,4 +321,95 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         )
         assert queued_pin.queue_evidence() == old_pin.queue_evidence()
     finally:
+        await db_session.rollback()
+
+
+@pytest_asyncio.fixture
+async def committed_delivery_db(async_session_factory):
+    from sqlalchemy import text
+    async with async_session_factory() as session:
+        assert await session.scalar(text("SELECT current_database()")) == "bifrost_test"
+        try:
+            yield session
+        finally:
+            await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queue_pin(
+    committed_delivery_db, platform_admin, monkeypatch, async_session_factory
+):
+    db_session = committed_delivery_db
+    from contextlib import asynccontextmanager
+    from sqlalchemy import select
+    from src.services import operation_receipts
+    from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.models.orm.operation_receipts import OperationReceipt
+    from src.services.solutions.github_delivery_source import GitDeliveryIdentity, GitDeliverySourceError, VerifiedGitSource
+    from src.services.solutions.github_source_delivery import GitSourceDeliveryService
+
+    @asynccontextmanager
+    async def receipt_context():
+        async with async_session_factory() as session:
+            yield session
+    monkeypatch.setattr(operation_receipts, "get_db_context", receipt_context)
+    fixture = await _seed_adopted_revision(db_session, platform_admin, monkeypatch)
+    (solution_id, base_id, workflow_id, path, new_source, objects) = (
+        fixture.solution_id, fixture.base_id, fixture.workflow_id,
+        fixture.path, fixture.new_source, fixture.objects
+    )
+    try:
+        policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
+            repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
+            workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
+            ci_workflow_id=257449914, solutions={solution_id: "config/solution-delivery/fixture.json"})
+        request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=123,
+            ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
+        desired = VerifiedGitSource(solution_id, request.source_commit_sha, "c" * 40,
+            policy.solutions[solution_id], {path: sha256_digest(new_source)}, {path: new_source}, request.artifact_digest)
+
+        class Reader:
+            def __init__(self):
+                self.checks = 0
+                self.cancel_after_stage = True
+            async def verify_ci(self, *_):
+                self.checks += 1
+                if self.cancel_after_stage and self.checks == 2:
+                    raise GitDeliverySourceError("Source was superseded before activation")
+            async def source(self, *_):
+                return desired
+
+        reader = Reader()
+        old_pin = await pin_workflow_runtime(db_session, workflow_id)
+        assert old_pin is not None
+        service = GitSourceDeliveryService(db_session, policy, reader)
+        with pytest.raises(GitDeliverySourceError, match="superseded"):
+            await service.deliver(solution_id, request, GitDeliveryIdentity("456", 1))
+        await db_session.rollback()
+        unchanged = await db_session.get(Solution, solution_id)
+        assert unchanged.active_deployment_id == base_id
+        staged = (await db_session.scalars(select(SolutionDeployment).where(
+            SolutionDeployment.solution_id == solution_id, SolutionDeployment.state == "ready"))).one()
+        staged_id = staged.id
+        snapshot_objects = dict(objects)
+        reader.cancel_after_stage = False
+        result = await service.deliver(solution_id, request, GitDeliveryIdentity("456", 2))
+        assert result.state == "active" and result.deployment_id == staged_id
+        assert result.source_verified and result.runtime_verified is False
+        assert objects == snapshot_objects  # Same create-only staging bytes.
+        active = await db_session.get(SolutionDeployment, result.deployment_id)
+        assert active.validation_result["github_delivery"]["ci_run_id"] == 123
+        receipt = await db_session.get(OperationReceipt, result.receipt_id)
+        assert receipt.status == "succeeded"
+        queued = await resolve_pinned_workflow_runtime(db_session, base_id, workflow_id)
+        assert queued.queue_evidence() == old_pin.queue_evidence()
+        current = await pin_workflow_runtime(db_session, workflow_id)
+        assert current.deployment_id == result.deployment_id
+        replay = await service.deliver(solution_id, request, GitDeliveryIdentity("456", 2))
+        assert replay.state == "already_active" and replay.deployment_id == result.deployment_id
+        assert replay.receipt_id == result.receipt_id and objects == snapshot_objects
+    finally:
+        # Immutable history and permanent receipts are not row-deleted. The
+        # canonical test.sh phase reset destroys this disposable test DB.
         await db_session.rollback()

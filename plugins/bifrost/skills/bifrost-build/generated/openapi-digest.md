@@ -579,6 +579,7 @@
 | POST | `/api/solutions/{solution_id}/deployments` |
 | GET | `/api/solutions/{solution_id}/deployments/active` |
 | GET | `/api/solutions/{solution_id}/deployments/capabilities` |
+| POST | `/api/solutions/{solution_id}/deployments/github-source` |
 | POST | `/api/solutions/{solution_id}/deployments/shared-tables/preview` |
 | GET | `/api/solutions/{solution_id}/deployments/{deployment_id}` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/activate` |

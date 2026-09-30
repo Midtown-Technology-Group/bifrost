@@ -154,3 +154,52 @@ database pointer, even when its caller loaded the Solution before activation.
 Before production uses this handoff, the current Live history,
 trigger, dependency, and obligation evidence must be reconciled. Do not use
 direct SQL ownership updates or generic Solution capture as a substitute.
+
+## Delivery from protected Git
+
+`POST /api/solutions/{solution_id}/deployments/github-source` combines source
+staging and activation for an explicitly configured GitHub Actions producer.
+It is disabled until `BIFROST_SOLUTION_GIT_DELIVERY_POLICY` supplies the exact
+repository name and immutable repository/owner IDs, organization UUID, delivery
+workflow path, CI workflow path and ID, and installed Solution UUIDs mapped to
+reviewed recipes under `config/solution-delivery/`. Configure this policy only
+after reviewing the producer and rehearsing its deployment path.
+
+This endpoint accepts a commit SHA, CI run ID and attempt, and artifact digest.
+It accepts no uploaded source. The bearer token is a GitHub OIDC token whose
+audience binds those values and the Solution UUID. Its claims must name the
+configured main-branch workflow at that exact commit. `X-GitHub-Job-Token`
+supplies an ephemeral GitHub token for read-only repository and Actions requests.
+Neither token grants a Bifrost user role, and neither is stored in a receipt or
+deployment. Existing administrator endpoints retain their own authentication.
+
+The server independently verifies the repository identity, successful latest
+CI attempt and protected current main. It fetches the complete Git tree, the
+reviewed recipe and every regular Python blob, then verifies blob identity,
+source hashes and the audience-bound artifact digest. The recipe has exactly
+`schema_version`, `solution_id` and `files`; its schema is
+`bifrost.solution-source-delivery/v1`. `files` maps runtime paths to Git paths
+for the full source closure. Superseded commits cannot activate. The server
+rechecks CI and main after staging and before moving the pointer.
+
+Delivery uses the existing Solution write lock, immutable source artifacts and
+source-revision checks. Registration, signatures, decorators, triggers, runtime
+bounds and table contracts must still match. New or renamed workflows and
+registration metadata changes require a reviewed registration revision path.
+This endpoint alone does not deliver those changes.
+
+The canonical OperationReceipt identifies the producer run and attempt, CI
+run and attempt, Solution, commit and digest. Pointer activation and receipt
+completion commit in the same database transaction. A completed replay checks
+the actual current pointer, source and registration again. An unresolved receipt
+is not reclaimed: inspect the receipt and pointer, then use a fresh producer
+attempt. The deterministic create-only candidate can resume after staging
+without replacing stored artifacts. Queued executions keep their immutable
+deployment pins.
+
+The response reports verified source and independent pointer readback, with
+`runtime_verified=false`. It does not execute workflows or settle source-release
+obligations. Before enabling production delivery, prove the actual GitHub job,
+runtime execution, trigger and dependency behavior in the isolated canary.
+Production handoff still needs the live history and consumer evidence described
+above. Global Live retirement remains a separate live-state decision.

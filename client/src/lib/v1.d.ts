@@ -10643,6 +10643,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/github-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver Github Source
+         * @description A source-scoped producer can deliver only the configured protected recipe.
+         */
+        post: operations["deliver_github_source_api_solutions__solution_id__deployments_github_source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/capabilities": {
         parameters: {
             query?: never;
@@ -30449,6 +30469,67 @@ export interface components {
             path: string;
             /** Size */
             size?: number | null;
+        };
+        /**
+         * SolutionGitSourceDeliveryRequest
+         * @description Source comes from the configured protected recipe, never uploaded bytes.
+         */
+        SolutionGitSourceDeliveryRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Ci Run Id */
+            ci_run_id: number;
+            /** Ci Run Attempt */
+            ci_run_attempt: number;
+            /** Artifact Digest */
+            artifact_digest: string;
+        };
+        /** SolutionGitSourceDeliveryResponse */
+        SolutionGitSourceDeliveryResponse: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "already_active";
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /** Compiled Manifest Hash */
+            compiled_manifest_hash: string;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Source Tree Sha */
+            source_tree_sha: string;
+            /** Artifact Digest */
+            artifact_digest: string;
+            /** Source Hashes */
+            source_hashes: {
+                [key: string]: string;
+            };
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /**
+             * Source Verified
+             * @default true
+             * @constant
+             */
+            source_verified: true;
+            /**
+             * Runtime Verified
+             * @default false
+             * @constant
+             */
+            runtime_verified: false;
         };
         /**
          * SolutionInstallPreview
@@ -54073,6 +54154,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deliver_github_source_api_solutions__solution_id__deployments_github_source_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionGitSourceDeliveryResponse"];
                 };
             };
             /** @description Validation Error */

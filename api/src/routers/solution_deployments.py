@@ -5,9 +5,13 @@ from functools import partial
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
+import httpx
 
-from src.core.auth import Context, CurrentSuperuser
+from src.core.auth import Context, CurrentSuperuser, bearer_scheme
+from src.core.db_deps import DbSession
+from src.config import get_settings
 from src.models.contracts.solution_deployments import (
     DeploymentActivationPublic,
     DeploymentPointerRequest,
@@ -15,6 +19,8 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentCreate,
     SolutionDeploymentPublic,
     SolutionDeploymentRuntimeState,
+    SolutionGitSourceDeliveryRequest,
+    SolutionGitSourceDeliveryResponse,
     SharedTableBindingPreviewRequest,
     SolutionSourceRevisionCommitRequest,
     SolutionSourceRevisionInspectRequest,
@@ -57,10 +63,53 @@ from src.services.solutions.write_lock import (
 )
 from src.services.solutions.deployment_manifest import SharedRootTableBinding
 from src.services.solutions.shared_table_bindings import SharedTableBindingError, table_metadata_hash
+from src.services.solutions.github_delivery_source import (
+    GitDeliverySourceError, ProtectedGitReader, authenticate_git_delivery,
+)
+from src.services.solutions.github_source_delivery import GitSourceDeliveryService
 
 router = APIRouter(
     prefix="/api/solutions/{solution_id}/deployments", tags=["Solution Deployments"]
 )
+
+
+@router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse)
+async def deliver_github_source(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+):
+    """A source-scoped producer can deliver only the configured protected recipe."""
+    policy = get_settings().solution_git_delivery_policy
+    if policy is None:
+        raise HTTPException(status_code=503, detail="Protected Git Solution delivery is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="GitHub Actions delivery OIDC token is required")
+    try:
+        producer = await authenticate_git_delivery(credentials.credentials, policy=policy,
+            solution_id=solution_id, commit_sha=body.source_commit_sha, ci_run_id=body.ci_run_id,
+            ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    try:
+        async with httpx.AsyncClient() as client:
+            reader = ProtectedGitReader(policy, github_token, client)
+            return await GitSourceDeliveryService(db, policy, reader).deliver(solution_id, body, producer)
+    except SolutionWriteLockHeld as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except (SolutionWriteLockLost, DeploymentArtifactIntegrityError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect the installed pointer and receipt before a fresh job attempt") from exc
+    except (SolutionSourceRevisionConflict, DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (GitDeliverySourceError, SolutionSourceRevisionError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.get(
