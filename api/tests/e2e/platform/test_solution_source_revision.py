@@ -348,6 +348,9 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
     from src.models.orm.operation_receipts import OperationReceipt
     from src.services.solutions.github_delivery_source import GitDeliveryIdentity, GitDeliverySourceError, VerifiedGitSource
     from src.services.solutions.github_source_delivery import GitSourceDeliveryService
+    from src.services.solutions.guard import install_solution_write_guard
+
+    install_solution_write_guard()
 
     @asynccontextmanager
     async def receipt_context():

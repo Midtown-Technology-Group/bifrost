@@ -5,6 +5,7 @@ import json
 from typing import Literal
 from uuid import UUID, uuid5
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import SYSTEM_USER_UUID
@@ -115,7 +116,18 @@ class GitSourceDeliveryService:
             state = "active"
         else:
             await self.reader.verify_ci(source.commit_sha, request.ci_run_id, request.ci_run_attempt)
-        base.validation_result = {**(base.validation_result or {}), "github_delivery": proof}
+        # Deploy-owned evidence uses the deployment write path. The global
+        # Solution ORM guard deliberately rejects editing a loaded managed row.
+        recorded_id = await self.db.scalar(update(SolutionDeployment).where(
+            SolutionDeployment.id == base.id,
+            SolutionDeployment.solution_id == source.solution_id,
+            SolutionDeployment.organization_id == self.policy.organization_id,
+            SolutionDeployment.state == "active",
+            SolutionDeployment.compiled_manifest_hash == base.compiled_manifest_hash,
+        ).values(validation_result={**(base.validation_result or {}), "github_delivery": proof})
+            .returning(SolutionDeployment.id).execution_options(synchronize_session=False))
+        if recorded_id is None:
+            raise SolutionSourceRevisionConflict("Active deployment changed before delivery evidence")
         result = self._response(source, base, claim.receipt_id, state)
         # Only small nonsecret metadata is retained in the replay envelope.
         # Complete receipt and pointer mutation in the same SQL transaction.
