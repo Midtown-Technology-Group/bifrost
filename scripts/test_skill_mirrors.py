@@ -3,6 +3,7 @@ from pathlib import Path
 import importlib.util
 import io
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -15,7 +16,8 @@ class DiscoveryTests(unittest.TestCase):
         source = guard.REPO / ".claude/skills/bifrost-copilot-cowork-package/pack.py"
         spec = importlib.util.spec_from_file_location("copilot_pack", source)
         pack = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(pack)
+        with patch.object(sys, "dont_write_bytecode", True):
+            spec.loader.exec_module(pack)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             victim = root / "victim-cowork"
