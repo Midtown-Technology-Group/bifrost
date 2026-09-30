@@ -354,11 +354,12 @@ jobs:
       - name: Check MTG CI boundaries
         run: python3 api/scripts/check_mtg_ci_boundaries.py
 
-      # Codex skill mirrors (plugins/bifrost/skills/, .codex/skills/) are
+      # Public plugin and repository mirrors (plugins/bifrost/skills/, .agents/skills/) are
       # generated from the canonical .claude/skills/ source.
       - name: Codex skill mirrors in sync
         run: |
           python3 scripts/check_skill_mirrors.py
+          python3 -m unittest scripts.test_skill_mirrors
 
       - name: Local stage evidence regression checks
         run: |

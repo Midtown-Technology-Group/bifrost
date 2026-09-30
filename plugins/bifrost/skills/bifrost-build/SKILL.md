@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build or modify Bifrost apps, workflows, forms, agents, tables, managed files, configs, integrations, events, and related platform resources. Use for independent or Solution-owned V2 Apps, loose instance _repo/v1 content, local preview and testing, deployment planning, or MCP-only Bifrost work. Covers instance and install targeting, source ownership, access controls, testing, app design and theming, visual QA, and deployment handoff.
+description: Build or modify Bifrost apps, workflows, forms, agents, tables, files, configs, integrations, events, and Solutions using SDK, CLI, or MCP. Includes targeting, access controls, testing, and deployment handoff.
 ---
 
 # Bifrost Build
