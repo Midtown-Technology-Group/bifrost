@@ -11,11 +11,12 @@ Verified against ``pydantic-ai-slim[typesafe]==2.51.0`` (``DecisionModel`` /
 ``typesafe-sdk>=0.6.0``).
 """
 
+from datetime import datetime
 from enum import Enum, IntEnum
 from typing import Literal
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 from pydantic_ai import Agent, UseEnumMemberDocstrings
 from pydantic_ai.exceptions import ModelAPIError, UnexpectedModelBehavior, UserError
 from pydantic_ai.models.decision import (
@@ -196,11 +197,39 @@ async def test_nested_model_is_asked_as_dotted_fields() -> None:
     assert result.output.flag is True
 
 
+async def test_list_and_mapping_options_fan_out_as_yes_no_questions() -> None:
+    """Each available option gets one question in the same request."""
+
+    class Selections(BaseModel):
+        tags: list[Literal["billing", "bug"]] = Field(description="Applicable tags?")
+        votes: dict[Literal["billing", "bug"], bool] = Field(description="Applicable votes?")
+
+    model = FakeDecisionModel()
+    result = await Agent(model, output_type=Selections).run("Synthetic example.")
+    assert len(model.requests) == 1
+    assert set(model.requests[0].questions) == {
+        "tags.billing", "tags.bug", "votes.billing", "votes.bug"
+    }
+    assert all(isinstance(q, NoulQuestion) for q in model.requests[0].questions.values())
+    assert result.output.tags == ["billing", "bug"]
+    assert result.output.votes == {"billing": True, "bug": True}
+
+
 async def test_plain_str_output_is_refused_before_any_request() -> None:
     """A decision model cannot write text: refused with UserError, no call."""
     model = FakeDecisionModel()
     with pytest.raises(UserError):
         await Agent(model, output_type=str).run("Hello.")
+    assert model.requests == []
+
+
+@pytest.mark.parametrize("field_type", [int, float, datetime, str | int])
+async def test_unsupported_unbounded_fields_are_refused(field_type: type) -> None:
+    """Unbounded values and a union field cannot be reduced to decisions."""
+    report = create_model("Report", value=(field_type, Field(description="Value?")))
+    model = FakeDecisionModel()
+    with pytest.raises(UserError):
+        await Agent(model, output_type=report).run("Synthetic example.")
     assert model.requests == []
 
 
@@ -224,6 +253,23 @@ async def test_missing_answer_is_unexpected_model_behavior() -> None:
         await Agent(Silent(), output_type=Ticket).run("My invoice is wrong.")
 
 
+async def test_wrong_answer_kind_is_unexpected_model_behavior() -> None:
+    """A score cannot answer a yes/no question."""
+
+    class WrongKind(FakeDecisionModel):
+        async def decide(self, request: DecisionRequest, model_settings) -> DecisionResponse:
+            return DecisionResponse(
+                answers={
+                    name: ScoreAnswer(score=1.0, confidence=0.8, probabilities={0: 1.0})
+                    for name in request.questions
+                },
+                model_name="wrong-kind",
+            )
+
+    with pytest.raises(UnexpectedModelBehavior):
+        await Agent(WrongKind(), instructions="Is it urgent?", output_type=bool).run("Yes.")
+
+
 async def test_backend_failure_surfaces_for_fallback() -> None:
     """Backend errors propagate so a FallbackModel can take over."""
     model = FakeDecisionModel()
@@ -236,9 +282,10 @@ async def test_timeout_setting_reaches_the_backend() -> None:
     """``timeout`` is forwarded through ``model_settings`` to ``decide``."""
     model = FakeDecisionModel()
     await Agent(model, instructions="Is it urgent?", output_type=bool).run(
-        "Ship it yesterday.", model_settings={"timeout": 7}
+        "Ship it yesterday.", model_settings={"timeout": 7, "decision_route_threshold": 0.7}
     )
     assert model.seen_settings[0].get("timeout") == 7
+    assert model.seen_settings[0].get("decision_route_threshold") == 0.7
 
 
 async def test_boolean_threshold_decides_true() -> None:
@@ -261,7 +308,8 @@ async def test_no_get_score_api() -> None:
     assert not hasattr(decision_module, "get_score")
 
 
-async def test_typesafe_model_requires_a_key() -> None:
+async def test_typesafe_model_requires_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without ``TYPESAFE_API_KEY`` construction fails fast (no network)."""
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     with pytest.raises(UserError, match="TYPESAFE_API_KEY"):
         TypeSafeModel("jev-latest")
