@@ -1,8 +1,9 @@
-"""Exact global Root table contracts for reviewed immutable Solution runtimes."""
+"""Exact Root table contracts for reviewed immutable Solution runtimes."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -24,10 +25,10 @@ class SharedTableBindingError(ValueError):
     """The existing table no longer has the reviewed scope or metadata."""
 
 
-def table_metadata_hash(table: Table) -> str:
+def table_metadata_hash(table: Table, *, organization_id: UUID | None = None) -> str:
     """Freeze identity, scope, schema and inline policies, never document data."""
-    if table.solution_id is not None or table.organization_id is not None:
-        raise SharedTableBindingError("shared binding requires a global Root table")
+    if table.solution_id is not None or table.organization_id != organization_id:
+        raise SharedTableBindingError("shared binding requires a global Root table or its explicitly reviewed organization Root table")
     try:
         policies = TablePolicies.model_validate(table.access or {})
     except ValidationError as exc:
@@ -36,7 +37,7 @@ def table_metadata_hash(table: Table) -> str:
         raise SharedTableBindingError("shared table policy references need a separately pinned rule contract")
     return sha256_digest(canonical_json({
         "id": str(table.id), "name": table.name,
-        "organization_id": None, "solution_id": None,
+        "organization_id": str(organization_id) if organization_id else None, "solution_id": None,
         "schema": table.schema, "policies": policies.model_dump(mode="json"),
     }))
 
@@ -54,16 +55,19 @@ async def require_shared_table(
     )
     if table is None or table.name != name:
         raise SharedTableBindingError("shared table identity changed")
-    if table_metadata_hash(table) != binding.metadata_hash:
+    if table_metadata_hash(table, organization_id=binding.organization_id) != binding.metadata_hash:
         raise SharedTableBindingError("shared table metadata changed")
     return table
 
 
 async def require_shared_tables(
-    db: AsyncSession, bindings: dict[str, SharedRootTableBinding]
+    db: AsyncSession, bindings: dict[str, SharedRootTableBinding], *,
+    solution_organization_id: UUID | None = None,
 ) -> None:
     # Stable lock order across overlapping workflow batches.
     for name, binding in sorted(bindings.items(), key=lambda item: str(item[1].table_id)):
+        if binding.organization_id is not None and binding.organization_id != solution_organization_id:
+            raise SharedTableBindingError("shared table organization differs from the Solution installation")
         await require_shared_table(db, name, binding)
 
 
@@ -125,6 +129,11 @@ async def resolve_execution_shared_table(ctx: ExecutionContext, requested: str, 
     for name, binding in manifest.shared_tables.items():
         if requested not in {name, str(binding.table_id)}:
             continue
+        if binding.organization_id is not None and (
+            binding.organization_id != solution.organization_id
+            or binding.organization_id != ctx.org_id
+        ):
+            raise SharedTableBindingError("shared table organization differs from the signed execution")
         if write and binding.access != "read-write":
             raise SharedTableBindingError("shared binding does not allow document writes")
         return await require_shared_table(ctx.db, name, binding)

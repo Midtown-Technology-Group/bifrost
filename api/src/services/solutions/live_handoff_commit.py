@@ -200,7 +200,7 @@ class WorkspaceLiveHandoffCommitService:
         if manifest.shared_tables != request.shared_tables:
             raise WorkspaceLiveHandoffPreflightConflict("handoff resource bindings changed")
         try:
-            await require_shared_tables(self.db, manifest.shared_tables)
+            await require_shared_tables(self.db, manifest.shared_tables, solution_organization_id=solution.organization_id)
         except SharedTableBindingError as exc:
             raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         selected = (

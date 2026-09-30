@@ -340,7 +340,7 @@ class SolutionSourceRevisionService:
             )
         if verify_shared_tables:
             try:
-                await require_shared_tables(self.db, resolution.shared_tables)
+                await require_shared_tables(self.db, resolution.shared_tables, solution_organization_id=solution.organization_id)
             except SharedTableBindingError as exc:
                 raise SolutionSourceRevisionError(str(exc)) from exc
         return solution, base, resolution

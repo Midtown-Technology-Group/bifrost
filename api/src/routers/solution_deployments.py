@@ -140,19 +140,23 @@ async def preview_shared_table_bindings(
     """Read exact existing Root contracts; document data and ownership stay unchanged."""
     from src.models.orm.tables import Table
     del user
-    await _scope(ctx, solution_id)
+    organization_id = await _scope(ctx, solution_id)
     result: dict[str, SharedRootTableBinding] = {}
     for table_id in sorted(set(body.table_ids), key=str):
         table = await ctx.db.get(Table, table_id, populate_existing=True)
         if table is None:
             raise HTTPException(status_code=404, detail="Table not found")
+        if table.organization_id is not None and table.organization_id != organization_id:
+            raise HTTPException(status_code=422, detail="Shared table organization differs from the Solution installation")
         try:
-            metadata_hash = table_metadata_hash(table)
+            metadata_hash = table_metadata_hash(table, organization_id=table.organization_id)
         except SharedTableBindingError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if table.name in result:
             raise HTTPException(status_code=422, detail="Shared table names are ambiguous")
-        result[table.name] = SharedRootTableBinding(table_id=table.id, metadata_hash=metadata_hash)
+        result[table.name] = SharedRootTableBinding(
+            table_id=table.id, metadata_hash=metadata_hash, organization_id=table.organization_id,
+        )
     return result
 
 

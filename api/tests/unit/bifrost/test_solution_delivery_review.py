@@ -27,6 +27,23 @@ def fixture():
     return recipe, {"run.py": code}, {"rates.json": b"{}"}
 
 
+def test_org_root_binding_requires_all_recipe_workflows_in_its_scope():
+    from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
+
+    value, _files, _resources = fixture()
+    org_id = str(uuid4())
+    value["workflows"][0]["organization_id"] = org_id
+    value["shared_tables"] = {"ticket_matches": {
+        "table_id": str(uuid4()), "metadata_hash": "sha256:" + "a" * 64,
+        "organization_id": org_id, "access": "read-write",
+    }}
+    assert ReviewedWorkflowRecipe.model_validate(value).shared_tables["ticket_matches"].organization_id is not None
+    for wrong_org in (None, str(uuid4())):
+        value["workflows"][0]["organization_id"] = wrong_org
+        with pytest.raises(ValueError, match="every workflow"):
+            ReviewedWorkflowRecipe.model_validate(value)
+
+
 def test_review_allows_defaults_optional_args_and_resource_updates_without_live_claims():
     old, files, resources = fixture()
     source = files["run.py"].replace(b'"root"', b'"system"').replace(b'user: str = "system"', b'user: str = "system", *, count: int = 1')

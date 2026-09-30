@@ -29263,7 +29263,7 @@ export interface components {
         };
         /**
          * SharedRootTableBinding
-         * @description Reviewed access to one existing global Root table without adopting its data.
+         * @description Reviewed access to an existing Root table without adopting its data.
          */
         SharedRootTableBinding: {
             /**
@@ -29279,6 +29279,8 @@ export interface components {
              * @enum {string}
              */
             access: "read" | "read-write";
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** SharedTableBindingPreviewRequest */
         SharedTableBindingPreviewRequest: {

@@ -39,11 +39,12 @@ def delivery_path(value: str) -> str:
 
 
 class SharedRootTableBinding(BaseModel):
-    """Reviewed access to one existing global Root table without adopting its data."""
+    """Reviewed access to an existing Root table without adopting its data."""
     model_config = ConfigDict(frozen=True, extra="forbid")
     table_id: UUID
     metadata_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     access: Literal["read", "read-write"] = "read"
+    organization_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,10 @@ class ReviewedWorkflowRecipe(BaseModel):
             raise ValueError("Shared table identities must be unique")
         if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in self.shared_tables):
             raise ValueError("Shared table names must be canonical")
+        if any(binding.organization_id is not None
+               and any(item.organization_id != binding.organization_id for item in self.workflows)
+               for binding in self.shared_tables.values()):
+            raise ValueError("Organization Root table bindings require every workflow in that organization")
         return self
 
 

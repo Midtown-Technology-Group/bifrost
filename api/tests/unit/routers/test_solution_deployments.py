@@ -12,6 +12,31 @@ from src.routers.solution_deployments import inspect_active_deployment, router
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("table_scope", ["global", "install", "foreign"])
+async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_admin_lookup(monkeypatch, table_scope):
+    from src.models.contracts.solution_deployments import SharedTableBindingPreviewRequest
+    from src.routers import solution_deployments as module
+
+    org_id = uuid4()
+    table_org_id = None if table_scope == "global" else org_id if table_scope == "install" else uuid4()
+    table = SimpleNamespace(id=uuid4(), name="ticket_matches", organization_id=table_org_id,
+        solution_id=None, schema=None, access={"policies": []})
+    ctx = SimpleNamespace(db=SimpleNamespace(get=AsyncMock(return_value=table)))
+    monkeypatch.setattr(module, "_scope", AsyncMock(return_value=org_id))
+    body = SharedTableBindingPreviewRequest(table_ids=[table.id])
+    if table_scope == "foreign":
+        with pytest.raises(HTTPException) as denied:
+            await module.preview_shared_table_bindings(uuid4(), body, cast(Any, ctx), cast(Any, None))
+        assert denied.value.status_code == 422
+    else:
+        result = await module.preview_shared_table_bindings(uuid4(), body, cast(Any, ctx), cast(Any, None))
+        assert result[table.name].table_id == table.id
+        assert result[table.name].organization_id == table_org_id
+        assert result[table.name].access == "read"
+        assert table.solution_id is None and table.organization_id == table_org_id
+
+
+@pytest.mark.asyncio
 async def test_github_delivery_disabled_or_untrusted_producer_never_writes(monkeypatch):
     from fastapi.security import HTTPAuthorizationCredentials
     from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest

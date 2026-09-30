@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.solution_deployments import SolutionDeploymentRepository
@@ -85,8 +86,9 @@ async def db_session(async_engine):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("shared_table_organization_id", [None, PROVIDER_ORG_ID])
 async def test_handoff_activation_and_rollback_keep_both_execution_pins(
-    db_session, platform_admin, monkeypatch
+    db_session, platform_admin, monkeypatch, shared_table_organization_id
 ):
     from src.services import workspace_release_runtime
     from src.services.solutions import (
@@ -99,12 +101,15 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
     path = f"features/handoff_{uuid4().hex}.py"
     source = b"from bifrost import tables\nasync def run():\n    return 1\n"
     shared_table = Table(
-        id=uuid4(), name=f"handoff_state_{uuid4().hex}", organization_id=None,
+        id=uuid4(), name=f"handoff_state_{uuid4().hex}", organization_id=shared_table_organization_id,
         access={"policies": [{"name": "synthetic", "actions": ["read", "create", "update", "delete"]}]},
     )
     bindings = {shared_table.name: SharedRootTableBinding(
-        table_id=shared_table.id, metadata_hash=table_metadata_hash(shared_table), access="read-write",
+        table_id=shared_table.id,
+        metadata_hash=table_metadata_hash(shared_table, organization_id=shared_table_organization_id),
+        organization_id=shared_table_organization_id, access="read-write",
     )}
+    table_scope = "global" if shared_table_organization_id is None else str(shared_table_organization_id)
     source_hash = sha256_digest(source)
     bounds = {
         "max_duration_seconds": 20,
@@ -355,16 +360,20 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
             user=engine_user, org_id=PROVIDER_ORG_ID, db=db_session, solution_id=str(solution_id),
         )
         written = await upsert_document(
-            shared_table.name, DocumentUpsert(id="synthetic", data={"value": 7}), engine_ctx, scope="global",
+            shared_table.name, DocumentUpsert(id="synthetic", data={"value": 7}), engine_ctx, scope=table_scope,
         )
         assert written.data == {"value": 7}
+        if shared_table_organization_id is not None:
+            with pytest.raises(HTTPException) as wrong_scope:
+                await get_document(shared_table.name, "synthetic", engine_ctx, scope="global")
+            assert wrong_scope.value.status_code == 404
         loose_ctx = ExecutionContext(
             user=UserPrincipal(
                 user_id=platform_admin.user_id, email="synthetic@example.test", name="Synthetic admin",
                 organization_id=PROVIDER_ORG_ID, is_superuser=True,
             ), org_id=PROVIDER_ORG_ID, db=db_session,
         )
-        assert (await get_document(shared_table.name, "synthetic", loose_ctx, scope="global")).data == written.data
+        assert (await get_document(shared_table.name, "synthetic", loose_ctx, scope=table_scope)).data == written.data
         # Raw document upsert clears the identity map. Read persisted ownership
         # through fresh rows rather than refreshing detached fixture objects.
         shared_table = await db_session.get(Table, shared_table.id)
@@ -373,7 +382,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         deployment = await db_session.get(SolutionDeployment, deployment_id)
         assert shared_table is not None and solution is not None
         assert workflow is not None and deployment is not None
-        assert shared_table.solution_id is None and shared_table.organization_id is None
+        assert shared_table.solution_id is None and shared_table.organization_id == shared_table_organization_id
         original_evidence = solution_pin.queue_evidence()
 
         loose_table = Table(
@@ -440,7 +449,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
             solution_id, deployment_id, rollback
         )
         await db_session.commit()
-        assert (await get_document(shared_table.name, "synthetic", engine_ctx, scope="global")).data == {"value": 7}
+        assert (await get_document(shared_table.name, "synthetic", engine_ctx, scope=table_scope)).data == {"value": 7}
         await db_session.refresh(solution)
         await db_session.refresh(workflow)
         await db_session.refresh(deployment)

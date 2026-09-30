@@ -122,6 +122,7 @@ async def test_builder_stages_live_bytes_and_preserves_uuid_and_bounds(monkeypat
     )
     solution = SimpleNamespace(
         status="active",
+        organization_id=None,
         setup_complete=True,
         allow_outbound_access=False,
         git_connected=False,

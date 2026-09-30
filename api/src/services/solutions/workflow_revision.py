@@ -108,7 +108,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                 if {role.id for role in roles} != role_ids:
                     raise SolutionSourceRevisionError("New workflow roles are missing")
         try:
-            await require_shared_tables(self.db, recipe.shared_tables)
+            await require_shared_tables(self.db, recipe.shared_tables, solution_organization_id=solution.organization_id)
         except SharedTableBindingError as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc
         return solution, base, rows, desired

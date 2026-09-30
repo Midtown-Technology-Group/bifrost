@@ -32,8 +32,10 @@ resource behavior. Review runtime dependencies and external effects separately.
 
 `POST /api/solutions/{solution_id}/deployments/shared-tables/preview` accepts
 exact table UUIDs and returns read-only bindings by table name. It reads table
-metadata, never documents. Only global Root tables with inline row policies
-are supported. A named policy reference requires a separate immutable policy
+metadata, never documents. It supports global Root tables and Root tables in
+the target Solution's exact organization, with inline row policies. Organization
+bindings carry an explicit `organization_id`; a global installation cannot
+claim an organization's table. A named policy reference requires a separate immutable policy
 contract and is rejected. The operator may explicitly request `read-write`
 access after reviewing the callers and row policies.
 
@@ -51,6 +53,10 @@ rollback. Ordinary users and a caller-supplied Solution query do not receive
 this grant. The existing organization and row policy checks still apply.
 Read bindings cannot authorize writes. A shared metadata lock prevents a table
 ownership or schema change from racing a checked document transaction.
+Organization bindings require matching Solution, durable deployment and signed
+execution scopes. An explicit request for another table scope fails. The offline
+recipe compiler also requires every workflow to share the table's organization;
+live checks verify the installation and current table metadata.
 
 Bindings preserve Root ownership, table UUIDs and documents. They allow Meraki
 and existing Root callers to share their current tables without broad outbound

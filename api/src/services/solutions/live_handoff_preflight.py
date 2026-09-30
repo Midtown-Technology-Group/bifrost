@@ -296,7 +296,7 @@ class WorkspaceLiveHandoffPreflightService:
         ):
             raise WorkspaceLiveHandoffPreflightError("candidate resources differ from reviewed handoff")
         try:
-            await require_shared_tables(self.db, manifest.shared_tables)
+            await require_shared_tables(self.db, manifest.shared_tables, solution_organization_id=solution.organization_id)
         except SharedTableBindingError as exc:
             raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         storage = SolutionDeploymentStorage(solution_id, deployment_id)
