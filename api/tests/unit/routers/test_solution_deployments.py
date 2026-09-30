@@ -215,6 +215,9 @@ def test_solution_deployment_openapi_exposes_minimal_cs_surface():
     assert set(paths[item]) >= {"get"}
     assert set(paths[f"{item}/activate"]) >= {"post"}
     assert set(paths[f"{item}/rollback"]) >= {"post"}
+    assert set(paths[f"{item}/initial-workflow/candidate"]) >= {"post"}
+    assert set(paths[f"{item}/initial-workflow/preflight"]) >= {"post"}
+    assert set(paths[f"{item}/initial-workflow/activate"]) >= {"post"}
     create_schema = paths[base]["post"]["requestBody"]["content"]["application/json"][
         "schema"
     ]

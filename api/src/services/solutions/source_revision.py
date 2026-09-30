@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import ast
+import asyncio
 import base64
 import binascii
 import json
@@ -13,7 +13,10 @@ from io import BytesIO
 from uuid import UUID
 from zipfile import BadZipFile, ZipFile
 
-from bifrost.solution_delivery_review import WorkflowRecipeError, require_executable_bindings
+from bifrost.solution_delivery_review import (
+    WorkflowRecipeError,
+    require_executable_bindings,
+)
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from src.models.contracts.solution_deployments import (
     SolutionDeploymentCreate,
+    SolutionSourceFile,
     SolutionSourceRevisionCommitRequest,
     SolutionSourceRevisionInspectRequest,
     SolutionSourceRevisionInspectResponse,
@@ -50,7 +54,8 @@ from src.services.solutions.live_handoff_source import (
     source_closure,
 )
 from src.services.solutions.shared_table_bindings import (
-    SharedTableBindingError, require_shared_tables,
+    SharedTableBindingError,
+    require_shared_tables,
 )
 
 _SOURCE_REVISION_MARKER = "bifrost.solution-source-revision/v1"
@@ -66,9 +71,13 @@ class SolutionSourceRevisionConflict(SolutionSourceRevisionError):
 
 
 def _decode_files(request: SolutionSourceRevisionRequest) -> dict[str, bytes]:
+    return _decode_source_files(request.files)
+
+
+def _decode_source_files(items: list[SolutionSourceFile]) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     total = 0
-    for item in request.files:
+    for item in items:
         path = item.path
         if (
             not path.endswith(".py")

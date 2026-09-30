@@ -584,6 +584,9 @@
 | POST | `/api/solutions/{solution_id}/deployments/shared-tables/preview` |
 | GET | `/api/solutions/{solution_id}/deployments/{deployment_id}` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/candidate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/preflight` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/activate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/candidate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight` |

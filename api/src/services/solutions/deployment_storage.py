@@ -223,7 +223,10 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         async with self._client_factory() as client:
             response = await client.get_object(Bucket=self._bucket, Key=self.resources_artifact_key,
                 Range=f"bytes=0-{limit}")
-            async with response["Body"] as body:
+            # aiobotocore enters the underlying aiohttp response, whose read()
+            # is unbounded. Keep the size-aware StreamingBody for our reads.
+            body = response["Body"]
+            async with body:
                 content = await self._read_bounded(body, limit + 1)
                 if len(content) > limit:
                     raise DeploymentArtifactIntegrityError("Resource archive exceeds its byte bound")
