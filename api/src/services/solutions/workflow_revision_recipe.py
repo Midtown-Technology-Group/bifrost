@@ -183,13 +183,38 @@ def _decorator(tree: ast.Module, node: ast.FunctionDef | ast.AsyncFunctionDef) -
                 if alias.name == "bifrost":
                     modules.add(alias.asname or alias.name)
     protected = set(bindings) | modules
-    for statement in tree.body:
-        targets = statement.targets if isinstance(statement, ast.Assign) else (
-            [statement.target] if isinstance(statement, ast.AnnAssign | ast.AugAssign) else [])
-        if any(isinstance(target, ast.Name) and target.id in protected for target in targets) or (
-            isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and statement.name in protected
-        ):
+    # Inspect module bindings inside control blocks, while keeping function and
+    # class locals separate. Import aliases and destructured for/with targets
+    # must not replace the SDK name that the compiler recognized.
+    pending: list[ast.AST] = [tree]
+    imported = {name: 0 for name in protected}
+    while pending:
+        statement = pending.pop()
+        if isinstance(statement, ast.Import | ast.ImportFrom):
+            for alias in statement.names:
+                name = alias.asname or alias.name.split(".")[0]
+                if name in imported:
+                    imported[name] += 1
+        if (isinstance(statement, ast.Name) and statement.id in protected
+                and isinstance(statement.ctx, ast.Store | ast.Del)
+                or isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.ExceptHandler | ast.MatchAs | ast.MatchStar)
+                    and statement.name in protected
+                or isinstance(statement, ast.MatchMapping) and statement.rest in protected):
             raise WorkflowRecipeError("An executable decorator import is shadowed")
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+            pending.extend(statement.decorator_list)
+            pending.extend(statement.args.defaults)
+            pending.extend(item for item in statement.args.kw_defaults if item is not None)
+            pending.extend(item.annotation for item in [*statement.args.posonlyargs, *statement.args.args,
+                *statement.args.kwonlyargs] if item.annotation is not None)
+            if statement.returns is not None:
+                pending.append(statement.returns)
+        elif isinstance(statement, ast.ClassDef):
+            pending.extend([*statement.decorator_list, *statement.bases, *statement.keywords])
+        elif not isinstance(statement, ast.Lambda):
+            pending.extend(ast.iter_child_nodes(statement))
+    if any(count != 1 for count in imported.values()):
+        raise WorkflowRecipeError("An executable decorator import is shadowed")
     if len(node.decorator_list) != 1:
         raise WorkflowRecipeError("Reviewed registration requires exactly one Bifrost decorator")
     decorator = node.decorator_list[0]

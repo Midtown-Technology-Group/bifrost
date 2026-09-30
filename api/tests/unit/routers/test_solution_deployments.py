@@ -61,6 +61,32 @@ async def test_github_identity_cannot_read_admin_pointer_or_supply_uploaded_byte
         assert response.status_code == 422
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "network"])
+async def test_github_transport_failure_rolls_back_and_requires_receipt_readback(monkeypatch, failure):
+    import httpx
+    from fastapi.security import HTTPAuthorizationCredentials
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.routers import solution_deployments as module
+
+    request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=1,
+        ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
+    db = SimpleNamespace(rollback=AsyncMock(), commit=AsyncMock())
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(solution_git_delivery_policy=object()))
+    monkeypatch.setattr(module, "authenticate_git_delivery", AsyncMock(return_value=object()))
+    service = AsyncMock()
+    service.deliver.side_effect = httpx.ReadTimeout("unavailable") if failure == "timeout" else httpx.ConnectError("unavailable")
+    monkeypatch.setattr(module, "GitSourceDeliveryService", lambda *_: service)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="scoped-producer")
+    with pytest.raises(HTTPException) as caught:
+        await module.deliver_github_source(uuid4(), request, cast(Any, db), credentials, "job-token")
+    assert caught.value.status_code == 503
+    assert "pointer and receipt" in caught.value.detail
+    db.rollback.assert_awaited_once()
+    db.commit.assert_not_awaited()
+    assert service.deliver.await_count == 1
+
+
 def test_solution_deployment_openapi_exposes_minimal_cs_surface():
     app = FastAPI()
     app.include_router(router)

@@ -73,6 +73,21 @@ def test_recipe_cannot_weaken_bounds_declared_by_source():
         compile_source('from bifrost import workflow\n@workflow(enforced_bounds={"max_duration_seconds": 10})\nasync def run(): pass')
 
 
+@pytest.mark.parametrize("rebind", [
+    "from other import workflow", "import other as workflow",
+    "for workflow in values:\n pass", "with manager() as workflow:\n pass",
+    "(workflow, other) = values", "if flag:\n from other import workflow",
+    "del workflow", "match value:\n case {'x': workflow}: pass",
+])
+def test_module_import_and_control_block_rebinding_is_rejected(rebind):
+    with pytest.raises(WorkflowRecipeError, match="shadowed"):
+        compile_source(f"from bifrost import workflow\n{rebind}\n@workflow\nasync def run(): pass")
+
+
+def test_function_local_bindings_do_not_shadow_the_module_decorator():
+    compile_source("from bifrost import workflow\ndef helper():\n workflow = 'local'\n return workflow\n@workflow\nasync def run(): pass")
+
+
 def test_named_literal_scalar_defaults_are_carried_without_importing_source():
     entity = compile_source('''from bifrost import workflow
 DEFAULT_MAX_TENANTS: int = 10

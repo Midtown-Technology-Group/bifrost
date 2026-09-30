@@ -92,13 +92,13 @@ async def deliver_github_source(
     except GitDeliverySourceError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             reader = ProtectedGitReader(policy, github_token, client)
             return await GitSourceDeliveryService(db, policy, reader).deliver(solution_id, body, producer)
     except SolutionWriteLockHeld as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Solution write lock held") from exc
-    except (SolutionWriteLockLost, DeploymentArtifactIntegrityError) as exc:
+    except (SolutionWriteLockLost, DeploymentArtifactIntegrityError, httpx.HTTPError) as exc:
         await db.rollback()
         raise HTTPException(status_code=503, detail="Inspect the installed pointer and receipt before a fresh job attempt") from exc
     except (SolutionSourceRevisionConflict, DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
