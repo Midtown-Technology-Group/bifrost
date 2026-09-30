@@ -295,11 +295,13 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
     slug = f"initial-http-{token}"
     path = f"solutions/initial_http_{token}.py"
     workflow_id, deployment_id = uuid4(), uuid4()
+    resource_path = "data/rates.json"
+    resource_bytes = b'{"records":[{"rate":4}]}'
     source = (
-        "from bifrost import workflow\n"
+        "from bifrost import workflow, resources\n"
         "@workflow(name='Initial HTTP reviewed task', effects=[])\n"
         "async def run(user: str = 'system'):\n"
-        "    return user\n"
+        "    return resources.read('data/rates.json')\n"
     )
     solution_id = None
     created_solution = False
@@ -311,7 +313,7 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
         solution_id = UUID(created.json()["id"])
         created_solution = True
 
-        recipe = _recipe(solution_id, workflow_id, path, None)
+        recipe = _recipe(solution_id, workflow_id, path, None, resource_path=resource_path)
         candidate_body = {
             "source_commit_sha": "b" * 40,
             "reviewed_recipe": recipe.model_dump(mode="json"),
@@ -319,7 +321,10 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
                 "path": path,
                 "content_base64": base64.b64encode(source.encode()).decode(),
             }],
-            "resources": [],
+            "resources": [{
+                "path": resource_path,
+                "content_base64": base64.b64encode(resource_bytes).decode(),
+            }],
         }
         base = f"/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow"
         staged = e2e_client.post(f"{base}/candidate", headers=headers, json=candidate_body)
@@ -337,10 +342,14 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
         # Prove the staged closure crossed the HTTP handler into real object storage.
         storage = SolutionDeploymentStorage(solution_id, deployment_id)
         source_archive_bytes = await storage.read_source_artifact()
+        resources_archive_bytes = await storage.read_resources_artifact()
         runtime_bytes = await storage.read_runtime_file(path)
+        resource_runtime_bytes = await storage.read_resource(resource_path, len(resource_bytes))
         manifest_bytes = await storage.read_compiled_manifest()
         assert source.encode() in source_archive_bytes
+        assert resource_bytes in resources_archive_bytes
         assert runtime_bytes == source.encode()
+        assert resource_runtime_bytes == resource_bytes
         assert str(deployment_id).encode() in manifest_bytes
 
         activated = e2e_client.post(
@@ -381,8 +390,10 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
             async with storage._client_factory() as client:
                 for key in (
                     storage.source_artifact_key,
+                    storage.resources_artifact_key,
                     deployment_manifest_key(solution_id, deployment_id),
                     f"{storage.runtime_prefix}{path}",
+                    f"{storage.runtime_prefix}_resources/{resource_path}",
                 ):
                     await client.delete_object(Bucket=storage._bucket, Key=key)
 
