@@ -83,7 +83,7 @@ class WorkspaceLiveHandoffCandidateService:
             )
         await _require_empty_solution_install(self.db, solution_id)
         try:
-            await require_shared_tables(self.db, request.shared_tables)
+            await require_shared_tables(self.db, request.shared_tables, solution_organization_id=solution.organization_id)
         except SharedTableBindingError as exc:
             raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         selected = (

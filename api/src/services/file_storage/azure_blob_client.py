@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import aclosing, asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -324,13 +325,19 @@ class AzureBlobStorageClient:
                 yield chunk[offset : offset + chunk_size]
 
     @_owned_operation
-    async def get_object(self, *, Bucket: str, Key: str) -> dict[str, _AsyncBody]:
+    async def get_object(self, *, Bucket: str, Key: str, Range: str | None = None) -> dict[str, _AsyncBody]:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
 
         await self._ensure_client()
+        options = {}
+        if Range is not None:
+            match = re.fullmatch(r"bytes=(\d+)-(\d+)", Range)
+            if match is None or int(match[2]) < int(match[1]):
+                raise ValueError("Expected a bounded inclusive byte range")
+            options = {"offset": int(match[1]), "length": int(match[2]) - int(match[1]) + 1}
         try:
-            stream = await self._container_client.download_blob(Key)
+            stream = await self._container_client.download_blob(Key, **options)
             return {"Body": _AsyncBody(await stream.readall())}
         except ResourceNotFoundError as exc:
             raise self.exceptions.NoSuchKey(Key) from exc

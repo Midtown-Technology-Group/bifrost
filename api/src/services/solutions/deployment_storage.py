@@ -187,3 +187,55 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         ):
             raise ValueError(f"Invalid deployment runtime path: {path!r}")
         return await self._read(f"{self.runtime_prefix}{normalized}")
+
+    async def read_resource(self, path: str, size_bytes: int) -> bytes:
+        """Read one pinned resource with a transport bound before buffering bytes."""
+        from src.core.solution_delivery_policy import delivery_path
+        from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCE_BYTES
+
+        delivery_path(path)
+        if type(size_bytes) is not int or not 1 <= size_bytes <= MAX_DEPLOYMENT_RESOURCE_BYTES:
+            raise ValueError("Resource size exceeds its immutable contract")
+        key = f"{self.runtime_prefix}_resources/{path}"
+        async with self._client_factory() as client:
+            # One extra byte detects oversized objects. Azure applies the range
+            # before readall; S3 streams only this range. Never fetch Root bytes.
+            response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{size_bytes}")
+            body = response["Body"]
+            async with body:
+                content = await self._read_bounded(body, size_bytes + 1)
+                if len(content) != size_bytes:
+                    raise DeploymentArtifactIntegrityError("Immutable resource size differs from its contract")
+                return content
+
+    @property
+    def resources_artifact_key(self) -> str:
+        return f"{SOURCE_ARTIFACTS_ROOT}/{self.solution_id}/{self.deployment_id}/resources.zip"
+
+    async def write_resources_artifact(self, content: bytes, *, idempotent: bool = False) -> str:
+        await self._create(self.resources_artifact_key, content, "application/zip", idempotent=idempotent)
+        return self.resources_artifact_key
+
+    async def read_resources_artifact(self) -> bytes:
+        from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCES_BYTES
+
+        limit = MAX_DEPLOYMENT_RESOURCES_BYTES + 2 * 1024 * 1024
+        async with self._client_factory() as client:
+            response = await client.get_object(Bucket=self._bucket, Key=self.resources_artifact_key,
+                Range=f"bytes=0-{limit}")
+            async with response["Body"] as body:
+                content = await self._read_bounded(body, limit + 1)
+                if len(content) > limit:
+                    raise DeploymentArtifactIntegrityError("Resource archive exceeds its byte bound")
+                return content
+
+    @staticmethod
+    async def _read_bounded(body: Any, limit: int) -> bytes:
+        """A transport read can return a short chunk before reaching EOF."""
+        content = bytearray()
+        while len(content) < limit:
+            chunk = await body.read(limit - len(content))
+            if not chunk:
+                break
+            content.extend(chunk)
+        return bytes(content)

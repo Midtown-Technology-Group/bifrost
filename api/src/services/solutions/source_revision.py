@@ -6,12 +6,14 @@ import asyncio
 import ast
 import base64
 import binascii
+import json
 import re
 from datetime import UTC, datetime
 from io import BytesIO
 from uuid import UUID
 from zipfile import BadZipFile, ZipFile
 
+from bifrost.solution_delivery_review import WorkflowRecipeError, require_executable_bindings
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,11 +114,20 @@ def _workflow_snapshot(workflow: Workflow) -> dict:
         "time_saved": workflow.time_saved,
         "value": float(workflow.value or 0),
         "cache_ttl_seconds": workflow.cache_ttl_seconds,
+        "parameters_schema": workflow.parameters_schema,
+        "display_name": workflow.display_name,
+        "description": workflow.description,
+        "category": workflow.category,
+        "tags": workflow.tags,
+        "allowed_methods": sorted(workflow.allowed_methods),
+        "disable_global_key": workflow.disable_global_key,
+        "retry_policy": workflow.retry_policy,
+        "tool_description": workflow.tool_description,
     }
 
 
 def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -> None:
-    definition = entity.definition
+    definition = json.loads(canonical_json(entity.definition))
     timeout = workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
     bounds = definition.get("runtime_bounds")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
@@ -142,6 +153,16 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
         "value": float(workflow.value or 0),
         "cache_ttl_seconds": workflow.cache_ttl_seconds or 0,
     }
+    # Older handoff manifests predate a complete registration definition.
+    # New workflow revisions must also match every deploy-owned projection.
+    snapshot = _workflow_snapshot(workflow)
+    for key in (
+        "parameters_schema", "display_name", "description", "category", "tags",
+        "endpoint_enabled", "public_endpoint", "access_level", "role_ids",
+        "allowed_methods", "disable_global_key", "retry_policy", "tool_description",
+    ):
+        if key in definition:
+            expected[key] = snapshot[key]
     if (
         not workflow.is_active
         or workflow.id != entity.resolved_id
@@ -178,6 +199,10 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
         raise SolutionSourceRevisionError(
             f"workflow entrypoint is missing or invalid: {workflow.id}"
         ) from exc
+    try:
+        require_executable_bindings(tree)
+    except WorkflowRecipeError as exc:
+        raise SolutionSourceRevisionError("workflow decorator namespace is ambiguous") from exc
     matches = [
         node
         for node in tree.body
@@ -218,6 +243,14 @@ class SolutionSourceRevisionService:
         self.db = db
         self.repository = SolutionDeploymentRepository(db)
 
+    async def verify_current_source(
+        self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest
+    ) -> None:
+        """An idempotent delivery must still validate the current adopted base."""
+        _solution, base, resolution = await self._base(solution_id, request)
+        await self._registrations(solution_id, resolution, lock=False)
+        await self._base_files(solution_id, base.id, resolution)
+
     async def _base_files(
         self,
         solution_id: UUID,
@@ -243,6 +276,8 @@ class SolutionSourceRevisionService:
         request: SolutionSourceRevisionInspectRequest,
         *,
         lock_solution: bool = False,
+        verify_shared_tables: bool = True,
+        allow_resources: bool = False,
     ):
         query = select(Solution).where(Solution.id == solution_id)
         if lock_solution:
@@ -270,6 +305,7 @@ class SolutionSourceRevisionService:
         if marker.get("schema_version") not in {
             _HANDOFF_MARKER,
             _SOURCE_REVISION_MARKER,
+            "bifrost.solution-workflow-revision/v1",
         }:
             raise SolutionSourceRevisionError(
                 "active deployment did not use the reviewed handoff path"
@@ -293,15 +329,20 @@ class SolutionSourceRevisionService:
             or manifest.applications
             or manifest.tables
             or manifest.dependencies
+            or manifest.file_locations
+            or manifest.connections
+            or manifest.config_requirements
+            or manifest.resources and not allow_resources
             or not resolution.workflows
         ):
             raise SolutionSourceRevisionError(
-                "source-only revision requires a workflow-only deployment"
+                "source-only revision requires a workflow-only deployment without immutable resources"
             )
-        try:
-            await require_shared_tables(self.db, resolution.shared_tables)
-        except SharedTableBindingError as exc:
-            raise SolutionSourceRevisionError(str(exc)) from exc
+        if verify_shared_tables:
+            try:
+                await require_shared_tables(self.db, resolution.shared_tables, solution_organization_id=solution.organization_id)
+            except SharedTableBindingError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
         return solution, base, resolution
 
     async def _registrations(
@@ -310,7 +351,8 @@ class SolutionSourceRevisionService:
         query = (
             select(Workflow)
             .options(selectinload(Workflow.roles))
-            .where(Workflow.solution_id == solution_id)
+            .where(Workflow.solution_id == solution_id, Workflow.is_active.is_(True))
+            .execution_options(populate_existing=True)
         )
         if lock:
             query = query.with_for_update(of=Workflow)
@@ -521,7 +563,7 @@ class SolutionSourceRevisionService:
         if (
             set(resolution.workflows) != set(old_resolution.workflows)
             or resolution.shared_tables != old_resolution.shared_tables
-            or manifest.tables or manifest.file_locations
+            or manifest.tables or manifest.file_locations or manifest.resources
             or manifest.agents or manifest.forms or manifest.events or manifest.applications
             or manifest.dependencies
             or set(resolution.workflows) != set(manifest.workflows)

@@ -20,7 +20,7 @@ from src.services.solutions.deployment_runtime import _pin_from_deployment
 from src.services.solutions.live_handoff_source import LiveHandoffSourceError, source_closure
 from src.services.solutions.shared_table_bindings import (
     SharedTableBindingError, require_shared_table, resolve_execution_shared_table,
-    table_metadata_hash,
+    table_metadata_hash, require_shared_tables,
 )
 
 
@@ -50,6 +50,11 @@ def test_binding_hash_rejects_owner_scope_and_named_policy_changes():
 
 
 def test_empty_binding_extension_preserves_existing_canonical_documents():
+    table = _table()
+    binding = SharedRootTableBinding(table_id=table.id, metadata_hash=table_metadata_hash(table))
+    assert binding.model_dump(mode="json") == {
+        "table_id": str(table.id), "metadata_hash": table_metadata_hash(table), "access": "read",
+    }
     resolution = DeploymentResolutionMap()
     assert "shared_tables" not in resolution.model_dump(mode="json")
     manifest = CompiledDeploymentManifest(
@@ -70,7 +75,7 @@ def test_empty_binding_extension_preserves_existing_canonical_documents():
 def test_bound_table_imports_still_reject_file_and_hidden_namespace_dependencies():
     path = "features/demo.py"
     assert source_closure({path: b"from bifrost import tables\n"}, {path}, has_table_bindings=True)
-    for raw in (b"from bifrost import files\n", b"import bifrost as sdk\n"):
+    for raw in (b"from bifrost import files\n", b"import bifrost as sdk\n", b"from bifrost import resources\n"):
         with pytest.raises(LiveHandoffSourceError, match="resource bindings"):
             source_closure({path: raw}, {path}, has_table_bindings=True)
 
@@ -90,13 +95,44 @@ async def test_changed_metadata_is_rejected_under_a_shared_row_lock():
 
 
 @pytest.mark.asyncio
-async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(monkeypatch):
+async def test_org_binding_requires_exact_install_scope_and_rejects_scope_drift():
+    table = _table()
+    org_id = uuid4()
+    table.organization_id = org_id
+    binding = SharedRootTableBinding(
+        table_id=table.id, organization_id=org_id,
+        metadata_hash=table_metadata_hash(table, organization_id=org_id), access="read-write",
+    )
+    db = SimpleNamespace(scalar=AsyncMock(return_value=table))
+    for wrong_scope in (None, uuid4()):
+        with pytest.raises(SharedTableBindingError, match="Solution installation"):
+            await require_shared_tables(db, {table.name: binding}, solution_organization_id=wrong_scope)
+    db.scalar.assert_not_called()
+    await require_shared_tables(db, {table.name: binding}, solution_organization_id=org_id)
+    for changed_scope in (None, uuid4()):
+        table.organization_id = changed_scope
+        with pytest.raises(SharedTableBindingError, match="explicitly reviewed"):
+            await require_shared_tables(db, {table.name: binding}, solution_organization_id=org_id)
+    table.organization_id = org_id
+    table.solution_id = uuid4()
+    with pytest.raises(SharedTableBindingError, match="Root table"):
+        await require_shared_tables(db, {table.name: binding}, solution_organization_id=org_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("organization_scoped", [False, True])
+async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(monkeypatch, organization_scoped):
     from src.core import auth
     from src.repositories.solution_deployments import SolutionDeploymentRepository
 
     table = _table()
+    org_id = uuid4() if organization_scoped else None
+    table.organization_id = org_id
     sid, did, wid, eid = uuid4(), uuid4(), uuid4(), uuid4()
-    binding = SharedRootTableBinding(table_id=table.id, metadata_hash=table_metadata_hash(table))
+    binding = SharedRootTableBinding(
+        table_id=table.id, organization_id=org_id,
+        metadata_hash=table_metadata_hash(table, organization_id=org_id),
+    )
     path = "features/demo.py"
     entity = RuntimeEntityDefinition(
         portable_ref=path + "::run", resolved_id=wid, source_ref=path,
@@ -116,18 +152,18 @@ async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(m
         workflows=resolution.workflows, shared_tables=resolution.shared_tables,
     )
     deployment = SimpleNamespace(
-        id=did, solution_id=sid, organization_id=None, state="superseded",
+        id=did, solution_id=sid, organization_id=org_id, state="superseded",
         compiled_manifest=manifest.model_dump(mode="json"), compiled_manifest_hash=manifest.content_hash(),
         resolution_map=resolution.model_dump(mode="json"), resolution_map_hash=manifest.resolution_map_hash,
         dependencies=[], bundle_hash=manifest.bundle_hash, runtime_storage_prefix="runtime/", git_commit_sha=None,
     )
     solution = SimpleNamespace(
-        id=sid, status="active", organization_id=None, allow_outbound_access=False,
+        id=sid, status="active", organization_id=org_id, allow_outbound_access=False,
         active_deployment_id=uuid4(),
     )
     evidence = _pin_from_deployment(wid, solution, deployment, allow_superseded=True).queue_evidence()
     execution = SimpleNamespace(
-        id=eid, workflow_id=wid, organization_id=None, runtime_mode="deployment-v1",
+        id=eid, workflow_id=wid, organization_id=org_id, runtime_mode="deployment-v1",
         solution_deployment_id=did, runtime_evidence=evidence,
         runtime_evidence_hash=sha256_digest(canonical_json(evidence)),
     )
@@ -142,20 +178,48 @@ async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(m
     db = SimpleNamespace(get=AsyncMock(side_effect=get), scalar=AsyncMock(return_value=table))
     user = UserPrincipal(
         user_id=SYSTEM_USER_UUID, email="engine@bifrost.internal", name="Engine",
-        organization_id=None,
+        organization_id=org_id,
         is_engine_token=True, engine_execution_id=eid, engine_attempt_token=uuid4(),
         engine_solution_id=str(sid),
     )
-    ctx = ExecutionContext(user=user, org_id=None, db=db, solution_id=str(sid))
+    ctx = ExecutionContext(user=user, org_id=org_id, db=db, solution_id=str(sid))
     monkeypatch.setattr(auth, "_active_engine_attempt", AsyncMock(return_value=True))
     loader = AsyncMock(return_value=deployment)
     monkeypatch.setattr(SolutionDeploymentRepository, "get_by_id_for_runtime", loader)
     assert await resolve_execution_shared_table(ctx, table.name) is table
     assert loader.call_args.args[0] == did
-    assert table.solution_id is None and table.organization_id is None
+    assert table.solution_id is None and table.organization_id == org_id
     with pytest.raises(SharedTableBindingError, match="document writes"):
         await resolve_execution_shared_table(ctx, str(table.id), write=True)
     assert await resolve_execution_shared_table(ctx, "unbound_name") is None
+    # Even internally consistent manifest hashes cannot grant a foreign org's
+    # Root table to an otherwise valid signed attempt in this installation.
+    foreign_org_id = uuid4()
+    table.organization_id = foreign_org_id
+    foreign_binding = SharedRootTableBinding(
+        table_id=table.id, organization_id=foreign_org_id,
+        metadata_hash=table_metadata_hash(table, organization_id=foreign_org_id),
+    )
+    foreign_resolution = resolution.model_copy(update={"shared_tables": {table.name: foreign_binding}})
+    foreign_manifest = manifest.model_copy(update={
+        "shared_tables": foreign_resolution.shared_tables,
+        "resolution_map_hash": sha256_digest(canonical_json(foreign_resolution)),
+    })
+    deployment.compiled_manifest = foreign_manifest.model_dump(mode="json")
+    deployment.compiled_manifest_hash = foreign_manifest.content_hash()
+    deployment.resolution_map = foreign_resolution.model_dump(mode="json")
+    deployment.resolution_map_hash = foreign_manifest.resolution_map_hash
+    execution.runtime_evidence = _pin_from_deployment(wid, solution, deployment, allow_superseded=True).queue_evidence()
+    execution.runtime_evidence_hash = sha256_digest(canonical_json(execution.runtime_evidence))
+    with pytest.raises(SharedTableBindingError, match="signed execution"):
+        await resolve_execution_shared_table(ctx, table.name)
+    table.organization_id = org_id
+    deployment.compiled_manifest = manifest.model_dump(mode="json")
+    deployment.compiled_manifest_hash = manifest.content_hash()
+    deployment.resolution_map = resolution.model_dump(mode="json")
+    deployment.resolution_map_hash = manifest.resolution_map_hash
+    execution.runtime_evidence = evidence
+    execution.runtime_evidence_hash = sha256_digest(canonical_json(evidence))
     ctx.solution_id = str(uuid4())
     assert await resolve_execution_shared_table(ctx, table.name) is None
     ctx.solution_id = str(sid)

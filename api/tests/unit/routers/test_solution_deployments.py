@@ -11,6 +11,107 @@ from src.models.contracts.solution_deployments import SolutionDeploymentCapabili
 from src.routers.solution_deployments import inspect_active_deployment, router
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("table_scope", ["global", "install", "foreign"])
+async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_admin_lookup(monkeypatch, table_scope):
+    from src.models.contracts.solution_deployments import SharedTableBindingPreviewRequest
+    from src.routers import solution_deployments as module
+
+    org_id = uuid4()
+    table_org_id = None if table_scope == "global" else org_id if table_scope == "install" else uuid4()
+    table = SimpleNamespace(id=uuid4(), name="ticket_matches", organization_id=table_org_id,
+        solution_id=None, schema=None, access={"policies": []})
+    ctx = SimpleNamespace(db=SimpleNamespace(get=AsyncMock(return_value=table)))
+    monkeypatch.setattr(module, "_scope", AsyncMock(return_value=org_id))
+    body = SharedTableBindingPreviewRequest(table_ids=[table.id])
+    if table_scope == "foreign":
+        with pytest.raises(HTTPException) as denied:
+            await module.preview_shared_table_bindings(uuid4(), body, cast(Any, ctx), cast(Any, None))
+        assert denied.value.status_code == 422
+    else:
+        result = await module.preview_shared_table_bindings(uuid4(), body, cast(Any, ctx), cast(Any, None))
+        assert result[table.name].table_id == table.id
+        assert result[table.name].organization_id == table_org_id
+        assert result[table.name].access == "read"
+        assert table.solution_id is None and table.organization_id == table_org_id
+
+
+@pytest.mark.asyncio
+async def test_github_delivery_disabled_or_untrusted_producer_never_writes(monkeypatch):
+    from fastapi.security import HTTPAuthorizationCredentials
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.routers import solution_deployments as module
+    from src.services.solutions.github_delivery_source import GitDeliverySourceError
+
+    request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=1,
+        ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
+    db = SimpleNamespace(rollback=AsyncMock())
+    service = AsyncMock()
+    monkeypatch.setattr(module, "GitSourceDeliveryService", service)
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(solution_git_delivery_policy=None))
+    with pytest.raises(HTTPException) as disabled:
+        await module.deliver_github_source(uuid4(), request, cast(Any, db), None, "job-token")
+    assert disabled.value.status_code == 503 and not service.called
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(solution_git_delivery_policy=object()))
+    monkeypatch.setattr(module, "authenticate_git_delivery", AsyncMock(side_effect=GitDeliverySourceError("untrusted")))
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="source-declaration-token")
+    with pytest.raises(HTTPException) as untrusted:
+        await module.deliver_github_source(uuid4(), request, cast(Any, db), credentials, "job-token")
+    assert untrusted.value.status_code == 401 and not service.called
+
+
+@pytest.mark.asyncio
+async def test_github_identity_cannot_read_admin_pointer_or_supply_uploaded_bytes():
+    import httpx
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from src.core.database import get_db
+
+    app = FastAPI()
+    app.include_router(router)
+
+    async def db():
+        yield SimpleNamespace()
+    app.dependency_overrides[get_db] = db
+    token = jwt.encode({"iss": "https://token.actions.githubusercontent.com", "sub": "repo:fixture"},
+        rsa.generate_private_key(public_exponent=65537, key_size=2048), algorithm="RS256")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        prefix = f"/api/solutions/{uuid4()}/deployments"
+        response = await client.get(prefix + "/active", headers={"Authorization": "Bearer " + token})
+        assert response.status_code == 401
+        response = await client.post(prefix + "/github-source", headers={
+            "Authorization": "Bearer " + token, "X-GitHub-Job-Token": "ephemeral-job-token"}, json={
+            "source_commit_sha": "a" * 40, "ci_run_id": 1, "ci_run_attempt": 1,
+            "artifact_digest": "sha256:" + "b" * 64, "files": [{"path": "forged.py", "content_base64": "eA=="}]})
+        assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "network"])
+async def test_github_transport_failure_rolls_back_and_requires_receipt_readback(monkeypatch, failure):
+    import httpx
+    from fastapi.security import HTTPAuthorizationCredentials
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.routers import solution_deployments as module
+
+    request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=1,
+        ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
+    db = SimpleNamespace(rollback=AsyncMock(), commit=AsyncMock())
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(solution_git_delivery_policy=object()))
+    monkeypatch.setattr(module, "authenticate_git_delivery", AsyncMock(return_value=object()))
+    service = AsyncMock()
+    service.deliver.side_effect = httpx.ReadTimeout("unavailable") if failure == "timeout" else httpx.ConnectError("unavailable")
+    monkeypatch.setattr(module, "GitSourceDeliveryService", lambda *_: service)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="scoped-producer")
+    with pytest.raises(HTTPException) as caught:
+        await module.deliver_github_source(uuid4(), request, cast(Any, db), credentials, "job-token")
+    assert caught.value.status_code == 503
+    assert "pointer and receipt" in caught.value.detail
+    db.rollback.assert_awaited_once()
+    db.commit.assert_not_awaited()
+    assert service.deliver.await_count == 1
+
+
 def test_solution_deployment_openapi_exposes_minimal_cs_surface():
     app = FastAPI()
     app.include_router(router)

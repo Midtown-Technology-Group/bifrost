@@ -10643,6 +10643,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/github-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver Github Source
+         * @description A source-scoped producer can deliver only the configured protected recipe.
+         */
+        post: operations["deliver_github_source_api_solutions__solution_id__deployments_github_source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/capabilities": {
         parameters: {
             query?: never;
@@ -12554,6 +12574,26 @@ export interface paths {
          * @description Deletes the caller's user_mcp_credentials row for this connection and the underlying oauth_tokens row. Idempotent — returns 204 whether or not a credential existed.
          */
         delete: operations["disconnect_user_credential_api_me_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/resources/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deployment Resource
+         * @description Read only the reviewed resource in this active execution's pinned deployment.
+         */
+        get: operations["read_deployment_resource_api_sdk_resources__path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -16871,6 +16911,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Resources */
+            resources?: {
+                [key: string]: components["schemas"]["RuntimeResourceResolution"];
+            };
             /** File Locations */
             file_locations?: {
                 [key: string]: {
@@ -17892,6 +17936,10 @@ export interface components {
             /** Shared Tables */
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Resources */
+            resources?: {
+                [key: string]: components["schemas"]["RuntimeResourceResolution"];
             };
         };
         /** DeploymentSource */
@@ -27955,6 +28003,18 @@ export interface components {
             /** Dependency Solution Id */
             dependency_solution_id?: string | null;
         };
+        /**
+         * RuntimeResourceResolution
+         * @description Reviewed immutable source bytes, separate from operational file locations.
+         */
+        RuntimeResourceResolution: {
+            /** Object Key */
+            object_key: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** RuntimeSourceResolution */
         RuntimeSourceResolution: {
             /** Object Key */
@@ -29203,7 +29263,7 @@ export interface components {
         };
         /**
          * SharedRootTableBinding
-         * @description Reviewed access to one existing global Root table without adopting its data.
+         * @description Reviewed access to an existing Root table without adopting its data.
          */
         SharedRootTableBinding: {
             /**
@@ -29219,6 +29279,8 @@ export interface components {
              * @enum {string}
              */
             access: "read" | "read-write";
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** SharedTableBindingPreviewRequest */
         SharedTableBindingPreviewRequest: {
@@ -30449,6 +30511,67 @@ export interface components {
             path: string;
             /** Size */
             size?: number | null;
+        };
+        /**
+         * SolutionGitSourceDeliveryRequest
+         * @description Source comes from the configured protected recipe, never uploaded bytes.
+         */
+        SolutionGitSourceDeliveryRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Ci Run Id */
+            ci_run_id: number;
+            /** Ci Run Attempt */
+            ci_run_attempt: number;
+            /** Artifact Digest */
+            artifact_digest: string;
+        };
+        /** SolutionGitSourceDeliveryResponse */
+        SolutionGitSourceDeliveryResponse: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "already_active";
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /** Compiled Manifest Hash */
+            compiled_manifest_hash: string;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Source Tree Sha */
+            source_tree_sha: string;
+            /** Artifact Digest */
+            artifact_digest: string;
+            /** Source Hashes */
+            source_hashes: {
+                [key: string]: string;
+            };
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /**
+             * Source Verified
+             * @default true
+             * @constant
+             */
+            source_verified: true;
+            /**
+             * Runtime Verified
+             * @default false
+             * @constant
+             */
+            runtime_verified: false;
         };
         /**
          * SolutionInstallPreview
@@ -54086,6 +54209,43 @@ export interface operations {
             };
         };
     };
+    deliver_github_source_api_solutions__solution_id__deployments_github_source_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionGitSourceDeliveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     deployment_capabilities_api_solutions__solution_id__deployments_capabilities_get: {
         parameters: {
             query?: never;
@@ -57842,6 +58002,35 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_deployment_resource_api_sdk_resources__path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

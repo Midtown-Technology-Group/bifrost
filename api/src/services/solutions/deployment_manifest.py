@@ -11,6 +11,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from src.core.solution_delivery_policy import delivery_path
+
+from bifrost.solution_delivery_review import (
+    WORKFLOW_PARAMETERS_SCHEMA_CONTRACT as WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
+    SharedRootTableBinding as SharedRootTableBinding,
+    MAX_DEPLOYMENT_RESOURCE_BYTES as MAX_DEPLOYMENT_RESOURCE_BYTES,
+    MAX_DEPLOYMENT_RESOURCES_BYTES as MAX_DEPLOYMENT_RESOURCES_BYTES,
+)
+
 
 class FrozenDict(dict):
     """JSON-compatible dict whose contents cannot change after validation."""
@@ -88,6 +97,14 @@ class RuntimeSourceResolution(ImmutableContract):
     content_hash: str
 
 
+class RuntimeResourceResolution(ImmutableContract):
+    """Reviewed immutable source bytes, separate from operational file locations."""
+
+    object_key: str
+    content_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    size_bytes: int = Field(ge=1, le=MAX_DEPLOYMENT_RESOURCE_BYTES, strict=True)
+
+
 class DependencyResolution(ImmutableContract):
     solution_id: UUID
     deployment_id: UUID
@@ -99,14 +116,6 @@ class DeploymentGitProvenance(ImmutableContract):
     repository: str | None = None
     resolved_ref: str | None = None
     commit_sha: str | None = None
-
-
-class SharedRootTableBinding(ImmutableContract):
-    """Reviewed access to one existing global Root table without adopting its data."""
-
-    table_id: UUID
-    metadata_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    access: Literal["read", "read-write"] = "read"
 
 
 class CompiledDeploymentManifest(ImmutableContract):
@@ -124,6 +133,9 @@ class CompiledDeploymentManifest(ImmutableContract):
     tables: dict[str, RuntimeEntityDefinition] = Field(default_factory=dict)
     shared_tables: dict[str, SharedRootTableBinding] = Field(
         default_factory=dict, exclude_if=lambda value: not value
+    )
+    resources: dict[str, RuntimeResourceResolution] = Field(
+        default_factory=dict, max_length=256, exclude_if=lambda value: not value
     )
     file_locations: dict[str, dict[str, Any]] = Field(default_factory=dict)
     connections: dict[str, dict[str, Any]] = Field(default_factory=dict)
@@ -151,6 +163,9 @@ class DeploymentResolutionMap(ImmutableContract):
     sources: dict[str, RuntimeSourceResolution] = Field(default_factory=dict)
     shared_tables: dict[str, SharedRootTableBinding] = Field(
         default_factory=dict, exclude_if=lambda value: not value
+    )
+    resources: dict[str, RuntimeResourceResolution] = Field(
+        default_factory=dict, max_length=256, exclude_if=lambda value: not value
     )
 
     def resolve_workflow(self, portable_ref: str) -> RuntimeEntityDefinition:
@@ -234,6 +249,22 @@ def _validate_manifest_resolution_agreement(
         raise ValueError("manifest/resolution dependency mismatch")
     if manifest.shared_tables != resolution.shared_tables:
         raise ValueError("manifest/resolution shared table mismatch")
+    if manifest.resources != resolution.resources:
+        raise ValueError("manifest/resolution resource mismatch")
+    if set(resolution.resources) & set(resolution.sources):
+        raise ValueError("resource path conflicts with executable source")
+    if sum(item.size_bytes for item in resolution.resources.values()) > MAX_DEPLOYMENT_RESOURCES_BYTES:
+        raise ValueError("deployment resources exceed their total byte bound")
+    if resolution.resources:
+        expected_prefix = f"_solutions/{manifest.solution_id}/{manifest.deployment_id}/"
+        if manifest.source.runtime_prefix != expected_prefix:
+            raise ValueError("resource runtime prefix differs from deployment identity")
+        for path, resource in resolution.resources.items():
+            delivery_path(path)
+            if len(path) > 1000 or path.endswith(".py"):
+                raise ValueError("invalid immutable resource path")
+            if resource.object_key != f"{expected_prefix}_resources/{path}":
+                raise ValueError("resource object is outside its immutable deployment")
     if len({item.table_id for item in manifest.shared_tables.values()}) != len(manifest.shared_tables):
         raise ValueError("shared table IDs must be unique")
     if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in manifest.shared_tables):

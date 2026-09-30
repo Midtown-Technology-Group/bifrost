@@ -710,6 +710,8 @@ async def get_table_or_404(
     except SharedTableBindingError as exc:
         raise HTTPException(status_code=404, detail=f"Table '{name_or_id}' not found") from exc
     if bound is not None:
+        if bound.organization_id is not None and bound.organization_id != target_org_id:
+            raise HTTPException(status_code=404, detail=f"Table '{name_or_id}' not found")
         return bound
     repo = TableRepository(
         ctx.db,

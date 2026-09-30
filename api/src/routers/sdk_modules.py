@@ -26,9 +26,9 @@ from uuid import UUID
 from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
-from src.core.auth import get_current_active_user, get_current_superuser
+from src.core.auth import Context, get_current_active_user, get_current_superuser
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.log_safety import log_safe
 from src.core.module_cache import (
@@ -46,6 +46,24 @@ from src.services.solutions.storage import SOLUTIONS_ROOT, SolutionStorage
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sdk", tags=["SDK Internals"])
+
+
+@router.get("/resources/{path:path}", response_class=Response)
+async def read_deployment_resource(path: str, ctx: Context) -> Response:
+    """Read only the reviewed resource in this active execution's pinned deployment."""
+    from src.services.solutions.deployment_resources import DeploymentResourceDenied, read_execution_resource
+
+    try:
+        content = await read_execution_resource(ctx, path)
+    except DeploymentResourceDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Resource not found in execution deployment") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid resource path") from exc
+    return Response(content, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:[./][A-Za-z_][A-Za-z0-9_]*)*$")
 _RESOLUTION_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 

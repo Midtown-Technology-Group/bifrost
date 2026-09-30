@@ -1,6 +1,7 @@
 """HTTP contracts for immutable Solution deployment revisions."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -29,6 +30,30 @@ class SolutionDeploymentCreate(BaseModel):
     git_ref: str | None = None
     git_commit_sha: str | None = None
     codex_worker_id: str | None = None
+
+
+class SolutionGitSourceDeliveryRequest(BaseModel):
+    """Source comes from the configured protected recipe, never uploaded bytes."""
+
+    model_config = ConfigDict(extra="forbid")
+    source_commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    ci_run_id: int = Field(gt=0)
+    ci_run_attempt: int = Field(gt=0)
+    artifact_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class SolutionGitSourceDeliveryResponse(BaseModel):
+    state: Literal["active", "already_active"]
+    solution_id: UUID
+    deployment_id: UUID
+    compiled_manifest_hash: str
+    source_commit_sha: str
+    source_tree_sha: str
+    artifact_digest: str
+    source_hashes: dict[str, str]
+    receipt_id: UUID
+    source_verified: Literal[True] = True
+    runtime_verified: Literal[False] = False
 
 
 class DeploymentPointerRequest(BaseModel):

@@ -25,6 +25,28 @@ from src.services.operation_receipts import (
 )
 
 
+@pytest.mark.asyncio
+async def test_terminal_receipt_can_share_effect_transaction(async_session_factory):
+    """A rolled-back local SQL effect must not leave a successful receipt."""
+    from src.models.orm.operation_receipts import OperationReceipt
+
+    claim = await claim_operation_receipt(**_claim_kwargs())
+    assert claim.owner_token is not None
+    async with async_session_factory() as db:
+        await complete_operation_receipt_success(claim.receipt_id, claim.owner_token,
+                                                 {"deployment_id": "fixture"}, db=db)
+        await db.rollback()
+    async with async_session_factory() as db:
+        receipt = await db.get(OperationReceipt, claim.receipt_id)
+        assert receipt is not None and receipt.status == "started" and receipt.response is None
+        await complete_operation_receipt_success(claim.receipt_id, claim.owner_token,
+                                                 {"deployment_id": "fixture"}, db=db)
+        await db.commit()
+    async with async_session_factory() as db:
+        receipt = await db.get(OperationReceipt, claim.receipt_id)
+        assert receipt is not None and receipt.status == "succeeded"
+
+
 @pytest.fixture(autouse=True)
 def use_null_pool_sessions(async_session_factory, monkeypatch: pytest.MonkeyPatch):
     """Keep service-created sessions safe across function-scoped event loops."""
