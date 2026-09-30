@@ -70,7 +70,7 @@ def test_empty_binding_extension_preserves_existing_canonical_documents():
 def test_bound_table_imports_still_reject_file_and_hidden_namespace_dependencies():
     path = "features/demo.py"
     assert source_closure({path: b"from bifrost import tables\n"}, {path}, has_table_bindings=True)
-    for raw in (b"from bifrost import files\n", b"import bifrost as sdk\n"):
+    for raw in (b"from bifrost import files\n", b"import bifrost as sdk\n", b"from bifrost import resources\n"):
         with pytest.raises(LiveHandoffSourceError, match="resource bindings"):
             source_closure({path: raw}, {path}, has_table_bindings=True)
 

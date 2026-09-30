@@ -521,6 +521,7 @@
 | GET | `/api/sdk/modules-resolve` |
 | GET | `/api/sdk/modules/{path}` |
 | GET | `/api/sdk/requirements` |
+| GET | `/api/sdk/resources/{path}` |
 | GET | `/api/sdk/sessions` |
 | POST | `/api/sdk/sessions` |
 | DELETE | `/api/sdk/sessions/{session_id}` |

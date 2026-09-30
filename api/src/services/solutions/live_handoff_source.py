@@ -20,8 +20,8 @@ MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: bool) -> None:
     """Empty workflow installs cannot resolve shared tables or file locations."""
     tree = ast.parse(raw, filename=path)
-    unsupported_modules = [["bifrost", "files"]]
-    unsupported_names = {"files", "*"}
+    unsupported_modules = [["bifrost", "files"], ["bifrost", "resources"]]
+    unsupported_names = {"files", "resources", "*"}
     if not has_table_bindings:
         unsupported_modules.append(["bifrost", "tables"])
         unsupported_names.add("tables")

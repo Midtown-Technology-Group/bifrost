@@ -257,3 +257,39 @@ obligations. Before enabling production delivery, prove the actual GitHub job,
 runtime execution, trigger and dependency behavior in the isolated canary.
 Production handoff still needs the live history and consumer evidence described
 above. Global Live retirement remains a separate live-state decision.
+
+## Immutable source resource reader
+
+The optional `resources` maps in the manifest and resolution document identify
+reviewed non-Python source bytes. Each entry pins a canonical path, deployment
+object key, SHA-256 and positive size. The two maps must agree. A resource cannot
+share a Python source path or point outside
+`_solutions/<install>/<deployment>/_resources/`. The bounds are 2 MiB per
+resource, 10 MiB total and 256 entries. Empty maps are omitted from canonical
+documents, preserving existing deployment and accepted-execution hashes.
+
+`await resources.read(path)` returns UTF-8 text; `read_bytes(path)` returns raw
+bytes. The API derives the deployment from the signed execution's durable SQL
+pin, verifies its active attempt, organization, owner, manifest and queue
+evidence, and reads only the matching resource. A queued execution may read its
+superseded deployment while its Solution remains active. Human administrators
+and loose executions cannot use this execution endpoint. Query parameters
+cannot choose another deployment. Missing or corrupt resources have no Root
+fallback. Azure and S3 reads use a bounded byte range before buffering.
+
+This slice supplies the runtime contract and reader. Both source-only and
+workflow revision adapters reject resource-bearing candidates and bases until
+the protected-Git resource delivery adapter is implemented. The Python source
+closure also rejects resource SDK imports in that unsupported path. It cannot
+activate a resource merely because its metadata has self-consistent hashes.
+
+The next slice must carry a complete reviewed resource map from exact Git,
+create its immutable artifact and objects, verify all bytes before activation,
+and include hashes in candidate identity, receipts, replay matching and
+readback. Tests and isolated worker rehearsal must cover updates, accepted old
+pins, missing bytes, canceled staging and reviewed reverts. Deployment source
+resources are for reviewed JSON evidence or executable scripts. Current BSN
+client authority, Meraki Config Vault state and browser authentication state
+need their operational data contracts; packaging them as immutable source does
+not establish those contracts. This reader has not been deployed or enabled
+in production.

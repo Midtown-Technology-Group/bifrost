@@ -187,3 +187,23 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         ):
             raise ValueError(f"Invalid deployment runtime path: {path!r}")
         return await self._read(f"{self.runtime_prefix}{normalized}")
+
+    async def read_resource(self, path: str, size_bytes: int) -> bytes:
+        """Read one pinned resource with a transport bound before buffering bytes."""
+        from src.core.solution_delivery_policy import delivery_path
+        from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCE_BYTES
+
+        delivery_path(path)
+        if type(size_bytes) is not int or not 1 <= size_bytes <= MAX_DEPLOYMENT_RESOURCE_BYTES:
+            raise ValueError("Resource size exceeds its immutable contract")
+        key = f"{self.runtime_prefix}_resources/{path}"
+        async with self._client_factory() as client:
+            # One extra byte detects oversized objects. Azure applies the range
+            # before readall; S3 streams only this range. Never fetch Root bytes.
+            response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{size_bytes}")
+            body = response["Body"]
+            async with body:
+                content = await body.read(size_bytes + 1)
+                if len(content) != size_bytes:
+                    raise DeploymentArtifactIntegrityError("Immutable resource size differs from its contract")
+                return content

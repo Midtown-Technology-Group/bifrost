@@ -326,10 +326,11 @@ class SolutionSourceRevisionService:
             or manifest.file_locations
             or manifest.connections
             or manifest.config_requirements
+            or manifest.resources
             or not resolution.workflows
         ):
             raise SolutionSourceRevisionError(
-                "source-only revision requires a workflow-only deployment"
+                "source-only revision requires a workflow-only deployment without immutable resources"
             )
         if verify_shared_tables:
             try:
@@ -556,7 +557,7 @@ class SolutionSourceRevisionService:
         if (
             set(resolution.workflows) != set(old_resolution.workflows)
             or resolution.shared_tables != old_resolution.shared_tables
-            or manifest.tables or manifest.file_locations
+            or manifest.tables or manifest.file_locations or manifest.resources
             or manifest.agents or manifest.forms or manifest.events or manifest.applications
             or manifest.dependencies
             or set(resolution.workflows) != set(manifest.workflows)

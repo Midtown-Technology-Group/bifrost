@@ -396,6 +396,29 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_get_object_bounds_azure_download_before_buffering(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "azure.core.exceptions", SimpleNamespace(ResourceNotFoundError=RuntimeError))
+
+    class Stream:
+        async def readall(self):
+            return b"bounded"
+
+    class Container:
+        async def download_blob(self, key, *, offset, length):
+            assert key == "resource.json" and offset == 0 and length == 8
+            return Stream()
+
+    client = _owned_client(_settings())
+    client._container_client = Container()
+    response = await client.get_object(Bucket="ignored", Key="resource.json", Range="bytes=0-7")
+    async with response["Body"] as body:
+        assert await body.read(8) == b"bounded"
+    for invalid in ["bytes=7-0", "bytes=0-", "bytes=0-7,10-20", "other"]:
+        with pytest.raises(ValueError, match="bounded inclusive"):
+            await client.get_object(Bucket="ignored", Key="resource.json", Range=invalid)
+
+
+@pytest.mark.asyncio
 async def test_head_object_returns_s3_shaped_properties(monkeypatch) -> None:
     monkeypatch.setitem(
         sys.modules,

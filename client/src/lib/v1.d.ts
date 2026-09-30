@@ -12579,6 +12579,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sdk/resources/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deployment Resource
+         * @description Read only the reviewed resource in this active execution's pinned deployment.
+         */
+        get: operations["read_deployment_resource_api_sdk_resources__path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sdk/modules/{path}": {
         parameters: {
             query?: never;
@@ -16891,6 +16911,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Resources */
+            resources?: {
+                [key: string]: components["schemas"]["RuntimeResourceResolution"];
+            };
             /** File Locations */
             file_locations?: {
                 [key: string]: {
@@ -17912,6 +17936,10 @@ export interface components {
             /** Shared Tables */
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Resources */
+            resources?: {
+                [key: string]: components["schemas"]["RuntimeResourceResolution"];
             };
         };
         /** DeploymentSource */
@@ -27974,6 +28002,18 @@ export interface components {
             source_hash?: string | null;
             /** Dependency Solution Id */
             dependency_solution_id?: string | null;
+        };
+        /**
+         * RuntimeResourceResolution
+         * @description Reviewed immutable source bytes, separate from operational file locations.
+         */
+        RuntimeResourceResolution: {
+            /** Object Key */
+            object_key: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Size Bytes */
+            size_bytes: number;
         };
         /** RuntimeSourceResolution */
         RuntimeSourceResolution: {
@@ -57960,6 +58000,35 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_deployment_resource_api_sdk_resources__path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -50,6 +50,52 @@ from src.services.solutions.source_revision import (
 pytestmark = pytest.mark.e2e
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("adapter", ["source", "workflow"])
+async def test_revision_cannot_activate_resources_without_reviewed_delivery_adapter(
+    db_session, platform_admin, monkeypatch, adapter
+):
+    from src.models.contracts.solution_deployments import SolutionDeploymentCreate
+    from src.services.solutions.deployment_api import SolutionDeploymentAPIService
+    from src.services.solutions.deployment_manifest import DeploymentGitProvenance, RuntimeResourceResolution
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+    from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+
+    fixture = await _seed_adopted_revision(db_session, platform_admin, monkeypatch)
+    service = SolutionSourceRevisionService(db_session)
+    prefix = deployment_runtime_prefix(fixture.solution_id, fixture.revision_id)
+    resolution = DeploymentResolutionMap.model_validate(fixture.base.resolution_map)
+    resource = RuntimeResourceResolution(object_key=f"{prefix}_resources/rates.json",
+        content_hash=sha256_digest(b"{}"), size_bytes=2)
+    resolution = resolution.model_copy(update={"resources": {"rates.json": resource}, "sources": {
+        path: item.model_copy(update={"object_key": prefix + path}) for path, item in resolution.sources.items()}})
+    manifest = fixture.manifest.model_copy(update={"deployment_id": fixture.revision_id,
+        "source": DeploymentSource(artifact_key=deployment_source_artifact_key(fixture.solution_id, fixture.revision_id),
+            runtime_prefix=prefix), "git": DeploymentGitProvenance(commit_sha="f" * 40),
+        "resources": resolution.resources, "resolution_map_hash": sha256_digest(canonical_json(resolution))})
+    # The generic ready-draft API can store a self-consistent resource contract.
+    # Neither reviewed revision adapter may activate it without resource proof.
+    candidate = await SolutionDeploymentAPIService(db_session).create_ready_draft(fixture.solution_id,
+        platform_admin.user_id, SolutionDeploymentCreate(compiled_manifest=manifest, resolution_map=resolution,
+            base_deployment_id=fixture.base_id, parent_deployment_id=fixture.base_id, git_commit_sha="f" * 40))
+    expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=fixture.base_id,
+        expected_active_manifest_hash=fixture.manifest.content_hash())
+    if adapter == "source":
+        with pytest.raises(SolutionSourceRevisionError, match="identities"):
+            await service.inspect(fixture.solution_id, candidate.id, expected)
+    else:
+        recipe = ReviewedWorkflowRecipe.model_validate({"schema_version": "bifrost.solution-workflow-delivery/v1",
+            "solution_id": str(fixture.solution_id), "files": {fixture.path: fixture.path},
+            "workflows": [{"id": str(fixture.workflow_id), "path": fixture.path, "function_name": "run",
+                "organization_id": str(PROVIDER_ORG_ID), "runtime_bounds": {
+                    "max_duration_seconds": 20, "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096},
+                "controls": {}}], "shared_tables": {name: item.model_dump(mode="json") for name, item in fixture.bindings.items()}})
+        with pytest.raises(SolutionSourceRevisionError, match="unsupported resources"):
+            await SolutionWorkflowRevisionService(db_session).inspect_workflows(fixture.solution_id, candidate.id, expected, recipe)
+    assert fixture.solution.active_deployment_id == fixture.base_id
+    assert fixture.workflow.solution_id == fixture.solution_id
+
+
 @pytest_asyncio.fixture
 async def db_session(async_engine):
     async with async_engine.connect() as connection:

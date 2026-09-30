@@ -106,3 +106,45 @@ async def test_runtime_path_rejects_traversal():
 )
 def test_provider_duplicate_write_exceptions_are_classified(error):
     assert SolutionDeploymentStorage._is_already_exists(error)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [b"correct", b"short", b"oversized-object"])
+async def test_resource_read_requests_bounded_range_and_closes_body(content):
+    class Body:
+        closed = False
+        read_size = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            self.read_size = size
+            return content[:size]
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    if len(content) != 7:
+        with pytest.raises(DeploymentArtifactIntegrityError, match="size differs"):
+            await storage.read_resource("scripts/audit.ps1", 7)
+    else:
+        assert await storage.read_resource("scripts/audit.ps1", 7) == content
+    client.get_object.assert_awaited_once_with(Bucket="test",
+        Key=f"{storage.runtime_prefix}_resources/scripts/audit.ps1", Range="bytes=0-7")
+    assert body.read_size == 8 and body.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,size", [("../secret", 1), ("/root/file", 1), ("rates.json", True),
+    ("rates.json", 0), ("rates.json", 2 * 1024 * 1024 + 1)])
+async def test_invalid_resource_contract_never_opens_storage(path, size):
+    storage = make_storage(FakeClient())
+    storage._client_factory = AsyncMock(side_effect=AssertionError("Storage must not be opened"))
+    with pytest.raises(ValueError):
+        await storage.read_resource(path, size)
+    storage._client_factory.assert_not_called()

@@ -166,6 +166,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             raise SolutionSourceRevisionError("Workflow candidate closure is invalid") from exc
         if (manifest.agents or manifest.forms or manifest.events or manifest.applications or manifest.tables
                 or manifest.dependencies or manifest.file_locations or manifest.connections or manifest.config_requirements
+                or manifest.resources
                 or manifest.git.commit_sha != candidate.git_commit_sha):
             raise SolutionSourceRevisionError("Workflow candidate contains unsupported resources")
         storage = SolutionDeploymentStorage(solution_id, deployment_id)
