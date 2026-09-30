@@ -10899,6 +10899,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage Workflow Revision
+         * @description Stage a reviewed complete successor without changing registrations or pointer.
+         */
+        post: operations["stage_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Workflow Revision
+         * @description Read immutable bytes, registrations, triggers and the exact reviewed recipe.
+         */
+        post: operations["inspect_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Workflow Revision
+         * @description Atomically activate the exact preflight evidence and compatible registrations.
+         */
+        post: operations["activate_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/{deployment_id}/activate": {
         parameters: {
             query?: never;
@@ -20299,12 +20359,12 @@ export interface components {
          * @description Execution-engine failures that may start another attempt.
          * @enum {string}
          */
-        ExecutionRetryFailure: "worker_lost" | "subprocess_crash";
+        "ExecutionRetryFailure-Output": "worker_lost" | "subprocess_crash";
         /**
          * ExecutionRetryPolicy
          * @description Versioned policy for retries after execution-engine failures.
          */
-        ExecutionRetryPolicy: {
+        "ExecutionRetryPolicy-Output": {
             /**
              * Version
              * @default execution-retry/v1
@@ -20326,7 +20386,7 @@ export interface components {
              * Retry On
              * @description Execution-engine failures eligible for another attempt
              */
-            retry_on?: components["schemas"]["ExecutionRetryFailure"][];
+            retry_on?: components["schemas"]["ExecutionRetryFailure-Output"][];
         };
         /**
          * ExecutionStats
@@ -27514,7 +27574,7 @@ export interface components {
              */
             role_ids?: string[] | null;
             /** @description Policy for retrying eligible infrastructure failures. Omit to preserve the policy when reactivating an existing workflow. */
-            retry_policy?: components["schemas"]["ExecutionRetryPolicy"] | null;
+            retry_policy?: components["schemas"]["src__models__contracts__base__ExecutionRetryPolicy"] | null;
         };
         /**
          * RegisterWorkflowResponse
@@ -27556,7 +27616,7 @@ export interface components {
              * @description Organization ID if org-scoped, null for global
              */
             organization_id?: string | null;
-            retry_policy?: components["schemas"]["ExecutionRetryPolicy"];
+            retry_policy?: components["schemas"]["ExecutionRetryPolicy-Output"];
         };
         /**
          * ReimportJobResponse
@@ -27784,6 +27844,66 @@ export interface components {
              * @description Result message
              */
             message: string;
+        };
+        /** ReviewedRuntimeBounds */
+        ReviewedRuntimeBounds: {
+            /** Max Duration Seconds */
+            max_duration_seconds: number;
+            /** Max External Calls */
+            max_external_calls: number;
+            /** Max Records Read */
+            max_records_read: number;
+            /** Max Output Bytes */
+            max_output_bytes: number;
+            /** Max Records Written */
+            max_records_written?: number | null;
+            /** Max Output Rows */
+            max_output_rows?: number | null;
+            /** Max Pages */
+            max_pages?: number | null;
+        };
+        /** ReviewedWorkflowRecipe */
+        ReviewedWorkflowRecipe: {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "bifrost.solution-workflow-delivery/v1";
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /** Files */
+            files: {
+                [key: string]: string;
+            };
+            /** Workflows */
+            workflows: components["schemas"]["ReviewedWorkflowRegistration"][];
+            /** Shared Tables */
+            shared_tables?: {
+                [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Resources */
+            resources?: {
+                [key: string]: string;
+            };
+        };
+        /** ReviewedWorkflowRegistration */
+        ReviewedWorkflowRegistration: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Path */
+            path: string;
+            /** Function Name */
+            function_name: string;
+            /** Organization Id */
+            organization_id: string | null;
+            runtime_bounds: components["schemas"]["ReviewedRuntimeBounds"];
+            controls: components["schemas"]["WorkflowRegistrationControls"];
         };
         /**
          * RevokeAllResponse
@@ -30955,6 +31075,50 @@ export interface components {
             claims?: components["schemas"]["SolutionEntityDiff"];
             config_schemas?: components["schemas"]["SolutionConfigSchemaDiff"];
         };
+        /** SolutionWorkflowRevisionCommitRequest */
+        SolutionWorkflowRevisionCommitRequest: {
+            /**
+             * Expected Active Deployment Id
+             * Format: uuid
+             */
+            expected_active_deployment_id: string;
+            /** Expected Active Manifest Hash */
+            expected_active_manifest_hash: string;
+            /** Expected Evidence Id */
+            expected_evidence_id: string;
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+        };
+        /** SolutionWorkflowRevisionInspectRequest */
+        SolutionWorkflowRevisionInspectRequest: {
+            /**
+             * Expected Active Deployment Id
+             * Format: uuid
+             */
+            expected_active_deployment_id: string;
+            /** Expected Active Manifest Hash */
+            expected_active_manifest_hash: string;
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+        };
+        /**
+         * SolutionWorkflowRevisionRequest
+         * @description Reviewed operator revision, including registration and resource contracts.
+         */
+        SolutionWorkflowRevisionRequest: {
+            /**
+             * Expected Active Deployment Id
+             * Format: uuid
+             */
+            expected_active_deployment_id: string;
+            /** Expected Active Manifest Hash */
+            expected_active_manifest_hash: string;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Files */
+            files: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+            /** Resources */
+            resources?: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
+        };
         /** SolutionsList */
         SolutionsList: {
             /** Solutions */
@@ -32511,7 +32675,7 @@ export interface components {
             execution_context?: {
                 [key: string]: unknown;
             } | null;
-            retry_policy?: components["schemas"]["ExecutionRetryPolicy"];
+            retry_policy?: components["schemas"]["ExecutionRetryPolicy-Output"];
             attempt_history?: components["schemas"]["ExecutionAttemptHistory"];
         };
         /**
@@ -32877,7 +33041,7 @@ export interface components {
              */
             timeout_seconds: number;
             /** @description Execution-engine retry policy */
-            retry_policy?: components["schemas"]["ExecutionRetryPolicy"];
+            retry_policy?: components["schemas"]["ExecutionRetryPolicy-Output"];
             /**
              * Endpoint Enabled
              * @description Whether workflow is exposed as HTTP endpoint
@@ -33068,6 +33232,63 @@ export interface components {
              */
             name: string;
         };
+        /** WorkflowRegistrationControls */
+        WorkflowRegistrationControls: {
+            /** Display Name */
+            display_name?: string | null;
+            /**
+             * Execution Mode
+             * @default async
+             * @enum {string}
+             */
+            execution_mode: "sync" | "async";
+            /**
+             * Timeout Seconds
+             * @default 1800
+             */
+            timeout_seconds: number;
+            /**
+             * Cache Ttl Seconds
+             * @default 0
+             */
+            cache_ttl_seconds: number;
+            /**
+             * Time Saved
+             * @default 0
+             */
+            time_saved: number;
+            /**
+             * Value
+             * @default 0
+             */
+            value: number;
+            retry_policy?: components["schemas"]["bifrost__contracts__workflows__ExecutionRetryPolicy"];
+            /**
+             * Access Level
+             * @default role_based
+             * @enum {string}
+             */
+            access_level: "role_based" | "authenticated" | "everyone";
+            /** Role Ids */
+            role_ids?: string[];
+            /**
+             * Endpoint Enabled
+             * @default false
+             */
+            endpoint_enabled: boolean;
+            /**
+             * Public Endpoint
+             * @default false
+             */
+            public_endpoint: boolean;
+            /** Allowed Methods */
+            allowed_methods?: ("GET" | "POST" | "PUT" | "PATCH" | "DELETE")[];
+            /**
+             * Disable Global Key
+             * @default false
+             */
+            disable_global_key: boolean;
+        };
         /**
          * WorkflowRolesResponse
          * @description Response model for getting roles assigned to a workflow.
@@ -33138,7 +33359,7 @@ export interface components {
              */
             execution_mode?: ("sync" | "async") | null;
             /** @description Execution-engine retry policy */
-            retry_policy?: components["schemas"]["ExecutionRetryPolicy"] | null;
+            retry_policy?: components["schemas"]["src__models__contracts__base__ExecutionRetryPolicy"] | null;
             /**
              * Time Saved
              * @description Minutes saved per execution (for ROI reporting)
@@ -34798,6 +35019,32 @@ export interface components {
             runtime_path?: string | null;
         };
         /**
+         * ExecutionRetryFailure
+         * @enum {string}
+         */
+        bifrost__contracts__workflows__ExecutionRetryFailure: "worker_lost" | "subprocess_crash";
+        /** ExecutionRetryPolicy */
+        bifrost__contracts__workflows__ExecutionRetryPolicy: {
+            /**
+             * Version
+             * @default execution-retry/v1
+             * @constant
+             */
+            version: "execution-retry/v1";
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Max Attempts
+             * @default 2
+             */
+            max_attempts: number;
+            /** Retry On */
+            retry_on?: components["schemas"]["bifrost__contracts__workflows__ExecutionRetryFailure"][];
+        };
+        /**
          * OAuthProviderInfo
          * @description OAuth provider information for login page
          */
@@ -34808,6 +35055,40 @@ export interface components {
             display_name: string;
             /** Icon */
             icon?: string | null;
+        };
+        /**
+         * ExecutionRetryFailure
+         * @description Execution-engine failures that may start another attempt.
+         * @enum {string}
+         */
+        src__models__contracts__base__ExecutionRetryFailure: "worker_lost" | "subprocess_crash";
+        /**
+         * ExecutionRetryPolicy
+         * @description Versioned policy for retries after execution-engine failures.
+         */
+        src__models__contracts__base__ExecutionRetryPolicy: {
+            /**
+             * Version
+             * @default execution-retry/v1
+             * @constant
+             */
+            version: "execution-retry/v1";
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Max Attempts
+             * @description Total attempts, including the initial execution
+             * @default 2
+             */
+            max_attempts: number;
+            /**
+             * Retry On
+             * @description Execution-engine failures eligible for another attempt
+             */
+            retry_on?: components["schemas"]["src__models__contracts__base__ExecutionRetryFailure"][];
         };
         /**
          * OAuthCallbackRequest
@@ -54789,6 +55070,114 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SolutionSourceRevisionCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionWorkflowRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionWorkflowRevisionInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionWorkflowRevisionCommitRequest"];
             };
         };
         responses: {

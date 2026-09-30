@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
 
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
@@ -204,3 +205,18 @@ class SolutionSourceRevisionInspectResponse(BaseModel):
 
 class SolutionSourceRevisionCommitRequest(SolutionSourceRevisionInspectRequest):
     expected_evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class SolutionWorkflowRevisionRequest(SolutionSourceRevisionRequest):
+    """Reviewed operator revision, including registration and resource contracts."""
+
+    reviewed_recipe: ReviewedWorkflowRecipe
+    resources: list[SolutionSourceFile] = Field(default_factory=list, max_length=256)
+
+
+class SolutionWorkflowRevisionInspectRequest(SolutionSourceRevisionInspectRequest):
+    reviewed_recipe: ReviewedWorkflowRecipe
+
+
+class SolutionWorkflowRevisionCommitRequest(SolutionSourceRevisionCommitRequest):
+    reviewed_recipe: ReviewedWorkflowRecipe
