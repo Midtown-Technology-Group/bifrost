@@ -668,6 +668,15 @@ class WorkspaceSourceSupersessionEvidence(BaseModel):
     superseding_solution_deployment_ids: list[UUID] = Field(
         default_factory=list, max_length=50
     )
+    reviewed_global_solution_ids: list[UUID] = Field(
+        default_factory=list,
+        max_length=50,
+        description=(
+            "Exact global Solution identities explicitly reviewed by the platform "
+            "administrator for this organization-scoped source accountability record. "
+            "Does not change workflow or deployment organization scope."
+        ),
+    )
     production_readback_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     verified_at: datetime
     paths: dict[str, WorkspaceSourceSupersessionPath] = Field(
@@ -687,6 +696,10 @@ class WorkspaceSourceSupersessionEvidence(BaseModel):
             self.superseding_solution_deployment_ids
         ):
             raise ValueError("Solution deployment IDs must be unique")
+        if len(set(self.reviewed_global_solution_ids)) != len(
+            self.reviewed_global_solution_ids
+        ):
+            raise ValueError("Reviewed global Solution IDs must be unique")
         return self
 
 

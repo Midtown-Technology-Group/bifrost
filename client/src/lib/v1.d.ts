@@ -34955,6 +34955,11 @@ export interface components {
             superseding_source_release_id?: string | null;
             /** Superseding Solution Deployment Ids */
             superseding_solution_deployment_ids?: string[];
+            /**
+             * Reviewed Global Solution Ids
+             * @description Exact global Solution identities explicitly reviewed by the platform administrator for this organization-scoped source accountability record. Does not change workflow or deployment organization scope.
+             */
+            reviewed_global_solution_ids?: string[];
             /** Production Readback Id */
             production_readback_id: string;
             /**
