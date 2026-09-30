@@ -1,5 +1,7 @@
 """Repository discovery contracts without Docker or model calls."""
 from pathlib import Path
+import importlib.util
+import io
 import os
 import tempfile
 import unittest
@@ -9,6 +11,28 @@ from scripts import check_skill_mirrors as guard
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_imported_package_name_cannot_remove_sibling_directory(self):
+        source = guard.REPO / ".claude/skills/bifrost-copilot-cowork-package/pack.py"
+        spec = importlib.util.spec_from_file_location("copilot_pack", source)
+        pack = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pack)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            victim = root / "victim-cowork"
+            victim.mkdir()
+            sentinel = victim / "keep.txt"
+            sentinel.write_text("preserve")
+            skill = root / "imported"
+            self.write_skill(root, "imported", "../victim", "Test fixture.")
+            output = root / "output"
+            agent = {"id": "test-agent", "name": "Test agent"}
+            argv = ["pack.py", "test-agent", "--skill-source", str(skill),
+                    "--out", str(output), "--auth", "None", "--bifrost-host", "example.invalid"]
+            with patch.object(pack, "get_agent", return_value=agent), patch.object(pack.sys, "argv", argv), patch.object(pack.sys, "stdout", io.StringIO()):
+                self.assertEqual(pack.main(), 0)
+            self.assertEqual(sentinel.read_text(), "preserve")
+            self.assertTrue((output / "victim-cowork.zip").is_file())
+
     def test_sync_preflight_preserves_local_deletion(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

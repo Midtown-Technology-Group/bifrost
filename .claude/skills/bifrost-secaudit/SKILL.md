@@ -56,10 +56,13 @@ For each: is there an open Dependabot PR for this dep? Cross-reference by name â
 CodeQL pagination is essential. The single-page `?per_page=100` only ever returns 100; this repo currently has ~1000+ alerts.
 
 ```bash
-for page in {1..15}; do
-  gh api "repos/gobifrost/bifrost/code-scanning/alerts?state=open&per_page=100&page=$page" \
-    --jq '.[] | "\(.rule.severity) | \(.rule.id)"' 2>/dev/null
-done | sort | uniq -c | sort -rn > /tmp/codeql-summary.txt
+if gh api --paginate "repos/gobifrost/bifrost/code-scanning/alerts?state=open&per_page=100" \
+    --jq '.[] | "\(.rule.severity) | \(.rule.id)"' > /tmp/codeql-alerts.txt; then
+  sort /tmp/codeql-alerts.txt | uniq -c | sort -rn > /tmp/codeql-summary.txt
+  cat /tmp/codeql-summary.txt
+else
+  echo "CodeQL skipped/incomplete: pagination failed; do not report partial counts." >&2
+fi
 ```
 
 Aggregate:
