@@ -9,6 +9,18 @@ from scripts import check_skill_mirrors as guard
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_sync_preflight_preserves_local_deletion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            relative = ".agents/skills/debug/SKILL.md"
+            expected = {".agents/skills": {"debug/SKILL.md": (b"canonical", False)}}
+            listing = f"100644 blob abc123\t{relative}\n"
+            with patch.object(guard, "REPO", repo), patch.object(guard, "_expected_mirrors", return_value=expected):
+                with patch.object(guard.subprocess, "check_output", return_value=listing):
+                    errors = guard._preflight_sync()
+            self.assertEqual(errors, [f"locally deleted mirror file; preserve and reconcile: {relative}"])
+            self.assertFalse((repo / relative).exists())
+
     def test_drift_check_preserves_custom_and_edited_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

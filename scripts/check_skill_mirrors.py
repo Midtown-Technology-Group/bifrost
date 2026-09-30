@@ -98,7 +98,11 @@ def _preflight_sync() -> list[str]:
             mode, _, object_id = metadata.split()
             tracked[relative] = (object_id, mode == "100755")
         for mirror, tree in expected.items():
-            for relative, actual in _tree_manifest(REPO / mirror).items():
+            actual_tree = _tree_manifest(REPO / mirror)
+            for relative in tree.keys() - actual_tree.keys():
+                if f"{mirror}/{relative}" in tracked:
+                    errors.append(f"locally deleted mirror file; preserve and reconcile: {mirror}/{relative}")
+            for relative, actual in actual_tree.items():
                 if tree.get(relative) == actual:
                     continue
                 owned = tracked.get(f"{mirror}/{relative}")
