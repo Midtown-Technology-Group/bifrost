@@ -59,7 +59,7 @@ dependencies = [
     # =========================================================================
     # Configuration
     # =========================================================================
-    "pydantic",
+    "pydantic>=2.12",
     "pydantic-settings",
     "python-dotenv",
     "packaging",  # PEP 440/SemVer-compatible CLI minimum-version comparisons

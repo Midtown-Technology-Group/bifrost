@@ -158,7 +158,7 @@ def _load_module(py: Path, rel: str, *, resource_recipe: Path | None = None) -> 
         sys.modules[mod_name] = module
         from bifrost._local_resources import local_resource_context
 
-        with local_resource_context(py, resource_recipe):
+        with local_resource_context(py, resource_recipe, allow_undeclared=True):
             spec.loader.exec_module(module)
         return module, None
     except Exception as exc:  # one broken file must not blank the whole map
@@ -273,7 +273,7 @@ class FunctionHost:
 
         fn = self._fns[ref]  # KeyError → caller maps to 404
         source = self._workspace / ref.split("::", 1)[0]
-        with local_resource_context(source, self._resource_recipe):
+        with local_resource_context(source, self._resource_recipe, allow_undeclared=True):
             result = fn(**params)
             if inspect.isawaitable(result):
                 result = await result

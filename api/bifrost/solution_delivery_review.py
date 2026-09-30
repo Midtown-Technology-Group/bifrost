@@ -231,6 +231,8 @@ def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[s
         statement = pending.pop()
         if isinstance(statement, ast.Import | ast.ImportFrom):
             for alias in statement.names:
+                if alias.name == "*":
+                    raise WorkflowRecipeError("Star imports cannot preserve reviewed executable bindings")
                 name = alias.asname or alias.name.split(".")[0]
                 if name in imported:
                     imported[name] += 1
@@ -420,7 +422,7 @@ def _verify_resource_calls(path: str, raw: bytes, resource_paths: set[str]) -> N
             if any(item.name == "*" for item in node.names):
                 raise WorkflowRecipeError("Import the resource SDK explicitly with from bifrost import resources")
             aliases.extend(item.asname or item.name for item in node.names if item.name == "resources")
-        elif isinstance(node, ast.Import) and any(item.name.startswith("bifrost.resources") for item in node.names):
+        elif isinstance(node, ast.Import) and any(item.name == "bifrost" or item.name.startswith("bifrost.resources") for item in node.names):
             raise WorkflowRecipeError("Import the resource SDK explicitly with from bifrost import resources")
     if not aliases:
         return

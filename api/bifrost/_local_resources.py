@@ -108,28 +108,36 @@ def _unique_keys(pairs):
     return result
 
 
-def _load(workflow_file: Path | None, recipe_path: Path | None) -> LocalResources:
+def _load(workflow_file: Path | None, recipe_path: Path | None, *, allow_undeclared: bool = False) -> LocalResources:
     if recipe_path is None:
         return LocalResources(None, MappingProxyType({}))
     if workflow_file is None:
         raise LocalResourceError("Local resource recipe requires an explicit workflow file")
     recipe_path = Path(os.path.abspath(recipe_path))
-    root = next((candidate for candidate in recipe_path.parents if (candidate / ".git").exists()), None)
-    if root is None:
+    lexical_root = next((candidate for candidate in recipe_path.parents if (candidate / ".git").exists()), None)
+    if lexical_root is None:
         raise LocalResourceError("Local resource recipe must be inside a Git checkout")
-    root = root.resolve()
+    root = lexical_root.resolve()
     try:
-        recipe_relative = recipe_path.relative_to(root).as_posix()
-        source_relative = Path(os.path.abspath(workflow_file)).relative_to(root).as_posix()
+        recipe_relative = recipe_path.relative_to(lexical_root).as_posix()
+        source_path = Path(os.path.abspath(workflow_file))
+        try:
+            source_relative = source_path.relative_to(lexical_root).as_posix()
+        except ValueError:
+            # The function host resolves its workspace; the recipe can still
+            # have a lexical parent alias such as /tmp on macOS.
+            source_relative = source_path.relative_to(root).as_posix()
         from bifrost.solution_delivery_review import ReviewedWorkflowRecipe, delivery_path
 
         delivery_path(recipe_relative)
         delivery_path(source_relative)
         raw = _read_regular(root, recipe_relative, 128 * 1024)
         recipe = ReviewedWorkflowRecipe.model_validate(json.loads(raw, object_pairs_hook=_unique_keys))
-        if source_relative not in recipe.files.values():
-            raise LocalResourceError("Local workflow is absent from the selected resource recipe")
         _regular_file(root, source_relative)
+        if source_relative not in recipe.files.values():
+            if allow_undeclared:
+                return LocalResources(None, MappingProxyType({}))
+            raise LocalResourceError("Local workflow is absent from the selected resource recipe")
     except LocalResourceError:
         raise
     except (ValueError, TypeError) as exc:
@@ -139,13 +147,14 @@ def _load(workflow_file: Path | None, recipe_path: Path | None) -> LocalResource
 
 
 @contextmanager
-def local_resource_context(workflow_file: Path | None, recipe_path: Path | None = None) -> Iterator[None]:
+def local_resource_context(workflow_file: Path | None, recipe_path: Path | None = None, *,
+                           allow_undeclared: bool = False) -> Iterator[None]:
     """Bind dirty declared checkout bytes for one local run, then restore context.
 
     Even an empty local map prevents HTTP fallback. Recipe UUIDs never select a
     server install, and local byte reads are not deployment or runtime proof.
     """
-    token = _local_resources.set(_load(workflow_file, recipe_path))
+    token = _local_resources.set(_load(workflow_file, recipe_path, allow_undeclared=allow_undeclared))
     try:
         yield
     finally:

@@ -99,6 +99,30 @@ def test_legacy_review_rejects_rebound_decorator_before_source_activation():
 
 
 @pytest.mark.parametrize("legacy", [False, True])
+def test_workspace_star_import_cannot_replace_reviewed_decorator(legacy):
+    value, _files, resources = fixture()
+    value["files"]["helper.py"] = "helper.py"
+    if legacy:
+        value = {"schema_version": "bifrost.solution-source-delivery/v1",
+            "solution_id": value["solution_id"], "files": value["files"]}
+        resources = {}
+    files = {"run.py": b"from bifrost import workflow\nfrom helper import *\n@workflow\nasync def run():\n return 1\n",
+        "helper.py": b"def workflow(fn):\n return fn\n"}
+    with pytest.raises(WorkflowRecipeError, match="Star imports"):
+        review_solution_recipe(value, files, resources)
+
+
+@pytest.mark.parametrize("module", ["bifrost", "bifrost as sdk"])
+def test_resource_verifier_rejects_hidden_module_namespace(module):
+    from bifrost.solution_delivery_review import _verify_resource_calls
+
+    name = "sdk" if " as " in module else "bifrost"
+    code = f"import {module}\nasync def run(path):\n return await {name}.resources.read(path)\n".encode()
+    with pytest.raises(WorkflowRecipeError, match="explicitly"):
+        _verify_resource_calls("run.py", code, {"rates.json"})
+
+
+@pytest.mark.parametrize("legacy", [False, True])
 def test_global_rebinding_in_helper_cannot_replace_executable_decorator(legacy):
     value, files, resources = fixture()
     code = b"from bifrost import workflow\ndef replace():\n global workflow\n workflow = object()\nreplace()\n@workflow\nasync def run():\n return 1\n"

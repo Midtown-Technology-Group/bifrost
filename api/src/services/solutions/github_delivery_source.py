@@ -152,7 +152,7 @@ class ProtectedGitReader:
             if not isinstance(value, dict):
                 raise GitDeliverySourceError("Unexpected protected Git response")
             return value
-        except (httpx.HTTPError, ValueError) as exc:
+        except ValueError as exc:
             if isinstance(exc, GitDeliverySourceError):
                 raise
             raise GitDeliverySourceError("Protected Git metadata is unavailable") from exc

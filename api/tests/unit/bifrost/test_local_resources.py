@@ -47,6 +47,39 @@ def no_resource_http(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("resolved_source", [False, True])
+async def test_checkout_parent_alias_keeps_resource_paths_bounded(tmp_path, resolved_source):
+    actual = tmp_path / "actual"
+    source, recipe, _data = checkout(actual / "checkout")
+    alias = tmp_path / "alias"
+    alias.symlink_to(actual, target_is_directory=True)
+    recipe_alias = alias / "checkout" / recipe.relative_to(actual / "checkout")
+    source_alias = alias / "checkout" / source.relative_to(actual / "checkout")
+    with local_resource_context(source if resolved_source else source_alias, recipe_alias):
+        assert await resources.read("rates.json") == '{"rate":1}'
+    assert current_local_resources() is None
+
+
+@pytest.mark.asyncio
+async def test_recipe_host_runs_unrelated_functions_without_granting_resource_access(tmp_path):
+    _source, recipe, _data = checkout(tmp_path)
+    ordinary = tmp_path / "ordinary.py"
+    ordinary.write_text('from bifrost import workflow\n@workflow\nasync def run():\n return 7\n')
+    forbidden = tmp_path / "undeclared.py"
+    forbidden.write_text('from bifrost import workflow, resources\n@workflow\nasync def run():\n return await resources.read("rates.json")\n')
+    host = FunctionHost(tmp_path, resource_recipe=recipe)
+    host.reload()
+    assert "ordinary.py" not in host.failures() and "undeclared.py" not in host.failures()
+    assert await host.run("ordinary.py::run", {}) == 7
+    with pytest.raises(LocalResourceError, match="undeclared"):
+        await host.run("undeclared.py::run", {})
+    with pytest.raises(LocalResourceError, match="absent"):
+        with local_resource_context(ordinary, recipe):
+            pytest.fail("Direct CLI should reject a source outside its recipe")
+    assert current_local_resources() is None
+
+
+@pytest.mark.asyncio
 async def test_declared_dirty_bytes_and_nested_context_restore(tmp_path):
     source, recipe, data = checkout(tmp_path)
     assert current_local_resources() is None

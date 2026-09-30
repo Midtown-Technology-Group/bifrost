@@ -34,6 +34,17 @@ def policy():
         solutions={SID: RECIPE})
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadTimeout])
+async def test_protected_git_transport_failure_reaches_receipt_readback_handler(error_type):
+    def fail(request):
+        raise error_type("GitHub transport unavailable", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(fail)) as client:
+        with pytest.raises(error_type):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).verify_ci(SHA, 123, 2)
+
+
 @pytest.fixture(scope="module")
 def signing():
     private = rsa.generate_private_key(public_exponent=65537, key_size=2048)

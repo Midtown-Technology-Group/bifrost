@@ -355,7 +355,11 @@ Both direct and browser-driven `bifrost run`, and each local function host call,
 bind an isolated local resource context for imports and function bodies. Even a local run without
 a recipe has an empty map. Missing, undeclared or invalid local bytes fail
 locally and cannot fall back to an HTTP request. Context resets after success
-or failure and concurrent local invocations keep separate maps.
+or failure and concurrent local invocations keep separate maps. The function
+host binds an empty map for source files outside the selected recipe, so
+unrelated resource-free workflows keep running and undeclared resource reads
+still fail without HTTP fallback. A direct CLI run with a recipe requires its
+source file to be declared by that recipe.
 
 Recipe UUIDs do not select a server install or replace the CLI's normal data
 plane binding. Other SDK calls and vendor effects still use the developer's
