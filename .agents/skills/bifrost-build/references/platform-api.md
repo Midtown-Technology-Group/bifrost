@@ -1,6 +1,8 @@
-# Platform API Reference
+# Legacy v1 Platform Surface
 
-Every name exported by the `"bifrost"` package. Canonical source: `api/bifrost/platform_names.py` (`PLATFORM_EXPORT_NAMES`). A drift test (`api/tests/unit/test_platform_api_docs.py`) enforces that every name in that set has a matching `### <Name>` section here.
+Use this file only as exact lookup while maintaining an existing `inline_v1` app. It lists every name injected through the v1 `"bifrost"` module. New `standalone_v2` apps use the much smaller surface in `../generated/web-sdk-surface.md`.
+
+Canonical source: `api/bifrost/platform_names.py` (`PLATFORM_EXPORT_NAMES`). A drift test (`api/tests/unit/test_platform_api_docs.py`) enforces that every name in that set has a matching `### <Name>` section here. Search this file for `### <ExportName>` instead of reading it from beginning to end.
 
 Conventions:
 - Signatures are TypeScript-shaped. UI component props shadow the underlying shadcn/ui (or react-day-picker) primitive — only load-bearing differences are called out.
@@ -36,6 +38,24 @@ Signature: `<Suspense fallback={ReactNode}>{children}</Suspense>` — boundary f
 import { Suspense, lazy } from "bifrost";
 const Heavy = lazy(() => import("./pages/heavy"));
 <Suspense fallback={<div>Loading…</div>}><Heavy /></Suspense>
+```
+
+### createContext
+
+Signature: `createContext<T>(defaultValue: T): Context<T>`.
+
+```tsx
+import { createContext } from "bifrost";
+const ThemeContext = createContext<"light" | "dark">("light");
+```
+
+### createElement
+
+Signature: `createElement(type, props?, ...children): ReactElement`.
+
+```tsx
+import { createElement } from "bifrost";
+const status = createElement("span", { className: "text-sm" }, "Ready");
 ```
 
 ### forwardRef
@@ -95,6 +115,18 @@ import { useDeferredValue } from "bifrost";
 const deferredQuery = useDeferredValue(query);
 ```
 
+### useDebugValue
+
+Signature: `useDebugValue<T>(value: T, format?: (value: T) => unknown): void` — labels custom hook state in React DevTools.
+
+```tsx
+import { useDebugValue } from "bifrost";
+function useStatusLabel(status: string) {
+  useDebugValue(status);
+  return status;
+}
+```
+
 ### useEffect
 
 Signature: `useEffect(effect: () => void | (() => void), deps?: DependencyList): void`.
@@ -138,6 +170,20 @@ import { useLayoutEffect } from "bifrost";
 useLayoutEffect(() => { el.current!.scrollTop = el.current!.scrollHeight; }, [messages]);
 ```
 
+### useInsertionEffect
+
+Signature: `useInsertionEffect(effect: () => void | (() => void), deps?: DependencyList): void` — runs before layout effects for CSS-in-JS style insertion.
+
+```tsx
+import { useInsertionEffect } from "bifrost";
+useInsertionEffect(() => {
+  const style = document.createElement("style");
+  style.textContent = ".critical { visibility: visible; }";
+  document.head.append(style);
+  return () => style.remove();
+}, []);
+```
+
 ### useMemo
 
 Signature: `useMemo<T>(factory: () => T, deps: DependencyList): T`.
@@ -172,6 +218,26 @@ Signature: `useState<T>(initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>
 ```tsx
 import { useState } from "bifrost";
 const [count, setCount] = useState(0);
+```
+
+### useSyncExternalStore
+
+Signature: `useSyncExternalStore<Snapshot>(subscribe, getSnapshot, getServerSnapshot?): Snapshot`.
+
+```tsx
+import { useSyncExternalStore } from "bifrost";
+const online = useSyncExternalStore(
+  (notify) => {
+    window.addEventListener("online", notify);
+    window.addEventListener("offline", notify);
+    return () => {
+      window.removeEventListener("online", notify);
+      window.removeEventListener("offline", notify);
+    };
+  },
+  () => navigator.onLine,
+  () => true,
+);
 ```
 
 ### useTransition

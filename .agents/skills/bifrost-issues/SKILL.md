@@ -1,11 +1,11 @@
 ---
 name: bifrost-issues
-description: Track work on Bifrost via GitHub Issues + isolated worktrees, AND own the PR/merge lifecycle (opening, queuing auto-merge, watching CI + reviews). Use when the user expresses work intent ("let's build/fix/add X", "work on Y"), pastes a list of todos/notes to triage, asks about existing issues, OR you (or the user) are about to open a PR, queue auto-merge, or merge a PR on this repo. Kodiak owns merges here — raw `gh pr merge --auto` alone leaves the PR stuck when the branch falls behind main; the skill knows the Kodiak `automerge` label is also required. Invoke this skill BEFORE running `gh pr create` or `gh pr merge`, not after. Light-touch on issue/work-intent triggers — nudges and helps, never blocks. Trigger phrases - "let's build", "let's fix", "work on", "add a feature", "triage", "todo", "what should I work on", "open a PR", "create an issue", "merge this PR", "queue auto-merge", "ship it", "help wanted".
+description: Triage, file, groom, prioritize, or resolve Bifrost GitHub issues, including investigation, labels, reproduction details, and maintenance of the issue queue.
 ---
 
 # Bifrost Issues + Worktrees
 
-All trackable work on `jackmusick/bifrost` lives in **GitHub Issues**, and all non-trivial work happens in **isolated git worktrees** under `.worktrees/`. This skill owns both halves: issue creation/triage and worktree setup/teardown. One skill because the triggers are identical — the moment the user expresses work intent on a non-trivial change, both pipelines fire.
+All trackable work on `gobifrost/bifrost` lives in **GitHub Issues**, and all non-trivial work happens in **isolated git worktrees** under `.worktrees/`. This skill owns both halves: issue creation/triage and worktree setup/teardown. One skill because the triggers are identical — the moment the user expresses work intent on a non-trivial change, both pipelines fire.
 
 ## Core Principles
 
@@ -85,16 +85,13 @@ Once the issue exists:
 git fetch origin main
 git log --oneline main..origin/main   # if non-empty, warn and offer to pull
 
-# Resolve the primary repo root from any linked worktree
-REPO_ROOT="$(dirname "$(git rev-parse --git-common-dir)")"
-WORKTREE="$REPO_ROOT/.worktrees/<issue-num>-<short-slug>"
-
 # Create the worktree (absolute path)
-git worktree add -b <issue-num>-<short-slug> "$WORKTREE" origin/main
+git worktree add -b <issue-num>-<short-slug> \
+  /home/jack/GitHub/bifrost/.worktrees/<issue-num>-<short-slug> origin/main
 
 # Node deps in the worktree (needed for vitest/tsc/lint).
 # This `cd` will leak into later Bash calls — keep using absolute paths after.
-cd "$WORKTREE/client" && npm ci
+cd /home/jack/GitHub/bifrost/.worktrees/<slug>/client && npm ci
 ```
 
 **Conventions:**
@@ -127,8 +124,49 @@ Debug stacks are per-worktree — `./debug.sh` derives its Compose project name 
 
 - Make the change in the worktree, not in main.
 - Use `./test.sh stack up` once per worktree, then `./test.sh` many times.
-- Run `./test.sh`, `pyright`, `ruff`, `npm run tsc`, `npm run lint`, `./test.sh client unit` before claiming done (AGENTS.md's verification checklist).
-- `pyright`/`ruff` require a repo-root `.venv`: `python -m venv .venv && ./.venv/bin/pip install -r requirements.txt pyright ruff` (matches `.github/workflows/ci.yml`).
+- Use targeted tests and quality checks while iterating (CLAUDE.md's verification checklist).
+- Use `./test.sh quality api` for Dockerized pyright and ruff parity; do not depend on a host `.venv`.
+
+### 5.5. CI bottleneck reducers before PR
+
+Run `./test.sh pr-preflight` before opening a PR. It checks repository mirrors
+and action pins, API/client lint and types, the full backend and client unit suites,
+and every backend E2E test file changed on the branch,
+using CI's credential-free GitHub test mode,
+and the same Python and JavaScript
+CodeQL security-and-quality suites used in CI. It rebuilds the local CodeQL
+databases from the current worktree and fails on findings in lines changed from
+`origin/main`, so existing main-branch findings do not block the PR and stale
+cached analysis cannot give a false green result. Run focused behavior tests for the
+changed surface as required by `AGENTS.md`. `./test.sh pre-pr` remains the
+optional full merge-gate reproduction.
+
+Run cheap, targeted tripwires for the surfaces you touched before opening the PR. These catch the common "CI found the stale generated thing" loop locally.
+
+| If you touched... | Run before PR |
+|---|---|
+| CLI help, entity commands, DTO flags, or SDK-facing command surface | `./test.sh tests/unit/test_cli_surface_smoke.py tests/unit/test_skill_appendix_fresh.py` |
+| DTO models or CLI/MCP mutation flags | `./test.sh tests/unit/test_dto_flags.py tests/unit/test_contract_version.py` |
+| Bifrost skills under `.claude/skills/` | `bash scripts/sync-codex-skills.sh`, then `./test.sh tests/unit/test_skill_appendix_fresh.py tests/unit/test_codex_mirror_sync.py` |
+| Public plugin skills under `plugins/bifrost/skills/` | Confirm canonical `.claude/skills/` and plugin mirror match (`diff -qr ...`) and that public skill names do not repeat the plugin namespace |
+
+If `test_skill_appendix_fresh.py` fails, run the generator before pushing:
+
+```bash
+python api/scripts/skill-truth/generate.py
+```
+
+If host Python is missing API dependencies, run the generator in the API test image with writable `.claude/skills` and read-only source mounts. Do not hand-edit generated appendices.
+
+### 5.6. Required local gate before PR
+
+After targeted verification, commit the exact candidate and run:
+
+```bash
+./test.sh pre-pr
+```
+
+Run this on the current clean `HEAD` containing current `origin/main`. It runs local tripwires and affected tests, reporting comprehensive suites deferred to required CI. Use `--full` for exhaustive local verification and `--fresh` to ignore reusable stage evidence. Rerun after source changes; successful unchanged stages may resume only with matching environment/configuration identity. Report the selected checks, deferred checks, and candidate SHA. Required CI and the merge queue remain authoritative for merge.
 
 ### 6. PR linkage
 
@@ -146,7 +184,7 @@ The PR isn't done at "opened." Carry it through to merged. The path depends on w
 
 ```bash
 # Detect required-checks gating. ≥1 → protection exists; 0 / 404 → no protection.
-gh api repos/jackmusick/bifrost/branches/main/protection \
+gh api repos/gobifrost/bifrost/branches/main/protection \
   --jq '.required_status_checks.contexts // [] | length' 2>/dev/null
 ```
 
@@ -169,9 +207,9 @@ Once a PR is open, three independent signals can come in: CI check transitions, 
 prev=""
 prev_c=""
 while true; do
-  s=$(gh pr view <N> --repo jackmusick/bifrost \
+  s=$(gh pr view <N> --repo gobifrost/bifrost \
         --json reviews,statusCheckRollup,reviewDecision,mergeStateStatus,state 2>/dev/null) || { sleep 60; continue; }
-  c=$(gh api repos/jackmusick/bifrost/pulls/<N>/comments --jq '.[] | "\(.user.login):\(.id):\(.path):\(.line):\(.body|gsub("\n";" ")|.[0:100])"' 2>/dev/null | sort)
+  c=$(gh api repos/gobifrost/bifrost/pulls/<N>/comments --jq '.[] | "\(.user.login):\(.id):\(.path):\(.line):\(.body|gsub("\n";" ")|.[0:100])"' 2>/dev/null | sort)
   cur=$(printf '%s\n%s' "$s" "$c" | sha256sum | cut -d' ' -f1)
   if [ "$cur" != "$prev" ]; then
     echo "=== $(date -u +%H:%M:%S) PR <N> update ==="
@@ -191,14 +229,25 @@ done
 
 **When a review comment lands** (CodeQL, copilot, human): pull the body and address it before merging. CodeQL findings on this repo's pre-push hook are usually real — see `feedback_codeql_friendly_idioms.md` in memory. Never queue `--auto` and walk away from a fresh review.
 
+**When a CI job fails:** fetch the failing job log immediately instead of waiting for the whole workflow run to finish. `gh run view --log-failed` may refuse while sibling jobs are still running; the job logs endpoint often works sooner:
+
+```bash
+gh pr checks <N> --repo gobifrost/bifrost
+gh pr view <N> --repo gobifrost/bifrost \
+  --json statusCheckRollup \
+  --jq '.statusCheckRollup[] | select((.conclusion // "") == "FAILURE") | {name,workflowName,detailsUrl}'
+gh api repos/gobifrost/bifrost/actions/jobs/<job_id>/logs
+```
+
+If CI exposes a failure after affected local verification, fix the failure and determine whether the affected planner missed a dependency or CI exercised an explicitly deferred broad check. Add a missing dependency edge or retain comprehensive fallback where needed. Rerun the failed stage and directly affected checks; do not discard valid unchanged stage evidence or waive failures as flakes.
+
+Fix CI failures in the same worktree and branch. Prefer a normal follow-up commit once reviewers or other agents may have seen the PR; amending with `--force-with-lease` is acceptable for a fresh, unreviewed PR where you are the only actor. After any force-push, re-check whether auto-merge/queue state survived.
+
 **Path A — protection exists (preferred for ship-when-green):**
 
-1. Confirm with the user once ("Queue auto-merge so it ships when CI is green?").
-2. On approval, do BOTH:
-   - `gh pr merge <N> --auto --squash --delete-branch=false` (GitHub-native auto-merge; keeps the remote branch — worktree still references it, cleanup in step 8).
-   - `gh api -X POST repos/jackmusick/bifrost/issues/<N>/labels -f "labels[]=automerge"` (Kodiak label; required by `kodiak.toml` `require_automerge_label = true`).
-   Both are needed: GitHub-native auto-merge alone will sit idle when the branch goes `BEHIND` main, because Kodiak owns the rebase (`update_branch_immediately = true`) and Kodiak only acts on labeled PRs.
-3. **Arm the combined watcher above.** `--auto` does not exempt you from picking up review comments — CodeQL still fires after queueing, and the auto-merge will not proceed past a `BLOCKED`/`DIRTY` mergeStateStatus.
+1. Confirm with the user once ("Queue it through the merge queue so it ships when CI is green?").
+2. On approval: `gh pr merge <N> --repo gobifrost/bifrost` (NO strategy flag — the queue dictates squash; passing `--squash` is rejected with "The merge strategy for main is set by the merge queue"). Enqueuing IS the auto-merge-when-green: the queue owns the rebase, runs checks once on a combined ref, and merges when green. (`--auto` is accepted if you want gh to wait for the PR to be mergeable before enqueuing, but NOTE the queue is the actual gating mechanism — you don't need it.)
+3. **Arm the combined watcher above.** Enqueuing does not exempt you from picking up review comments — CodeQL still fires after queueing, and the queue will not merge past a `BLOCKED`/`DIRTY` mergeStateStatus.
 4. If a review is required (`required_pull_request_reviews` is set) and the user isn't admin, surface that the merge is gated on approval and offer to request reviewers via `gh pr edit <N> --add-reviewer <login>`. Don't pick reviewers unprompted.
 
 **Path B — no protection (fallback):**
@@ -215,6 +264,8 @@ done
 - Don't merge unprompted. "Merge?" or "queue auto-merge?" is the user's decision — confirm, never assume.
 - If CI is already failing on the PR when you reach this step, surface the failure and don't offer merge until it's fixed.
 - **Review comments are not optional.** A `gh pr checks` watcher that doesn't also poll reviews/comments will leave the user thinking nothing is happening while CodeQL has been waiting on you for 20 minutes.
+- After a force-push, `autoMergeRequest` may be null even if the issue event log says `added_to_merge_queue`. Check both `gh pr view ... --json autoMergeRequest,mergeStateStatus,statusCheckRollup` and recent issue events before repeatedly re-running `gh pr merge`.
+- When required checks are all green and `mergeStateStatus` is `CLEAN`, a queued PR can still take several minutes to flip to `MERGED`. Confirm `added_to_merge_queue` via `gh api repos/gobifrost/bifrost/issues/<N>/events`; then keep the watcher attached rather than thrashing the queue.
 
 ### 8. Cleanup (after merge)
 
@@ -226,7 +277,7 @@ git branch -d <issue-num>-<slug>
 git push origin --delete <issue-num>-<slug>   # if --delete-branch=false was used at merge time
 ```
 
-Then `cd` back to the main checkout (`$(dirname "$(git rev-parse --git-common-dir)")`) so subsequent commands target main and not a stale worktree path.
+Then `cd` back to the main checkout (`/home/jack/GitHub/bifrost`) so subsequent commands target main and not a stale worktree path.
 
 ## Behavior: Batch Triage
 
@@ -289,7 +340,9 @@ rm -f -- "$TITLE_FILE" "$BODY_FILE"
 rmdir -- "$ISSUE_TMP_DIR"
 ```
 
-Labels and assignees must come from fixed repository conventions or a validated allowlist. For batch triage, repeat the file-backed invocation per issue; do not construct a shell loop containing untrusted issue text. Use `[bug]:`, `[feature]:`, or `[chore]:` title prefixes.
+Labels and assignees must come from fixed repository conventions or a validated allowlist. For batch triage, repeat the file-backed invocation per issue; do not construct a shell loop containing untrusted issue text.
+
+Mirror the relevant template in `.github/ISSUE_TEMPLATE/`. Use `[bug]:`, `[feature]:`, or `[chore]:` title prefixes.
 
 ## What This Skill Does NOT Do
 
@@ -299,4 +352,4 @@ Labels and assignees must come from fixed repository conventions or a validated 
 - Auto-stop a `./debug.sh` in another worktree — user controls that manually.
 - Manage milestones, projects, priority, or status labels.
 - Touch closed issues (reopening is a human decision).
-- Work across repos — scoped to `jackmusick/bifrost`.
+- Work across repos — scoped to `gobifrost/bifrost`.

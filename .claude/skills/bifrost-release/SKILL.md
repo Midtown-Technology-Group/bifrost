@@ -1,6 +1,6 @@
 ---
-name: bifrost:release
-description: Build and release Bifrost. Use when pushing commits to main, cutting a versioned release, or deploying to K8s. Handles dev push (CI builds :dev image), pre-release (vX.Y.Z-rc.N tag → pre-release GitHub Release), and full release (version tag → GitHub Release + :latest).
+name: bifrost-release
+description: Prepare and publish a Bifrost development, release-candidate, or stable release using its versioning, verification, packaging, and release gates.
 ---
 
 # Bifrost Release

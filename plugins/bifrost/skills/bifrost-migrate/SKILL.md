@@ -1,6 +1,6 @@
 ---
 name: migrate
-description: Migrate a legacy Bifrost v1 inline App into either an independent V2 App backed by live platform resources or a clean, installable V2 Solution with captured backing entities. Use for v1-to-v2 modernization, App cutover, Solution capture, or workspace cleanup. Trigger phrases — "migrate this app", "migrate this app to a solution", "move X into a solution", "v1 to v2", "/migrate", "convert my app to v2", "capture these workflows into a solution".
+description: Migrate Bifrost workflows, forms, apps, agents, configurations, tables, and managed files between instances with targeting, dependency checks, and verification.
 ---
 
 # Bifrost Migrate (v1 → V2 App or Solution)

@@ -15,9 +15,10 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-MIRRORS = ("plugins/bifrost/skills", ".codex/skills")
+MIRRORS = ("plugins/bifrost/skills", ".agents/skills")
 SYNC_SCRIPT = REPO / "scripts" / "sync-codex-skills.sh"
 PUBLIC_ROOT = REPO / "plugins" / "bifrost" / "skills"
+DESCRIPTION_WORD_BUDGET = 35
 
 
 def _tree_digest(root: Path) -> str:
@@ -87,8 +88,39 @@ def _check_public_skill_names() -> list[str]:
     return errors
 
 
+def _check_local_discovery() -> list[str]:
+    """Keep auto-discovered IDs unique, concise and sourced from one root."""
+    errors: list[str] = []
+    names: dict[str, Path] = {}
+    for root in (REPO / ".agents/skills", REPO / ".codex/skills"):
+        for path in sorted(root.glob("*/SKILL.md")):
+            text = path.read_text(encoding="utf-8")
+            frontmatter = re.match(r"\A---\n(.*?)\n---(?:\n|$)", text, re.S)
+            if not frontmatter:
+                errors.append(f"{path} has no YAML frontmatter")
+                continue
+            name = re.search(r"^name:\s*(\S+)\s*$", frontmatter[1], re.M)
+            description = re.search(r"^description:[ \t]*(.*?)(?=\n[^ \t]|\Z)", frontmatter[1], re.M | re.S)
+            if not name:
+                errors.append(f"{path} has no skill name")
+                continue
+            skill_id = name[1].strip("\"'")
+            if skill_id in names:
+                errors.append(f"duplicate repository skill {skill_id!r}: {names[skill_id]} and {path}")
+            names[skill_id] = path
+            if root.name == "skills" and root.parent.name == ".codex":
+                errors.append(f"retired .codex/skills discovery copy: {path}")
+            if skill_id.startswith("bifrost:"):
+                errors.append(f"{path} repeats the plugin namespace in its skill name")
+            if description is None or not description[1].strip():
+                errors.append(f"{path} has no description")
+            elif len(description[1].lstrip("|>").split()) > DESCRIPTION_WORD_BUDGET:
+                errors.append(f"{path} description exceeds {DESCRIPTION_WORD_BUDGET} words")
+    return errors
+
+
 def main() -> int:
-    errors = [*_check_mirror_sync(), *_check_public_skill_names()]
+    errors = [*_check_local_discovery(), *_check_mirror_sync(), *_check_public_skill_names()]
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

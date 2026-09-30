@@ -1,10 +1,6 @@
 ---
 name: desloppify
-description: >
-  Multi-language codebase health scanner. Use when the user explicitly asks
-  to run desloppify, scan for technical debt, get a health score, or create
-  a cleanup plan. Do NOT trigger for general code review, renaming, or
-  fixing individual bugs.
+description: Run desloppify only when explicitly requested to scan technical debt, report a codebase health score, or plan a cleanup.
 ---
 
 <!-- desloppify-begin -->

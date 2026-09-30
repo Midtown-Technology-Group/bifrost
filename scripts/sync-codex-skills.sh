@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# sync-codex-skills.sh — regenerate both Codex plain-file skill mirrors from
-# the canonical .claude/skills/ source.  Run after any skill edit; the pytest
-# guard in api/tests/unit/test_codex_mirror_sync.py will fail CI if the
-# mirrors drift.
+# sync-codex-skills.sh — regenerate the public plugin and single repository
+# discovery mirror from .claude/skills/. The host check_skill_mirrors.py guard
+# fails CI if generated files drift or duplicate discovery returns.
 #
 # Mirror rules:
 #   plugins/bifrost/skills/  = PUBLIC  skills (dirs that have a symlink under skills/)
-#   .codex/skills/           = MAINTAINER skills (.claude/skills/* NOT in the public set)
+#   .agents/skills/          = ALL canonical repository skills
+#   .codex/skills/           = retired; do not add a second discovery copy
 #
 # Idempotent: running twice produces no changes.
 
@@ -18,7 +18,12 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SKILLS_DIR="${REPO_ROOT}/skills"
 CANONICAL_DIR="${REPO_ROOT}/.claude/skills"
 PUBLIC_MIRROR="${REPO_ROOT}/plugins/bifrost/skills"
-MAINTAINER_MIRROR="${REPO_ROOT}/.codex/skills"
+LOCAL_MIRROR="${REPO_ROOT}/.agents/skills"
+
+if find "${REPO_ROOT}/.codex/skills" -name SKILL.md -print -quit 2>/dev/null | grep -q .; then
+    echo "ERROR: legacy .codex/skills discovery copies remain; reconcile them before sync." >&2
+    exit 1
+fi
 
 # ── 1. Compute the public-target basenames from skills/ symlinks ──────────────
 declare -A public_targets   # basename → 1
@@ -57,28 +62,24 @@ for existing in "${PUBLIC_MIRROR}"/*/; do
     fi
 done
 
-# ── 3. MAINTAINER mirror (.codex/skills/) ─────────────────────────────────────
-mkdir -p "${MAINTAINER_MIRROR}"
+# ── 3. Single repository discovery mirror (.agents/skills/) ──────────────────
+mkdir -p "${LOCAL_MIRROR}"
 
-echo "=== MAINTAINER mirror → ${MAINTAINER_MIRROR} ==="
+echo "=== LOCAL mirror → ${LOCAL_MIRROR} ==="
 for src in "${CANONICAL_DIR}"/*/; do
     [[ -d "${src}" ]] || continue
     skill_name="$(basename "${src}")"
-    if [[ -n "${public_targets[${skill_name}]+_}" ]]; then
-        continue    # public skill — belongs in plugins/bifrost/skills/, not here
-    fi
-    dst="${MAINTAINER_MIRROR}/${skill_name}"
+    dst="${LOCAL_MIRROR}/${skill_name}"
     rsync -a --delete "${src}/" "${dst}/"
     echo "  synced ${skill_name}"
 done
 
-# Remove stale dirs in the maintainer mirror that are no longer maintainer-only
-for existing in "${MAINTAINER_MIRROR}"/*/; do
+# Remove generated local copies whose canonical source no longer exists.
+for existing in "${LOCAL_MIRROR}"/*/; do
     [[ -d "${existing}" ]] || continue
     dir_name="$(basename "${existing}")"
     src="${CANONICAL_DIR}/${dir_name}"
-    # Stale if: canonical source is gone OR the skill moved to the public set
-    if [[ ! -d "${src}" ]] || [[ -n "${public_targets[${dir_name}]+_}" ]]; then
+    if [[ ! -d "${src}" ]]; then
         echo "  removing stale: ${dir_name}"
         rm -rf "${existing}"
     fi

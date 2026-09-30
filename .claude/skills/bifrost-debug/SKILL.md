@@ -1,6 +1,6 @@
 ---
 name: bifrost-debug
-description: Boot an isolated, hot-reload Bifrost dev stack for the current worktree via ./debug.sh. Use when the user wants to click around the UI, view a feature in the browser, screenshot something, or otherwise needs the dev stack running. Per-worktree isolation lets multiple worktrees run dev stacks in parallel. Trigger phrases - "open the app", "let me click around", "spin up debug", "test in the browser", "show me the UI", "/bifrost-debug".
+description: Boot the isolated Bifrost development stack for browser exploration, screenshots, or manual UI verification using ./debug.sh.
 ---
 
 # Bifrost Debug

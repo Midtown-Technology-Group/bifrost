@@ -1,6 +1,6 @@
 ---
 name: bifrost-secaudit
-description: Snapshot the current Security tab state for gobifrost/bifrost — open Dependabot alerts (counts by severity + ecosystem), open Dependabot PRs (counts by category + needs-review status), open CodeQL alerts (severity + top rules), open secret-scanning alerts, current Scorecard, stale PRs (>14 days). Markdown report. Use when user asks "where do I stand on security", "what's in the queue", or invokes /bifrost-secaudit.
+description: Produce a read-only Bifrost security snapshot covering Dependabot, CodeQL, secret scanning, Scorecard, and stale security pull requests.
 ---
 
 # Bifrost Security Audit
