@@ -399,6 +399,13 @@ class WorkspaceReleaseActivateRequest(BaseModel):
     authorization: WorkspaceReleaseAuthorization
 
 
+class WorkspaceReleaseLockRetryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    failed_job_id: UUID
+
+
 class WorkspaceLiveRetireRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

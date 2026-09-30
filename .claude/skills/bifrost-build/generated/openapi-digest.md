@@ -670,6 +670,7 @@
 | POST | `/api/workspace-promotions/preview-jobs` |
 | GET | `/api/workspace-promotions/releases/{release_id}` |
 | POST | `/api/workspace-promotions/releases/{release_id}/activate` |
+| POST | `/api/workspace-promotions/releases/{release_id}/retry-history-lock` |
 | GET | `/api/workspace-promotions/solution-deploy-obligations` |
 | GET | `/api/workspace-promotions/solution-deploy-obligations/{obligation_id}` |
 | GET | `/api/workspace-promotions/source-releases` |

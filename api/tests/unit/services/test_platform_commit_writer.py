@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import json
@@ -549,6 +550,46 @@ async def test_writer_rejects_remote_path_drift_before_creating_commit(
 
 
 @pytest.mark.asyncio
+async def test_history_hash_inspection_uses_bounded_parallel_reads(private_key_pem):
+    active = 0
+    peak = 0
+    paths = tuple(f"modules/path_{index}.py" for index in range(20))
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(0.01)
+            if request.url.path.endswith("path_0.py"):
+                return httpx.Response(404)
+            return httpx.Response(200, content=request.url.path.encode())
+        finally:
+            active -= 1
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        writer = GitHubAppCommitWriter(
+            repo_url="https://github.com/MTG-Thomas/workspace.git",
+            branch="production-live",
+            app_id=123,
+            installation_id=456,
+            private_key=private_key_pem,
+            client=client,
+        )
+        hashes = await writer._file_hashes(client, "token", paths, "a" * 40)
+
+    assert list(hashes) == list(paths)
+    assert hashes[paths[0]] is None
+    assert (
+        hashes[paths[1]]
+        == hashlib.sha256(
+            f"/repos/MTG-Thomas/workspace/contents/{paths[1]}".encode()
+        ).hexdigest()
+    )
+    assert 1 < peak <= 8
+
+
+@pytest.mark.asyncio
 async def test_writer_inspects_exact_commit_bytes_without_mutation(private_key_pem):
     source_sha = "d" * 40
     content = b"reviewed source\n"
@@ -831,3 +872,36 @@ def test_parse_github_repository(url, expected):
 def test_parse_github_repository_rejects_non_github_hosts():
     with pytest.raises(ValueError, match="github.com"):
         parse_github_repository("https://example.test/owner/repo")
+
+
+@pytest.mark.asyncio
+async def test_failed_history_hash_read_cancels_and_drains_siblings(private_key_pem):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("fail.py"):
+            await started.wait()
+            return httpx.Response(500)
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+        raise AssertionError("Blocked request should be cancelled")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        writer = GitHubAppCommitWriter(
+            repo_url="https://github.com/MTG-Thomas/workspace.git",
+            branch="production-live",
+            app_id=123,
+            installation_id=456,
+            private_key=private_key_pem,
+            client=client,
+        )
+        with pytest.raises(PlatformCommitError, match="HTTP 500"):
+            await writer._file_hashes(
+                client, "token", ("fail.py", "blocked.py"), "a" * 40
+            )
+        assert cancelled.is_set()
+        assert not client.is_closed

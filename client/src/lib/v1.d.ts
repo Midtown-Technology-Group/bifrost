@@ -3857,6 +3857,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace-promotions/releases/{release_id}/retry-history-lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Workspace Release History Lock */
+        post: operations["retry_workspace_release_history_lock_api_workspace_promotions_releases__release_id__retry_history_lock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace-promotions/live/retire": {
         parameters: {
             query?: never;
@@ -34122,6 +34139,16 @@ export interface components {
              */
             runtime_history_verified: boolean;
         };
+        /** WorkspaceReleaseLockRetryRequest */
+        WorkspaceReleaseLockRetryRequest: {
+            /** Expected Release Id */
+            expected_release_id: string;
+            /**
+             * Failed Job Id
+             * Format: uuid
+             */
+            failed_job_id: string;
+        };
         /** WorkspaceReleasePrepareRequest */
         WorkspaceReleasePrepareRequest: {
             /** Candidate Id */
@@ -41718,6 +41745,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceReleaseStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_workspace_release_history_lock_api_workspace_promotions_releases__release_id__retry_history_lock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceReleaseLockRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
