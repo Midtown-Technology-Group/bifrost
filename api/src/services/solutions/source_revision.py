@@ -315,6 +315,7 @@ class SolutionSourceRevisionService:
             _HANDOFF_MARKER,
             _SOURCE_REVISION_MARKER,
             "bifrost.solution-workflow-revision/v1",
+            "bifrost.initial-reviewed-workflow-install/v1",
         }:
             raise SolutionSourceRevisionError(
                 "active deployment did not use the reviewed handoff path"
