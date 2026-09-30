@@ -35,6 +35,7 @@ from src.services.solutions.live_handoff_source import (
     LiveHandoffSourceError,
     source_closure,
 )
+from src.services.solutions.shared_table_bindings import SharedTableBindingError, require_shared_tables
 from src.services.workspace_release_files import WorkspaceReleaseFileView
 from src.services.workspace_release_projection import acquire_workspace_release_lock
 from src.services.workspace_release_runtime import (
@@ -196,6 +197,12 @@ class WorkspaceLiveHandoffCommitService:
             raise WorkspaceLiveHandoffPreflightError(
                 "handoff deployment closure is invalid"
             ) from exc
+        if manifest.shared_tables != request.shared_tables:
+            raise WorkspaceLiveHandoffPreflightConflict("handoff resource bindings changed")
+        try:
+            await require_shared_tables(self.db, manifest.shared_tables)
+        except SharedTableBindingError as exc:
+            raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         selected = (
             (
                 await self.db.execute(
@@ -247,6 +254,7 @@ class WorkspaceLiveHandoffCommitService:
             source_bytes = source_closure(
                 live_bytes,
                 {workflow.path.replace("\\", "/").lstrip("/") for workflow in selected},
+                has_table_bindings=bool(manifest.shared_tables),
             )
         except (
             FileNotFoundError,

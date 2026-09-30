@@ -41,6 +41,10 @@ from src.services.solutions.live_handoff_source import (
     source_archive,
     source_closure,
 )
+from src.services.solutions.shared_table_bindings import (
+    SharedTableBindingError,
+    require_shared_tables,
+)
 from src.services.workspace_release_files import WorkspaceReleaseFileView
 from src.services.workspace_release_runtime import (
     WorkspaceReleaseRuntimeError,
@@ -78,6 +82,10 @@ class WorkspaceLiveHandoffCandidateService:
                 "candidate builder requires a new, configured, disconnected Solution"
             )
         await _require_empty_solution_install(self.db, solution_id)
+        try:
+            await require_shared_tables(self.db, request.shared_tables)
+        except SharedTableBindingError as exc:
+            raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         selected = (
             (
                 await self.db.execute(
@@ -107,7 +115,8 @@ class WorkspaceLiveHandoffCandidateService:
             ) from exc
         try:
             files = source_closure(
-                live_bytes, {path for path, _ in registrations.values()}
+                live_bytes, {path for path, _ in registrations.values()},
+                has_table_bindings=bool(request.shared_tables),
             )
             archive = source_archive(files)
         except LiveHandoffSourceError as exc:
@@ -148,7 +157,9 @@ class WorkspaceLiveHandoffCandidateService:
                     "runtime_bounds": bounds,
                 },
             )
-        resolution = DeploymentResolutionMap(workflows=entities, sources=sources)
+        resolution = DeploymentResolutionMap(
+            workflows=entities, sources=sources, shared_tables=request.shared_tables
+        )
         manifest = CompiledDeploymentManifest(
             solution_id=solution_id,
             deployment_id=deployment_id,
@@ -159,6 +170,10 @@ class WorkspaceLiveHandoffCandidateService:
                         "workflow_ids": sorted(
                             str(item) for item in request.workflow_ids
                         ),
+                        "shared_tables": {
+                            name: binding.model_dump(mode="json")
+                            for name, binding in request.shared_tables.items()
+                        },
                         "source_hashes": {
                             path: source.content_hash
                             for path, source in sources.items()
@@ -172,6 +187,7 @@ class WorkspaceLiveHandoffCandidateService:
                 runtime_prefix=storage.runtime_prefix,
             ),
             workflows=entities,
+            shared_tables=request.shared_tables,
             git=DeploymentGitProvenance(commit_sha=release.source_commit_sha),
         )
         await storage.write_source_artifact(archive, idempotent=True)

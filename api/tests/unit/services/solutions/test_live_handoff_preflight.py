@@ -258,6 +258,8 @@ async def test_preflight_compares_stored_runtime_bytes_before_returning_evidence
         workflow_ids=[workflow_id],
     )
     manifest = SimpleNamespace(
+        shared_tables={}, tables={}, file_locations={}, agents={}, forms={},
+        events={}, applications={}, dependencies={},
         source=SimpleNamespace(artifact_key=source_key, runtime_prefix=runtime_prefix),
         canonical_bytes=lambda: b"{}",
     )

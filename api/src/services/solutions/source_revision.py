@@ -47,6 +47,9 @@ from src.services.solutions.live_handoff_source import (
     source_archive,
     source_closure,
 )
+from src.services.solutions.shared_table_bindings import (
+    SharedTableBindingError, require_shared_tables,
+)
 
 _SOURCE_REVISION_MARKER = "bifrost.solution-source-revision/v1"
 _HANDOFF_MARKER = "bifrost.workspace-live-handoff/v1"
@@ -295,6 +298,10 @@ class SolutionSourceRevisionService:
             raise SolutionSourceRevisionError(
                 "source-only revision requires a workflow-only deployment"
             )
+        try:
+            await require_shared_tables(self.db, resolution.shared_tables)
+        except SharedTableBindingError as exc:
+            raise SolutionSourceRevisionError(str(exc)) from exc
         return solution, base, resolution
 
     async def _registrations(
@@ -399,7 +406,8 @@ class SolutionSourceRevisionService:
         files = _decode_files(request)
         try:
             closure = source_closure(
-                files, {row.path.replace("\\", "/").lstrip("/") for row in workflows}
+                files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
+                has_table_bindings=bool(old_resolution.shared_tables),
             )
             archive = source_archive(closure)
         except LiveHandoffSourceError as exc:
@@ -430,7 +438,9 @@ class SolutionSourceRevisionService:
             entities[key] = entity.model_copy(
                 update={"source_hash": sources[entity.source_ref].content_hash}
             )
-        resolution = DeploymentResolutionMap(workflows=entities, sources=sources)
+        resolution = DeploymentResolutionMap(
+            workflows=entities, sources=sources, shared_tables=old_resolution.shared_tables
+        )
         manifest = CompiledDeploymentManifest(
             solution_id=solution_id,
             deployment_id=deployment_id,
@@ -452,6 +462,7 @@ class SolutionSourceRevisionService:
                 runtime_prefix=storage.runtime_prefix,
             ),
             workflows=entities,
+            shared_tables=old_resolution.shared_tables,
             git=DeploymentGitProvenance(commit_sha=request.source_commit_sha),
         )
         await storage.write_source_artifact(archive, idempotent=True)
@@ -509,6 +520,9 @@ class SolutionSourceRevisionService:
             raise SolutionSourceRevisionError("revision closure is invalid") from exc
         if (
             set(resolution.workflows) != set(old_resolution.workflows)
+            or resolution.shared_tables != old_resolution.shared_tables
+            or manifest.tables or manifest.file_locations
+            or manifest.agents or manifest.forms or manifest.events or manifest.applications
             or manifest.dependencies
             or set(resolution.workflows) != set(manifest.workflows)
             or not manifest.git.commit_sha
@@ -547,7 +561,8 @@ class SolutionSourceRevisionService:
         )
         try:
             closure = source_closure(
-                files, {row.path.replace("\\", "/").lstrip("/") for row in workflows}
+                files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
+                has_table_bindings=bool(old_resolution.shared_tables),
             )
         except LiveHandoffSourceError as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc

@@ -702,6 +702,15 @@ async def get_table_or_404(
     Gated by the org check.
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
+    from src.services.solutions.shared_table_bindings import (
+        SharedTableBindingError, resolve_execution_shared_table,
+    )
+    try:
+        bound = await resolve_execution_shared_table(ctx, name_or_id)
+    except SharedTableBindingError as exc:
+        raise HTTPException(status_code=404, detail=f"Table '{name_or_id}' not found") from exc
+    if bound is not None:
+        return bound
     repo = TableRepository(
         ctx.db,
         target_org_id,
@@ -782,6 +791,15 @@ async def _assert_solution_write_targets_owned_table(ctx: Context, table: Table)
     target_org = table.organization_id
     solution_id = await resolve_effective_solution_id(ctx.db, ctx, target_org)
     if solution_id is None or table.solution_id == solution_id:
+        return
+    from src.services.solutions.shared_table_bindings import (
+        SharedTableBindingError, resolve_execution_shared_table,
+    )
+    try:
+        bound = await resolve_execution_shared_table(ctx, str(table.id), write=True)
+    except SharedTableBindingError as exc:
+        raise HTTPException(status_code=404, detail=f"Table '{table.name}' not found") from exc
+    if bound is not None and bound.id == table.id:
         return
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

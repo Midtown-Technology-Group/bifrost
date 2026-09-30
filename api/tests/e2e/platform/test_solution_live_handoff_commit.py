@@ -4,6 +4,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -11,6 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.core.constants import PROVIDER_ORG_ID
+from src.core.auth import ExecutionContext
+from src.core.principal import UserPrincipal
+from src.core.constants import SYSTEM_USER_UUID
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+from src.models.contracts.tables import DocumentUpsert
+from src.routers.tables import get_document, upsert_document
 from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffCommitRequest,
     WorkspaceLiveHandoffPreflightRequest,
@@ -30,6 +37,7 @@ from src.services.solutions.deployment_manifest import (
     DeploymentSource,
     RuntimeEntityDefinition,
     RuntimeSourceResolution,
+    SharedRootTableBinding,
     canonical_json,
     sha256_digest,
 )
@@ -50,6 +58,7 @@ from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightService,
 )
 from src.services.solutions.live_handoff_source import source_archive
+from src.services.solutions.shared_table_bindings import table_metadata_hash
 from src.services.workspace_release_runtime import (
     WorkspaceReleaseDescriptor,
     pin_workspace_runtime,
@@ -87,7 +96,14 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
 
     solution_id, deployment_id, workflow_id = uuid4(), uuid4(), uuid4()
     path = f"features/handoff_{uuid4().hex}.py"
-    source = b"async def run():\n    return 1\n"
+    source = b"from bifrost import tables\nasync def run():\n    return 1\n"
+    shared_table = Table(
+        id=uuid4(), name=f"handoff_state_{uuid4().hex}", organization_id=None,
+        access={"policies": [{"name": "synthetic", "actions": ["read", "create", "update", "delete"]}]},
+    )
+    bindings = {shared_table.name: SharedRootTableBinding(
+        table_id=shared_table.id, metadata_hash=table_metadata_hash(shared_table), access="read-write",
+    )}
     source_hash = sha256_digest(source)
     bounds = {
         "max_duration_seconds": 20,
@@ -150,6 +166,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         source_hash=source_hash,
     )
     resolution = DeploymentResolutionMap(
+        shared_tables=bindings,
         workflows={entity.portable_ref: entity},
         sources={
             path: RuntimeSourceResolution(
@@ -158,6 +175,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         },
     )
     manifest = CompiledDeploymentManifest(
+        shared_tables=bindings,
         solution_id=solution_id,
         deployment_id=deployment_id,
         bundle_hash=sha256_digest(source),
@@ -249,7 +267,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
     monkeypatch.setattr(live_handoff_commit, "SolutionDeploymentStorage", Storage)
 
     try:
-        db_session.add_all([solution, workflow])
+        db_session.add_all([solution, workflow, shared_table])
         await db_session.flush()
         db_session.add(deployment)
         await db_session.flush()
@@ -274,6 +292,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
             expected_registration_state_fingerprint=release.registration_state_fingerprint,
             expected_active_deployment_id=None,
             workflow_ids=[workflow_id],
+            shared_tables=bindings,
         )
         inspection = await WorkspaceLiveHandoffPreflightService(db_session).inspect(
             solution_id, deployment_id, base
@@ -310,6 +329,50 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         assert deployment.state == "active"
         solution_pin = await pin_workflow_runtime(db_session, workflow_id)
         assert solution_pin is not None
+        execution_id, attempt_token = uuid4(), uuid4()
+        evidence = solution_pin.queue_evidence()
+        db_session.add(Execution(
+            id=execution_id, workflow_id=workflow_id, workflow_name="Handoff test",
+            executed_by_name="Synthetic engine", organization_id=PROVIDER_ORG_ID,
+            solution_deployment_id=deployment_id, runtime_mode="deployment-v1",
+            runtime_evidence=evidence, runtime_evidence_hash=sha256_digest(canonical_json(evidence)),
+        ))
+        await db_session.flush()
+        db_session.add(WorkflowExecutionAttempt(
+            execution_id=execution_id, attempt_number=1, claim_token=attempt_token,
+            status="running", phase="execution", published_at=datetime.now(UTC),
+            claimed_at=datetime.now(UTC), started_at=datetime.now(UTC),
+        ))
+        await db_session.flush()
+        engine_user = UserPrincipal(
+            user_id=SYSTEM_USER_UUID, email="engine@bifrost.internal", name="Engine",
+            organization_id=PROVIDER_ORG_ID, is_superuser=True, is_engine_token=True,
+            engine_execution_id=execution_id, engine_attempt_token=attempt_token,
+            engine_solution_id=str(solution_id),
+        )
+        engine_ctx = ExecutionContext(
+            user=engine_user, org_id=PROVIDER_ORG_ID, db=db_session, solution_id=str(solution_id),
+        )
+        written = await upsert_document(
+            shared_table.name, DocumentUpsert(id="synthetic", data={"value": 7}), engine_ctx, scope="global",
+        )
+        assert written.data == {"value": 7}
+        loose_ctx = ExecutionContext(
+            user=UserPrincipal(
+                user_id=platform_admin.user_id, email="synthetic@example.test", name="Synthetic admin",
+                organization_id=PROVIDER_ORG_ID, is_superuser=True,
+            ), org_id=PROVIDER_ORG_ID, db=db_session,
+        )
+        assert (await get_document(shared_table.name, "synthetic", loose_ctx, scope="global")).data == written.data
+        # Raw document upsert clears the identity map. Read persisted ownership
+        # through fresh rows rather than refreshing detached fixture objects.
+        shared_table = await db_session.get(Table, shared_table.id)
+        solution = await db_session.get(Solution, solution_id)
+        workflow = await db_session.get(Workflow, workflow_id)
+        deployment = await db_session.get(SolutionDeployment, deployment_id)
+        assert shared_table is not None and solution is not None
+        assert workflow is not None and deployment is not None
+        assert shared_table.solution_id is None and shared_table.organization_id is None
         original_evidence = solution_pin.queue_evidence()
 
         loose_table = Table(
@@ -374,6 +437,7 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
             solution_id, deployment_id, rollback
         )
         await db_session.commit()
+        assert (await get_document(shared_table.name, "synthetic", engine_ctx, scope="global")).data == {"value": 7}
         await db_session.refresh(solution)
         await db_session.refresh(workflow)
         await db_session.refresh(deployment)

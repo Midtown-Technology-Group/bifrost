@@ -15,6 +15,7 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentCreate,
     SolutionDeploymentPublic,
     SolutionDeploymentRuntimeState,
+    SharedTableBindingPreviewRequest,
     SolutionSourceRevisionCommitRequest,
     SolutionSourceRevisionInspectRequest,
     SolutionSourceRevisionInspectResponse,
@@ -54,6 +55,8 @@ from src.services.solutions.write_lock import (
     SolutionWriteLockLost,
     solution_write_lock,
 )
+from src.services.solutions.deployment_manifest import SharedRootTableBinding
+from src.services.solutions.shared_table_bindings import SharedTableBindingError, table_metadata_hash
 
 router = APIRouter(
     prefix="/api/solutions/{solution_id}/deployments", tags=["Solution Deployments"]
@@ -78,6 +81,30 @@ async def _scope(ctx: Context, solution_id: UUID) -> UUID | None:
     if solution is None:
         raise HTTPException(status_code=404, detail="Solution not found")
     return solution.organization_id
+
+
+@router.post("/shared-tables/preview", response_model=dict[str, SharedRootTableBinding])
+async def preview_shared_table_bindings(
+    solution_id: UUID, body: SharedTableBindingPreviewRequest,
+    ctx: Context, user: CurrentSuperuser,
+) -> dict[str, SharedRootTableBinding]:
+    """Read exact existing Root contracts; document data and ownership stay unchanged."""
+    from src.models.orm.tables import Table
+    del user
+    await _scope(ctx, solution_id)
+    result: dict[str, SharedRootTableBinding] = {}
+    for table_id in sorted(set(body.table_ids), key=str):
+        table = await ctx.db.get(Table, table_id, populate_existing=True)
+        if table is None:
+            raise HTTPException(status_code=404, detail="Table not found")
+        try:
+            metadata_hash = table_metadata_hash(table)
+        except SharedTableBindingError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if table.name in result:
+            raise HTTPException(status_code=422, detail="Shared table names are ambiguous")
+        result[table.name] = SharedRootTableBinding(table_id=table.id, metadata_hash=metadata_hash)
+    return result
 
 
 @router.get(

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentResolutionMap,
+    SharedRootTableBinding,
 )
 
 
@@ -93,12 +94,20 @@ class WorkspaceLiveHandoffPreflightRequest(BaseModel):
     )
     expected_active_deployment_id: UUID | None
     workflow_ids: list[UUID] = Field(min_length=1, max_length=100)
+    shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict, max_length=50)
 
     @model_validator(mode="after")
     def unique_workflows(self):
         if len(self.workflow_ids) != len(set(self.workflow_ids)):
             raise ValueError("workflow IDs must be unique")
+        if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
+            raise ValueError("shared table IDs must be unique")
         return self
+
+
+class SharedTableBindingPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    table_ids: list[UUID] = Field(min_length=1, max_length=50)
 
 
 class WorkspaceLiveHandoffPreflightResponse(BaseModel):
@@ -110,6 +119,7 @@ class WorkspaceLiveHandoffPreflightResponse(BaseModel):
     registration_state_fingerprint: str
     workflow_ids: list[UUID]
     verified_source_paths: list[str]
+    verified_shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict)
     expected_active_deployment_id: UUID | None
     evidence_id: str
 

@@ -17,25 +17,30 @@ class LiveHandoffSourceError(ValueError):
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
-def _require_resource_free_source(path: str, raw: bytes) -> None:
+def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: bool) -> None:
     """Empty workflow installs cannot resolve shared tables or file locations."""
     tree = ast.parse(raw, filename=path)
+    unsupported_modules = [["bifrost", "files"]]
+    unsupported_names = {"files", "*"}
+    if not has_table_bindings:
+        unsupported_modules.append(["bifrost", "tables"])
+        unsupported_names.add("tables")
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             unsupported = any(
                 alias.name == "bifrost"
                 or alias.name.startswith("bifrost.") and alias.asname is None
                 or alias.name.split(".")[:2]
-                in (["bifrost", "tables"], ["bifrost", "files"])
+                in unsupported_modules
                 for alias in node.names
             )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
             unsupported = node.level == 0 and (
                 module.split(".")[:2]
-                in (["bifrost", "tables"], ["bifrost", "files"])
+                in unsupported_modules
                 or module == "bifrost"
-                and any(alias.name in {"tables", "files", "*"} for alias in node.names)
+                and any(alias.name in unsupported_names for alias in node.names)
             )
         else:
             continue
@@ -47,7 +52,7 @@ def _require_resource_free_source(path: str, raw: bytes) -> None:
 
 
 def source_closure(
-    source_bytes: dict[str, bytes], entry_paths: set[str]
+    source_bytes: dict[str, bytes], entry_paths: set[str], *, has_table_bindings: bool = False
 ) -> dict[str, bytes]:
     """Reject any import edge that cannot be proven inside the Live snapshot."""
     try:
@@ -74,7 +79,7 @@ def source_closure(
                 f"Live source dependency closure cannot be proven: {path}"
             )
         if path.endswith(".py"):
-            _require_resource_free_source(path, source_bytes[path])
+            _require_resource_free_source(path, source_bytes[path], has_table_bindings=has_table_bindings)
     return {path: source_bytes[path] for path in sorted(paths)}
 
 

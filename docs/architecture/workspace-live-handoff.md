@@ -19,17 +19,46 @@ It does not move ownership or a runtime pointer. An orphaned immutable object
 can remain if staging fails after an object write; it cannot affect execution.
 
 The workflow-only candidate has no installed tables or file locations. Its
-complete Python closure therefore rejects imports of `bifrost.tables` and
-`bifrost.files`, including aliases and imports in helpers. Bare `import bifrost`
+complete Python closure rejects imports of `bifrost.tables` unless the reviewed
+candidate declares shared table bindings. Imports of `bifrost.files` remain
+unsupported, including aliases and imports in helpers. Bare `import bifrost`
 and wildcard SDK imports also fail because they conceal which SDK resources
 the code uses. Import supported SDK APIs explicitly. The same check applies
 during preflight and source revision, before activation. This conservative
 check is an unsupported-resource boundary, not proof of arbitrary Python's
 resource behavior. Review runtime dependencies and external effects separately.
 
-Meraki's shared tables require a reviewed resource-aware deployment before
-handoff. Copying their Python source into an empty Solution cannot preserve
-table resolution. Do not enable broad outbound access to bypass this boundary.
+## Reviewed shared Root tables
+
+`POST /api/solutions/{solution_id}/deployments/shared-tables/preview` accepts
+exact table UUIDs and returns read-only bindings by table name. It reads table
+metadata, never documents. Only global Root tables with inline row policies
+are supported. A named policy reference requires a separate immutable policy
+contract and is rejected. The operator may explicitly request `read-write`
+access after reviewing the callers and row policies.
+
+Supply these bindings as `shared_tables` in candidate and preflight requests.
+The immutable manifest, resolution map, bundle and inspection evidence bind
+each table's UUID, name, scope, schema, normalized inline policies and access.
+Candidate creation, preflight, activation, rollback and source revision reject
+changed metadata. Source revisions preserve the exact bindings.
+
+Document access requires a signed engine token for an active execution attempt.
+The server validates the execution's durable deployment pin and evidence,
+organization and signed Solution identity. It resolves bindings from that pin,
+so already queued work keeps its reviewed contract after a successor or
+rollback. Ordinary users and a caller-supplied Solution query do not receive
+this grant. The existing organization and row policy checks still apply.
+Read bindings cannot authorize writes. A shared metadata lock prevents a table
+ownership or schema change from racing a checked document transaction.
+
+Bindings preserve Root ownership, table UUIDs and documents. They allow Meraki
+and existing Root callers to share their current tables without broad outbound
+access. They do not grant table metadata mutation or file access. Before a
+production handoff, verify actual table resolution and row policy behavior in
+an isolated rehearsal, and review every caller and external effect.
+
+## Handoff checks and activation
 
 `POST /api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight`
 is a read-only inspection of that immutable Solution deployment. The service

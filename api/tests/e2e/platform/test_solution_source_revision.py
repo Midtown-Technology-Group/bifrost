@@ -17,6 +17,7 @@ from src.models.contracts.solution_deployments import (
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
+from src.models.orm.tables import Table
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
@@ -24,6 +25,7 @@ from src.services.solutions.deployment_manifest import (
     DeploymentSource,
     RuntimeEntityDefinition,
     RuntimeSourceResolution,
+    SharedRootTableBinding,
     canonical_json,
     sha256_digest,
 )
@@ -36,6 +38,7 @@ from src.services.solutions.deployment_storage import (
     deployment_source_artifact_key,
 )
 from src.services.solutions.live_handoff_source import source_archive
+from src.services.solutions.shared_table_bindings import table_metadata_hash
 from src.services.solutions.source_revision import (
     SolutionSourceRevisionConflict,
     SolutionSourceRevisionError,
@@ -74,8 +77,10 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         uuid4(),
     )
     path = f"features/revision_{uuid4().hex}.py"
-    old_source = b"async def run():\n    return 1\n"
-    new_source = b"async def run():\n    return 2\n"
+    old_source = b"from bifrost import tables\nasync def run():\n    return 1\n"
+    new_source = b"from bifrost import tables\nasync def run():\n    return 2\n"
+    table = Table(id=uuid4(), name=f"revision_state_{uuid4().hex}", organization_id=None)
+    bindings = {table.name: SharedRootTableBinding(table_id=table.id, metadata_hash=table_metadata_hash(table))}
     base_prefix = deployment_runtime_prefix(solution_id, base_id)
     source_hash = sha256_digest(old_source)
     bounds = {
@@ -104,6 +109,7 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         source_hash=source_hash,
     )
     resolution = DeploymentResolutionMap(
+        shared_tables=bindings,
         workflows={entity.portable_ref: entity},
         sources={
             path: RuntimeSourceResolution(
@@ -112,6 +118,7 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         },
     )
     manifest = CompiledDeploymentManifest(
+        shared_tables=bindings,
         solution_id=solution_id,
         deployment_id=base_id,
         bundle_hash=sha256_digest(old_source),
@@ -209,7 +216,7 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
     try:
         db_session.add(solution)
         await db_session.flush()
-        db_session.add_all([workflow, base])
+        db_session.add_all([workflow, base, table])
         await db_session.flush()
         repository = SolutionDeploymentRepository(db_session)
         previous_state = "draft"
@@ -292,6 +299,10 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
         assert activated.state == "active"
         assert solution.active_deployment_id == revision_id
         assert base.state == "superseded"
+        successor = await db_session.get(SolutionDeployment, revision_id)
+        assert successor is not None
+        assert successor.compiled_manifest["shared_tables"] == base.compiled_manifest["shared_tables"]
+        assert successor.resolution_map["shared_tables"] == base.resolution_map["shared_tables"]
         new_pin = await pin_workflow_runtime(db_session, workflow_id)
         assert new_pin is not None and new_pin.deployment_id == revision_id
         queued_pin = await resolve_pinned_workflow_runtime(

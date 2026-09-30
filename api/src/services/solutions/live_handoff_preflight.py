@@ -47,6 +47,10 @@ from src.services.solutions.live_handoff_source import (
     LiveHandoffSourceError,
     source_closure,
 )
+from src.services.solutions.shared_table_bindings import (
+    SharedTableBindingError,
+    require_shared_tables,
+)
 from src.services.workspace_release_files import WorkspaceReleaseFileView
 from src.services.workspace_release_runtime import (
     WorkspaceReleaseDescriptor,
@@ -284,6 +288,17 @@ class WorkspaceLiveHandoffPreflightService:
             raise WorkspaceLiveHandoffPreflightError(
                 "candidate deployment closure is invalid"
             ) from exc
+        if (
+            manifest.shared_tables != request.shared_tables
+            or manifest.tables or manifest.file_locations
+            or manifest.agents or manifest.forms or manifest.events
+            or manifest.applications or manifest.dependencies
+        ):
+            raise WorkspaceLiveHandoffPreflightError("candidate resources differ from reviewed handoff")
+        try:
+            await require_shared_tables(self.db, manifest.shared_tables)
+        except SharedTableBindingError as exc:
+            raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         storage = SolutionDeploymentStorage(solution_id, deployment_id)
         if (
             manifest.source.artifact_key
@@ -353,7 +368,9 @@ class WorkspaceLiveHandoffPreflightService:
                 ).all()
             )
         try:
-            source_bytes = source_closure(live_bytes, entry_paths)
+            source_bytes = source_closure(
+                live_bytes, entry_paths, has_table_bindings=bool(manifest.shared_tables)
+            )
         except LiveHandoffSourceError as exc:
             raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         if set(source_paths) != set(source_bytes):
@@ -399,6 +416,10 @@ class WorkspaceLiveHandoffPreflightService:
                 else None
             ),
             "workflow_ids": [str(item) for item in workflow_ids],
+            "shared_tables": {
+                name: binding.model_dump(mode="json")
+                for name, binding in manifest.shared_tables.items()
+            },
             "source_hashes": {
                 path: release.source_hashes[path] for path in source_paths
             },
@@ -412,6 +433,7 @@ class WorkspaceLiveHandoffPreflightService:
             registration_state_fingerprint=release.registration_state_fingerprint,
             workflow_ids=workflow_ids,
             verified_source_paths=source_paths,
+            verified_shared_tables=manifest.shared_tables,
             expected_active_deployment_id=request.expected_active_deployment_id,
             evidence_id=canonical_digest(evidence),
         )
