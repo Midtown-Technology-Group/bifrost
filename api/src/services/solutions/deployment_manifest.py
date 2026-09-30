@@ -13,9 +13,12 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from src.core.solution_delivery_policy import delivery_path
 
-WORKFLOW_PARAMETERS_SCHEMA_CONTRACT = "bifrost.workflow-parameters-schema/v1"
-MAX_DEPLOYMENT_RESOURCE_BYTES = 2 * 1024 * 1024
-MAX_DEPLOYMENT_RESOURCES_BYTES = 10 * 1024 * 1024
+from bifrost.solution_delivery_review import (
+    WORKFLOW_PARAMETERS_SCHEMA_CONTRACT as WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
+    SharedRootTableBinding as SharedRootTableBinding,
+    MAX_DEPLOYMENT_RESOURCE_BYTES as MAX_DEPLOYMENT_RESOURCE_BYTES,
+    MAX_DEPLOYMENT_RESOURCES_BYTES as MAX_DEPLOYMENT_RESOURCES_BYTES,
+)
 
 
 class FrozenDict(dict):
@@ -113,14 +116,6 @@ class DeploymentGitProvenance(ImmutableContract):
     repository: str | None = None
     resolved_ref: str | None = None
     commit_sha: str | None = None
-
-
-class SharedRootTableBinding(ImmutableContract):
-    """Reviewed access to one existing global Root table without adopting its data."""
-
-    table_id: UUID
-    metadata_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    access: Literal["read", "read-write"] = "read"
 
 
 class CompiledDeploymentManifest(ImmutableContract):

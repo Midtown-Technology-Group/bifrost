@@ -15,6 +15,10 @@ from uuid import UUID
 from sqlalchemy import insert, select, update
 
 from bifrost.workspace_release import canonical_digest
+from bifrost.solution_delivery_review import (
+    PROTECTED_REGISTRATION_FIELDS,
+    require_compatible_parameters as _require_compatible_parameters,
+)
 from src.models.contracts.solution_deployments import (
     SolutionDeploymentCreate, SolutionSourceRevisionCommitRequest,
     SolutionSourceRevisionInspectRequest, SolutionSourceRevisionInspectResponse,
@@ -42,26 +46,11 @@ from src.services.solutions.workflow_revision_recipe import (
 from src.services.solutions.resource_delivery import read_deployment_resources, validate_resource_files
 
 
-def _without_presentation(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: (
-            {name: _without_presentation(schema) for name, schema in item.items()}
-            if key == "properties" else item if key in {"enum", "const"} else _without_presentation(item)
-        ) for key, item in value.items() if key not in {"title", "default"}}
-    if isinstance(value, list | tuple):
-        return [_without_presentation(item) for item in value]
-    return value
-
-
 def require_compatible_parameters(old: dict, new: dict) -> None:
-    """Existing callers keep their accepted keyword set and type constraints."""
-    old_properties, new_properties = old.get("properties", {}), new.get("properties", {})
-    if (not set(old_properties).issubset(new_properties)
-            or not set(new.get("required", [])).issubset(old.get("required", []))
-            or old.get("additionalProperties") is True and new.get("additionalProperties") is not True
-            or any(_without_presentation(schema) != _without_presentation(new_properties[name])
-                   for name, schema in old_properties.items())):
-        raise SolutionSourceRevisionError("Breaking parameter changes require verified live caller reconciliation")
+    try:
+        _require_compatible_parameters(old, new)
+    except WorkflowRecipeError as exc:
+        raise SolutionSourceRevisionError(str(exc)) from exc
 
 
 class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
@@ -96,10 +85,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             # These changes can invalidate string callers, auth decisions, endpoint
             # routing, service lifecycles or retry envelopes. This first adapter
             # exposes them as unsupported instead of silently projecting them.
-            protected = ("path", "function_name", "name", "type", "organization_id",
-                "endpoint_enabled", "public_endpoint", "access_level", "role_ids",
-                "allowed_methods", "disable_global_key", "execution_mode", "retry_policy", "cache_ttl_seconds")
-            if any(definition.get(key) != snapshot[key] for key in protected):
+            if any(definition.get(key) != snapshot[key] for key in PROTECTED_REGISTRATION_FIELDS):
                 raise SolutionSourceRevisionError("Rename, scope, type, access, endpoint, mode, cache or retry changes require a reviewed caller/control-plane adapter")
             old_schema = indexer.extract_parameters_from_source(base_files[snapshot["path"]], row.function_name, path=row.path)
             if old_schema is None:

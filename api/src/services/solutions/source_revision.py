@@ -13,6 +13,7 @@ from io import BytesIO
 from uuid import UUID
 from zipfile import BadZipFile, ZipFile
 
+from bifrost.solution_delivery_review import WorkflowRecipeError, require_executable_bindings
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -198,6 +199,10 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
         raise SolutionSourceRevisionError(
             f"workflow entrypoint is missing or invalid: {workflow.id}"
         ) from exc
+    try:
+        require_executable_bindings(tree)
+    except WorkflowRecipeError as exc:
+        raise SolutionSourceRevisionError("workflow decorator namespace is ambiguous") from exc
     matches = [
         node
         for node in tree.body

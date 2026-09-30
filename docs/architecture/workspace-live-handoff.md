@@ -303,3 +303,37 @@ client authority, Meraki Config Vault state and browser authentication state
 need their operational data contracts; packaging them as immutable source does
 not establish those contracts. This reader has not been deployed or enabled
 in production.
+
+## Canonical offline delivery review
+
+`bifrost.solution_delivery_review` carries the same recipe models, declaration
+compiler, parameter inference, resource reference validation and protected
+registration fields that the deployment adapter uses. Server wrappers still
+produce the frozen deployment contracts and perform all database, ownership,
+role, trigger, immutable-object and pointer checks. Configuration and migration
+startup do not import the SDK. The SDK's normalized path helper and the startup
+policy validator retain the same path rules.
+
+`review_solution_recipe` checks a complete desired recipe and optional exact Git
+baseline without importing or running their source. Workflow review rejects
+unsupported removal, rename, type/signature/control changes and incomplete
+resource/dependency closure. The legacy source adapter permits body changes
+with identical explicit entrypoint signatures and decorators. Adapter changes
+need a reconciled live baseline. Both return `live_state_verified=false` and
+`runtime_verified=false`; an offline pass cannot establish live UUID ownership,
+role existence, current table metadata, callers or triggers.
+
+The installed CLI artifact includes the compiler and has a standalone test with
+no `src` or SQLAlchemy import. Workspace CI must bake and pin this artifact
+before enabling an installation. The new workspace gate runs for every CI scope,
+reads exact Git bytes and fails if an enabled recipe lacks its compiler. Its
+empty-registry path is inert and requires no SDK or live credentials. An
+installation cannot bypass checks by deleting its registry entry or changing
+targets. Reviewed live retirement/handoff remains necessary for those operations.
+
+The execution-only resource API does not provide local development bytes.
+Current direct `bifrost run` and `solution start` have human credentials and
+synthetic local execution IDs, so resource reads receive 403. A declared local
+checkout resolver, with no HTTP fallback, is still needed to complete resource
+iteration in the fast development lane. Do not relax the production attempt or
+deployment guards to support local development.
