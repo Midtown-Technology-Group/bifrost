@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 
 from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.solution_deployments import (
@@ -30,6 +31,7 @@ from src.services.solutions.deployment_manifest import (
     sha256_digest,
 )
 from src.services.solutions.deployment_runtime import (
+    DeploymentRuntimeError,
     pin_workflow_runtime,
     resolve_pinned_workflow_runtime,
 )
@@ -64,10 +66,10 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
-    from src.services.solutions import deployment_api, source_revision
+    from src.services.solutions import deployment_api, source_revision, workflow_revision
 
     solution_id, base_id, revision_id, workflow_id = (
         uuid4(),
@@ -78,6 +80,8 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch):
     path = f"features/revision_{uuid4().hex}.py"
     old_source = b"from bifrost import tables\nasync def run():\n    return 1\n"
     new_source = b"from bifrost import tables\nasync def run():\n    return 2\n"
+    if source_pair is not None:
+        old_source, new_source = source_pair
     table = Table(id=uuid4(), name=f"revision_state_{uuid4().hex}", organization_id=None)
     bindings = {table.name: SharedRootTableBinding(table_id=table.id, metadata_hash=table_metadata_hash(table))}
     base_prefix = deployment_runtime_prefix(solution_id, base_id)
@@ -211,6 +215,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch):
             return objects[(self.deployment_id, "manifest")]
 
     monkeypatch.setattr(source_revision, "SolutionDeploymentStorage", Storage)
+    monkeypatch.setattr(workflow_revision, "SolutionDeploymentStorage", Storage)
     monkeypatch.setattr(deployment_api, "SolutionDeploymentStorage", Storage)
     db_session.add(solution)
     await db_session.flush()
@@ -320,6 +325,19 @@ async def test_source_revision_keeps_old_queue_pin_and_fences_stale_review(
             db_session, base_id, workflow_id
         )
         assert queued_pin.queue_evidence() == old_pin.queue_evidence()
+        # Registration retirement must stop new admissions without invalidating
+        # executions already accepted against a source successor or its base.
+        await db_session.execute(update(Workflow).where(
+            Workflow.id == workflow_id, Workflow.solution_id == solution_id
+        ).values(is_active=False, is_orphaned=True))
+        await db_session.commit()
+        with pytest.raises(DeploymentRuntimeError, match="not executable"):
+            await pin_workflow_runtime(db_session, workflow_id)
+        for accepted in (old_pin, new_pin):
+            retired_pin = await resolve_pinned_workflow_runtime(
+                db_session, accepted.deployment_id, workflow_id
+            )
+            assert retired_pin.queue_evidence() == accepted.queue_evidence()
     finally:
         await db_session.rollback()
 
@@ -333,6 +351,115 @@ async def committed_delivery_db(async_session_factory):
             yield session
         finally:
             await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_git_workflow_revision_adds_registration_updates_defaults_and_repairs_table_drift(
+    committed_delivery_db, platform_admin, monkeypatch, async_session_factory
+):
+    from contextlib import asynccontextmanager
+    from sqlalchemy import select
+    from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.services import operation_receipts
+    from src.services.solutions.github_delivery_source import GitDeliveryIdentity, GitDeliverySourceError, VerifiedGitSource
+    from src.services.solutions.github_source_delivery import GitSourceDeliveryService
+    from src.services.solutions.guard import install_solution_write_guard
+    from src.services.solutions.workflow_revision_recipe import WORKFLOW_RECIPE_SCHEMA, ReviewedWorkflowRecipe
+
+    install_solution_write_guard()
+    @asynccontextmanager
+    async def receipt_context():
+        async with async_session_factory() as session:
+            yield session
+    monkeypatch.setattr(operation_receipts, "get_db_context", receipt_context)
+    db = committed_delivery_db
+    old = b'from bifrost import workflow, tables\n@workflow(name="Revision test")\nasync def run(user: str = "root"):\n    return user\n'
+    new = old.replace(b'"root"', b'"system"') + b'\n@workflow(name="Added")\nasync def added(count: int = 3):\n    return count\n'
+    fixture = await _seed_adopted_revision(db, platform_admin, monkeypatch, source_pair=(old, new))
+    policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
+        repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
+        workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
+        ci_workflow_id=257449914, solutions={fixture.solution_id: "config/solution-delivery/fixture.json"})
+    added_id = uuid4()
+    spec = {"schema_version": WORKFLOW_RECIPE_SCHEMA, "solution_id": str(fixture.solution_id),
+        "files": {fixture.path: "solutions/fixture.py"},
+        "shared_tables": {name: item.model_dump(mode="json") for name, item in fixture.bindings.items()},
+        "workflows": [{"id": str(identity), "path": fixture.path, "function_name": function,
+            "organization_id": str(PROVIDER_ORG_ID), "runtime_bounds": {
+                "max_duration_seconds": 20, "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096},
+            "controls": {}} for identity, function in [(fixture.workflow_id, "run"), (added_id, "added")]]}
+    recipe = ReviewedWorkflowRecipe.model_validate(spec)
+    request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=123,
+        ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
+    desired = VerifiedGitSource(fixture.solution_id, request.source_commit_sha, "c" * 40,
+        policy.solutions[fixture.solution_id], {fixture.path: sha256_digest(new)}, {fixture.path: new}, request.artifact_digest, recipe)
+    class Reader:
+        checks = 0
+        cancel_after_stage = True
+        async def verify_ci(self, *_):
+            self.checks += 1
+            if self.cancel_after_stage and self.checks == 2:
+                raise GitDeliverySourceError("Source superseded after complete staging")
+        async def source(self, *_):
+            return desired
+    reader = Reader()
+    before = await pin_workflow_runtime(db, fixture.workflow_id)
+    assert before is not None
+    service = GitSourceDeliveryService(db, policy, reader)
+    with pytest.raises(GitDeliverySourceError, match="superseded"):
+        await service.deliver(fixture.solution_id, request, GitDeliveryIdentity("901", 1))
+    await db.rollback()
+    assert await db.get(Workflow, added_id) is None
+    current = await db.get(Solution, fixture.solution_id)
+    assert current.active_deployment_id == fixture.base_id
+    staged_objects = dict(fixture.objects)
+    reader.cancel_after_stage = False
+    result = await service.deliver(fixture.solution_id, request, GitDeliveryIdentity("901", 2))
+    assert fixture.objects == staged_objects
+    await db.refresh(fixture.workflow)
+    assert fixture.workflow.id == fixture.workflow_id
+    assert fixture.workflow.parameters_schema["properties"]["user"]["default"] == "system"
+    added = await db.get(Workflow, added_id)
+    assert added is not None and added.solution_id == fixture.solution_id
+    assert added.endpoint_enabled is False and added.public_endpoint is False
+    after = await pin_workflow_runtime(db, fixture.workflow_id)
+    assert after is not None and after.deployment_id == result.deployment_id
+    assert after.parameters_schema["properties"]["user"]["default"] == "system"
+    accepted = await resolve_pinned_workflow_runtime(db, before.deployment_id, fixture.workflow_id)
+    assert accepted.queue_evidence() == before.queue_evidence()
+
+    # Drifted Root metadata is repaired by reviewing its new exact binding.
+    # Neither the table owner nor its document data is adopted by deployment.
+    await db.execute(update(Table).where(Table.id == fixture.table.id).values(schema={"type": "object"}))
+    await db.commit()
+    await db.refresh(fixture.table)
+    spec["shared_tables"][fixture.table.name]["metadata_hash"] = table_metadata_hash(fixture.table)
+    next_recipe = ReviewedWorkflowRecipe.model_validate(spec)
+    desired = VerifiedGitSource(fixture.solution_id, "d" * 40, "e" * 40,
+        policy.solutions[fixture.solution_id], {fixture.path: sha256_digest(new)}, {fixture.path: new},
+        "sha256:" + "f" * 64, next_recipe)
+    next_request = request.model_copy(update={"source_commit_sha": desired.commit_sha, "artifact_digest": desired.artifact_digest})
+    repaired = await service.deliver(fixture.solution_id, next_request, GitDeliveryIdentity("902", 1))
+    assert repaired.deployment_id != result.deployment_id
+    await db.refresh(fixture.table)
+    assert fixture.table.solution_id is None and fixture.table.organization_id is None
+    retained = await db.get(SolutionDeployment, result.deployment_id)
+    assert retained.compiled_manifest["shared_tables"][fixture.table.name]["metadata_hash"] != spec["shared_tables"][fixture.table.name]["metadata_hash"]
+
+    snapshot_objects = dict(fixture.objects)
+    spec["workflows"] = spec["workflows"][:1]
+    desired = VerifiedGitSource(fixture.solution_id, "1" * 40, "2" * 40,
+        policy.solutions[fixture.solution_id], {fixture.path: sha256_digest(new)}, {fixture.path: new},
+        "sha256:" + "3" * 64, ReviewedWorkflowRecipe.model_validate(spec))
+    blocked = request.model_copy(update={"source_commit_sha": desired.commit_sha, "artifact_digest": desired.artifact_digest})
+    with pytest.raises(SolutionSourceRevisionError, match="removal requires"):
+        await service.deliver(fixture.solution_id, blocked, GitDeliveryIdentity("903", 1))
+    await db.rollback()
+    assert fixture.objects == snapshot_objects
+    current = await db.get(Solution, fixture.solution_id)
+    assert current.active_deployment_id == repaired.deployment_id
+    assert await db.scalar(select(Workflow.is_active).where(Workflow.id == added_id)) is True
 
 
 @pytest.mark.asyncio

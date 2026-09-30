@@ -380,3 +380,47 @@ async def test_cross_solution_child_uses_exact_dependency_deployment(monkeypatch
         session, workflow_id, caller_deployment_id=caller_id
     )
     assert pinned is not None and pinned.deployment_id == dependency_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["active", "superseded", "ready"])
+async def test_accepted_pin_reads_exact_owned_deployment_after_registration_retirement(monkeypatch, state):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id, is_active=False)
+    solution = SimpleNamespace(id=solution_id, status="active", organization_id=uuid4(),
+        allow_outbound_access=False, active_deployment_id=uuid4())
+    deployment = _closure(deployment_id=deployment_id, solution_id=solution_id,
+        workflow_id=workflow_id, source_text="accepted")
+    deployment.state = state
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+
+    async def get_closure(_repo, requested_id, org_id, requested_solution_id):
+        assert (requested_id, org_id, requested_solution_id) == (
+            deployment_id, solution.organization_id, solution_id)
+        return deployment
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        get_closure)
+    if state == "ready":
+        with pytest.raises(DeploymentRuntimeError, match="not executable"):
+            await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+    else:
+        pinned = await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+        assert pinned.deployment_id == deployment_id
+        assert pinned.name == "demo-accepted"
+
+
+@pytest.mark.asyncio
+async def test_accepted_pin_rejects_workflow_reassigned_to_another_solution(monkeypatch):
+    solution_id, original_solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id, is_active=False)
+    solution = SimpleNamespace(id=solution_id, status="active", organization_id=None)
+    original = _closure(deployment_id=deployment_id, solution_id=original_solution_id,
+        workflow_id=workflow_id, source_text="original")
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        AsyncMock(return_value=original))
+    with pytest.raises(DeploymentRuntimeError, match="does not belong"):
+        await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)

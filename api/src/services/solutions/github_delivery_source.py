@@ -23,6 +23,7 @@ import jwt
 from bifrost.workspace_release import canonical_digest
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy, delivery_path
 from src.services.github_actions_oidc import GITHUB_ACTIONS_ISSUER, GITHUB_ACTIONS_JWKS_URL
+from src.services.solutions.workflow_revision_recipe import WORKFLOW_RECIPE_SCHEMA, ReviewedWorkflowRecipe
 
 AUDIENCE = "bifrost-solution-git-delivery/v1"
 RECIPE_SCHEMA = "bifrost.solution-source-delivery/v1"
@@ -58,6 +59,7 @@ class VerifiedGitSource:
     source_hashes: dict[str, str]
     files: dict[str, bytes]
     artifact_digest: str
+    workflow_recipe: ReviewedWorkflowRecipe | None = None
 
 
 def delivery_audience(solution_id: UUID, commit_sha: str, ci_run_id: int,
@@ -221,8 +223,11 @@ class ProtectedGitReader:
         try:
             recipe = json.loads(await self.blob(index[recipe_path], limit=128 * 1024),
                                 object_pairs_hook=_unique_json_object)
-            if (not isinstance(recipe, dict) or recipe.get("schema_version") != RECIPE_SCHEMA
-                    or set(recipe) != {"schema_version", "solution_id", "files"}
+            workflow_recipe = None
+            if isinstance(recipe, dict) and recipe.get("schema_version") == WORKFLOW_RECIPE_SCHEMA:
+                workflow_recipe = ReviewedWorkflowRecipe.model_validate(recipe)
+            if (not isinstance(recipe, dict) or recipe.get("schema_version") not in (RECIPE_SCHEMA, WORKFLOW_RECIPE_SCHEMA)
+                    or workflow_recipe is None and set(recipe) != {"schema_version", "solution_id", "files"}
                     or recipe.get("solution_id") != str(solution_id)
                     or not isinstance(recipe.get("files"), dict) or not 1 <= len(recipe["files"]) <= 256):
                 raise GitDeliverySourceError("Reviewed installed Solution recipe is invalid")
@@ -255,9 +260,12 @@ class ProtectedGitReader:
         if sum(len(content) for content in files.values()) > MAX_SOURCE_BYTES:
             raise GitDeliverySourceError("Complete source exceeds its artifact bound")
         hashes = {path: "sha256:" + hashlib.sha256(content).hexdigest() for path, content in sorted(files.items())}
-        digest = canonical_digest({"schema_version": RECIPE_SCHEMA, "solution_id": str(solution_id),
+        digest_input = {"schema_version": recipe["schema_version"], "solution_id": str(solution_id),
             "source_commit_sha": commit_sha, "source_tree_sha": tree_sha, "recipe_path": recipe_path,
-            "source_hashes": hashes})
+            "source_hashes": hashes}
+        if workflow_recipe is not None:
+            digest_input["reviewed_recipe"] = recipe
+        digest = canonical_digest(digest_input)
         if digest != artifact_digest:
             raise GitDeliverySourceError("Protected Git artifact differs from the bound producer digest")
-        return VerifiedGitSource(solution_id, commit_sha, tree_sha, recipe_path, hashes, files, digest)
+        return VerifiedGitSource(solution_id, commit_sha, tree_sha, recipe_path, hashes, files, digest, workflow_recipe)

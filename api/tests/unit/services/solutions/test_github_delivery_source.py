@@ -116,20 +116,23 @@ def test_policy_fails_closed_for_partial_or_unsafe_configuration(changes):
         SolutionGitDeliveryPolicy.model_validate(values)
 
 
-def fixture():
+def fixture(workflow_recipe=None):
     files = {"fixture.py": b"from helper import value\nasync def fixture():\n    return value\n",
              "helper.py": b"value = 'merged-earlier'\n"}
     recipe = {"schema_version": RECIPE_SCHEMA, "solution_id": str(SID),
               "files": {path: "solutions/fixture/" + path for path in files}}
+    if workflow_recipe is not None:
+        recipe = {**recipe, **workflow_recipe}
     contents = {RECIPE: json.dumps(recipe).encode(), **{"solutions/fixture/" + path: content for path, content in files.items()}}
     entries, blobs = [], {}
     for path, content in contents.items():
         sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content, usedforsecurity=False).hexdigest()
         entries.append({"path": path, "mode": "100644", "type": "blob", "sha": sha, "size": len(content)})
         blobs["git/blobs/" + sha] = {"sha": sha, "encoding": "base64", "content": base64.b64encode(content).decode()}
-    digest = canonical_digest({"schema_version": RECIPE_SCHEMA, "solution_id": str(SID),
+    digest = canonical_digest({"schema_version": recipe["schema_version"], "solution_id": str(SID),
         "source_commit_sha": SHA, "source_tree_sha": TREE, "recipe_path": RECIPE,
-        "source_hashes": {path: "sha256:" + hashlib.sha256(value).hexdigest() for path, value in files.items()}})
+        "source_hashes": {path: "sha256:" + hashlib.sha256(value).hexdigest() for path, value in files.items()},
+        **({"reviewed_recipe": recipe} if workflow_recipe is not None else {})})
     documents = {"": {"id": policy().repository_id, "owner": {"id": policy().repository_owner_id},
         "full_name": policy().repository, "default_branch": "main"},
         "branches/main": {"protected": True, "commit": {"sha": SHA}},
@@ -140,6 +143,28 @@ def fixture():
         "git/commits/" + SHA: {"sha": SHA, "tree": {"sha": TREE}},
         "git/trees/" + TREE + "?recursive=1": {"sha": TREE, "truncated": False, "tree": entries}, **blobs}
     return documents, files, digest
+
+
+@pytest.mark.asyncio
+async def test_protected_recipe_binds_registration_controls_and_table_metadata_to_oidc_digest():
+    from src.services.solutions.workflow_revision_recipe import WORKFLOW_RECIPE_SCHEMA
+    recipe = {"schema_version": WORKFLOW_RECIPE_SCHEMA, "workflows": [{"id": str(UUID(int=100)),
+        "path": "fixture.py", "function_name": "fixture", "organization_id": None,
+        "runtime_bounds": {"max_duration_seconds": 30, "max_external_calls": 10,
+            "max_records_read": 100, "max_output_bytes": 4096}, "controls": {}}],
+        "shared_tables": {"state": {"table_id": str(UUID(int=200)),
+            "metadata_hash": "sha256:" + "f" * 64, "access": "read"}}}
+    documents, _, digest = fixture(recipe)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        result = await ProtectedGitReader(policy(), "ephemeral-job-token", client).source(SID, SHA, digest)
+        assert result.workflow_recipe is not None
+        assert result.workflow_recipe.workflows[0].id == UUID(int=100)
+    recipe["shared_tables"]["state"]["access"] = "read-write"
+    changed_documents, _, changed_digest = fixture(recipe)
+    assert changed_digest != digest
+    async with httpx.AsyncClient(transport=transport(changed_documents, [])) as client:
+        with pytest.raises(GitDeliverySourceError, match="digest"):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).source(SID, SHA, digest)
 
 
 def transport(documents, calls):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 from uuid import UUID
 
@@ -65,6 +66,7 @@ class PinnedWorkflowRuntime:
     can_access_global_repo: bool
     source_hashes: dict[str, str]
     runtime_bounds: dict[str, int] | None = None
+    parameters_schema: dict[str, Any] | None = None
 
     def queue_evidence(self) -> dict[str, Any]:
         evidence = {
@@ -91,6 +93,8 @@ class PinnedWorkflowRuntime:
         }
         if self.runtime_bounds is not None:
             evidence["workflow_runtime_bounds"] = self.runtime_bounds
+        if self.parameters_schema is not None:
+            evidence["workflow_parameters_schema"] = self.parameters_schema
         return evidence
 
 
@@ -223,6 +227,7 @@ def _pin_from_deployment(
     *,
     allow_superseded: bool,
 ) -> PinnedWorkflowRuntime:
+    from src.services.solutions.deployment_manifest import canonical_json
     executable_states = {"active", "committed_unpushed"}
     if allow_superseded:
         executable_states.add("superseded")
@@ -286,6 +291,8 @@ def _pin_from_deployment(
         can_access_global_repo=bool(solution.allow_outbound_access),
         source_hashes={key: item.content_hash for key, item in resolution.sources.items()},
         runtime_bounds=runtime_bounds,
+        parameters_schema=(json.loads(canonical_json(definition["parameters_schema"]))
+            if isinstance(definition.get("parameters_schema"), dict) else None),
     )
 
 
@@ -353,17 +360,33 @@ def _resolve_workflow_entity(resolution: Any, workflow_id: UUID) -> Any:
 async def resolve_pinned_workflow_runtime(
     session: AsyncSession, deployment_id: UUID, workflow_id: UUID
 ) -> PinnedWorkflowRuntime:
-    """Resolve by an explicit immutable deployment, never by the active pointer."""
-    try:
-        pinned = await pin_workflow_runtime(
-            session, workflow_id, caller_deployment_id=deployment_id
+    """Resolve accepted work from its deployment, including retired registrations.
+
+    Current registration activity controls new admissions. An accepted execution
+    instead retains the immutable definition it already pinned. Ownership and
+    Solution status still gate that read; only a certified handoff rollback may
+    resolve a registration that has returned to Root.
+    """
+    row = (
+        await session.execute(
+            select(Workflow, Solution)
+            .outerjoin(Solution, Workflow.solution_id == Solution.id)
+            .where(Workflow.id == workflow_id)
         )
-    except DeploymentRuntimeError:
-        pinned = None
-    if pinned is None:
-        pinned = await _pin_rolled_back_handoff_runtime(
-            session, workflow_id, deployment_id
-        )
-    if pinned is None or pinned.deployment_id != deployment_id:
+    ).one_or_none()
+    if row is None:
         raise DeploymentRuntimeError("workflow does not belong to the pinned deployment")
-    return pinned
+    workflow, solution = row
+    if workflow.solution_id is None:
+        pinned = await _pin_rolled_back_handoff_runtime(session, workflow_id, deployment_id)
+        if pinned is None or pinned.deployment_id != deployment_id:
+            raise DeploymentRuntimeError("workflow does not belong to the pinned deployment")
+        return pinned
+    if solution is None or solution.status != "active":
+        raise DeploymentRuntimeError("Solution is not active")
+    deployment = await SolutionDeploymentRepository(session).get_runtime_closure(
+        deployment_id, solution.organization_id, solution.id
+    )
+    if deployment is None or deployment.solution_id != solution.id:
+        raise DeploymentRuntimeError("workflow does not belong to the pinned deployment")
+    return _pin_from_deployment(workflow_id, solution, deployment, allow_superseded=True)

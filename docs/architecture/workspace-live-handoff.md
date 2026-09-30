@@ -176,17 +176,64 @@ deployment. Existing administrator endpoints retain their own authentication.
 The server independently verifies the repository identity, successful latest
 CI attempt and protected current main. It fetches the complete Git tree, the
 reviewed recipe and every regular Python blob, then verifies blob identity,
-source hashes and the audience-bound artifact digest. The recipe has exactly
+source hashes and the audience-bound artifact digest. A source-only recipe has exactly
 `schema_version`, `solution_id` and `files`; its schema is
 `bifrost.solution-source-delivery/v1`. `files` maps runtime paths to Git paths
 for the full source closure. Superseded commits cannot activate. The server
 rechecks CI and main after staging and before moving the pointer.
 
-Delivery uses the existing Solution write lock, immutable source artifacts and
+Delivery of source-only recipes uses the existing Solution write lock, immutable source artifacts and
 source-revision checks. Registration, signatures, decorators, triggers, runtime
 bounds and table contracts must still match. New or renamed workflows and
-registration metadata changes require a reviewed registration revision path.
-This endpoint alone does not deliver those changes.
+registration metadata changes require the workflow recipe adapter below.
+A source-only recipe does not deliver those changes.
+
+### Reviewed registration recipes
+
+The same producer accepts `bifrost.solution-workflow-delivery/v1`. Its full
+recipe contains `solution_id`, the complete Python `files` mapping, a complete
+`workflows` list and optional `shared_tables`. Each workflow carries its
+existing or Solution-CLI-minted UUID, runtime path, function name, organization,
+finite runtime bounds and registration controls. The artifact digest binds the
+entire reviewed recipe as well as the exact source commit, tree and hashes.
+The server compiles names, types, descriptions, tags, effects and parameter
+schemas from the carried AST without importing user code. Legacy decorator
+`id` values must agree with the recipe. Dynamic declaration/default expressions,
+additional wrappers, services and positional-only entrypoints fail explicitly.
+
+This first registration adapter supports new UUIDs, changed literal argument
+defaults, additional optional keyword arguments, descriptions/categories/tags,
+reviewed finite bounds and shared-table contract revisions. Existing UUIDs,
+paths, function and workflow names, types, org scope, access/roles, endpoints,
+execution modes, cache settings and retry policies remain fixed. New workflows
+require the install's org scope, role-based access, existing reviewed role IDs
+and disabled endpoints. A recipe cannot claim an existing Root or other
+Solution registration. It contains no instance API keys or secret values.
+
+Stage and activation verify the exact full dependency closure and current
+registration, trigger and pointer evidence. Activation repeats those checks
+under native row locks and projects registrations and the pointer in one SQL
+transaction. Post-commit readback verifies the complete installed registration
+definition, archive and table contracts. New admissions also validate inputs
+against the immutable schema selected for that execution, so earlier API
+metadata cannot authorize incompatible arguments after a pointer switch.
+Accepted executions resolve their original active/superseded deployment even
+if the current registration is inactive. Fresh dispatch still requires an
+active registration; Solution status and ownership checks remain mandatory.
+
+A new binding can replace a drifted Root-table metadata hash after the new
+exact contract is reviewed. The deploy writer does not change table ownership,
+schema, policy or document data. An old execution retains its old binding and
+fails closed if that contract no longer matches live metadata.
+
+Removal, renames, breaking input changes, type/scope/auth/endpoint/mode/cache/retry
+changes, services and non-workflow resources remain blocked. Issue #984 stays
+open for complete live caller/trigger reconciliation, dependency-safe removal,
+old nested-call behavior, rollback of registration additions and the actual
+GitHub-job/worker rehearsal. Revert compatible source/default/bound changes as
+a new protected-main full recipe against the observed pointer. Reverting an
+addition would remove a registration and is blocked until that adapter exists.
+Neither this first adapter nor repository tests establish production readiness.
 
 The canonical OperationReceipt identifies the producer run and attempt, CI
 run and attempt, Solution, commit and digest. Pointer activation and receipt

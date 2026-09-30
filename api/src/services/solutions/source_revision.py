@@ -6,6 +6,7 @@ import asyncio
 import ast
 import base64
 import binascii
+import json
 import re
 from datetime import UTC, datetime
 from io import BytesIO
@@ -112,11 +113,20 @@ def _workflow_snapshot(workflow: Workflow) -> dict:
         "time_saved": workflow.time_saved,
         "value": float(workflow.value or 0),
         "cache_ttl_seconds": workflow.cache_ttl_seconds,
+        "parameters_schema": workflow.parameters_schema,
+        "display_name": workflow.display_name,
+        "description": workflow.description,
+        "category": workflow.category,
+        "tags": workflow.tags,
+        "allowed_methods": sorted(workflow.allowed_methods),
+        "disable_global_key": workflow.disable_global_key,
+        "retry_policy": workflow.retry_policy,
+        "tool_description": workflow.tool_description,
     }
 
 
 def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -> None:
-    definition = entity.definition
+    definition = json.loads(canonical_json(entity.definition))
     timeout = workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
     bounds = definition.get("runtime_bounds")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
@@ -142,6 +152,16 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
         "value": float(workflow.value or 0),
         "cache_ttl_seconds": workflow.cache_ttl_seconds or 0,
     }
+    # Older handoff manifests predate a complete registration definition.
+    # New workflow revisions must also match every deploy-owned projection.
+    snapshot = _workflow_snapshot(workflow)
+    for key in (
+        "parameters_schema", "display_name", "description", "category", "tags",
+        "endpoint_enabled", "public_endpoint", "access_level", "role_ids",
+        "allowed_methods", "disable_global_key", "retry_policy", "tool_description",
+    ):
+        if key in definition:
+            expected[key] = snapshot[key]
     if (
         not workflow.is_active
         or workflow.id != entity.resolved_id
@@ -251,6 +271,7 @@ class SolutionSourceRevisionService:
         request: SolutionSourceRevisionInspectRequest,
         *,
         lock_solution: bool = False,
+        verify_shared_tables: bool = True,
     ):
         query = select(Solution).where(Solution.id == solution_id)
         if lock_solution:
@@ -278,6 +299,7 @@ class SolutionSourceRevisionService:
         if marker.get("schema_version") not in {
             _HANDOFF_MARKER,
             _SOURCE_REVISION_MARKER,
+            "bifrost.solution-workflow-revision/v1",
         }:
             raise SolutionSourceRevisionError(
                 "active deployment did not use the reviewed handoff path"
@@ -301,15 +323,19 @@ class SolutionSourceRevisionService:
             or manifest.applications
             or manifest.tables
             or manifest.dependencies
+            or manifest.file_locations
+            or manifest.connections
+            or manifest.config_requirements
             or not resolution.workflows
         ):
             raise SolutionSourceRevisionError(
                 "source-only revision requires a workflow-only deployment"
             )
-        try:
-            await require_shared_tables(self.db, resolution.shared_tables)
-        except SharedTableBindingError as exc:
-            raise SolutionSourceRevisionError(str(exc)) from exc
+        if verify_shared_tables:
+            try:
+                await require_shared_tables(self.db, resolution.shared_tables)
+            except SharedTableBindingError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
         return solution, base, resolution
 
     async def _registrations(
@@ -318,7 +344,8 @@ class SolutionSourceRevisionService:
         query = (
             select(Workflow)
             .options(selectinload(Workflow.roles))
-            .where(Workflow.solution_id == solution_id)
+            .where(Workflow.solution_id == solution_id, Workflow.is_active.is_(True))
+            .execution_options(populate_existing=True)
         )
         if lock:
             query = query.with_for_update(of=Workflow)
