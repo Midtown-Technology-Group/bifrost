@@ -35,6 +35,16 @@ from src.services.workspace_release_projection import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_projection_cache_reconciliation(monkeypatch):
+    reconcile = AsyncMock(return_value=("generation-1", []))
+    monkeypatch.setattr(
+        "src.services.workspace_release_projection.reconcile_module_coherence",
+        reconcile,
+    )
+    return reconcile
+
+
 def _hash(raw: bytes) -> str:
     import hashlib
 
@@ -390,7 +400,7 @@ async def test_job_for_non_live_release_marks_superseded_without_external_writes
 
 @pytest.mark.asyncio
 async def test_lock_projects_only_base_paths_and_records_signed_readback(
-    monkeypatch,
+    monkeypatch, mock_projection_cache_reconciliation,
 ) -> None:
     release, artifact, paths = _rows()
     release.attention_deadline = datetime.now(timezone.utc) + timedelta(minutes=15)
@@ -405,9 +415,16 @@ async def test_lock_projects_only_base_paths_and_records_signed_readback(
         "src.services.workspace_release_projection.acquire_workspace_release_lock",
         AsyncMock(),
     )
+    source_update_paths = []
+
+    @asynccontextmanager
+    async def tracked_source_update(**kwargs):
+        source_update_paths.append(kwargs["changed_paths"])
+        yield
+
     monkeypatch.setattr(
         "src.services.workspace_release_projection.workspace_source_update",
-        _source_update,
+        tracked_source_update,
     )
     reconcile = AsyncMock(return_value=[])
     monkeypatch.setattr(
@@ -435,6 +452,10 @@ async def test_lock_projects_only_base_paths_and_records_signed_readback(
     assert release.lock_state == "locked"
     assert release.attention_deadline is None
     assert file_writer.writes == [first]
+    assert source_update_paths == [[first]]
+    mock_projection_cache_reconciliation.assert_awaited_once_with(
+        [second], invalidate_resolutions=False
+    )
     assert len(history.requests) == 1
     assert [item.path for item in history.requests[0].files][0] == first
     assert [item.path for item in history.requests[0].files][1].startswith(
@@ -685,7 +706,9 @@ async def test_failed_transaction_recovers_before_persisting_attention(
 
 
 @pytest.mark.asyncio
-async def test_newly_governed_history_adopts_observed_legacy_hash(monkeypatch) -> None:
+async def test_newly_governed_history_adopts_observed_legacy_hash(
+    monkeypatch, mock_projection_cache_reconciliation
+) -> None:
     release, artifact, paths = _rows()
     first, second = paths
     legacy_history = b"VALUE = 'legacy-history'\n"
@@ -702,7 +725,7 @@ async def test_newly_governed_history_adopts_observed_legacy_hash(monkeypatch) -
     )
     monkeypatch.setattr(
         "src.services.workspace_release_projection.workspace_source_update",
-        _source_update,
+        lambda **_kwargs: pytest.fail("target-only retry must not rotate source"),
     )
     service = WorkspaceReleaseProjectionService(
         Database(),
@@ -723,6 +746,9 @@ async def test_newly_governed_history_adopts_observed_legacy_hash(monkeypatch) -
 
     assert release.lock_state == "locked"
     assert file_writer.writes == []
+    mock_projection_cache_reconciliation.assert_awaited_once_with(
+        sorted(paths), invalidate_resolutions=False
+    )
     source_write = history.requests[0].files[0]
     assert source_write.path == first
     assert source_write.expected_before_sha256 == _hash(legacy_history)
@@ -737,6 +763,96 @@ async def test_newly_governed_history_adopts_observed_legacy_hash(monkeypatch) -
             "disposition": "other",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_target_only_history_retry_rehydrates_cold_cache_without_rotation(
+    monkeypatch,
+) -> None:
+    from src.core.module_cache import reconcile_module_coherence
+
+    release, artifact, paths = _rows()
+    target_files = {path: target for path, (_base, target) in paths.items()}
+    cache: dict[str, str] = {}
+    history = HistoryWriter(
+        {path: _hash(base) for path, (base, _target) in paths.items()}
+    )
+
+    async def read_from_repo(path: str) -> bytes:
+        return target_files[path]
+
+    async def set_cached(path, _content, content_hash, *, generation, **_kwargs):
+        assert generation == "generation-1"
+        assert _kwargs["invalidate_resolutions"] is False
+        cache[path] = content_hash
+
+    async def inspect(hashes):
+        rows = []
+        for path, digest in hashes.items():
+            coherent = cache.get(path) == digest
+            rows.append(
+                SimpleNamespace(
+                    path=path,
+                    coherent=coherent,
+                    to_dict=lambda path=path, digest=digest, coherent=coherent: {
+                        "path": path,
+                        "durable_sha256": digest,
+                        "cache_sha256": cache.get(path),
+                        "cache_generation": "generation-1",
+                        "workspace_generation": "generation-1",
+                        "indexed": coherent,
+                        "coherent": coherent,
+                    },
+                )
+            )
+        return "generation-1", rows
+
+    monkeypatch.setattr(
+        "src.services.workspace_release_projection.acquire_workspace_release_lock",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "src.services.workspace_release_projection.workspace_source_update",
+        lambda **_kwargs: pytest.fail("target-only retry rotated the generation"),
+    )
+    monkeypatch.setattr(
+        "src.services.workspace_release_projection.reconcile_module_coherence",
+        reconcile_module_coherence,
+    )
+    monkeypatch.setattr(
+        "src.core.module_cache.wait_for_workspace_generation",
+        AsyncMock(return_value="generation-1"),
+    )
+    monkeypatch.setattr(
+        "src.core.module_cache._read_module_from_storage",
+        read_from_repo,
+    )
+    monkeypatch.setattr("src.core.module_cache.set_module", set_cached)
+    monkeypatch.setattr("src.core.module_cache.inspect_module_coherence", inspect)
+    monkeypatch.setattr(
+        "src.services.workspace_release_projection.reconcile_source_releases_after_lock",
+        AsyncMock(),
+    )
+    service = WorkspaceReleaseProjectionService(
+        Database(),
+        release.organization_id,
+        commit_writer=history,
+        repo_storage=Repo(target_files),
+        release_storage_factory=lambda _prefix: ReleaseStorage(target_files),
+        file_storage_factory=lambda _db: pytest.fail("no source write is needed"),
+        coherence_inspector=inspect,
+    )
+    service._load_release = AsyncMock(return_value=(release, artifact))
+    service._ensure_still_live = AsyncMock()
+
+    evidence = await service.lock_release(
+        release.id, artifact.release_id, operator="operator@example.com"
+    )
+
+    assert release.lock_state == "locked"
+    assert cache == {path: _hash(content) for path, content in target_files.items()}
+    assert evidence["repo_after_sha256"] == cache
+    assert evidence["history_after"]["signature_state"] == "VALID"
 
 
 @pytest.mark.asyncio

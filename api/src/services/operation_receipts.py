@@ -315,6 +315,8 @@ async def complete_operation_receipt_success(
     receipt_id: UUID,
     owner_token: UUID,
     response: dict[str, Any],
+    *,
+    db: AsyncSession | None = None,
 ) -> None:
     """Persist a successful response, fenced to the one original owner."""
     await _complete_operation_receipt(
@@ -323,6 +325,7 @@ async def complete_operation_receipt_success(
         status="succeeded",
         response=bounded_replay_envelope(response),
         error=None,
+        db=db,
     )
 
 
@@ -348,6 +351,7 @@ async def _complete_operation_receipt(
     status: str,
     response: dict[str, Any] | None,
     error: dict[str, Any] | None,
+    db: AsyncSession | None = None,
 ) -> None:
     values: dict[str, Any] = {
         "status": status,
@@ -358,24 +362,34 @@ async def _complete_operation_receipt(
         values["response"] = response
     if error is not None:
         values["error"] = error
-    async with get_db_context() as db:
-        completed_id = (
-            await db.execute(
-                update(OperationReceipt)
-                .where(
-                    OperationReceipt.id == receipt_id,
-                    OperationReceipt.status == "started",
-                    OperationReceipt.owner_token == owner_token,
-                )
-                .values(**values)
-                .returning(OperationReceipt.id)
+    if db is not None:
+        await _write_terminal_receipt(db, receipt_id, owner_token, values)
+        return
+    async with get_db_context() as session:
+        await _write_terminal_receipt(session, receipt_id, owner_token, values)
+        await session.commit()
+
+
+async def _write_terminal_receipt(
+    db: AsyncSession, receipt_id: UUID, owner_token: UUID, values: dict[str, Any]
+) -> None:
+    """Allow a receipt and its local SQL effect to commit atomically."""
+    completed_id = (
+        await db.execute(
+            update(OperationReceipt)
+            .where(
+                OperationReceipt.id == receipt_id,
+                OperationReceipt.status == "started",
+                OperationReceipt.owner_token == owner_token,
             )
-        ).scalar_one_or_none()
-        if completed_id is None:
-            raise OperationReceiptOwnershipError(
-                f"Operation receipt {receipt_id} is not owned by this caller"
-            )
-        await db.commit()
+            .values(**values)
+            .returning(OperationReceipt.id)
+        )
+    ).scalar_one_or_none()
+    if completed_id is None:
+        raise OperationReceiptOwnershipError(
+            f"Operation receipt {receipt_id} is not owned by this caller"
+        )
 
 
 def _validate_durable_handle(handle: dict[str, str]) -> dict[str, str]:

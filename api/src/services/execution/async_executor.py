@@ -283,6 +283,15 @@ async def _persist_execution_pin(
         )
         if pinned_runtime is None:
             pinned_runtime = await pin_workspace_runtime(db, uuid.UUID(workflow_id))
+        pinned_schema = getattr(pinned_runtime, "parameters_schema", None)
+        if pinned_schema is not None:
+            from src.services.tool_schema import validate_arguments_against_schema
+
+            issues, schema_error = validate_arguments_against_schema(pinned_schema, parameters)
+            if issues or schema_error:
+                # The API may have read registration metadata before a pointer
+                # switch. Validate again against the exact accepted deployment.
+                raise ValueError("Workflow arguments differ from the pinned input contract")
         runtime_evidence = pinned_runtime.queue_evidence() if pinned_runtime else None
         runtime_mode = (
             pinned_runtime.runtime_mode

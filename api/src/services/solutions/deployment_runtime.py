@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models import Workflow
 from src.models.orm.solutions import Solution
 from src.repositories.solution_deployments import SolutionDeploymentRepository
-from src.services.solutions.deployment_manifest import validate_runtime_closure
+from src.services.solutions.deployment_manifest import (
+    WORKFLOW_PARAMETERS_SCHEMA_CONTRACT, validate_runtime_closure,
+)
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -64,9 +67,11 @@ class PinnedWorkflowRuntime:
     organization_id: str | None
     can_access_global_repo: bool
     source_hashes: dict[str, str]
+    runtime_bounds: dict[str, int] | None = None
+    parameters_schema: dict[str, Any] | None = None
 
     def queue_evidence(self) -> dict[str, Any]:
-        return {
+        evidence = {
             "solution_id": str(self.solution_id),
             "solution_deployment_id": str(self.deployment_id),
             "bundle_hash": self.bundle_hash,
@@ -88,6 +93,31 @@ class PinnedWorkflowRuntime:
             "solution_global_repo_access": self.can_access_global_repo,
             "deployment_source_hashes": self.source_hashes,
         }
+        if self.runtime_bounds is not None:
+            evidence["workflow_runtime_bounds"] = self.runtime_bounds
+        if self.parameters_schema is not None:
+            evidence["workflow_parameters_schema"] = self.parameters_schema
+        return evidence
+
+
+def _validated_runtime_bounds(value: Any) -> dict[str, int]:
+    required = {
+        "max_duration_seconds",
+        "max_external_calls",
+        "max_records_read",
+        "max_output_bytes",
+    }
+    if not isinstance(value, dict) or not required.issubset(value):
+        raise DeploymentRuntimeError("deployment runtime bounds are incomplete")
+    if any(
+        not isinstance(key, str)
+        or not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or limit <= 0
+        for key, limit in value.items()
+    ):
+        raise DeploymentRuntimeError("deployment runtime bounds are invalid")
+    return dict(sorted(value.items()))
 
 
 def workflow_data_from_evidence(
@@ -104,7 +134,7 @@ def workflow_data_from_evidence(
     )
     if any(not evidence.get(key) for key in required):
         raise DeploymentRuntimeError("pinned execution runtime evidence is incomplete")
-    return {
+    data = {
         "name": evidence["workflow_name"],
         "function_name": evidence["workflow_function_name"],
         "path": evidence["workflow_path"],
@@ -119,6 +149,18 @@ def workflow_data_from_evidence(
         "can_access_global_repo": evidence.get("solution_global_repo_access", False),
         "runtime_storage_prefix": evidence["runtime_storage_prefix"],
     }
+    if "workflow_runtime_bounds" in evidence:
+        bounds = _validated_runtime_bounds(evidence["workflow_runtime_bounds"])
+        timeout = data["timeout_seconds"]
+        if (
+            not isinstance(timeout, int)
+            or isinstance(timeout, bool)
+            or timeout <= 0
+            or timeout > bounds["max_duration_seconds"]
+        ):
+            raise DeploymentRuntimeError("deployment timeout exceeds immutable bound")
+        data["workflow_runtime_bounds"] = bounds
+    return data
 
 
 def _required(definition: dict[str, Any], key: str) -> Any:
@@ -153,7 +195,11 @@ async def pin_workflow_runtime(
         raise DeploymentRuntimeError(f"workflow {workflow_id} is not executable")
     workflow, solution = row
     if workflow.solution_id is None:
-        return None
+        if caller_deployment_id is None:
+            return None
+        return await _pin_rolled_back_handoff_runtime(
+            session, workflow_id, caller_deployment_id
+        )
     if solution is None or solution.status != "active":
         raise DeploymentRuntimeError("Solution is not active")
     selected_deployment_id = await _select_deployment_id(
@@ -171,8 +217,21 @@ async def pin_workflow_runtime(
     )
     if deployment is None or deployment.solution_id != solution.id:
         raise DeploymentRuntimeError("active deployment is missing or out of scope")
+    return _pin_from_deployment(
+        workflow_id, solution, deployment, allow_superseded=caller_deployment_id is not None
+    )
+
+
+def _pin_from_deployment(
+    workflow_id: UUID,
+    solution: Solution,
+    deployment: Any,
+    *,
+    allow_superseded: bool,
+) -> PinnedWorkflowRuntime:
+    from src.services.solutions.deployment_manifest import canonical_json
     executable_states = {"active", "committed_unpushed"}
-    if caller_deployment_id is not None:
+    if allow_superseded:
         executable_states.add("superseded")
     if deployment.state not in executable_states:
         raise DeploymentRuntimeError("active deployment is not executable")
@@ -183,8 +242,28 @@ async def pin_workflow_runtime(
         expected_manifest_hash=deployment.compiled_manifest_hash,
         expected_resolution_hash=deployment.resolution_map_hash,
     )
-    entity = _resolve_workflow_entity(resolution, workflow.id)
+    entity = _resolve_workflow_entity(resolution, workflow_id)
     definition = entity.definition
+    # Older manifests may carry parameter metadata, but their accepted work did
+    # not include it in queue evidence. Only a new immutable contract opts in;
+    # deploying this code must preserve those existing durable evidence hashes.
+    parameters_schema = None
+    if "parameters_schema_contract" in definition:
+        if (definition["parameters_schema_contract"] != WORKFLOW_PARAMETERS_SCHEMA_CONTRACT
+                or not isinstance(definition.get("parameters_schema"), dict)):
+            raise DeploymentRuntimeError("deployment parameter schema contract is invalid")
+        parameters_schema = json.loads(canonical_json(definition["parameters_schema"]))
+    runtime_bounds = (
+        _validated_runtime_bounds(definition["runtime_bounds"])
+        if "runtime_bounds" in definition
+        else None
+    )
+    if (
+        runtime_bounds is not None
+        and int(_number(definition, "timeout_seconds", 1800))
+        > runtime_bounds["max_duration_seconds"]
+    ):
+        raise DeploymentRuntimeError("deployment timeout exceeds immutable bound")
     source_ref = entity.source_ref or str(_required(definition, "path"))
     try:
         source = resolution.resolve_source(source_ref)
@@ -197,7 +276,7 @@ async def pin_workflow_runtime(
             "workflow source is outside deployment runtime prefix"
         )
     return PinnedWorkflowRuntime(
-        workflow_id=workflow.id,
+        workflow_id=workflow_id,
         solution_id=solution.id,
         deployment_id=deployment.id,
         bundle_hash=deployment.bundle_hash,
@@ -222,6 +301,30 @@ async def pin_workflow_runtime(
         ),
         can_access_global_repo=bool(solution.allow_outbound_access),
         source_hashes={key: item.content_hash for key, item in resolution.sources.items()},
+        runtime_bounds=runtime_bounds,
+        parameters_schema=parameters_schema,
+    )
+
+
+async def _pin_rolled_back_handoff_runtime(
+    session: AsyncSession, workflow_id: UUID, deployment_id: UUID
+) -> PinnedWorkflowRuntime | None:
+    deployment = await SolutionDeploymentRepository(session).get_by_id_for_runtime(
+        deployment_id
+    )
+    if deployment is None:
+        return None
+    marker = getattr(deployment, "validation_result", None) or {}
+    if (
+        marker.get("schema_version") != "bifrost.workspace-live-handoff/v1"
+        or str(workflow_id) not in marker.get("workflow_ids", [])
+    ):
+        return None
+    solution = await session.get(Solution, deployment.solution_id)
+    if solution is None or solution.status != "active":
+        raise DeploymentRuntimeError("handoff Solution is not active")
+    return _pin_from_deployment(
+        workflow_id, solution, deployment, allow_superseded=True
     )
 
 
@@ -267,10 +370,33 @@ def _resolve_workflow_entity(resolution: Any, workflow_id: UUID) -> Any:
 async def resolve_pinned_workflow_runtime(
     session: AsyncSession, deployment_id: UUID, workflow_id: UUID
 ) -> PinnedWorkflowRuntime:
-    """Resolve by an explicit immutable deployment, never by the active pointer."""
-    pinned = await pin_workflow_runtime(
-        session, workflow_id, caller_deployment_id=deployment_id
-    )
-    if pinned is None or pinned.deployment_id != deployment_id:
+    """Resolve accepted work from its deployment, including retired registrations.
+
+    Current registration activity controls new admissions. An accepted execution
+    instead retains the immutable definition it already pinned. Ownership and
+    Solution status still gate that read; only a certified handoff rollback may
+    resolve a registration that has returned to Root.
+    """
+    row = (
+        await session.execute(
+            select(Workflow, Solution)
+            .outerjoin(Solution, Workflow.solution_id == Solution.id)
+            .where(Workflow.id == workflow_id)
+        )
+    ).one_or_none()
+    if row is None:
         raise DeploymentRuntimeError("workflow does not belong to the pinned deployment")
-    return pinned
+    workflow, solution = row
+    if workflow.solution_id is None:
+        pinned = await _pin_rolled_back_handoff_runtime(session, workflow_id, deployment_id)
+        if pinned is None or pinned.deployment_id != deployment_id:
+            raise DeploymentRuntimeError("workflow does not belong to the pinned deployment")
+        return pinned
+    if solution is None or solution.status != "active":
+        raise DeploymentRuntimeError("Solution is not active")
+    deployment = await SolutionDeploymentRepository(session).get_runtime_closure(
+        deployment_id, solution.organization_id, solution.id
+    )
+    if deployment is None or deployment.solution_id != solution.id:
+        raise DeploymentRuntimeError("workflow does not belong to the pinned deployment")
+    return _pin_from_deployment(workflow_id, solution, deployment, allow_superseded=True)

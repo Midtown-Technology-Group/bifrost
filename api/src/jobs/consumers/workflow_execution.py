@@ -1357,6 +1357,14 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         except DeploymentRuntimeError as exc:
                             raise WorkflowNotFoundError(str(exc)) from exc
                         runtime_storage_prefix = workflow_data["runtime_storage_prefix"]
+                        deployment_bounds = workflow_data.get("workflow_runtime_bounds")
+                        if deployment_bounds is not None:
+                            runtime_max_duration_seconds = deployment_bounds[
+                                "max_duration_seconds"
+                            ]
+                            runtime_max_output_bytes = deployment_bounds[
+                                "max_output_bytes"
+                            ]
                     else:
                         # Compatibility boundary: newly enqueued Solution work is
                         # always pinned above, so a null deployment here is either

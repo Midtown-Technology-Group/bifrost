@@ -2,36 +2,125 @@
 
 from collections.abc import Awaitable, Callable
 from functools import partial
+import base64
+import binascii
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
+import httpx
 
-from src.core.auth import Context, CurrentSuperuser
+from src.core.auth import Context, CurrentSuperuser, bearer_scheme
+from src.core.db_deps import DbSession
+from src.config import get_settings
 from src.models.contracts.solution_deployments import (
     DeploymentActivationPublic,
     DeploymentPointerRequest,
-    SolutionDeploymentCreate,
     SolutionDeploymentCapabilities,
+    SolutionDeploymentCreate,
     SolutionDeploymentPublic,
+    SolutionDeploymentRuntimeState,
+    SolutionGitSourceDeliveryRequest,
+    SolutionGitSourceDeliveryResponse,
+    SharedTableBindingPreviewRequest,
+    SolutionSourceRevisionCommitRequest,
+    SolutionSourceRevisionInspectRequest,
+    SolutionSourceRevisionInspectResponse,
+    SolutionSourceRevisionRequest,
+    SolutionWorkflowRevisionRequest,
+    SolutionWorkflowRevisionInspectRequest,
+    SolutionWorkflowRevisionCommitRequest,
+    WorkspaceLiveHandoffCommitRequest,
+    WorkspaceLiveHandoffCommitResponse,
+    WorkspaceLiveHandoffPreflightRequest,
+    WorkspaceLiveHandoffPreflightResponse,
 )
 from src.models.orm.solutions import Solution
-from src.repositories.solution_deployments import SolutionDeploymentRepository
+from src.repositories.solution_deployments import InvalidDeploymentTransition, SolutionDeploymentRepository
 from src.services.solutions.deployment_activation import (
     ActivationResult,
     SolutionDeploymentActivationService,
 )
-from src.services.solutions.deployment_api import SolutionDeploymentAPIService
-from src.services.solutions.deployment_api import DeploymentRegistrationConflict
+from src.services.solutions.deployment_api import (
+    DeploymentRegistrationConflict,
+    SolutionDeploymentAPIService,
+)
+from src.services.solutions.deployment_storage import DeploymentArtifactIntegrityError
+from src.services.solutions.live_handoff_candidate import (
+    WorkspaceLiveHandoffCandidateService,
+)
+from src.services.solutions.live_handoff_commit import WorkspaceLiveHandoffCommitService
+from src.services.solutions.live_handoff_preflight import (
+    WorkspaceLiveHandoffPreflightConflict,
+    WorkspaceLiveHandoffPreflightError,
+    WorkspaceLiveHandoffPreflightService,
+)
+from src.services.solutions.source_revision import (
+    SolutionSourceRevisionConflict,
+    SolutionSourceRevisionError,
+    SolutionSourceRevisionService,
+    _decode_files,
+)
+from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+from src.services.solutions.resource_delivery import validate_resource_files
+from src.services.solutions.deployment_manifest import (
+    MAX_DEPLOYMENT_RESOURCE_BYTES, MAX_DEPLOYMENT_RESOURCES_BYTES,
+)
 from src.services.solutions.write_lock import (
     SolutionWriteLockHeld,
     SolutionWriteLockLost,
     solution_write_lock,
 )
+from src.services.solutions.deployment_manifest import SharedRootTableBinding
+from src.services.solutions.shared_table_bindings import SharedTableBindingError, table_metadata_hash
+from src.services.solutions.github_delivery_source import (
+    GitDeliverySourceError, ProtectedGitReader, authenticate_git_delivery,
+)
+from src.services.solutions.github_source_delivery import GitSourceDeliveryService
 
 router = APIRouter(
     prefix="/api/solutions/{solution_id}/deployments", tags=["Solution Deployments"]
 )
+
+
+@router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse)
+async def deliver_github_source(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+):
+    """A source-scoped producer can deliver only the configured protected recipe."""
+    policy = get_settings().solution_git_delivery_policy
+    if policy is None:
+        raise HTTPException(status_code=503, detail="Protected Git Solution delivery is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="GitHub Actions delivery OIDC token is required")
+    try:
+        producer = await authenticate_git_delivery(credentials.credentials, policy=policy,
+            solution_id=solution_id, commit_sha=body.source_commit_sha, ci_run_id=body.ci_run_id,
+            ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            reader = ProtectedGitReader(policy, github_token, client)
+            return await GitSourceDeliveryService(db, policy, reader).deliver(solution_id, body, producer)
+    except SolutionWriteLockHeld as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except (SolutionWriteLockLost, DeploymentArtifactIntegrityError, httpx.HTTPError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect the installed pointer and receipt before a fresh job attempt") from exc
+    except (SolutionSourceRevisionConflict, DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (GitDeliverySourceError, SolutionSourceRevisionError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.get(
@@ -52,6 +141,54 @@ async def _scope(ctx: Context, solution_id: UUID) -> UUID | None:
     if solution is None:
         raise HTTPException(status_code=404, detail="Solution not found")
     return solution.organization_id
+
+
+@router.post("/shared-tables/preview", response_model=dict[str, SharedRootTableBinding])
+async def preview_shared_table_bindings(
+    solution_id: UUID, body: SharedTableBindingPreviewRequest,
+    ctx: Context, user: CurrentSuperuser,
+) -> dict[str, SharedRootTableBinding]:
+    """Read exact existing Root contracts; document data and ownership stay unchanged."""
+    from src.models.orm.tables import Table
+    del user
+    organization_id = await _scope(ctx, solution_id)
+    result: dict[str, SharedRootTableBinding] = {}
+    for table_id in sorted(set(body.table_ids), key=str):
+        table = await ctx.db.get(Table, table_id, populate_existing=True)
+        if table is None:
+            raise HTTPException(status_code=404, detail="Table not found")
+        if table.organization_id is not None and table.organization_id != organization_id:
+            raise HTTPException(status_code=422, detail="Shared table organization differs from the Solution installation")
+        try:
+            metadata_hash = table_metadata_hash(table, organization_id=table.organization_id)
+        except SharedTableBindingError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if table.name in result:
+            raise HTTPException(status_code=422, detail="Shared table names are ambiguous")
+        result[table.name] = SharedRootTableBinding(
+            table_id=table.id, metadata_hash=metadata_hash, organization_id=table.organization_id,
+        )
+    return result
+
+
+@router.get(
+    "/active",
+    response_model=SolutionDeploymentRuntimeState,
+    responses={404: {"description": "Solution not found"}},
+)
+async def inspect_active_deployment(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> SolutionDeploymentRuntimeState:
+    """Read the committed pointer independently of an activation response."""
+    del user
+    solution = await ctx.db.get(Solution, solution_id)
+    if solution is None:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    return SolutionDeploymentRuntimeState(
+        solution_id=solution.id,
+        active_deployment_id=solution.active_deployment_id,
+        execution_runtime_mode=solution.execution_runtime_mode,
+    )
 
 
 def get_activation_service(ctx: Context) -> SolutionDeploymentActivationService:
@@ -144,6 +281,380 @@ async def inspect_deployment(
     if row is None or row.solution_id != solution_id:
         raise HTTPException(status_code=404, detail="Deployment not found")
     return row
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/preflight",
+    response_model=WorkspaceLiveHandoffPreflightResponse,
+    responses={
+        404: {"description": "Solution or deployment not found"},
+        409: {"description": "Live or Solution state changed"},
+        422: {"description": "Candidate cannot own the requested workflows"},
+    },
+)
+async def preflight_live_handoff(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffPreflightRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    """Inspect a staged candidate without changing ownership or execution."""
+    del user
+    try:
+        return await WorkspaceLiveHandoffPreflightService(ctx.db).inspect(
+            solution_id, deployment_id, body
+        )
+    except WorkspaceLiveHandoffPreflightConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkspaceLiveHandoffPreflightError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/candidate",
+    response_model=WorkspaceLiveHandoffPreflightResponse,
+    status_code=201,
+    responses={
+        409: {"description": "Live state, Solution state, or immutable object changed"},
+        422: {"description": "The Live source closure cannot be proven"},
+        503: {"description": "Solution write lock was lost"},
+    },
+)
+async def build_live_handoff_candidate(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffPreflightRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    """Copy verified Live bytes into a new immutable Solution candidate."""
+    try:
+        async with solution_write_lock(solution_id):
+            result = await WorkspaceLiveHandoffCandidateService(ctx.db).build(
+                solution_id, deployment_id, user.user_id, body
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=409, detail={"code": "solution_write_lock_held"}
+        ) from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "solution_write_lock_lost", "retryable": True},
+        ) from exc
+    except WorkspaceLiveHandoffPreflightConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (DeploymentRegistrationConflict, DeploymentArtifactIntegrityError) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkspaceLiveHandoffPreflightError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def _commit_live_handoff(
+    ctx: Context,
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffCommitRequest,
+    *,
+    rollback: bool,
+) -> WorkspaceLiveHandoffCommitResponse:
+    try:
+        async with solution_write_lock(solution_id):
+            service = WorkspaceLiveHandoffCommitService(ctx.db)
+            result = (
+                await service.rollback(solution_id, deployment_id, body)
+                if rollback
+                else await service.activate(solution_id, deployment_id, body)
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=409, detail={"code": "solution_write_lock_held"}
+        ) from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "solution_write_lock_lost",
+                "retryable": False,
+                "message": "Inspect the Solution pointer and workflow owners before retrying",
+            },
+        ) from exc
+    except WorkspaceLiveHandoffPreflightConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkspaceLiveHandoffPreflightError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:  # Always release the failed database transaction.
+        await ctx.db.rollback()
+        raise
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/activate",
+    response_model=WorkspaceLiveHandoffCommitResponse,
+    responses={
+        409: {"description": "Reviewed Live, Solution, or workflow state changed"},
+        422: {"description": "Candidate is not safe to activate"},
+        503: {"description": "Commit outcome needs readback after write-lock loss"},
+    },
+)
+async def activate_live_handoff(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffCommitRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    return await _commit_live_handoff(
+        ctx, solution_id, deployment_id, body, rollback=False
+    )
+
+
+@router.post(
+    "/{deployment_id}/live-handoff/rollback",
+    response_model=WorkspaceLiveHandoffCommitResponse,
+    responses={
+        409: {"description": "Reviewed Live, Solution, or workflow state changed"},
+        422: {"description": "Live rollback source is not safe"},
+        503: {"description": "Commit outcome needs readback after write-lock loss"},
+    },
+)
+async def rollback_live_handoff(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: WorkspaceLiveHandoffCommitRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    return await _commit_live_handoff(
+        ctx, solution_id, deployment_id, body, rollback=True
+    )
+
+
+@router.post(
+    "/{deployment_id}/source-revision/candidate",
+    response_model=SolutionSourceRevisionInspectResponse,
+)
+async def stage_source_revision(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: SolutionSourceRevisionRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    """Stage exact source bytes while the current immutable pointer stays live."""
+    try:
+        async with solution_write_lock(solution_id):
+            result = await SolutionSourceRevisionService(ctx.db).stage(
+                solution_id, deployment_id, user.user_id, body
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Inspect the candidate and Solution pointer before retrying",
+        ) from exc
+    except SolutionSourceRevisionConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await ctx.db.rollback()
+        raise
+
+
+@router.post(
+    "/{deployment_id}/source-revision/preflight",
+    response_model=SolutionSourceRevisionInspectResponse,
+)
+async def inspect_source_revision(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: SolutionSourceRevisionInspectRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    try:
+        return await SolutionSourceRevisionService(ctx.db).inspect(
+            solution_id, deployment_id, body
+        )
+    except SolutionSourceRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SolutionSourceRevisionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{deployment_id}/source-revision/activate",
+    response_model=SolutionSourceRevisionInspectResponse,
+)
+async def activate_source_revision(
+    solution_id: UUID,
+    deployment_id: UUID,
+    body: SolutionSourceRevisionCommitRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+):
+    del user
+    try:
+        async with solution_write_lock(solution_id):
+            result = await SolutionSourceRevisionService(ctx.db).activate(
+                solution_id, deployment_id, body
+            )
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Inspect the Solution pointer and candidate before retrying",
+        ) from exc
+    except SolutionSourceRevisionConflict as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SolutionSourceRevisionError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except InvalidDeploymentTransition as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await ctx.db.rollback()
+        raise
+
+
+def _decode_workflow_revision_resources(body: SolutionWorkflowRevisionRequest) -> dict[str, bytes]:
+    resources: dict[str, bytes] = {}
+    total = 0
+    for item in body.resources:
+        if item.path in resources:
+            raise SolutionSourceRevisionError("Duplicate resource upload")
+        if len(item.content_base64) > 4 * ((MAX_DEPLOYMENT_RESOURCE_BYTES + 2) // 3):
+            raise SolutionSourceRevisionError("Resource upload exceeds its byte bound")
+        try:
+            content = base64.b64decode(item.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise SolutionSourceRevisionError("Invalid resource upload encoding") from exc
+        total += len(content)
+        if not 1 <= len(content) <= MAX_DEPLOYMENT_RESOURCE_BYTES or total > MAX_DEPLOYMENT_RESOURCES_BYTES:
+            raise SolutionSourceRevisionError("Resource upload exceeds its byte bound")
+        resources[item.path] = content
+    return resources
+
+
+async def _write_workflow_revision(
+    ctx: Context, solution_id: UUID,
+    operation: Callable[[], Awaitable[SolutionSourceRevisionInspectResponse]],
+) -> SolutionSourceRevisionInspectResponse:
+    try:
+        async with solution_write_lock(solution_id):
+            result = await operation()
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect the pointer and candidate before retrying") from exc
+    except (SolutionSourceRevisionConflict, DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await ctx.db.rollback()
+        raise
+
+
+@router.post("/{deployment_id}/workflow-revision/candidate", response_model=SolutionSourceRevisionInspectResponse)
+async def stage_workflow_revision(
+    solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Stage a reviewed complete successor without changing registrations or pointer."""
+    async def stage():
+        files = _decode_files(body)
+        resources = _decode_workflow_revision_resources(body)
+        validate_resource_files(body.reviewed_recipe, resources, files)
+        expected = SolutionSourceRevisionInspectRequest(
+            expected_active_deployment_id=body.expected_active_deployment_id,
+            expected_active_manifest_hash=body.expected_active_manifest_hash,
+        )
+        return await SolutionWorkflowRevisionService(ctx.db).stage_workflows(
+            solution_id, deployment_id, user.user_id, expected, body.reviewed_recipe,
+            files, body.source_commit_sha, resources,
+        )
+    return await _write_workflow_revision(ctx, solution_id, stage)
+
+
+@router.post("/{deployment_id}/workflow-revision/preflight", response_model=SolutionSourceRevisionInspectResponse)
+async def inspect_workflow_revision(
+    solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionInspectRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Read immutable bytes, registrations, triggers and the exact reviewed recipe."""
+    del user
+    try:
+        return await SolutionWorkflowRevisionService(ctx.db).inspect_workflows(
+            solution_id, deployment_id, body, body.reviewed_recipe,
+        )
+    except SolutionSourceRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/workflow-revision/activate", response_model=SolutionSourceRevisionInspectResponse)
+async def activate_workflow_revision(
+    solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionCommitRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Atomically activate the exact preflight evidence and compatible registrations."""
+    del user
+    return await _write_workflow_revision(ctx, solution_id, partial(
+        SolutionWorkflowRevisionService(ctx.db).activate_workflows,
+        solution_id, deployment_id, body, body.reviewed_recipe,
+    ))
 
 
 @router.post(

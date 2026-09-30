@@ -246,6 +246,32 @@ release is not complete. The history deadline and
 [Workspace source release accountability](workspace-source-release-accountability.md)
 for protected-main declaration, overdue, and completion rules.
 
+### Retrying a failed history lock
+
+An organization-scoped platform superuser can retry a failed lock job for the
+exact current global Live release:
+
+```http
+POST /api/workspace-promotions/releases/RELEASE_ROW_ID/retry-history-lock
+Content-Type: application/json
+
+{"expected_release_id":"sha256:...","failed_job_id":"FAILED_JOB_UUID"}
+```
+
+Read the row and failed job first with `GET /api/workspace-promotions/live`
+and `GET /api/platform-jobs/FAILED_JOB_UUID`. The server checks the current
+Live pointer, release digest, prior failed lock job, and organization under the
+global release lock. A repeated request returns the queued, running, or
+successful retry job. A stale request returns `409 Conflict`.
+
+The new PlatformJob runs only the idempotent compatibility and signed-history
+projection. It does not reapply registrations or activate Live. It classifies
+durable `_repo` and signed `production-live` bytes against the immutable
+base/target evidence, writes only missing target paths and the release ledger,
+then proves the exact runtime, cache, signed Git tree, and ledger before setting
+`history.state=locked`. A failed retry preserves Live and requires a fresh
+readback before another attempt.
+
 ## Retirement and demotion of the immutable loose release
 
 The fork-only immutable loose-Workspace lane is a migration bridge, not the

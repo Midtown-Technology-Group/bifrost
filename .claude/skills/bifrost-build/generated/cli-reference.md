@@ -2633,15 +2633,17 @@ Usage: solution start [OPTIONS] [APP_SLUG]
   credentials are renewed automatically.
 
 Options:
-  --solution TEXT    Install id or unique slug.
-  --url TEXT         Bifrost instance URL (default: current profile).
-  --port INTEGER     Stable local proxy origin port; reuse it across restarts.
-                     [default: 3000]
-  --host TEXT        Address for the local origin to bind.  [default:
-                     127.0.0.1]
-  --public-url TEXT  Browser-visible origin for the local proxy, e.g.
-                     https://dev.example.
-  --help             Show this message and exit.
+  --solution TEXT         Install id or unique slug.
+  --url TEXT              Bifrost instance URL (default: current profile).
+  --port INTEGER          Stable local proxy origin port; reuse it across
+                          restarts.  [default: 3000]
+  --host TEXT             Address for the local origin to bind.  [default:
+                          127.0.0.1]
+  --public-url TEXT       Browser-visible origin for the local proxy, e.g.
+                          https://dev.example.
+  --resource-recipe FILE  Workflow delivery recipe declaring local checkout
+                          resources; no HTTP fallback.
+  --help                  Show this message and exit.
 ```
 
 ### `solution swap-slugs`

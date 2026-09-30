@@ -16,8 +16,8 @@ from src.services.solutions.deployment_manifest import canonical_json, sha256_di
 from src.services.solutions.deployment_storage import (
     DeploymentArtifactIntegrityError,
     SolutionDeploymentStorage,
-    deployment_source_artifact_key,
     deployment_runtime_prefix,
+    deployment_source_artifact_key,
 )
 
 
@@ -52,11 +52,9 @@ class SolutionDeploymentAPIService:
         if manifest.source.runtime_prefix != expected_runtime:
             raise ValueError("runtime prefix must use the canonical deployment key")
 
-        # Registering an immutable deployment is the positive boundary between
-        # the mutable ZIP/_repo compatibility path and deployment-aware
-        # execution. From this transaction onward, a missing active pointer must
-        # fail closed rather than falling back to mutable Solution storage.
-        solution.execution_runtime_mode = "deployment-v1"
+        # A ready candidate has no active runtime. Keep existing Solution
+        # workflows on their current runtime until pointer activation commits.
+        # The pointer CAS changes execution_runtime_mode in that transaction.
 
         resolution_hash = sha256_digest(canonical_json(body.resolution_map))
         manifest_hash = manifest.content_hash()
@@ -124,7 +122,7 @@ class SolutionDeploymentAPIService:
         try:
             await SolutionDeploymentStorage(
                 solution_id, manifest.deployment_id
-            ).write_compiled_manifest(manifest.canonical_bytes())
+            ).write_compiled_manifest(manifest.canonical_bytes(), idempotent=True)
         except DeploymentArtifactIntegrityError as exc:
             raise DeploymentRegistrationConflict(
                 "manifest storage already exists; inspect the deployment before retrying"

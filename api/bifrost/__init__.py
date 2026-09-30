@@ -84,6 +84,7 @@ from .config import config
 from .events import events
 from .executions import Executions as executions
 from .files import files
+from .resources import resources
 from .forms import forms
 from .integrations import integrations
 from .knowledge import knowledge
@@ -256,6 +257,7 @@ __all__ = [
     'events',
     'executions',
     'files',
+    'resources',
     'forms',
     'integrations',
     'knowledge',

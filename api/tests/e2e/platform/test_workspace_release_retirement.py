@@ -9,17 +9,20 @@ from bifrost.workspace_release import (
     workspace_manifest_id,
     workspace_registration_manifest_id,
 )
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.workspace_promotions import WorkspaceLiveRetireRequest
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
+    WorkspaceSourceRelease,
 )
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
 from src.services.audit_context import ActorContext, clear_actor, set_actor
 from src.services.workspace_release_retirement import (
+    WorkspaceReleaseRetirementError,
     WorkspaceReleaseRetirementService,
 )
 from src.services.workspace_release_runtime import (
@@ -384,6 +387,138 @@ async def test_workspace_release_retirement_unblocks_legacy_lane_and_preserves_p
             job_id=job_id,
             changeset_ids=(seeded_changeset_id,) if seeded_changeset_id else (),
         )
+
+
+@pytest.mark.e2e
+async def test_workspace_release_retirement_requires_live_handoff_and_resolved_history(
+    platform_admin,
+    db_session,
+) -> None:
+    suffix = uuid4().hex
+    source_path = f"governed_retirement_guard_{suffix}/workflow.py"
+    function_name = f"guard_{suffix}"
+    release_row_id = None
+    job_id = None
+    workflow_id = None
+    source_record_id = None
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session,
+            source_path=source_path,
+            function_name=function_name,
+            user_id=platform_admin.user_id,
+        )
+        release_row_id = release.id
+        job_id = job.id
+        _, workflow_id = _pinned_evidence(artifact, release, source_path, function_name)
+        db_session.add(
+            Workflow(
+                id=workflow_id,
+                name=function_name,
+                function_name=function_name,
+                path=source_path,
+                organization_id=PROVIDER_ORG_ID,
+            )
+        )
+        await db_session.commit()
+
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="loose workflow registrations"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="guarded handoff pending",
+            )
+        await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        source_record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID,
+            source_commit_sha="3" * 40,
+            source_tree_sha="4" * 40,
+            paths={source_path: "a" * 64},
+            declaration_actor="platform_admin",
+            declared_disposition="pending",
+            disposition="attention_required",
+            reason="reviewed source has not reached verified production",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(source_record)
+        await db_session.commit()
+        source_record_id = source_record.id
+
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="source-release obligations"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="source obligations pending",
+            )
+        await db_session.execute(
+            update(WorkspaceSourceRelease)
+            .where(WorkspaceSourceRelease.id == source_record_id)
+            .values(
+                disposition="deferred",
+                reason="handoff evidence still pending",
+                resolved_at=datetime.now(UTC),
+            )
+        )
+        await db_session.commit()
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="source-release obligations"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="deferred source obligations still pending",
+            )
+        await db_session.execute(
+            delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id
+            )
+        )
+        release.lock_state = "attention_required"
+        await db_session.commit()
+
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="history is not locked"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="history recovery pending",
+            )
+        await db_session.refresh(release)
+        release.lock_state = "locked"
+        await db_session.commit()
+        retired = await _retire(
+            db_session,
+            artifact,
+            release,
+            user_id=platform_admin.user_id,
+            reason="handoff proved",
+        )
+        assert retired.release_id == artifact.release_id
+    finally:
+        await db_session.rollback()
+        if workflow_id is not None:
+            await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        if source_record_id is not None:
+            await db_session.execute(
+                delete(WorkspaceSourceRelease).where(
+                    WorkspaceSourceRelease.id == source_record_id
+                )
+            )
+        await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
 
 
 @pytest.mark.e2e

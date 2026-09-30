@@ -174,6 +174,16 @@ Event publishing operations (async).
 
 **`organizations.update(org_id: str, updates: Any) -> Organization`**
 
+### resources
+
+Deployment source bytes. Operational files continue to use ``files``.
+
+**`resources.read(path: str) -> str`**
+  Read a reviewed UTF-8 source resource from the accepted deployment.
+
+**`resources.read_bytes(path: str) -> bytes`**
+  Read a reviewed resource pinned when this workflow was accepted.
+
 ### roles
 
 
