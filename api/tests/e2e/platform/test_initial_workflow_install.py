@@ -280,10 +280,11 @@ async def test_initial_activation_cas_loss_rolls_back_registrations(db_session, 
 
 
 @pytest.mark.asyncio
-async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_store(
-    e2e_client, platform_admin, db_session,
+@pytest.mark.parametrize("organization_id", [None, PROVIDER_ORG_ID])
+async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtime(
+    e2e_client, platform_admin, db_session, organization_id,
 ):
-    """Exercise candidate, preflight, and activation through the running Docker stack."""
+    """Install, revise, and execute both scopes through HTTP, SQL, S3 and workers."""
     from src.models.orm.executions import Execution
     from src.models.orm.executions import WorkflowExecutionAttempt
     from src.services.solutions.deployment_storage import (
@@ -295,7 +296,7 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
     token = uuid4().hex[:12]
     slug = f"initial-http-{token}"
     path = f"solutions/initial_http_{token}.py"
-    workflow_id, deployment_id = uuid4(), uuid4()
+    workflow_id, deployment_id, revision_id = uuid4(), uuid4(), uuid4()
     resource_path = "data/rates.json"
     resource_bytes = b'{"records":[{"rate":4}]}'
     source = (
@@ -308,13 +309,14 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
     created_solution = False
     try:
         created = e2e_client.post("/api/solutions", headers=headers, json={
-            "slug": slug, "name": "Initial HTTP reviewed install", "organization_id": None,
+            "slug": slug, "name": "Initial HTTP reviewed install",
+            "organization_id": str(organization_id) if organization_id else None,
         })
         assert created.status_code == 201, created.text
         solution_id = UUID(created.json()["id"])
         created_solution = True
 
-        recipe = _recipe(solution_id, workflow_id, path, None, resource_path=resource_path)
+        recipe = _recipe(solution_id, workflow_id, path, organization_id, resource_path=resource_path)
         candidate_body = {
             "source_commit_sha": "b" * 40,
             "reviewed_recipe": recipe.model_dump(mode="json"),
@@ -368,6 +370,7 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
         assert solution.active_deployment_id == deployment_id
         assert workflow is not None
         assert workflow.solution_id == solution_id
+        assert workflow.organization_id == organization_id
         assert workflow.endpoint_enabled is False
         assert workflow.public_endpoint is False
         assert workflow.access_level == "role_based"
@@ -402,6 +405,87 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
         assert attempt.status == "succeeded"
         assert attempt.worker_id
         assert attempt.runtime_evidence_hash == execution.runtime_evidence_hash
+
+        # The first install must be a valid base for everyday reviewed updates.
+        # The ordinary revision adapter still verifies the exact pointer,
+        # manifest, complete source/resource closure and compatible controls.
+        revision_base = f"/api/solutions/{solution_id}/deployments/{revision_id}/workflow-revision"
+        revised_resource = b'{"records":[{"rate":8}]}'
+        revised_source = source + "\n# Reviewed source revision\n"
+        revision_inspect = {
+            "expected_active_deployment_id": str(deployment_id),
+            "expected_active_manifest_hash": deployment.compiled_manifest_hash,
+            "reviewed_recipe": recipe.model_dump(mode="json"),
+        }
+        revision_body = {
+            **revision_inspect,
+            "source_commit_sha": "c" * 40,
+            "files": [{"path": path, "content_base64": base64.b64encode(revised_source.encode()).decode()}],
+            "resources": [{"path": resource_path, "content_base64": base64.b64encode(revised_resource).decode()}],
+        }
+        revised = e2e_client.post(f"{revision_base}/candidate", headers=headers, json=revision_body)
+        assert revised.status_code == 200, revised.text
+        await db_session.refresh(solution)
+        assert solution.active_deployment_id == deployment_id
+
+        inspected_revision = e2e_client.post(
+            f"{revision_base}/preflight", headers=headers, json=revision_inspect,
+        )
+        assert inspected_revision.status_code == 200, inspected_revision.text
+        assert inspected_revision.json()["evidence_id"] == revised.json()["evidence_id"]
+        revision_commit = {
+            **revision_inspect, "expected_evidence_id": inspected_revision.json()["evidence_id"],
+        }
+        activated_revision = e2e_client.post(
+            f"{revision_base}/activate", headers=headers, json=revision_commit,
+        )
+        assert activated_revision.status_code == 200, activated_revision.text
+        assert activated_revision.json()["state"] == "active"
+        await db_session.refresh(solution)
+        await db_session.refresh(deployment)
+        await db_session.refresh(workflow)
+        assert solution.active_deployment_id == revision_id
+        assert deployment.state == "superseded"
+        assert workflow.solution_id == solution_id
+        assert workflow.organization_id == organization_id
+        assert not workflow.endpoint_enabled and not workflow.public_endpoint
+        assert await db_session.scalar(
+            select(Execution.id).where(Execution.solution_deployment_id == revision_id)
+        ) is None
+
+        revised_storage = SolutionDeploymentStorage(solution_id, revision_id)
+        assert await revised_storage.read_runtime_file(path) == revised_source.encode()
+        assert await revised_storage.read_resource(resource_path, len(revised_resource)) == revised_resource
+        assert await storage.read_runtime_file(path) == source.encode()
+        assert await storage.read_resource(resource_path, len(resource_bytes)) == resource_bytes
+        await db_session.refresh(execution)
+        assert execution.solution_deployment_id == deployment_id
+
+        stale_activation = e2e_client.post(
+            f"{revision_base}/activate", headers=headers, json=revision_commit,
+        )
+        assert stale_activation.status_code == 409, stale_activation.text
+        await db_session.refresh(solution)
+        assert solution.active_deployment_id == revision_id
+
+        revised_result = execute_workflow_sync(
+            e2e_client, headers, str(workflow_id), request_sync=True, max_wait=60,
+        )
+        assert revised_result["status"] == "Success", revised_result
+        assert revised_result["result"] == revised_resource.decode("utf-8")
+        revised_execution = await db_session.get(Execution, UUID(revised_result["execution_id"]))
+        assert revised_execution is not None
+        assert revised_execution.solution_deployment_id == revision_id
+        assert revised_execution.runtime_evidence is not None
+        assert revised_execution.runtime_evidence["solution_deployment_id"] == str(revision_id)
+        revised_attempt = await db_session.scalar(
+            select(WorkflowExecutionAttempt)
+            .where(WorkflowExecutionAttempt.execution_id == revised_execution.id)
+            .order_by(WorkflowExecutionAttempt.attempt_number.desc())
+        )
+        assert revised_attempt is not None and revised_attempt.status == "succeeded"
+        assert revised_attempt.worker_id
+        assert revised_attempt.runtime_evidence_hash == revised_execution.runtime_evidence_hash
     finally:
         if created_solution and solution_id is not None:
             # Immutable deployment history intentionally prevents public
@@ -412,14 +496,15 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
             )
             assert deletion.status_code == 409, deletion.text
             assert "Referenced resource" in deletion.text
-            storage = SolutionDeploymentStorage(solution_id, deployment_id)
-            async with storage._client_factory() as client:
-                for key in (
-                    storage.source_artifact_key,
-                    storage.resources_artifact_key,
-                    deployment_manifest_key(solution_id, deployment_id),
-                    f"{storage.runtime_prefix}{path}",
-                    f"{storage.runtime_prefix}_resources/{resource_path}",
-                ):
-                    await client.delete_object(Bucket=storage._bucket, Key=key)
+            for candidate_id in (deployment_id, revision_id):
+                storage = SolutionDeploymentStorage(solution_id, candidate_id)
+                async with storage._client_factory() as client:
+                    for key in (
+                        storage.source_artifact_key,
+                        storage.resources_artifact_key,
+                        deployment_manifest_key(solution_id, candidate_id),
+                        f"{storage.runtime_prefix}{path}",
+                        f"{storage.runtime_prefix}_resources/{resource_path}",
+                    ):
+                        await client.delete_object(Bucket=storage._bucket, Key=key)
 
