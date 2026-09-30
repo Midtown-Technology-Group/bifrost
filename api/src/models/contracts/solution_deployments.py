@@ -4,8 +4,8 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
@@ -220,3 +220,33 @@ class SolutionWorkflowRevisionInspectRequest(SolutionSourceRevisionInspectReques
 
 class SolutionWorkflowRevisionCommitRequest(SolutionSourceRevisionCommitRequest):
     reviewed_recipe: ReviewedWorkflowRecipe
+
+
+class InitialWorkflowInstallRequest(BaseModel):
+    """Reviewed source closure for the first immutable workflow install."""
+
+    model_config = ConfigDict(extra="forbid")
+    source_commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    reviewed_recipe: ReviewedWorkflowRecipe
+    files: list[SolutionSourceFile] = Field(min_length=1, max_length=256)
+    resources: list[SolutionSourceFile] = Field(default_factory=list, max_length=256)
+
+
+class InitialWorkflowInstallInspectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reviewed_recipe: ReviewedWorkflowRecipe
+
+
+class InitialWorkflowInstallCommitRequest(InitialWorkflowInstallInspectRequest):
+    expected_evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class InitialWorkflowInstallInspectResponse(BaseModel):
+    solution_id: UUID
+    deployment_id: UUID
+    organization_id: UUID | None
+    source_commit_sha: str
+    workflow_ids: list[UUID]
+    source_hashes: dict[str, str]
+    evidence_id: str
+    state: str
