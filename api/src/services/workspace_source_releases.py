@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -314,6 +314,8 @@ class WorkspaceSourceReleaseService:
                         "supersession requires a later verified source release"
                     )
             deployments = {}
+            reviewed_globals = set(supersession_evidence.reviewed_global_solution_ids)
+            observed_globals = set()
             repository = SolutionDeploymentRepository(self.db)
             for (
                 deployment_id
@@ -321,7 +323,13 @@ class WorkspaceSourceReleaseService:
                 deployment = await repository.get_by_id_for_runtime(deployment_id)
                 if (
                     deployment is None
-                    or deployment.organization_id != self.organization_id
+                    or (
+                        deployment.organization_id != self.organization_id
+                        and not (
+                            deployment.organization_id is None
+                            and deployment.solution_id in reviewed_globals
+                        )
+                    )
                     or deployment.state != "active"
                     or deployment.activated_at is None
                     or deployment.activated_at <= record.created_at
@@ -341,12 +349,15 @@ class WorkspaceSourceReleaseService:
                 )
                 if (
                     solution is None
+                    or solution.organization_id != deployment.organization_id
                     or solution.status != "active"
                     or solution.active_deployment_id != deployment_id
                 ):
                     raise WorkspaceSourceReleaseConflict(
                         "supersession Solution pointer changed"
                     )
+                if deployment.organization_id is None:
+                    observed_globals.add(solution.id)
                 try:
                     _, resolution = validate_runtime_closure(
                         deployment.compiled_manifest,
@@ -360,9 +371,14 @@ class WorkspaceSourceReleaseService:
                         "supersession Solution closure is invalid"
                     ) from exc
                 deployments[deployment_id] = resolution
+            if reviewed_globals != observed_globals:
+                raise WorkspaceSourceReleaseConflict(
+                    "reviewed global Solution identities differ from active anchors"
+                )
             live = None
             removed_paths = {
-                path for path, review in supersession_evidence.paths.items()
+                path
+                for path, review in supersession_evidence.paths.items()
                 if review.runtime_owner == "removed"
             }
             root_paths = set(await RepoStorage().list()) if removed_paths else set()
@@ -403,19 +419,27 @@ class WorkspaceSourceReleaseService:
                         ) from exc
                     resolution = deployments.get(deployment_id)
                     runtime_path = path_review.runtime_path or old_path
+                    runtime_source = None
+                    if resolution is not None:
+                        runtime_source = resolution.sources.get(runtime_path)
+                        if runtime_source is None:
+                            runtime_source = resolution.resources.get(runtime_path)
                     if (
-                        resolution is None
-                        or runtime_path not in resolution.sources
-                        or resolution.sources[runtime_path].content_hash
+                        runtime_source is None
+                        or runtime_source.content_hash
                         != f"sha256:{path_review.runtime_source_sha256}"
                     ):
                         raise WorkspaceSourceReleaseConflict(
                             f"Solution runtime hash is unverified: {old_path}"
                         )
                 elif path_review.runtime_owner == "removed":
-                    if old_path in root_paths or await self.db.scalar(
-                        select(FileIndex.path).where(FileIndex.path == old_path)
-                    ) is not None:
+                    if (
+                        old_path in root_paths
+                        or await self.db.scalar(
+                            select(FileIndex.path).where(FileIndex.path == old_path)
+                        )
+                        is not None
+                    ):
                         raise WorkspaceSourceReleaseConflict(
                             f"removed source is still present in Root or its index: {old_path}"
                         )
@@ -425,10 +449,20 @@ class WorkspaceSourceReleaseService:
                         )
                     installed = await self.db.scalar(
                         select(SolutionDeployment.id)
-                        .join(Solution, Solution.active_deployment_id == SolutionDeployment.id)
+                        .join(
+                            Solution,
+                            Solution.active_deployment_id == SolutionDeployment.id,
+                        )
                         .where(
                             Solution.status == "active",
-                            SolutionDeployment.resolution_map["sources"].op("?")(old_path),
+                            or_(
+                                SolutionDeployment.resolution_map["sources"].op("?")(
+                                    old_path
+                                ),
+                                SolutionDeployment.resolution_map["resources"].op("?")(
+                                    old_path
+                                ),
+                            ),
                         )
                         .limit(1)
                     )
