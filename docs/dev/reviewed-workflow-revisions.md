@@ -22,6 +22,12 @@ requires that fresh evidence ID, repeats the checks under the Solution write loc
 and commits compatible registrations and the pointer together. After an ambiguous
 response, inspect the pointer and candidate before another write.
 
+Trigger snapshots are observed during each check. Root trigger writers do not
+share the Solution lock, so verify them independently after activation and
+reconcile concurrent changes before accepting the delivery evidence. This
+adapter preserves existing workflow identity and compatible parameters and does
+not create or change triggers.
+
 Existing workflows retain UUID, path/function identity, organization, access,
 endpoint, execution mode, cache and retry settings. Removal and incompatible
 parameter changes fail. New workflows require unused UUIDs, the installation's
