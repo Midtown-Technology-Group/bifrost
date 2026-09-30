@@ -442,17 +442,14 @@ class TestExtractJsonObject:
 
     def test_strips_markdown_code_fence_with_lang(self):
         raw = '```json\n{"asked": "foo"}\n```'
-        import json
         assert json.loads(_extract_json_object(raw)) == {"asked": "foo"}
 
     def test_strips_markdown_code_fence_without_lang(self):
         raw = '```\n{"asked": "foo"}\n```'
-        import json
         assert json.loads(_extract_json_object(raw)) == {"asked": "foo"}
 
     def test_strips_prose_preamble(self):
         raw = 'Here is the summary:\n{"asked": "foo", "did": "bar"}'
-        import json
         assert json.loads(_extract_json_object(raw)) == {
             "asked": "foo",
             "did": "bar",
@@ -460,12 +457,10 @@ class TestExtractJsonObject:
 
     def test_strips_trailing_prose(self):
         raw = '{"asked": "foo"}\n\nLet me know if you need anything else.'
-        import json
         assert json.loads(_extract_json_object(raw)) == {"asked": "foo"}
 
     def test_tolerates_braces_in_quoted_strings(self):
         raw = '{"url": "https://x.com/{id}", "did": "routed"}'
-        import json
         assert json.loads(_extract_json_object(raw)) == {
             "url": "https://x.com/{id}",
             "did": "routed",
@@ -473,13 +468,11 @@ class TestExtractJsonObject:
 
     def test_handles_escaped_quotes_inside_strings(self):
         raw = '{"did": "said \\"hello\\"", "asked": "x"}'
-        import json
         parsed = json.loads(_extract_json_object(raw))
         assert parsed["did"] == 'said "hello"'
 
     def test_nested_object_closes_at_outer_brace(self):
         raw = '{"metadata": {"ticket_id": "4821"}, "asked": "x"}'
-        import json
         parsed = json.loads(_extract_json_object(raw))
         assert parsed["metadata"] == {"ticket_id": "4821"}
         assert parsed["asked"] == "x"
