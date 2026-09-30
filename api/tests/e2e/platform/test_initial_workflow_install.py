@@ -285,6 +285,7 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
 ):
     """Exercise candidate, preflight, and activation through the running Docker stack."""
     from src.models.orm.executions import Execution
+    from src.models.orm.executions import WorkflowExecutionAttempt
     from src.services.solutions.deployment_storage import (
         SolutionDeploymentStorage,
         deployment_manifest_key,
@@ -301,7 +302,7 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
         "from bifrost import workflow, resources\n"
         "@workflow(name='Initial HTTP reviewed task', effects=[])\n"
         "async def run(user: str = 'system'):\n"
-        "    return resources.read('data/rates.json')\n"
+        "    return await resources.read('data/rates.json')\n"
     )
     solution_id = None
     created_solution = False
@@ -376,6 +377,31 @@ async def test_initial_workflow_install_over_http_uses_real_postgres_and_object_
         assert await db_session.scalar(
             select(Execution.id).where(Execution.solution_deployment_id == deployment_id)
         ) is None
+
+        # Dispatch explicitly only after activation. The worker must use the
+        # immutable pin and read the resource through the signed attempt context.
+        from tests.e2e.conftest import execute_workflow_sync
+
+        execution_result = execute_workflow_sync(
+            e2e_client, headers, str(workflow_id), request_sync=True, max_wait=60,
+        )
+        assert execution_result["status"] == "Success", execution_result
+        assert execution_result["result"] == resource_bytes.decode("utf-8")
+        execution = await db_session.get(Execution, UUID(execution_result["execution_id"]))
+        assert execution is not None
+        assert execution.solution_deployment_id == deployment_id
+        assert execution.runtime_mode == "deployment-v1"
+        assert execution.runtime_evidence is not None
+        assert execution.runtime_evidence["solution_deployment_id"] == str(deployment_id)
+        attempt = await db_session.scalar(
+            select(WorkflowExecutionAttempt)
+            .where(WorkflowExecutionAttempt.execution_id == execution.id)
+            .order_by(WorkflowExecutionAttempt.attempt_number.desc())
+        )
+        assert attempt is not None
+        assert attempt.status == "succeeded"
+        assert attempt.worker_id
+        assert attempt.runtime_evidence_hash == execution.runtime_evidence_hash
     finally:
         if created_solution and solution_id is not None:
             # Immutable deployment history intentionally prevents public
