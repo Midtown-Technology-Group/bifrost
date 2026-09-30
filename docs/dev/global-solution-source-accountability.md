@@ -8,7 +8,8 @@ The platform-superuser disposition endpoint accepts
 `reviewed_global_solution_ids` in supersession evidence. Supply only the exact
 global Solution identities included in the production review. The service
 requires each selected deployment and its locked Solution to have global scope,
-and rejects a missing, unrelated or unused global identity. A deployment from
+and rejects a missing or unrelated global identity, or one without a selected
+deployment anchor. A deployment from
 another organization remains invalid, even if its identity is listed here.
 The record lookup stays scoped to the accountable organization.
 

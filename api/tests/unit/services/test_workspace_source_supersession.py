@@ -378,3 +378,18 @@ async def test_removed_disposition_rejects_source_still_in_immutable_runtime(
             supersession_evidence=evidence,
         )
     db.commit.assert_not_awaited()
+    if owner == "solution":
+        query = db.scalar.await_args.args[0]
+        # A resource-only active deployment must prevent a removed disposition.
+        compiled = query.compile(compile_kwargs={"literal_binds": True})
+        sql = str(compiled)
+        assert "'resources'" in sql and "'sources'" in sql
+        assert " OR " in sql and "features/a.py" in sql
+
+
+def test_global_solution_review_rejects_duplicate_identities():
+    evidence = _evidence().model_dump()
+    solution_id = uuid4()
+    evidence["reviewed_global_solution_ids"] = [solution_id, solution_id]
+    with pytest.raises(ValidationError, match="global Solution IDs must be unique"):
+        WorkspaceSourceSupersessionEvidence.model_validate(evidence)
