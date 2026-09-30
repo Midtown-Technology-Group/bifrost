@@ -72,6 +72,29 @@ python .\scripts\submit-openssf-badge.py
 
 Cookie lifetime is ~48 hours. `BADGE_LEVEL` defaults to `passing`.
 
+## Silver build/install criteria
+
+Build/install evidence lives in [docs/BUILD.md](../BUILD.md). The current
+answers are four **Met**, two **N/A**, and one **Unmet** on the current Silver
+form. The old `build_reproducible` field is also Unmet in the JSON. The
+`build_repeatable` criterion requires bit-for-bit output; the Docker build
+has variable OS package inputs and no two-build digest comparison yet.
+`build_standard_variables` and `installation_standard_variables` are N/A
+under the official criteria because there is no native binary compilation
+or filesystem-prefix installation. Regenerate the JSON with
+`python scripts/generate-bestpractices-json.py` before a Silver form save.
+
+| Criterion | Basis |
+|-----------|-------|
+| `build_reproducible` (legacy) | Unmet — bit-for-bit output unverified |
+| `build_repeatable` | Unmet — variable OS packages and no clean-build digest comparison |
+| `build_standard_variables` | N/A — no native Bifrost binary compilation |
+| `build_preserve_debug` | Dev images strip nothing; reload/HMR/debugger attach preserved |
+| `build_non_recursive` | No Makefiles; bounded multi-stage Dockerfiles + linear CI lanes |
+| `installation_standard_variables` | N/A — no filesystem-prefix installation |
+| `installation_development_quick` | `./debug.sh` / `./test.sh stack up` boot full stacks in one command |
+| `installation_common` | `setup.sh` + Compose published images, `./debug.sh` source stack, pipx CLI; `down -v` / `pipx uninstall` removal |
+
 ## Related issues
 
 - [#289](https://github.com/MTG-Thomas/bifrost/issues/289) — Passing badge (closed)

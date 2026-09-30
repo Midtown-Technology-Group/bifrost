@@ -190,13 +190,63 @@ def main() -> None:
             f"External contributors are explicitly welcome via PR/issue flow; see "
             f"{BASE}/blob/main/GOVERNANCE.md and {BASE}/blob/main/CONTRIBUTING.md."
         ),
+        # Silver build/install criteria - evidence in docs/BUILD.md.
+        "build_reproducible_justification": (
+            f"Dependency locks and digest-pinned bases constrain inputs, but "
+            f"bit-for-bit output has not been verified. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_repeatable_justification": (
+            f"Bit-for-bit output has not been verified; OS packages in Docker "
+            f"builds are not version pinned. See {BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_standard_variables_justification": (
+            f"No native Bifrost binaries are compiled; the Silver criterion "
+            f"directs projects in this case to answer N/A. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_preserve_debug_justification": (
+            f"Dev images preserve debug info: no stripping, -O, or install -s; "
+            f"uvicorn --reload, watchmedo restarts, Vite HMR, optional debugger "
+            f"attach (ENABLE_DEBUG=true). See {BASE}/blob/main/docs/BUILD.md."
+        ),
+        "build_non_recursive_justification": (
+            f"No Makefiles and no recursive/subdirectory builds; bounded "
+            f"multi-stage Dockerfiles plus linear CI lanes with commit-pinned "
+            f"Actions and digest-pinned base images. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "installation_standard_variables_justification": (
+            f"Installation uses Docker Compose and pipx, not a filesystem "
+            f"install prefix such as DESTDIR. No destination-variable "
+            f"convention applies. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "installation_development_quick_justification": (
+            f"./debug.sh boots the full dev stack in one command and ./test.sh "
+            f"stack up boots the test stack, both per-worktree isolated. See "
+            f"{BASE}/blob/main/docs/BUILD.md."
+        ),
+        "installation_common_justification": (
+            f"setup.sh plus docker compose installs published images; "
+            f"./debug.sh builds a dev stack from source, and pipx installs "
+            f"the API-matched CLI. See {BASE}/blob/main/docs/BUILD.md."
+        ),
     }
 
     release_pending_statuses: set[str] = set()
+    na_statuses: set[str] = {
+        "build_standard_variables_status",
+        "installation_standard_variables_status",
+    }
+    unmet_statuses: set[str] = {"build_reproducible_status", "build_repeatable_status"}
 
     for key, value in overrides.items():
         status_key = key.replace("_justification", "_status")
-        output[status_key] = "Unmet" if status_key in release_pending_statuses else "Met"
+        if status_key in na_statuses:
+            output[status_key] = "N/A"
+        else:
+            output[status_key] = "Unmet" if status_key in (release_pending_statuses | unmet_statuses) else "Met"
         output[key] = value
 
     OUTPUT.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
