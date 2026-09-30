@@ -999,6 +999,29 @@ def test_start_npm_install_failure_is_a_clean_click_error(tmp_path, monkeypatch)
     assert "Traceback" not in result.output
 
 
+def test_start_binds_explicit_resource_recipe_to_local_host(tmp_path, monkeypatch):
+    from bifrost.solution_dev import function_host
+
+    subprocess = _start_workspace(tmp_path, monkeypatch)
+    recipe = tmp_path / "delivery.json"
+    recipe.write_text("{}")
+    previous = function_host.FunctionHost
+    captured = {}
+
+    def host(workspace, *, resource_recipe):
+        captured.update(workspace=workspace, recipe=resource_recipe)
+        return previous(workspace)
+
+    def stop_after_host(argv, **kwargs):
+        raise subprocess.CalledProcessError(returncode=254, cmd=argv)
+
+    monkeypatch.setattr(function_host, "FunctionHost", host)
+    monkeypatch.setattr(subprocess, "run", stop_after_host)
+    result = CliRunner().invoke(solution_group, ["start", "--resource-recipe", str(recipe)])
+    assert result.exit_code == 1 and "npm install failed" in result.output
+    assert captured == {"workspace": tmp_path, "recipe": recipe}
+
+
 def test_wait_for_vite_fails_fast_when_process_dies(monkeypatch):
     """--strictPort makes vite exit when its port is taken; start must fail
     with the exit code instead of serving unexplained 502s (issue #460)."""
@@ -1278,7 +1301,7 @@ def test_start_help_documents_stable_preview_origin():
     result = CliRunner().invoke(solution_group, ["start", "--help"])
 
     assert result.exit_code == 0
-    help_text = result.output.lower()
+    help_text = " ".join(result.output.lower().split())
     assert "renewed automatically" in help_text
     assert "stable local proxy origin" in help_text
     assert "reuse it across restarts" in help_text

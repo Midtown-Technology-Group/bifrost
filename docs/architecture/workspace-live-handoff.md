@@ -331,9 +331,33 @@ empty-registry path is inert and requires no SDK or live credentials. An
 installation cannot bypass checks by deleting its registry entry or changing
 targets. Reviewed live retirement/handoff remains necessary for those operations.
 
-The execution-only resource API does not provide local development bytes.
-Current direct `bifrost run` and `solution start` have human credentials and
-synthetic local execution IDs, so resource reads receive 403. A declared local
-checkout resolver, with no HTTP fallback, is still needed to complete resource
-iteration in the fast development lane. Do not relax the production attempt or
-deployment guards to support local development.
+### Local resource iteration
+
+`bifrost run` and `bifrost solution start` accept an explicit
+`--resource-recipe <workflow-delivery.json>`. They reuse the same complete
+workflow recipe's resource map to read current declared checkout files, including
+dirty edits. No preview, prepare or activation is needed for those local bytes.
+
+The recipe must be a bounded regular file inside a Git checkout, and the local
+workflow file must appear in its source map. Resource paths keep the deployment
+recipe's JSON/PowerShell and hidden/auth-state restrictions. Every read checks
+regular-file containment, rejects symlinks, and enforces positive sizes, the
+2 MiB individual bound and 10 MiB total bound. Recipe and resource changes are
+read afresh for each local invocation; resource edits are visible on each read.
+
+Both direct and browser-driven `bifrost run`, and each local function host call,
+bind an isolated local resource context for imports and function bodies. Even a local run without
+a recipe has an empty map. Missing, undeclared or invalid local bytes fail
+locally and cannot fall back to an HTTP request. Context resets after success
+or failure and concurrent local invocations keep separate maps.
+
+Recipe UUIDs do not select a server install or replace the CLI's normal data
+plane binding. Other SDK calls and vendor effects still use the developer's
+configured credentials. This resolver supports source iteration; it is not a
+sandbox or live runtime proof. Resource-backed local runs cannot emit loose
+Workspace promotion evidence, which does not bind these bytes.
+
+Worker execution does not bind a local resource context. Its signed attempt,
+durable deployment pin and immutable resource verification remain required by
+the API. Production execution and source activation continue to require their
+reviewed deployment path.
