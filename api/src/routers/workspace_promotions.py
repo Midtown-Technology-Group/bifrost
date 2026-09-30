@@ -36,6 +36,7 @@ from src.models.contracts.workspace_promotions import (
     WorkspacePromotionPreviewRequest,
     WorkspacePromotionPreviewResponse,
     WorkspaceReleaseActivateRequest,
+    WorkspaceReleaseLockRetryRequest,
     WorkspaceReleasePrepareRequest,
     WorkspaceReleaseStatusResponse,
     WorkspaceSourceReleaseDeclareRequest,
@@ -471,6 +472,63 @@ async def activate_workspace_release(
         )
         await db.rollback()
         return result
+
+
+@router.post(
+    "/releases/{release_id}/retry-history-lock",
+    response_model=PlatformJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_workspace_release_history_lock(
+    release_id: UUID,
+    request: WorkspaceReleaseLockRetryRequest,
+    response: Response,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentSuperuser,
+) -> PlatformJobAccepted:
+    if ctx.org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="an organization context is required",
+        )
+    try:
+        job, reused = await WorkspaceReleaseActivationService(
+            db, ctx.org_id
+        ).retry_projection(
+            release_id,
+            request,
+            requested_by_user_id=user.user_id,
+            requested_by_email=user.email,
+            requested_by_name=user.name or user.email or "Unknown",
+        )
+    except WorkspaceReleaseActivationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    job_id = job.id
+    if job.notification_id is None:
+        try:
+            await ensure_platform_job_notification(db, job)
+            await db.commit()
+            await db.refresh(job)
+        except Exception:
+            logger.warning(
+                "Workspace release history retry queued without notification",
+                extra={"platform_job_id": str(job_id)},
+                exc_info=True,
+            )
+            await db.rollback()
+            await db.refresh(job)
+    await publish_platform_job_update(job)
+    response.headers["Location"] = f"/api/platform-jobs/{job.id}"
+    return PlatformJobAccepted(
+        job_id=job.id,
+        notification_id=job.notification_id,
+        status=job.status,
+        reused=reused,
+    )
 
 
 @router.post("/live/retire", response_model=WorkspaceLiveRetireResponse)
