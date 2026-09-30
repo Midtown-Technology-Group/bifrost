@@ -20,6 +20,8 @@ CANONICAL_DIR="${REPO_ROOT}/.claude/skills"
 PUBLIC_MIRROR="${REPO_ROOT}/plugins/bifrost/skills"
 LOCAL_MIRROR="${REPO_ROOT}/.agents/skills"
 
+python3 "${SCRIPT_DIR}/check_skill_mirrors.py" --preflight-sync
+
 if find "${REPO_ROOT}/.codex/skills" -name SKILL.md -print -quit 2>/dev/null | grep -q .; then
     echo "ERROR: legacy .codex/skills discovery copies remain; reconcile them before sync." >&2
     exit 1

@@ -9,6 +9,21 @@ from scripts import check_skill_mirrors as guard
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_drift_check_preserves_custom_and_edited_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            mirror = repo / ".agents/skills"
+            edited = self.write_skill(mirror, "debug", "debug", "Human edit.")
+            custom = self.write_skill(mirror, "custom", "custom", "Keep this skill.")
+            before = {p: p.read_bytes() for p in (edited, custom)}
+            expected = {".agents/skills": {"debug/SKILL.md": (b"canonical", False)}}
+            with patch.object(guard, "REPO", repo), patch.object(guard, "_expected_mirrors", return_value=expected):
+                self.assertTrue(guard._check_mirror_sync())
+                self.assertEqual({p: p.read_bytes() for p in before}, before)
+                with patch.object(guard.subprocess, "check_output", return_value=""):
+                    errors = guard._preflight_sync()
+            self.assertEqual(len(errors), 2)
+            self.assertEqual({p: p.read_bytes() for p in before}, before)
     @unittest.skipIf(os.name == "nt", "POSIX executable-bit contract")
     def test_mirror_digest_detects_executable_drift(self):
         with tempfile.TemporaryDirectory() as tmp:
