@@ -25,8 +25,11 @@ from src.models.orm.workspace_promotions import (
     WorkspaceSourceRelease,
 )
 from src.models.orm.solutions import Solution
+from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.file_index import FileIndex
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.github_actions_oidc import WorkspaceSourceReleaseProducer
+from src.services.repo_storage import RepoStorage
 from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solution_deploy_obligations import (
     declare_solution_deploy_obligations,
@@ -358,8 +361,13 @@ class WorkspaceSourceReleaseService:
                     ) from exc
                 deployments[deployment_id] = resolution
             live = None
+            removed_paths = {
+                path for path, review in supersession_evidence.paths.items()
+                if review.runtime_owner == "removed"
+            }
+            root_paths = set(await RepoStorage().list()) if removed_paths else set()
             if any(
-                path.runtime_owner == "workspace"
+                path.runtime_owner in {"workspace", "removed"}
                 for path in supersession_evidence.paths.values()
             ):
                 try:
@@ -403,6 +411,30 @@ class WorkspaceSourceReleaseService:
                     ):
                         raise WorkspaceSourceReleaseConflict(
                             f"Solution runtime hash is unverified: {old_path}"
+                        )
+                elif path_review.runtime_owner == "removed":
+                    if old_path in root_paths or await self.db.scalar(
+                        select(FileIndex.path).where(FileIndex.path == old_path)
+                    ) is not None:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"removed source is still present in Root or its index: {old_path}"
+                        )
+                    if live is not None and old_path in live.source_hashes:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"removed source is still present in Live: {old_path}"
+                        )
+                    installed = await self.db.scalar(
+                        select(SolutionDeployment.id)
+                        .join(Solution, Solution.active_deployment_id == SolutionDeployment.id)
+                        .where(
+                            Solution.status == "active",
+                            SolutionDeployment.resolution_map["sources"].op("?")(old_path),
+                        )
+                        .limit(1)
+                    )
+                    if installed is not None:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"removed source is still present in a Solution: {old_path}"
                         )
             evidence = {
                 "schema_version": "bifrost.workspace-source-release-supersession/v1",

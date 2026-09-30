@@ -26,7 +26,7 @@ from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffPreflightResponse,
 )
 from src.models.orm.solutions import Solution
-from src.repositories.solution_deployments import SolutionDeploymentRepository
+from src.repositories.solution_deployments import InvalidDeploymentTransition, SolutionDeploymentRepository
 from src.services.solutions.deployment_activation import (
     ActivationResult,
     SolutionDeploymentActivationService,
@@ -419,7 +419,10 @@ async def stage_source_revision(
     except SolutionSourceRevisionConflict as exc:
         await ctx.db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError) as exc:
+    except (DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
         await ctx.db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
@@ -481,6 +484,12 @@ async def activate_source_revision(
         await ctx.db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SolutionSourceRevisionError as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except InvalidDeploymentTransition as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
         await ctx.db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
