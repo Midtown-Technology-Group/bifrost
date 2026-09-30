@@ -13,7 +13,7 @@ import binascii
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -24,6 +24,7 @@ from bifrost.workspace_release import canonical_digest
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy, delivery_path
 from src.services.github_actions_oidc import GITHUB_ACTIONS_ISSUER, GITHUB_ACTIONS_JWKS_URL
 from src.services.solutions.workflow_revision_recipe import WORKFLOW_RECIPE_SCHEMA, ReviewedWorkflowRecipe
+from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCE_BYTES, MAX_DEPLOYMENT_RESOURCES_BYTES
 
 AUDIENCE = "bifrost-solution-git-delivery/v1"
 RECIPE_SCHEMA = "bifrost.solution-source-delivery/v1"
@@ -60,6 +61,7 @@ class VerifiedGitSource:
     files: dict[str, bytes]
     artifact_digest: str
     workflow_recipe: ReviewedWorkflowRecipe | None = None
+    resources: dict[str, bytes] = field(default_factory=dict)
 
 
 def delivery_audience(solution_id: UUID, commit_sha: str, ci_run_id: int,
@@ -236,9 +238,10 @@ class ProtectedGitReader:
                 raise
             raise GitDeliverySourceError("Reviewed recipe JSON is invalid") from exc
         files: dict[str, bytes] = {}
+        resources: dict[str, bytes] = {}
         slots = asyncio.Semaphore(16)
 
-        async def read(runtime_path, git_path):
+        async def read(runtime_path, git_path, *, resource=False):
             if not isinstance(runtime_path, str) or not isinstance(git_path, str):
                 raise GitDeliverySourceError("Recipe source paths must be strings")
             try:
@@ -246,20 +249,28 @@ class ProtectedGitReader:
                 delivery_path(git_path)
             except ValueError as exc:
                 raise GitDeliverySourceError("Recipe source path is unsafe") from exc
-            if not runtime_path.endswith(".py") or not git_path.endswith(".py") or git_path not in index:
+            if git_path not in index or not resource and (not runtime_path.endswith(".py") or not git_path.endswith(".py")):
                 raise GitDeliverySourceError("Recipe must contain existing Python source")
             async with slots:
-                files[runtime_path] = await self.blob(index[git_path], limit=MAX_SOURCE_BYTES)
+                content = await self.blob(index[git_path], limit=MAX_DEPLOYMENT_RESOURCE_BYTES if resource else MAX_SOURCE_BYTES)
+                (resources if resource else files)[runtime_path] = content
 
         # Bound the complete desired tree before any concurrent blob reads.
         sizes = [index.get(path, {}).get("size") for path in recipe["files"].values() if isinstance(path, str)]
         if (len(sizes) != len(recipe["files"]) or any(type(size) is not int or size < 0 for size in sizes)
                 or sum(sizes) > MAX_SOURCE_BYTES):
             raise GitDeliverySourceError("Complete source exceeds its artifact bound")
-        await asyncio.gather(*(read(path, git_path) for path, git_path in recipe["files"].items()))
+        resource_mapping = workflow_recipe.resources if workflow_recipe is not None else {}
+        sizes = [index.get(path, {}).get("size") for path in resource_mapping.values()]
+        if (any(type(size) is not int or not 1 <= size <= MAX_DEPLOYMENT_RESOURCE_BYTES for size in sizes)
+                or sum(sizes) > MAX_DEPLOYMENT_RESOURCES_BYTES):
+            raise GitDeliverySourceError("Complete resources exceed their artifact bounds")
+        await asyncio.gather(*(read(path, git_path) for path, git_path in recipe["files"].items()),
+            *(read(path, git_path, resource=True) for path, git_path in resource_mapping.items()))
         if sum(len(content) for content in files.values()) > MAX_SOURCE_BYTES:
             raise GitDeliverySourceError("Complete source exceeds its artifact bound")
-        hashes = {path: "sha256:" + hashlib.sha256(content).hexdigest() for path, content in sorted(files.items())}
+        hashes = {path: "sha256:" + hashlib.sha256(content).hexdigest()
+            for path, content in sorted({**files, **resources}.items())}
         digest_input = {"schema_version": recipe["schema_version"], "solution_id": str(solution_id),
             "source_commit_sha": commit_sha, "source_tree_sha": tree_sha, "recipe_path": recipe_path,
             "source_hashes": hashes}
@@ -268,4 +279,4 @@ class ProtectedGitReader:
         digest = canonical_digest(digest_input)
         if digest != artifact_digest:
             raise GitDeliverySourceError("Protected Git artifact differs from the bound producer digest")
-        return VerifiedGitSource(solution_id, commit_sha, tree_sha, recipe_path, hashes, files, digest, workflow_recipe)
+        return VerifiedGitSource(solution_id, commit_sha, tree_sha, recipe_path, hashes, files, digest, workflow_recipe, resources)

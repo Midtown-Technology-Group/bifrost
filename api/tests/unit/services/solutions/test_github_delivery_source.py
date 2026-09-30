@@ -116,14 +116,16 @@ def test_policy_fails_closed_for_partial_or_unsafe_configuration(changes):
         SolutionGitDeliveryPolicy.model_validate(values)
 
 
-def fixture(workflow_recipe=None):
+def fixture(workflow_recipe=None, resource_files=None):
     files = {"fixture.py": b"from helper import value\nasync def fixture():\n    return value\n",
              "helper.py": b"value = 'merged-earlier'\n"}
     recipe = {"schema_version": RECIPE_SCHEMA, "solution_id": str(SID),
               "files": {path: "solutions/fixture/" + path for path in files}}
     if workflow_recipe is not None:
         recipe = {**recipe, **workflow_recipe}
-    contents = {RECIPE: json.dumps(recipe).encode(), **{"solutions/fixture/" + path: content for path, content in files.items()}}
+    resource_files = resource_files or {}
+    contents = {RECIPE: json.dumps(recipe).encode(), **{"solutions/fixture/" + path: content for path, content in files.items()},
+        **{recipe["resources"][path]: content for path, content in resource_files.items()}}
     entries, blobs = [], {}
     for path, content in contents.items():
         sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content, usedforsecurity=False).hexdigest()
@@ -131,7 +133,7 @@ def fixture(workflow_recipe=None):
         blobs["git/blobs/" + sha] = {"sha": sha, "encoding": "base64", "content": base64.b64encode(content).decode()}
     digest = canonical_digest({"schema_version": recipe["schema_version"], "solution_id": str(SID),
         "source_commit_sha": SHA, "source_tree_sha": TREE, "recipe_path": RECIPE,
-        "source_hashes": {path: "sha256:" + hashlib.sha256(value).hexdigest() for path, value in files.items()},
+        "source_hashes": {path: "sha256:" + hashlib.sha256(value).hexdigest() for path, value in {**files, **resource_files}.items()},
         **({"reviewed_recipe": recipe} if workflow_recipe is not None else {})})
     documents = {"": {"id": policy().repository_id, "owner": {"id": policy().repository_owner_id},
         "full_name": policy().repository, "default_branch": "main"},
@@ -143,6 +145,35 @@ def fixture(workflow_recipe=None):
         "git/commits/" + SHA: {"sha": SHA, "tree": {"sha": TREE}},
         "git/trees/" + TREE + "?recursive=1": {"sha": TREE, "truncated": False, "tree": entries}, **blobs}
     return documents, files, digest
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("damage", [None, "symlink", "oversize", "missing", "changed_bytes"])
+async def test_protected_git_resources_are_hash_bound_and_regular_bounded_blobs(damage):
+    recipe = {"schema_version": "bifrost.solution-workflow-delivery/v1", "resources": {"rates.json": "data/rates.json"},
+        "workflows": [{"id": str(UUID(int=100)), "path": "fixture.py", "function_name": "fixture",
+            "organization_id": None, "runtime_bounds": {"max_duration_seconds": 30, "max_external_calls": 10,
+                "max_records_read": 100, "max_output_bytes": 4096}, "controls": {}}]}
+    resources = {"rates.json": b'{"rate":1}'}
+    documents, _, digest = fixture(recipe, resources)
+    entry = next(row for row in documents["git/trees/" + TREE + "?recursive=1"]["tree"] if row["path"] == "data/rates.json")
+    if damage == "symlink":
+        entry["mode"] = "120000"
+    elif damage == "oversize":
+        entry["size"] = 2 * 1024 * 1024 + 1
+    elif damage == "missing":
+        documents["git/trees/" + TREE + "?recursive=1"]["tree"].remove(entry)
+    elif damage == "changed_bytes":
+        documents, _, _ = fixture(recipe, {"rates.json": b'{"rate":2}'})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        if damage:
+            with pytest.raises(GitDeliverySourceError):
+                await reader.source(SID, SHA, digest)
+        else:
+            source = await reader.source(SID, SHA, digest)
+            assert source.resources == resources
+            assert source.source_hashes["rates.json"] == "sha256:" + hashlib.sha256(resources["rates.json"]).hexdigest()
 
 
 @pytest.mark.asyncio

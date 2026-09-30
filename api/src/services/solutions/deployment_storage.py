@@ -207,3 +207,24 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
                 if len(content) != size_bytes:
                     raise DeploymentArtifactIntegrityError("Immutable resource size differs from its contract")
                 return content
+
+    @property
+    def resources_artifact_key(self) -> str:
+        return f"{SOURCE_ARTIFACTS_ROOT}/{self.solution_id}/{self.deployment_id}/resources.zip"
+
+    async def write_resources_artifact(self, content: bytes, *, idempotent: bool = False) -> str:
+        await self._create(self.resources_artifact_key, content, "application/zip", idempotent=idempotent)
+        return self.resources_artifact_key
+
+    async def read_resources_artifact(self) -> bytes:
+        from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCES_BYTES
+
+        limit = MAX_DEPLOYMENT_RESOURCES_BYTES + 2 * 1024 * 1024
+        async with self._client_factory() as client:
+            response = await client.get_object(Bucket=self._bucket, Key=self.resources_artifact_key,
+                Range=f"bytes=0-{limit}")
+            async with response["Body"] as body:
+                content = await body.read(limit + 1)
+                if len(content) > limit:
+                    raise DeploymentArtifactIntegrityError("Resource archive exceeds its byte bound")
+                return content

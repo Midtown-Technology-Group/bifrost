@@ -17,11 +17,15 @@ class LiveHandoffSourceError(ValueError):
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
-def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: bool) -> None:
+def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: bool,
+                                  has_resource_bindings: bool = False) -> None:
     """Empty workflow installs cannot resolve shared tables or file locations."""
     tree = ast.parse(raw, filename=path)
-    unsupported_modules = [["bifrost", "files"], ["bifrost", "resources"]]
-    unsupported_names = {"files", "resources", "*"}
+    unsupported_modules = [["bifrost", "files"]]
+    unsupported_names = {"files", "*"}
+    if not has_resource_bindings:
+        unsupported_modules.append(["bifrost", "resources"])
+        unsupported_names.add("resources")
     if not has_table_bindings:
         unsupported_modules.append(["bifrost", "tables"])
         unsupported_names.add("tables")
@@ -52,7 +56,8 @@ def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: 
 
 
 def source_closure(
-    source_bytes: dict[str, bytes], entry_paths: set[str], *, has_table_bindings: bool = False
+    source_bytes: dict[str, bytes], entry_paths: set[str], *, has_table_bindings: bool = False,
+    has_resource_bindings: bool = False
 ) -> dict[str, bytes]:
     """Reject any import edge that cannot be proven inside the Live snapshot."""
     try:
@@ -79,7 +84,8 @@ def source_closure(
                 f"Live source dependency closure cannot be proven: {path}"
             )
         if path.endswith(".py"):
-            _require_resource_free_source(path, source_bytes[path], has_table_bindings=has_table_bindings)
+            _require_resource_free_source(path, source_bytes[path], has_table_bindings=has_table_bindings,
+                has_resource_bindings=has_resource_bindings)
     return {path: source_bytes[path] for path in sorted(paths)}
 
 

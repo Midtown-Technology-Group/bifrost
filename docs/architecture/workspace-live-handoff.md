@@ -277,18 +277,28 @@ and loose executions cannot use this execution endpoint. Query parameters
 cannot choose another deployment. Missing or corrupt resources have no Root
 fallback. Azure and S3 reads use a bounded byte range before buffering.
 
-This slice supplies the runtime contract and reader. Both source-only and
-workflow revision adapters reject resource-bearing candidates and bases until
-the protected-Git resource delivery adapter is implemented. The Python source
-closure also rejects resource SDK imports in that unsupported path. It cannot
-activate a resource merely because its metadata has self-consistent hashes.
+The protected-Git workflow recipe accepts a complete optional `resources` map
+from runtime path to exact Git blob path. Only regular JSON and PowerShell
+source blobs are accepted. Hidden paths and browser `storage-state.json` are
+rejected. Git object sizes are bounded before concurrent blob reads. The full
+recipe and union of Python and resource hashes bind the artifact digest,
+candidate identity, receipt and current-state comparison.
 
-The next slice must carry a complete reviewed resource map from exact Git,
-create its immutable artifact and objects, verify all bytes before activation,
-and include hashes in candidate identity, receipts, replay matching and
-readback. Tests and isolated worker rehearsal must cover updates, accepted old
-pins, missing bytes, canceled staging and reviewed reverts. Deployment source
-resources are for reviewed JSON evidence or executable scripts. Current BSN
+Workflow delivery stores a separate create-only resource archive and runtime
+objects. Inspection checks exact stored archive members, size, hash and actual
+runtime bytes before activation. Completed delivery and replay independently
+verify the resources and Python runtime objects. Source-only delivery still
+rejects resource-bearing bases and candidates. Resource imports require the
+workflow adapter and explicit `resources.read` or `read_bytes` calls with a
+literal path or an unmodified module constant present in the reviewed map.
+Dynamic paths, rebound namespaces and hidden method aliases fail before staging.
+
+Native database tests cover resource-only updates, reviewed reverts, accepted
+old execution pins, revoked attempts, canceled staging and corrupt replay
+objects. The object store in those tests is synthetic. Actual GitHub producer
+and isolated worker rehearsal remain required before production enablement.
+Deployment source resources are for reviewed JSON evidence or executable
+scripts. Current BSN
 client authority, Meraki Config Vault state and browser authentication state
 need their operational data contracts; packaging them as immutable source does
 not establish those contracts. This reader has not been deployed or enabled

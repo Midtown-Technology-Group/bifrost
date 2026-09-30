@@ -90,7 +90,7 @@ async def test_revision_cannot_activate_resources_without_reviewed_delivery_adap
                 "organization_id": str(PROVIDER_ORG_ID), "runtime_bounds": {
                     "max_duration_seconds": 20, "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096},
                 "controls": {}}], "shared_tables": {name: item.model_dump(mode="json") for name, item in fixture.bindings.items()}})
-        with pytest.raises(SolutionSourceRevisionError, match="unsupported resources"):
+        with pytest.raises(SolutionSourceRevisionError, match="resources differ"):
             await SolutionWorkflowRevisionService(db_session).inspect_workflows(fixture.solution_id, candidate.id, expected, recipe)
     assert fixture.solution.active_deployment_id == fixture.base_id
     assert fixture.workflow.solution_id == fixture.solution_id
@@ -115,7 +115,7 @@ async def db_session(async_engine):
 async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
-    from src.services.solutions import deployment_api, source_revision, workflow_revision
+    from src.services.solutions import deployment_api, deployment_resources, resource_delivery, source_revision, workflow_revision
 
     solution_id, base_id, revision_id, workflow_id = (
         uuid4(),
@@ -242,6 +242,19 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         async def read_source_artifact(self):
             return objects[(self.deployment_id, "source")]
 
+        async def write_resources_artifact(self, content, *, idempotent=False):
+            key = (self.deployment_id, "resources")
+            assert key not in objects or (idempotent and objects[key] == content)
+            objects[key] = content
+
+        async def read_resources_artifact(self):
+            return objects[(self.deployment_id, "resources")]
+
+        async def read_resource(self, requested_path, size_bytes):
+            content = objects[(self.deployment_id, "_resources/" + requested_path)]
+            assert len(content) == size_bytes
+            return content
+
         async def write_runtime_file(
             self, requested_path, content, *, idempotent=False
         ):
@@ -263,6 +276,8 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     monkeypatch.setattr(source_revision, "SolutionDeploymentStorage", Storage)
     monkeypatch.setattr(workflow_revision, "SolutionDeploymentStorage", Storage)
     monkeypatch.setattr(deployment_api, "SolutionDeploymentStorage", Storage)
+    monkeypatch.setattr(resource_delivery, "SolutionDeploymentStorage", Storage)
+    monkeypatch.setattr(deployment_resources, "SolutionDeploymentStorage", Storage)
     db_session.add(solution)
     await db_session.flush()
     db_session.add_all([workflow, base, table])
@@ -400,8 +415,9 @@ async def committed_delivery_db(async_session_factory):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("with_resources", [False, True])
 async def test_git_workflow_revision_adds_registration_updates_defaults_and_repairs_table_drift(
-    committed_delivery_db, platform_admin, monkeypatch, async_session_factory
+    committed_delivery_db, platform_admin, monkeypatch, async_session_factory, with_resources
 ):
     from contextlib import asynccontextmanager
     from sqlalchemy import select
@@ -435,11 +451,15 @@ async def test_git_workflow_revision_adds_registration_updates_defaults_and_repa
             "organization_id": str(PROVIDER_ORG_ID), "runtime_bounds": {
                 "max_duration_seconds": 20, "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096},
             "controls": {}} for identity, function in [(fixture.workflow_id, "run"), (added_id, "added")]]}
+    resources = {"data/rates.json": b'{"rate":1}', "scripts/audit.ps1": b'Write-Output "reviewed"'} if with_resources else {}
+    if resources:
+        spec["resources"] = {path: "fixtures/" + path for path in resources}
+    hashes = {fixture.path: sha256_digest(new), **{path: sha256_digest(content) for path, content in resources.items()}}
     recipe = ReviewedWorkflowRecipe.model_validate(spec)
     request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=123,
         ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
     desired = VerifiedGitSource(fixture.solution_id, request.source_commit_sha, "c" * 40,
-        policy.solutions[fixture.solution_id], {fixture.path: sha256_digest(new)}, {fixture.path: new}, request.artifact_digest, recipe)
+        policy.solutions[fixture.solution_id], hashes, {fixture.path: new}, request.artifact_digest, recipe, resources)
     class Reader:
         checks = 0
         cancel_after_stage = True
@@ -483,8 +503,8 @@ async def test_git_workflow_revision_adds_registration_updates_defaults_and_repa
     spec["shared_tables"][fixture.table.name]["metadata_hash"] = table_metadata_hash(fixture.table)
     next_recipe = ReviewedWorkflowRecipe.model_validate(spec)
     desired = VerifiedGitSource(fixture.solution_id, "d" * 40, "e" * 40,
-        policy.solutions[fixture.solution_id], {fixture.path: sha256_digest(new)}, {fixture.path: new},
-        "sha256:" + "f" * 64, next_recipe)
+        policy.solutions[fixture.solution_id], hashes, {fixture.path: new},
+        "sha256:" + "f" * 64, next_recipe, resources)
     next_request = request.model_copy(update={"source_commit_sha": desired.commit_sha, "artifact_digest": desired.artifact_digest})
     repaired = await service.deliver(fixture.solution_id, next_request, GitDeliveryIdentity("902", 1))
     assert repaired.deployment_id != result.deployment_id
@@ -496,8 +516,8 @@ async def test_git_workflow_revision_adds_registration_updates_defaults_and_repa
     snapshot_objects = dict(fixture.objects)
     spec["workflows"] = spec["workflows"][:1]
     desired = VerifiedGitSource(fixture.solution_id, "1" * 40, "2" * 40,
-        policy.solutions[fixture.solution_id], {fixture.path: sha256_digest(new)}, {fixture.path: new},
-        "sha256:" + "3" * 64, ReviewedWorkflowRecipe.model_validate(spec))
+        policy.solutions[fixture.solution_id], hashes, {fixture.path: new},
+        "sha256:" + "3" * 64, ReviewedWorkflowRecipe.model_validate(spec), resources)
     blocked = request.model_copy(update={"source_commit_sha": desired.commit_sha, "artifact_digest": desired.artifact_digest})
     with pytest.raises(SolutionSourceRevisionError, match="removal requires"):
         await service.deliver(fixture.solution_id, blocked, GitDeliveryIdentity("903", 1))
@@ -506,6 +526,118 @@ async def test_git_workflow_revision_adds_registration_updates_defaults_and_repa
     current = await db.get(Solution, fixture.solution_id)
     assert current.active_deployment_id == repaired.deployment_id
     assert await db.scalar(select(Workflow.is_active).where(Workflow.id == added_id)) is True
+
+
+@pytest.mark.asyncio
+async def test_git_resource_updates_and_revert_preserve_durable_attempt_reads(
+    committed_delivery_db, platform_admin, monkeypatch, async_session_factory
+):
+    from contextlib import asynccontextmanager
+    from datetime import UTC, datetime
+    from src.core.auth import ExecutionContext
+    from src.core.constants import SYSTEM_USER_UUID
+    from src.core.principal import UserPrincipal
+    from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.models.enums import ExecutionStatus
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+    from src.services import operation_receipts
+    from src.services.solutions.deployment_resources import DeploymentResourceDenied, read_execution_resource
+    from src.services.solutions.github_delivery_source import GitDeliveryIdentity, VerifiedGitSource
+    from src.services.solutions.github_source_delivery import GitSourceDeliveryService
+    from src.services.solutions.guard import install_solution_write_guard
+    from src.services.solutions.workflow_revision_recipe import WORKFLOW_RECIPE_SCHEMA, ReviewedWorkflowRecipe
+
+    install_solution_write_guard()
+    @asynccontextmanager
+    async def receipt_context():
+        async with async_session_factory() as session:
+            yield session
+    monkeypatch.setattr(operation_receipts, "get_db_context", receipt_context)
+    db = committed_delivery_db
+    old = b'from bifrost import workflow, tables\n@workflow(name="Revision test")\nasync def run():\n return 1\n'
+    new = b'from bifrost import workflow, resources\nRATE_PATH="data/rates.json"\n@workflow(name="Revision test")\nasync def run():\n return await resources.read(RATE_PATH)\n'
+    f = await _seed_adopted_revision(db, platform_admin, monkeypatch, source_pair=(old, new))
+    recipe = ReviewedWorkflowRecipe.model_validate({"schema_version": WORKFLOW_RECIPE_SCHEMA,
+        "solution_id": str(f.solution_id), "files": {f.path: "solutions/fixture.py"},
+        "resources": {"data/rates.json": "data/reviewed.json"},
+        "shared_tables": {name: item.model_dump(mode="json") for name, item in f.bindings.items()},
+        "workflows": [{"id": str(f.workflow_id), "path": f.path, "function_name": "run",
+            "organization_id": str(PROVIDER_ORG_ID), "runtime_bounds": {
+                "max_duration_seconds": 20, "max_external_calls": 10, "max_records_read": 100,
+                "max_output_bytes": 4096}, "controls": {}}]})
+    policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace", repository_id=1197464564,
+        repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
+        workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
+        ci_workflow_id=257449914, solutions={f.solution_id: "config/solution-delivery/fixture.json"})
+    desired = None
+    class Reader:
+        async def verify_ci(self, *_):
+            pass
+        async def source(self, *_):
+            return desired
+    service = GitSourceDeliveryService(db, policy, Reader())
+    async def deliver(version, content):
+        nonlocal desired
+        resources = {"data/rates.json": content}
+        hashes = {f.path: sha256_digest(new), "data/rates.json": sha256_digest(content)}
+        desired = VerifiedGitSource(f.solution_id, str(version) * 40, "a" * 40,
+            policy.solutions[f.solution_id], hashes, {f.path: new}, "sha256:" + str(version) * 64,
+            recipe, resources)
+        request = SolutionGitSourceDeliveryRequest(source_commit_sha=desired.commit_sha, ci_run_id=version,
+            ci_run_attempt=1, artifact_digest=desired.artifact_digest)
+        producer = GitDeliveryIdentity(str(100 + version), 1)
+        result = await service.deliver(f.solution_id, request, producer)
+        assert result.source_hashes == hashes and result.runtime_verified is False
+        return result, request, producer
+    async def accepted_context():
+        pin = await pin_workflow_runtime(db, f.workflow_id)
+        assert pin is not None
+        evidence = pin.queue_evidence()
+        execution_id, attempt_id, token = uuid4(), uuid4(), uuid4()
+        now = datetime.now(UTC)
+        db.add(Execution(id=execution_id, workflow_id=f.workflow_id, workflow_name="Revision test",
+            executed_by_name="Engine", organization_id=PROVIDER_ORG_ID, status=ExecutionStatus.RUNNING,
+            solution_deployment_id=pin.deployment_id, runtime_mode="deployment-v1", runtime_evidence=evidence,
+            runtime_evidence_hash=sha256_digest(canonical_json(evidence))))
+        await db.flush()
+        db.add(WorkflowExecutionAttempt(id=attempt_id, execution_id=execution_id, attempt_number=1,
+            claim_token=token, status="claimed", phase="claim", published_at=now, claimed_at=now))
+        await db.commit()
+        user = UserPrincipal(user_id=SYSTEM_USER_UUID, email="engine@bifrost.internal",
+            organization_id=PROVIDER_ORG_ID, is_engine_token=True, engine_execution_id=execution_id,
+            engine_attempt_token=token, engine_solution_id=str(f.solution_id))
+        return ExecutionContext(user=user, org_id=PROVIDER_ORG_ID, db=db), attempt_id
+    v1 = b'{"rate":1}'
+    first, _, _ = await deliver(1, v1)
+    first_ctx, first_attempt = await accepted_context()
+    second, _, _ = await deliver(2, b'{"rate":2}')
+    second_ctx, _ = await accepted_context()
+    assert first.deployment_id != second.deployment_id
+    assert await read_execution_resource(first_ctx, "data/rates.json") == v1
+    assert await read_execution_resource(second_ctx, "data/rates.json") == b'{"rate":2}'
+    reverted, request, producer = await deliver(3, v1)
+    assert reverted.deployment_id not in {first.deployment_id, second.deployment_id}
+    assert await read_execution_resource(first_ctx, "data/rates.json") == v1
+    assert await read_execution_resource(second_ctx, "data/rates.json") == b'{"rate":2}'
+    replay = await service.deliver(f.solution_id, request, producer)
+    assert replay.state == "already_active" and replay.deployment_id == reverted.deployment_id
+
+    # Fault injection into synthetic storage proves replay rechecks actual bytes.
+    for path, original in [("_resources/data/rates.json", v1), (f.path, new)]:
+        key = (str(reverted.deployment_id), path)
+        f.objects[key] = original.replace(b"1", b"9") if path.startswith("_resources/") else new + b"# changed\n"
+        with pytest.raises(SolutionSourceRevisionError, match="runtime bytes"):
+            await service.deliver(f.solution_id, request, producer)
+        await db.rollback()
+        current = await db.get(Solution, f.solution_id)
+        assert current.active_deployment_id == reverted.deployment_id
+        f.objects[key] = original
+    await db.execute(update(WorkflowExecutionAttempt).where(WorkflowExecutionAttempt.id == first_attempt)
+        .values(status="cancelled", phase="terminal", completed_at=datetime.now(UTC)))
+    await db.commit()
+    with pytest.raises(DeploymentResourceDenied, match="attempt"):
+        await read_execution_resource(first_ctx, "data/rates.json")
 
 
 @pytest.mark.asyncio

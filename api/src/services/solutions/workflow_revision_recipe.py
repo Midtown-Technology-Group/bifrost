@@ -92,6 +92,7 @@ class ReviewedWorkflowRecipe(BaseModel):
     files: dict[str, str] = Field(min_length=1, max_length=256)
     workflows: list[ReviewedWorkflowRegistration] = Field(min_length=1, max_length=256)
     shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict, max_length=100)
+    resources: dict[str, str] = Field(default_factory=dict, max_length=256, exclude_if=lambda value: not value)
 
     @model_validator(mode="after")
     def unique_install(self) -> ReviewedWorkflowRecipe:
@@ -106,6 +107,15 @@ class ReviewedWorkflowRecipe(BaseModel):
                 raise ValueError("Recipe sources must be Python files")
         if any(item.path not in self.files for item in self.workflows):
             raise ValueError("Workflow entrypoint source is absent")
+        if set(self.resources) & set(self.files):
+            raise ValueError("Resource paths cannot replace Python sources")
+        for runtime_path, git_path in self.resources.items():
+            for path in (runtime_path, git_path):
+                delivery_path(path)
+                if (len(path) > 1000 or not path.lower().endswith((".json", ".ps1"))
+                        or any(part.startswith(".") for part in path.split("/"))
+                        or path.rsplit("/", 1)[-1].lower() == "storage-state.json"):
+                    raise ValueError("Resources require reviewed JSON or PowerShell source, without auth or hidden state paths")
         if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
             raise ValueError("Shared table identities must be unique")
         if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in self.shared_tables):

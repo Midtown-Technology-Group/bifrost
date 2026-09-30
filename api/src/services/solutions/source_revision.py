@@ -272,6 +272,7 @@ class SolutionSourceRevisionService:
         *,
         lock_solution: bool = False,
         verify_shared_tables: bool = True,
+        allow_resources: bool = False,
     ):
         query = select(Solution).where(Solution.id == solution_id)
         if lock_solution:
@@ -326,7 +327,7 @@ class SolutionSourceRevisionService:
             or manifest.file_locations
             or manifest.connections
             or manifest.config_requirements
-            or manifest.resources
+            or manifest.resources and not allow_resources
             or not resolution.workflows
         ):
             raise SolutionSourceRevisionError(

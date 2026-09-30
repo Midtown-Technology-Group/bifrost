@@ -71,15 +71,18 @@ class GitSourceDeliveryService:
         manifest, resolution = validate_runtime_closure(base.compiled_manifest, base.resolution_map,
             base.dependencies, expected_manifest_hash=base.compiled_manifest_hash,
             expected_resolution_hash=base.resolution_map_hash)
-        current_hashes = {path: ref.content_hash for path, ref in resolution.sources.items()}
+        current_hashes = {path: ref.content_hash for path, ref in {**resolution.sources, **resolution.resources}.items()}
         matches = manifest.git.commit_sha == source.commit_sha and current_hashes == source.source_hashes
         if source.workflow_recipe is not None:
             desired = compile_workflow_registrations(source.workflow_recipe, source.files, WorkflowIndexer(self.db))
             matches = matches and desired == resolution.workflows and source.workflow_recipe.shared_tables == resolution.shared_tables
         if matches:
-            await SolutionSourceRevisionService(self.db).verify_current_source(solution.id,
-                SolutionSourceRevisionInspectRequest(expected_active_deployment_id=base.id,
-                    expected_active_manifest_hash=base.compiled_manifest_hash))
+            expected_current = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=base.id,
+                expected_active_manifest_hash=base.compiled_manifest_hash)
+            if source.workflow_recipe is not None:
+                await SolutionWorkflowRevisionService(self.db).verify_current_workflows(solution.id, expected_current, source.workflow_recipe)
+            else:
+                await SolutionSourceRevisionService(self.db).verify_current_source(solution.id, expected_current)
         identity = {"repository_id": self.policy.repository_id, "solution_id": str(solution.id),
             "source_commit_sha": source.commit_sha, "artifact_digest": source.artifact_digest,
             "ci_run_id": request.ci_run_id, "ci_run_attempt": request.ci_run_attempt,
@@ -110,7 +113,8 @@ class GitSourceDeliveryService:
             workflow_service = SolutionWorkflowRevisionService(self.db)
             if source.workflow_recipe is not None:
                 inspected = await workflow_service.stage_workflows(solution.id, deployment_id, SYSTEM_USER_UUID,
-                    SolutionSourceRevisionInspectRequest(**expected), source.workflow_recipe, source.files, source.commit_sha)
+                    SolutionSourceRevisionInspectRequest(**expected), source.workflow_recipe, source.files, source.commit_sha,
+                    source.resources)
             else:
                 inspected = await service.stage(solution.id, deployment_id, SYSTEM_USER_UUID,
                     SolutionSourceRevisionRequest(**expected, source_commit_sha=source.commit_sha,
@@ -159,9 +163,9 @@ class GitSourceDeliveryService:
                 or active.state != "active" or active.compiled_manifest_hash != result.compiled_manifest_hash):
             raise SolutionSourceRevisionConflict("Independent installed pointer readback differs")
         if source.workflow_recipe is not None:
-            await SolutionSourceRevisionService(self.db).verify_current_source(source.solution_id,
+            await SolutionWorkflowRevisionService(self.db).verify_current_workflows(source.solution_id,
                 SolutionSourceRevisionInspectRequest(expected_active_deployment_id=result.deployment_id,
-                    expected_active_manifest_hash=result.compiled_manifest_hash))
+                    expected_active_manifest_hash=result.compiled_manifest_hash), source.workflow_recipe)
             from src.core.redis_client import get_redis_client
             redis_client = get_redis_client()
             for item in source.workflow_recipe.workflows:
