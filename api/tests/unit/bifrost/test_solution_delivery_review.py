@@ -81,6 +81,19 @@ def test_legacy_review_rejects_rebound_decorator_before_source_activation():
         review_solution_recipe(value, {"run.py": code}, {})
 
 
+@pytest.mark.parametrize("legacy", [False, True])
+def test_global_rebinding_in_helper_cannot_replace_executable_decorator(legacy):
+    value, files, resources = fixture()
+    code = b"from bifrost import workflow\ndef replace():\n global workflow\n workflow = object()\nreplace()\n@workflow\nasync def run():\n return 1\n"
+    if legacy:
+        value = {"schema_version": "bifrost.solution-source-delivery/v1",
+            "solution_id": value["solution_id"], "files": value["files"]}
+        resources = {}
+    files["run.py"] = code
+    with pytest.raises(WorkflowRecipeError, match="shadowed"):
+        review_solution_recipe(value, files, resources)
+
+
 def test_downloaded_artifact_reviews_source_without_platform_or_source_execution(tmp_path):
     artifact = build_cli_artifact(Path("bifrost"), tmp_path / "artifacts", "2.2.1-dev.999")
     destination = tmp_path / "standalone"

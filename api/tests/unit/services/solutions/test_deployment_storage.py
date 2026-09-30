@@ -113,7 +113,10 @@ def test_provider_duplicate_write_exceptions_are_classified(error):
 async def test_resource_read_requests_bounded_range_and_closes_body(content):
     class Body:
         closed = False
-        read_size = None
+        offset = 0
+
+        def __init__(self):
+            self.read_sizes = []
 
         async def __aenter__(self):
             return self
@@ -122,8 +125,10 @@ async def test_resource_read_requests_bounded_range_and_closes_body(content):
             self.closed = True
 
         async def read(self, size):
-            self.read_size = size
-            return content[:size]
+            self.read_sizes.append(size)
+            chunk = content[self.offset:self.offset + size]
+            self.offset += len(chunk)
+            return chunk
 
     body = Body()
     client = FakeClient()
@@ -136,7 +141,72 @@ async def test_resource_read_requests_bounded_range_and_closes_body(content):
         assert await storage.read_resource("scripts/audit.ps1", 7) == content
     client.get_object.assert_awaited_once_with(Bucket="test",
         Key=f"{storage.runtime_prefix}_resources/scripts/audit.ps1", Range="bytes=0-7")
-    assert body.read_size == 8 and body.closed
+    assert body.read_sizes[0] == 8 and body.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("archive", [False, True])
+async def test_resource_read_accumulates_short_transport_chunks_until_eof(archive):
+    content = b"complete resource bytes"
+
+    class Body:
+        offset = 0
+        closed = False
+        reads = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            self.reads += 1
+            chunk = content[self.offset:self.offset + min(size, 2)]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    result = await storage.read_resources_artifact() if archive else await storage.read_resource("rates.json", len(content))
+    assert result == content and body.closed
+    assert body.reads > 1 and body.offset == len(content)
+
+
+@pytest.mark.asyncio
+async def test_short_chunk_archive_stops_at_extra_byte_bound_and_closes(monkeypatch):
+    from src.services.solutions import deployment_manifest
+
+    monkeypatch.setattr(deployment_manifest, "MAX_DEPLOYMENT_RESOURCES_BYTES", 0)
+    limit = 2 * 1024 * 1024
+    content = b"x" * (limit + 256)
+
+    class Body:
+        offset = 0
+        closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            chunk = content[self.offset:self.offset + min(size, 4096)]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    with pytest.raises(DeploymentArtifactIntegrityError, match="archive exceeds"):
+        await storage.read_resources_artifact()
+    assert body.offset == limit + 1 and body.closed
+    client.get_object.assert_awaited_once_with(Bucket="test", Key=storage.resources_artifact_key,
+        Range=f"bytes=0-{limit}")
 
 
 @pytest.mark.asyncio

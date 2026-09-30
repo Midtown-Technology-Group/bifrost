@@ -215,6 +215,8 @@ def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[s
                 if alias.name == "bifrost":
                     modules.add(alias.asname or alias.name)
     protected = set(bindings) | modules
+    if any(isinstance(item, ast.Global) and protected.intersection(item.names) for item in ast.walk(tree)):
+        raise WorkflowRecipeError("An executable decorator import is shadowed")
     # Inspect module bindings inside control blocks, while keeping function and
     # class locals separate. Import aliases and destructured for/with targets
     # must not replace the SDK name that the compiler recognized.
@@ -410,6 +412,8 @@ def _verify_resource_calls(path: str, raw: bytes, resource_paths: set[str]) -> N
     aliases = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module in {"bifrost", "bifrost.resources"}:
+            if any(item.name == "*" for item in node.names):
+                raise WorkflowRecipeError("Import the resource SDK explicitly with from bifrost import resources")
             aliases.extend(item.asname or item.name for item in node.names if item.name == "resources")
         elif isinstance(node, ast.Import) and any(item.name.startswith("bifrost.resources") for item in node.names):
             raise WorkflowRecipeError("Import the resource SDK explicitly with from bifrost import resources")

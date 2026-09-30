@@ -203,7 +203,7 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
             response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{size_bytes}")
             body = response["Body"]
             async with body:
-                content = await body.read(size_bytes + 1)
+                content = await self._read_bounded(body, size_bytes + 1)
                 if len(content) != size_bytes:
                     raise DeploymentArtifactIntegrityError("Immutable resource size differs from its contract")
                 return content
@@ -224,7 +224,18 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
             response = await client.get_object(Bucket=self._bucket, Key=self.resources_artifact_key,
                 Range=f"bytes=0-{limit}")
             async with response["Body"] as body:
-                content = await body.read(limit + 1)
+                content = await self._read_bounded(body, limit + 1)
                 if len(content) > limit:
                     raise DeploymentArtifactIntegrityError("Resource archive exceeds its byte bound")
                 return content
+
+    @staticmethod
+    async def _read_bounded(body: Any, limit: int) -> bytes:
+        """A transport read can return a short chunk before reaching EOF."""
+        content = bytearray()
+        while len(content) < limit:
+            chunk = await body.read(limit - len(content))
+            if not chunk:
+                break
+            content.extend(chunk)
+        return bytes(content)

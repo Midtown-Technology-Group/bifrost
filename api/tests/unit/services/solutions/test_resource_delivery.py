@@ -43,6 +43,7 @@ def test_explicit_literal_and_constant_reads_have_complete_sealed_closure(code):
     'from bifrost import resources\nresources=object()\nasync def run():\n return await resources.read("rates.json")\n',
     'from bifrost import resources\nfrom other import resources\n',
     'import bifrost.resources as reviewed\n',
+    'from bifrost.resources import *\nasync def run(path):\n return await resources.read(path)\n',
     'from bifrost import resources\nasync def run():\n return await resources.read("rates.json", solution="other")\n',
 ])
 def test_unprovable_resource_reads_fail_before_staging(code):
