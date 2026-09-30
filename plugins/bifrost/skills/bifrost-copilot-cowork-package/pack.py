@@ -285,7 +285,7 @@ def main() -> int:
         src_skill_dir, src_name, src_desc, src_cleanup = load_skill_source(
             Path(args.skill_source).expanduser().resolve()
         )
-        skill_name = src_name
+        skill_name = kebab(src_name)
     else:
         skill_name = kebab(agent["name"])
 

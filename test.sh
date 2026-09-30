@@ -642,9 +642,10 @@ repository_ci_checks() {
     echo "Checking generated Codex skill mirrors..."
     # scripts/check_skill_mirrors.py encapsulates the previous host gate:
     # scripts/sync-codex-skills.sh, then
-    # git diff --quiet -- plugins/bifrost/skills .codex/skills.
+    # git diff --quiet -- plugins/bifrost/skills .agents/skills.
     # It also enforces the public plugin skill-name namespace contract.
     python3 scripts/check_skill_mirrors.py
+    python3 -m unittest scripts.test_skill_mirrors
 }
 
 generated_api_checks() {

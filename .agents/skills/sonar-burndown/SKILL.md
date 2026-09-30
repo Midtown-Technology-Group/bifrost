@@ -1,6 +1,6 @@
 ---
 name: sonar-burndown
-description: Burn down the SonarQubeCloud backlog in small, safe, PR-sized batches. Use when the user asks to fix Sonar issues, reduce static-analysis debt, or run a Sonar remediation cycle. Trigger phrases - "fix sonar issues", "sonar backlog", "sonar burndown", "burn down sonar", "remediate sonar findings", "/sonar-burndown".
+description: Resolve SonarQubeCloud findings in small, behavior-preserving pull requests when Sonar backlog remediation is requested.
 ---
 
 # Sonar Burndown

@@ -1,6 +1,6 @@
 ---
 name: bifrost-secaudit
-description: Snapshot the current Security tab state for jackmusick/bifrost — open Dependabot alerts (counts by severity + ecosystem), open Dependabot PRs (counts by category + needs-review status), open CodeQL alerts (severity + top rules), open secret-scanning alerts, current Scorecard, stale PRs (>14 days). Markdown report. Use when user asks "where do I stand on security", "what's in the queue", or invokes /bifrost-secaudit.
+description: Produce a read-only Bifrost security snapshot covering Dependabot, CodeQL, secret scanning, Scorecard, and stale security pull requests.
 ---
 
 # Bifrost Security Audit
@@ -27,7 +27,7 @@ Run all sections. Each is one or two `gh api` calls; all are read-only. Every co
 ### 1. Open PRs (categorize)
 
 ```bash
-gh pr list --repo jackmusick/bifrost --state open --json number,title,author,labels,createdAt --limit 50
+gh pr list --repo gobifrost/bifrost --state open --json number,title,author,labels,createdAt --limit 50
 ```
 
 Bucket each:
@@ -41,7 +41,7 @@ Output: counts per bucket, with the top 3 oldest in each.
 ### 2. Dependabot alerts
 
 ```bash
-gh api "repos/jackmusick/bifrost/dependabot/alerts?state=open" --jq '[.[] | {sev: .security_vulnerability.severity, eco: .dependency.package.ecosystem, name: .dependency.package.name}]'
+gh api "repos/gobifrost/bifrost/dependabot/alerts?state=open" --jq '[.[] | {sev: .security_vulnerability.severity, eco: .dependency.package.ecosystem, name: .dependency.package.name}]'
 ```
 
 Aggregate:
@@ -56,14 +56,13 @@ For each: is there an open Dependabot PR for this dep? Cross-reference by name �
 CodeQL pagination is essential. The single-page `?per_page=100` only ever returns 100; this repo currently has ~1000+ alerts.
 
 ```bash
-CODEQL_SUMMARY="$(mktemp -t codeql-summary.XXXXXX)"
-CODEQL_ERRORS="$(mktemp -t codeql-errors.XXXXXX)"
-for page in {1..15}; do
-  gh api "repos/jackmusick/bifrost/code-scanning/alerts?state=open&per_page=100&page=$page" \
-    --jq '.[] | "\(.rule.severity) | \(.rule.id)"' 2>>"$CODEQL_ERRORS"
-done | sort | uniq -c | sort -rn > "$CODEQL_SUMMARY"
-test ! -s "$CODEQL_ERRORS" || echo "CodeQL pagination diagnostics: $CODEQL_ERRORS"
-cat "$CODEQL_SUMMARY"
+if gh api --paginate "repos/gobifrost/bifrost/code-scanning/alerts?state=open&per_page=100" \
+    --jq '.[] | "\(.rule.severity) | \(.rule.id)"' > /tmp/codeql-alerts.txt; then
+  sort /tmp/codeql-alerts.txt | uniq -c | sort -rn > /tmp/codeql-summary.txt
+  cat /tmp/codeql-summary.txt
+else
+  echo "CodeQL skipped/incomplete: pagination failed; do not report partial counts." >&2
+fi
 ```
 
 Aggregate:
@@ -75,16 +74,16 @@ Aggregate:
 ### 4. Secret-scanning
 
 ```bash
-gh api "repos/jackmusick/bifrost/secret-scanning/alerts?state=open"
+gh api "repos/gobifrost/bifrost/secret-scanning/alerts?state=open"
 ```
 
-Per-alert: secret type, where detected, masking status, alert state, and resolution if present. Should always be 0 for a healthy repo. Surface every alert.
+Per-alert: secret type, where detected, masking status. Should always be 0 for a healthy repo. Surface every one.
 
 ### 5. Scorecard
 
 ```bash
 # Latest Scorecard run
-gh run list --repo jackmusick/bifrost --workflow "scorecard.yml" --limit 1 \
+gh run list --repo gobifrost/bifrost --workflow "scorecard.yml" --limit 1 \
   --json conclusion,createdAt,headSha
 ```
 
@@ -97,7 +96,7 @@ Already collected in section 1; re-surface here for emphasis.
 ### 7. Auto-merge workflow health
 
 ```bash
-gh run list --repo jackmusick/bifrost --workflow "dependabot-auto-merge.yml" \
+gh run list --repo gobifrost/bifrost --workflow "dependabot-auto-merge.yml" \
   --limit 10 --json conclusion,createdAt,headBranch
 ```
 
@@ -106,7 +105,7 @@ Count failures in last 10 runs. ≥2 failures = surface as a warning ("auto-merg
 ### 8. Branch protection (sanity check)
 
 ```bash
-gh api repos/jackmusick/bifrost/branches/main/protection \
+gh api repos/gobifrost/bifrost/branches/main/protection \
   --jq '{required_checks: .required_status_checks.contexts, strict: .required_status_checks.strict}'
 ```
 
@@ -196,7 +195,7 @@ Top 15 rules:
 
 - API rate-limited → note in output and continue with cached/partial data
 - `gh` not authenticated → return "skill cannot run; run `gh auth login`"
-- `repos/jackmusick/bifrost` returns 404 → user is in wrong repo / not authenticated as owner
+- `repos/gobifrost/bifrost` returns 404 → user is in wrong repo / not authenticated as owner
 
 ## What this skill does NOT do
 

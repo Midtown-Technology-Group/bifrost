@@ -1,6 +1,6 @@
 ---
 name: bifrost-testing
-description: Run and write tests for Bifrost. Use when writing or running tests; adding or modifying React components, pages, or user-facing features; debugging failing or flaky tests; before declaring UI or backend work complete. Trigger phrases - "write a test", "run tests", "add a component", "ship this feature", "ready to merge", "test is failing", "flaky", "vitest", "pytest", "playwright".
+description: Write and run Bifrost backend, frontend, or browser tests; diagnose failing tests and choose verification for changed code or user flows.
 ---
 
 # Bifrost Testing
