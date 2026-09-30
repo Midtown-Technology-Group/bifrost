@@ -31,6 +31,7 @@ from src.services.solutions.capture import (
     SolutionCaptureSelectors,
     SolutionCaptureService,
 )
+from src.services.solutions.deploy import SolutionBundle, SolutionDeployConflict, SolutionDeployer
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentResolutionMap,
@@ -388,6 +389,8 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
             name=solution.name,
             active_deployment_id=None,
         )
+        with pytest.raises(SolutionDeployConflict, match="active immutable"):
+            await SolutionDeployer(db_session).deploy(SolutionBundle(solution=stale_solution))
         with pytest.raises(SolutionCaptureConflict, match="active immutable"):
             await SolutionCaptureService(db_session).capture(
                 stale_solution,

@@ -355,7 +355,14 @@ class SolutionDeployer:
         solution = bundle.solution
         sid = solution.id
 
-        if getattr(solution, "active_deployment_id", None) is not None:
+        # The caller can load this object before immutable activation commits.
+        # Serialize the guard with activation and read the current DB pointer.
+        active_deployment_id = await self.db.scalar(
+            select(Solution.active_deployment_id)
+            .where(Solution.id == sid)
+            .with_for_update()
+        )
+        if active_deployment_id is not None:
             raise SolutionDeployConflict(
                 "Solution has an active immutable deployment; stage and review a "
                 "successor deployment before changing its workflows"
