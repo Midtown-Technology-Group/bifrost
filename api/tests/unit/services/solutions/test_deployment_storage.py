@@ -176,6 +176,35 @@ async def test_resource_read_accumulates_short_transport_chunks_until_eof(archiv
 
 
 @pytest.mark.asyncio
+async def test_archive_reads_streaming_body_when_context_enters_underlying_response():
+    content = b"archive bytes"
+    entered = SimpleNamespace(read=AsyncMock(side_effect=AssertionError("Unbounded response read")))
+
+    class Body:
+        closed = False
+        offset = 0
+
+        async def __aenter__(self):
+            return entered
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            chunk = content[self.offset:self.offset + min(size, 3)]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    assert await storage.read_resources_artifact() == content
+    assert body.closed and body.offset == len(content)
+    entered.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_short_chunk_archive_stops_at_extra_byte_bound_and_closes(monkeypatch):
     from src.services.solutions import deployment_manifest
 
