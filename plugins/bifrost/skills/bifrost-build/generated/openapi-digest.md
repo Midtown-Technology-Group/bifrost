@@ -592,6 +592,9 @@
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/activate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/candidate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/preflight` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/candidate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/preflight` |
 | GET | `/api/solutions/{solution_id}/entities` |
 | POST | `/api/solutions/{solution_id}/export` |
 | GET | `/api/solutions/{solution_id}/export-jobs` |

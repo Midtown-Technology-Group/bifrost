@@ -11,6 +11,91 @@ from src.models.contracts.solution_deployments import SolutionDeploymentCapabili
 from src.routers.solution_deployments import inspect_active_deployment, router
 
 
+def _workflow_revision_request():
+    from src.models.contracts.solution_deployments import SolutionWorkflowRevisionRequest
+    return SolutionWorkflowRevisionRequest.model_validate({
+        "expected_active_deployment_id": str(uuid4()),
+        "expected_active_manifest_hash": "sha256:" + "a" * 64,
+        "source_commit_sha": "b" * 40,
+        "files": [{"path": "demo.py", "content_base64": "ZnJvbSBiaWZyb3N0IGltcG9ydCB3b3JrZmxvdw=="}],
+        "resources": [{"path": "rates.json", "content_base64": "e30="}],
+        "reviewed_recipe": {
+            "schema_version": "bifrost.solution-workflow-delivery/v1",
+            "solution_id": str(uuid4()), "files": {"demo.py": "demo.py"},
+            "resources": {"rates.json": "rates.json"},
+            "workflows": [{"id": str(uuid4()), "path": "demo.py", "function_name": "run",
+                "organization_id": None,
+                "runtime_bounds": {"max_duration_seconds": 30, "max_external_calls": 10,
+                    "max_records_read": 100, "max_output_bytes": 4096}, "controls": {}}],
+        },
+    })
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("defect", ["duplicate", "encoding", "oversize", "missing", "unreviewed"])
+async def test_workflow_revision_invalid_upload_never_stages_or_commits(monkeypatch, defect):
+    from src.routers import solution_deployments as module
+    from src.models.contracts.solution_deployments import SolutionSourceFile
+    from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCE_BYTES
+    body = _workflow_revision_request()
+    if defect == "duplicate":
+        body.resources.append(body.resources[0])
+    elif defect == "encoding":
+        body.resources[0].content_base64 = "%%"
+    elif defect == "oversize":
+        body.resources[0].content_base64 = "A" * (4 * ((MAX_DEPLOYMENT_RESOURCE_BYTES + 2) // 3) + 1)
+    elif defect == "missing":
+        body.resources.clear()
+    else:
+        body.resources.append(SolutionSourceFile(path="extra.json", content_base64="e30="))
+    service = SimpleNamespace(stage_workflows=AsyncMock())
+    monkeypatch.setattr(module, "SolutionWorkflowRevisionService", lambda _: service)
+    @asynccontextmanager
+    async def lock(_):
+        yield
+    monkeypatch.setattr(module, "solution_write_lock", lock)
+    db = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+    with pytest.raises(HTTPException) as rejected:
+        await module.stage_workflow_revision(body.reviewed_recipe.solution_id, uuid4(), body,
+            cast(Any, SimpleNamespace(db=db)), cast(Any, SimpleNamespace(user_id=uuid4())))
+    assert rejected.value.status_code == 422
+    service.stage_workflows.assert_not_awaited()
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["stage", "activate"])
+async def test_workflow_revision_conflict_rolls_back_without_committing(monkeypatch, operation):
+    from src.routers import solution_deployments as module
+    from src.models.contracts.solution_deployments import SolutionWorkflowRevisionCommitRequest
+    from src.services.solutions.source_revision import SolutionSourceRevisionConflict
+    body = _workflow_revision_request()
+    service = SimpleNamespace(
+        stage_workflows=AsyncMock(side_effect=SolutionSourceRevisionConflict("stale base")),
+        activate_workflows=AsyncMock(side_effect=SolutionSourceRevisionConflict("stale evidence")),
+    )
+    monkeypatch.setattr(module, "SolutionWorkflowRevisionService", lambda _: service)
+    @asynccontextmanager
+    async def lock(_):
+        yield
+    monkeypatch.setattr(module, "solution_write_lock", lock)
+    db = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+    if operation == "activate":
+        body = SolutionWorkflowRevisionCommitRequest(
+            expected_active_deployment_id=body.expected_active_deployment_id,
+            expected_active_manifest_hash=body.expected_active_manifest_hash,
+            expected_evidence_id="sha256:" + "c" * 64, reviewed_recipe=body.reviewed_recipe,
+        )
+    endpoint = module.stage_workflow_revision if operation == "stage" else module.activate_workflow_revision
+    with pytest.raises(HTTPException) as rejected:
+        await endpoint(body.reviewed_recipe.solution_id, uuid4(), body,
+            cast(Any, SimpleNamespace(db=db)), cast(Any, SimpleNamespace(user_id=uuid4())))
+    assert rejected.value.status_code == 409
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("table_scope", ["global", "install", "foreign"])
 async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_admin_lookup(monkeypatch, table_scope):
@@ -79,6 +164,10 @@ async def test_github_identity_cannot_read_admin_pointer_or_supply_uploaded_byte
         prefix = f"/api/solutions/{uuid4()}/deployments"
         response = await client.get(prefix + "/active", headers={"Authorization": "Bearer " + token})
         assert response.status_code == 401
+        for operation in ("candidate", "preflight", "activate"):
+            response = await client.post(prefix + f"/{uuid4()}/workflow-revision/{operation}",
+                headers={"Authorization": "Bearer " + token}, json=_workflow_revision_request().model_dump(mode="json"))
+            assert response.status_code == 401
         response = await client.post(prefix + "/github-source", headers={
             "Authorization": "Bearer " + token, "X-GitHub-Job-Token": "ephemeral-job-token"}, json={
             "source_commit_sha": "a" * 40, "ci_run_id": 1, "ci_run_attempt": 1,

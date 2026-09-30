@@ -2,6 +2,8 @@
 
 from collections.abc import Awaitable, Callable
 from functools import partial
+import base64
+import binascii
 from typing import Annotated
 from uuid import UUID
 
@@ -26,6 +28,9 @@ from src.models.contracts.solution_deployments import (
     SolutionSourceRevisionInspectRequest,
     SolutionSourceRevisionInspectResponse,
     SolutionSourceRevisionRequest,
+    SolutionWorkflowRevisionRequest,
+    SolutionWorkflowRevisionInspectRequest,
+    SolutionWorkflowRevisionCommitRequest,
     WorkspaceLiveHandoffCommitRequest,
     WorkspaceLiveHandoffCommitResponse,
     WorkspaceLiveHandoffPreflightRequest,
@@ -55,6 +60,12 @@ from src.services.solutions.source_revision import (
     SolutionSourceRevisionConflict,
     SolutionSourceRevisionError,
     SolutionSourceRevisionService,
+    _decode_files,
+)
+from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+from src.services.solutions.resource_delivery import validate_resource_files
+from src.services.solutions.deployment_manifest import (
+    MAX_DEPLOYMENT_RESOURCE_BYTES, MAX_DEPLOYMENT_RESOURCES_BYTES,
 )
 from src.services.solutions.write_lock import (
     SolutionWriteLockHeld,
@@ -548,6 +559,102 @@ async def activate_source_revision(
     except Exception:
         await ctx.db.rollback()
         raise
+
+
+def _decode_workflow_revision_resources(body: SolutionWorkflowRevisionRequest) -> dict[str, bytes]:
+    resources: dict[str, bytes] = {}
+    total = 0
+    for item in body.resources:
+        if item.path in resources:
+            raise SolutionSourceRevisionError("Duplicate resource upload")
+        if len(item.content_base64) > 4 * ((MAX_DEPLOYMENT_RESOURCE_BYTES + 2) // 3):
+            raise SolutionSourceRevisionError("Resource upload exceeds its byte bound")
+        try:
+            content = base64.b64decode(item.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise SolutionSourceRevisionError("Invalid resource upload encoding") from exc
+        total += len(content)
+        if not 1 <= len(content) <= MAX_DEPLOYMENT_RESOURCE_BYTES or total > MAX_DEPLOYMENT_RESOURCES_BYTES:
+            raise SolutionSourceRevisionError("Resource upload exceeds its byte bound")
+        resources[item.path] = content
+    return resources
+
+
+async def _write_workflow_revision(
+    ctx: Context, solution_id: UUID,
+    operation: Callable[[], Awaitable[SolutionSourceRevisionInspectResponse]],
+) -> SolutionSourceRevisionInspectResponse:
+    try:
+        async with solution_write_lock(solution_id):
+            result = await operation()
+            await ctx.db.commit()
+            return result
+    except SolutionWriteLockHeld as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Solution write lock held") from exc
+    except SolutionWriteLockLost as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect the pointer and candidate before retrying") from exc
+    except (SolutionSourceRevisionConflict, DeploymentRegistrationConflict, InvalidDeploymentTransition) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
+        await ctx.db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        await ctx.db.rollback()
+        raise
+
+
+@router.post("/{deployment_id}/workflow-revision/candidate", response_model=SolutionSourceRevisionInspectResponse)
+async def stage_workflow_revision(
+    solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Stage a reviewed complete successor without changing registrations or pointer."""
+    async def stage():
+        files = _decode_files(body)
+        resources = _decode_workflow_revision_resources(body)
+        validate_resource_files(body.reviewed_recipe, resources, files)
+        expected = SolutionSourceRevisionInspectRequest(
+            expected_active_deployment_id=body.expected_active_deployment_id,
+            expected_active_manifest_hash=body.expected_active_manifest_hash,
+        )
+        return await SolutionWorkflowRevisionService(ctx.db).stage_workflows(
+            solution_id, deployment_id, user.user_id, expected, body.reviewed_recipe,
+            files, body.source_commit_sha, resources,
+        )
+    return await _write_workflow_revision(ctx, solution_id, stage)
+
+
+@router.post("/{deployment_id}/workflow-revision/preflight", response_model=SolutionSourceRevisionInspectResponse)
+async def inspect_workflow_revision(
+    solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionInspectRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Read immutable bytes, registrations, triggers and the exact reviewed recipe."""
+    del user
+    try:
+        return await SolutionWorkflowRevisionService(ctx.db).inspect_workflows(
+            solution_id, deployment_id, body, body.reviewed_recipe,
+        )
+    except SolutionSourceRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/workflow-revision/activate", response_model=SolutionSourceRevisionInspectResponse)
+async def activate_workflow_revision(
+    solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionCommitRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Atomically activate the exact preflight evidence and compatible registrations."""
+    del user
+    return await _write_workflow_revision(ctx, solution_id, partial(
+        SolutionWorkflowRevisionService(ctx.db).activate_workflows,
+        solution_id, deployment_id, body, body.reviewed_recipe,
+    ))
 
 
 @router.post(
