@@ -81,7 +81,7 @@ DEFAULT_MODE = "inspect"
 async def run(max_tenants: int = DEFAULT_MAX_TENANTS, *, mode: str = DEFAULT_MODE):
     raise RuntimeError("must never execute")
 ''')
-    schema = entity.definition["parameters_schema"]
+    schema = entity.model_dump(mode="json")["definition"]["parameters_schema"]
     assert schema["properties"]["max_tenants"]["default"] == 10
     assert schema["properties"]["mode"]["default"] == "inspect"
     assert "required" not in schema
