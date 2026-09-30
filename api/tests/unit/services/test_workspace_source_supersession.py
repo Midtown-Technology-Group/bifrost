@@ -150,7 +150,23 @@ async def test_supersession_rejects_changed_live_pointer(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("defect", [None, "pointer", "source_hash", "stale_deployment"])
+@pytest.mark.parametrize(
+    "defect",
+    [
+        None,
+        "pointer",
+        "source_hash",
+        "stale_deployment",
+        "global_unreviewed",
+        "global_reviewed",
+        "foreign_org",
+        "scope_mismatch",
+        "unrelated_global_review",
+        "global_resource",
+        "resource_hash",
+        "resource_removed",
+    ],
+)
 async def test_supersession_checks_active_reviewed_solution_runtime(
     monkeypatch, defect
 ):
@@ -189,6 +205,19 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
         compiled_manifest_hash="sha256:" + "d" * 64,
         resolution_map_hash="sha256:" + "e" * 64,
     )
+    if defect in {"global_unreviewed", "global_reviewed", "global_resource"}:
+        deployment.organization_id = None
+    if defect in {"global_reviewed", "global_resource"}:
+        evidence.reviewed_global_solution_ids = [solution_id]
+    if defect == "foreign_org":
+        deployment.organization_id = uuid4()
+        evidence.reviewed_global_solution_ids = [solution_id]
+    if defect == "unrelated_global_review":
+        evidence.reviewed_global_solution_ids = [uuid4()]
+    resource = defect in {"global_resource", "resource_hash", "resource_removed"}
+    if resource:
+        old.paths = {"features/evidence.json": "2" * 64}
+        evidence.paths = {"features/evidence.json": evidence.paths.pop("features/a.py")}
     repository = SimpleNamespace(
         get_by_id_for_runtime=AsyncMock(return_value=deployment)
     )
@@ -203,11 +232,21 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
         lambda *_args, **_kwargs: (
             object(),
             SimpleNamespace(
-                sources={
+                sources={}
+                if resource
+                else {
                     "features/a.py": SimpleNamespace(
                         content_hash="sha256:" + source_hash
                     )
+                },
+                resources={
+                    "features/evidence.json": SimpleNamespace(
+                        content_hash="sha256:"
+                        + ("f" * 64 if defect == "resource_hash" else source_hash)
+                    )
                 }
+                if resource and defect != "resource_removed"
+                else {},
             ),
         ),
     )
@@ -218,6 +257,9 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
     db.scalar = AsyncMock(
         return_value=SimpleNamespace(
             id=solution_id,
+            organization_id=(
+                uuid4() if defect == "scope_mismatch" else deployment.organization_id
+            ),
             status="active",
             active_deployment_id=(uuid4() if defect == "pointer" else deployment_id),
         )
@@ -236,7 +278,7 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
             supersession_evidence=evidence,
         )
 
-    if defect:
+    if defect not in {None, "global_reviewed", "global_resource"}:
         with pytest.raises(WorkspaceSourceReleaseConflict):
             await decide()
         db.commit.assert_not_awaited()
@@ -244,7 +286,7 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
     result = await decide()
 
     assert result.disposition == "superseded"
-    assert result.completion_evidence["review"]["paths"]["features/a.py"][
+    assert result.completion_evidence["review"]["paths"][next(iter(old.paths))][
         "runtime_ref"
     ] == str(deployment_id)
     assert db.scalar.await_args.args[0]._for_update_arg is not None
@@ -297,23 +339,42 @@ def test_supersession_request_requires_evidence_and_active_runtime_hash():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("owner", ["workspace", "solution", "root"])
-async def test_removed_disposition_rejects_source_still_in_immutable_runtime(monkeypatch, owner):
-    evidence = _evidence(paths={"features/a.py": WorkspaceSourceSupersessionPath(runtime_owner="removed")})
+async def test_removed_disposition_rejects_source_still_in_immutable_runtime(
+    monkeypatch, owner
+):
+    evidence = _evidence(
+        paths={
+            "features/a.py": WorkspaceSourceSupersessionPath(runtime_owner="removed")
+        }
+    )
     old, later = _records(evidence)
     db = AsyncMock()
     db.scalar.side_effect = [None, uuid4() if owner == "solution" else None]
     monkeypatch.setattr(
-        workspace_source_releases, "RepoStorage",
-        lambda: SimpleNamespace(list=AsyncMock(return_value=["features/a.py"] if owner == "root" else [])),
+        workspace_source_releases,
+        "RepoStorage",
+        lambda: SimpleNamespace(
+            list=AsyncMock(return_value=["features/a.py"] if owner == "root" else [])
+        ),
     )
     service = WorkspaceSourceReleaseService(db, uuid4())
     service._get = AsyncMock(side_effect=[old, later])
     monkeypatch.setattr(
-        workspace_source_releases, "active_workspace_release",
-        AsyncMock(return_value=SimpleNamespace(source_hashes={"features/a.py": "c" * 64} if owner == "workspace" else {})),
+        workspace_source_releases,
+        "active_workspace_release",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                source_hashes={"features/a.py": "c" * 64}
+                if owner == "workspace"
+                else {}
+            )
+        ),
     )
     with pytest.raises(WorkspaceSourceReleaseConflict, match="still present"):
         await service.set_manual_disposition(
-            old.id, disposition="superseded", reason="Reviewed removal", supersession_evidence=evidence,
+            old.id,
+            disposition="superseded",
+            reason="Reviewed removal",
+            supersession_evidence=evidence,
         )
     db.commit.assert_not_awaited()
