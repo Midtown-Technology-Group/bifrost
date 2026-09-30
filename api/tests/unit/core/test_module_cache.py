@@ -7,6 +7,7 @@ Tests both async (module_cache.py) and sync (module_cache_sync.py) cache operati
 import asyncio
 import hashlib
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -297,6 +298,53 @@ class TestModuleCacheAsync:
         assert generation == "generation-2"
         assert evidence == []
         invalidate.assert_awaited_once_with("workflows/deleted.py")
+
+    async def test_reconcile_module_coherence_bounds_parallel_storage_reads(self):
+        paths = [f"modules/path_{index}.py" for index in range(17)]
+        active = 0
+        peak = 0
+
+        async def read(path):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            try:
+                await asyncio.sleep(0.01)
+                return path.encode()
+            finally:
+                active -= 1
+
+        with (
+            patch(
+                "src.core.module_cache.wait_for_workspace_generation",
+                new=AsyncMock(return_value="generation-1"),
+            ),
+            patch("src.core.module_cache._read_module_from_storage", new=read),
+            patch("src.core.module_cache.set_module", new=AsyncMock()) as cache,
+            patch(
+                "src.core.module_cache.inspect_module_coherence",
+                new=AsyncMock(
+                    return_value=(
+                        "generation-1",
+                        [SimpleNamespace(path=path, coherent=True) for path in paths],
+                    )
+                ),
+            ),
+        ):
+            from src.core.module_cache import reconcile_module_coherence
+
+            generation, evidence = await reconcile_module_coherence(
+                paths, invalidate_resolutions=False
+            )
+
+        assert generation == "generation-1"
+        assert len(evidence) == len(paths)
+        assert cache.await_count == len(paths)
+        assert all(
+            call.kwargs["invalidate_resolutions"] is False
+            for call in cache.await_args_list
+        )
+        assert peak == 16
 
     async def test_get_module_s3_not_found(self, mock_redis_client):
         """When both Redis and S3 miss, get_module returns None."""

@@ -8,6 +8,20 @@ const orgs = [
 ];
 
 describe("generateUsageDemoData", () => {
+	it("keeps sample values stable for the same report filters", () => {
+		const params = {
+			startDate: "2026-08-01",
+			endDate: "2026-08-03",
+			orgId: null,
+			source: "all" as const,
+			realOrgs: orgs,
+		};
+
+		expect(generateUsageDemoData(params)).toEqual(
+			generateUsageDemoData(params),
+		);
+	});
+
 	it("populates agent rows and keeps org execution counts tied to workflow executions only", () => {
 		const data = generateUsageDemoData({
 			startDate: "2026-08-01",

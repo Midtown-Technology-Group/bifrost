@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentGitProvenance,
@@ -11,13 +10,16 @@ from src.services.solutions.deployment_manifest import (
     DeploymentSource,
     RuntimeEntityDefinition,
     RuntimeSourceResolution,
+    WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
     canonical_json,
     sha256_digest,
 )
 from src.services.solutions.deployment_runtime import (
     DeploymentRuntimeError,
     pin_workflow_runtime,
+    resolve_pinned_workflow_runtime,
     verify_runtime_evidence,
+    workflow_data_from_evidence,
 )
 
 
@@ -29,7 +31,8 @@ class _Result:
         return self.row
 
 
-def _closure(*, deployment_id, solution_id, workflow_id, source_text):
+def _closure(*, deployment_id, solution_id, workflow_id, source_text, runtime_bounds=None,
+             definition_extra=None):
     source_hash = sha256_digest(source_text.encode())
     entity = RuntimeEntityDefinition(
         portable_ref="workflows/demo.py::demo",
@@ -42,6 +45,8 @@ def _closure(*, deployment_id, solution_id, workflow_id, source_text):
             "path": "workflows/demo.py",
             "timeout_seconds": 30,
             "type": "workflow",
+            **({"runtime_bounds": runtime_bounds} if runtime_bounds else {}),
+            **(definition_extra or {}),
         },
     )
     resolution = DeploymentResolutionMap(
@@ -132,6 +137,137 @@ async def test_active_pointer_selects_runtime_without_reading_mutable_definition
     assert new.name == "demo-new"
     # The already materialized queue evidence remains pinned after promotion.
     assert old.queue_evidence()["solution_deployment_id"] == str(old_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("versioned", [False, True])
+async def test_parameter_evidence_contract_preserves_preexisting_accepted_work(monkeypatch, versioned):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id, is_active=False)
+    solution = SimpleNamespace(id=solution_id, status="active", organization_id=None,
+        allow_outbound_access=False, active_deployment_id=uuid4())
+    schema = {"type": "object", "properties": {"user": {"type": "string", "default": "root"}}}
+    definition = {"parameters_schema": schema}
+    if versioned:
+        definition["parameters_schema_contract"] = WORKFLOW_PARAMETERS_SCHEMA_CONTRACT
+    deployment = _closure(deployment_id=deployment_id, solution_id=solution_id,
+        workflow_id=workflow_id, source_text="accepted", definition_extra=definition)
+    deployment.state = "superseded"
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+
+    async def get_closure(_repo, requested_id, org, requested_solution):
+        assert requested_id == deployment_id
+        assert org is None and requested_solution == solution_id
+        return deployment
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        get_closure,
+    )
+    pinned = await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+    evidence = pinned.queue_evidence()
+    if versioned:
+        assert evidence["workflow_parameters_schema"] == schema
+        assert pinned.parameters_schema == schema
+    else:
+        assert "workflow_parameters_schema" not in evidence
+        assert pinned.parameters_schema is None
+    # Existing durable evidence has no schema key even if the old manifest
+    # already stored schema metadata. It must still validate after rollout.
+    durable = dict(evidence)
+    if not versioned:
+        durable.pop("workflow_parameters_schema", None)
+    verify_runtime_evidence(str(deployment_id), durable, durable,
+        sha256_digest(canonical_json(durable)), evidence)
+
+
+@pytest.mark.asyncio
+async def test_bounded_deployment_pin_preserves_live_duration_and_output_limits(monkeypatch):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id)
+    solution = SimpleNamespace(
+        id=solution_id,
+        status="active",
+        organization_id=None,
+        allow_outbound_access=False,
+        active_deployment_id=deployment_id,
+    )
+    bounds = {
+        "max_duration_seconds": 30,
+        "max_external_calls": 10,
+        "max_records_read": 100,
+        "max_output_bytes": 2048,
+    }
+    deployment = _closure(
+        deployment_id=deployment_id,
+        solution_id=solution_id,
+        workflow_id=workflow_id,
+        source_text="bounded",
+        runtime_bounds=bounds,
+    )
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+
+    async def get_closure(_repo, _deployment_id, _org):
+        return deployment
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        get_closure,
+    )
+    pinned = await pin_workflow_runtime(session, workflow_id)
+
+    assert pinned is not None
+    evidence = pinned.queue_evidence()
+    assert evidence["workflow_runtime_bounds"] == bounds
+    assert workflow_data_from_evidence(str(deployment_id), evidence)[
+        "workflow_runtime_bounds"
+    ] == bounds
+
+
+@pytest.mark.asyncio
+async def test_queued_handoff_pin_survives_owner_rollback_to_live(monkeypatch):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=None)
+    solution = SimpleNamespace(
+        id=solution_id,
+        status="active",
+        organization_id=None,
+        allow_outbound_access=False,
+        active_deployment_id=None,
+    )
+    deployment = _closure(
+        deployment_id=deployment_id,
+        solution_id=solution_id,
+        workflow_id=workflow_id,
+        source_text="old handoff",
+    )
+    deployment.state = "superseded"
+    deployment.validation_result = {
+        "schema_version": "bifrost.workspace-live-handoff/v1",
+        "workflow_ids": [str(workflow_id)],
+    }
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=_Result((workflow, None))),
+        get=AsyncMock(return_value=solution),
+    )
+
+    async def get_by_id(_repo, requested_id):
+        return deployment if requested_id == deployment_id else None
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_by_id_for_runtime",
+        get_by_id,
+    )
+
+    assert await pin_workflow_runtime(session, workflow_id) is None
+    pinned = await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+    assert pinned.deployment_id == deployment_id
+    assert pinned.workflow_id == workflow_id
+    assert pinned.source_hash == deployment.resolution_map["sources"]["workflows/demo.py"]["content_hash"]
+
+    deployment.validation_result = None
+    with pytest.raises(DeploymentRuntimeError, match="does not belong"):
+        await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
 
 
 @pytest.mark.asyncio
@@ -289,3 +425,47 @@ async def test_cross_solution_child_uses_exact_dependency_deployment(monkeypatch
         session, workflow_id, caller_deployment_id=caller_id
     )
     assert pinned is not None and pinned.deployment_id == dependency_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["active", "superseded", "ready"])
+async def test_accepted_pin_reads_exact_owned_deployment_after_registration_retirement(monkeypatch, state):
+    solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id, is_active=False)
+    solution = SimpleNamespace(id=solution_id, status="active", organization_id=uuid4(),
+        allow_outbound_access=False, active_deployment_id=uuid4())
+    deployment = _closure(deployment_id=deployment_id, solution_id=solution_id,
+        workflow_id=workflow_id, source_text="accepted")
+    deployment.state = state
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+
+    async def get_closure(_repo, requested_id, org_id, requested_solution_id):
+        assert (requested_id, org_id, requested_solution_id) == (
+            deployment_id, solution.organization_id, solution_id)
+        return deployment
+
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        get_closure)
+    if state == "ready":
+        with pytest.raises(DeploymentRuntimeError, match="not executable"):
+            await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+    else:
+        pinned = await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+        assert pinned.deployment_id == deployment_id
+        assert pinned.name == "demo-accepted"
+
+
+@pytest.mark.asyncio
+async def test_accepted_pin_rejects_workflow_reassigned_to_another_solution(monkeypatch):
+    solution_id, original_solution_id, workflow_id, deployment_id = uuid4(), uuid4(), uuid4(), uuid4()
+    workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id, is_active=False)
+    solution = SimpleNamespace(id=solution_id, status="active", organization_id=None)
+    original = _closure(deployment_id=deployment_id, solution_id=original_solution_id,
+        workflow_id=workflow_id, source_text="original")
+    session = SimpleNamespace(execute=AsyncMock(return_value=_Result((workflow, solution))))
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.SolutionDeploymentRepository.get_runtime_closure",
+        AsyncMock(return_value=original))
+    with pytest.raises(DeploymentRuntimeError, match="does not belong"):
+        await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)

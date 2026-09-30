@@ -107,6 +107,7 @@ def build_local_workflow_index(
 
 def discover_functions(
     workspace: Path,
+    *, resource_recipe: Path | None = None,
 ) -> tuple[dict[str, Callable[..., Any]], dict[str, str]]:
     """Map ``path::function_name`` → callable for every decorated function.
 
@@ -133,7 +134,7 @@ def discover_functions(
         if any(part in _SKIP_DIRS for part in rel_parts):
             continue
         rel = py.relative_to(workspace).as_posix()
-        module, err = _load_module(py, rel)
+        module, err = _load_module(py, rel, resource_recipe=resource_recipe)
         if err is not None:
             failures[rel] = err
             continue
@@ -146,7 +147,7 @@ def discover_functions(
     return out, failures
 
 
-def _load_module(py: Path, rel: str) -> tuple[ModuleType | None, str | None]:
+def _load_module(py: Path, rel: str, *, resource_recipe: Path | None = None) -> tuple[ModuleType | None, str | None]:
     # A stable, unique module name per file so re-import on reload replaces it.
     mod_name = "bifrost_devhost_" + rel.replace("/", "_").removesuffix(".py")
     try:
@@ -155,7 +156,10 @@ def _load_module(py: Path, rel: str) -> tuple[ModuleType | None, str | None]:
             return None, "could not build an import spec for this file"
         module = importlib.util.module_from_spec(spec)
         sys.modules[mod_name] = module
-        spec.loader.exec_module(module)
+        from bifrost._local_resources import local_resource_context
+
+        with local_resource_context(py, resource_recipe, allow_undeclared=True):
+            spec.loader.exec_module(module)
         return module, None
     except Exception as exc:  # one broken file must not blank the whole map
         return None, f"{type(exc).__name__}: {exc}"
@@ -217,14 +221,15 @@ class FunctionHost:
     ``context.org_id`` / use the data-plane behave as under ``bifrost run``.
     """
 
-    def __init__(self, workspace: Path) -> None:
+    def __init__(self, workspace: Path, *, resource_recipe: Path | None = None) -> None:
         self._workspace = workspace
+        self._resource_recipe = resource_recipe
         self._fns: dict[str, Callable[..., Any]] = {}
         self._failures: dict[str, str] = {}
         self._index = LocalWorkflowIndex()
 
     def reload(self) -> None:
-        self._fns, self._failures = discover_functions(self._workspace)
+        self._fns, self._failures = discover_functions(self._workspace, resource_recipe=self._resource_recipe)
         try:
             entries = _load_workflow_manifest_entries(self._workspace)
         except yaml.YAMLError as exc:
@@ -264,8 +269,12 @@ class FunctionHost:
         return self._index.by_ref.get(ref)
 
     async def run(self, ref: str, params: dict[str, Any]) -> Any:
+        from bifrost._local_resources import local_resource_context
+
         fn = self._fns[ref]  # KeyError → caller maps to 404
-        result = fn(**params)
-        if inspect.isawaitable(result):
-            result = await result
-        return result
+        source = self._workspace / ref.split("::", 1)[0]
+        with local_resource_context(source, self._resource_recipe, allow_undeclared=True):
+            result = fn(**params)
+            if inspect.isawaitable(result):
+                result = await result
+            return result

@@ -246,6 +246,28 @@ async def test_existing_execution_is_rehydrated_before_current_runtime_is_pinned
 
 
 @pytest.mark.asyncio
+async def test_new_execution_validates_arguments_against_the_pinned_registration(monkeypatch):
+    class Database:
+        async def execute(self, *_):
+            return None
+        async def get(self, *_):
+            return None
+        def add(self, *_):
+            raise AssertionError("Invalid arguments must not create an execution")
+    @asynccontextmanager
+    async def db_context():
+        yield Database()
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr("src.services.solutions.deployment_runtime.pin_workflow_runtime", AsyncMock(return_value=SimpleNamespace(
+        parameters_schema={"type": "object", "properties": {"ticket_id": {"type": "integer"}},
+            "required": ["ticket_id"], "additionalProperties": False})))
+    with pytest.raises(ValueError, match="pinned input contract"):
+        await _persist_execution_pin(_context(), "22222222-2222-2222-2222-222222222222",
+            "11111111-1111-1111-1111-111111111111", {"stale_parameter": 42}, None,
+            form_id=None, sync=False, api_key_id=None, file_path=None)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("display_unavailable", [False, True])
 async def test_publish_pending_writes_redis_then_publishes(display_unavailable):
     from redis.exceptions import TimeoutError as RedisTimeoutError

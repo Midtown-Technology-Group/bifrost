@@ -9,7 +9,7 @@ tests/
 │   ├── services/   # Service layer unit tests
 │   ├── handlers/   # HTTP handler unit tests
 │   └── ...
-├── e2e/            # Tests requiring Docker stack (DB, Redis, RabbitMQ)
+├── e2e/            # Tests requiring Docker stack (PostgreSQL, Redis, RabbitMQ, SeaweedFS)
 │   ├── engine/     # Engine tests that need process execution
 │   ├── platform/   # Platform service tests with real DB
 │   ├── mcp/        # MCP protocol tests
@@ -37,15 +37,26 @@ tests/
 
 ### Unit Tests (`tests/unit/`)
 - Test business logic in isolation
-- Mock all external dependencies (DB, Redis, RabbitMQ)
+- Mock all external dependencies (PostgreSQL, Redis, RabbitMQ)
 - No Docker required
 - Marker: `@pytest.mark.unit`
 
 ### E2E Tests (`tests/e2e/`)
-- Test with real database, message queue, and services
+- Test with real database, delivery transports, and services
 - Docker stack started by `test.sh`
 - Includes platform service tests, API endpoint tests, engine execution tests
 - Marker: `@pytest.mark.e2e`
+
+### Work-delivery coverage
+
+- The production delivery path is PostgreSQL (`work_deliveries`, selected via
+  `BIFROST_WORK_DELIVERY_BACKEND=postgres`): e2e tests covering dispatch,
+  lease claim and ownership fencing, interruption/recovery, and settlement
+  exercise this path with the real database.
+- RabbitMQ remains in the test stack for compatibility coverage of the legacy
+  transport path (publishing, retry/poison queues, broker-backed dispatch).
+  RabbitMQ passing in tests does not prove the production PostgreSQL path, and
+  vice versa — cover behavior changes on both transports where both apply.
 
 ## How test.sh Works
 

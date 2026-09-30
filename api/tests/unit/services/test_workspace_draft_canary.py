@@ -280,6 +280,17 @@ def test_worker_rejects_oversize_serialized_draft_output() -> None:
     with pytest.raises(WorkspaceDraftOutputLimitExceeded, match="limit is 10"):
         enforce_draft_output_limit(release_context, {"message": "too large"})
 
+    deployment_context = {
+        "runtime_mode": "deployment-v1",
+        "runtime_max_output_bytes": 10,
+    }
+    with pytest.raises(WorkspaceDraftOutputLimitExceeded, match="limit is 10"):
+        enforce_draft_output_limit(deployment_context, {"message": "too large"})
+    enforce_draft_output_limit(
+        {"runtime_mode": "deployment-v1", "runtime_max_output_bytes": None},
+        {"x": "x" * 1000},
+    )
+
     # Legacy execution remains unaffected.
     enforce_draft_output_limit({"runtime_mode": "repo-v1"}, {"x": "x" * 1000})
 

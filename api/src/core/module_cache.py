@@ -767,26 +767,39 @@ def _module_coherence_evidence(
 
 async def reconcile_module_coherence(
     paths: list[str],
+    *,
+    invalidate_resolutions: bool = True,
 ) -> tuple[str, list[ModuleCoherence]]:
     """Populate exact durable bytes into the current ready cache generation."""
     generation = await wait_for_workspace_generation()
     durable_hashes: dict[str, str] = {}
     deleted_paths: list[str] = []
-    for path in sorted(set(paths)):
+    ordered = sorted(set(paths))
+
+    async def read_one(path: str) -> tuple[str, bytes | None]:
         try:
-            content = await _read_module_from_storage(path)
+            return path, await _read_module_from_storage(path)
         except Exception:
-            await invalidate_module(path)
-            deleted_paths.append(path)
-            continue
-        content_hash = hashlib.sha256(content).hexdigest()
-        await set_module(
-            path,
-            content.decode("utf-8"),
-            content_hash,
-            generation=generation,
-        )
-        durable_hashes[path] = content_hash
+            return path, None
+
+    # Object-store reads dominate large release projections. Read a bounded
+    # batch at once, then update Redis in stable path order.
+    for start in range(0, len(ordered), 16):
+        batch = await asyncio.gather(*(read_one(path) for path in ordered[start:start + 16]))
+        for path, content in batch:
+            if content is None:
+                await invalidate_module(path)
+                deleted_paths.append(path)
+                continue
+            content_hash = hashlib.sha256(content).hexdigest()
+            await set_module(
+                path,
+                content.decode("utf-8"),
+                content_hash,
+                generation=generation,
+                invalidate_resolutions=invalidate_resolutions,
+            )
+            durable_hashes[path] = content_hash
     if deleted_paths:
         redis = get_redis_client()
         redis_conn = await redis._get_redis()

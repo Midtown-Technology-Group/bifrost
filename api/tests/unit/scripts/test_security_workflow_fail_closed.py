@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -26,7 +27,20 @@ def test_snyk_scan_failures_are_not_tolerated() -> None:
     assert "--policy-path=.snyk" in workflow
 
 
-def test_snyk_policy_has_no_vulnerability_exceptions() -> None:
+def test_snyk_policy_allows_only_the_approved_dated_authlib_exception() -> None:
     policy = yaml.safe_load((REPO_ROOT / ".snyk").read_text(encoding="utf-8"))
 
-    assert not policy.get("ignore")
+    assert set(policy) <= {"version", "ignore"}
+    exceptions = policy.get("ignore") or {}
+    assert set(exceptions) <= {"SNYK-PYTHON-AUTHLIB-20257410"}
+    if not exceptions:
+        return
+    # Operator approval on 2026-09-30 covers this finding only. Removing
+    # the exception after an upstream fix needs no replacement allowance.
+    entries = exceptions["SNYK-PYTHON-AUTHLIB-20257410"]
+    assert len(entries) == 1 and set(entries[0]) == {"*"}
+    exception = entries[0]["*"]
+    assert set(exception) == {"reason", "expires"}
+    assert "CVE-2026-96760" in exception["reason"]
+    assert exception["expires"] == "2026-10-14T00:00:00.000Z"
+    assert datetime.now(timezone.utc) < datetime.fromisoformat(exception["expires"])

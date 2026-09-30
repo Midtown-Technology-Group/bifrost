@@ -14,6 +14,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+
 
 def default_temp_location() -> str:
     return str(Path(tempfile.gettempdir()) / "bifrost")
@@ -35,6 +37,14 @@ class Settings(BaseSettings):
     Environment variables can be set directly or via .env file.
     All secrets should be provided via environment variables in production.
     """
+
+    solution_git_delivery_policy: SolutionGitDeliveryPolicy | None = Field(
+        default=None,
+        description=(
+            "Explicit protected-Git deployment trust policy. Separate from source "
+            "declaration OIDC; absent disables automated Solution delivery."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="BIFROST_",

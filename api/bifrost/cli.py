@@ -1580,6 +1580,7 @@ def _run_direct(
     solution_root: "pathlib.Path | None" = None,
     promotion_evidence: "pathlib.Path | None" = None,
     workflow_file: str | None = None,
+    resource_recipe: pathlib.Path | None = None,
 ) -> int:
     """
     Run a workflow directly in standalone mode.
@@ -1686,7 +1687,13 @@ def _run_direct(
 
     started_at = time.monotonic()
     try:
-        result = asyncio.run(workflow_fn(**params))
+        from bifrost._local_resources import local_resource_context
+
+        if resource_recipe is not None and promotion_evidence is not None:
+            raise ValueError("Resource recipes use Solution delivery; loose promotion evidence does not cover resources")
+        source = pathlib.Path(workflow_file) if workflow_file is not None else None
+        with local_resource_context(source, resource_recipe):
+            result = asyncio.run(workflow_fn(**params))
         if verbose:
             print(f"Result: {json.dumps(result, indent=2, default=str)}")
         else:
@@ -1777,6 +1784,7 @@ def handle_run(args: list[str]) -> int:
     inline_params: dict[str, Any] | None = None
     organization_id: str | None = None
     promotion_evidence: pathlib.Path | None = None
+    resource_recipe: pathlib.Path | None = None
 
     # Parse arguments
     i = 1
@@ -1812,6 +1820,12 @@ def handle_run(args: list[str]) -> int:
         elif args[i] in ("--no-browser", "-n"):
             no_browser = True
             i += 1
+        elif args[i] == "--resource-recipe":
+            if i + 1 >= len(args):
+                print("Error: --resource-recipe requires a workflow delivery recipe path", file=sys.stderr)
+                return 1
+            resource_recipe = pathlib.Path(args[i + 1]).absolute()
+            i += 2
         elif args[i] == "--promotion-evidence":
             if i + 1 >= len(args):
                 print("Error: --promotion-evidence requires a file path", file=sys.stderr)
@@ -1824,6 +1838,10 @@ def handle_run(args: list[str]) -> int:
         else:
             print(f"Unknown option: {args[i]}", file=sys.stderr)
             return 1
+
+    if resource_recipe is not None and promotion_evidence is not None:
+        print("Error: Resource recipes use Solution delivery; loose promotion evidence does not cover resources", file=sys.stderr)
+        return 1
 
     # Check file exists
     if not os.path.isfile(workflow_file):
@@ -1866,7 +1884,10 @@ def handle_run(args: list[str]) -> int:
             return 1
         module = importlib.util.module_from_spec(spec)
         sys.modules["workflow_module"] = module
-        spec.loader.exec_module(module)
+        from bifrost._local_resources import local_resource_context
+
+        with local_resource_context(pathlib.Path(abs_file_path), resource_recipe):
+            spec.loader.exec_module(module)
     except Exception as e:
         print(f"Error loading workflow file: {e}", file=sys.stderr)
         return 1
@@ -1906,7 +1927,8 @@ def handle_run(args: list[str]) -> int:
             verbose=verbose, organization_id=organization_id,
             solution_root=solution_root,
             promotion_evidence=promotion_evidence,
-            workflow_file=workflow_file,
+            workflow_file=abs_file_path,
+            resource_recipe=resource_recipe,
         )
 
     # Interactive mode (--interactive) — browser-based session
@@ -1943,6 +1965,7 @@ def handle_run(args: list[str]) -> int:
         workflows=workflows,
         selected_workflow=selected_workflow,
         no_browser=no_browser,
+        resource_recipe=resource_recipe,
     ))
 
 
@@ -1954,6 +1977,7 @@ async def _run_session_flow(
     workflows: dict[str, Any],
     selected_workflow: str | None,
     no_browser: bool,
+    resource_recipe: pathlib.Path | None = None,
 ) -> int:
     """
     Run the session-based workflow execution flow.
@@ -2053,7 +2077,10 @@ async def _run_session_flow(
     status = "Success"
 
     try:
-        result = await workflow_fn(**params)
+        from bifrost._local_resources import local_resource_context
+
+        with local_resource_context(pathlib.Path(file_path), resource_recipe):
+            result = await workflow_fn(**params)
         print(f"\nResult: {json.dumps(result, indent=2, default=str)}")
     except Exception as e:
         status = "Failed"
@@ -4688,6 +4715,7 @@ Options:
   --interactive, -i            Open browser-based session instead of direct execution
   --no-browser, -n             Don't auto-open browser (only with --interactive)
   --promotion-evidence FILE    Write snapshot-bound local-run evidence after success
+  --resource-recipe FILE       Read declared dirty checkout resources locally, without HTTP fallback
   --help, -h                   Show this help message
 
 Examples:

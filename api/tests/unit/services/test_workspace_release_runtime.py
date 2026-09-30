@@ -1,28 +1,27 @@
-from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import inspect
-
 from bifrost.workspace_release import (
     workspace_manifest_id,
     workspace_registration_manifest_id,
 )
+from sqlalchemy import inspect
+from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
 )
-from src.models.orm.workflows import Workflow
 from src.services.workspace_release_runtime import (
+    PinnedWorkspaceRuntime,
     WorkspaceReleaseBindingError,
     WorkspaceReleaseDescriptor,
     WorkspaceReleaseRuntimeError,
     inspect_workspace_release_coherence,
     pin_workspace_runtime,
-    PinnedWorkspaceRuntime,
     resolve_pinned_workspace_runtime,
     verify_workspace_runtime_evidence,
     workflow_data_from_workspace_evidence,
@@ -355,6 +354,32 @@ async def test_global_live_governed_path_pins_exact_global_registration() -> Non
 
 
 @pytest.mark.asyncio
+async def test_pin_rechecks_solution_if_handoff_committed_between_dispatch_reads(
+    monkeypatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from src.services.solutions import deployment_runtime
+
+    release, artifact = _rows()
+    registration = next(iter(artifact.manifest["effective_registrations"].values()))
+    workflow = _workflow_for_registration(
+        registration, organization_id=release.organization_id
+    )
+    workflow.solution_id = uuid4()
+    session = _PinSession(workflow, release, artifact)
+    pinned_solution = object()
+    recheck = AsyncMock(return_value=pinned_solution)
+    monkeypatch.setattr(deployment_runtime, "pin_workflow_runtime", recheck)
+
+    pinned = await pin_workspace_runtime(session, workflow.id)
+
+    assert pinned is pinned_solution
+    recheck.assert_awaited_once_with(session, workflow.id)
+    assert session.populate_existing is True
+
+
+@pytest.mark.asyncio
 async def test_pin_eager_loads_registration_roles_before_sync_validation() -> None:
     release, artifact = _rows()
     registration = next(iter(artifact.manifest["effective_registrations"].values()))
@@ -375,7 +400,9 @@ async def test_pin_eager_loads_registration_roles_before_sync_validation() -> No
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("has_role", [False, True])
-async def test_pin_loads_roles_for_workflow_already_in_session(db_session, monkeypatch, has_role) -> None:
+async def test_pin_loads_roles_for_workflow_already_in_session(
+    db_session, monkeypatch, has_role
+) -> None:
     """EventDelivery eagerly loads Workflow before the runtime pin lookup."""
     release, artifact = _rows()
     registration = next(iter(artifact.manifest["effective_registrations"].values()))
@@ -383,7 +410,11 @@ async def test_pin_loads_roles_for_workflow_already_in_session(db_session, monke
     from src.models.orm.users import Role
     from src.models.orm.workflow_roles import WorkflowRole
 
-    roles = [Role(id=uuid4(), name="issue808", created_by="regression-test")] if has_role else []
+    roles = (
+        [Role(id=uuid4(), name="issue808", created_by="regression-test")]
+        if has_role
+        else []
+    )
     registration["role_ids"] = [str(role.id) for role in roles]
     artifact.manifest = {
         **artifact.manifest,
@@ -392,7 +423,9 @@ async def test_pin_loads_roles_for_workflow_already_in_session(db_session, monke
         ),
     }
     descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
-    workflow = Workflow(**vars(_workflow_for_registration(registration, organization_id=None)))
+    workflow = Workflow(
+        **vars(_workflow_for_registration(registration, organization_id=None))
+    )
     db_session.add(workflow)
     db_session.add_all(roles)
     await db_session.flush()
@@ -407,7 +440,8 @@ async def test_pin_loads_roles_for_workflow_already_in_session(db_session, monke
         return descriptor
 
     monkeypatch.setattr(
-        "src.services.workspace_release_runtime.active_workspace_release", active_release
+        "src.services.workspace_release_runtime.active_workspace_release",
+        active_release,
     )
     pinned = await pin_workspace_runtime(db_session, workflow.id)
 
@@ -848,3 +882,44 @@ async def test_inspector_fails_closed_when_immutable_release_bytes_regress(
     assert evidence[0].cache_coherent is True
     assert evidence[0].projected_repo_coherent is True
     assert evidence[0].history_coherent is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("activation_state", ["live", "superseded", "retired"])
+async def test_accepted_workspace_pin_survives_solution_ownership_handoff(
+    activation_state: str,
+) -> None:
+    release_row, artifact = _rows()
+    registration = next(iter(artifact.manifest["effective_registrations"].values()))
+    workflow = _workflow_for_registration(
+        registration, organization_id=release_row.organization_id
+    )
+    accepted = await pin_workspace_runtime(
+        _PinSession(workflow, release_row, artifact), workflow.id
+    )
+    assert isinstance(accepted, PinnedWorkspaceRuntime)
+    evidence = accepted.queue_evidence()
+
+    # Ownership and source can advance after dispatch has durably accepted work.
+    workflow.solution_id = uuid4()
+    workflow.path = "functions/successor.py"
+    release_row.activation_state = activation_state
+
+    class Result:
+        def one_or_none(self):
+            return release_row, artifact
+
+    class Session:
+        async def execute(self, statement):
+            assert {item["entity"] for item in statement.column_descriptions} == {
+                WorkspacePromotionRelease,
+                WorkspacePromotionArtifact,
+            }
+            return Result()
+
+        async def get(self, *_args, **_kwargs):
+            raise AssertionError("Accepted work must not re-read mutable ownership")
+
+    resumed = await resolve_pinned_workspace_runtime(Session(), evidence, workflow.id)
+    assert resumed.queue_evidence() == evidence
+    assert resumed.path == "features/demo.py"

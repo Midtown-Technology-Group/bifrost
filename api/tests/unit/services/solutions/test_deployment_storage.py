@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.solutions.deployment_storage import (
     DeploymentArtifactIntegrityError,
     SolutionDeploymentStorage,
@@ -32,6 +32,9 @@ class FakeClient:
         if Key in self.objects:
             raise ResourceExistsError(Key)
         self.objects[Key] = Body
+
+    async def get_object(self, *, Key, **kwargs):
+        return {"Body": SimpleNamespace(read=AsyncMock(return_value=self.objects[Key]))}
 
 
 def make_storage(client: FakeClient):
@@ -62,6 +65,9 @@ async def test_finalized_source_manifest_and_runtime_keys_are_revision_addressed
     assert f"/{storage.deployment_id}/" in manifest_key
     assert runtime_key == f"{storage.runtime_prefix}workflows/run.py"
     assert client.objects[runtime_key] == b"code"
+    assert await storage.read_source_artifact() == b"zip"
+    assert await storage.read_compiled_manifest() == b"{}"
+    assert await storage.read_runtime_file("workflows/run.py") == b"code"
 
 
 @pytest.mark.asyncio
@@ -77,10 +83,21 @@ async def test_finalized_objects_are_create_only():
 
 
 @pytest.mark.asyncio
+async def test_idempotent_candidate_retry_accepts_only_identical_bytes():
+    storage = make_storage(FakeClient())
+    await storage.write_source_artifact(b"same", idempotent=True)
+    await storage.write_source_artifact(b"same", idempotent=True)
+    with pytest.raises(DeploymentArtifactIntegrityError):
+        await storage.write_source_artifact(b"different", idempotent=True)
+
+
+@pytest.mark.asyncio
 async def test_runtime_path_rejects_traversal():
     storage = make_storage(FakeClient())
     with pytest.raises(ValueError):
         await storage.write_runtime_file("../mutable.py", b"code")
+    with pytest.raises(ValueError):
+        await storage.read_runtime_file("../mutable.py")
 
 
 @pytest.mark.parametrize(
@@ -89,3 +106,115 @@ async def test_runtime_path_rejects_traversal():
 )
 def test_provider_duplicate_write_exceptions_are_classified(error):
     assert SolutionDeploymentStorage._is_already_exists(error)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [b"correct", b"short", b"oversized-object"])
+async def test_resource_read_requests_bounded_range_and_closes_body(content):
+    class Body:
+        closed = False
+        offset = 0
+
+        def __init__(self):
+            self.read_sizes = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            self.read_sizes.append(size)
+            chunk = content[self.offset:self.offset + size]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    if len(content) != 7:
+        with pytest.raises(DeploymentArtifactIntegrityError, match="size differs"):
+            await storage.read_resource("scripts/audit.ps1", 7)
+    else:
+        assert await storage.read_resource("scripts/audit.ps1", 7) == content
+    client.get_object.assert_awaited_once_with(Bucket="test",
+        Key=f"{storage.runtime_prefix}_resources/scripts/audit.ps1", Range="bytes=0-7")
+    assert body.read_sizes[0] == 8 and body.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("archive", [False, True])
+async def test_resource_read_accumulates_short_transport_chunks_until_eof(archive):
+    content = b"complete resource bytes"
+
+    class Body:
+        offset = 0
+        closed = False
+        reads = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            self.reads += 1
+            chunk = content[self.offset:self.offset + min(size, 2)]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    result = await storage.read_resources_artifact() if archive else await storage.read_resource("rates.json", len(content))
+    assert result == content and body.closed
+    assert body.reads > 1 and body.offset == len(content)
+
+
+@pytest.mark.asyncio
+async def test_short_chunk_archive_stops_at_extra_byte_bound_and_closes(monkeypatch):
+    from src.services.solutions import deployment_manifest
+
+    monkeypatch.setattr(deployment_manifest, "MAX_DEPLOYMENT_RESOURCES_BYTES", 0)
+    limit = 2 * 1024 * 1024
+    content = b"x" * (limit + 256)
+
+    class Body:
+        offset = 0
+        closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            self.closed = True
+
+        async def read(self, size):
+            chunk = content[self.offset:self.offset + min(size, 4096)]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    with pytest.raises(DeploymentArtifactIntegrityError, match="archive exceeds"):
+        await storage.read_resources_artifact()
+    assert body.offset == limit + 1 and body.closed
+    client.get_object.assert_awaited_once_with(Bucket="test", Key=storage.resources_artifact_key,
+        Range=f"bytes=0-{limit}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,size", [("../secret", 1), ("/root/file", 1), ("rates.json", True),
+    ("rates.json", 0), ("rates.json", 2 * 1024 * 1024 + 1)])
+async def test_invalid_resource_contract_never_opens_storage(path, size):
+    storage = make_storage(FakeClient())
+    storage._client_factory = AsyncMock(side_effect=AssertionError("Storage must not be opened"))
+    with pytest.raises(ValueError):
+        await storage.read_resource(path, size)
+    storage._client_factory.assert_not_called()

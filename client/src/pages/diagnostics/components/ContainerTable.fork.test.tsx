@@ -10,6 +10,7 @@ function pool(worker_id: string, hostname?: string): PoolSummary {
 		status: "online",
 		started_at: new Date(Date.now() - 60_000).toISOString(),
 		pool_size: 2,
+		active_process_count: 2,
 		idle_count: 2,
 		busy_count: 0,
 		last_heartbeat: new Date().toISOString(),

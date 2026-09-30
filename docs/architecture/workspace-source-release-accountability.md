@@ -93,6 +93,22 @@ must provide a reason. A later exact release may still replace `deferred` with
 verified `released` evidence. Records containing deletions remain open until a
 release path can prove runtime absence as well as signed-history absence.
 
+An old source commit may instead be `superseded` after a later source record is
+`released` or a reviewed Solution deployment is active. This manual decision
+requires a production readback from the last day, a readback digest, and a
+decision for every path in the old record. Each path records the current
+protected-Git hash, current runtime owner, runtime
+source hash and runtime reference, or records that the source was removed. The
+platform checks the later released source record or active immutable Solution
+pointer, checks source hashes against the corresponding release or Solution
+closure and the current Live pointer for Workspace-owned paths, and requires
+every old path to be reviewed. It stores an immutable
+digest of the review. The operator must independently
+compare those stated hashes and runtime references with live source,
+registration, dependency, and signed-history readback. A changed Git hash alone
+does not establish supersession. Use `deferred` while that proof is missing;
+`non_production` is only for changes that truly had no production effect.
+
 ## Retired releases
 
 Retiring the global Live release (see

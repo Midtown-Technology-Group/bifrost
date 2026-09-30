@@ -4,24 +4,27 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from bifrost.workspace_release import (
     canonical_digest,
     workspace_manifest_id,
     workspace_registration_manifest_id,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
 )
-from src.models.orm.workflows import Workflow
 from src.services.workspace_release_storage import normalize_workspace_release_prefix
+
+if TYPE_CHECKING:
+    from src.services.solutions.deployment_runtime import PinnedWorkflowRuntime
 
 WORKSPACE_RELEASE_RUNTIME_SCHEMA = "bifrost.workspace-release-runtime/v1"
 WORKSPACE_RELEASE_ARTIFACT_SCHEMA = "bifrost.workspace-release-artifact/v1"
@@ -574,8 +577,8 @@ async def inspect_workspace_release_registration_bindings(
 
 async def pin_workspace_runtime(
     session: AsyncSession, workflow_id: UUID
-) -> PinnedWorkspaceRuntime | None:
-    """Pin governed Workspace source or leave an ungoverned path on repo-v1."""
+) -> PinnedWorkspaceRuntime | PinnedWorkflowRuntime | None:
+    """Pin Live source, retrying Solution lookup if ownership moved meanwhile."""
     workflow = await session.get(
         Workflow,
         workflow_id,
@@ -587,7 +590,12 @@ async def pin_workspace_runtime(
     if workflow is None or not workflow.is_active:
         raise WorkspaceReleaseRuntimeError(f"workflow {workflow_id} is not executable")
     if workflow.solution_id is not None:
-        return None
+        # Dispatch first probes Solution ownership, then Live. A handoff can
+        # commit between those reads; re-probe the new owner so the request
+        # never falls through to mutable repo-v1 execution.
+        from src.services.solutions.deployment_runtime import pin_workflow_runtime
+
+        return await pin_workflow_runtime(session, workflow_id)
     release = await active_workspace_release(
         session,
         workflow.organization_id or UUID(int=0),
