@@ -87,6 +87,10 @@ async def test_sync_agent_wait_releases_request_db_connection(monkeypatch) -> No
         user_id=uuid4(),
         email="caller@example.test",
         name="Caller",
+        is_superuser=False,
+        is_provider_org=False,
+        is_external=False,
+        roles=[],
     )
 
     async def find_agent(*_args):
@@ -433,3 +437,49 @@ def _step(**overrides):
     if "run_id" not in overrides:
         values["run_id"] = values["id"]
     return SimpleNamespace(**values)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["enqueue", "execute", "rerun"])
+@pytest.mark.parametrize(
+    ("admin", "provider", "external"),
+    [(False, True, False), (False, False, False), (True, False, False), (False, False, True)],
+)
+async def test_agent_admission_preserves_original_principal_authority(
+    monkeypatch, route, admin, provider, external,
+):
+    from fastapi import Response
+    from src.core.principal import UserPrincipal
+    from src.models.contracts.agent_runs import AgentRunEnqueueRequest
+
+    user = UserPrincipal(
+        user_id=uuid4(), email="caller@example.test", organization_id=uuid4(),
+        name="Caller", is_superuser=admin, is_provider_org=provider,
+        is_external=external, roles=["Explicit Tool Role"],
+    )
+    agent_id, run_id, target_org = uuid4(), uuid4(), uuid4()
+    agent = SimpleNamespace(id=agent_id, name="Agent", is_active=True)
+    original = SimpleNamespace(
+        agent_id=agent_id, org_id=target_org, input={"original": True}, output_schema=None,
+    )
+    monkeypatch.setattr(agent_runs, "get_executable_agent", AsyncMock(return_value=agent))
+    monkeypatch.setattr(agent_runs, "load_agent_run_for_user", AsyncMock(return_value=original))
+    enqueue = AsyncMock(return_value=str(run_id))
+    monkeypatch.setattr(agent_runs, "enqueue_agent_run", enqueue)
+    monkeypatch.setattr(agent_runs, "wait_for_agent_run_result", AsyncMock(return_value={"status": "completed"}))
+    db = SimpleNamespace(rollback=AsyncMock())
+    if route == "enqueue":
+        await agent_runs.enqueue_agent_run_request(AgentRunEnqueueRequest(agent_name="Agent"), Response(), db, user)
+    elif route == "execute":
+        await agent_runs.execute_agent_run(AgentRunCreateRequest(agent_name="Agent"), db, user)
+        db.rollback.assert_awaited_once()
+    else:
+        await agent_runs.rerun_agent_run(uuid4(), db, user)
+    kwargs = enqueue.await_args.kwargs
+    assert kwargs["caller_user_id"] == str(user.user_id)
+    assert kwargs["caller_is_superuser"] is admin
+    assert kwargs["caller_is_provider_org"] is provider
+    assert kwargs["caller_is_external"] is external
+    assert kwargs["caller_roles"] == ["Explicit Tool Role"]
+    # Rerun retains the existing execution target, independently of privilege.
+    assert kwargs["org_id"] == str(target_org if route == "rerun" else user.organization_id)
