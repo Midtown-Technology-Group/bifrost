@@ -140,14 +140,17 @@ async def _read_work(
         Solution.id == source.solution_install_id
     )
     if lock:
+        # Existing terminal writers use both execution-first and attempt-first
+        # orders. Never wait while holding the attempt for a later shared lock;
+        # contention denies and rolls back this entire private transaction.
         execution_statement = execution_statement.with_for_update(
-            read=True
+            read=True, nowait=True
         ).execution_options(populate_existing=True)
         deployment_statement = deployment_statement.with_for_update(
-            read=True
+            read=True, nowait=True
         ).execution_options(populate_existing=True)
         solution_statement = solution_statement.with_for_update(
-            read=True
+            read=True, nowait=True
         ).execution_options(populate_existing=True)
     execution = await db.scalar(execution_statement)
     deployment = await db.scalar(deployment_statement)

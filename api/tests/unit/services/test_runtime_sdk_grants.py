@@ -457,6 +457,77 @@ async def test_flushed_only_start_is_not_committed_admission(make_work):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("contended", ["execution", "deployment", "solution"])
+async def test_contended_later_lock_denies_and_releases_attempt(make_work, contended):
+    work = await make_work()
+    model, row_id = {
+        "execution": (Execution, work.start.execution_id),
+        "deployment": (SolutionDeployment, work.cohort.source.source_id),
+        "solution": (Solution, work.cohort.source.solution_install_id),
+    }[contended]
+    # A separate real connection holds the conflicting lock before provisioning
+    # starts. No sleeps, retries, altered lock timeout or deadlock recovery.
+    async with work.cohort.factory() as owner, owner.begin():
+        assert (
+            await owner.scalar(
+                select(model).where(model.id == row_id).with_for_update()
+            )
+            is not None
+        )
+        with pytest.raises(RuntimeSDKDenied):
+            await asyncio.wait_for(work.provision(), timeout=5)
+        # NOWAIT proves provisioning has released its attempt lock after denial.
+        attempt = await owner.scalar(
+            select(WorkflowExecutionAttempt)
+            .where(WorkflowExecutionAttempt.id == work.start.workflow_attempt_id)
+            .with_for_update(nowait=True)
+        )
+        assert attempt is not None
+        completed_at = datetime.now(UTC)
+        attempt.status, attempt.phase, attempt.completed_at = (
+            "failed",
+            "terminal",
+            completed_at,
+        )
+        execution = await owner.get(Execution, work.start.execution_id)
+        execution.status, execution.completed_at = ExecutionStatus.FAILED, completed_at
+    async with work.cohort.factory() as verification:
+        assert (
+            await verification.scalar(
+                select(func.count())
+                .select_from(WorkflowRuntimeSDKGrant)
+                .where(
+                    WorkflowRuntimeSDKGrant.workflow_attempt_id
+                    == work.start.workflow_attempt_id
+                )
+            )
+            == 0
+        )
+        assert (
+            await verification.scalar(
+                select(func.count())
+                .select_from(WorkflowRuntimeSDKGrantOperation)
+                .join(
+                    WorkflowRuntimeSDKGrant,
+                    WorkflowRuntimeSDKGrantOperation.grant_id
+                    == WorkflowRuntimeSDKGrant.id,
+                )
+                .where(
+                    WorkflowRuntimeSDKGrant.workflow_attempt_id
+                    == work.start.workflow_attempt_id
+                )
+            )
+            == 0
+        )
+        attempt = await verification.get(
+            WorkflowExecutionAttempt, work.start.workflow_attempt_id
+        )
+        execution = await verification.get(Execution, work.start.execution_id)
+        assert attempt.status == "failed" and attempt.completed_at is not None
+        assert execution.status == ExecutionStatus.FAILED
+
+
+@pytest.mark.asyncio
 async def test_failed_commit_never_exposes_partial_grant(make_work, async_engine):
     work = await make_work()
 
