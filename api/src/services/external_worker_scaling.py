@@ -48,6 +48,8 @@ def validate_settings(settings: Settings) -> None:
         UUID(value)
     if not settings.external_worker_defined_network_id.startswith("network-") or not settings.external_worker_defined_role_id.startswith("role-"):
         raise ValueError("Missing fixed Defined network/role")
+    if not re.fullmatch(r"api://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", settings.external_worker_enrollment_audience):
+        raise ValueError("Missing dedicated enrollment audience")
     if settings.work_delivery_backend != "postgres":
         raise ValueError("External workers require PostgreSQL delivery")
 
@@ -202,6 +204,9 @@ async def defined_token(db: AsyncSession) -> str:
 
 async def verify_identity(token: str, settings: Settings) -> None:
     """Verify Entra signature and exact managed service principal, not user JWTs."""
+    audience = settings.external_worker_enrollment_audience
+    if not re.fullmatch(r"api://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", audience):
+        raise ValueError("Missing dedicated enrollment audience")
     tenant = str(UUID(settings.external_worker_tenant_id))
     if len(token) > 16384:
         raise ValueError("Oversized identity")
@@ -226,7 +231,7 @@ async def verify_identity(token: str, settings: Settings) -> None:
     if len(keys) != 1:
         raise ValueError("Invalid identity signing key")
     claims = jwt.decode(token, jwt.PyJWK.from_dict(keys[0]).key, algorithms=["RS256"],
-                        audience="https://management.azure.com/", issuer="https://sts.windows.net/" + tenant + "/",
+                        audience=audience, issuer="https://sts.windows.net/" + tenant + "/",
                         options={"require": ["exp", "nbf", "iat", "oid", "tid", "appid"]})
     if claims["tid"] != tenant or claims["oid"] != settings.external_worker_principal_id or claims["appid"] != settings.external_worker_client_id or claims.get("idtyp", "app") != "app":
         raise ValueError("Identity is outside the external worker lane")
@@ -308,8 +313,22 @@ async def enroll_replica(db: AsyncSession, azure: Azure, replica: str, boot: UUI
     token = await defined_token(db)
     async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
         host_id = value.get("host_id")
+        confirmed_missing = False
+        if host_id and not await verify_owned_host(client, token, settings, host_id, name):
+            # Only authoritative 404 permits recovery; ownership/errors still fail closed.
+            host_id = None
+            confirmed_missing = True
+            cleared = dict(state.value_json or {})
+            cleared.pop("host_id", None)
+            state.value_json = cleared
+            await db.commit()
+            if not await lock(db):
+                raise RuntimeError("Enrollment controller is busy")
         if previous_intent and not host_id:
             host_id = await find_intended_host(client, token, settings, name)
+            if not host_id and not confirmed_missing:
+                # A negative listing cannot prove an ambiguous create never succeeded.
+                raise RuntimeError("External host creation intent remains unresolved")
         if host_id:
             if not await verify_owned_host(client, token, settings, host_id, name):
                 raise RuntimeError("Recorded external host is missing")
@@ -365,7 +384,7 @@ async def reconcile_hosts(db: AsyncSession, azure: Azure, live: set[str]) -> Non
             if not host_id:
                 host_id = await find_intended_host(client, token, azure.settings, value["intent"])
                 if not host_id:
-                    await db.delete(state)
+                    # Retain unresolved intent until a host can be authoritatively reconciled.
                     continue
             if not await verify_owned_host(client, token, azure.settings, host_id, value["intent"]):
                 await db.delete(state)
@@ -403,11 +422,20 @@ async def controller_loop(stop: asyncio.Event) -> None:
                             idle_since=previous.get("idle_since"), maximum=settings.external_worker_max_replicas,
                             idle_seconds=settings.external_worker_idle_seconds)
                         await azure.publish(desired)
-                        await reconcile_hosts(db, azure, live)
                         state.value_json = {"observed_at": now, "pending": pending, "active": active,
                                             "desired": desired, "idle_since": idle, "replicas": len(live),
                                             "queue_name": azure.workflow_queue}
                         await db.commit()
+                        # Provider cleanup cannot roll back successful demand observation.
+                        if await lock(db):
+                            try:
+                                await reconcile_hosts(db, azure, live)
+                                await db.commit()
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as error:
+                                await db.rollback()
+                                logger.error("External host reconciliation failed: %s", type(error).__name__)
             except asyncio.CancelledError:
                 raise
             except Exception as error:

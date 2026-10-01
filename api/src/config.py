@@ -123,6 +123,7 @@ class Settings(BaseSettings):
     external_worker_tenant_id: str = ""
     external_worker_client_id: str = ""
     external_worker_principal_id: str = ""
+    external_worker_enrollment_audience: str = ""
     external_worker_defined_network_id: str = ""
     external_worker_defined_role_id: str = ""
     external_worker_idle_seconds: int = Field(default=120, ge=120, le=3600)

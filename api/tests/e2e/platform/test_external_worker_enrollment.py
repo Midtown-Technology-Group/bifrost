@@ -29,6 +29,7 @@ async def test_enrollment_survives_lost_response_and_restart_without_duplicate_h
     code = secrets.token_urlsafe(32)
     fail_first = True
     fail_reenroll = False
+    listing_visible = True
     def transport(request):
         nonlocal fail_first, fail_reenroll
         assert request.url.host == "api.defined.net"
@@ -43,7 +44,7 @@ async def test_enrollment_survives_lost_response_and_restart_without_duplicate_h
                 raise httpx.ReadTimeout("ambiguous response", request=request)
             return httpx.Response(200, json={"data": {"host": host, "enrollmentCode": {"code": code}}})
         if request.method == "GET" and request.url.path == "/v2/hosts":
-            return httpx.Response(200, json={"data": hosts, "metadata": {"hasNextPage": False}})
+            return httpx.Response(200, json={"data": hosts if listing_visible else [], "metadata": {"hasNextPage": False}})
         if request.method == "POST" and request.url.path.endswith("/enrollment-code"):
             reenrolled.append(request.url.path)
             if fail_reenroll:
@@ -77,6 +78,28 @@ async def test_enrollment_survives_lost_response_and_restart_without_duplicate_h
                 state.value_json = value
                 await db.commit()
             async with async_session_factory() as db:
+                listing_visible = False
+                with pytest.raises(RuntimeError, match="intent remains unresolved"):
+                    await enroll_replica(db, azure, replica, boot)
+                await db.rollback()
+                assert len(created) == 1
+                state = await row(db, key)
+                value = dict(state.value_json)
+                value["absent_since"] = datetime.now(UTC).timestamp() - 121
+                value["absence_observed_at"] = datetime.now(UTC).timestamp()
+                state.value_json = value
+                await db.commit()
+                await reconcile_hosts(db, azure, set())
+                await db.commit()
+                assert await db.scalar(select(SystemConfig.id).where(
+                    SystemConfig.category == CATEGORY, SystemConfig.key == key)) is not None
+                assert not deleted
+                state = await row(db, key)
+                value = dict(state.value_json)
+                value["created"] -= 61
+                state.value_json = value
+                await db.commit()
+                listing_visible = True
                 result = await enroll_replica(db, azure, replica, boot)
                 assert result == {"code": code, "hostId": "host-TEST"}
                 assert len(created) == 1 and len(reenrolled) == 1
@@ -108,6 +131,27 @@ async def test_enrollment_survives_lost_response_and_restart_without_duplicate_h
                 with pytest.raises(RuntimeError, match="rate bound"):
                     await enroll_replica(db, azure, replica, failed_boot)
                 await db.rollback()
+                # A provider-deleted host may be recovered even while its replica
+                # remains live. A lost replacement response must not create twice.
+                hosts.clear()
+                state = await row(db, key)
+                value = dict(state.value_json)
+                value["created"] -= 61
+                state.value_json = value
+                await db.commit()
+                fail_first = True
+                recovery_boot = uuid4()
+                with pytest.raises(httpx.ReadTimeout):
+                    await enroll_replica(db, azure, replica, recovery_boot)
+                await db.rollback()
+                state = await row(db, key)
+                assert "host_id" not in state.value_json
+                value = dict(state.value_json)
+                value["created"] -= 61
+                state.value_json = value
+                await db.commit()
+                assert await enroll_replica(db, azure, replica, recovery_boot) == result
+                assert len(created) == 2
                 await reconcile_hosts(db, azure, {replica})
                 await db.commit()
                 assert not deleted

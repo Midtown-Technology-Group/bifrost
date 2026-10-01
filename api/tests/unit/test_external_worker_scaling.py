@@ -19,7 +19,8 @@ def settings():
                     external_worker_principal_id=str(uuid4()),
                     external_worker_queue_account="scalingtestaccount",
                     external_worker_queue_name="bifrost-worker-demand-test",
-                    external_worker_max_replicas=2)
+                    external_worker_max_replicas=2,
+                    external_worker_enrollment_audience="api://" + str(uuid4()))
 
 
 @pytest.mark.parametrize("pending,active", [(1, 0), (0, 1), (5, 9)])
@@ -74,7 +75,7 @@ async def test_identity_requires_signed_exact_tenant_application_and_principal()
     public["kid"] = "test-signing-key"
     now = datetime.now(UTC)
     claims = {"iss": "https://sts.windows.net/" + configuration.external_worker_tenant_id + "/",
-              "aud": "https://management.azure.com/", "exp": now + timedelta(minutes=5),
+              "aud": configuration.external_worker_enrollment_audience, "exp": now + timedelta(minutes=5),
               "nbf": now - timedelta(seconds=1), "iat": now, "idtyp": "app",
               "tid": configuration.external_worker_tenant_id,
               "appid": configuration.external_worker_client_id,
@@ -94,6 +95,8 @@ async def test_identity_requires_signed_exact_tenant_application_and_principal()
                 await verify_identity(token({**claims, field: secrets.token_hex(16)}), configuration)
         with pytest.raises(jwt.PyJWTError):
             await verify_identity(token({**claims, "exp": now - timedelta(minutes=1)}), configuration)
+        with pytest.raises(jwt.InvalidAudienceError):
+            await verify_identity(token({**claims, "aud": "https://management.azure.com/"}), configuration)
         other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         with pytest.raises(jwt.PyJWTError):
             await verify_identity(token(claims, other), configuration)
