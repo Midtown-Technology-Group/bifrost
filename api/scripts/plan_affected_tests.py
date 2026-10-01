@@ -903,6 +903,19 @@ def write_github_output(path: Path, plan: AffectedPlan) -> None:
         output.write(
             f"api_e2e_matrix={json.dumps({'include': matrix}, separators=(',', ':'))}\n"
         )
+        browser_mode = plan.lane("client_e2e")
+        browser_total = 2 if browser_mode == "comprehensive" else 1
+        browser_matrix = (
+            [{"shard": 0, "total": 0}]
+            if browser_mode == "skip"
+            else [
+                {"shard": shard, "total": browser_total}
+                for shard in range(1, browser_total + 1)
+            ]
+        )
+        output.write(
+            f"client_e2e_matrix={json.dumps({'include': browser_matrix}, separators=(',', ':'))}\n"
+        )
         _write_multiline(
             output,
             "api_quality_targets",
