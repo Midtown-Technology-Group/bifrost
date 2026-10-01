@@ -137,10 +137,10 @@ fn omit_nulls(entries: &mut Vec<(String, ProjectedValue)>, names: &[&str]) {
     entries.retain(|(key, value)| !names.contains(&key.as_str()) || *value != ProjectedValue::Null);
 }
 fn empty_only(entries: &mut Vec<(String, ProjectedValue)>, name: &str, omit: bool) -> Result<()> {
-    if let Some((_, value)) = entries.iter().find(|(key, _)| key == name) {
-        if !matches!(value, ProjectedValue::Object(items) if items.is_empty()) {
-            return Err(INVALID);
-        }
+    if let Some((_, value)) = entries.iter().find(|(key, _)| key == name)
+        && !matches!(value, ProjectedValue::Object(items) if items.is_empty())
+    {
+        return Err(INVALID);
     }
     if omit {
         entries.retain(|(key, _)| key != name);

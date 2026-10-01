@@ -115,7 +115,7 @@ fn read_record<R: BufRead>(input: &mut R) -> Result<Option<Record>, &'static str
         observed = true;
         let newline = available.iter().position(|byte| *byte == b'\n');
         let count = newline.map_or(available.len(), |index| index + 1);
-        let content = newline.map_or(count, |index| index);
+        let content = newline.unwrap_or(count);
         if !oversized {
             if content > MAX_REQUEST_LINE.saturating_sub(record.len()) {
                 oversized = true;
