@@ -18,12 +18,12 @@ from src.core.module_cache_contract import (
     WORKSPACE_GENERATION_KEY,
     WORKSPACE_UPDATING_PREFIX,
 )
-from src.models.enums import ConfigType
+from src.models.enums import ConfigType, ExecutionStatus
 from src.models.orm.audit import AuditLog
 from src.models.orm.config import Config
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.execution_lifecycle_events import ExecutionLifecycleEvent
-from src.models.orm.executions import Execution, ExecutionLog
+from src.models.orm.executions import Execution, ExecutionLog, WorkflowExecutionAttempt
 from src.models.orm.integrations import (
     Integration,
     IntegrationConfigSchema,
@@ -320,6 +320,37 @@ class ReferenceEnvironment:
     async def cleanup(self) -> None:
         # Refuse deletion while owned execution work could still be active.
         async with self.sessions() as db:
+            executions = (
+                (
+                    await db.execute(
+                        select(Execution).where(Execution.id.in_(self.executions))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert all(
+                row.status
+                in {
+                    ExecutionStatus.SUCCESS,
+                    ExecutionStatus.FAILED,
+                    ExecutionStatus.CANCELLED,
+                    ExecutionStatus.TIMEOUT,
+                }
+                and row.completed_at is not None
+                for row in executions
+            ), "Owned execution still active; retain fixture for diagnosis"
+            active_attempt = (
+                await db.execute(
+                    select(WorkflowExecutionAttempt.id).where(
+                        WorkflowExecutionAttempt.execution_id.in_(self.executions),
+                        WorkflowExecutionAttempt.completed_at.is_(None),
+                    )
+                )
+            ).first()
+            assert active_attempt is None, (
+                "Owned workflow attempt still active; retain fixture for diagnosis"
+            )
             deliveries = (
                 (
                     await db.execute(
