@@ -202,9 +202,13 @@ B: execute an existing active agent or production-shaped existing fixture via
 `POST /api/agent-runs/enqueue`, normal caller/org and one granted read-only workflow.
 First model response calls the actual tool; second observes the actual workflow
 result and returns output. Compare six ordered model/tool steps, usage, attempts,
-run/result and required events. Workspace Cove Recovery Steward is an active
-production asset; any isolated fixture must retain its real declaration, and
-must not activate the retired AutoElevate agent. Existing E2E tool/agent fixtures
+run/result and required events. The selected existing asset is Cove Recovery Steward Escalation Analyst
+(`agents/387064f6-af8d-4b88-97b4-adbf0207a2fa.agent.yaml`), active with two read-only
+workflow tools and no delegated-agent/MCP/knowledge catalog. Retain its exact
+declaration, prompt and grants. The main Cove Recovery Steward includes a
+delegated-agent grant; dropping that catalog entry would change model requests
+even if unused. It stays Python-owned until that profile is supported. Never
+activate the retired AutoElevate agent. Existing E2E tool/agent fixtures
 are available as early characterization, not substitutes for final real-asset proof.
 
 A deterministic HTTP model emulator must use the actual Python provider adapter
@@ -248,8 +252,12 @@ Every package runs scoped supported tests, quality where affected, clean-candida
 with `-D warnings`, tests and unchanged security/license/image CI. Builders report
 ambiguity rather than alter public responses, scope or schema history.
 
-First implementation PR: **C1-P source-derived runtime schema and cross-language
-vectors**, no public-route or SQL lifecycle ownership. C1-R can characterize in
+First implementation frontier: **C1-P0 control-profile codecs and cross-language
+vectors** for Hello/Start/Heartbeat/Cancel/Stopped, with explicit parent-provided
+prepared binding. Closed framing is ratified internally at 16 MiB/depth 64; it
+creates no public size limit or full runtime-handoff claim. Workload/source/result
+projection remains gated by real vectors and the unresolved decisions above.
+No public-route or SQL lifecycle ownership belongs to this frontier. C1-R can characterize in
 parallel after its capture scope is frozen. The first production-shaped ownership
 PR is C3-W; codec success alone is not a core-control-plane MVP success.
 
