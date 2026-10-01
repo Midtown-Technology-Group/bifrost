@@ -6,14 +6,18 @@ import hashlib
 import json
 import os
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
 from sqlalchemy import select, update
+from src.core.security import encrypt_secret
 from src.models.enums import ExecutionStatus
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+from src.models.orm.work_deliveries import WorkDelivery
 
 from tests.parity.core.adapter import ReferenceAdapter, ResponseDriftTransport
 from tests.parity.core.capture import (
@@ -428,6 +432,85 @@ async def test_core_actual_committed_local_identity_drift(core_environment, fiel
             assert_reference_parity(
                 [reference], [candidate], env.bindings, env.bindings
             )
+
+
+@pytest.mark.parametrize(
+    "path,owner",
+    [
+        (("execution_id",), "other-execution"),
+        (("org_id",), "foreign_org"),
+        (("user_id",), "setup_user"),
+        (("user_email",), "setup-email"),
+        (("parameters", "organization_id"), "foreign_org"),
+        (("parameters", "integration_name"), "other-integration-name"),
+    ],
+)
+async def test_core_actual_committed_pending_identity_drift(
+    core_environment, path, owner
+):
+    async with core_environment() as (env, adapter):
+        ready = await execute_readiness(adapter, env, before=env.before)
+        assert_readiness(ready, env, expected_result(env))
+        # Each capture owns one admission and must observe its real terminal
+        # publication. Previously drained events cannot satisfy another wait.
+        async with core_environment() as (other_env, other_adapter):
+            other = await execute_readiness(
+                other_adapter,
+                other_env,
+                role="other-execution",
+                before=other_env.before,
+            )
+            assert_readiness(other, other_env, expected_result(other_env))
+            env.bindings[str(other_env.executions[0])] = "other-execution"
+            env.bindings[other_env.name] = "other-integration-name"
+        reference = await result_observation(adapter, env)
+        delivery = next(
+            row
+            for row in reference.observation.database["work_deliveries"]
+            if row["message_id"] == str(env.executions[0])
+        )
+        changed = deepcopy(delivery["envelope"])
+        target = changed["body"]["pending_context"]
+        for field in path[:-1]:
+            target = target[field]
+        target[path[-1]] = next(
+            value for value, role in env.bindings.items() if role == owner
+        )
+        async with env.sessions() as db:
+            row = (
+                await db.execute(
+                    select(WorkDelivery).where(WorkDelivery.id == UUID(delivery["id"]))
+                )
+            ).scalar_one()
+            original = row.encrypted_envelope
+            row.encrypted_envelope = encrypt_secret(json.dumps(changed))
+            await db.commit()
+        try:
+            candidate = await result_observation(adapter, env)
+            recaptured = next(
+                row
+                for row in candidate.observation.database["work_deliveries"]
+                if row["id"] == delivery["id"]
+            )
+            assert recaptured["envelope"] == changed
+            assert recaptured["encrypted_envelope_present"] is True
+            assert reference.observation.body == candidate.observation.body
+            assert reference.observation.events == candidate.observation.events == []
+            assert reference.transport == candidate.transport
+            with pytest.raises(
+                AssertionError, match="Pending producer projection differs"
+            ):
+                assert_reference_parity(
+                    [reference], [candidate], env.bindings, env.bindings
+                )
+        finally:
+            async with env.sessions() as db:
+                await db.execute(
+                    update(WorkDelivery)
+                    .where(WorkDelivery.id == UUID(delivery["id"]))
+                    .values(encrypted_envelope=original)
+                )
+                await db.commit()
 
 
 async def test_core_actual_scoped_redis_drift(core_environment):

@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from tests.parity.compare import assert_parity
@@ -122,6 +122,44 @@ DISPATCH_IDENTITIES = {
     ("dispatch_metadata", "path"),
     ("dispatch_metadata", "file_path"),
 }
+PENDING_PATH = ("database", "work_deliveries", "envelope", "body", "pending_context")
+PENDING_IDENTITIES = {
+    ("execution_id",),
+    ("workflow_id",),
+    ("org_id",),
+    ("user_id",),
+    ("user_email",),
+    ("parameters", "integration_name"),
+    ("parameters", "organization_id"),
+}
+# RedisClient.set_pending_execution's literal output, not arbitrary context fields.
+PENDING_TYPES = {
+    "execution_id": (str,),
+    "workflow_id": (str, type(None)),
+    "solution_deployment_id": (str, type(None)),
+    "runtime_evidence": (dict, type(None)),
+    "runtime_mode": (str,),
+    "script_name": (str, type(None)),
+    "parameters": (dict,),
+    "org_id": (str, type(None)),
+    "org_id_overridden": (bool,),
+    "user_id": (str,),
+    "user_name": (str,),
+    "user_email": (str,),
+    "form_id": (str, type(None)),
+    "api_key_id": (str, type(None)),
+    "startup": (),  # Any JSON value: opaque launch output.
+    "form_inputs": (dict,),
+    "embed": (dict,),
+    "sync": (bool,),
+    "is_platform_admin": (bool,),
+    "is_provider_org": (bool,),
+    "is_external": (bool,),
+    "event": (dict, type(None)),
+    "artifact_workspace_id": (str, type(None)),
+    "created_at": (str,),
+    "cancelled": (bool,),
+}
 LOCAL_IDENTITIES = {
     ("integration_name",),
     ("organization_id",),
@@ -155,6 +193,219 @@ def instant(value: str) -> datetime:
     parsed = datetime.fromisoformat(value)
     assert parsed.tzinfo is not None, "Core server clock lost timezone"
     return parsed
+
+
+def fixture_binding(bindings: dict[str, str], role: str) -> str:
+    values = [value for value, owner in bindings.items() if owner == role]
+    assert len(values) == 1, "Pending fixture owner unavailable"
+    return values[0]
+
+
+def validate_pending_context(
+    observation: Observation, bindings: dict[str, str]
+) -> None:
+    """Bind the complete raw producer output before projecting any leaf."""
+    for delivery in observation.database.get("work_deliveries", []):
+        assert delivery["encrypted_envelope_present"] is True, (
+            "Pending delivery encryption absent"
+        )
+        body = delivery["envelope"]["body"]
+        headers = delivery["envelope"]["headers"]
+        pending = body.get("pending_context")
+        assert type(pending) is dict and pending.keys() == PENDING_TYPES.keys(), (
+            "Pending context schema differs"
+        )
+        for field, types in PENDING_TYPES.items():
+            assert not types or type(pending[field]) in types, (
+                f"Pending context {field} wire type differs"
+            )
+        owners = [
+            row
+            for row in observation.database["executions"]
+            if row["id"] == delivery["message_id"]
+        ]
+        assert len(owners) == 1, "Pending delivery has no unique execution owner"
+        row = owners[0]
+        assert row["id"] in bindings, "Pending execution has no fixture owner"
+        dispatch = row["dispatch_evidence"]
+        request, publish = dispatch["request"], dispatch["publish"]
+        assert (
+            dispatch["request_hash"] == digest(request)
+            and dispatch["publish_hash"] == digest(publish)
+            and row["dispatch_evidence_hash"] == digest(dispatch)
+        ), "Pending dispatch hash differs"
+        assert (
+            dispatch["schema_version"]
+            == request["schema_version"]
+            == ("bifrost.workflow-pending-dispatch/v1")
+        ), "Pending dispatch schema differs"
+        expected_publish = {
+            key: value
+            for key, value in request.items()
+            if key not in {"schema_version", "caller_solution_deployment_id"}
+        }
+        expected_publish.update(
+            solution_deployment_id=row["solution_deployment_id"],
+            runtime_evidence=row["runtime_evidence"],
+            runtime_mode=row["runtime_mode"],
+            execution_record_exists=True,
+        )
+        assert digest(publish) == digest(expected_publish), (
+            "Pending publish request projection differs"
+        )
+        for field in ("form_id", "api_key_id"):
+            assert pending[field] == row[field], "Pending row projection differs"
+        assert row["runtime_mode"] == "repo-v1" and (
+            row["runtime_evidence"] is None
+            and row["runtime_evidence_hash"] is None
+            and row["solution_deployment_id"] is None
+        ), "Pending profile requires R0 repo runtime"
+        expected = {
+            field: publish[field]
+            for field in PENDING_TYPES
+            if field
+            not in {
+                "script_name",
+                "created_at",
+                "cancelled",
+                "org_id_overridden",
+                "artifact_workspace_id",
+                "form_inputs",
+                "embed",
+            }
+        }
+        expected.update(
+            script_name=None,
+            cancelled=False,
+            org_id_overridden=publish.get("org_id_overridden", False),
+            artifact_workspace_id=publish.get("artifact_workspace_id"),
+            form_inputs=publish["form_inputs"] or {},
+            embed=publish["embed"] or {},
+        )
+        assert digest(
+            {key: value for key, value in pending.items() if key != "created_at"}
+        ) == digest(expected), "Pending producer projection differs"
+        assert delivery["queue_name"] == "workflow-executions", (
+            "Pending delivery queue differs"
+        )
+        assert headers["x-origin-queue"] == delivery["queue_name"], (
+            "Pending delivery header queue differs"
+        )
+        assert headers["x-idempotency-key"] == row["id"], (
+            "Pending delivery idempotency owner differs"
+        )
+        assert headers["x-original-message-id"] == row["id"], (
+            "Pending delivery original message owner differs"
+        )
+        assert body["execution_id"] == pending["execution_id"] == row["id"], (
+            "Pending delivery execution owner differs"
+        )
+        assert body["workflow_id"] == pending["workflow_id"] == row["workflow_id"], (
+            "Pending delivery workflow owner differs"
+        )
+        # _publish_pending omits optional file_path when the caller does not
+        # supply it. The public API supplies its path through dispatch_metadata.
+        expected_body = {
+            field: publish[field]
+            for field in (
+                "execution_id",
+                "workflow_id",
+                "sync",
+                "execution_record_exists",
+            )
+        }
+        expected_body["pending_context"] = pending
+        if publish.get("dispatch_metadata") is not None:
+            expected_body["dispatch_metadata"] = publish["dispatch_metadata"]
+        if publish["solution_deployment_id"] is not None:
+            expected_body["solution_deployment_id"] = publish["solution_deployment_id"]
+        if publish["file_path"]:
+            expected_body["file_path"] = publish["file_path"]
+        assert digest(body) == digest(expected_body), (
+            "Pending delivery body projection differs"
+        )
+        metadata = publish.get("dispatch_metadata")
+        assert isinstance(metadata, dict) and metadata.get("path") == fixture_binding(
+            bindings, "source-path"
+        ), "Pending dispatch source owner differs"
+        assert pending["workflow_id"] == fixture_binding(bindings, "workflow"), (
+            "Pending workflow fixture owner differs"
+        )
+        assert (
+            pending["user_id"]
+            == row["executed_by"]
+            == fixture_binding(bindings, "user")
+            and pending["org_id"]
+            == row["organization_id"]
+            == fixture_binding(bindings, "org")
+            and pending["user_email"] == fixture_binding(bindings, "caller-email")
+            and digest(pending["parameters"]) == digest(row["parameters"])
+            and pending["org_id_overridden"] is False
+        ), "Pending caller scope projection differs"
+        caller = next(
+            user
+            for user in observation.database["users"]
+            if user["id"] == row["executed_by"]
+        )
+        organization = next(
+            org
+            for org in observation.database["organizations"]
+            if org["id"] == row["organization_id"]
+        )
+        assert (
+            pending["user_name"] == row["executed_by_name"] == caller["name"]
+            and pending["user_email"] == caller["email"]
+            and pending["org_id"] == caller["organization_id"]
+            and pending["is_platform_admin"] is caller["is_superuser"] is False
+            and pending["is_provider_org"] is organization["is_provider"] is False
+            and pending["is_external"] is False
+        ), "Pending caller authority differs"
+        context = row["execution_context"]
+        if isinstance(context, dict) and "user_id" in context:
+            assert (
+                pending["user_name"]
+                == row["executed_by_name"]
+                == caller["name"]
+                == context["name"]
+                and pending["user_email"] == caller["email"] == context["email"]
+                and pending["user_id"] == context["user_id"]
+                and pending["org_id"] == caller["organization_id"] == context["scope"]
+                and context["execution_id"] == row["id"]
+                and context["organization"]
+                == {
+                    key: organization[key]
+                    for key in ("id", "name", "is_active", "is_provider")
+                }
+            ), "Pending public caller projection differs"
+            for field in ("parameters", "startup", "form_inputs", "embed"):
+                assert digest(pending[field]) == digest(context[field]), (
+                    f"Pending public {field} projection differs"
+                )
+            assert context["is_function_key"] is False and all(
+                context[field] is pending[field]
+                for field in ("is_platform_admin", "is_provider_org", "is_external")
+            ), "Pending caller authority differs"
+        if row["status"] == "Success":
+            assert isinstance(context, dict) and "user_id" in context, (
+                "Pending successful public context absent"
+            )
+            assert (
+                type(pending["parameters"].get("integration_name")) is str
+                and bindings.get(pending["parameters"].get("integration_name"))
+                in {"integration-name", "absent-integration-name"}
+                and pending["parameters"].get("organization_id")
+                == fixture_binding(bindings, "org")
+            ), "Pending successful input fixture owner differs"
+            assert context.get("workspace_generation") == fixture_binding(
+                bindings, "installed-source-generation"
+            ), "Pending successful source generation differs"
+        try:
+            created = instant(pending["created_at"])
+        except (ValueError, TypeError) as exc:
+            raise AssertionError("Pending producer clock invalid") from exc
+        assert created != SEED_TIME and created.utcoffset() == timedelta(0), (
+            "Pending producer clock provenance differs"
+        )
 
 
 def validate_measurements(observation: Observation) -> None:
@@ -252,6 +503,16 @@ def validate_measurements(observation: Observation) -> None:
 class CoreReferenceProfile:
     """Map only enumerated protocol/schema/source-local identity paths."""
 
+    def validate_pending_context(
+        self, observation: Observation, bindings: dict[str, str]
+    ) -> None:
+        """R0 admission gate; pinned profiles must supply their own strict gate.
+
+        A deployment profile must review its producer and ownership chain before
+        overriding this hook. Inheriting it remains fail-closed on non-R0 work.
+        """
+        validate_pending_context(observation, bindings)
+
     def canonicalize(
         self, trace: list[Observation], bindings: dict[str, str]
     ) -> list[dict[str, Any]]:
@@ -259,6 +520,7 @@ class CoreReferenceProfile:
         generated_counts: dict[str, int] = {}
         clocks: set[datetime] = set()
         for observation in trace:
+            self.validate_pending_context(observation, bindings)
             validate_measurements(observation)
             for table, fields in GENERATED_IDENTITIES.items():
                 for index, row in enumerate(observation.database[table]):
@@ -289,6 +551,10 @@ class CoreReferenceProfile:
             )
             values.extend(
                 row["envelope"]["headers"].get("x-enqueued-at")
+                for row in observation.database["work_deliveries"]
+            )
+            values.extend(
+                row["envelope"]["body"]["pending_context"]["created_at"]
                 for row in observation.database["work_deliveries"]
             )
             for value in values:
@@ -323,6 +589,7 @@ class CoreReferenceProfile:
                 ("events", "payload", "started_at"),
                 ("events", "payload", "completed_at"),
                 ("database", "work_deliveries", "envelope", "headers", "x-enqueued-at"),
+                (*PENDING_PATH, "created_at"),
             }
             if clock and value is not None:
                 parsed = instant(value)
@@ -375,6 +642,8 @@ class CoreReferenceProfile:
                 )
             if path[:4] == ("database", "work_deliveries", "envelope", "body"):
                 identity |= path[4:] in DISPATCH_IDENTITIES
+            if path[:5] == PENDING_PATH:
+                identity |= path[5:] in PENDING_IDENTITIES
             if path[:4] == ("database", "work_deliveries", "envelope", "headers"):
                 identity |= leaf in {"x-idempotency-key", "x-original-message-id"}
             if identity and value is not None and str(value) in identities:
@@ -421,6 +690,7 @@ class CoreReferenceProfile:
     def transport(
         self, captured: CapturedStep, bindings: dict[str, str]
     ) -> dict[str, Any]:
+        self.validate_pending_context(captured.observation, bindings)
         result = asdict(captured.transport)
         for request in result["sdk_requests"]:
             assert (
@@ -436,6 +706,27 @@ class CoreReferenceProfile:
             assert signed_execution in bindings, (
                 "SDK signed execution has no fixture owner"
             )
+            owners = [
+                delivery["envelope"]["body"]["pending_context"]
+                for delivery in captured.observation.database.get("work_deliveries", [])
+                if delivery["message_id"] == signed_execution
+            ]
+            if captured.observation.database.get("work_deliveries"):
+                assert len(owners) == 1, "SDK signed execution has no pending owner"
+                pending = owners[0]
+                assert all(
+                    type(claims[claim]) is type(pending[field])
+                    and claims[claim] == pending[field]
+                    for claim, field in {
+                        "org_id": "org_id",
+                        "delegated_user_id": "user_id",
+                        "delegated_email": "user_email",
+                        "delegated_name": "user_name",
+                        "delegated_is_superuser": "is_platform_admin",
+                        "delegated_is_provider_org": "is_provider_org",
+                        "delegated_is_external": "is_external",
+                    }.items()
+                ), "SDK pending caller projection differs"
             for field in (
                 "engine_execution_id",
                 "org_id",
