@@ -484,14 +484,7 @@ def decode_runtime_sdk_access(
         bounded_text(token, 4096)
         if settings.jwt_audience == RUNTIME_SDK_AUDIENCE:
             raise ValueError("audience collision")
-        header = jwt.get_unverified_header(token)
-        if (
-            set(header) != {"alg", "typ"}
-            or header["typ"] != "JWT"
-            or header["alg"] != settings.algorithm
-        ):
-            raise ValueError("invalid token header")
-        payload = jwt.decode(
+        decoded = jwt.decode_complete(
             token,
             settings.secret_key,
             algorithms=[settings.algorithm],
@@ -504,6 +497,13 @@ def decode_runtime_sdk_access(
                 "require": list(RuntimeSDKTokenClaims.model_fields),
             },
         )
-        return RuntimeSDKTokenClaims.model_validate(payload)
+        header = decoded["header"]
+        if (
+            set(header) != {"alg", "typ"}
+            or header["typ"] != "JWT"
+            or header["alg"] != settings.algorithm
+        ):
+            raise ValueError("invalid token header")
+        return RuntimeSDKTokenClaims.model_validate(decoded["payload"])
     except (jwt.PyJWTError, ValueError, TypeError):
         raise RuntimeSDKDenied("invalid runtime SDK token") from None
