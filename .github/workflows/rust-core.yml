@@ -29,6 +29,10 @@ jobs:
         run: ./test.sh stack up
       - name: Verify bootstrap against isolated Python-migrated database
         run: ./test.sh rust bootstrap
+      - name: Build and exercise the valid production binary
+        run: |
+          docker build --build-arg BIFROST_BUILD_SHA="$GITHUB_SHA" -t bifrost-rust-runtime-smoke -f core-rs/Dockerfile core-rs
+          bash core-rs/scripts/container-smoke.sh bifrost-rust-runtime-smoke
       - name: Remove this CI job's isolated test stack
         if: always()
         run: ./test.sh stack down

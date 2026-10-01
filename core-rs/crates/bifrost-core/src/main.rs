@@ -42,6 +42,6 @@ async fn run() -> Result<(), String> {
     telemetry
         .shutdown()
         .await
-        .map_err(|_| "telemetry shutdown deadline exceeded".to_owned())?;
+        .map_err(|_| "telemetry shutdown or flush failed".to_owned())?;
     result.map_err(|error| error.to_string())
 }

@@ -96,6 +96,7 @@ docker build --pull --no-cache --build-arg BIFROST_BUILD_SHA="$(git rev-parse HE
   -t bifrost-rust-w0-bootstrap:0.1.0 -f core-rs/Dockerfile core-rs
 ./test.sh stack up
 ./test.sh rust bootstrap
+bash core-rs/scripts/container-smoke.sh bifrost-rust-w0-bootstrap:0.1.0
 ./test.sh pre-pr
 ```
 
@@ -107,6 +108,12 @@ mutations occur only in rolled-back transactions on the disposable database.
 Default `cargo test --all` covers invalid config, unavailable DB, request-secret
 sanitation and shutdown (including an in-flight readiness request); it does not
 claim migrated-schema proof.
+
+`container-smoke.sh` exercises the actual image over the isolated stack network:
+successful readiness through PgBouncer, 503 against the verified unmigrated default
+PostgreSQL database, synthetic request-secret sanitation and bounded SIGTERM/exit0.
+It runs read-only/nonroot with dropped capabilities and deletes only the containers
+it created. Rust CI invokes this smoke after its mandatory migrated-schema tests.
 
 Rust toolchain/MSRV are both pinned to 1.98.1, the verified full graph baseline,
 not a claimed lower compiler floor. Registry/official crate manifests establish
