@@ -144,6 +144,9 @@ async def test_late_declaration_replay_settles_from_installed_readback_without_m
     original_digest = record.declaration_digest
     await db_session.commit()
     await _attach_accounting_proof(db_session, f)
+    from src.services.solution_source_accountability import _collect_consumers
+    consumers, loose, uncertain = await _collect_consumers(db_session, f.policy)
+    assert not loose and not uncertain and len(consumers) == 1
     observed = await service.declare(request, created_by=platform_admin.user_id)
     assert observed.id == declared.id and observed.disposition == "released"
     assert observed.release_row_id is None
