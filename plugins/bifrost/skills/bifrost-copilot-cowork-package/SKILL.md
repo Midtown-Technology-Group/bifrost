@@ -1,11 +1,6 @@
 ---
 name: copilot-cowork-package
-description: |
-  Use when the user wants to turn a Bifrost agent into a Microsoft 365 Copilot Cowork
-  plugin (.zip with manifest.json + skills/SKILL.md + agentConnectors pointing at the
-  agent's MCP server). Trigger phrases — "/copilot-cowork-package", "turn my <agent> into a
-  Copilot skill", "package this agent for M365 Copilot", "make a Cowork plugin for
-  <agent>", "convert agent to Copilot plugin".
+description: Package a Bifrost agent as a Microsoft 365 Copilot Cowork plugin with its skill and MCP connector.
 ---
 
 # copilot-cowork-package

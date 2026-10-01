@@ -55,7 +55,7 @@ Deploy from the bound project root:
 bifrost app deploy
 ```
 
-The CLI excludes `.env`, ignored files, dependencies, and build output, then uploads source only for the duration of a durable server-side build. The server stores an immutable compiled artifact, atomically activates it, and discards uploaded source. A failed build leaves the previous deployment active.
+The CLI excludes `.env`, ignored files, dependencies, and build output, then uploads sanitized source for a durable server-side build. The server retains immutable deployment source archives and compiled artifacts, and atomically activates the compiled artifact. Authorized operators can retrieve retained source with `bifrost apps source export`. A failed build leaves the previous deployment active.
 
 Deploy changes only the App artifact. It does not capture or mutate live backing resources. Confirm required workflows and policies exist in every organization where the App will run.
 
@@ -101,4 +101,4 @@ Before handoff:
 - exercise `--org` with an authorized operator and confirm an unauthorized viewer cannot override scope;
 - deploy, launch from the Apps UI, and verify the same resource behavior;
 - intentionally fail a build once and confirm the previous deployment remains live;
-- confirm `.env` and App source are absent from permanent platform storage.
+- confirm `.env` and other excluded sensitive files are absent from the retained deployment source archive.

@@ -600,6 +600,8 @@ def create_app() -> FastAPI:
     # Register routers
     from src.routers.home import router as home_router
     app.include_router(home_router)
+    from src.routers.platform.external_workers import router as external_workers_router
+    app.include_router(external_workers_router)
     app.include_router(health_router)
     app.include_router(version_router)
     app.include_router(auth_router)
@@ -633,6 +635,8 @@ def create_app() -> FastAPI:
     app.include_router(device_control_keys_router)
     app.include_router(device_protocol_router)
     app.include_router(oauth_connections_router)
+    from src.routers.workspace_admin import router as workspace_admin_router
+    app.include_router(workspace_admin_router)
     app.include_router(endpoints_router)
     app.include_router(cli_router)
     app.include_router(cli_install_router)

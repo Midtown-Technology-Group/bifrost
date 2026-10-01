@@ -7,12 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
 from src.core.auth import get_current_superuser
 from src.models.contracts.workspace_promotions import (
     WorkspaceLiveRetireRequest,
+    WorkspaceReleaseLockRetryRequest,
     WorkspaceSourceReleaseDeclareRequest,
 )
 from src.routers import workspace_promotions
@@ -270,9 +271,7 @@ async def test_retirement_maps_service_conflict_to_409(monkeypatch) -> None:
             pass
 
         async def retire(self, _request, *, user_id):
-            raise WorkspaceReleaseRetirementError(
-                "no Live Workspace release to retire"
-            )
+            raise WorkspaceReleaseRetirementError("no Live Workspace release to retire")
 
     monkeypatch.setattr(
         workspace_promotions,
@@ -473,3 +472,59 @@ async def test_github_declaration_uses_pinned_organization_and_system_actor(
     assert captured["request"] is request
     assert captured["created_by"] == workspace_promotions.SYSTEM_USER_UUID
     assert captured["producer"] is producer
+
+
+@pytest.mark.asyncio
+async def test_history_retry_refreshes_committed_job_after_notification_rollback(
+    monkeypatch,
+):
+    class Job(SimpleNamespace):
+        def __getattribute__(self, name):
+            if name in {"id", "status", "notification_id"} and self.expired:
+                raise AttributeError("Rolled-back ORM state requires explicit refresh")
+            return super().__getattribute__(name)
+
+    job_id = uuid4()
+    job = Job(id=job_id, status="queued", notification_id=None, expired=False)
+    service = SimpleNamespace(retry_projection=AsyncMock(return_value=(job, False)))
+    monkeypatch.setattr(
+        workspace_promotions, "WorkspaceReleaseActivationService", lambda *_: service
+    )
+    monkeypatch.setattr(
+        workspace_promotions,
+        "ensure_platform_job_notification",
+        AsyncMock(side_effect=RuntimeError("notification unavailable")),
+    )
+    publish = AsyncMock()
+    monkeypatch.setattr(workspace_promotions, "publish_platform_job_update", publish)
+
+    async def expire():
+        job.expired = True
+
+    async def refresh(actual):
+        assert actual is job
+        assert actual.expired
+        actual.expired = False
+
+    db = SimpleNamespace(
+        commit=AsyncMock(),
+        rollback=AsyncMock(side_effect=expire),
+        refresh=AsyncMock(side_effect=refresh),
+    )
+    response = Response()
+    accepted = await workspace_promotions.retry_workspace_release_history_lock(
+        uuid4(),
+        WorkspaceReleaseLockRetryRequest(
+            expected_release_id="sha256:" + "a" * 64, failed_job_id=uuid4()
+        ),
+        response,
+        _ctx(),
+        db,
+        _user(),
+    )
+    assert accepted.job_id == job_id
+    assert accepted.status == "queued"
+    assert response.headers["Location"] == f"/api/platform-jobs/{job_id}"
+    db.rollback.assert_awaited_once()
+    db.refresh.assert_awaited_once_with(job)
+    publish.assert_awaited_once_with(job)

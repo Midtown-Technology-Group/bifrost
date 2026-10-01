@@ -1,6 +1,6 @@
 ---
 name: bifrost-issues
-description: Track work on Bifrost via GitHub Issues + isolated worktrees, AND own the PR/merge lifecycle (opening, queuing auto-merge, watching CI + reviews). Use when the user expresses work intent ("let's build/fix/add X", "work on Y"), pastes a list of todos/notes to triage, asks about existing issues, OR you (or the user) are about to open a PR, queue auto-merge, or merge a PR on this repo. `main` uses GitHub's native merge queue — `gh pr merge <N>` (no strategy flag) enqueues the PR; the queue rebases, runs checks once on a combined ref, and merges when green. Invoke this skill BEFORE running `gh pr create` or `gh pr merge`, not after. Light-touch on issue/work-intent triggers — nudges and helps, never blocks. Trigger phrases - "let's build", "let's fix", "work on", "add a feature", "triage", "todo", "what should I work on", "open a PR", "create an issue", "merge this PR", "queue auto-merge", "ship it", "help wanted".
+description: Triage, file, groom, prioritize, or resolve Bifrost GitHub issues, including investigation, labels, reproduction details, and maintenance of the issue queue.
 ---
 
 # Bifrost Issues + Worktrees

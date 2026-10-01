@@ -3388,6 +3388,8 @@ def _vite_child_env(
               help="Address for the local origin to bind.")
 @click.option("--public-url", default=None,
               help="Browser-visible origin for the local proxy, e.g. https://dev.example.")
+@click.option("--resource-recipe", type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
+              default=None, help="Workflow delivery recipe declaring local checkout resources; no HTTP fallback.")
 def start_cmd(
     app_slug: str | None,
     solution_ref: str | None,
@@ -3395,6 +3397,7 @@ def start_cmd(
     port: int,
     bind_host: str,
     public_url: str | None,
+    resource_recipe: pathlib.Path | None,
 ) -> None:
     import shutil
 
@@ -3448,7 +3451,8 @@ def start_cmd(
         user=client.user, org=org_info, solution_id=binding.solution_id
     )
 
-    host = FunctionHost(workspace)
+    host = (FunctionHost(workspace, resource_recipe=resource_recipe.absolute())
+            if resource_recipe is not None else FunctionHost(workspace))
     host.reload()
     refs = host.refs()
     click.echo(f"Discovered {len(refs)} local function(s):")

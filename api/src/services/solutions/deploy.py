@@ -355,6 +355,19 @@ class SolutionDeployer:
         solution = bundle.solution
         sid = solution.id
 
+        # The caller can load this object before immutable activation commits.
+        # Serialize the guard with activation and read the current DB pointer.
+        active_deployment_id = await self.db.scalar(
+            select(Solution.active_deployment_id)
+            .where(Solution.id == sid)
+            .with_for_update()
+        )
+        if active_deployment_id is not None:
+            raise SolutionDeployConflict(
+                "Solution has an active immutable deployment; stage and review a "
+                "successor deployment before changing its workflows"
+            )
+
         # Source portability artifact: the exact workspace shape export/install
         # consume. Build it from the author-time bundle before per-install UUID
         # remapping, then store it only after the DB commit in finalize_s3.

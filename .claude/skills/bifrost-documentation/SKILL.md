@@ -1,6 +1,6 @@
 ---
 name: bifrost-documentation
-description: Refresh the gobifrost site by re-capturing screenshots and (optionally) authoring missing pages. Trigger phrases - "refresh docs", "update screenshots", "/bifrost-documentation", "rebuild docs site". Has three modes - bootstrap (one-shot manifest generation, mandatory first run), diff (default - only refresh entries whose Bifrost source changed), full (re-capture and re-author everything).
+description: Write or update Bifrost documentation using the repository documentation structure, templates, and authoring conventions.
 ---
 
 # Bifrost Documentation Pipeline

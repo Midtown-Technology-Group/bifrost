@@ -1,6 +1,6 @@
 ---
 name: bifrost-secupdate
-description: Drain the Bifrost Security tab — work through open Dependabot PRs (auto-merge eligible vs needs-review classification), Dependabot alerts (with/without PR), CodeQL alerts (severity-first triage with subagent fan-out for class-level rules), secret-scanning alerts (real vs FP). Use when user says "drain the security queue", "work through alerts", or after `/loop` triggers from bifrost-secaudit.
+description: Triage and resolve Bifrost security alerts and Dependabot pull requests using the repository security policy and required verification.
 ---
 
 # Bifrost Security Update Loop
@@ -41,17 +41,17 @@ Before starting the loop, capture state:
 
 ```bash
 # Branch protection — confirm checks are still required (else --auto is unsafe)
-gh api repos/jackmusick/bifrost/branches/main/protection \
+gh api repos/gobifrost/bifrost/branches/main/protection \
   --jq '.required_status_checks.contexts // [] | length'
 # Must be ≥1; if 0, halt and surface ("branch protection regressed; not safe to auto-merge").
 
 # Auto-merge workflow last run
-gh run list --repo jackmusick/bifrost --workflow "dependabot-auto-merge.yml" --limit 1 \
+gh run list --repo gobifrost/bifrost --workflow "dependabot-auto-merge.yml" --limit 1 \
   --json conclusion --jq '.[0].conclusion'
 # If "failure", investigate before assuming new PRs will auto-merge — the workflow may need a fix first.
 
 # All open PRs to know the working set
-gh pr list --repo jackmusick/bifrost --state open \
+gh pr list --repo gobifrost/bifrost --state open \
   --json number,title,author,labels,statusCheckRollup,mergeable,createdAt
 ```
 
@@ -99,7 +99,7 @@ for pr in dependabot_prs:
 ### Phase B — Dependabot alerts without PRs
 
 ```bash
-gh api "repos/jackmusick/bifrost/dependabot/alerts?state=open" \
+gh api "repos/gobifrost/bifrost/dependabot/alerts?state=open" \
   --jq '.[] | {n: .number, sev: .security_vulnerability.severity, name: .dependency.package.name}'
 ```
 
@@ -121,8 +121,8 @@ For each error-severity rule with N≥3 findings, dispatch a triage subagent tha
 2. Reads 5–10 representative samples
 3. Returns a verdict: DISMISS_AS_CLASS / FIX_AS_CLASS / MIXED — never takes action
 
-```text
-You are triaging CodeQL alerts for rule `<RULE_ID>` in jackmusick/bifrost.
+```
+You are triaging CodeQL alerts for rule `<RULE_ID>` in gobifrost/bifrost.
 
 Steps:
 1. List all open alerts for this rule (via gh api code-scanning/alerts pagination)
@@ -147,15 +147,14 @@ Do NOT take action. Only report.
 After all subagents return, the controller (this skill, in the main session) aggregates:
 
 - **DISMISS_AS_CLASS verdicts:** show the user the table; on approval, run the bulk dismiss script per rule:
-
   ```bash
   RULE_ID="py/unsafe-cyclic-import"
   REASON="SQLAlchemy ORM relationship() lazy-eval — see verdict"
   for page in {1..15}; do
-    gh api "repos/jackmusick/bifrost/code-scanning/alerts?state=open&per_page=100&page=$page" \
+    gh api "repos/gobifrost/bifrost/code-scanning/alerts?state=open&per_page=100&page=$page" \
       --jq ".[] | select(.rule.id == \"$RULE_ID\") | .number" 2>/dev/null
   done | xargs -I {} -P 4 gh api -X PATCH \
-    "repos/jackmusick/bifrost/code-scanning/alerts/{}" \
+    "repos/gobifrost/bifrost/code-scanning/alerts/{}" \
     -f state=dismissed -f "dismissed_reason=false positive" \
     -f "dismissed_comment=$REASON"
   ```
@@ -189,7 +188,7 @@ Wait. These auto-resolve on the next weekly Scorecard run. Don't dispatch.
 ### Phase D — Secret-scanning alerts
 
 ```bash
-gh api "repos/jackmusick/bifrost/secret-scanning/alerts?state=open"
+gh api "repos/gobifrost/bifrost/secret-scanning/alerts?state=open"
 ```
 
 For each:
@@ -203,38 +202,35 @@ For each:
 
 ```bash
 # Snapshot all open Dependabot PRs with their CI state
-gh pr list --repo jackmusick/bifrost --state open \
+gh pr list --repo gobifrost/bifrost --state open \
   --author "app/dependabot" \
   --json number,title,labels,statusCheckRollup --jq '.[] | {n: .number, title: .title, ci: [.statusCheckRollup[] | select(.name == "Lint & Type Check" or .name == "Unit Tests" or .name == "E2E Tests") | "\(.name): \(.conclusion // .status)"]}'
 
 # Re-run failed checks on a PR (after concluding the failure was transient)
-PR_BRANCH=$(gh pr view <N> --repo jackmusick/bifrost --json headRefName --jq .headRefName)
-RUN_ID=$(gh run list --repo jackmusick/bifrost --branch "$PR_BRANCH" --json databaseId,conclusion,createdAt --limit 20 \
-  --jq '[.[] | select(.conclusion == "failure")] | sort_by(.createdAt) | reverse | .[0].databaseId')
-test -n "$RUN_ID"
-gh run rerun "$RUN_ID" --repo jackmusick/bifrost --failed
+RUN_ID=$(gh pr view <N> --repo gobifrost/bifrost --json statusCheckRollup --jq '.statusCheckRollup[] | select(.conclusion == "FAILURE") | .detailsUrl' | grep -oE 'runs/[0-9]+' | head -1 | sed 's|runs/||')
+gh run rerun $RUN_ID --repo gobifrost/bifrost --failed
 
 # Trigger Dependabot rebase (when main has moved and PR is "branches up to date" gated)
-gh pr comment <N> --repo jackmusick/bifrost --body "@dependabot rebase"
+gh pr comment <N> --repo gobifrost/bifrost --body "@dependabot rebase"
 
 # Trigger Dependabot recreate (when dependabot.yml changed and PR needs new ignore rules applied)
-gh pr comment <N> --repo jackmusick/bifrost --body "@dependabot recreate"
+gh pr comment <N> --repo gobifrost/bifrost --body "@dependabot recreate"
 
 # Enable auto-merge (squash, default in this repo)
-gh pr merge <N> --repo jackmusick/bifrost --auto --squash
+gh pr merge <N> --repo gobifrost/bifrost --auto --squash
 
 # Bulk-dismiss CodeQL alerts for a rule (CONFIRMED VERDICT REQUIRED)
 RULE_ID="<rule>"; REASON="<one sentence>"
 for page in {1..15}; do
-  gh api "repos/jackmusick/bifrost/code-scanning/alerts?state=open&per_page=100&page=$page" \
+  gh api "repos/gobifrost/bifrost/code-scanning/alerts?state=open&per_page=100&page=$page" \
     --jq ".[] | select(.rule.id == \"$RULE_ID\") | .number" 2>/dev/null
 done | xargs -I {} -P 4 gh api -X PATCH \
-  "repos/jackmusick/bifrost/code-scanning/alerts/{}" \
+  "repos/gobifrost/bifrost/code-scanning/alerts/{}" \
   -f state=dismissed -f "dismissed_reason=false positive" \
   -f "dismissed_comment=$REASON"
 
 # Dismiss a single CodeQL alert
-gh api -X PATCH "repos/jackmusick/bifrost/code-scanning/alerts/<n>" \
+gh api -X PATCH "repos/gobifrost/bifrost/code-scanning/alerts/<n>" \
   -f state=dismissed -f "dismissed_reason=false positive" \
   -f "dismissed_comment=<reason>"
 ```
