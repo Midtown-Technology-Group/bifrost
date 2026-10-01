@@ -55,14 +55,19 @@ def has_untracked_root_reads(raw: bytes) -> bool:
     """Import aliases must not hide operational files from the code graph."""
     parsed = ast.parse(raw)
     for node in ast.walk(parsed):
-        if isinstance(node, ast.Import) and any(alias.name == "bifrost.files" for alias in node.names):
+        if isinstance(node, ast.Import) and any(
+                alias.name in {"bifrost", "bifrost.client"} or alias.name.startswith("bifrost.files")
+                for alias in node.names):
+            # A package alias can expose files through attributes or getattr;
+            # its absence from the static import graph does not prove safety.
             return True
-        if isinstance(node, ast.ImportFrom) and (node.module == "bifrost.files"
-                or node.module == "bifrost" and any(alias.name in {"files", "*"} for alias in node.names)):
+        if isinstance(node, ast.ImportFrom) and (node.module in {"bifrost.files", "bifrost.client"}
+                or node.module == "bifrost" and any(alias.name in {"files", "client", "*"} for alias in node.names)):
             return True
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and any(
-                route in node.value for route in ("/api/files/read", "/api/sdk/modules/")):
-            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if (node.value in {"bifrost", "bifrost.client"} or node.value.startswith("bifrost.files")
+                    or any(route in node.value for route in ("/api/files/", "/api/sdk/modules/"))):
+                return True
     return False
 
 

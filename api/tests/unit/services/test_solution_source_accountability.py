@@ -83,13 +83,21 @@ def test_loose_runtime_must_match_and_dynamic_or_unpinned_consumers_fail_closed(
 
 @pytest.mark.parametrize("source", [b"from bifrost import files as storage\n", b"from bifrost.files import read as fetch\n",
     b"import bifrost.files as storage\n", b"from bifrost import *\n", b"endpoint = '/api/files/read'\n",
-    b"endpoint = '/api/sdk/modules/path'\n"])
+    b"endpoint = '/api/sdk/modules/path'\n", b"import bifrost as bf\nbf.files.read('shared.py')\n",
+    b"import bifrost\nbifrost.files.read('shared.py')\n", b"import bifrost as bf\ngetattr(bf, 'files')\n",
+    b"import importlib\nimportlib.import_module('bifrost.files')\n", b"__import__('bifrost')\n",
+    b"endpoint = '/api/files/editor/content'\n", b"from bifrost.client import get_client\n"])
 def test_root_read_aliases_cannot_disappear_from_loose_consumer_evidence(source):
     assert has_untracked_root_reads(source)
 
 
 def test_reviewed_resource_reads_are_not_root_file_reads():
     assert not has_untracked_root_reads(b"from bifrost import resources, tables\n")
+
+
+def test_aliased_loose_read_cannot_settle_from_only_the_solution_anchor():
+    loose_source = b"import bifrost as bf\nbf.files.read('features/fixture.py', location='workspace')\n"
+    assert decide(record(), uncertain_loose=has_untracked_root_reads(loose_source)) is None
 
 
 def test_matching_already_active_source_still_needs_exact_tree_and_admission():
