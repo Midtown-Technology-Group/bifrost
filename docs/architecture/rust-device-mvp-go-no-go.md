@@ -159,6 +159,19 @@ is outside this MVP regardless of this readback.
 
 ## Ownership, rollback and measurement
 
+Reviewable W0 candidates are [W0-A #1009](https://github.com/Midtown-Technology-Group/bifrost/pull/1009)
+and [W0-B #1008](https://github.com/Midtown-Technology-Group/bifrost/pull/1008).
+Neither is architect-accepted or merged. Rust package version is `0.1.0`.
+W0-A's six supplementary host tests, formatting, Clippy and dependency policy
+checks passed; cold Docker compilation remains blocked by E-01. W0-B scoped Ruff,
+compilation and whitespace passed. Its first hosted run failed before tests due
+to missing CI image settings; that integration omission was corrected. Actual
+reference execution and response/DB/event mutation detection remain pending.
+Local foundation pre-PR gates also report thousands of dependency-resolution/type
+errors in API quality; their cause is not established by the AppArmor diagnosis.
+Each PR records its exact candidate and gate outcome. Do not infer acceptance
+from either supplementary source checks or an attempted gate.
+
 All five routes remain Python-owned. Python retains administration, control keys,
 cancellation, watchdog, WebSocket authorization, workflow/agent execution and every
 non-goal in the execution plan. Alembic remains authoritative. W0 Rust code applies
