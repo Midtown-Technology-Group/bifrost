@@ -27,10 +27,11 @@ from typing import Literal, Union
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import joinedload
 
+from shared.mcp_urls import validate_mcp_http_url
 from src.config import get_settings
 from src.core.auth import Context
 from src.core.log_safety import log_safe
@@ -88,6 +89,10 @@ class MCPConnectionCreateRequest(BaseModel):
     available_in_chat: bool = Field(default=False)
     available_to_autonomous: bool = Field(default=False)
 
+    _validate_server_url_override = field_validator("server_url_override")(
+        lambda value: validate_mcp_http_url(value) if value is not None else value
+    )
+
 
 class MCPConnectionUpdateRequest(BaseModel):
     """Router-level update payload — plaintext ``client_secret`` if rotated."""
@@ -98,6 +103,10 @@ class MCPConnectionUpdateRequest(BaseModel):
     available_in_chat: bool | None = Field(default=None)
     available_to_autonomous: bool | None = Field(default=None)
     service_oauth_token_id: UUID | None = Field(default=None)
+
+    _validate_server_url_override = field_validator("server_url_override")(
+        lambda value: validate_mcp_http_url(value) if value is not None else value
+    )
 
 
 class MCPConnectionRefreshToolsResponse(BaseModel):
