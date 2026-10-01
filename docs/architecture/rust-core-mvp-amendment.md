@@ -8,14 +8,21 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 
 ## 1. Reconciled program state
 
-| Authority | Exact fetched/current head | Disposition |
+| Authority | Initial reconciliation head (historical) | Disposition |
 | --- | --- | --- |
-| Platform main | `ba783472b770291e612433ad7ca9564fe671dade` | #1001 ancestor; authoritative source |
-| Workspace main | `970f3030ef66d20abe83fd7ef0e400cd114da80d` | #1112 ancestor; refreshed audit below |
+| Platform main | `ba783472b770291e612433ad7ca9564fe671dade` | #1001 ancestor at initial reconciliation |
+| Workspace main | `970f3030ef66d20abe83fd7ef0e400cd114da80d` | #1112 ancestor at initial reconciliation |
 | RFC #1005 | `2a70092eb773750d6bd082659c2a46b428748654` | Open, provisional; redirect findings resolved |
 | Device evidence #1006 | `05bbb1db5426e1b531ed38c37f0aa82dfa71d3f0` | Preserve F-01; device-only STOP |
 | Parity #1008 | `09539559961dd22ed3fd3f9179de84bc8f3bd772` | Reuse, extend; retain all device cases/vector |
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
+
+Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
+As of the latest fetch, platform main is `f10da7c27568e65ee36d5699b72ef3a44ea7a3d8`
+and workspace main is `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`. The
+current workspace audit passes 2,107 boundary files (1,984 standard authored
+files), zero forbidden imports and an empty allowlist. Earlier source/test
+evidence below retains its actual provenance.
 
 The lifecycle/authority audit used `e77947fab5762e49dd5fdc390bd65ca84bc22c3c`.
 The pre-PR refresh advanced main through #1010 to the head above; its seven-file
@@ -35,7 +42,7 @@ This diagnostic is not backend proof or a cause for the type failures. Checked-i
 settings are not deployed settings. No host security-policy alteration is part
 of this program.
 
-At the refreshed workspace main, its own boundary AST audit inspected **2,100 boundary
+At that historical workspace head, its own boundary AST audit inspected **2,100 boundary
 Python files** (1,978 standard authored plus Solution/top-level locations), found
 zero platform `src.*`/SQLAlchemy imports, and confirmed an empty allowlist.
 The import audit found no direct platform dependency requiring accommodation;

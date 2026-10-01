@@ -34,6 +34,20 @@ Reconcile those changes before freezing extraction or granting lifecycle
 authority. The prerequisite correction and selected reference gates are not
 relaxed by this advancement.
 
+Latest source reconciliation fetched platform main
+`f10da7c27568e65ee36d5699b72ef3a44ea7a3d8` (#1007, global Solution
+execution-scoped root tables) and workspace main
+`e8605dc8edb6df8a997c171b534b324ac7ebd8ec`. Both prerequisite commits remain
+ancestors; the fresh workspace AST boundary audit passes 2,107 boundary files
+(1,984 authored), zero forbidden imports and an empty allowlist. This candidate
+includes platform main. The inspected production delta introduces explicit
+per-installation organization policy and reviewed multi-scope root-table grants;
+legacy single-table recipe serialization is preserved. Runtime grants must
+retain exact signed execution organization and reviewed scope selection, rather
+than treating a global Solution as unrestricted organization authority. Pinned
+reference/compiler and credential interfaces must reconcile this delta before
+freeze; earlier CI results remain evidence only for their recorded commits.
+
 The findings below are source evidence, not an observed agent run. Codec passes,
 SDK direct calls, and a rehydrated organization do not prove tool execution.
 The pinned readiness workflow reference remains independent and can continue.
