@@ -7,6 +7,16 @@ Date: 2026-10-01. Architect and builders: Sol. Procedure package 2026-09-30.2
 The RFC is provisional: open at `2a70092eb773750d6bd082659c2a46b428748654`.
 The latest user specification takes precedence over its Muse agent assumption.
 
+## Trajectory amendment — device-only STOP
+
+The revised primary MVP is workflow/agent control-plane ownership with retained
+Python execution, documented in [amendment PR #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011).
+F-01 still blocks the device slice until a separately reviewed reference correction;
+it is not a global STOP. Preserve and reuse parity #1008 and service #1009.
+This report/plan retains the original device scope and historical evidence.
+No device implementation, merge or production deployment is authorized here.
+The amendment records current core baselines, packages and independent gates.
+
 ## Baselines and gates
 
 - Initial platform fetched main: `d39aa0adf15ba12dfde5f2f39628cac88c2e98a0`.

@@ -5,6 +5,16 @@ successful. This is a protocol prerequisite finding, not evidence that Rust is
 unsuitable for a control plane. Sol independently reviewed the source chain.
 The operating procedure package is `2026-09-30.2`.
 
+## Trajectory amendment — device-only STOP
+
+The revised primary MVP is workflow/agent control-plane ownership with retained
+Python execution, documented in [amendment PR #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011).
+F-01 still blocks the device slice until a separately reviewed reference correction;
+it is not a global STOP. Preserve and reuse parity #1008 and service #1009.
+This report/plan retains the original device scope and historical evidence.
+No device implementation, merge or production deployment is authorized here.
+The amendment records current core baselines, packages and independent gates.
+
 ## Scope and authority
 
 The [execution plan](rust-device-mvp-plan.md) records packages and Python ownership.
@@ -244,8 +254,9 @@ requirements remain pending; CodSpeed's cross-environment blocking issue
 
 **STOP this device MVP at the W0 gate.** Retain reviewable foundations as explicitly
 unaccepted candidates; do not merge/deploy or begin device SQL/HTTP ports. Retire
-none of the Python/Sopdet implementation. No evidence yet supports continuing the
-broader control-plane migration, nor does F-01 establish that Rust would cause it.
+none of the Python/Sopdet implementation. Device evidence alone does not justify
+broader migration, and F-01 does not establish a global Rust failure. The revised
+workflow/agent program proceeds under its independent amendment gates.
 
 The next bounded work is a separately reviewed correction/specification for F-01
 in Python/Sopdet, followed by executable crash/uncertainty characterization against
