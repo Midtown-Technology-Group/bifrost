@@ -2,7 +2,7 @@ name: Device protocol characterization
 
 on:
   pull_request:
-    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane, rust/core-reference]
   push:
     branches: [main]
   merge_group:

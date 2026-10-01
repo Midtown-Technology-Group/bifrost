@@ -493,11 +493,17 @@ services:
       BIFROST_ENVIRONMENT: testing
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_POOL_SIZE: "1"
+      BIFROST_DATABASE_MAX_OVERFLOW: "2"
       CORE_SDK_UPSTREAM_URL: http://api:8000
       PYTHONPATH: /app
     volumes:
       - ./api/src:/app/src:ro
       - ./api/tests:/app/tests:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
     user: "1000:1000"
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]

@@ -127,6 +127,34 @@ def test_policy_fails_closed_for_partial_or_unsafe_configuration(changes):
         SolutionGitDeliveryPolicy.model_validate(values)
 
 
+def test_legacy_policy_keeps_exact_scoped_install_and_rejects_unknown_install():
+    configured = policy()
+    assert configured.organization_id_for(SID) == configured.organization_id
+    with pytest.raises(ValueError, match="allowlist"):
+        configured.organization_id_for(UUID(int=20))
+
+
+def test_explicit_install_scopes_distinguish_global_and_scoped_solutions():
+    values = policy().model_dump()
+    scoped_id = UUID(int=20)
+    values.update(solutions={SID: RECIPE, scoped_id: "config/solution-delivery/scoped.json"},
+                  solution_organization_ids={SID: None, scoped_id: values["organization_id"]})
+    configured = SolutionGitDeliveryPolicy.model_validate(values)
+    assert configured.organization_id_for(SID) is None
+    assert configured.organization_id_for(scoped_id) == configured.organization_id
+    with pytest.raises(ValueError, match="allowlist"):
+        configured.organization_id_for(UUID(int=30))
+
+
+@pytest.mark.parametrize("scopes", [{}, {UUID(int=20): None}, {SID: None, UUID(int=20): None},
+                                   {SID: "invalid"}])
+def test_explicit_scope_map_requires_exact_allowlist_coverage(scopes):
+    values = policy().model_dump()
+    values["solution_organization_ids"] = scopes
+    with pytest.raises(ValidationError):
+        SolutionGitDeliveryPolicy.model_validate(values)
+
+
 def fixture(workflow_recipe=None, resource_files=None):
     files = {"fixture.py": b"from helper import value\nasync def fixture():\n    return value\n",
              "helper.py": b"value = 'merged-earlier'\n"}
@@ -185,6 +213,56 @@ async def test_protected_git_resources_are_hash_bound_and_regular_bounded_blobs(
             source = await reader.source(SID, SHA, digest)
             assert source.resources == resources
             assert source.source_hashes["rates.json"] == "sha256:" + hashlib.sha256(resources["rates.json"]).hexdigest()
+            assert source.repository_paths["rates.json"] == "data/rates.json"
+            assert source.repository_paths["fixture.py"] == "solutions/fixture/fixture.py"
+            assert source.control_hashes[RECIPE] == hashlib.sha256(json.dumps({
+                "schema_version": RECIPE_SCHEMA, "solution_id": str(SID),
+                "files": {path: "solutions/fixture/" + path for path in source.files}, **recipe}).encode()).hexdigest()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "extra_install", "missing_install", "duplicate", "scope_target"])
+async def test_protected_registry_is_bound_to_exact_configured_installations(fault):
+    documents, _, digest = fixture()
+    path = "config/solution-delivery/installations.json"
+    rows = [{"target": "production", "recipe": RECIPE}]
+    if fault == "extra_install":
+        rows.append({"target": "production", "recipe": "config/solution-delivery/other.json"})
+    elif fault == "missing_install":
+        rows[0]["recipe"] = "config/solution-delivery/other.json"
+    elif fault == "duplicate":
+        rows.append(dict(rows[0]))
+    elif fault == "scope_target":
+        rows.append({"target": "canary", "recipe": RECIPE})
+    content = json.dumps({"schema_version": "bifrost.solution-delivery-installations/v1", "installations": rows}).encode()
+    sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content, usedforsecurity=False).hexdigest()
+    documents["git/trees/" + TREE + "?recursive=1"]["tree"].append({"path": path,
+        "mode": "100644", "type": "blob", "sha": sha, "size": len(content)})
+    documents["git/blobs/" + sha] = {"sha": sha, "encoding": "base64", "content": base64.b64encode(content).decode()}
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        if fault:
+            with pytest.raises(GitDeliverySourceError, match="registry"):
+                await reader.source(SID, SHA, digest)
+        else:
+            source = await reader.source(SID, SHA, digest)
+            assert source.control_hashes[path] == hashlib.sha256(content).hexdigest()
+            assert source.installation_registry["installations"] == {str(SID): {
+                "recipe_path": RECIPE, "organization_id": str(policy().organization_id)}}
+
+
+@pytest.mark.asyncio
+async def test_supersession_ancestry_is_git_proof_not_time_or_equal_bytes():
+    documents, _, _ = fixture()
+    parent, grandparent = "d" * 40, "e" * 40
+    documents["git/commits/" + SHA]["parents"] = [{"sha": parent}]
+    documents["git/commits/" + parent] = {"sha": parent, "parents": [{"sha": grandparent}]}
+    documents["git/commits/" + grandparent] = {"sha": grandparent, "parents": []}
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {grandparent}, limit=1) == ()
+        assert await reader.verified_ancestors(SHA, {parent, grandparent}) == (parent, grandparent)
+        assert await reader.verified_ancestors(SHA, {"f" * 40}) == ()
 
 
 @pytest.mark.asyncio

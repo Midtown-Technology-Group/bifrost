@@ -111,6 +111,17 @@ async def acquire_workspace_release_lock(
     )
 
 
+async def acquire_runtime_admission_lock(db: AsyncSession) -> None:
+    """Allow concurrent admissions; fence their pins until durable insertion.
+
+    Accounting and Live transitions take the exclusive form of this same lock.
+    Acquire before event/execution locks and hold through the execution commit.
+    """
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock_shared(hashtext('bifrost:workspace-release'))"),
+    )
+
+
 def classify_workspace_release_path(
     path: WorkspaceReleaseProjectionPath, observed_sha256: str | None
 ) -> WorkspaceReleasePathState:

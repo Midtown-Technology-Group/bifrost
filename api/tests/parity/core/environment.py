@@ -425,7 +425,8 @@ class ReferenceEnvironment:
             await db.commit()
         for identity in self.executions:
             await self.redis.delete(
-                f"{PREFIX}{identity}:owner", f"{PREFIX}{identity}:requests"
+                f"{PREFIX}{identity}:owner", f"{PREFIX}{identity}:requests",
+                f"{PREFIX}{identity}:observer-failures",
             )
         await self.redis.aclose()
         await self.client.aclose()

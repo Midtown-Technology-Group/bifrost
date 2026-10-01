@@ -1,0 +1,41 @@
+{
+  "schema": "bifrost.core-pinned-reference-source/v1",
+  "procedure": "mtg-engineering-flow/2026-09-30.1",
+  "platform_main": "ba783472b770291e612433ad7ca9564fe671dade",
+  "r0_foundation": "735784a0ec4bd01fbc8517a0e122453da382c932",
+  "source": {
+    "workspace_commit": "83c1cb034dbbcfa29eb1723506735b13b4788536",
+    "authored_path": "features/utilities/workflows/check_integration_readiness.py",
+    "retained_path": "api/tests/parity/core/assets/check_integration_readiness.py.txt",
+    "git_blob": "6dbd6bcc18716f8bc807e8fc2411c180f44f425c",
+    "sha256": "f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de",
+    "function": "check_integration_readiness",
+    "kind": "workflow",
+    "byte_changes": false
+  },
+  "installation": {
+    "contract": "bifrost.solution-workflow-delivery/v1",
+    "public_routes": [
+      "POST /api/solutions",
+      "POST /api/solutions/{solution}/deployments/{deployment}/initial-workflow/candidate",
+      "POST /api/solutions/{solution}/deployments/{deployment}/initial-workflow/preflight",
+      "POST /api/solutions/{solution}/deployments/{deployment}/initial-workflow/activate"
+    ],
+    "setup_principal": "Separate synthetic admin, never the execution caller",
+    "execution_principal": "Normal tenant user, is_superuser=false and provider organization=false, one explicit role",
+    "runtime_mode_required": "deployment-v1",
+    "mock_artifacts_executor_sdk": false
+  },
+  "transport": {
+    "integration_requests": "Real SDK POSTs forwarded to real API; integrations.get carries exact owned solution, get_mapping does not",
+    "source_requests": "Separate actual GET /api/sdk/modules/{owned deployment runtime source}; exact bytes and CachedModule hash, committed active attempt fence and signed caller/Solution checked",
+    "model_vendor": "Absent; no external calls or compatibility proof"
+  },
+  "acceptance": "Static candidate only until supported Docker/CI reference and comparator validation; A-only does not complete C1-R or prove Rust authority",
+  "workspace_reconciliation": {
+    "current_main": "970f3030ef66d20abe83fd7ef0e400cd114da80d",
+    "retained_commit": "83c1cb034dbbcfa29eb1723506735b13b4788536",
+    "selected_A_B_source_diff": "Empty git diff independently verified; original source commit/blob/hash retained",
+    "proof": "Source reconciliation only; no runtime acceptance"
+  }
+}

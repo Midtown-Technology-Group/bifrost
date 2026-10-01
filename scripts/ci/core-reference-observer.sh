@@ -17,6 +17,10 @@ case "${1:-}" in
         # name after the ordinary e2e stack; do not recreate its dependencies.
         docker compose -f docker-compose.test.yml --profile core-reference up -d --no-build --no-deps core-sdk-observer
         wait_for_service docker-compose.test.yml core-sdk-observer curl --fail --silent http://localhost:8080/health/ready
+        # Readiness through the upstream API does not exercise the lazy pinned
+        # source guard. Verify its real import in the observer's own filesystem.
+        docker compose -f docker-compose.test.yml --profile core-reference exec -T core-sdk-observer \
+            python -c 'from tests.parity.core.pinned import assert_source_request, assert_source_response; assert callable(assert_source_request) and callable(assert_source_response)'
         ;;
     stop)
         docker compose -f docker-compose.test.yml --profile core-reference rm -sf core-sdk-observer

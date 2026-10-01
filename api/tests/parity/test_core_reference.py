@@ -7,7 +7,6 @@ import json
 import os
 from contextlib import asynccontextmanager
 from copy import deepcopy
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -33,7 +32,6 @@ from tests.parity.core.scenarios import (
     expected_result,
 )
 from tests.parity.core.sdk_observer import PREFIX, assert_synthetic_request, target_url
-from tests.parity.harness import Observation
 
 pytestmark = pytest.mark.e2e
 
@@ -607,53 +605,83 @@ def test_core_observer_accepts_exact_synthetic_request_vector(mapping):
     )
 
 
-@pytest.mark.parametrize("token_owner", ["execution-a", "execution-b"])
-def test_core_profile_binds_fence_to_signed_execution_vector(token_owner):
-    # Distinct owned executions can both have attempt 1; ownership must agree.
-    before = datetime.now(UTC)
-    fence = "synthetic-high-entropy-fence-vector"
+def fence_owner_vector(token_owner):
+    from tests.unit.test_core_pending_context_profile import pending_vector, rehash
+
+    observation, bindings = pending_vector("fence")
+    first = observation.database["executions"][0]["id"]
+
+    def rename(value, old, new):
+        if isinstance(value, dict):
+            return {key: rename(item, old, new) for key, item in value.items()}
+        if isinstance(value, list):
+            return [rename(item, old, new) for item in value]
+        return new if value == old else value
+
+    observation.database = rename(observation.database, first, "execution-a")
+    del bindings[first]
+    bindings.update({"execution-a": "first", "execution-b": "second"})
+    first_row = observation.database["executions"][0]
+    second_row = rename(first_row, "execution-a", "execution-b")
+    for row in (first_row, second_row):
+        rehash(row)
+    observation.database["executions"].append(second_row)
+    second_delivery = rename(
+        observation.database["work_deliveries"][0], "execution-a", "execution-b"
+    )
+    second_delivery["id"] = "fence-second-delivery"
+    observation.database["work_deliveries"].append(second_delivery)
+    fences = {
+        owner: f"synthetic-high-entropy-fence-{owner}"
+        for owner in ("execution-a", "execution-b")
+    }
+    observation.database["workflow_execution_attempts"] = [
+        {"execution_id": owner, "claim_token": fence, "attempt_number": 1}
+        for owner, fence in fences.items()
+    ]
+    pending = observation.database["work_deliveries"][0]["envelope"]["body"][
+        "pending_context"
+    ]
     captured = CapturedStep(
-        Observation(
-            "fence-vector",
-            200,
-            None,
-            {
-                "workflow_execution_attempts": [
-                    {
-                        "execution_id": token_owner,
-                        "claim_token": fence,
-                        "attempt_number": 1,
-                    }
-                ]
-            },
-            [],
-            before,
-            before + timedelta(seconds=1),
-        ),
+        observation,
         TransportEvidence(
             sdk_requests=[
                 {
-                    "before": before.isoformat(),
-                    "after": before.isoformat(),
+                    "before": observation.before.isoformat(),
+                    "after": observation.before.isoformat(),
                     "authorization": {
                         "claims": {
                             "engine_execution_id": "execution-a",
-                            "org_id": "org",
-                            "delegated_user_id": "user",
-                            "delegated_email": "email",
+                            "org_id": pending["org_id"],
+                            "delegated_user_id": pending["user_id"],
+                            "delegated_email": pending["user_email"],
+                            "delegated_name": pending["user_name"],
+                            "delegated_is_superuser": False,
+                            "delegated_is_provider_org": False,
+                            "delegated_is_external": False,
                             "engine_attempt_token_present": True,
                             "engine_attempt_token_digest": hashlib.sha256(
-                                fence.encode()
+                                fences[token_owner].encode()
                             ).hexdigest(),
                         }
                     },
-                    "request": {"name": "approved", "scope": "org"},
+                    "request": {
+                        "name": pending["parameters"]["integration_name"],
+                        "scope": pending["org_id"],
+                    },
                     "response": None,
                 }
             ]
         ),
     )
-    bindings = {"execution-a": "first", "execution-b": "second"}
+    return captured, bindings
+
+
+@pytest.mark.parametrize("token_owner", ["execution-a", "execution-b"])
+def test_core_profile_binds_fence_to_signed_execution_vector(token_owner):
+    # Both complete owned executions have attempt 1; the signed owner must agree.
+    captured, bindings = fence_owner_vector(token_owner)
+    original = deepcopy(captured)
     if token_owner != "execution-a":
         with pytest.raises(
             AssertionError, match="SDK attempt fence has no committed owner"
@@ -674,6 +702,28 @@ def test_core_profile_binds_fence_to_signed_execution_vector(token_owner):
             ]
             == "execution-a"
         )
+    assert captured == original
+
+
+@pytest.mark.parametrize("plane", ["erased", "foreign"])
+def test_core_fence_vector_requires_unique_signed_execution_owner(plane):
+    captured, bindings = fence_owner_vector("execution-a")
+    if plane == "erased":
+        captured.observation.database["executions"] = [
+            captured.observation.database["executions"][1]
+        ]
+        captured.observation.database["work_deliveries"] = [
+            captured.observation.database["work_deliveries"][1]
+        ]
+    else:
+        bindings["execution-c"] = "third"
+        captured.transport.sdk_requests[0]["authorization"]["claims"][
+            "engine_execution_id"
+        ] = "execution-c"
+    with pytest.raises(
+        AssertionError, match="SDK signed execution has no unique execution owner"
+    ):
+        PROFILE.transport(captured, bindings)
 
 
 @pytest.mark.parametrize(

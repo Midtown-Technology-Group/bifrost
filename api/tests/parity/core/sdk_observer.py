@@ -11,6 +11,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -42,6 +43,91 @@ CLAIMS = (
     "delegated_is_external",
 )
 FIXTURE_VALUE = "core-parity-synthetic-config-value"
+FAILURE_LIMIT = 16
+FAILURE_STAGES = frozenset({
+    "source_authority", "request_guard", "upstream_request", "response_decode",
+    "response_guard", "transport_retention",
+})
+REQUEST_KINDS = frozenset({"source", "integration_get", "mapping_get", "other"})
+FAILURE_CLASSES = frozenset({
+    "AssertionError", "ValueError", "TypeError", "KeyError", "RuntimeError",
+    "JSONDecodeError", "ConnectError", "ConnectTimeout", "ReadTimeout",
+    "WriteTimeout", "PoolTimeout", "RemoteProtocolError", "ReadError",
+    "WriteError", "UnsupportedProtocol", "InvalidURL", "DBAPIError",
+    "OperationalError", "InterfaceError", "ProgrammingError",
+    "ImportError", "ModuleNotFoundError",
+})
+# Only exact, fixed guard messages select a reason. Exception text is never
+# formatted or retained, including for an unknown exception or guard message.
+_GUARD_REASONS = {
+    "Source signed Solution differs": "signed_solution",
+    "Source caller is not normal tenant": "normal_tenant",
+    "Source committed caller or pin differs": "committed_caller_pin",
+    "Source durable mode or evidence differs": "durable_mode_evidence",
+    "Source durable Solution differs": "durable_solution",
+    "Source durable hash differs": "durable_hash",
+    "Source active signed attempt differs": "active_attempt",
+    "Unapproved owned SDK method": "sdk_method",
+    "Unapproved owned SDK path": "sdk_path",
+    "Unapproved owned SDK query": "sdk_query",
+    "Unapproved owned SDK JSON": "sdk_json",
+    "Unapproved owned SDK request body": "sdk_body",
+    "Unsupported observer request path": "upstream_path",
+    "Unexpected owned SDK path": "sdk_response_path",
+    "Unexpected upstream SDK error; refuse response retention": "sdk_response_status",
+    "Unexpected credential-bearing response field": "sdk_response_fields",
+    "Unexpected OAuth material": "sdk_response_oauth",
+    "Unexpected secret config": "sdk_response_secret_config",
+    "Unexpected synthetic config key": "sdk_response_config_keys",
+    "Unexpected credential/config value": "sdk_response_config_value",
+    "Unapproved source registry": "source_registry",
+    "Unapproved source pin": "source_pin",
+    "Unapproved source request": "source_request",
+    "Unapproved source request bytes": "source_request_bytes",
+    "Unapproved source authority": "source_authority",
+    "Unapproved source response": "source_response_status_shape",
+    "Unapproved CachedModule fields": "source_response_fields",
+    "Source response path differs": "source_response_path",
+    "Source storage authority differs": "source_storage_authority",
+    "Immutable source acquired workspace generation": "source_generation",
+    "Source bytes differ from retained workspace blob": "source_bytes",
+    "Source hash differs from pin": "source_hash",
+}
+FAILURE_REASONS = frozenset(_GUARD_REASONS.values()) | {"unclassified"}
+
+
+def failure_projection(record: dict[str, Any]) -> dict[str, Any]:
+    """Allowlist again at readback; even a corrupted diagnostic cannot print data."""
+    def safe(value: Any, allowed: frozenset[str]) -> str:
+        return value if isinstance(value, str) and value in allowed else "unclassified"
+
+    status = record.get("upstream_status")
+    return {
+        "stage": safe(record.get("stage"), FAILURE_STAGES),
+        "reason": safe(record.get("reason"), FAILURE_REASONS),
+        "request_kind": safe(record.get("request_kind"), REQUEST_KINDS),
+        "exception_class": safe(record.get("exception_class"), FAILURE_CLASSES),
+        "upstream_status": status if type(status) is int and 100 <= status <= 599 else None,
+    }
+
+
+def failure_record(state: dict[str, Any], error: Exception) -> dict[str, Any]:
+    reason = "unclassified"
+    if type(error) is AssertionError and error.args and isinstance(error.args[0], str):
+        reason = _GUARD_REASONS.get(error.args[0], reason)
+    return failure_projection({
+        **state, "reason": reason, "exception_class": type(error).__name__,
+    })
+
+
+def request_kind(path: str, registry: dict | None) -> str:
+    source = registry.get("source") if registry else None
+    if isinstance(source, dict) and path == f"api/sdk/modules/{source.get('path')}":
+        return "source"
+    return {
+        "api/sdk/integrations/get": "integration_get",
+        "api/sdk/integrations/get_mapping": "mapping_get",
+    }.get(path, "other")
 
 
 def assert_synthetic_request(
@@ -60,6 +146,8 @@ def assert_synthetic_request(
     expected = {"name": registry["request_name"], "scope": registry["org_id"]}
     if path == "api/sdk/integrations/get_mapping":
         expected["entity_id"] = None
+    elif registry.get("solution_id") is not None:
+        expected["solution"] = registry["solution_id"]
     assert body == expected, "Unapproved owned SDK request body"
     return body
 
@@ -171,8 +259,90 @@ async def forward(request: Request, path: str) -> Response:
                 "SDK organization attribution differs"
             )
             UUID(claims["engine_attempt_token"])
+    state = {
+        "stage": "source_authority", "request_kind": request_kind(path, registry),
+        "upstream_status": None,
+    }
+    try:
+        return await _forward(request, path, raw, claims, registry, execution, state)
+    except Exception as error:
+        # This block is reached only after the existing signed owner attribution
+        # guards above. Preserve the original exception even if diagnostics fail.
+        if registry is not None and execution is not None:
+            try:
+                key = f"{PREFIX}{execution}:observer-failures"
+                await request.app.state.redis.rpush(key, json.dumps(failure_record(state, error)))
+                await request.app.state.redis.ltrim(key, -FAILURE_LIMIT, -1)
+                await request.app.state.redis.expire(key, 600)
+            except Exception:
+                pass
+        raise
+
+
+async def _forward(
+    request: Request, path: str, raw: bytes, claims: dict | None,
+    registry: dict | None, execution: str | None, state: dict[str, Any],
+) -> Response:
+    source_request = False
+    if registry is not None and registry.get("solution_id") is not None:
+        assert claims is not None
+        assert claims.get("engine_solution_id") == registry["solution_id"], (
+            "Source signed Solution differs"
+        )
+        assert (
+            claims.get("delegated_is_superuser") is False
+            and claims.get("delegated_is_provider_org") is False
+            and claims.get("delegated_is_external") is False
+        ), "Source caller is not normal tenant"
+        # This test-only read checks the bearer fence against committed active
+        # authority; no raw token is retained in Redis, artifacts or errors.
+        from sqlalchemy import select
+        from src.core.database import get_db_context
+        from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+
+        async with get_db_context() as db:
+            row = await db.get(Execution, UUID(execution))
+            assert (
+                row is not None
+                and str(row.executed_by) == registry["user_id"]
+                and str(row.organization_id) == registry["org_id"]
+                and str(row.solution_deployment_id) == registry["deployment_id"]
+            ), "Source committed caller or pin differs"
+            assert row.runtime_mode == "deployment-v1" and isinstance(
+                row.runtime_evidence, dict
+            ), "Source durable mode or evidence differs"
+            evidence = row.runtime_evidence
+            assert (
+                evidence["solution_id"] == registry["solution_id"]
+                and evidence["solution_deployment_id"] == registry["deployment_id"]
+            ), "Source durable Solution differs"
+            assert (
+                evidence["workflow_source_hash"]
+                == f"sha256:{registry['source']['sha256']}"
+            ), "Source durable hash differs"
+            attempts = (
+                await db.scalars(
+                    select(WorkflowExecutionAttempt).where(
+                        WorkflowExecutionAttempt.execution_id == UUID(execution),
+                        WorkflowExecutionAttempt.status.in_(["claimed", "running"]),
+                        WorkflowExecutionAttempt.completed_at.is_(None),
+                    )
+                )
+            ).all()
+            assert len(attempts) == 1 and attempts[0].claim_token == UUID(
+                claims["engine_attempt_token"]
+            ), "Source active signed attempt differs"
+        source_request = path == f"api/sdk/modules/{registry['source']['path']}"
+    state["stage"] = "request_guard"
     approved_request = None
-    if registry is not None:
+    if registry is not None and source_request:
+        from tests.parity.core.pinned import assert_source_request
+
+        assert_source_request(
+            request.method, path, request.scope["query_string"], raw, registry
+        )
+        approved_request = None
+    elif registry is not None:
         approved_request = assert_synthetic_request(
             request.method,
             path,
@@ -181,6 +351,7 @@ async def forward(request: Request, path: str) -> Response:
             registry,
         )
     before = datetime.now(UTC).isoformat()
+    state["stage"] = "upstream_request"
     upstream = await request.app.state.client.request(
         request.method,
         target_url(
@@ -193,21 +364,30 @@ async def forward(request: Request, path: str) -> Response:
             if key.lower() not in HOP_HEADERS
         },
     )
+    state["upstream_status"] = upstream.status_code
+    state["stage"] = "response_decode"
     observed_status = upstream.status_code
     observed_body = (
         upstream.json()
         if registry is not None and path.startswith("api/sdk/") and upstream.content
         else None
     )
+    state["stage"] = "response_guard"
     if registry is not None and path.startswith("api/sdk/"):
         assert claims is not None
-        assert_synthetic_response(path, upstream.status_code, observed_body)
+        if source_request:
+            from tests.parity.core.pinned import assert_source_response
+
+            assert_source_response(upstream.status_code, observed_body, registry)
+        else:
+            assert_synthetic_response(path, upstream.status_code, observed_body)
     mutation = registry.get("sdk_response_mutation") if registry else None
     if mutation == "forbidden" and path == "api/sdk/integrations/get":
         # Explicit test-owned wire self-test: real upstream request still runs.
         observed_status = 403
         observed_body = {"detail": "Synthetic reference SDK scope denial"}
     if registry is not None and path.startswith("api/sdk/"):
+        state["stage"] = "transport_retention"
         safe_claims = {key: claims.get(key) for key in CLAIMS}
         safe_claims["engine_attempt_token_present"] = bool(
             claims.get("engine_attempt_token")
@@ -233,10 +413,15 @@ async def forward(request: Request, path: str) -> Response:
             "before": before,
             "after": datetime.now(UTC).isoformat(),
         }
+        if registry.get("solution_id") is not None:
+            record["authorization"]["committed_attempt_verified"] = True
         await request.app.state.redis.rpush(
-            f"{PREFIX}{execution}:requests", json.dumps(record)
+            f"{PREFIX}{execution}:{'sources' if source_request else 'requests'}",
+            json.dumps(record),
         )
-        await request.app.state.redis.expire(f"{PREFIX}{execution}:requests", 600)
+        await request.app.state.redis.expire(
+            f"{PREFIX}{execution}:{'sources' if source_request else 'requests'}", 600
+        )
     if mutation == "forbidden" and path == "api/sdk/integrations/get":
         return Response(
             content=json.dumps(observed_body),

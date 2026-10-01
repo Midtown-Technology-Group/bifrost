@@ -5,7 +5,7 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane, rust/core-reference]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -52,6 +52,7 @@ jobs:
       client_unit_targets: ${{ steps.plan.outputs.client_unit_targets }}
       client_e2e_mode: ${{ steps.plan.outputs.client_e2e_mode }}
       client_e2e_targets: ${{ steps.plan.outputs.client_e2e_targets }}
+      client_e2e_matrix: ${{ steps.plan.outputs.client_e2e_matrix }}
       mcp_conformance_mode: ${{ steps.plan.outputs.mcp_conformance_mode }}
     steps:
       - name: Checkout repository
@@ -674,9 +675,8 @@ jobs:
   # =============================================================================
   # E2E Tests - Sharded across 4 parallel runners. Each shard boots its own
   # isolated test stack (no xdist, no shared services between shards).
-  # scripts/e2e_shard.py deterministically allocates test files: heavies
-  # bin-packed first, then round-robin in sorted order — adding a file only
-  # moves files in shards downstream of the insertion point.
+  # scripts/e2e_shard.py balances every file using full-suite JUnit timings.
+  # Unknown files receive the measured median weight; no file is excluded.
   #
   # The internal matrix job (test-e2e) uses shard names like
   # "E2E Tests (shard 1/4)". The aggregate gate job below (test-e2e-gate)
@@ -777,7 +777,8 @@ jobs:
         run: echo "API e2e tests are outside the affected closure."
 
   # =============================================================================
-  # Client E2E Tests - Playwright browser coverage in the Docker test stack.
+  # Client E2E Tests - two independent Docker stacks for comprehensive coverage.
+  # Keep one browser worker per stack: specs mutate shared workspace/global state.
   # Source and specs are bind-mounted from the checkout; dependency-heavy
   # API, client, and browser images are pulled from main or rebuilt with
   # persistent BuildKit caches when their baked inputs change.
@@ -786,7 +787,10 @@ jobs:
     needs: [affected-test-plan, publish-ci-test-images]
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
     runs-on: ubuntu-latest
-    name: Client E2E Tests
+    name: Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.affected-test-plan.outputs.client_e2e_matrix || '{"include":[{"shard":0,"total":0}]}') }}
     permissions:
       contents: read
       packages: read
@@ -822,6 +826,8 @@ jobs:
       - name: Run Playwright tests
         if: needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         env:
+          SHARD_ID: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ matrix.total }}
           TEST_MODE: ${{ needs.affected-test-plan.outputs.client_e2e_mode }}
           TEST_TARGETS: ${{ needs.affected-test-plan.outputs.client_e2e_targets }}
         run: |
@@ -830,7 +836,10 @@ jobs:
           chmod +x test.sh
           ./test.sh stack up
           if [ "$TEST_MODE" = "comprehensive" ]; then
-            ./test.sh client e2e
+            ./test.sh client e2e \
+              --project=platform-admin --project=org-user \
+              --project=unauthenticated --project=chromium \
+              --shard="$SHARD_ID/$SHARD_TOTAL"
           else
             mapfile -t targets <<< "$TEST_TARGETS"
             if (( ${#targets[@]} == 0 )); then
@@ -844,11 +853,11 @@ jobs:
         if: always() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         run: ./test.sh stack down
 
-      - name: Upload Playwright failure artifacts
-        if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
+      - name: Preserve Playwright shard results
+        if: always() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: client/playwright-results
           if-no-files-found: warn
           retention-days: 7
@@ -857,7 +866,7 @@ jobs:
         if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-service-logs
+          name: browser-service-logs-${{ matrix.shard }}
           path: /tmp/bifrost-bifrost-test-*/*.log
           if-no-files-found: warn
           retention-days: 7
@@ -874,7 +883,7 @@ jobs:
           COMPOSE_PROJECT_NAME="$bifrost_test_project" docker compose -f docker-compose.test.yml logs --tail=300 api
 
   # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
-  # Fails if any backend shard or the Playwright job failed or was cancelled.
+  # Fails if any backend or browser shard failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')

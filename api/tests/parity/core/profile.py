@@ -7,7 +7,7 @@ import json
 import math
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from tests.parity.compare import assert_parity
 from tests.parity.core.capture import CapturedStep
@@ -201,8 +201,41 @@ def fixture_binding(bindings: dict[str, str], role: str) -> str:
     return values[0]
 
 
+class PendingContextPolicy(Protocol):
+    """Mandatory source-specific gates around the common raw producer contract."""
+
+    def validate_runtime(self, observation, owner, dispatch, pending, bindings): ...
+
+    def expected_source_path(self, observation, owner, bindings) -> str: ...
+
+    def validate_successful_generation(self, observation, owner, context, bindings): ...
+
+
+class RepoPendingContextPolicy:
+    def validate_runtime(self, observation, owner, dispatch, pending, bindings):
+        assert owner["runtime_mode"] == "repo-v1" and (
+            owner["runtime_evidence"] is None
+            and owner["runtime_evidence_hash"] is None
+            and owner["solution_deployment_id"] is None
+        ), "Pending profile requires R0 repo runtime"
+
+    def expected_source_path(self, observation, owner, bindings):
+        return fixture_binding(bindings, "source-path")
+
+    def validate_successful_generation(self, observation, owner, context, bindings):
+        assert context.get("workspace_generation") == fixture_binding(
+            bindings, "installed-source-generation"
+        ), "Pending successful source generation differs"
+
+
+R0_PENDING_POLICY = RepoPendingContextPolicy()
+
+
 def validate_pending_context(
-    observation: Observation, bindings: dict[str, str]
+    observation: Observation,
+    bindings: dict[str, str],
+    *,
+    policy: PendingContextPolicy = R0_PENDING_POLICY,
 ) -> None:
     """Bind the complete raw producer output before projecting any leaf."""
     for delivery in observation.database.get("work_deliveries", []):
@@ -255,11 +288,7 @@ def validate_pending_context(
         )
         for field in ("form_id", "api_key_id"):
             assert pending[field] == row[field], "Pending row projection differs"
-        assert row["runtime_mode"] == "repo-v1" and (
-            row["runtime_evidence"] is None
-            and row["runtime_evidence_hash"] is None
-            and row["solution_deployment_id"] is None
-        ), "Pending profile requires R0 repo runtime"
+        policy.validate_runtime(observation, row, dispatch, pending, bindings)
         expected = {
             field: publish[field]
             for field in PENDING_TYPES
@@ -325,8 +354,8 @@ def validate_pending_context(
             "Pending delivery body projection differs"
         )
         metadata = publish.get("dispatch_metadata")
-        assert isinstance(metadata, dict) and metadata.get("path") == fixture_binding(
-            bindings, "source-path"
+        assert isinstance(metadata, dict) and metadata.get("path") == (
+            policy.expected_source_path(observation, row, bindings)
         ), "Pending dispatch source owner differs"
         assert pending["workflow_id"] == fixture_binding(bindings, "workflow"), (
             "Pending workflow fixture owner differs"
@@ -396,9 +425,7 @@ def validate_pending_context(
                 and pending["parameters"].get("organization_id")
                 == fixture_binding(bindings, "org")
             ), "Pending successful input fixture owner differs"
-            assert context.get("workspace_generation") == fixture_binding(
-                bindings, "installed-source-generation"
-            ), "Pending successful source generation differs"
+            policy.validate_successful_generation(observation, row, context, bindings)
         try:
             created = instant(pending["created_at"])
         except (ValueError, TypeError) as exc:
@@ -498,6 +525,49 @@ def validate_measurements(observation: Observation) -> None:
                 assert payload["duration_ms"] == duration, (
                     "event duration projection differs"
                 )
+
+
+def validate_transport_owner(observation, claims, bindings):
+    """Validate raw delegated caller and attempt fence before any projection."""
+    execution = claims["engine_execution_id"]
+    assert type(execution) is str and execution in bindings, (
+        "SDK signed execution has no fixture owner"
+    )
+    rows = [row for row in observation.database["executions"] if row["id"] == execution]
+    assert len(rows) == 1, "SDK signed execution has no unique execution owner"
+    owners = [
+        delivery["envelope"]["body"]["pending_context"]
+        for delivery in observation.database.get("work_deliveries", [])
+        if delivery["message_id"] == execution
+    ]
+    pending = None
+    if observation.database.get("work_deliveries"):
+        assert len(owners) == 1, "SDK signed execution has no pending owner"
+        pending = owners[0]
+        assert all(
+            type(claims[claim]) is type(pending[field])
+            and claims[claim] == pending[field]
+            for claim, field in {
+                "org_id": "org_id",
+                "delegated_user_id": "user_id",
+                "delegated_email": "user_email",
+                "delegated_name": "user_name",
+                "delegated_is_superuser": "is_platform_admin",
+                "delegated_is_provider_org": "is_provider_org",
+                "delegated_is_external": "is_external",
+            }.items()
+        ), "SDK pending caller projection differs"
+    attempts = [
+        row
+        for row in observation.database["workflow_execution_attempts"]
+        if row["claim_token"] is not None
+        and row["execution_id"] == execution
+        and hashlib.sha256(row["claim_token"].encode()).hexdigest()
+        == claims["engine_attempt_token_digest"]
+    ]
+    assert len(attempts) == 1, "SDK attempt fence has no committed owner"
+    assert claims["engine_attempt_token_present"] is True
+    return rows[0], pending, attempts[0]
 
 
 class CoreReferenceProfile:
@@ -703,30 +773,9 @@ class CoreReferenceProfile:
             request.pop("after")
             claims = request["authorization"]["claims"]
             signed_execution = claims["engine_execution_id"]
-            assert signed_execution in bindings, (
-                "SDK signed execution has no fixture owner"
+            _, _, attempt = validate_transport_owner(
+                captured.observation, claims, bindings
             )
-            owners = [
-                delivery["envelope"]["body"]["pending_context"]
-                for delivery in captured.observation.database.get("work_deliveries", [])
-                if delivery["message_id"] == signed_execution
-            ]
-            if captured.observation.database.get("work_deliveries"):
-                assert len(owners) == 1, "SDK signed execution has no pending owner"
-                pending = owners[0]
-                assert all(
-                    type(claims[claim]) is type(pending[field])
-                    and claims[claim] == pending[field]
-                    for claim, field in {
-                        "org_id": "org_id",
-                        "delegated_user_id": "user_id",
-                        "delegated_email": "user_email",
-                        "delegated_name": "user_name",
-                        "delegated_is_superuser": "is_platform_admin",
-                        "delegated_is_provider_org": "is_provider_org",
-                        "delegated_is_external": "is_external",
-                    }.items()
-                ), "SDK pending caller projection differs"
             for field in (
                 "engine_execution_id",
                 "org_id",
@@ -735,21 +784,8 @@ class CoreReferenceProfile:
             ):
                 if claims[field] in bindings:
                     claims[field] = f"identity:{bindings[claims[field]]}"
-            # The attempt fence must match a committed attempt, never just any UUID.
-            token_digest = claims["engine_attempt_token_digest"]
-            attempts = captured.observation.database["workflow_execution_attempts"]
-            matches = [
-                row
-                for row in attempts
-                if row["claim_token"] is not None
-                and row["execution_id"] == signed_execution
-                and hashlib.sha256(row["claim_token"].encode()).hexdigest()
-                == token_digest
-            ]
-            assert len(matches) == 1, "SDK attempt fence has no committed owner"
-            assert claims["engine_attempt_token_present"] is True
             claims["engine_attempt_token_digest"] = (
-                f"execution:{bindings[signed_execution]}:attempt:{matches[0]['attempt_number']}"
+                f"execution:{bindings[signed_execution]}:attempt:{attempt['attempt_number']}"
             )
             for field in ("name", "scope"):
                 value = request["request"].get(field)
@@ -770,13 +806,96 @@ class CoreReferenceProfile:
 PROFILE = CoreReferenceProfile()
 
 
+def clock_rank_diagnostics(trace: list[Observation]) -> dict[str, Any]:
+    """Explain the existing global ranks using schema paths, never raw values.
+
+    Equality classes and ordering remain the comparator's policy. This report
+    does not establish which interleaving occurred in an earlier CI run.
+    """
+    labels: dict[datetime, list[str]] = {}
+    first_windows: dict[datetime, bool] = {}
+    for index, observation in enumerate(trace):
+        values = []
+        if isinstance(observation.body, dict):
+            values.extend(
+                (f"body.{field}", observation.body.get(field))
+                for field in ("started_at", "completed_at", "scheduled_at")
+            )
+        for table, fields in CLOCKS.items():
+            values.extend(
+                (f"database.{table}[{row_index}].{field}", row.get(field))
+                for row_index, row in enumerate(observation.database[table])
+                for field in sorted(fields)
+            )
+        values.extend(
+            (f"events[{event_index}].payload.{field}", event["payload"].get(field))
+            for event_index, event in enumerate(observation.events)
+            if isinstance(event["payload"], dict)
+            for field in ("timestamp", "started_at", "completed_at")
+        )
+        for row_index, row in enumerate(observation.database["work_deliveries"]):
+            prefix = f"database.work_deliveries[{row_index}].envelope"
+            values.extend(
+                [
+                    (
+                        prefix + ".headers.x-enqueued-at",
+                        row["envelope"]["headers"].get("x-enqueued-at"),
+                    ),
+                    (
+                        prefix + ".body.pending_context.created_at",
+                        row["envelope"]["body"]["pending_context"]["created_at"],
+                    ),
+                ]
+            )
+        for path, value in values:
+            if value is None:
+                continue
+            clock = instant(value)
+            first_windows.setdefault(
+                clock,
+                clock == SEED_TIME or observation.before <= clock <= observation.after,
+            )
+            labels.setdefault(clock, []).append(f"observation[{index}].{path}")
+    groups = [
+        {
+            "rank": rank,
+            "seed": clock == SEED_TIME,
+            "first_seen_within_window": first_windows[clock],
+            "fields": sorted(set(labels[clock]))[:8],
+            "fields_truncated": len(set(labels[clock])) > 8,
+        }
+        for rank, clock in enumerate(sorted(labels))
+    ]
+    return {"groups": groups[:32], "groups_truncated": len(groups) > 32}
+
+
+def assert_parity_with_clock_diagnostics(
+    left, right, left_bindings, right_bindings, *, profile
+):
+    """Keep clock drift red and add bounded provenance to its failure message."""
+    try:
+        assert_parity(left, right, left_bindings, right_bindings, profile=profile)
+    except AssertionError as exc:
+        fields = set().union(*CLOCKS.values()) | {"x-enqueued-at"}
+        if not any(f".{field}" in str(exc) for field in fields):
+            raise
+        diagnostics = {
+            "left": clock_rank_diagnostics(left),
+            "right": clock_rank_diagnostics(right),
+        }
+        raise AssertionError(
+            f"{exc}\nCore clock ranks (schema paths only): "
+            + json.dumps(diagnostics, sort_keys=True)
+        ) from exc
+
+
 def assert_reference_parity(
     left: list[CapturedStep],
     right: list[CapturedStep],
     left_bindings: dict[str, str],
     right_bindings: dict[str, str],
 ) -> None:
-    assert_parity(
+    assert_parity_with_clock_diagnostics(
         [step.observation for step in left],
         [step.observation for step in right],
         left_bindings,
