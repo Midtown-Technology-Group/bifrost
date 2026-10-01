@@ -1,12 +1,8 @@
-name: Device protocol characterization
+name: Core control-plane reference
 
 on:
   pull_request:
     branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
-  push:
-    branches: [main]
-  merge_group:
-    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +10,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: device-parity-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  group: core-reference-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -22,10 +18,11 @@ env:
   CI_API_TEST_IMAGE: midtown-technology-group/bifrost-ci-api-dev
   CI_CLIENT_TEST_IMAGE: midtown-technology-group/bifrost-ci-client-dev
   CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
+  BIFROST_TEST_WORK_DELIVERY_BACKEND: postgres
 
 jobs:
   reference:
-    name: Python reference and parity drift detection
+    name: PostgreSQL reference environment and retained device characterization
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -40,20 +37,17 @@ jobs:
           API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
           CLIENT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.client_changed }}
         run: bash api/scripts/ci/prepare-test-images.sh api client
-      - name: Run committed reference and drift scenarios
+      - name: Start isolated PostgreSQL reference environment
+        env:
+          BIFROST_SKIP_BUILD: '1'
+        run: ./test.sh stack up
+      - name: Read back sanitized container settings
+        run: bash scripts/ci/core-reference-backend-readback.sh
+      - name: Verify environment wiring and retained drift capture
         env:
           BIFROST_SKIP_BUILD: '1'
         run: |
-          ./test.sh stack up
-          ./test.sh parity
-      - name: Stop isolated test stack
+          ./test.sh tests/unit/test_compose_test_harness.py tests/parity/ -v
+      - name: Stop this CI job's isolated test stack
         if: always()
         run: ./test.sh stack down
-      - name: Preserve sanitized reference observation
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: device-reference-${{ github.sha }}
-          path: /tmp/bifrost-*/parity-lifecycle.json
-          if-no-files-found: error
-          retention-days: 14
