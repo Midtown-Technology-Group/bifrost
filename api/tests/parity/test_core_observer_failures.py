@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 from types import SimpleNamespace
 from typing import cast
@@ -174,6 +175,49 @@ def test_source_attempt_fence_still_rejects_before_forwarding(monkeypatch):
         "stage": "source_authority", "reason": "active_attempt",
         "request_kind": "source", "exception_class": "AssertionError",
         "upstream_status": None,
+    }
+
+
+@pytest.mark.parametrize("import_class", [ImportError, ModuleNotFoundError])
+def test_source_guard_import_failure_is_classified_without_import_details(monkeypatch, import_class):
+    request, path, redis, upstream = arrangement(monkeypatch, source=True)
+    private = "unapproved-private-import-details"
+    failure = import_class(private)
+    original_import = builtins.__import__
+
+    def missing_guard(name, module_globals=None, module_locals=None, fromlist=(), level=0):
+        if name == "tests.parity.core.pinned" and "assert_source_request" in fromlist:
+            raise failure
+        return original_import(name, module_globals, module_locals, fromlist, level)
+
+    # Fail only the observer's lazy source-guard import, without adding mounts,
+    # changing import paths, or bypassing the existing caller/attempt guards.
+    monkeypatch.setattr(builtins, "__import__", missing_guard)
+    with pytest.raises(import_class) as caught:
+        complete_without_io(observer.forward(request, path))
+    assert caught.value is failure
+    assert upstream.calls == 0 and set(redis.records) == {FAILURE_KEY}
+    serialized = redis.records[FAILURE_KEY][0]
+    assert private not in serialized
+    assert json.loads(serialized) == {
+        "stage": "request_guard", "reason": "unclassified", "request_kind": "source",
+        "exception_class": import_class.__name__, "upstream_status": None,
+    }
+
+
+def test_module_index_probe_is_characterized_without_admitting_get(monkeypatch):
+    request, _, redis, upstream = arrangement(monkeypatch, source=True)
+    # clear_workspace_modules -> get_module_index_sync uses this GET fallback
+    # for Solution context too. It remains outside the owned A request contract.
+    request.scope["query_string"] = f"solution_id={SOLUTION}".encode()
+    with pytest.raises(AssertionError, match="Unapproved owned SDK method"):
+        complete_without_io(observer.forward(request, "api/sdk/modules-index"))
+    assert upstream.calls == 0 and set(redis.records) == {FAILURE_KEY}
+    serialized = redis.records[FAILURE_KEY][0]
+    assert SOLUTION not in serialized and "modules-index" not in serialized
+    assert json.loads(serialized) == {
+        "stage": "request_guard", "reason": "sdk_method", "request_kind": "other",
+        "exception_class": "AssertionError", "upstream_status": None,
     }
 
 

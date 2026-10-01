@@ -55,6 +55,7 @@ FAILURE_CLASSES = frozenset({
     "WriteTimeout", "PoolTimeout", "RemoteProtocolError", "ReadError",
     "WriteError", "UnsupportedProtocol", "InvalidURL", "DBAPIError",
     "OperationalError", "InterfaceError", "ProgrammingError",
+    "ImportError", "ModuleNotFoundError",
 })
 # Only exact, fixed guard messages select a reason. Exception text is never
 # formatted or retained, including for an unknown exception or guard message.
