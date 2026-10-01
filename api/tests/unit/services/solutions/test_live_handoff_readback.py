@@ -301,7 +301,8 @@ async def test_reviewed_replacement_checks_current_contract_not_obsolete_origin(
         "resolution_map_hash": active.resolution_map_hash})
     active.compiled_manifest_hash = active.compiled_manifest.content_hash()
     observed, current = [], {"hash": h2}
-    async def require_current(_db, bindings):
+    async def require_current(_db, bindings, *, solution_organization_id=None):
+        assert solution_organization_id is None
         observed.append(bindings["tool"])
         if getattr(bindings["tool"], field) != current["hash"]:
             raise ValueError("Current Root contract drifted")
@@ -316,3 +317,28 @@ async def test_reviewed_replacement_checks_current_contract_not_obsolete_origin(
     handoff.storage["runtime"] = b"corrupted historical runtime"
     with pytest.raises(ValueError, match="runtime source bytes differ"):
         await readback.LiveHandoffReadback(handoff.guard.db, handoff.release).require(handoff.inherited)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner,grant,allowed", [
+    ("provider", "provider", True), ("provider", "foreign", False),
+    ("provider", "global", True), ("global", "foreign", True),
+])
+async def test_current_table_contract_uses_its_deployment_owner_scope(handoff, monkeypatch, owner, grant, allowed):
+    from src.services.solutions import shared_table_bindings
+    provider, foreign = uuid4(), uuid4()
+    scope = provider if owner == "provider" else None
+    grant_scope = {"provider": provider, "foreign": foreign, "global": None}[grant]
+    binding = SharedRootTableBinding(table_id=uuid4(), metadata_hash="sha256:" + "a" * 64,
+        organization_id=grant_scope)
+    manifest = handoff.manifest.model_copy(update={"shared_tables": {"tool": binding}})
+    metadata = AsyncMock()
+    monkeypatch.setattr(shared_table_bindings, "require_shared_table", metadata)
+    monkeypatch.setattr(readback, "require_shared_tables", shared_table_bindings.require_shared_tables)
+    if allowed:
+        await handoff.guard._current_contracts(manifest, scope)
+        metadata.assert_awaited_once_with(handoff.guard.db, "tool", binding)
+    else:
+        with pytest.raises(shared_table_bindings.SharedTableBindingError, match="organization differs"):
+            await handoff.guard._current_contracts(manifest, scope)
+        metadata.assert_not_awaited()

@@ -142,9 +142,9 @@ class LiveHandoffReadback:
         await asyncio.gather(*(verify(path, source) for path, source in resolution.sources.items()))
         await read_deployment_resources(deployment.solution_id, deployment.id, resolution)
 
-    async def _current_contracts(self, manifest) -> None:
+    async def _current_contracts(self, manifest, scope: UUID | None) -> None:
         """Live contracts belong to the active closure and pinned dependencies."""
-        await require_shared_tables(self.db, manifest.shared_tables)
+        await require_shared_tables(self.db, manifest.shared_tables, solution_organization_id=scope)
         await require_root_workspace_files(self.db, manifest.root_file_bindings)
 
     async def _dependencies(self, deployment, visiting: set[UUID], verified: set[UUID]) -> None:
@@ -162,7 +162,7 @@ class LiveHandoffReadback:
                 edge.dependency_deployment_id, edge.dependency_solution_id, dependency_scope
             )
             await self._runtime_bytes(dependency, manifest, resolution)
-            await self._current_contracts(manifest)
+            await self._current_contracts(manifest, dependency_scope)
             await self._dependencies(dependency, visiting, verified)
         visiting.remove(deployment.id)
         verified.add(deployment.id)
@@ -190,7 +190,7 @@ class LiveHandoffReadback:
                 raise UnprovenLiveHandoff("Solution registration is outside its owner scope")
             _require_registration(row, active_resolution.resolve_workflow_id(row.id))
         await self._runtime_bytes(active, active_manifest, active_resolution)
-        await self._current_contracts(active_manifest)
+        await self._current_contracts(active_manifest, scope)
         await self._dependencies(active, set(), set())
         visited: set[UUID] = set()
         origin, manifest, resolution = active, active_manifest, active_resolution
