@@ -21,6 +21,8 @@ def mutation_context(monkeypatch):
     ctx = MagicMock()
     ctx.user.email = "admin@example.com"
     ctx.user.user_id = UUID("33333333-3333-3333-3333-333333333333")
+    ctx.user.is_engine_token = False
+    ctx.user.engine_solution_id = None
 
     monkeypatch.setattr(files, "_resolve_effective_scope", lambda *_args: str(SOLUTION_ID))
     monkeypatch.setattr(files, "_ctx_solution_id", lambda *_args: SOLUTION_ID)

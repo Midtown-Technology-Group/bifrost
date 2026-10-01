@@ -448,7 +448,8 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         from bifrost.root_file_bindings import RootFileBinding
         changed_root_binding = rollback.model_copy(update={"root_file_bindings": {
             "unexpected": RootFileBinding(location="workspace", path="features/data/profile.xml",
-                operations=["signed_get"], max_bytes=320),
+                operations=["signed_get"], max_bytes=320,
+                expected_read_sha256="sha256:" + "a" * 64),
         }})
         with pytest.raises(WorkspaceLiveHandoffPreflightConflict, match="resource bindings"):
             await WorkspaceLiveHandoffCommitService(db_session).rollback(

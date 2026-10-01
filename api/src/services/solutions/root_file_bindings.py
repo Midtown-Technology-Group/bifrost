@@ -78,6 +78,8 @@ async def resolve_execution_root_file(
     )
 
     user = ctx.user
+    if user is None:
+        return None
     target = parse_ctx_solution_id(ctx)
     if user.is_engine_token and user.engine_solution_id is not None and target is None:
         raise RootFileBindingError("Solution engines require their signed file context")

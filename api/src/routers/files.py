@@ -73,6 +73,8 @@ async def _require_signed_file_context(ctx: Context, request: Request) -> None:
     # context. Their authorization is a separate existing contract.
     if request.url.path.startswith("/api/files/editor"):
         return
+    if ctx.user is None:
+        raise HTTPException(status_code=403, detail="File access requires an authenticated user")
     if (
         ctx.user.is_engine_token and ctx.user.engine_solution_id is not None
         and parse_ctx_solution_id(ctx) is None
