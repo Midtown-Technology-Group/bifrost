@@ -218,6 +218,7 @@
 | GET | `/api/executions/{execution_id}` |
 | POST | `/api/executions/{execution_id}/cancel` |
 | GET | `/api/executions/{execution_id}/logs` |
+| POST | `/api/executions/{execution_id}/redact-sensitive-fields` |
 | GET | `/api/executions/{execution_id}/result` |
 | GET | `/api/executions/{execution_id}/variables` |
 | POST | `/api/export-import/export/all` |
@@ -408,6 +409,9 @@
 | PUT | `/api/oauth/connections/{connection_name}` |
 | POST | `/api/oauth/connections/{connection_name}/authorize` |
 | POST | `/api/oauth/connections/{connection_name}/cancel` |
+| GET | `/api/oauth/connections/{connection_name}/diagnostics` |
+| POST | `/api/oauth/connections/{connection_name}/reconcile` |
+| POST | `/api/oauth/connections/{connection_name}/recover` |
 | POST | `/api/oauth/connections/{connection_name}/refresh` |
 | GET | `/api/oauth/credentials/{connection_name}` |
 | POST | `/api/oauth/refresh_all` |

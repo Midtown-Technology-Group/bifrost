@@ -58,7 +58,7 @@ def gen_python_sdk_signatures() -> str:
 
     sdk_modules = [
         "agents", "ai", "artifacts", "config", "events", "executions",
-        "files", "forms", "integrations", "knowledge", "organizations",
+        "files", "forms", "integrations", "knowledge", "oauth_admin", "organizations",
         "roles", "resources", "tables", "users", "workflows",
     ]
     for mod_name in sorted(sdk_modules):

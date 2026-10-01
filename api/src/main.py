@@ -633,6 +633,8 @@ def create_app() -> FastAPI:
     app.include_router(device_control_keys_router)
     app.include_router(device_protocol_router)
     app.include_router(oauth_connections_router)
+    from src.routers.workspace_admin import router as workspace_admin_router
+    app.include_router(workspace_admin_router)
     app.include_router(endpoints_router)
     app.include_router(cli_router)
     app.include_router(cli_install_router)

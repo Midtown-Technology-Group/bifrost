@@ -5371,6 +5371,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/oauth/connections/{connection_name}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect Oauth */
+        get: operations["inspect_oauth_api_oauth_connections__connection_name__diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/oauth/connections/{connection_name}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Oauth */
+        post: operations["recover_oauth_api_oauth_connections__connection_name__recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/oauth/connections/{connection_name}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile Oauth */
+        post: operations["reconcile_oauth_api_oauth_connections__connection_name__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/executions/{execution_id}/redact-sensitive-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redact Execution */
+        post: operations["redact_execution_api_executions__execution_id__redact_sensitive_fields_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/endpoints/{workflow_id}": {
         parameters: {
             query?: never;
@@ -20416,6 +20484,23 @@ export interface components {
             /** Sequence */
             sequence: number;
         };
+        /** ExecutionRedactionRequest */
+        ExecutionRedactionRequest: {
+            /** Scope */
+            scope?: "global" | string | null;
+        };
+        /** ExecutionRedactionResult */
+        ExecutionRedactionResult: {
+            /** Execution Id */
+            execution_id: string;
+            /** Rows Updated */
+            rows_updated: number;
+            /**
+             * Redacted
+             * @default true
+             */
+            redacted: boolean;
+        };
         /**
          * ExecutionRetryFailure
          * @description Execution-engine failures that may start another attempt.
@@ -25630,6 +25715,13 @@ export interface components {
              */
             expires_at?: string | null;
         };
+        /** OAuthDiagnostics */
+        OAuthDiagnostics: {
+            /** Providers */
+            providers: components["schemas"]["OAuthProviderMetadata"][];
+            /** Tokens */
+            tokens: components["schemas"]["OAuthTokenMetadata"][];
+        };
         /**
          * OAuthInitResponse
          * @description OAuth initialization response.
@@ -25700,6 +25792,17 @@ export interface components {
              */
             display_name?: string | null;
         };
+        /** OAuthProviderMetadata */
+        OAuthProviderMetadata: {
+            /** Provider Id */
+            provider_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Flow */
+            flow: string;
+            /** Status */
+            status: string;
+        };
         /**
          * OAuthProvidersResponse
          * @description Available OAuth providers.
@@ -25707,6 +25810,61 @@ export interface components {
         OAuthProvidersResponse: {
             /** Providers */
             providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+        };
+        /** OAuthReconciliationResult */
+        OAuthReconciliationResult: {
+            /** Provider Rows Updated */
+            provider_rows_updated: number;
+            /** Token Rows Updated */
+            token_rows_updated: number;
+        };
+        /** OAuthRecoveryRequest */
+        OAuthRecoveryRequest: {
+            /** Scope */
+            scope: "global" | string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "refresh" | "exchange_code_without_scope";
+            /** Refresh Token */
+            refresh_token?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+        };
+        /** OAuthRecoveryResult */
+        OAuthRecoveryResult: {
+            /** Connection Name */
+            connection_name: string;
+            /** Provider Id */
+            provider_id: string;
+            /** Has Refresh Token */
+            has_refresh_token: boolean;
+            /** Expires At */
+            expires_at: string;
+            /** Scope */
+            scope: string;
+        };
+        /** OAuthTokenMetadata */
+        OAuthTokenMetadata: {
+            /** Provider Id */
+            provider_id: string;
+            /** Provider Org Id */
+            provider_org_id: string | null;
+            /** Token Id */
+            token_id: string;
+            /** Token Org Id */
+            token_org_id: string | null;
+            /** Has Access Token */
+            has_access_token: boolean;
+            /** Has Refresh Token */
+            has_refresh_token: boolean;
+            /** Expires At */
+            expires_at: string | null;
+            /** Scopes */
+            scopes?: string[];
         };
         /**
          * OAuthTokenResponse
@@ -28944,6 +29102,11 @@ export interface components {
             /** Next Run At */
             next_run_at?: string | null;
             last_run?: components["schemas"]["SchedulerTaskRunStatus"] | null;
+        };
+        /** ScopedAdminRequest */
+        ScopedAdminRequest: {
+            /** Scope */
+            scope: "global" | string;
         };
         /**
          * SearchRequest
@@ -44870,6 +45033,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+        };
+    };
+    inspect_oauth_api_oauth_connections__connection_name__diagnostics_get: {
+        parameters: {
+            query: {
+                scope: "global" | string;
+            };
+            header?: never;
+            path: {
+                connection_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthDiagnostics"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_oauth_api_oauth_connections__connection_name__recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthRecoveryResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_oauth_api_oauth_connections__connection_name__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScopedAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthReconciliationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redact_execution_api_executions__execution_id__redact_sensitive_fields_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecutionRedactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionRedactionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
