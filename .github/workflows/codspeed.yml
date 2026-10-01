@@ -11,10 +11,17 @@ on:
 permissions:
   contents: read # Public repository uploads do not require OIDC or an upload token.
 
+# Only a newer PR snapshot supersedes a benchmark run; main/backtests must finish.
+concurrency:
+  group: codspeed-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   benchmarks:
     name: Run benchmarks
     runs-on: ubuntu-latest
+    # Healthy hosted simulation runs take 2-5 minutes. Fail visibly if stuck.
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,6 +52,7 @@ jobs:
   macro:
     name: Run execution serialization benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
