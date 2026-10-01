@@ -31,7 +31,12 @@ UUIDs use canonical lowercase spelling. Integers are lexical JSON integers
 within 0..9,007,199,254,740,991; positive fields exclude zero. Boolean, `1.0`, and
 lexical `-0` are rejected as integers with `InvalidFrame`. Python preserves `-0`
 as a floating-point token to match Rust's classification before typed validation;
-it must not normalize it into accepted unsigned integer zero. Invalid UTF8,
+it must not normalize it into accepted unsigned integer zero. JSON integer
+tokens within the parser's i64/u64 range retain integer representation. Larger
+tokens use floating-point representation during parsing: finite values fail
+typed validation with `InvalidFrame`, and overflow fails with `InvalidJson`.
+This parsing rule accepts no floating-point control fields or larger integers.
+Invalid UTF8,
 duplicate keys at any depth, non-finite
 numbers, lone surrogates, trailing JSON and excessive depth fail before a
 session transition. Unknown protocol/frame variants fail; there is no fallback

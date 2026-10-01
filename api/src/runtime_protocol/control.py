@@ -306,7 +306,18 @@ def _constant(_value: str) -> None:
 def _integer_token(value: str) -> int | float:
     # serde_json classifies lexical -0 as a float. Preserve that distinction
     # so UInt/Positive reject it as InvalidFrame rather than accepting integer 0.
-    return -0.0 if value == "-0" else int(value)
+    if value == "-0":
+        return -0.0
+    number = int(value)
+    if -(1 << 63) <= number <= (1 << 64) - 1:
+        return number
+    # serde_json's default parser represents larger integers as f64, and an
+    # overflowing number is InvalidJson before structural/typed validation.
+    # No float is accepted by any integer field in this control profile.
+    floating = float(value)
+    if not math.isfinite(floating):
+        _fail(ErrorCode.INVALID_JSON)
+    return floating
 
 
 def _check_tree(value: object) -> None:
