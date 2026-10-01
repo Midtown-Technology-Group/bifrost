@@ -192,15 +192,84 @@ def validate(path):
     )
 
 
+def validate_fixtures(path, artifact_path):
+    artifact_bytes = Path(artifact_path).read_bytes()
+    artifact_digest = hashlib.sha256(artifact_bytes).hexdigest()
+    if (
+        artifact_digest
+        != "1be1929bca57e1204a33bbad9ff2d15338adf9f4862ce26b13280917c19d514a"
+    ):
+        raise SystemExit("frozen historical artifact changed")
+    vectors = json.loads(artifact_bytes)["vectors"]
+    candidate = json.loads(Path(path).read_text(encoding="utf-8"))
+    if candidate.get("schema") != "bifrost.test.evidence-encodings/v1":
+        raise SystemExit("candidate fixture schema differs")
+    results = candidate.get("results", [])
+    if len(vectors) != 64 or len(results) != 64:
+        raise SystemExit("candidate fixture count differs")
+    encoded = rejected = 0
+    for expected, actual in zip(vectors, results, strict=True):
+        if (actual.get("profile"), actual.get("name")) != (
+            expected["profile"],
+            expected["name"],
+        ):
+            raise SystemExit("candidate fixture identity/order differs")
+        if expected["outcome"] == "exception":
+            if (
+                actual.get("outcome") != "exception"
+                or actual.get("error") != "NonFinite"
+                or expected["exception_type"] != "ValueError"
+                or any(key in actual for key in ("utf8", "hex"))
+            ):
+                raise SystemExit("candidate source error category differs")
+            rejected += 1
+            continue
+        emitted = actual.get("utf8", "").encode()
+        digest = hashlib.sha256(emitted).hexdigest()
+        if (
+            actual.get("outcome") != "encoded"
+            or emitted != expected["utf8"].encode()
+            or actual.get("hex") != emitted.hex()
+            or actual.get("hex") != expected["hex"]
+            or digest != expected["sha256"]
+            or f"sha256:{digest}" != expected["digest"]
+            or (
+                "helper_digest" in expected
+                and expected["helper_digest"] not in (digest, f"sha256:{digest}")
+            )
+        ):
+            raise SystemExit(
+                f"candidate fixture byte/hash drift: {expected['profile']}/{expected['name']}"
+            )
+        encoded += 1
+    if (encoded, rejected) != (61, 3):
+        raise SystemExit("source outcome count differs")
+    print(
+        json.dumps(
+            {
+                "schema": "bifrost.test.evidence-fixture-check/v1",
+                "artifact_sha256": artifact_digest,
+                "encoded": encoded,
+                "rejected": rejected,
+                "scope": "historical source witnesses, not new-main runtime/source proof",
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def main():
     pinned_python()
     if len(sys.argv) == 2 and sys.argv[1] == "emit":
         emit()
     elif len(sys.argv) == 3 and sys.argv[1] == "validate":
         validate(sys.argv[2])
+    elif len(sys.argv) == 4 and sys.argv[1] == "validate-fixtures":
+        validate_fixtures(sys.argv[2], sys.argv[3])
     else:
         raise SystemExit(
-            "usage: runtime-evidence-oracle.py emit | validate PEER_NDJSON"
+            "usage: runtime-evidence-oracle.py emit | validate PEER_NDJSON | "
+            "validate-fixtures PEER_JSON ARTIFACT_JSON"
         )
 
 

@@ -9,12 +9,18 @@ chmod 755 "$EXCHANGE_DIR"
 python_oracle() {
     docker run --rm --network none --user 1000:1000 --entrypoint python \
         -v "$TASK_ROOT/scripts/ci/runtime-evidence-oracle.py:/oracle.py:ro" \
+        -v "$TASK_ROOT/contracts/runtime/v1/evidence/evidence-vectors.json:/evidence-vectors.json:ro" \
         -v "$EXCHANGE_DIR:/exchange:ro" \
         bifrost-test-api-dev:latest /oracle.py "$@"
 }
 docker build --target checks \
     --build-context runtime-evidence=contracts/runtime/v1/evidence \
     -t bifrost-runtime-evidence-checks -f core-rs/Dockerfile core-rs
+docker run --rm --network none bifrost-runtime-evidence-checks \
+    cargo run --offline --locked -p bifrost-contracts \
+    --example runtime_evidence_vectors -- emit > "$EXCHANGE_DIR/fixtures.json"
+chmod 644 "$EXCHANGE_DIR/fixtures.json"
+python_oracle validate-fixtures /exchange/fixtures.json /evidence-vectors.json
 python_oracle emit > "$EXCHANGE_DIR/input.ndjson"
 chmod 644 "$EXCHANGE_DIR/input.ndjson"
 docker run --rm -i --network none bifrost-runtime-evidence-checks \
@@ -32,7 +38,7 @@ if python_oracle validate /exchange/drift.ndjson > "$EXCHANGE_DIR/drift.log" 2>&
     echo 'Independent byte oracle failed to detect deliberately introduced drift.' >&2
     exit 1
 fi
-if ! rg -q '^exact-byte drift: numeric-0 bits=0000000000000000$' "$EXCHANGE_DIR/drift.log"; then
+if ! grep -Fxq 'exact-byte drift: numeric-0 bits=0000000000000000' "$EXCHANGE_DIR/drift.log"; then
     echo 'Drift probe failed for an unexpected reason.' >&2
     exit 1
 fi
