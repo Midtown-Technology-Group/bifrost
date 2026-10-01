@@ -203,3 +203,50 @@ pins, network disabled, read-only filesystem/mounts and UID 1000. This proves th
 guarded script reproduces the selected source helpers in that supported image.
 It is not Rust encoding or installed workload evidence. The initial rejected
 inherited build-label attempt remains a negative pre-import guard observation.
+
+## C1-Q2 tests-only Rust candidate
+
+The existing `bifrost-contracts` 0.1.0 crate has an isolated encoder under
+`tests/support/evidence_encoding`, its `tests/evidence_encoding.rs` consumer,
+and the `runtime_evidence_vectors` test example. None is exported by the library
+or called by production code. Typed integer/f64 inputs, signed zero, recursive
+key sorting and distinct ASCII/insertion-order fixture writers remain separate.
+The finite entry point rejects the historical workspace non-finite inputs; a
+tests-only source witness renders their recorded tokens. Model adapters cover
+the selected classes and empty shared-table fixture only; unknown model fields,
+classes or unobserved grant content fail.
+
+Main `f10da7c27568e65ee36d5699b72ef3a44ea7a3d8` (#1007) changes the recipe and
+manifest module files for shared-table scopes. Source inspection found the
+serializer, captured model fields/defaults and compiler body unchanged for
+these empty-table inputs; that is source inference, not a fresh runtime capture.
+The historical source hashes and compiler line 294 remain intact here. The
+guarded capture script rejects the two changed producer files before imports.
+
+After approval, run the Rust checks only in hosted CI or verified VM106 with the
+canonical artifact supplied read-only. An explicit missing
+`BIFROST_RUNTIME_EVIDENCE_VECTORS` path fails; the default is this repository's
+one canonical file. From the Rust workspace inside that supported lane:
+
+```sh
+cargo test --locked -p bifrost-contracts --test evidence_encoding
+cargo run --locked -p bifrost-contracts --example runtime_evidence_vectors -- emit
+cargo run --locked -p bifrost-contracts --example runtime_evidence_vectors -- encode \
+  < requests.ndjson > candidate.ndjson
+```
+
+`emit` returns `{schema,results}` with exactly 64 actual byte/error outcomes and
+no echoed expected hashes. `encode` reads one JSON request per line and emits
+one response per line. Requests contain `id` (1..128 ASCII token characters),
+`profile` (`finite_utf8`, `sorted_ascii_fixture`, `delivery_ascii_fixture`, or
+`workspace_source_fixture`), and typed `input` rooted at object `entries`.
+Float descriptions use `bits_be_hex`; optional `repr` is ignored provenance.
+Success returns `{id,outcome:"encoded",utf8,hex}`; failure returns
+`{id,outcome:"error",error}` with a static category. Malformed/oversized records
+have null IDs. The request-line cap is 8 MiB; encoded bytes are capped at 1 MiB.
+These and the depth/node/member/text limits are research safety bounds, not
+protocol/workload guarantees. Bigints, lone surrogates, generalized model/error
+behavior and production acceptance of sampled finite-number compatibility
+remain unresolved. The pinned Python peer independently hashes Rust-returned
+bytes and verifies numerical/Unicode differences; tests do not derive inputs
+from expected byte strings.
