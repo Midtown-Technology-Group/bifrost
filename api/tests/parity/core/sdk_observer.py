@@ -44,6 +44,26 @@ CLAIMS = (
 FIXTURE_VALUE = "core-parity-synthetic-config-value"
 
 
+def assert_synthetic_request(
+    method: str, path: str, query: bytes, raw: bytes, registry: dict
+) -> dict:
+    """Validate the complete owned A request before forwarding or retention."""
+    assert method == "POST", "Unapproved owned SDK method"
+    assert path in {"api/sdk/integrations/get", "api/sdk/integrations/get_mapping"}, (
+        "Unapproved owned SDK path"
+    )
+    assert query == b"", "Unapproved owned SDK query"
+    try:
+        body = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        raise AssertionError("Unapproved owned SDK JSON") from None
+    expected = {"name": registry["request_name"], "scope": registry["org_id"]}
+    if path == "api/sdk/integrations/get_mapping":
+        expected["entity_id"] = None
+    assert body == expected, "Unapproved owned SDK request body"
+    return body
+
+
 def target_url(upstream: httpx.URL, path: str, query: bytes) -> httpx.URL:
     """Construct a path without URL-joining network-path/absolute references."""
     assert (
@@ -151,6 +171,15 @@ async def forward(request: Request, path: str) -> Response:
                 "SDK organization attribution differs"
             )
             UUID(claims["engine_attempt_token"])
+    approved_request = None
+    if registry is not None:
+        approved_request = assert_synthetic_request(
+            request.method,
+            path,
+            request.scope["query_string"],
+            raw,
+            registry,
+        )
     before = datetime.now(UTC).isoformat()
     upstream = await request.app.state.client.request(
         request.method,
@@ -189,8 +218,8 @@ async def forward(request: Request, path: str) -> Response:
         record = {
             "method": request.method,
             "path": f"/{path}",
-            "query": list(request.query_params.multi_items()),
-            "request": json.loads(raw) if raw else None,
+            "query": [],
+            "request": approved_request,
             "authorization": {
                 "scheme": "Bearer",
                 "signature_valid": True,

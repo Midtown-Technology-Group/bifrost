@@ -284,16 +284,23 @@ class ReferenceEnvironment:
         ), "Installed workspace generation unavailable"
         self.bindings[self.generation] = "installed-source-generation"
 
-    async def allocate_execution(self, role: str) -> UUID:
+    async def allocate_execution(
+        self, role: str, *, request_name: str | None = None
+    ) -> UUID:
         identity = uuid4()
         self.executions.append(identity)
         self.bindings[str(identity)] = role
+        approved_name = request_name if request_name is not None else self.name
+        assert approved_name in {self.name, f"{self.name}-absent", ""}, (
+            "Unapproved fixture integration name"
+        )
         await self.redis.set(
             f"{PREFIX}{identity}:owner",
             json.dumps(
                 {
                     "user_id": str(self.ids["user"]),
                     "org_id": str(self.ids["org"]),
+                    "request_name": approved_name,
                 }
             ),
             ex=600,

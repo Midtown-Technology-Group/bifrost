@@ -17,14 +17,17 @@ async def execute_readiness(
     role="readiness",
     before=None,
 ) -> CapturedStep:
-    execution = await environment.allocate_execution(role)
+    execution_parameters = parameters or environment.parameters()
+    execution = await environment.allocate_execution(
+        role, request_name=execution_parameters["integration_name"]
+    )
     step = await adapter.request(
         role,
         "POST",
         "/api/workflows/execute",
         json={
             "workflow_id": str(environment.ids["workflow"]),
-            "input_data": parameters or environment.parameters(),
+            "input_data": execution_parameters,
             "sync": True,
         },
         headers={"X-Bifrost-Execution-ID": str(execution)},

@@ -32,7 +32,11 @@ The observer verifies the engine JWT signature, issuer, audience and type,
 then checks its original caller/org against the independently registered
 execution owner. It retains credential scheme/presence and verified claims,
 never the bearer JWT or raw attempt token. A token digest must match a
-committed workflow-attempt fence before comparison. Only the fixed synthetic
+committed workflow-attempt fence for the same signed execution before comparison.
+Its comparison alias includes the execution role and attempt number. Owned SDK
+requests must match the approved POST endpoint, empty query and exact synthetic
+name/scope/body before forwarding or retention; rejection messages contain no
+request bytes. Only the fixed synthetic
 config value may be retained; unexpected credentials/configuration refuse
 capture. Network-path and absolute request paths are refused; constructed
 upstream authority is fixed to http://api:8000, with redirects disabled.

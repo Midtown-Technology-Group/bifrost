@@ -418,6 +418,10 @@ class CoreReferenceProfile:
             request.pop("before")
             request.pop("after")
             claims = request["authorization"]["claims"]
+            signed_execution = claims["engine_execution_id"]
+            assert signed_execution in bindings, (
+                "SDK signed execution has no fixture owner"
+            )
             for field in (
                 "engine_execution_id",
                 "org_id",
@@ -433,13 +437,14 @@ class CoreReferenceProfile:
                 row
                 for row in attempts
                 if row["claim_token"] is not None
+                and row["execution_id"] == signed_execution
                 and hashlib.sha256(row["claim_token"].encode()).hexdigest()
                 == token_digest
             ]
             assert len(matches) == 1, "SDK attempt fence has no committed owner"
             assert claims["engine_attempt_token_present"] is True
             claims["engine_attempt_token_digest"] = (
-                f"attempt:{matches[0]['attempt_number']}"
+                f"execution:{bindings[signed_execution]}:attempt:{matches[0]['attempt_number']}"
             )
             for field in ("name", "scope"):
                 value = request["request"].get(field)

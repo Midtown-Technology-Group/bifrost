@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -13,7 +15,11 @@ from sqlalchemy import update
 from src.models.orm.executions import Execution
 
 from tests.parity.core.adapter import ReferenceAdapter, ResponseDriftTransport
-from tests.parity.core.capture import ScopedReferenceCapture
+from tests.parity.core.capture import (
+    CapturedStep,
+    ScopedReferenceCapture,
+    TransportEvidence,
+)
 from tests.parity.core.environment import SOURCE_SHA256, ReferenceEnvironment
 from tests.parity.core.profile import PROFILE, assert_reference_parity
 from tests.parity.core.scenarios import (
@@ -21,7 +27,8 @@ from tests.parity.core.scenarios import (
     execute_readiness,
     expected_result,
 )
-from tests.parity.core.sdk_observer import PREFIX, target_url
+from tests.parity.core.sdk_observer import PREFIX, assert_synthetic_request, target_url
+from tests.parity.harness import Observation
 
 pytestmark = pytest.mark.e2e
 
@@ -184,6 +191,7 @@ async def test_core_real_sdk_response_error_is_not_readiness(core_environment):
             "user_id": str(env.ids["user"]),
             "org_id": str(env.ids["org"]),
             "sdk_response_mutation": "forbidden",
+            "request_name": env.name,
         }
         await env.redis.set(f"{PREFIX}{execution}:owner", json.dumps(owner), ex=600)
         captured = await adapter.request(
@@ -354,3 +362,156 @@ async def test_core_actual_scoped_redis_drift(core_environment):
             assert_reference_parity(
                 [reference], [candidate], env.bindings, env.bindings
             )
+
+
+@pytest.mark.parametrize(
+    "method,path,query,body",
+    [
+        ("GET", "api/sdk/integrations/get", b"", {"name": "approved", "scope": "org"}),
+        ("POST", "api/sdk/secrets/get", b"", {"name": "approved", "scope": "org"}),
+        (
+            "POST",
+            "api/sdk/integrations/get",
+            b"secret=unexpected",
+            {"name": "approved", "scope": "org"},
+        ),
+        (
+            "POST",
+            "api/sdk/integrations/get",
+            b"",
+            {"name": "unexpected-secret", "scope": "org"},
+        ),
+        (
+            "POST",
+            "api/sdk/integrations/get",
+            b"",
+            {"name": "approved", "scope": "foreign"},
+        ),
+        (
+            "POST",
+            "api/sdk/integrations/get",
+            b"",
+            {"name": "approved", "scope": "org", "secret": "unexpected-secret"},
+        ),
+        (
+            "POST",
+            "api/sdk/integrations/get_mapping",
+            b"",
+            {"name": "approved", "scope": "org", "entity_id": "unexpected-secret"},
+        ),
+    ],
+)
+def test_core_observer_rejects_unapproved_request_vectors(method, path, query, body):
+    # Supplemental seam vectors; actual capture/wire mutants are separate tests.
+    with pytest.raises(AssertionError, match="Unapproved owned SDK") as error:
+        assert_synthetic_request(
+            method,
+            path,
+            query,
+            json.dumps(body).encode(),
+            {"request_name": "approved", "org_id": "org"},
+        )
+    assert "unexpected-secret" not in str(error.value)
+    assert "secret=unexpected" not in str(error.value)
+
+
+@pytest.mark.parametrize("mapping", [False, True])
+def test_core_observer_accepts_exact_synthetic_request_vector(mapping):
+    body = {"name": "approved", "scope": "org"}
+    if mapping:
+        body["entity_id"] = None
+    path = "api/sdk/integrations/get_mapping" if mapping else "api/sdk/integrations/get"
+    assert (
+        assert_synthetic_request(
+            "POST",
+            path,
+            b"",
+            json.dumps(body).encode(),
+            {"request_name": "approved", "org_id": "org"},
+        )
+        == body
+    )
+
+
+@pytest.mark.parametrize("token_owner", ["execution-a", "execution-b"])
+def test_core_profile_binds_fence_to_signed_execution_vector(token_owner):
+    # Distinct owned executions can both have attempt 1; ownership must agree.
+    before = datetime.now(UTC)
+    fence = "synthetic-high-entropy-fence-vector"
+    captured = CapturedStep(
+        Observation(
+            "fence-vector",
+            200,
+            None,
+            {
+                "workflow_execution_attempts": [
+                    {
+                        "execution_id": token_owner,
+                        "claim_token": fence,
+                        "attempt_number": 1,
+                    }
+                ]
+            },
+            [],
+            before,
+            before + timedelta(seconds=1),
+        ),
+        TransportEvidence(
+            sdk_requests=[
+                {
+                    "before": before.isoformat(),
+                    "after": before.isoformat(),
+                    "authorization": {
+                        "claims": {
+                            "engine_execution_id": "execution-a",
+                            "org_id": "org",
+                            "delegated_user_id": "user",
+                            "delegated_email": "email",
+                            "engine_attempt_token_present": True,
+                            "engine_attempt_token_digest": hashlib.sha256(
+                                fence.encode()
+                            ).hexdigest(),
+                        }
+                    },
+                    "request": {"name": "approved", "scope": "org"},
+                    "response": None,
+                }
+            ]
+        ),
+    )
+    bindings = {"execution-a": "first", "execution-b": "second"}
+    if token_owner != "execution-a":
+        with pytest.raises(
+            AssertionError, match="SDK attempt fence has no committed owner"
+        ):
+            PROFILE.transport(captured, bindings)
+    else:
+        normalized = PROFILE.transport(captured, bindings)
+        assert (
+            normalized["sdk_requests"][0]["authorization"]["claims"][
+                "engine_attempt_token_digest"
+            ]
+            == "execution:first:attempt:1"
+        )
+        # Comparison never rewrites the retained signed identity or digest.
+        assert (
+            captured.transport.sdk_requests[0]["authorization"]["claims"][
+                "engine_execution_id"
+            ]
+            == "execution-a"
+        )
+
+
+@pytest.mark.parametrize(
+    "raw", [b"not JSON unexpected-secret", b"\xffunexpected-secret"]
+)
+def test_core_observer_rejects_malformed_json_without_request_bytes(raw):
+    with pytest.raises(AssertionError, match="Unapproved owned SDK JSON") as error:
+        assert_synthetic_request(
+            "POST",
+            "api/sdk/integrations/get",
+            b"",
+            raw,
+            {"request_name": "approved", "org_id": "org"},
+        )
+    assert "unexpected-secret" not in str(error.value)
