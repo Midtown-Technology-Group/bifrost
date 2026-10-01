@@ -908,7 +908,10 @@ def write_github_output(path: Path, plan: AffectedPlan) -> None:
         browser_matrix = (
             [{"shard": 0, "total": 0}]
             if browser_mode == "skip"
-            else [{"shard": shard, "total": browser_total} for shard in range(1, browser_total + 1)]
+            else [
+                {"shard": shard, "total": browser_total}
+                for shard in range(1, browser_total + 1)
+            ]
         )
         output.write(
             f"client_e2e_matrix={json.dumps({'include': browser_matrix}, separators=(',', ':'))}\n"

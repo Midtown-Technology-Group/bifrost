@@ -675,9 +675,8 @@ jobs:
   # =============================================================================
   # E2E Tests - Sharded across 4 parallel runners. Each shard boots its own
   # isolated test stack (no xdist, no shared services between shards).
-  # scripts/e2e_shard.py deterministically allocates test files: heavies
-  # bin-packed first, then round-robin in sorted order — adding a file only
-  # moves files in shards downstream of the insertion point.
+  # scripts/e2e_shard.py balances every file using full-suite JUnit timings.
+  # Unknown files receive the measured median weight; no file is excluded.
   #
   # The internal matrix job (test-e2e) uses shard names like
   # "E2E Tests (shard 1/4)". The aggregate gate job below (test-e2e-gate)
@@ -778,7 +777,8 @@ jobs:
         run: echo "API e2e tests are outside the affected closure."
 
   # =============================================================================
-  # Client E2E Tests - Playwright browser coverage in the Docker test stack.
+  # Client E2E Tests - two independent Docker stacks for comprehensive coverage.
+  # Keep one browser worker per stack: specs mutate shared workspace/global state.
   # Source and specs are bind-mounted from the checkout; dependency-heavy
   # API, client, and browser images are pulled from main or rebuilt with
   # persistent BuildKit caches when their baked inputs change.
@@ -883,7 +883,7 @@ jobs:
           COMPOSE_PROJECT_NAME="$bifrost_test_project" docker compose -f docker-compose.test.yml logs --tail=300 api
 
   # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
-  # Fails if any backend shard or the Playwright job failed or was cancelled.
+  # Fails if any backend or browser shard failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
