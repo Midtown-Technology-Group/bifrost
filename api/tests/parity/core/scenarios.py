@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import Awaitable
+from typing import Any, cast
 
 from src.models.enums import ExecutionStatus
 from src.services.execution.attempts import (
@@ -19,6 +20,7 @@ from src.services.execution_attempts import (
 from tests.parity.core.adapter import ReferenceAdapter
 from tests.parity.core.capture import CapturedStep, now
 from tests.parity.core.environment import SYNTHETIC_VALUE, ReferenceEnvironment
+from tests.parity.core.sdk_observer import FAILURE_LIMIT, PREFIX, failure_projection
 
 
 _ERROR_CLASSES = frozenset(
@@ -105,6 +107,10 @@ def readiness_failure_summary(step: CapturedStep) -> str:
             "model": len(step.transport.model_requests),
             "vendor": len(step.transport.vendor_requests),
         },
+        "observer_failures": [
+            failure_projection(record if isinstance(record, dict) else {})
+            for record in getattr(step.transport, "observer_failures", [])[-FAILURE_LIMIT:]
+        ],
     }
     return "Core readiness failure: " + json.dumps(summary, sort_keys=True)
 
@@ -136,6 +142,13 @@ async def execute_readiness(
     )
     assert step.observation.status == 200, "Real public workflow admission failed"
     assert step.observation.body["execution_id"] == str(execution)
+    if step.observation.body.get("status") != "Success":
+        # A separate owned plane reports rejections; accepted source/SDK evidence
+        # and its counts remain untouched. Settlement still owns cleanup.
+        records = await cast(Awaitable[list[str]], adapter.capture.redis.lrange(
+            f"{PREFIX}{execution}:observer-failures", -FAILURE_LIMIT, -1,
+        ))
+        setattr(step.transport, "observer_failures", [json.loads(record) for record in records])
     return step
 
 

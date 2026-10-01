@@ -405,6 +405,7 @@ class PinnedEnvironment(ReferenceEnvironment):
                     f"{PREFIX}{execution}:owner",
                     f"{PREFIX}{execution}:requests",
                     f"{PREFIX}{execution}:sources",
+                    f"{PREFIX}{execution}:observer-failures",
                 )
         finally:
             # A failed settlement check retains all evidence, but must not leak

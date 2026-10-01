@@ -84,6 +84,11 @@ def test_failure_summary_never_serializes_unapproved_values_or_evidence():
     setattr(step.transport, "source_requests", [{"content": private}])
     step.transport.model_requests = [{"response": private}]
     step.transport.vendor_requests = [{"response": private}]
+    setattr(step.transport, "observer_failures", [{
+        "stage": private, "reason": private, "request_kind": private,
+        "exception_class": "PrivateMaterialClass", "upstream_status": private,
+        "body": private, "path": private, "claims": private,
+    }])
     result = readiness_failure_summary(step)
     assert private not in result and "PrivateMaterialClass" not in result
     summary = summary_payload(step)
@@ -91,6 +96,10 @@ def test_failure_summary_never_serializes_unapproved_values_or_evidence():
     assert summary["response_error_class"] == "unclassified"
     assert summary["event_error_classes"] == ["unclassified"]
     assert summary["transport_counts"] == {"source": 1, "sdk": 1, "model": 1, "vendor": 1}
+    assert summary["observer_failures"] == [{
+        "stage": "unclassified", "reason": "unclassified", "request_kind": "unclassified",
+        "exception_class": "unclassified", "upstream_status": None,
+    }]
     assert summary["committed"]["workflow_execution_attempts"] == [{
         key: "unclassified" for key in ("status", "phase", "failure_phase", "failure_code")
     }]
