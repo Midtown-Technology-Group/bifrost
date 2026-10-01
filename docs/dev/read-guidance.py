@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import re
+import sys
 
 
 def sections(text):
@@ -25,6 +26,9 @@ def sections(text):
 
 
 def main():
+    # Match the UTF-8 source files even when Windows redirects stdout through
+    # a legacy console code page; partial/garbled output causes redundant reads.
+    sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", choices=["platform", "claude"])
     parser.add_argument("headings", nargs="*", help="Exact headings; omit to list")
