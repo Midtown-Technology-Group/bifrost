@@ -25,6 +25,14 @@ grant packet. Its new Alembic head is the parent of our unmerged forward revisio
 do not create sibling histories. Reverification at the reconciled candidate is
 required; previous source/CI pins remain historical evidence.
 
+Current accounting inventories accepted `Execution` rows and general
+`execution_attempts` whose logical type is workflow. It does not inventory the
+dedicated workflow attempts or new private grant/supervisor sessions. Accounting
+completion therefore cannot establish runtime/source drain for C3. Preserve
+genuine unfinished source consumers until trusted stop/close evidence, and
+acquire the shared admission fence before install/row locks. This is a required
+ownership/custody integration decision, not a new grant-foundation behavior.
+
 The original-caller prerequisite remains unmerged
 [AUTH-P1 #1018](https://github.com/Midtown-Technology-Group/bifrost/pull/1018),
 candidate `d82219f5aada66d879f2da71b386f50675c66d4d`. Actual agent/SDK integration
