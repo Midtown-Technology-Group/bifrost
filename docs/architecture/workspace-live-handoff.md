@@ -171,6 +171,19 @@ workflow path, CI workflow path and ID, and installed Solution UUIDs mapped to
 reviewed recipes under `config/solution-delivery/`. Configure this policy only
 after reviewing the producer and rehearsing its deployment path.
 
+An existing policy keeps its required `organization_id` as the scope for every
+allowlisted install. To mix Global and organization installs, configure the
+optional `solution_organization_ids` map with exactly the same UUID keys as
+`solutions`. Each value is the install's exact organization UUID, or explicit
+`null` for a Global install. Missing, extra and malformed entries are rejected;
+an unknown install never resolves to Global. The scope applies to the initial
+Solution check, every immutable deployment read, delivery evidence update and
+independent pointer readback. A Global deployment uses an `IS NULL` predicate,
+not a tenant wildcard. The saved delivery proof records this resolved scope.
+This configuration grants no runtime table or file access and changes no
+registration scope. Add actual installs only after their handoff and trusted
+producer rehearsal pass.
+
 This endpoint accepts a commit SHA, CI run ID and attempt, and artifact digest.
 It accepts no uploaded source. The bearer token is a GitHub OIDC token whose
 audience binds those values and the Solution UUID. Its claims must name the
