@@ -24,6 +24,10 @@ The clean-candidate gate fetched platform main
 Candidates include this head. Its four changed files concern pinned workflow
 module imports and related tests; device/auth/schema/instructions are unchanged.
 The pinned F-01 source citations remain applicable. Workspace main is unchanged.
+A later gate fetched `e77947fab5762e49dd5fdc390bd65ca84bc22c3c` (#960);
+candidates include it. Its three changed files fix user-role ORM delete cascades
+and tests. Device protocol, device schema, database dependency and instructions
+are unchanged; this does not assert that all authentication behavior is unchanged.
 
 ## Finding F-01: claimed does not establish absence of execution
 
