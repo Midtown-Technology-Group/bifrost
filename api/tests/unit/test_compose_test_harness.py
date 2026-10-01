@@ -300,6 +300,10 @@ def test_core_reference_observer_is_explicit_and_sdk_default_is_unchanged():
     assert observer["environment"]["CORE_SDK_UPSTREAM_URL"] == "http://api:8000"
     assert observer["user"] == "1000:1000"
     assert "ports" not in observer
+    assert observer["environment"]["BIFROST_DATABASE_URL"] == (
+        "postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test"
+    )
+    assert "./api/shared:/app/shared:ro" in observer["volumes"]
     assert services["worker"]["environment"]["BIFROST_API_URL"] == "${BIFROST_TEST_WORKER_API_URL:-http://api:8000}"
     assert services["test-runner"]["environment"]["CORE_REFERENCE_ISOLATED"] == "${CORE_REFERENCE_ISOLATED:-0}"
 

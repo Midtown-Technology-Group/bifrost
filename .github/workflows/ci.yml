@@ -5,7 +5,7 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane, rust/core-reference]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:

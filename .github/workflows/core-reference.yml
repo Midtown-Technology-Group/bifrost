@@ -2,7 +2,7 @@ name: Core control-plane reference
 
 on:
   pull_request:
-    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane, rust/core-reference]
   workflow_dispatch:
 
 permissions:
@@ -64,6 +64,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: core-reference-${{ github.sha }}
-          path: /tmp/bifrost-*/core-reference-readiness.json
+          path: |
+            /tmp/bifrost-*/core-reference-readiness.json
+            /tmp/bifrost-*/core-pinned-reference-readiness.json
           if-no-files-found: error
           retention-days: 14
