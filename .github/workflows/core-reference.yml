@@ -1,0 +1,54 @@
+name: Core control-plane reference
+
+on:
+  pull_request:
+    branches: [main, rust/core-mvp-baseline]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: core-reference-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  CI_API_TEST_IMAGE: midtown-technology-group/bifrost-ci-api-dev
+  CI_CLIENT_TEST_IMAGE: midtown-technology-group/bifrost-ci-client-dev
+  CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
+  BIFROST_TEST_WORK_DELIVERY_BACKEND: postgres
+
+jobs:
+  reference:
+    name: PostgreSQL reference environment and retained device characterization
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Detect test image input changes
+        id: test-image-inputs
+        run: bash scripts/ci/detect-test-image-inputs.sh
+      - name: Prepare supported test images
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
+          CLIENT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.client_changed }}
+        run: bash api/scripts/ci/prepare-test-images.sh api client
+      - name: Start isolated PostgreSQL reference environment
+        env:
+          BIFROST_SKIP_BUILD: '1'
+        run: ./test.sh stack up
+      - name: Read back sanitized container settings
+        run: bash scripts/ci/core-reference-backend-readback.sh
+      - name: Verify environment wiring and retained drift capture
+        env:
+          BIFROST_SKIP_BUILD: '1'
+        run: |
+          ./test.sh tests/unit/test_compose_test_harness.py -v
+          ./test.sh parity
+      - name: Stop this CI job's isolated test stack
+        if: always()
+        run: ./test.sh stack down

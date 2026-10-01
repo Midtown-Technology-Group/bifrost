@@ -282,3 +282,12 @@ def test_pre_pr_preserves_full_browser_gate_and_explicit_ci_deferral():
         dispatch = scoped.split(f'if [ "$(pre_pr_plan_lane {lane})" = "affected" ]; then', 1)[1].split("\n    fi", 1)[0]
         assert f'{command} "${{{targets}[@]}}"' in dispatch
         assert f'[ "${{#{targets}[@]}}" -gt 0 ]' in dispatch
+
+
+def test_reference_delivery_selection_reaches_every_runtime_consumer():
+    """An API-only override leaves workers executing a different architecture."""
+    services = yaml.safe_load(_COMPOSE.read_text())["services"]
+    for name in ("api", "api-replica", "worker", "scheduler", "test-runner"):
+        assert services[name]["environment"]["BIFROST_WORK_DELIVERY_BACKEND"] == (
+            "${BIFROST_TEST_WORK_DELIVERY_BACKEND:-rabbitmq}"
+        ), name
