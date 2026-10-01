@@ -291,3 +291,14 @@ def test_reference_delivery_selection_reaches_every_runtime_consumer():
         assert services[name]["environment"]["BIFROST_WORK_DELIVERY_BACKEND"] == (
             "${BIFROST_TEST_WORK_DELIVERY_BACKEND:-rabbitmq}"
         ), name
+
+
+def test_core_reference_observer_is_explicit_and_sdk_default_is_unchanged():
+    services = yaml.safe_load(_COMPOSE.read_text())["services"]
+    observer = services["core-sdk-observer"]
+    assert observer["profiles"] == ["core-reference"]
+    assert observer["environment"]["CORE_SDK_UPSTREAM_URL"] == "http://api:8000"
+    assert observer["user"] == "1000:1000"
+    assert "ports" not in observer
+    assert services["worker"]["environment"]["BIFROST_API_URL"] == "${BIFROST_TEST_WORKER_API_URL:-http://api:8000}"
+    assert services["test-runner"]["environment"]["CORE_REFERENCE_ISOLATED"] == "${CORE_REFERENCE_ISOLATED:-0}"

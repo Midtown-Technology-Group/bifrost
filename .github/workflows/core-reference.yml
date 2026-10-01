@@ -19,10 +19,13 @@ env:
   CI_CLIENT_TEST_IMAGE: midtown-technology-group/bifrost-ci-client-dev
   CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
   BIFROST_TEST_WORK_DELIVERY_BACKEND: postgres
+  BIFROST_TEST_WORKER_API_URL: http://core-sdk-observer:8080
+  CORE_REFERENCE_ISOLATED: '1'
+  COMPOSE_PROFILES: core-reference
 
 jobs:
   reference:
-    name: PostgreSQL reference environment and retained device characterization
+    name: Python core reference and retained device characterization
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -43,7 +46,12 @@ jobs:
         run: ./test.sh stack up
       - name: Read back sanitized container settings
         run: bash scripts/ci/core-reference-backend-readback.sh
-      - name: Verify environment wiring and retained drift capture
+      - name: Verify SDK observer readiness
+        run: |
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          docker compose -f docker-compose.test.yml exec -T core-sdk-observer curl --fail --silent http://localhost:8080/health/ready
+      - name: Verify environment wiring and core/device drift capture
         env:
           BIFROST_SKIP_BUILD: '1'
         run: |
@@ -51,3 +59,11 @@ jobs:
       - name: Stop this CI job's isolated test stack
         if: always()
         run: ./test.sh stack down
+      - name: Preserve synthetic core reference observation
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-reference-${{ github.sha }}
+          path: /tmp/bifrost-*/core-reference-readiness.json
+          if-no-files-found: error
+          retention-days: 14

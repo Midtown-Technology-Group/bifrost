@@ -235,6 +235,7 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
+      BIFROST_API_URL: ${BIFROST_TEST_WORKER_API_URL:-http://api:8000}
       # S3-compatible object storage
       BIFROST_S3_BUCKET: bifrost-test
       BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
@@ -371,6 +372,7 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
+      CORE_REFERENCE_ISOLATED: ${CORE_REFERENCE_ISOLATED:-0}
       BIFROST_ALLOW_REGISTRATION: "true"
       # S3-compatible object storage
       BIFROST_S3_BUCKET: bifrost-test
@@ -483,6 +485,34 @@ services:
     command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]
     profiles:
       - test  # Only start when running tests
+
+  # Explicit core-reference profile only; unchanged SDK calls reach real API.
+  core-sdk-observer:
+    image: bifrost-test-api-dev:latest
+    environment:
+      BIFROST_ENVIRONMENT: testing
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      CORE_SDK_UPSTREAM_URL: http://api:8000
+      PYTHONPATH: /app
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/tests:/app/tests:ro
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    command: ["python", "-m", "uvicorn", "tests.parity.core.sdk_observer:app", "--host", "0.0.0.0", "--port", "8080"]
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    profiles: [core-reference]
 
   # Test-network-only transport adapter for the official runner, which has no
   # CLI option for an Authorization header. It mints a resource-bound test JWT
