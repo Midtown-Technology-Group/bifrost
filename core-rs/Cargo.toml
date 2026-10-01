@@ -1,0 +1,40 @@
+[workspace]
+members = ["crates/bifrost-contracts", "crates/bifrost-domain", "crates/bifrost-db", "crates/bifrost-core"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98.1"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+bifrost-contracts = { path = "crates/bifrost-contracts", version = "=0.1.0" }
+bifrost-domain = { path = "crates/bifrost-domain", version = "=0.1.0" }
+bifrost-db = { path = "crates/bifrost-db", version = "=0.1.0" }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "matched-path", "tokio"] }
+opentelemetry = { version = "=0.33.0", default-features = false, features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "=0.33.0", default-features = false, features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "=0.33.0", default-features = false, features = ["grpc-tonic", "trace", "metrics", "tls-ring", "tls-roots"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+sqlx = { version = "=0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring-native-roots"] }
+thiserror = "=2.0.18"
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "io-util"] }
+tower = { version = "=0.5.3", features = ["limit", "load-shed", "util"] }
+tracing = "=0.1.44"
+tracing-opentelemetry = { version = "=0.34.0", default-features = false }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "json", "registry", "std"] }
+url = "=2.5.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1
