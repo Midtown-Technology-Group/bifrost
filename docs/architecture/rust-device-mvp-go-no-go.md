@@ -162,6 +162,7 @@ broader control-plane migration, nor does F-01 establish that Rust would cause i
 
 The next bounded work is a separately reviewed correction/specification for F-01
 in Python/Sopdet, followed by executable crash/uncertainty characterization against
-the unchanged approved baseline for a resumed MVP. Resolve E-01 or use the supported
+a new approved corrected baseline, with Sopdet unchanged throughout the resumed
+MVP comparison. Resolve E-01 or use the supported
 CI lane for W0 proof. Resume only after the reference protocol satisfies the
 non-negotiable invariant and both foundations pass independent acceptance.

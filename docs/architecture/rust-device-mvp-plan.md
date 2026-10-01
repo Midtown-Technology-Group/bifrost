@@ -99,7 +99,7 @@ away, unresolved source/schema/contract disagreement or unsafe fixture isolation
 
 Own domain device types and SQL repository modules/integration tests; architect
 freezes method signatures and transaction/event boundaries first. Preserve claim
-ordering/SKIP LOCKED, 60-second pre-spawn lease, fresh token/session, key-secret
+ordering/SKIP LOCKED, 60-second claimed lease, fresh token/session, key-secret
 bcrypt, touch commits, running replay, fence/error precedence, logs and result
 limits. No unrequested session-matching check absent from reference behavior.
 Acceptance: state/SQL concurrency, competing Python/Rust claims, reclaim/fence,
