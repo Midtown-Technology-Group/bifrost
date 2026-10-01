@@ -1,0 +1,38 @@
+name: Runtime control protocol
+
+on:
+  pull_request:
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: runtime-control-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  CI_API_TEST_IMAGE: midtown-technology-group/bifrost-ci-api-dev
+  CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
+
+jobs:
+  interchange:
+    name: Supported Python Rust control codec interchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Detect test image input changes
+        id: test-image-inputs
+        run: bash scripts/ci/detect-test-image-inputs.sh
+      - name: Prepare supported Python test image
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
+        run: bash api/scripts/ci/prepare-test-images.sh api
+      - name: Verify shared vectors and both real encoder exchanges
+        run: bash scripts/ci/runtime-control-interchange.sh

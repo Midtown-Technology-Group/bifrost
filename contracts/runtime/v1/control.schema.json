@@ -1,0 +1,496 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bifrost:runtime:v1:control-profile",
+  "title": "C1-P0 partial runtime/v1 control profile",
+  "description": "Structural schema only. Binary framing, duplicate keys, UTF8/surrogates, lexical integer validation, depth, Start correlation equality and parent session transitions are enforced by the codecs/session validators. No full workload protocol or execution authority. Lexical -0 is rejected for UInt/Positive even though mathematical JSON Schema integer validation alone treats it as zero. Integer tokens beyond parser i64/u64 representation become floats before validation: finite values are InvalidFrame, and floating-point overflow is InvalidJson. No control fields accept floats.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "type": {
+          "const": "Hello"
+        },
+        "session_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "message_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Positive"
+        },
+        "correlation_id": {
+          "type": "null"
+        },
+        "body": {
+          "$ref": "#/$defs/Hello"
+        }
+      },
+      "required": [
+        "protocol",
+        "type",
+        "session_id",
+        "message_id",
+        "sequence",
+        "correlation_id",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "type": {
+          "const": "Start"
+        },
+        "session_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "message_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Positive"
+        },
+        "correlation_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "body": {
+          "$ref": "#/$defs/Start"
+        }
+      },
+      "required": [
+        "protocol",
+        "type",
+        "session_id",
+        "message_id",
+        "sequence",
+        "correlation_id",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "type": {
+          "const": "Heartbeat"
+        },
+        "session_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "message_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Positive"
+        },
+        "correlation_id": {
+          "type": "null"
+        },
+        "body": {
+          "$ref": "#/$defs/Heartbeat"
+        }
+      },
+      "required": [
+        "protocol",
+        "type",
+        "session_id",
+        "message_id",
+        "sequence",
+        "correlation_id",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "type": {
+          "const": "Cancel"
+        },
+        "session_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "message_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Positive"
+        },
+        "correlation_id": {
+          "type": "null"
+        },
+        "body": {
+          "$ref": "#/$defs/Cancel"
+        }
+      },
+      "required": [
+        "protocol",
+        "type",
+        "session_id",
+        "message_id",
+        "sequence",
+        "correlation_id",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "type": {
+          "const": "Stopped"
+        },
+        "session_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "message_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "sequence": {
+          "$ref": "#/$defs/Positive"
+        },
+        "correlation_id": {
+          "type": "null"
+        },
+        "body": {
+          "$ref": "#/$defs/Stopped"
+        }
+      },
+      "required": [
+        "protocol",
+        "type",
+        "session_id",
+        "message_id",
+        "sequence",
+        "correlation_id",
+        "body"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "UUID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "UInt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "Positive": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "RuntimeArtifact": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "image_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interpreter": {
+          "type": "object",
+          "properties": {
+            "implementation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "implementation",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "sdk": {
+          "type": "object",
+          "properties": {
+            "distribution": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "distribution",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "requirements_lock_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime_protocol": {
+          "const": "bifrost.runtime/v1"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "image_digest",
+        "interpreter",
+        "sdk",
+        "requirements_lock_sha256",
+        "runtime_protocol"
+      ],
+      "additionalProperties": false
+    },
+    "RuntimeError": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "traceback": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "message",
+        "traceback"
+      ],
+      "additionalProperties": false
+    },
+    "Hello": {
+      "type": "object",
+      "properties": {
+        "runtime_incarnation_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "supported_protocols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "artifact": {
+          "$ref": "#/$defs/RuntimeArtifact"
+        }
+      },
+      "required": [
+        "runtime_incarnation_id",
+        "supported_protocols",
+        "capabilities",
+        "artifact"
+      ],
+      "additionalProperties": false
+    },
+    "Start": {
+      "type": "object",
+      "properties": {
+        "prepare_message_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "committed_start_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "parent_duration_seconds": {
+          "$ref": "#/$defs/Positive"
+        }
+      },
+      "required": [
+        "prepare_message_id",
+        "committed_start_id",
+        "parent_duration_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "Heartbeat": {
+      "type": "object",
+      "properties": {
+        "start_message_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "prepared",
+            "executing",
+            "cancelling"
+          ]
+        },
+        "monotonic_elapsed_ms": {
+          "$ref": "#/$defs/UInt"
+        }
+      },
+      "required": [
+        "start_message_id",
+        "state",
+        "monotonic_elapsed_ms"
+      ],
+      "additionalProperties": false
+    },
+    "Cancel": {
+      "type": "object",
+      "properties": {
+        "cancel_id": {
+          "$ref": "#/$defs/UUID"
+        },
+        "reason": {
+          "enum": [
+            "requested",
+            "deadline",
+            "authority_revoked",
+            "supervisor_shutdown"
+          ]
+        },
+        "grace_ms": {
+          "$ref": "#/$defs/UInt"
+        }
+      },
+      "required": [
+        "cancel_id",
+        "reason",
+        "grace_ms"
+      ],
+      "additionalProperties": false
+    },
+    "Stopped": {
+      "type": "object",
+      "properties": {
+        "start_message_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancel_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "completed",
+            "cancelled",
+            "prepare_rejected",
+            "protocol_error"
+          ]
+        },
+        "result_message_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "start_message_id",
+        "cancel_id",
+        "reason",
+        "result_message_id",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
