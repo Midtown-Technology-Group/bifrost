@@ -503,6 +503,7 @@ services:
       - ./api/src:/app/src:ro
       - ./api/tests:/app/tests:ro
       - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
     user: "1000:1000"
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
