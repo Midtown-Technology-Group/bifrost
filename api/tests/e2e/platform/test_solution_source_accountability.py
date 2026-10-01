@@ -68,7 +68,7 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     """Exclusive synthetic consumers inside an outer rollback transaction."""
     from src import config
     from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
-    from src.models.contracts.solution_deployments import DeploymentGitProvenance
+    from src.services.solutions.deployment_manifest import DeploymentGitProvenance
     from src.models.orm.executions import Execution
     from src.models.orm.execution_attempts import ExecutionAttempt
     from src.models.orm.operation_receipts import OperationReceipt
