@@ -41,3 +41,17 @@ run_full_pre_pr
 [[ "${stages[*]}" == 'client:0 stack:0 quality:1 generated:1 unit:1 e2e:1 browser:1 image:1' ]]
 [[ -z "${BIFROST_SKIP_BUILD+x}" ]]
 echo 'PASS: full lanes build once and freeze backend images without omitting tests'
+
+# A conformance invocation after browser verification must reconcile the API's
+# authority before sending requests. Stop at reset_state to avoid Docker here.
+set +e
+authority=$(BIFROST_TEST_PUBLIC_URL=http://localhost:3000 bash -Eeuo pipefail -c '
+    source ./test.sh help >/dev/null
+    require_stack_up() { :; }
+    reset_state() { echo "$BIFROST_TEST_PUBLIC_URL"; return 91; }
+    mcp_conformance
+')
+status=$?
+set -e
+[[ "$status" == 91 && "$authority" == http://api:8000 ]]
+echo 'PASS: MCP conformance reconciles backend authority after browser lanes'

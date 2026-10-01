@@ -490,6 +490,10 @@ cmd_mcp() {
 
 mcp_conformance() {
     require_stack_up
+    # Browser lanes use localhost for callbacks. Reconcile the backend
+    # authority before the adapter sends its canonical Host and audience.
+    local -x BIFROST_TEST_PUBLIC_URL=http://api:8000
+    reset_state
 
     local results_dir="$LOG_DIR/mcp-conformance"
     local blocking_results="$results_dir/blocking"
