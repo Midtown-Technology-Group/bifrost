@@ -1,0 +1,53 @@
+"""Managed-identity-only bootstrap for the fixed external worker app."""
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Header, HTTPException, Response
+from pydantic import BaseModel, Field
+
+from src.config import get_settings
+from src.core.auth import CurrentSuperuser
+from src.core.db_deps import DbSession
+from src.services.external_worker_scaling import (
+    Azure, controller_status, enroll_replica, validate_settings, verify_identity,
+)
+
+router = APIRouter(prefix="/api/platform/external-workers", tags=["External Workers"])
+
+
+class EnrollmentRequest(BaseModel):
+    replica: str = Field(min_length=1, max_length=200, pattern=r"^[a-z0-9-]+$")
+    boot: UUID
+
+
+@router.post("/enroll")
+async def enroll(request: EnrollmentRequest, response: Response, db: DbSession,
+                 authorization: Annotated[str | None, Header()] = None) -> dict[str, str]:
+    settings = get_settings()
+    response.headers["Cache-Control"] = "no-store"
+    if not settings.external_worker_scaling_enabled:
+        raise HTTPException(404, "External worker enrollment is disabled")
+    try:
+        validate_settings(settings)
+        if not authorization or not authorization.startswith("Bearer "):
+            raise ValueError("Missing identity")
+        await verify_identity(authorization[7:], settings)
+    except Exception:
+        raise HTTPException(403, "External worker identity rejected") from None
+    azure = Azure(settings)
+    try:
+        return await enroll_replica(db, azure, request.replica, request.boot)
+    except ValueError:
+        raise HTTPException(403, "External worker replica rejected") from None
+    except Exception:
+        raise HTTPException(503, "External worker enrollment is unavailable") from None
+    finally:
+        await azure.close()
+
+
+@router.get("")
+async def status(_admin: CurrentSuperuser, db: DbSession) -> dict:
+    try:
+        return await controller_status(db)
+    except RuntimeError:
+        raise HTTPException(503, "External worker state is unavailable") from None

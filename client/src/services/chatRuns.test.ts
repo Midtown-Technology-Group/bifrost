@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiClient } from "@/lib/api-client";
 import {
 	cancelChatRun,
 	createChatRun,
 	getChatRunState,
 } from "./chatRuns";
 
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+
 vi.mock("@/lib/api-client", () => ({
 	apiClient: {
-		GET: vi.fn(),
-		POST: vi.fn(),
+		GET: get,
+		POST: post,
 	},
 }));
 
@@ -19,11 +20,11 @@ describe("chatRuns service", () => {
 	});
 
 	it("creates a durable run through the generated API contract", async () => {
-		vi.mocked(apiClient.POST).mockResolvedValue({
+		post.mockResolvedValue({
 			data: { run_id: "run-1" },
 			error: undefined,
 			response: new Response(),
-		} as never);
+		});
 		const body = {
 			conversation_id: "conversation-1",
 			content: "hello",
@@ -35,34 +36,34 @@ describe("chatRuns service", () => {
 
 		await createChatRun(body);
 
-		expect(apiClient.POST).toHaveBeenCalledWith("/api/chat/runs", { body });
+		expect(post).toHaveBeenCalledWith("/api/chat/runs", { body });
 	});
 
 	it("loads the durable conversation state", async () => {
-		vi.mocked(apiClient.GET).mockResolvedValue({
+		get.mockResolvedValue({
 			data: { latest_sequence: 0 },
 			error: undefined,
 			response: new Response(),
-		} as never);
+		});
 
 		await getChatRunState("conversation-1");
 
-		expect(apiClient.GET).toHaveBeenCalledWith(
+		expect(get).toHaveBeenCalledWith(
 			"/api/chat/conversations/{conversation_id}/state",
 			{ params: { path: { conversation_id: "conversation-1" } } },
 		);
 	});
 
 	it("cancels a durable run", async () => {
-		vi.mocked(apiClient.POST).mockResolvedValue({
+		post.mockResolvedValue({
 			data: { run_id: "run-1", status: "cancelled" },
 			error: undefined,
 			response: new Response(),
-		} as never);
+		});
 
 		await cancelChatRun("run-1");
 
-		expect(apiClient.POST).toHaveBeenCalledWith(
+		expect(post).toHaveBeenCalledWith(
 			"/api/chat/runs/{run_id}/cancel",
 			{ params: { path: { run_id: "run-1" } } },
 		);
