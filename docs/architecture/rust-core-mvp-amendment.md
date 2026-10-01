@@ -187,6 +187,73 @@ Any additive schema uses current Alembic; no competing migration history or
 new parallel logical-job table. Scope ownership must be explicit and language-
 neutral; a separate queue alone does not fence global Python cleanup.
 
+### Mechanical writer exclusion: mandatory C2/C3 gate
+
+[Maintainer feedback on #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011#issuecomment-5934157212)
+supports the direction subject to enforceable writer exclusion and honest runtime
+extraction. The requirement is technical authority, not an adapter promise.
+
+The preferred mechanism is separate, non-superuser, non-table-owner database
+identities for the incumbent control plane and Rust coordinator, with immutable,
+language-neutral lifecycle ownership on shared logical rows and owner-aware
+PostgreSQL write guards for their dependent projections. Extracted Python
+runtimes receive **no lifecycle DML credential or signing key**; any narrowly
+required source/provider reads must use a separately reviewed read-only identity
+or public operation. Table grants alone cannot partition two owners' rows in the
+same table. Guard/RLS design, allowed ancillary fields and actual role provisioning
+must be ratified and tested before C3; this amendment does not authorize a guessed
+migration or declare the mechanism implemented.
+
+Required evidence before C2 acceptance or C3 authority-bearing implementation:
+
+- Read back actual database identities and privileges through the supported
+  connection path, including PgBouncer. Both coordinators must not collapse to
+  one unrestricted role. Neither application identity may own protected tables,
+  bypass the guards, inherit the other identity, or obtain its authority through
+  role switching or writable session settings. Test the identity used inside any
+  privileged guard function; a privileged function owner is not caller identity.
+- Under the runtime's actual credentials and inherited environment, deliberately
+  attempt direct execution/run creation, attempt creation/retry, claim/start,
+  terminal/result/step/usage writes and prohibited lifecycle operations through
+  credential-bearing HTTP. They must be denied without mutation or publication.
+  Required public SDK operations still work; negative authority proof cannot be
+  obtained by breaking authored code or silently narrowing its public contract.
+- Against one shared PostgreSQL database, prove that incumbent workflow/agent
+  consumers, cleanup schedulers, cancellation, poison/recovery, repository helpers
+  and local/CLI completion paths cannot mutate core-owned lifecycle state or
+  launch/retry it. Exercise wrong-owner, stale-token and concurrent writers;
+  assert committed rows and events, not only an HTTP denial or mocked helper.
+  Application ownership checks precede Redis deletion/publication and possible
+  runtime effects; database guards are the backstop. A queue split is insufficient.
+- Name retained ancillary writers explicitly. Summarization, annotation, metadata,
+  authorized deletion/redaction and their referential actions must preserve their
+  existing contracts without broad permission to finalize a run. Freeze their
+  field/projection authority and locking rules; no whole-service/table exemption.
+- Exercise normal execution and result projection with these restrictions active,
+  cancellation adjacent to completion, worker/coordinator loss after possible
+  Start, and rollback while accepted work is active. No credential substitution,
+  disabled guard, unrestricted test role, data repair or blind replay earns parity.
+
+If a different mechanism is proposed, the architect must document why it gives
+at least the same exclusion and accept the same negative/mixed-writer evidence
+before builders proceed. Sharing an unrestricted PostgreSQL role is not an
+acceptable fallback. Rust decides admission/retry/finalization; Python reports
+workload evidence. Hidden cleanup/helper authority is a failed C2 extraction,
+not a task deferred until after C3.
+
+### Protocol growth follows executable scenarios
+
+The listed message vocabulary is a candidate menu, not permission to implement a
+permanent runtime bus. C1-P0 remains the partial control profile. Add workload,
+result/log and agent-specific records only when the unchanged selected workflow
+or agent reference requires them, with a source-to-field map and valid/invalid
+cross-language vectors. Unsupported capabilities remain on their explicitly
+selected incumbent path before ownership; no post-Start fallback or silent tool
+catalog reduction. Keep one supervisor boundary and preserve model/runtime
+logic in Python instead of building generic service callbacks or a second agent
+framework. C2-W and C2-A are independent high-risk acceptance gates, even when
+Rust HTTP and SQL code appears straightforward.
+
 ## 6. Representative scenarios and honest evidence
 
 A: execute an existing workspace read-only workflow unchanged, from pinned source,
@@ -234,10 +301,10 @@ not a merge into main. Architect owns shared test/Compose/proxy/CI integration.
 | C0-D amendment | This doc; device status clarification in #1006; no business code | Current-main/review/source audit | First plan recorded; provisional decisions named |
 | C1-P runtime contract | `contracts/runtime/v1/**`; Rust contracts runtime module; Python runtime codec module; isolated codec/vector tests | Architect-ratified exact schema and current W0 integration | Actual Python/Rust valid/invalid vectors and drift detection; stop on unfrozen authority/field guesses |
 | C1-R reference/parity | `api/tests/parity/core/**`, `contracts/parity/core/**` | W0-B; selected scenario/authority ledger | Real Python workflow + provider/tool loop, committed DB/event/provider capture and meaningful mutants; stop on mock execution, unsupported environment or hidden normalization |
-| C2-W runtime extraction | Narrow Python runtime adapter, targeted worker/engine interface, no SDK method rename | C1-P/C1-R accepted; credential/source/buffer decisions | Actual unchanged workspace workflow with denied lifecycle DML, cancellation/start ambiguity; stop if Python still controls admission/result |
-| C2-A model runtime extraction | Python agent runtime adapter and narrow loop/toolset seam | C1-P/C1-R; tool-intent receipts/credential decisions | Actual provider-adapter/tool loop; no AgentRun/Attempt/Approval lifecycle writes; stop on callback mesh or lost step/usage semantics |
-| C3-W Rust workflow control | Existing domain/db/core modules for selected resolution/auth/admission/attempt/result/delivery | C2-W plus ownership/writer exclusion + crypto/hash vectors | Rust execution authority, duplicates/conflicts, stale fences, attempt/state/events and scoped SDK parity; stop on schema duplication or reference drift |
-| C3-A Rust agent control | Existing domain/db/core agent modules; shared typed intent handler owned by architect | C2-A and C3-W | Run/attempt authority, grant/approval recheck, one stable workflow dispatch and durable metering; stop on caller loss or replay |
+| C2-W runtime extraction | Narrow Python runtime adapter, targeted worker/engine interface, no SDK method rename | C1-P/C1-R accepted; credential/source/buffer decisions; mechanical writer-exclusion design | Unchanged workflow under actual restricted credentials; direct/helper/cleanup create-retry-finalize denial; cancellation/start ambiguity; stop if Python retains lifecycle authority |
+| C2-A model runtime extraction | Python agent runtime adapter and narrow loop/toolset seam | C1-P/C1-R; tool-intent receipts/credential decisions; mechanical writer-exclusion design | Actual provider/tool loop under restricted credentials; independent run/attempt/retry/finalize and hidden writer denial; stop on callback mesh or lost step/usage semantics |
+| C3-W Rust workflow control | Existing domain/db/core modules for selected resolution/auth/admission/attempt/result/delivery | Accepted C2-W plus verified mechanical writer exclusion + crypto/hash vectors | Rust execution authority, duplicates/conflicts, stale fences, attempt/state/events and scoped SDK parity; stop on schema duplication or reference drift |
+| C3-A Rust agent control | Existing domain/db/core agent modules; shared typed intent handler owned by architect | Accepted C2-A and C3-W; verified mechanical writer exclusion | Run/attempt authority, grant/approval recheck, one stable workflow dispatch and durable metering; stop on caller loss or replay |
 | C4-I coexistence/routing | Test/Compose/current nginx/Vite/service wiring and runbook | Independent C3 review | Python-created/Rust-read and converse, competing writers, cleanup/cancel races, live in-flight rollback without data repair/dual execution |
 | C5-G decision | Parity/known differences/ownership/rollback/resource and go/no-go reports | All acceptance evidence | Concrete CONTINUE/STOP; no semantic debt hidden by performance |
 
