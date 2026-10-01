@@ -779,7 +779,9 @@ async def _insert_scheduled_execution(
     exec_id = execution_id or uuid4()
     from src.services.solutions.deployment_runtime import pin_workflow_runtime
     from src.services.workspace_release_runtime import pin_workspace_runtime
+    from src.services.workspace_release_projection import acquire_runtime_admission_lock
 
+    await acquire_runtime_admission_lock(db)
     pinned_runtime = await pin_workflow_runtime(db, workflow_id)
     if pinned_runtime is None:
         pinned_runtime = await pin_workspace_runtime(db, workflow_id)

@@ -5,6 +5,7 @@ completion evidence and must not discard completed Solution accounting rows.
 """
 
 from alembic import op
+import sqlalchemy as sa
 
 revision = "20261001_solution_src_account"
 down_revision = "20261001_ws_declaration_digest"
@@ -26,6 +27,7 @@ SOLUTION_COMPLETION = (
 
 
 def upgrade() -> None:
+    op.add_column(TABLE, sa.Column("accounting_checked_at", sa.DateTime(timezone=True), nullable=True))
     op.drop_constraint(NAME, TABLE, type_="check")
     op.create_check_constraint(NAME, TABLE, SOLUTION_COMPLETION)
 
@@ -43,3 +45,4 @@ def downgrade() -> None:
     op.create_check_constraint(NAME, TABLE,
         "disposition <> 'released' OR "
         "(release_row_id IS NOT NULL AND completion_evidence IS NOT NULL AND resolved_at IS NOT NULL)")
+    op.drop_column(TABLE, "accounting_checked_at")

@@ -380,7 +380,8 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
 
 async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
                                          policy: SolutionGitDeliveryPolicy | None = None,
-                                         accountability_organization_id: UUID | None = None) -> list[UUID]:
+                                         accountability_organization_id: UUID | None = None,
+                                         source_release_id: UUID | None = None) -> list[UUID]:
     """Bounded recovery used after declaration/delivery and by the scheduler.
 
     Caller owns commit. No completed ledger entry is reopened. Infrastructure
@@ -407,11 +408,18 @@ async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
         consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
     except (UnprovenSourceConsumers, ValueError):
         return []
-    records = list((await db.scalars(query.order_by(WorkspaceSourceRelease.created_at.desc())
+    # Rotate unsupported records behind never/least-recently examined rows.
+    # Exact declaration replay additionally targets its identity immediately.
+    if source_release_id is not None:
+        query = query.where(WorkspaceSourceRelease.id == source_release_id)
+    records = list((await db.scalars(query.order_by(
+        WorkspaceSourceRelease.accounting_checked_at.asc().nulls_first(),
+        WorkspaceSourceRelease.created_at.asc(), WorkspaceSourceRelease.id)
         .limit(min(max(limit, 1), 1000)).with_for_update().execution_options(populate_existing=True))).all())
     now = datetime.now(UTC)
     completed = []
     for record in records:
+        record.accounting_checked_at = now
         evidence = completion_for_source(record, consumers, loose_hashes=loose_hashes,
             uncertain_loose=uncertain, verified_at=now)
         disposition = "released"

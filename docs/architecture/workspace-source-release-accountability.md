@@ -24,6 +24,17 @@ rows in UUID order, and then source rows. Delivery releases its one-install
 writer before this aggregate reconciliation. Accounting does not activate a
 deployment or retire Live.
 
+Immediate and scheduled execution admission take a shared form of the same
+global fence before selecting a runtime pin and retain it through durable
+execution insertion. Admissions can run concurrently. The exclusive accounting
+scan waits for those inserts, so a deployment selected just before a pointer
+change cannot appear after completion as an unseen old consumer.
+
+Each bounded recovery batch selects never/least-recently checked declarations
+first, retaining `accounting_checked_at` even for unsupported paths. Repeated
+sweeps advance past blockers without disposing them. Declaration and exact
+replay additionally target their own Source identity rather than a front page.
+
 Completion requires **every** declared path. The adapter checks active install
 pointers, exact scopes, compiled closures, current workflow registrations and
 immutable runtime bytes. It follows exact dependency pins and includes accepted

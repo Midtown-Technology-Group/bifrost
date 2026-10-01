@@ -186,3 +186,186 @@ async def test_database_consumer_drift_keeps_source_unresolved(db_session, platf
     await db_session.flush()
     assert await reconcile_solution_owned_source(db_session) == []
     assert record.disposition == "pending" and record.completion_evidence is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recovery", ["rotation", "exact_replay"])
+async def test_recovery_reaches_older_eligible_source_behind_100_blockers(
+    db_session, platform_admin, accounting_install, recovery
+):
+    from src.models.contracts.workspace_promotions import WorkspaceSourceReleaseDeclareRequest
+    from src.services.workspace_source_releases import WorkspaceSourceReleaseService
+    from src.services.solution_source_accountability import reconcile_solution_owned_source
+    f = accounting_install
+    request = WorkspaceSourceReleaseDeclareRequest(source_commit_sha=f.commit, source_tree_sha=f.tree,
+        paths={f.path: f.digest.removeprefix("sha256:")}, disposition="pending")
+    service = WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID)
+    eligible = await service.declare(request, created_by=platform_admin.user_id)
+    blockers = [WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=uuid4().hex + "c" * 8, source_tree_sha="d" * 40,
+        paths={"unmapped.py": "e" * 64}, disposition="pending", declared_disposition="pending",
+        declaration_actor="platform_admin", created_by=platform_admin.user_id,
+        created_at=datetime.now(UTC) + timedelta(seconds=i)) for i in range(100)]
+    db_session.add_all(blockers)
+    await db_session.commit()
+    await _attach_accounting_proof(db_session, f)
+    if recovery == "rotation":
+        assert await reconcile_solution_owned_source(db_session) == []
+        await db_session.commit()
+        assert await reconcile_solution_owned_source(db_session) == [eligible.id]
+    else:
+        assert (await service.declare(request, created_by=platform_admin.user_id)).disposition == "released"
+    assert (await db_session.get(WorkspaceSourceRelease, eligible.id)).disposition == "released"
+    assert all(row.disposition == "pending" and row.completion_evidence is None for row in blockers)
+
+
+@pytest.mark.asyncio
+async def test_module_alias_is_unproven_through_real_loose_consumer_collection(
+    db_session, platform_admin, accounting_install, monkeypatch
+):
+    import hashlib
+    from unittest.mock import AsyncMock
+    from src.models.orm.workflows import Workflow
+    from src.services import solution_source_accountability as accounting
+    f = accounting_install
+    await _attach_accounting_proof(db_session, f)
+    path = "features/aliased_loose.py"
+    raw = b"import bifrost as bf\nasync def read():\n    return await bf.files.read('" + f.path.encode() + b"')\n"
+    loose = Workflow(id=uuid4(), name="Aliased Root reader", path=path, function_name="read",
+        type="workflow", organization_id=PROVIDER_ORG_ID, solution_id=None, is_active=True)
+    db_session.add(loose)
+    await db_session.flush()
+    release = SimpleNamespace(governed_paths={path}, runtime_storage_prefix="fixture/",
+        source_hashes={path: hashlib.sha256(raw).hexdigest()})
+    monkeypatch.setattr(accounting, "global_active_workspace_release_descriptor", AsyncMock(return_value=release))
+    monkeypatch.setattr(accounting, "inspect_workspace_release_registration_bindings",
+        AsyncMock(return_value=[SimpleNamespace(workflow_id=loose.id, status="bound")]))
+    monkeypatch.setattr(accounting, "WorkspaceReleaseStorage",
+        lambda _: SimpleNamespace(read_many=AsyncMock(return_value={path: raw})))
+    consumers, hashes, uncertain = await accounting._collect_consumers(db_session, f.policy)
+    assert uncertain and f.path not in hashes
+    record = SimpleNamespace(id=uuid4(), source_commit_sha=f.commit, source_tree_sha=f.tree,
+        paths={f.path: f.digest.removeprefix("sha256:")}, disposition="pending")
+    assert accounting.completion_for_source(record, consumers, loose_hashes=hashes,
+        uncertain_loose=uncertain, verified_at=datetime.now(UTC)) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dispatch_path", ["async", "scheduled"])
+async def test_accounting_waits_for_admission_selected_before_pointer_activation(
+    async_session_factory, platform_admin, monkeypatch, dispatch_path
+):
+    """Pause actual dispatch after D1 selection; D2 must not hide that pin."""
+    import asyncio
+    import base64
+    from contextlib import asynccontextmanager
+    from sqlalchemy import select
+    from src.models.contracts.solution_deployments import (
+        SolutionSourceFile, SolutionSourceRevisionRequest, SolutionSourceRevisionCommitRequest,
+    )
+    from src.models.orm.executions import Execution
+    from src.models.orm.solutions import Solution
+    from src.models.orm.workflows import Workflow
+    from src.models.enums import ExecutionStatus
+    from src.services.execution import async_executor, retry_policy
+    from src.services.solutions.source_revision import SolutionSourceRevisionService
+    from src.services.workspace_release_projection import acquire_workspace_release_lock
+    from src.services.solution_source_accountability import SourceConsumer, completion_for_source
+
+    selected, resume, checking = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    execution_id = uuid4()
+    original_retry = retry_policy.workflow_retry_policy_snapshot
+
+    @asynccontextmanager
+    async def context():
+        async with async_session_factory() as session:
+            yield session
+    monkeypatch.setattr("src.core.database.get_db_context", context)
+
+    async def paused_retry(db, workflow_id):
+        selected.set()
+        await resume.wait()
+        return await original_retry(db, workflow_id)
+    monkeypatch.setattr(retry_policy, "workflow_retry_policy_snapshot", paused_retry)
+
+    async with async_session_factory() as writer:
+        assert await writer.scalar(text("SELECT current_database()")) == "bifrost_test"
+        f = await _seed_adopted_revision(writer, platform_admin, monkeypatch)
+        request = SolutionSourceRevisionRequest(expected_active_deployment_id=f.base_id,
+            expected_active_manifest_hash=f.manifest.content_hash(), source_commit_sha="f" * 40,
+            files=[SolutionSourceFile(path=f.path, content_base64=base64.b64encode(f.new_source).decode())])
+        reviewed = await SolutionSourceRevisionService(writer).stage(
+            f.solution_id, f.revision_id, platform_admin.user_id, request)
+        await writer.commit()
+        caller = SimpleNamespace(solution_deployment_id=None, event=None,
+            org_id=str(PROVIDER_ORG_ID), user_id=str(platform_admin.user_id), name="Admission fixture",
+            email="admission@example.invalid", startup=None, form_inputs={}, embed=None, is_platform_admin=True)
+        async def dispatch():
+            if dispatch_path == "async":
+                return await async_executor._persist_execution_pin(caller, str(execution_id),
+                    str(f.workflow_id), {}, None, form_id=None, sync=False, api_key_id=None, file_path=None)
+            from src.routers.workflows import _insert_scheduled_execution
+            async with async_session_factory() as db:
+                return await _insert_scheduled_execution(db=db, workflow_id=f.workflow_id,
+                    workflow_name="Admission fixture", parameters={}, scheduled_at=datetime.now(UTC),
+                    organization_id=PROVIDER_ORG_ID, executed_by=platform_admin.user_id,
+                    executed_by_name=caller.name, form_id=None, is_platform_admin=True,
+                    execution_id=execution_id)
+        admission = asyncio.create_task(dispatch())
+        scan = None
+        try:
+            await asyncio.wait_for(selected.wait(), 10)
+            activated = await SolutionSourceRevisionService(writer).activate(f.solution_id, f.revision_id,
+                SolutionSourceRevisionCommitRequest(expected_active_deployment_id=f.base_id,
+                    expected_active_manifest_hash=f.manifest.content_hash(), expected_evidence_id=reviewed.evidence_id))
+            await writer.commit()
+            assert activated.state == "active"
+            scan_pid = []
+
+            async def accounting_scan():
+                async with async_session_factory() as db:
+                    scan_pid.append(await db.scalar(text("SELECT pg_backend_pid()")))
+                    checking.set()
+                    await acquire_workspace_release_lock(db, None)
+                    pin = await db.scalar(select(Execution.solution_deployment_id).where(Execution.id == execution_id))
+                    await db.commit()
+                    return pin
+            scan = asyncio.create_task(accounting_scan())
+            await asyncio.wait_for(checking.wait(), 10)
+            # Observe PostgreSQL's waiting lock, not a timing guess that a task
+            # has not finished yet. PgBouncer retains the backend in this xact.
+            async def wait_for_fence():
+                async with async_session_factory() as observer:
+                    while not await observer.scalar(text("SELECT EXISTS (SELECT 1 FROM pg_locks "
+                        "WHERE pid=:pid AND locktype='advisory' AND NOT granted)"), {"pid": scan_pid[0]}):
+                        if scan.done():
+                            raise AssertionError("Accounting passed the admission window")
+                        await asyncio.sleep(0.01)
+            await asyncio.wait_for(wait_for_fence(), 10)
+            resume.set()
+            await asyncio.wait_for(admission, 10)
+            old_pin = await asyncio.wait_for(scan, 10)
+            assert old_pin == f.base_id
+            expected = "c" * 64
+            record = SimpleNamespace(id=uuid4(), disposition="pending", source_commit_sha="f" * 40,
+                source_tree_sha="e" * 40, paths={f.path: expected})
+            current = SourceConsumer(str(f.revision_id), str(f.solution_id), str(PROVIDER_ORG_ID),
+                "sha256:" + "d" * 64, {f.path: {f.path: expected}},
+                {"commit_sha": record.source_commit_sha, "tree_sha": record.source_tree_sha,
+                    "receipt_id": "receipt", "artifact_digest": "artifact"})
+            retained = SourceConsumer(str(old_pin), str(f.solution_id), str(PROVIDER_ORG_ID),
+                f.manifest.content_hash(), {f.path: {f.path: "a" * 64}}, admission=False)
+            assert completion_for_source(record, [current, retained], loose_hashes={}, uncertain_loose=False,
+                verified_at=datetime.now(UTC)) is None
+        finally:
+            resume.set()
+            for task in (admission, scan):
+                if task is not None and not task.done():
+                    task.cancel()
+            await asyncio.gather(*(task for task in (admission, scan) if task is not None), return_exceptions=True)
+            await writer.rollback()
+            # Keep immutable fixture history, remove it from future admission.
+            await writer.execute(update(Solution).where(Solution.id == f.solution_id).values(status="inactive"))
+            await writer.execute(update(Workflow).where(Workflow.id == f.workflow_id).values(is_active=False))
+            await writer.execute(update(Execution).where(Execution.id == execution_id).values(status=ExecutionStatus.CANCELLED))
+            await writer.commit()

@@ -190,7 +190,7 @@ class WorkspaceSourceReleaseService:
         )
         if existing is not None:
             _assert_compatible_replay(existing, request, paths)
-            if await self._reconcile_solution_delivery():
+            if await self._reconcile_solution_delivery(existing.id):
                 await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
 
@@ -258,19 +258,19 @@ class WorkspaceSourceReleaseService:
             if existing is None:
                 raise
             _assert_compatible_replay(existing, request, paths)
-            if await self._reconcile_solution_delivery():
+            if await self._reconcile_solution_delivery(existing.id):
                 await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
-        await self._reconcile_solution_delivery()
+        await self._reconcile_solution_delivery(record.id)
         await self.db.refresh(record, attribute_names=["solution_deploy_obligations"])
         return source_release_response(record, now=now)
 
-    async def _reconcile_solution_delivery(self) -> bool:
+    async def _reconcile_solution_delivery(self, source_release_id: UUID) -> bool:
         from src.config import get_settings
         if get_settings().solution_git_delivery_policy is None:
             return False
         from src.services.solution_source_accountability import reconcile_solution_owned_source
-        await reconcile_solution_owned_source(self.db)
+        await reconcile_solution_owned_source(self.db, source_release_id=source_release_id)
         await self.db.commit()
         return True
 
