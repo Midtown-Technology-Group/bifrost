@@ -392,7 +392,9 @@ async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
             disposition = "superseded"
         if evidence is None:
             continue
-        record.disposition, record.reason = disposition, None
+        record.disposition = disposition
+        record.reason = ("superseded by verified protected Git Solution delivery "
+            + str(evidence["superseding_source_commit_sha"])) if disposition == "superseded" else None
         record.completion_evidence, record.resolved_at = evidence, now
         completed.append(record.id)
     await db.flush()

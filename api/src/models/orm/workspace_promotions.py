@@ -437,8 +437,13 @@ class WorkspaceSourceRelease(Base):
         ),
         CheckConstraint(
             "disposition <> 'released' OR "
-            "(release_row_id IS NOT NULL AND completion_evidence IS NOT NULL "
-            "AND resolved_at IS NOT NULL)",
+            "(completion_evidence IS NOT NULL AND resolved_at IS NOT NULL AND "
+            "(release_row_id IS NOT NULL OR COALESCE("
+            "(completion_evidence->>'schema_version' = 'bifrost.solution-owned-source-completion/v1' "
+            "AND completion_evidence->>'source_commit_sha' = source_commit_sha "
+            "AND completion_evidence->>'source_tree_sha' = source_tree_sha "
+            "AND jsonb_typeof(completion_evidence->'paths') = 'object' "
+            "AND completion_evidence->'paths' <> '{}'::jsonb), FALSE)))",
             name="ck_workspace_source_release_released_evidence",
         ),
         CheckConstraint(

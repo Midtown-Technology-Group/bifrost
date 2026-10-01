@@ -48,6 +48,14 @@ durable activation can be recovered by exact delivery replay, declaration
 replay or the scheduler without manual accounting changes. Read failures retain
 the debt; transport failures propagate rather than falsely reporting closure.
 
+Apply `20261001_solution_src_account` before deploying the accounting adapter.
+The constraint preserves Live completion and accepts only nonempty Solution
+completion evidence for the exact declared commit/tree without a Live row.
+Keep the constraint during application rollback; migration downgrade refuses
+while completed Solution accounting rows rely on it.
+
+### Declaration producer
+
 The trusted `bifrost-workspace` workflow triggered by every push to protected
 `main` must call `POST /api/workspace-promotions/source-releases/github` for
 that commit. Human administrators may use
