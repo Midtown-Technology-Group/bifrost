@@ -123,7 +123,12 @@ class Role(Base):
     )
 
     # Relationships
-    users: Mapped[list["UserRole"]] = relationship(back_populates="role")
+    # delete-orphan mirrors User.roles: deleting a role removes its
+    # user_roles rows instead of nulling user_roles.role_id (a PK column),
+    # matching the endpoint's documented CASCADE delete semantics.
+    users: Mapped[list["UserRole"]] = relationship(
+        back_populates="role", cascade="all, delete-orphan"
+    )
     # Agents via junction table
     agents: Mapped[list["Agent"]] = relationship(
         secondary="agent_roles",
