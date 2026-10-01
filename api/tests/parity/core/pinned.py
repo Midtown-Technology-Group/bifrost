@@ -17,7 +17,12 @@ from bifrost.solution_delivery_review import (
     ReviewedWorkflowRecipe,
 )
 from sqlalchemy import select, text
-from src.core.module_cache_contract import MODULE_INDEX_KEY, MODULE_KEY_PREFIX
+from src.core.module_cache_contract import (
+    MODULE_INDEX_KEY,
+    MODULE_KEY_PREFIX,
+    WORKSPACE_GENERATION_KEY,
+    WORKSPACE_UPDATING_PREFIX,
+)
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.solution_deployments import (
     SolutionDeployment,
@@ -44,6 +49,20 @@ SOURCE_PATH = "features/utilities/workflows/check_integration_readiness.py"
 FUNCTION = "check_integration_readiness"
 PORTABLE_REF = f"{SOURCE_PATH}::{FUNCTION}"
 SOURCE_HASH = f"sha256:{SOURCE_SHA256}"
+
+
+def generation_read(value, started, completed):
+    """Record an independent Redis read; never initialize a cold generation."""
+    assert (
+        type(value) is str and value and not value.startswith(WORKSPACE_UPDATING_PREFIX)
+    ), "Pinned workspace generation cold or updating; source witness unavailable"
+    assert started.tzinfo is not None and completed.tzinfo is not None
+    assert started <= completed, "Pinned generation read clock reversed"
+    return {
+        "value": value,
+        "started_at": started.isoformat(),
+        "completed_at": completed.isoformat(),
+    }
 
 
 def assert_source_request(
@@ -110,6 +129,7 @@ class PinnedEnvironment(ReferenceEnvironment):
         self.recipe = None
         self.capture: PinnedCapture | None = None
         self.storage = None
+        self.generation_witnesses: dict[str, dict] = {}
 
     @property
     def base(self):
@@ -312,7 +332,24 @@ class PinnedEnvironment(ReferenceEnvironment):
                 assert not row.endpoint_enabled and not row.public_endpoint
 
     async def allocate_execution(self, role, *, request_name=None):
+        before = await self.read_generation()
+        existing = [
+            raw
+            for raw, owner in self.bindings.items()
+            if owner == "observed-workspace-generation"
+        ]
+        assert not existing or existing == [before["value"]], (
+            "Pinned workspace generation changed between owned admissions"
+        )
+        self.generation = before["value"]
+        self.bindings[self.generation] = "observed-workspace-generation"
         identity = await super().allocate_execution(role, request_name=request_name)
+        self.generation_witnesses[str(identity)] = {
+            "source": WORKSPACE_GENERATION_KEY,
+            "execution_id": str(identity),
+            "before": before,
+            "after": None,
+        }
         key = f"{PREFIX}{identity}:owner"
         owner = json.loads(await self.redis.get(key))
         assert self.storage is not None
@@ -326,6 +363,23 @@ class PinnedEnvironment(ReferenceEnvironment):
         )
         await self.redis.set(key, json.dumps(owner), ex=600)
         return identity
+
+    async def read_generation(self):
+        started = now()
+        value = await self.redis.get(WORKSPACE_GENERATION_KEY)
+        return generation_read(value, started, now())
+
+    async def witness_successful_generations(self, executions):
+        for execution in executions:
+            if execution["status"] != "Success":
+                continue
+            witness = self.generation_witnesses[execution["id"]]
+            if witness["after"] is None:
+                after = await self.read_generation()
+                assert after["value"] == witness["before"]["value"], (
+                    "Pinned workspace generation changed during admission"
+                )
+                witness["after"] = after
 
     async def mutate_runtime_source(self):
         """Explicit owned immutable-object corruption, never a source behavior fix."""
@@ -420,6 +474,7 @@ class PinnedCapture(ScopedReferenceCapture):
     async def snapshot(self):
         result = await super().snapshot()
         env = self.environment
+        await env.witness_successful_generations(result["executions"])
         async with env.sessions() as db:
             for model, predicate in (
                 (Solution, Solution.id == env.ids.get("solution")),

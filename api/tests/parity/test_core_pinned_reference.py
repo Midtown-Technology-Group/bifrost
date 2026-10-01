@@ -7,12 +7,13 @@ import os
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import redis.asyncio as redis
-from sqlalchemy import delete
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import DBAPIError
+from src.core.security import encrypt_secret
 from src.models.orm.config import Config
 from src.models.orm.integrations import (
     Integration,
@@ -20,6 +21,7 @@ from src.models.orm.integrations import (
     IntegrationMapping,
 )
 from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.work_deliveries import WorkDelivery
 
 from tests.parity.core.adapter import ReferenceAdapter
 from tests.parity.core.environment import SOURCE, SOURCE_SHA256
@@ -71,7 +73,9 @@ def pinned_environment(async_engine):
 
 
 def profile_for(env):
-    return PinnedProfile({str(env.ids["solution"]): env.recipe})
+    return PinnedProfile(
+        {str(env.ids["solution"]): env.recipe}, env.generation_witnesses
+    )
 
 
 def assert_pinned_ready(captured, env):
@@ -119,6 +123,7 @@ async def test_core_pinned_python_readiness_and_real_source(pinned_environment):
             "proof": "Python pinned A with real source/SDK; no Rust/model/vendor acceptance",
             "source_commit": SOURCE_COMMIT,
             "source_sha256": SOURCE_SHA256,
+            "generation_witnesses": env.generation_witnesses,
             "observations": profile.canonicalize(
                 [*[step.observation for step in env.receipts], captured.observation],
                 env.bindings,
@@ -457,3 +462,106 @@ async def test_core_pinned_profile_rejects_captured_mutants(pinned_environment, 
             ]
             != "sha256:" + "0" * 64
         )
+
+
+@pytest.mark.parametrize(
+    "path,owner",
+    [
+        (("execution_id",), "other-execution"),
+        (("workflow_id",), "other-workflow"),
+        (("user_id",), "other-user"),
+        (("org_id",), "other-org"),
+        (("parameters", "integration_name"), "other-integration-name"),
+        (("parameters", "organization_id"), "other-org"),
+        (("solution_deployment_id",), "other-deployment"),
+        (("runtime_evidence", "solution_id"), "other-solution"),
+        (("runtime_evidence", "runtime_storage_prefix"), "other-runtime-prefix"),
+    ],
+)
+async def test_core_pinned_actual_committed_pending_owner_drift(
+    pinned_environment, path, owner
+):
+    async with pinned_environment() as (env, adapter):
+        ready = await execute_readiness(adapter, env, before=env.before)
+        assert_pinned_ready(ready, env)
+        # Each admission has its own capture and actual terminal publication.
+        async with pinned_environment() as (other_env, other_adapter):
+            other = await execute_readiness(
+                other_adapter,
+                other_env,
+                role="other-execution",
+                before=other_env.before,
+            )
+            assert_pinned_ready(other, other_env)
+            env.bindings.update(
+                {
+                    str(other_env.executions[0]): "other-execution",
+                    other_env.name: "other-integration-name",
+                    other_env.storage.runtime_prefix: "other-runtime-prefix",
+                    **{
+                        str(other_env.ids[role]): f"other-{role}"
+                        for role in (
+                            "workflow",
+                            "user",
+                            "org",
+                            "deployment",
+                            "solution",
+                        )
+                    },
+                }
+            )
+
+        async def recapture():
+            return await adapter.request(
+                "committed-pinned-drift",
+                "GET",
+                f"/api/executions/{env.executions[0]}/result",
+                before=env.before,
+            )
+
+        reference = await recapture()
+        delivery = next(
+            row
+            for row in reference.observation.database["work_deliveries"]
+            if row["message_id"] == str(env.executions[0])
+        )
+        changed = deepcopy(delivery["envelope"])
+        target = changed["body"]["pending_context"]
+        for field in path[:-1]:
+            target = target[field]
+        target[path[-1]] = next(
+            raw for raw, role in env.bindings.items() if role == owner
+        )
+        async with env.sessions() as db:
+            row = (
+                await db.execute(
+                    select(WorkDelivery).where(WorkDelivery.id == UUID(delivery["id"]))
+                )
+            ).scalar_one()
+            original = row.encrypted_envelope
+            row.encrypted_envelope = encrypt_secret(json.dumps(changed))
+            await db.commit()
+        try:
+            candidate = await recapture()
+            recaptured = next(
+                row
+                for row in candidate.observation.database["work_deliveries"]
+                if row["id"] == delivery["id"]
+            )
+            assert recaptured["encrypted_envelope_present"] is True
+            assert recaptured["envelope"] == changed
+            assert reference.observation.body == candidate.observation.body
+            assert reference.observation.events == candidate.observation.events == []
+            assert reference.transport == candidate.transport
+            with pytest.raises(
+                AssertionError, match="Pending producer projection differs"
+            ):
+                assert_pinned_parity([reference], [candidate], env, env)
+        finally:
+            async with env.sessions() as db:
+                await db.execute(
+                    update(WorkDelivery)
+                    .where(WorkDelivery.id == UUID(delivery["id"]))
+                    .values(encrypted_envelope=original)
+                )
+                await db.commit()
