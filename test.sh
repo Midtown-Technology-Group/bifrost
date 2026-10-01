@@ -490,6 +490,10 @@ cmd_mcp() {
 
 mcp_conformance() {
     require_stack_up
+    # Browser lanes use localhost for callbacks. Reconcile the backend
+    # authority before the adapter sends its canonical Host and audience.
+    local -x BIFROST_TEST_PUBLIC_URL=http://api:8000
+    reset_state
 
     local results_dir="$LOG_DIR/mcp-conformance"
     local blocking_results="$results_dir/blocking"
@@ -929,6 +933,30 @@ run_scoped_pre_pr() {
     fi
 }
 
+prepare_full_pre_pr_stack() {
+    # Every backend service and test runner uses this shared dev image. Build
+    # explicitly even when stack_up finds an already-running stack.
+    docker compose -f "$COMPOSE_FILE" build api
+    local -x BIFROST_SKIP_BUILD=1
+    stack_up
+}
+
+run_full_pre_pr() {
+    run_pre_pr_stage client client_ci_checks
+    run_pre_pr_stage stack prepare_full_pre_pr_stack
+    # Stack preparation just built this candidate's images. Rebuilding between snapshots
+    # changes attestation-bearing image IDs even when every layer is cached.
+    # Freeze the built images for the backend lanes; browser startup still
+    # builds and reconciles its own images before taking browser evidence.
+    local -x BIFROST_SKIP_BUILD=1
+    run_pre_pr_stage quality quality_api
+    run_pre_pr_stage generated generated_api_checks
+    run_pre_pr_stage unit cmd_unit
+    run_pre_pr_stage e2e cmd_e2e
+    run_pre_pr_stage browser client_e2e
+    run_pre_pr_stage image build_local_api_candidate
+}
+
 cmd_pre_pr() {
     local head_sha stack_was_up full_run=0
 
@@ -985,14 +1013,7 @@ PY
     echo "Pre-PR candidate: $head_sha"
     run_pre_pr_stage repository repository_ci_checks
     if [ "$full_run" = "1" ]; then
-        run_pre_pr_stage client client_ci_checks
-        run_pre_pr_stage stack stack_up
-        run_pre_pr_stage quality quality_api
-        run_pre_pr_stage generated generated_api_checks
-        run_pre_pr_stage unit cmd_unit
-        run_pre_pr_stage e2e cmd_e2e
-        run_pre_pr_stage browser client_e2e
-        run_pre_pr_stage image build_local_api_candidate
+        run_full_pre_pr
     else
         run_scoped_pre_pr
 
