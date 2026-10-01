@@ -138,6 +138,14 @@ remain distinct. The correction is under narrow implementation/review and is not
 yet passing evidence. Provider/external snapshot behavior otherwise follows the
 existing contract, not a new global revocation policy.
 
+Current AUTH-P1 status: separate #1018 remains open and unmerged at
+`d82219f5aada66d879f2da71b386f50675c66d4d`. The missing-authenticated-caller
+correction above is included in that candidate;
+[supported CI 36903534996](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36903534996)
+passed at that exact SHA. The earlier candidate and under-implementation
+dispositions are historical, not the current source status. No unchanged
+Cove model/tool/SDK nominal result, merge or deployment follows from CI.
+
 This correction deliberately preserves existing run/rerun execution-org
 expressions. Their dual-use caller/target organization is **not** repaired by
 privilege propagation. Separate original-caller and effective execution scope

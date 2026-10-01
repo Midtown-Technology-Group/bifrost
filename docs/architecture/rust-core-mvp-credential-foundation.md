@@ -188,7 +188,7 @@ Active-install/source eligibility and real source/session/deadline/caller hooks
 are additional unresolved integration cases, not changes to legacy SDK behavior.
 Nothing uses these private helpers for a real runtime yet.
 
-## Private foundation candidate evidence
+## Historical private foundation candidate evidence
 
 Candidate `ddb5131887ba22dc9038efc99b32b7d3a6d70bdd`, on
 `fix/runtime-sdk-purpose`, contains exactly the seven owned paths above and
@@ -209,12 +209,42 @@ deselections. Lint/type, client unit/E2E, all four backend E2E shards and MCP
 conformance also passed; release/build/deployment jobs were skipped by their
 normal policies.
 
-This establishes tested private foundation behavior. The exact clean
-current-main `./test.sh pre-pr` publication gate and applicable real application
-proof remain incomplete; the separate prerequisite PR has not been opened.
+This establishes private foundation behavior at the historical candidate only.
+It did not establish the then-uncompleted publication or application gates.
 Physical-host runtime substitution is forbidden. The private functions have no
 HTTP/runtime callers, source permission remains empty, and neither full CRED
 nor C2/C3 acceptance follows from this run.
+
+## Current prerequisite and reference candidates
+
+Separate [CRED-P1-S #1024](https://github.com/Midtown-Technology-Group/bifrost/pull/1024)
+is open, unmerged and unwired. The supported literal clean-current-main
+`./test.sh pre-pr` gate passed at `e04957239e1d8c23eb6c304d93408bf44d988ec6`
+in [run 36928245925](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36928245925),
+which also passed ordinary CI. Its artifact records exit zero and empty owned
+container/network/volume readback after teardown. That proof is historical to
+that candidate, not proof for later source.
+
+The current candidate is `6419069da195b053c885ab349f431ff4fae62098`, containing
+main `658283e8c8707ceecf9e2c0b56b779d074b7bdaf` and the single migration parent
+`20261001_solution_src_account`. It verifies signatures and claims through
+PyJWT `decode_complete` before inspecting the closed header. Exact locked PyJWT
+2.15.1 source/hash and static checks support that API; candidate Sonar passed.
+[Literal pre-PR run 36933342485](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933342485)
+and ordinary candidate CI remain pending. CodSpeed #1003 is still blocking;
+no threshold waiver or benchmark retry establishes acceptance.
+
+The independent test-only CRED-P1-REF candidate
+`99ab8dd653ba8f42381f8d627aa56e2f4903935a` also includes that current main.
+Its three owned test/fixture paths have independent source review, including
+actual lifespan shutdown acknowledgement and committed OAuth-state negatives.
+A root-owned associated CI-only addition supplies the same optional literal
+pre-PR job; it changes no production behavior or existing test gate.
+[Supported run 36933538470](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933538470)
+is pending. No reference PR is opened before its required gate passes; no
+source-enumerated scenario is represented as a passing runtime result.
+Applicable actual application/consumer proof, public H/R integration and all
+C2/C3 gates remain uncompleted.
 
 Public H/R interfaces still require characterization and review. In current
 source, mapping responses use the legacy engine transport's superuser flag to
