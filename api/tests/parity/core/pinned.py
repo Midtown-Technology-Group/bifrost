@@ -109,7 +109,7 @@ class PinnedEnvironment(ReferenceEnvironment):
         )
         self.receipts: list[CapturedStep] = []
         self.recipe = None
-        self.capture = None
+        self.capture: PinnedCapture | None = None
         self.storage = None
 
     @property
