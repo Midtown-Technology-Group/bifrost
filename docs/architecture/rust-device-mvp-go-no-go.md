@@ -8,10 +8,13 @@ The operating procedure package is `2026-09-30.2`.
 ## Scope and authority
 
 The [execution plan](rust-device-mvp-plan.md) records packages and Python ownership.
-Platform main is `d39aa0adf15ba12dfde5f2f39628cac88c2e98a0` (#1001 present).
-Workspace main is `749197f6425a54a899bc596c9c33cdb2e6f9d2e2` (#1112 ancestor).
-The workspace audit found zero internal-import findings across 2,095 authored
-Python files with an empty allowlist. No workspace changes were made.
+Latest reconciled platform main is
+`e77947fab5762e49dd5fdc390bd65ca84bc22c3c` (#1001 ancestor).
+Workspace initial main was `749197f6425a54a899bc596c9c33cdb2e6f9d2e2`;
+latest main is `af6d73a40cb602a1f82f089dbac27233ccddd5fb` (#1112 ancestor).
+The latest workspace audit found zero internal-import findings across 2,095
+boundary Python files (1,973 standard authored files plus Solution/top-level
+authoring locations), with an empty allowlist. No workspace changes were made.
 [RFC #1005](https://github.com/Midtown-Technology-Group/bifrost/pull/1005) remains
 provisional at `2a70092eb773750d6bd082659c2a46b428748654`.
 Sopdet authority is `Midtown-Technology-Group/sopdet` main
@@ -23,11 +26,15 @@ The clean-candidate gate fetched platform main
 `c527ca1e4c0e1dc338b42542799290f6eba52ede` (#1004) during execution.
 Candidates include this head. Its four changed files concern pinned workflow
 module imports and related tests; device/auth/schema/instructions are unchanged.
-The pinned F-01 source citations remain applicable. Workspace main is unchanged.
+The pinned F-01 source citations remain applicable.
 A later gate fetched `e77947fab5762e49dd5fdc390bd65ca84bc22c3c` (#960);
 candidates include it. Its three changed files fix user-role ORM delete cascades
 and tests. Device protocol, device schema, database dependency and instructions
 are unchanged; this does not assert that all authentication behavior is unchanged.
+Latest workspace main `af6d73a40cb602a1f82f089dbac27233ccddd5fb` (#1116)
+changes only CIPP delivery recipes and handoff documentation. A fresh exact-head
+audit again found zero internal imports across 2,095 boundary files and the
+allowlist empty; #1112 remains an ancestor.
 
 ## Finding F-01: claimed does not establish absence of execution
 
@@ -88,8 +95,8 @@ the lease or changing transient-error handling does not close the crash window.
 
 ## Evidence and acceptance matrix
 
-Characterization also exposed F-02, a source-derived log-batch quirk awaiting
-runtime confirmation: `append_logs` can stage a new lower sequence before a later
+Characterization also exposed F-02, a log-batch quirk confirmed by the supported
+Python reference run at `0f519eeb`: `append_logs` can stage a new lower sequence before a later
 conflicting existing sequence raises an error. The route converts that exception
 to a normal 409 response; `get_db` commits on normal dependency return. Those
 staged rows can therefore persist without the successful-path broadcast, while
@@ -100,14 +107,15 @@ rollback or silently correct the reference during porting.
 [dependency commit](https://github.com/Midtown-Technology-Group/bifrost/blob/d39aa0adf15ba12dfde5f2f39628cac88c2e98a0/api/src/core/database.py#L149).
 The harness must wait for the owned transaction to release its row lock before
 capturing committed state; a post-response SELECT alone is insufficient evidence
-of dependency teardown completion. Actual response/cleanup ordering must be
-characterized in the supported pinned FastAPI environment.
+of dependency teardown completion. The pinned FastAPI reference run confirmed the committed partial batch, unchanged
+activity/sequence and absent successful-path event. See
+[reference run 36826144370](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36826144370).
 
 | Acceptance area | Evidence | Disposition |
 |---|---|---|
 | Current prerequisites and workspace boundary | Exact fetched heads and authored audit | Verified at stated heads |
 | Rust W0 foundation | Bounded candidate workstream; separate validation ledger | Unaccepted pending gates |
-| Response/DB/event drift detection | Harness candidate; real reference required | Unaccepted pending supported execution |
+| Response/DB/event drift detection | 90 supported reference/mutant cases passed at `b392ebca` | Core drift gate verified; normal pre-PR gate still failed |
 | Five route parity | No Rust device routes implemented | Not attempted after F-01 |
 | Unchanged Sopdet | Exact source pinned; existing Go agent tests pass | Backend compatibility unproved |
 | Mixed writers, cancellation/fencing and rollback | Requires W1/W2 | Not attempted |
@@ -134,8 +142,8 @@ user-local Buildx `v0.37.2`, verified against release checksum
 `982ca20490b45ed1ec8d99795974d3d874a358f75938c9c237305010e6b7e548`.
 The system plugin and daemon security policies were not changed. No unconfined
 profile, host pytest substitution, timeout inflation or repeated benchmark run
-was used to mask E-01. Supported CI or a separately authorized host repair is
-needed for the outstanding W0 operational evidence.
+was used to mask E-01. Supported CI has provided cold Rust/image and Python
+operational evidence without altering daemon policy. E-01 still prevents equivalent supported local checks.
 
 ## Sanitized deployment configuration readback
 
@@ -162,15 +170,56 @@ is outside this MVP regardless of this readback.
 Reviewable W0 candidates are [W0-A #1009](https://github.com/Midtown-Technology-Group/bifrost/pull/1009)
 and [W0-B #1008](https://github.com/Midtown-Technology-Group/bifrost/pull/1008).
 Neither is architect-accepted or merged. Rust package version is `0.1.0`.
-W0-A's six supplementary host tests, formatting, Clippy and dependency policy
-checks passed; cold Docker compilation remains blocked by E-01. W0-B scoped Ruff,
-compilation and whitespace passed. Its first hosted run failed before tests due
-to missing CI image settings; that integration omission was corrected. Actual
-reference execution and response/DB/event mutation detection remain pending.
-Local foundation pre-PR gates also report thousands of dependency-resolution/type
+W0-A at `3c65f47204fcd2622e2cff192e54d8d6a880f1dc` passed supported CI
+formatting, all-feature Clippy/tests (six tests), cold production-image build,
+and security/license policy. Its preceding `48ab9` candidate also passed the
+migrated Alembic schema/PgBouncer and real production-image smoke job: healthy and
+ready against the existing schema, live but unready against a schema without the
+device tables, sanitized request logs, and SIGTERM exit 0. These are actual
+container/service checks, not host substitutes. The final TLS-test candidate is
+`5ad5010400bf1ade5d1a96cda22684a3f4d6cf35`;
+[run 36828498345](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36828498345)
+passed its cold image, security/license, formatting/Clippy/tests and actual HTTPS
+OTLP positive/negative tests. Trusted TLS delivered a request span and duration
+histogram; an untrusted chain delivered neither signal. These tests use ephemeral
+CA/server keys and process-local trust only, with no committed private keys or
+host/runtime trust changes. Final migrated-schema/PgBouncer/service smoke readback
+remains pending. Independent source review found no additional security blocker. SDK 0.33 trace shutdown
+acknowledgement does not guarantee final export delivery: that SDK discards the
+last trace-export result. Collector receipt must be verified separately, as the
+positive TLS test does; a successful shutdown log alone is not delivery evidence.
+
+W0-B's supported Python reference run at `0f519eeb` executed 87 cases:
+69 passed and 18 failed because the tests incorrectly expected FastAPI's default
+422 envelope. BiFrost's global handler instead returns the flat
+`error="validation_error"`, joined `message`, and `details=null`. The fixtures were
+corrected from source and actual supported-container responses; Python behavior
+was not changed. Passing cases included full lifecycle, stale-claim reclaim,
+committed-running ACK-loss handling, F-02 partial persistence, independent
+reference comparisons and misrouted-event drift detection. The corrected candidate
+`b392ebcac796f4cc5cf1cc2a21948025a93b1725` also tests actual HTTP-response and
+committed SQL-state mutation boundaries, not just mutations of copied observations.
+The [corrected reference run 36827831696](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36827831696)
+passed all **90 cases in 116.69 seconds**. It ran PR head `b392ebca` through
+GitHub's synthetic merge `3d939da790e438d116a7e853d9c3dfec4407f20b`.
+The sanitized twelve-step lifecycle artifact contains symbolic token labels,
+not credential values; downloaded JSON SHA-256 is
+`dcd0d7d17f9e44473d20c4f464929a1c37666957f21218d67851d07f186f7aa7`.
+The harness cannot attribute a scoped event if both its job/device identity and
+channel scope disappear; this limitation is explicit, not normalized away.
+Existing response-copy mutants are supplementary to the actual HTTP, committed
+SQL and misrouted Redis publication mutants.
+
+Local foundation pre-PR gates report thousands of dependency-resolution/type
 errors in API quality; their cause is not established by the AppArmor diagnosis.
-Each PR records its exact candidate and gate outcome. Do not infer acceptance
-from either supplementary source checks or an attempted gate.
+W0-A's authenticated clean-candidate gate at `5ad50104` completed with exit 1,
+3,944 API type errors and 89 warnings. W0-B
+at `b392ebca` reported 3,954 API type errors and 89 warnings in its normal gate.
+Each PR records its exact candidate and gate outcome. Supported scoped CI passes
+do not waive a failed normal pre-PR gate.
+The two W0-B CodeQL ineffective-statement findings were corrected and their review
+threads answered/resolved after source readback. No benchmark was rerun to evade
+[#1003](https://github.com/Midtown-Technology-Group/bifrost/issues/1003).
 
 All five routes remain Python-owned. Python retains administration, control keys,
 cancellation, watchdog, WebSocket authorization, workflow/agent execution and every
@@ -180,7 +229,8 @@ experiment requires no data repair or production rollback. Do not expose the
 candidate readiness/health service as a substitute device endpoint.
 
 No Python/Rust performance comparison is valid: there is no route candidate and
-the supported local environment fails before operational testing. No throughput,
+local service testing is blocked; successful CI bootstrap checks do not constitute
+a comparable device workload. No throughput,
 memory or latency benefit is claimed. The RFC's later same-environment workload
 requirements remain pending; CodSpeed's cross-environment blocking issue
 [#1003](https://github.com/Midtown-Technology-Group/bifrost/issues/1003) remains open.

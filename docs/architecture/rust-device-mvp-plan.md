@@ -9,9 +9,9 @@ The latest user specification takes precedence over its Muse agent assumption.
 
 ## Baselines and gates
 
-- Platform fetched main: `d39aa0adf15ba12dfde5f2f39628cac88c2e98a0`.
+- Initial platform fetched main: `d39aa0adf15ba12dfde5f2f39628cac88c2e98a0`.
   Prerequisite #1001 is merged at this head.
-- Workspace fetched main: `749197f6425a54a899bc596c9c33cdb2e6f9d2e2`.
+- Initial workspace fetched main: `749197f6425a54a899bc596c9c33cdb2e6f9d2e2`.
   Prerequisite #1112 (`a05030ed42a7d2da808c1ec8020c050d87e19b31`) is an ancestor.
 - Exact workspace-head audit: 2,095 authored Python files, no internal-import
   findings, empty allowlist; no workspace edit is authorized by this package.
@@ -38,11 +38,15 @@ The clean-candidate gate fetched platform main
 `c527ca1e4c0e1dc338b42542799290f6eba52ede` (#1004) during execution.
 Candidates include this head. Its four changed files concern pinned workflow
 module imports and related tests; device/auth/schema/instructions are unchanged.
-The pinned F-01 source citations remain applicable. Workspace main is unchanged.
+The pinned F-01 source citations remain applicable.
 A later gate fetched `e77947fab5762e49dd5fdc390bd65ca84bc22c3c` (#960);
 candidates include it. Its three changed files fix user-role ORM delete cascades
 and tests. Device protocol, device schema, database dependency and instructions
 are unchanged; this does not assert that all authentication behavior is unchanged.
+Latest workspace main `af6d73a40cb602a1f82f089dbac27233ccddd5fb` (#1116)
+changes only CIPP delivery recipes and handoff documentation. A fresh exact-head
+audit again found zero internal imports across 2,095 boundary files and the
+allowlist empty; #1112 remains an ancestor.
 
 ## Scope and Python ownership
 
@@ -141,6 +145,12 @@ covers sensitive code with evidence; builders do not approve their own work.
   raw-enough startup/RSS/CPU/latency/DB/build and engineering-cost evidence.
 - Go/no-go report: CONTINUE only on all user acceptance criteria; unresolved
   critical parity/security or external proof prevents declaring success.
+
+W0-B reference/drift gate evidence: supported run
+[36827831696](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36827831696)
+at `b392ebcac796f4cc5cf1cc2a21948025a93b1725` passed all 90 cases. Actual
+response, committed DB and event mutants were detected. This does not waive the
+failed normal pre-PR gate or supply Rust/Go/mixed-writer acceptance.
 
 Current recommendation: **STOP this device MVP before W1/W2**. The reference
 protocol permits reclaim after possible spawn, contradicting the required invariant.
