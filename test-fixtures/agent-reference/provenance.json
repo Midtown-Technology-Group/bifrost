@@ -1,0 +1,68 @@
+{
+  "schema": "bifrost.agent-reference-assets/v1",
+  "origin_repository": "MTG-Thomas/bifrost-workspace",
+  "origin_commit": "e8605dc8edb6df8a997c171b534b324ac7ebd8ec",
+  "assets": [
+    {
+      "origin_path": "agents/387064f6-af8d-4b88-97b4-adbf0207a2fa.agent.yaml",
+      "bytes": 1718,
+      "sha256": "b79b5064f375098dabc119083cf2ff16778b683722b5df394f6cb8a06ca22914",
+      "git_blob": "e0c998da3dc84868bdfc5d03ff52d368db3bcb9d",
+      "runtime_path": "declaration.yaml",
+      "asset_path": "declaration.yaml"
+    },
+    {
+      "origin_path": "features/cove/workflows/recovery_steward.py",
+      "bytes": 17642,
+      "sha256": "71bc320261ab6f6da2abb3b4f1bc3335fc9925ae28ac9e922a1f260e378529eb",
+      "git_blob": "a5c9f3f5bd6184647e5f50468fe5dabe609ae7ca",
+      "runtime_path": "features/cove/workflows/recovery_steward.py",
+      "asset_path": "features/cove/workflows/recovery_steward.py"
+    },
+    {
+      "origin_path": "features/cove/workflows/recovery_testing.py",
+      "bytes": 32957,
+      "sha256": "cf0876ecf4fd793f709e6070771e5c0f84dce34128581cf68049a1cce844879a",
+      "git_blob": "dc35d4f513d801e1245598db83f3939635bdfb3d",
+      "runtime_path": "features/cove/workflows/recovery_testing.py",
+      "asset_path": "features/cove/workflows/recovery_testing.py"
+    },
+    {
+      "origin_path": "modules/cove.py",
+      "bytes": 60566,
+      "sha256": "778ec86607025eabf60efb768cf7f05b641a13532ea1686c19709211f5f52133",
+      "git_blob": "970bbb0f5d76f3c1c39be95a6bf8e7f7c594bb4f",
+      "runtime_path": "modules/cove.py",
+      "asset_path": "modules/cove.py"
+    },
+    {
+      "origin_path": "features/cove/__init__.py",
+      "bytes": 23,
+      "sha256": "0498ef9c35aad1478ab89f334894b7bd3bb418b6901356530ad3e9384fb595a0",
+      "git_blob": "40fef58c9df9cdc98b51ab3f7e909701525c8eb6",
+      "runtime_path": "features/cove/__init__.py",
+      "asset_path": "features/cove/__init__.py"
+    }
+  ],
+  "fixture_bootstrap": {
+    "bytes": 219,
+    "sha256": "d4e12e1ab615015aa9c3dad267eb7f99096e25a69c96eac9183554d47b2117bc",
+    "runtime_path": "reference/bootstrap.py",
+    "asset_path": "reference/bootstrap.py"
+  },
+  "expected_compiler_paths": {
+    "initial": [
+      "features/cove/__init__.py",
+      "reference/bootstrap.py"
+    ],
+    "revision": [
+      "features/cove/__init__.py",
+      "features/cove/workflows/recovery_steward.py",
+      "features/cove/workflows/recovery_testing.py",
+      "modules/cove.py",
+      "reference/bootstrap.py"
+    ]
+  },
+  "compiler_evidence": "unexecuted",
+  "asset_storage": "Byte-exact .py userland test inputs outside the API implementation package. The named isolated lane mounts this directory read-only; runtime/archive paths stay unchanged."
+}
