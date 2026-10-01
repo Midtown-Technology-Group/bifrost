@@ -405,7 +405,7 @@ cmd_rust() {
     docker build --target checks -f core-rs/Dockerfile -t "$checks_image" core-rs
     docker run --rm --network "${COMPOSE_PROJECT_NAME}_default" \
         -e BIFROST_RUST_TEST_DATABASE_URL=postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test \
-        "$checks_image" cargo test --locked --all
+        "$checks_image" cargo test --locked --all --features live-db
 }
 cmd_e2e_targets() { run_pytest "$@" -v; }
 cmd_all()  { run_pytest tests/ -v "$@"; }
