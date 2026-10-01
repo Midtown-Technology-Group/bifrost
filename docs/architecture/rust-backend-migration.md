@@ -94,7 +94,12 @@ flowchart TB
   and drains/restarts the template after package installation. It is not a
   conventional warm worker pool. `template_process.py`, `worker.py`,
   `engine.py`, `simple_worker.py` and `requirements_setup_helper.py` combine
-  Python execution with platform persistence/telemetry today.
+  Python execution with platform persistence/telemetry today. Requirements are
+  read via Redis with storage fallback; setup runs batch pip installation and
+  falls back to individual packages, recording partial failures. This is a
+  worker environment with template recycling, not evidence of an immutable
+  per-deployment virtualenv. Keep that behavior initially; environment identity
+  and reproducibility are explicit protocol decisions, not assumed guarantees.
 - `virtual_import.py` and `core/module_cache_sync.py` resolve virtual modules
   through Redis; `module_loader.py` invalidates inherited workspace imports
   on generation changes. Redis module reads are Python-only. `RepoStorage` and
@@ -199,6 +204,13 @@ WinRM/PSRP requirement is introduced.
 | Schema | `models/orm/{work_deliveries,executions,execution_attempts,device_jobs,device_job_logs,platform_jobs,worker_control_commands,solution_deployments}.py`, Alembic | Inspect actual migrated schema; hand-design Rust domain types |
 
 Important details behind the last SDK row:
+
+- `api/shared/cli_artifact.py` excludes `_logging.py`, `_sync.py` and
+  `_write_buffer.py` from the downloadable CLI artifact. Distinguish portable
+  SDK behavior from in-platform adapters; do not claim these files are required
+  by every HTTP SDK user. `api/pyproject.toml` has static package version `1.0.0`;
+  the delivered CLI artifact uses build-derived PEP 440 versions. Preserve the
+  actual artifact/install contract rather than treating metadata as live version.
 
 - `__init__.py` preferentially loads platform decorators/errors and reads the
   platform enums file; standalone fallback exists. Preserve class/error identity
@@ -347,7 +359,13 @@ dependency calls resolve the manifest's pinned deployment/root bindings. Unknown
 source kinds fail before import. Initial envelope memory/output limits may be
 null where current policy has no per-attempt enforcement; do not pretend the
 example's 512 MiB limit exists today. Runtime advertises enforced capabilities;
-reject an admission requiring unsupported hard limits.
+reject an admission requiring unsupported hard limits. `environment_digest` must
+identify the actual image/interpreter/resolved package inventory, not merely hash
+an unlocked requirements.txt. A mutable compatibility environment is permitted
+initially with its measured inventory recorded; do not label it reproducible or
+claim source pinning also pins dependencies. Isolated reproducible environments
+are a separately approved runtime improvement, not a prerequisite disguised as
+an existing behavior.
 
 Transport authentication is separate from the document: short-lived,
 attempt/session-bound credentials passed in headers or a protected credential
