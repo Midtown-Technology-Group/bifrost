@@ -58,14 +58,15 @@ class GitSourceDeliveryService:
 
     async def _deliver_locked(self, source: VerifiedGitSource, request: SolutionGitSourceDeliveryRequest,
                               producer: GitDeliveryIdentity) -> SolutionGitSourceDeliveryResponse:
+        organization_id = self.policy.organization_id_for(source.solution_id)
         solution = await self.db.get(Solution, source.solution_id, populate_existing=True)
-        if (solution is None or solution.organization_id != self.policy.organization_id
+        if (solution is None or solution.organization_id != organization_id
                 or solution.status != "active" or solution.execution_runtime_mode != "deployment-v1"
                 or solution.active_deployment_id is None):
             raise GitDeliverySourceError("Configured Solution is outside the adopted organization/runtime scope")
         repository = SolutionDeploymentRepository(self.db)
         base = await repository.get_runtime_closure(solution.active_deployment_id,
-                                                    solution.organization_id, solution.id)
+                                                    organization_id, solution.id)
         if base is None or base.state != "active":
             raise SolutionSourceRevisionConflict("Installed deployment is not active")
         manifest, resolution = validate_runtime_closure(base.compiled_manifest, base.resolution_map,
@@ -100,6 +101,7 @@ class GitSourceDeliveryService:
         assert claim.owner_token is not None
         proof = {"repository": self.policy.repository, "repository_id": self.policy.repository_id,
             "repository_owner_id": self.policy.repository_owner_id, "recipe_path": source.recipe_path,
+            "organization_id": str(organization_id) if organization_id is not None else None,
             "commit_sha": source.commit_sha, "tree_sha": source.tree_sha,
             "artifact_digest": source.artifact_digest, "ci_run_id": request.ci_run_id,
             "ci_run_attempt": request.ci_run_attempt, "producer_run_id": producer.run_id,
@@ -130,7 +132,7 @@ class GitSourceDeliveryService:
                 await workflow_service.activate_workflows(solution.id, deployment_id, activation, source.workflow_recipe)
             else:
                 await service.activate(solution.id, deployment_id, activation)
-            base = await repository.get_runtime_closure(deployment_id, self.policy.organization_id, solution.id)
+            base = await repository.get_runtime_closure(deployment_id, organization_id, solution.id)
             assert base is not None
             state = "active"
         else:
@@ -140,7 +142,7 @@ class GitSourceDeliveryService:
         recorded_id = await self.db.scalar(update(SolutionDeployment).where(
             SolutionDeployment.id == base.id,
             SolutionDeployment.solution_id == source.solution_id,
-            SolutionDeployment.organization_id == self.policy.organization_id,
+            SolutionDeployment.organization_id == organization_id,
             SolutionDeployment.state == "active",
             SolutionDeployment.compiled_manifest_hash == base.compiled_manifest_hash,
         ).values(validation_result={**(base.validation_result or {}), "github_delivery": proof})
@@ -157,8 +159,9 @@ class GitSourceDeliveryService:
         await self.db.commit()
         self.db.expire_all()
         observed = await self.db.get(Solution, source.solution_id)
-        active = await repository.get_runtime_closure(result.deployment_id, self.policy.organization_id, source.solution_id)
-        if (observed is None or observed.active_deployment_id != result.deployment_id
+        active = await repository.get_runtime_closure(result.deployment_id, organization_id, source.solution_id)
+        if (observed is None or observed.organization_id != organization_id
+                or observed.active_deployment_id != result.deployment_id
                 or observed.execution_runtime_mode != "deployment-v1" or active is None
                 or active.state != "active" or active.compiled_manifest_hash != result.compiled_manifest_hash):
             raise SolutionSourceRevisionConflict("Independent installed pointer readback differs")

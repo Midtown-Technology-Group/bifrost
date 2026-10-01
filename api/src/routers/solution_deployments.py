@@ -174,17 +174,30 @@ async def preview_shared_table_bindings(
         table = await ctx.db.get(Table, table_id, populate_existing=True)
         if table is None:
             raise HTTPException(status_code=404, detail="Table not found")
-        if table.organization_id is not None and table.organization_id != organization_id:
+        if (
+            table.organization_id is not None
+            and organization_id is not None
+            and table.organization_id != organization_id
+        ):
             raise HTTPException(status_code=422, detail="Shared table organization differs from the Solution installation")
         try:
             metadata_hash = table_metadata_hash(table, organization_id=table.organization_id)
         except SharedTableBindingError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if table.name in result:
-            raise HTTPException(status_code=422, detail="Shared table names are ambiguous")
-        result[table.name] = SharedRootTableBinding(
+        grant = SharedRootTableBinding(
             table_id=table.id, metadata_hash=metadata_hash, organization_id=table.organization_id,
         )
+        existing = result.get(table.name)
+        if existing is None:
+            result[table.name] = grant
+        else:
+            from bifrost.solution_delivery_review import SharedRootTableGrant
+            try:
+                result[table.name] = existing.with_scope(SharedRootTableGrant(**grant.model_dump()))
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422, detail="Shared table names are ambiguous within one scope",
+                ) from exc
     return result
 
 
