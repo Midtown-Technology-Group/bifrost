@@ -100,6 +100,8 @@ Start the development stack (per-worktree isolated):
 ./debug.sh logs api    # Follow logs for one service
 ```
 
+Follow [debug environment ownership and cleanup](docs/dev/agent-platform-rules.md#debug-environment-ownership-and-cleanup): clean up disposable task-created resources before final issue/PR handoff; preserve pre-existing resources and report verified teardown or an explicit retained owner/reason.
+
 `./debug.sh` derives its Compose project name from the worktree path, so multiple worktrees can run debug stacks in parallel. URL and login are printed at the end of `up`. Port mode uses `dev@gobifrost.com` / `password`; Netbird mode uses the same email with a strong generated per-worktree password. MFA is off.
 
 The default mode allocates a free local port for the client (deterministic per worktree, in 30000-39999). If `NETBIRD_SETUP_KEY` is set in `~/.config/bifrost/debug.env`, the stack boots with a NetBird sidecar that provides both private mesh access and an ephemeral public HTTPS proxy through `netbird expose` — no host ports, durable Admin proxy mapping, or NetBird API key.
