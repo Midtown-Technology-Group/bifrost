@@ -498,6 +498,7 @@ def decode_runtime_sdk_access(
             issuer=settings.jwt_issuer,
             audience=RUNTIME_SDK_AUDIENCE,
             options={
+                "verify_signature": True,
                 "verify_exp": not allow_expired_for_renewal,
                 "strict_aud": True,
                 "require": list(RuntimeSDKTokenClaims.model_fields),

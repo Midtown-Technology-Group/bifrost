@@ -309,6 +309,37 @@ def test_unknown_jwt_header_authority_is_denied(header):
         decode_runtime_sdk_access(token)
 
 
+@pytest.mark.parametrize("allow_expired_for_renewal", [False, True])
+@pytest.mark.parametrize(
+    "invalid", ["signature", "algorithm", "required_claim", "audience", "purpose"]
+)
+def test_expired_invalid_tokens_are_denied_in_both_decode_modes(
+    invalid, allow_expired_for_renewal
+):
+    settings = get_settings()
+    payload = decode_runtime_sdk_access(_valid_token().access_token).model_dump()
+    payload["exp"] = payload["iat"] - 1
+    signing_key = settings.secret_key
+    algorithm = settings.algorithm
+    if invalid == "signature":
+        signing_key = "synthetic-untrusted-signing-key-at-least-32-bytes"
+    elif invalid == "algorithm":
+        algorithm = "HS384" if settings.algorithm != "HS384" else "HS256"
+    elif invalid == "required_claim":
+        del payload["jti"]
+    elif invalid == "audience":
+        payload["aud"] = "bifrost-client"
+    else:
+        payload["purpose"] = "other-purpose"
+    token = jwt.encode(payload, signing_key, algorithm=algorithm)
+    with pytest.raises(RuntimeSDKDenied) as error:
+        decode_runtime_sdk_access(
+            token, allow_expired_for_renewal=allow_expired_for_renewal
+        )
+    assert token not in str(error.value)
+    assert error.value.__suppress_context__
+
+
 def test_bad_signature_algorithm_missing_claim_expiry_and_audience_collision(
     monkeypatch,
 ):
