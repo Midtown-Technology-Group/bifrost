@@ -137,8 +137,10 @@ deadline capture and lifecycle ownership remain real integration gates.
 The private issuer uses the existing trusted platform session factory and an
 independent transaction, rather than a caller-owned session that could see its
 own uncommitted Start. It first checks committed eligibility, then locks and
-refreshes the relevant rows before atomic insertion; do not wait for an
-uncommitted claimed-to-running write and call it preexisting committed Start.
+refreshes the relevant rows. While holding the locks, it rechecks every
+eligibility and fencing predicate against the refreshed state before atomic
+insertion. Do not wait for an uncommitted claimed-to-running write and call it
+preexisting committed Start.
 
 The attempt is the first blocking row lock, serializing identical provisions.
 Subsequent execution, deployment and Solution share locks use `NOWAIT`. Existing
