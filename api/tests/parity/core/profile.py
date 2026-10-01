@@ -285,19 +285,49 @@ def validate_pending_context(
         assert digest(
             {key: value for key, value in pending.items() if key != "created_at"}
         ) == digest(expected), "Pending producer projection differs"
-        assert (
-            delivery["queue_name"] == headers["x-origin-queue"] == "workflow-executions"
-            and body["execution_id"] == pending["execution_id"] == row["id"]
-            and headers["x-idempotency-key"]
-            == headers["x-original-message-id"]
-            == row["id"]
-            and body["workflow_id"] == pending["workflow_id"] == row["workflow_id"]
-            and body["sync"] is pending["sync"]
-            and body["execution_record_exists"] is True
-            and body.get("file_path")
-            == publish["file_path"]
-            == fixture_binding(bindings, "source-path")
-        ), "Pending delivery owner projection differs"
+        assert delivery["queue_name"] == "workflow-executions", (
+            "Pending delivery queue differs"
+        )
+        assert headers["x-origin-queue"] == delivery["queue_name"], (
+            "Pending delivery header queue differs"
+        )
+        assert headers["x-idempotency-key"] == row["id"], (
+            "Pending delivery idempotency owner differs"
+        )
+        assert headers["x-original-message-id"] == row["id"], (
+            "Pending delivery original message owner differs"
+        )
+        assert body["execution_id"] == pending["execution_id"] == row["id"], (
+            "Pending delivery execution owner differs"
+        )
+        assert body["workflow_id"] == pending["workflow_id"] == row["workflow_id"], (
+            "Pending delivery workflow owner differs"
+        )
+        # _publish_pending omits optional file_path when the caller does not
+        # supply it. The public API supplies its path through dispatch_metadata.
+        expected_body = {
+            field: publish[field]
+            for field in (
+                "execution_id",
+                "workflow_id",
+                "sync",
+                "execution_record_exists",
+            )
+        }
+        expected_body["pending_context"] = pending
+        if publish.get("dispatch_metadata") is not None:
+            expected_body["dispatch_metadata"] = publish["dispatch_metadata"]
+        if publish["solution_deployment_id"] is not None:
+            expected_body["solution_deployment_id"] = publish["solution_deployment_id"]
+        if publish["file_path"]:
+            expected_body["file_path"] = publish["file_path"]
+        assert digest(body) == digest(expected_body), (
+            "Pending delivery body projection differs"
+        )
+        metadata = publish.get("dispatch_metadata")
+        assert isinstance(metadata, dict) and metadata.get("path") == fixture_binding(
+            bindings, "source-path"
+        ), "Pending dispatch source owner differs"
         assert pending["workflow_id"] == fixture_binding(bindings, "workflow"), (
             "Pending workflow fixture owner differs"
         )

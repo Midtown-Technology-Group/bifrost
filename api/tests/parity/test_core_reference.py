@@ -442,7 +442,7 @@ async def test_core_actual_committed_local_identity_drift(core_environment, fiel
         (("user_id",), "setup_user"),
         (("user_email",), "setup-email"),
         (("parameters", "organization_id"), "foreign_org"),
-        (("parameters", "integration_name"), "absent-integration-name"),
+        (("parameters", "integration_name"), "other-integration-name"),
     ],
 )
 async def test_core_actual_committed_pending_identity_drift(
@@ -451,18 +451,18 @@ async def test_core_actual_committed_pending_identity_drift(
     async with core_environment() as (env, adapter):
         ready = await execute_readiness(adapter, env, before=env.before)
         assert_readiness(ready, env, expected_result(env))
-        # A second real admission proves known fixture identities cannot replace
-        # this delivery's exact owner or accepted parameters.
-        absent_name = f"{env.name}-absent"
-        env.bindings[absent_name] = "absent-integration-name"
-        other = await execute_readiness(
-            adapter,
-            env,
-            parameters=env.parameters(integration_name=absent_name),
-            role="other-execution",
-            before=env.before,
-        )
-        assert other.observation.body["status"] == "Success"
+        # Each capture owns one admission and must observe its real terminal
+        # publication. Previously drained events cannot satisfy another wait.
+        async with core_environment() as (other_env, other_adapter):
+            other = await execute_readiness(
+                other_adapter,
+                other_env,
+                role="other-execution",
+                before=other_env.before,
+            )
+            assert_readiness(other, other_env, expected_result(other_env))
+            env.bindings[str(other_env.executions[0])] = "other-execution"
+            env.bindings[other_env.name] = "other-integration-name"
         reference = await result_observation(adapter, env)
         delivery = next(
             row

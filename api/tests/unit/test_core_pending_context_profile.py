@@ -2,8 +2,17 @@
 
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
+from src.core import redis_client as redis_module
+from src.jobs.rabbitmq import _message_headers, infer_idempotency_key
+from src.sdk.context import ExecutionContext, Organization
+from src.services.execution import async_executor
+from src.services.execution.async_executor import (
+    _dispatch_request_identity,
+    _pending_dispatch_envelope,
+)
 
 from tests.parity.core.capture import CapturedStep, TransportEvidence
 from tests.parity.core.profile import (
@@ -43,44 +52,48 @@ def pending_vector(label="left"):
         "require_mapping": True,
         "require_oauth": False,
     }
-    request = {
-        "schema_version": "bifrost.workflow-pending-dispatch/v1",
-        "execution_id": owner["readiness"],
-        "workflow_id": owner["workflow"],
-        "parameters": deepcopy(parameters),
-        "org_id": owner["org"],
-        "user_id": owner["user"],
-        "user_name": "Caller",
-        "user_email": owner["caller-email"],
-        "form_id": None,
-        "startup": None,
-        "form_inputs": {},
-        "embed": {},
-        "api_key_id": None,
-        "sync": True,
-        "is_platform_admin": False,
-        "is_provider_org": False,
-        "is_external": False,
-        "file_path": owner["source-path"],
-        "event": None,
-        "caller_solution_deployment_id": None,
+    # The public execute route supplies metadata, not the optional file_path.
+    metadata = {
+        "name": "Utilities: Check Integration Readiness",
+        "function_name": "check_integration_readiness",
+        "path": owner["source-path"],
+        "organization_id": owner["org"],
+        "type": "workflow",
     }
-    publish = {
-        key: deepcopy(value)
-        for key, value in request.items()
-        if key not in {"schema_version", "caller_solution_deployment_id"}
-    }
-    publish.update(
+    caller_context = ExecutionContext(
+        user_id=owner["user"],
+        email=owner["caller-email"],
+        name="Caller",
+        scope=owner["org"],
+        organization=Organization(id=owner["org"], name="Tenant"),
+        is_platform_admin=False,
+        is_function_key=False,
+        execution_id=owner["readiness"],
+    )
+    request = _dispatch_request_identity(
+        caller_context,
+        owner["readiness"],
+        owner["workflow"],
+        deepcopy(parameters),
+        form_id=None,
+        sync=True,
+        api_key_id=None,
+        file_path=None,
+        org_id_override=None,
+        dispatch_metadata=metadata,
+    )
+    dispatch = _pending_dispatch_envelope(
+        request,
         solution_deployment_id=None,
         runtime_evidence=None,
         runtime_mode="repo-v1",
-        execution_record_exists=True,
     )
+    publish = dispatch["publish"]
     # Concrete wire vector of the Redis producer, including absent/default fields.
     pending = {
         key: deepcopy(value)
         for key, value in publish.items()
-        if key not in {"file_path", "execution_record_exists"}
+        if key not in {"file_path", "execution_record_exists", "dispatch_metadata"}
     }
     pending.update(
         script_name=None,
@@ -111,13 +124,6 @@ def pending_vector(label="left"):
         "is_external": False,
         "is_function_key": False,
         "workspace_generation": owner["installed-source-generation"],
-    }
-    dispatch = {
-        "schema_version": request["schema_version"],
-        "request": request,
-        "publish": publish,
-        "request_hash": digest(request),
-        "publish_hash": digest(publish),
     }
     row = {
         "id": owner["readiness"],
@@ -155,15 +161,17 @@ def pending_vector(label="left"):
                 "workflow_id": owner["workflow"],
                 "sync": True,
                 "execution_record_exists": True,
-                "file_path": owner["source-path"],
+                "dispatch_metadata": deepcopy(metadata),
                 "pending_context": pending,
             },
-            "headers": {
-                "x-idempotency-key": owner["readiness"],
-                "x-original-message-id": owner["readiness"],
-                "x-origin-queue": "workflow-executions",
-                "x-enqueued-at": (created + timedelta(milliseconds=1)).isoformat(),
-            },
+            "headers": _message_headers(
+                {"execution_id": owner["readiness"]},
+                "workflow-executions",
+                message_id=owner["readiness"],
+                headers={
+                    "x-enqueued-at": (created + timedelta(milliseconds=1)).isoformat()
+                },
+            ),
         },
     }
     database = {table: [] for table in CLOCKS.keys() | GENERATED_IDENTITIES.keys()}
@@ -207,6 +215,67 @@ def test_pending_independent_projection_preserves_raw_evidence():
         [right], right_bindings
     )
     assert left == original
+
+
+def test_real_pending_producer_keeps_public_metadata_path_separate(monkeypatch):
+    observation, bindings = pending_vector()
+    row = observation.database["executions"][0]
+    delivery = observation.database["work_deliveries"][0]
+    stored = []
+    published = []
+    created = datetime.fromisoformat(pending_of(observation)["created_at"])
+
+    class ImmediateRedis:
+        async def setex(self, key, ttl, value):
+            stored.append(value)
+
+    client = redis_module.RedisClient()
+
+    async def connection():
+        return ImmediateRedis()
+
+    async def publish(queue, message, **kwargs):
+        published.append(
+            {
+                "body": deepcopy(message),
+                "headers": _message_headers(
+                    message,
+                    queue,
+                    message_id=infer_idempotency_key(queue, message),
+                    headers={
+                        "x-enqueued-at": (
+                            created + timedelta(milliseconds=1)
+                        ).isoformat()
+                    },
+                ),
+            }
+        )
+
+    monkeypatch.setattr(client, "_get_redis", connection)
+    monkeypatch.setattr(
+        redis_module, "datetime", SimpleNamespace(now=lambda _: created)
+    )
+    monkeypatch.setattr(async_executor, "get_redis_client", lambda: client)
+    monkeypatch.setattr(
+        async_executor,
+        "get_settings",
+        lambda: SimpleNamespace(work_delivery_backend="postgres"),
+    )
+    monkeypatch.setattr(async_executor, "publish_message", publish)
+    # Every await is an immediate in-memory boundary; no event loop/socket/DB.
+    coroutine = async_executor._publish_pending(**row["dispatch_evidence"]["publish"])
+    with pytest.raises(StopIteration):
+        coroutine.send(None)
+    assert len(stored) == len(published) == 1
+    body = published[0]["body"]
+    assert "file_path" not in body
+    assert row["dispatch_evidence"]["publish"]["file_path"] is None
+    assert body["dispatch_metadata"]["path"] == next(
+        raw for raw, role in bindings.items() if role == "source-path"
+    )
+    assert published[0] == delivery["envelope"]
+    delivery["envelope"] = published[0]
+    validate_pending_context(observation, bindings)
 
 
 @pytest.mark.parametrize(
