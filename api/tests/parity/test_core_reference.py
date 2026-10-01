@@ -11,8 +11,9 @@ from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import update
-from src.models.orm.executions import Execution
+from sqlalchemy import select, update
+from src.models.enums import ExecutionStatus
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 
 from tests.parity.core.adapter import ReferenceAdapter, ResponseDriftTransport
 from tests.parity.core.capture import (
@@ -93,6 +94,66 @@ async def test_core_python_authored_readiness(core_environment):
         destination = Path("/tmp/bifrost/core-reference-readiness.json")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(report, indent=2) + "\n")
+
+
+@pytest.mark.parametrize("frontier", ["execution", "attempt"])
+async def test_cleanup_retains_source_after_dispatch_when_runtime_active(
+    core_environment, frontier
+):
+    async with core_environment() as (environment, adapter):
+        captured = await execute_readiness(adapter, environment)
+        assert_readiness(captured, environment, expected_result(environment))
+        execution = environment.executions[0]
+        async with environment.sessions() as db:
+            if frontier == "execution":
+                execution_row = (
+                    await db.execute(select(Execution).where(Execution.id == execution))
+                ).scalar_one()
+                original_status = execution_row.status
+                original_completed_at = execution_row.completed_at
+                execution_row.status = ExecutionStatus.RUNNING
+                execution_row.completed_at = None
+            else:
+                attempt_row = (
+                    await db.execute(
+                        select(WorkflowExecutionAttempt).where(
+                            WorkflowExecutionAttempt.execution_id == execution
+                        )
+                    )
+                ).scalar_one()
+                original_status = attempt_row.status
+                original_completed_at = attempt_row.completed_at
+                attempt_row.status = "running"
+                attempt_row.completed_at = None
+            await db.commit()
+        try:
+            # Deliberate owned SQL drift after a real completed execution keeps
+            # delivery settled while re-opening one runtime frontier.
+            with pytest.raises(AssertionError, match="still active; retain fixture"):
+                await environment.cleanup()
+            retained = await environment.client.get(
+                "/api/files/editor/content", params={"path": environment.path}
+            )
+            assert retained.status_code == 200
+            assert (
+                hashlib.sha256(retained.json()["content"].encode()).hexdigest()
+                == SOURCE_SHA256
+            )
+        finally:
+            async with environment.sessions() as db:
+                statement = (
+                    update(Execution).where(Execution.id == execution)
+                    if frontier == "execution"
+                    else update(WorkflowExecutionAttempt).where(
+                        WorkflowExecutionAttempt.execution_id == execution
+                    )
+                )
+                await db.execute(
+                    statement.values(
+                        status=original_status, completed_at=original_completed_at
+                    )
+                )
+                await db.commit()
 
 
 async def test_core_independent_python_comparison(core_environment):

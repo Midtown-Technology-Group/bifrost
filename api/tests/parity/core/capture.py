@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as redis
 from sqlalchemy import select, text
@@ -235,7 +236,9 @@ class ScopedReferenceCapture:
         for execution in self.environment.executions:
             key = f"{PREFIX}{execution}:requests"
             cursor = self.cursors.get(key, 0)
-            new = await self.redis.lrange(key, cursor, -1)
+            # Redis shares command annotations with its synchronous client;
+            # this connection is explicitly redis.asyncio with text decoding.
+            new = await cast(Awaitable[list[str]], self.redis.lrange(key, cursor, -1))
             self.cursors[key] = cursor + len(new)
             records.extend(json.loads(value) for value in new)
         return TransportEvidence(sdk_requests=records)
