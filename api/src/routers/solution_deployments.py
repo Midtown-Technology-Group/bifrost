@@ -184,11 +184,20 @@ async def preview_shared_table_bindings(
             metadata_hash = table_metadata_hash(table, organization_id=table.organization_id)
         except SharedTableBindingError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if table.name in result:
-            raise HTTPException(status_code=422, detail="Shared table names are ambiguous")
-        result[table.name] = SharedRootTableBinding(
+        grant = SharedRootTableBinding(
             table_id=table.id, metadata_hash=metadata_hash, organization_id=table.organization_id,
         )
+        existing = result.get(table.name)
+        if existing is None:
+            result[table.name] = grant
+        else:
+            from bifrost.solution_delivery_review import SharedRootTableGrant
+            if any(item.organization_id == grant.organization_id for item in existing.grants()):
+                raise HTTPException(status_code=422, detail="Shared table names are ambiguous within one scope")
+            result[table.name] = SharedRootTableBinding(
+                **existing.model_dump(exclude={"additional_scopes"}),
+                additional_scopes=(*(existing.additional_scopes or ()), SharedRootTableGrant(**grant.model_dump())),
+            )
     return result
 
 

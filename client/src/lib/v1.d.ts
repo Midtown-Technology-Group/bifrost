@@ -29708,9 +29708,32 @@ export interface components {
         };
         /**
          * SharedRootTableBinding
-         * @description Reviewed access to an existing Root table without adopting its data.
+         * @description Exact reviewed scopes for one alias, preserving legacy single-table bytes.
          */
         SharedRootTableBinding: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Metadata Hash */
+            metadata_hash: string;
+            /**
+             * Access
+             * @default read
+             * @enum {string}
+             */
+            access: "read" | "read-write";
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Additional Scopes */
+            additional_scopes?: components["schemas"]["SharedRootTableGrant"][] | null;
+        };
+        /**
+         * SharedRootTableGrant
+         * @description Reviewed access to an existing Root table without adopting its data.
+         */
+        SharedRootTableGrant: {
             /**
              * Table Id
              * Format: uuid

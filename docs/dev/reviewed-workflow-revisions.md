@@ -62,3 +62,26 @@ production table metadata and workflow registrations before handoff. Candidate
 validation alone does not prove runtime access. An older runtime rejects this
 global-Solution organization binding; rollback must retain a compatible image
 or restore workflow ownership before reverting the image.
+
+### Aliases with more than one reviewed scope
+
+When the same Root table name exists globally and in an execution organization,
+retain both exact contracts. A binding can carry `additional_scopes`, each with
+its own table UUID, organization, metadata hash and read or read-write access.
+Preview each table's metadata independently. The complete install permits at
+most 100 table grants; duplicate scopes for one alias and reused UUIDs fail.
+
+Default name lookup selects the signed execution organization's reviewed table,
+then its reviewed Global fallback. Explicit `scope="global"` selects only the
+Global table. A UUID selects that exact reviewed table and still requires the
+execution's own-or-Global scope. A foreign organization selector or UUID fails.
+The server checks the selected table's write grant and locks its metadata.
+Candidate, preflight and activation validate every scope's metadata, including
+variants that the current execution will not use.
+
+This is an additive contract. Omitted or empty `additional_scopes` serialize
+identically to existing single-table bindings, preserving accepted deployment
+hashes. Older runtimes reject a nonempty extension; keep a compatible image
+while any accepted execution references it. Prove both default and explicit
+Global reads with distinct synthetic rows, foreign UUID rejection, independent
+durable execution/attempt pins and unchanged Root ownership before enabling it.

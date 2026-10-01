@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from bifrost.solution_delivery_review import SharedRootTableGrant, require_shared_table_bindings
 
 from src.models.contracts.policies import PolicyRuleRef, TablePolicies
 from src.models.orm.tables import Table
@@ -43,7 +44,7 @@ def table_metadata_hash(table: Table, *, organization_id: UUID | None = None) ->
 
 
 async def require_shared_table(
-    db: AsyncSession, name: str, binding: SharedRootTableBinding
+    db: AsyncSession, name: str, binding: SharedRootTableGrant
 ) -> Table:
     # Keep this shared metadata lock through the document transaction. Metadata
     # updates and ownership changes cannot race a checked write. Refresh the
@@ -65,14 +66,19 @@ async def require_shared_tables(
     solution_organization_id: UUID | None = None,
 ) -> None:
     # Stable lock order across overlapping workflow batches.
-    for name, binding in sorted(bindings.items(), key=lambda item: str(item[1].table_id)):
+    require_shared_table_bindings(bindings)
+    grants = [(name, grant) for name, binding in bindings.items() for grant in binding.grants()]
+    for name, binding in sorted(grants, key=lambda item: str(item[1].table_id)):
         if (binding.organization_id is not None and solution_organization_id is not None
                 and binding.organization_id != solution_organization_id):
             raise SharedTableBindingError("shared table organization differs from the Solution installation")
         await require_shared_table(db, name, binding)
 
 
-async def resolve_execution_shared_table(ctx: ExecutionContext, requested: str, *, write: bool = False) -> Table | None:
+async def resolve_execution_shared_table(
+    ctx: ExecutionContext, requested: str, *, write: bool = False,
+    organization_id: UUID | None = None, explicit_scope: bool = False,
+) -> Table | None:
     """Grant only a signed, active engine attempt its durable deployment's binding."""
     from src.core.auth import _active_engine_attempt
     from src.models.orm.executions import Execution
@@ -127,9 +133,22 @@ async def resolve_execution_shared_table(ctx: ExecutionContext, requested: str, 
         raise SharedTableBindingError("engine deployment evidence changed") from exc
     if manifest.solution_id != target or manifest.deployment_id != deployment.id:
         raise SharedTableBindingError("engine manifest identity changed")
-    for name, binding in manifest.shared_tables.items():
-        if requested not in {name, str(binding.table_id)}:
+    for name, group in manifest.shared_tables.items():
+        grants = group.grants()
+        if requested != name and not any(requested == str(grant.table_id) for grant in grants):
             continue
+        if explicit_scope and organization_id not in {None, ctx.org_id}:
+            raise SharedTableBindingError("shared table organization differs from the signed execution")
+        eligible = [grant for grant in grants if grant.organization_id in {None, ctx.org_id}]
+        if explicit_scope and organization_id is None:
+            eligible = [grant for grant in eligible if grant.organization_id is None]
+        if requested != name:
+            eligible = [grant for grant in eligible if str(grant.table_id) == requested]
+        # Match Root's default name cascade, but only within exact reviewed grants.
+        eligible.sort(key=lambda grant: grant.organization_id != ctx.org_id)
+        if not eligible:
+            raise SharedTableBindingError("shared table scope differs from the signed execution or requested scope")
+        binding = eligible[0]
         if binding.organization_id is not None and (
             (solution.organization_id is not None and binding.organization_id != solution.organization_id)
             or binding.organization_id != ctx.org_id

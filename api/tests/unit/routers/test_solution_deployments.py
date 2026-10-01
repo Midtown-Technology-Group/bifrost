@@ -126,6 +126,31 @@ async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_
 
 
 @pytest.mark.asyncio
+async def test_shared_table_preview_keeps_distinct_scopes_and_rejects_same_scope_alias(monkeypatch):
+    from src.models.contracts.solution_deployments import SharedTableBindingPreviewRequest
+    from src.routers import solution_deployments as module
+
+    global_table = SimpleNamespace(id=uuid4(), name="ticket_matches", organization_id=None,
+        solution_id=None, schema=None, access={"policies": []})
+    org_table = SimpleNamespace(id=uuid4(), name=global_table.name, organization_id=uuid4(),
+        solution_id=None, schema=None, access={"policies": []})
+    tables = {table.id: table for table in [global_table, org_table]}
+    async def get(_model, identity, **_kwargs):
+        return tables[identity]
+    ctx = SimpleNamespace(db=SimpleNamespace(get=AsyncMock(side_effect=get)))
+    monkeypatch.setattr(module, "_scope", AsyncMock(return_value=None))
+    body = SharedTableBindingPreviewRequest(table_ids=list(tables))
+    result = await module.preview_shared_table_bindings(uuid4(), body, cast(Any, ctx), cast(Any, None))
+    assert {grant.table_id for grant in result[global_table.name].grants()} == set(tables)
+    assert {grant.organization_id for grant in result[global_table.name].grants()} == {None, org_table.organization_id}
+    assert all(grant.access == "read" for grant in result[global_table.name].grants())
+    org_table.organization_id = None
+    with pytest.raises(HTTPException) as denied:
+        await module.preview_shared_table_bindings(uuid4(), body, cast(Any, ctx), cast(Any, None))
+    assert denied.value.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_github_delivery_disabled_or_untrusted_producer_never_writes(monkeypatch):
     from fastapi.security import HTTPAuthorizationCredentials
     from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest

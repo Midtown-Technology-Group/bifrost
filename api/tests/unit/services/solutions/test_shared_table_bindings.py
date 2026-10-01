@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
+from bifrost.solution_delivery_review import SharedRootTableGrant, require_shared_table_bindings
 
 from src.core.auth import ExecutionContext
 from src.core.constants import SYSTEM_USER_UUID
@@ -72,6 +74,43 @@ def test_empty_binding_extension_preserves_existing_canonical_documents():
     )
 
 
+def test_multiple_scopes_reject_duplicate_orgs_ids_and_cross_alias_reuse():
+    table = _table()
+    grant = dict(table_id=table.id, metadata_hash=table_metadata_hash(table))
+    with pytest.raises(ValidationError, match="organization scopes must be unique"):
+        SharedRootTableBinding(**grant, additional_scopes=[grant])
+    with pytest.raises(ValidationError, match="IDs must be unique"):
+        SharedRootTableBinding(**grant, additional_scopes=[{**grant, "organization_id": uuid4()}])
+    second = SharedRootTableGrant(table_id=uuid4(), metadata_hash=grant["metadata_hash"], organization_id=uuid4())
+    binding = SharedRootTableBinding(**grant, additional_scopes=[second])
+    with pytest.raises(ValueError, match="IDs must be unique"):
+        require_shared_table_bindings({"first": binding, "second": SharedRootTableBinding(**second.model_dump())})
+
+
+@pytest.mark.asyncio
+async def test_all_reviewed_scopes_are_locked_and_metadata_drift_blocks_install():
+    global_table, org_table = _table(), _table()
+    org_table.organization_id = uuid4()
+    binding = SharedRootTableBinding(
+        table_id=global_table.id, metadata_hash=table_metadata_hash(global_table),
+        additional_scopes=[SharedRootTableGrant(
+            table_id=org_table.id, organization_id=org_table.organization_id,
+            metadata_hash=table_metadata_hash(org_table, organization_id=org_table.organization_id),
+        )],
+    )
+    tables = {table.id: table for table in [global_table, org_table]}
+    async def scalar(statement):
+        return tables[next(iter(statement.compile().params.values()))]
+    db = SimpleNamespace(scalar=AsyncMock(side_effect=scalar))
+    await require_shared_tables(db, {global_table.name: binding})
+    assert [next(iter(call.args[0].compile().params.values())) for call in db.scalar.call_args_list] == sorted(tables, key=str)
+    with pytest.raises(SharedTableBindingError, match="Solution installation"):
+        await require_shared_tables(db, {global_table.name: binding}, solution_organization_id=uuid4())
+    org_table.schema = {"changed": True}
+    with pytest.raises(SharedTableBindingError, match="metadata changed"):
+        await require_shared_tables(db, {global_table.name: binding})
+
+
 def test_bound_table_imports_still_reject_file_and_hidden_namespace_dependencies():
     path = "features/demo.py"
     assert source_closure({path: b"from bifrost import tables\n"}, {path}, has_table_bindings=True)
@@ -120,8 +159,11 @@ async def test_org_binding_requires_exact_install_scope_and_rejects_scope_drift(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("organization_scoped,global_solution", [(False, False), (True, False), (True, True)])
-async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(monkeypatch, organization_scoped, global_solution):
+@pytest.mark.parametrize("organization_scoped,global_solution,multiple_scopes", [
+    (False, False, False), (True, False, False), (True, True, False),
+    (True, False, True), (True, True, True),
+])
+async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(monkeypatch, organization_scoped, global_solution, multiple_scopes):
     from src.core import auth
     from src.repositories.solution_deployments import SolutionDeploymentRepository
 
@@ -133,6 +175,12 @@ async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(m
         table_id=table.id, organization_id=org_id,
         metadata_hash=table_metadata_hash(table, organization_id=org_id),
     )
+    global_table = _table()
+    if multiple_scopes:
+        binding = SharedRootTableBinding(
+            table_id=global_table.id, metadata_hash=table_metadata_hash(global_table), access="read-write",
+            additional_scopes=[SharedRootTableGrant(**binding.model_dump())],
+        )
     path = "features/demo.py"
     entity = RuntimeEntityDefinition(
         portable_ref=path + "::run", resolved_id=wid, source_ref=path,
@@ -175,7 +223,10 @@ async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(m
         assert model is Solution and identity == sid
         return solution
 
-    db = SimpleNamespace(get=AsyncMock(side_effect=get), scalar=AsyncMock(return_value=table))
+    async def scalar(statement):
+        requested_id = next(iter(statement.compile().params.values()))
+        return global_table if requested_id == global_table.id else table
+    db = SimpleNamespace(get=AsyncMock(side_effect=get), scalar=AsyncMock(side_effect=scalar))
     user = UserPrincipal(
         user_id=SYSTEM_USER_UUID, email="engine@bifrost.internal", name="Engine",
         organization_id=org_id,
@@ -189,6 +240,23 @@ async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(m
     assert await resolve_execution_shared_table(ctx, table.name) is table
     assert loader.call_args.args[0] == did
     assert table.solution_id is None and table.organization_id == org_id
+    if multiple_scopes:
+        assert await resolve_execution_shared_table(ctx, table.name, explicit_scope=True) is global_table
+        assert await resolve_execution_shared_table(ctx, table.name, explicit_scope=True, organization_id=org_id) is table
+        assert await resolve_execution_shared_table(ctx, str(global_table.id), write=True) is global_table
+        with pytest.raises(SharedTableBindingError, match="requested scope"):
+            await resolve_execution_shared_table(ctx, str(table.id), explicit_scope=True)
+        with pytest.raises(SharedTableBindingError, match="signed execution"):
+            await resolve_execution_shared_table(ctx, table.name, explicit_scope=True, organization_id=uuid4())
+        # A Global install's accepted execution in another organization may use
+        # only the reviewed Global fallback, never the Org2 variant by UUID.
+        if global_solution:
+            foreign_execution_org = uuid4()
+            execution.organization_id = ctx.org_id = foreign_execution_org
+            assert await resolve_execution_shared_table(ctx, table.name) is global_table
+            with pytest.raises(SharedTableBindingError, match="signed execution"):
+                await resolve_execution_shared_table(ctx, str(table.id))
+            execution.organization_id = ctx.org_id = org_id
     with pytest.raises(SharedTableBindingError, match="document writes"):
         await resolve_execution_shared_table(ctx, str(table.id), write=True)
     assert await resolve_execution_shared_table(ctx, "unbound_name") is None
