@@ -174,7 +174,11 @@ async def preview_shared_table_bindings(
         table = await ctx.db.get(Table, table_id, populate_existing=True)
         if table is None:
             raise HTTPException(status_code=404, detail="Table not found")
-        if table.organization_id is not None and table.organization_id != organization_id:
+        if (
+            table.organization_id is not None
+            and organization_id is not None
+            and table.organization_id != organization_id
+        ):
             raise HTTPException(status_code=422, detail="Shared table organization differs from the Solution installation")
         try:
             metadata_hash = table_metadata_hash(table, organization_id=table.organization_id)

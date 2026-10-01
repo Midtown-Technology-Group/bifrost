@@ -159,9 +159,9 @@ class ReviewedWorkflowRecipe(BaseModel):
         if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in self.shared_tables):
             raise ValueError("Shared table names must be canonical")
         if any(binding.organization_id is not None
-               and any(item.organization_id != binding.organization_id for item in self.workflows)
+               and any(item.organization_id not in {None, binding.organization_id} for item in self.workflows)
                for binding in self.shared_tables.values()):
-            raise ValueError("Organization Root table bindings require every workflow in that organization")
+            raise ValueError("Organization Root table bindings require every workflow to be global or in that organization")
         return self
 
 

@@ -40,3 +40,25 @@ workflow bodies, grant integration consent, prove vendor behavior or close sourc
 obligations. Already accepted executions retain their immutable runtime pins.
 Restore source through a reviewed successor; generic pointer rollback remains
 unconfigured.
+
+## Execution-scoped Root table bindings
+
+A global Solution can bind an explicitly reviewed organization Root table.
+The immutable binding names the exact table UUID, organization, metadata hash
+and read or read-write access. Its organization must match the durable execution
+organization and the SDK request scope. A scoped Solution still requires its
+organization to match the binding. A global table binding continues to mean
+an actual global Root table; null is never an organization wildcard.
+
+The existing signed active-attempt check, immutable deployment evidence,
+metadata lock, table ownership/schema/inline-policy hash and document policy
+checks remain required. This permits global workflow registrations to keep
+their UUID and global scope while using their caller's explicitly bound
+organization data. It grants no access from an execution in another organization.
+
+Review the exact organization binding before activation. Prove success and
+foreign-execution rejection with synthetic data on the canary, then reread the
+production table metadata and workflow registrations before handoff. Candidate
+validation alone does not prove runtime access. An older runtime rejects this
+global-Solution organization binding; rollback must retain a compatible image
+or restore workflow ownership before reverting the image.

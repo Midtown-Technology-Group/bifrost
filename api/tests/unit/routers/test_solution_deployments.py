@@ -97,8 +97,12 @@ async def test_workflow_revision_conflict_rolls_back_without_committing(monkeypa
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("table_scope", ["global", "install", "foreign"])
-async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_admin_lookup(monkeypatch, table_scope):
+@pytest.mark.parametrize("table_scope,global_solution", [
+    ("global", False), ("install", False), ("foreign", False), ("install", True),
+])
+async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_admin_lookup(
+    monkeypatch, table_scope, global_solution,
+):
     from src.models.contracts.solution_deployments import SharedTableBindingPreviewRequest
     from src.routers import solution_deployments as module
 
@@ -107,7 +111,7 @@ async def test_shared_table_preview_preserves_org_root_scope_and_denies_foreign_
     table = SimpleNamespace(id=uuid4(), name="ticket_matches", organization_id=table_org_id,
         solution_id=None, schema=None, access={"policies": []})
     ctx = SimpleNamespace(db=SimpleNamespace(get=AsyncMock(return_value=table)))
-    monkeypatch.setattr(module, "_scope", AsyncMock(return_value=org_id))
+    monkeypatch.setattr(module, "_scope", AsyncMock(return_value=None if global_solution else org_id))
     body = SharedTableBindingPreviewRequest(table_ids=[table.id])
     if table_scope == "foreign":
         with pytest.raises(HTTPException) as denied:

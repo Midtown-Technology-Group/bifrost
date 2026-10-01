@@ -104,11 +104,11 @@ async def test_org_binding_requires_exact_install_scope_and_rejects_scope_drift(
         metadata_hash=table_metadata_hash(table, organization_id=org_id), access="read-write",
     )
     db = SimpleNamespace(scalar=AsyncMock(return_value=table))
-    for wrong_scope in (None, uuid4()):
-        with pytest.raises(SharedTableBindingError, match="Solution installation"):
-            await require_shared_tables(db, {table.name: binding}, solution_organization_id=wrong_scope)
+    with pytest.raises(SharedTableBindingError, match="Solution installation"):
+        await require_shared_tables(db, {table.name: binding}, solution_organization_id=uuid4())
     db.scalar.assert_not_called()
     await require_shared_tables(db, {table.name: binding}, solution_organization_id=org_id)
+    await require_shared_tables(db, {table.name: binding}, solution_organization_id=None)
     for changed_scope in (None, uuid4()):
         table.organization_id = changed_scope
         with pytest.raises(SharedTableBindingError, match="explicitly reviewed"):
@@ -120,8 +120,8 @@ async def test_org_binding_requires_exact_install_scope_and_rejects_scope_drift(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("organization_scoped", [False, True])
-async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(monkeypatch, organization_scoped):
+@pytest.mark.parametrize("organization_scoped,global_solution", [(False, False), (True, False), (True, True)])
+async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(monkeypatch, organization_scoped, global_solution):
     from src.core import auth
     from src.repositories.solution_deployments import SolutionDeploymentRepository
 
@@ -152,13 +152,13 @@ async def test_signed_attempt_uses_its_superseded_pin_and_preserves_root_table(m
         workflows=resolution.workflows, shared_tables=resolution.shared_tables,
     )
     deployment = SimpleNamespace(
-        id=did, solution_id=sid, organization_id=org_id, state="superseded",
+        id=did, solution_id=sid, organization_id=None if global_solution else org_id, state="superseded",
         compiled_manifest=manifest.model_dump(mode="json"), compiled_manifest_hash=manifest.content_hash(),
         resolution_map=resolution.model_dump(mode="json"), resolution_map_hash=manifest.resolution_map_hash,
         dependencies=[], bundle_hash=manifest.bundle_hash, runtime_storage_prefix="runtime/", git_commit_sha=None,
     )
     solution = SimpleNamespace(
-        id=sid, status="active", organization_id=org_id, allow_outbound_access=False,
+        id=sid, status="active", organization_id=None if global_solution else org_id, allow_outbound_access=False,
         active_deployment_id=uuid4(),
     )
     evidence = _pin_from_deployment(wid, solution, deployment, allow_superseded=True).queue_evidence()

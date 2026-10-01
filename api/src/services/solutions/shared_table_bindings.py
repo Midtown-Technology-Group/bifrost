@@ -66,7 +66,8 @@ async def require_shared_tables(
 ) -> None:
     # Stable lock order across overlapping workflow batches.
     for name, binding in sorted(bindings.items(), key=lambda item: str(item[1].table_id)):
-        if binding.organization_id is not None and binding.organization_id != solution_organization_id:
+        if (binding.organization_id is not None and solution_organization_id is not None
+                and binding.organization_id != solution_organization_id):
             raise SharedTableBindingError("shared table organization differs from the Solution installation")
         await require_shared_table(db, name, binding)
 
@@ -130,7 +131,7 @@ async def resolve_execution_shared_table(ctx: ExecutionContext, requested: str, 
         if requested not in {name, str(binding.table_id)}:
             continue
         if binding.organization_id is not None and (
-            binding.organization_id != solution.organization_id
+            (solution.organization_id is not None and binding.organization_id != solution.organization_id)
             or binding.organization_id != ctx.org_id
         ):
             raise SharedTableBindingError("shared table organization differs from the signed execution")
