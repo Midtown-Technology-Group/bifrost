@@ -12,7 +12,12 @@ change to the public Python SDK.
 
 ## Source and compatibility authority
 
-Platform main `86caddecd8bbcf1feea9b0f5ed7865c0ea724d7b` is the source authority.
+The initial credential source audit used platform main
+`86caddecd8bbcf1feea9b0f5ed7865c0ea724d7b`. The latest fetched main is
+`f10da7c27568e65ee36d5699b72ef3a44ea7a3d8`; its reviewed multi-scope
+root-table delta requires exact signed execution-org and reviewed-grant
+selection in the interface freeze. Historical audit evidence is not a proof
+of that unimplemented credential path.
 The separately approved original-caller correction is unmerged
 [AUTH-P1 #1018](https://github.com/Midtown-Technology-Group/bifrost/pull/1018),
 `d82219f5aada66d879f2da71b386f50675c66d4d`. That approval does not authorize this
