@@ -7,6 +7,7 @@ All operations go through HTTP API endpoints.
 
 from __future__ import annotations
 
+from .admin_models import ExecutionRedactionResult
 from .client import get_client, raise_for_status_with_detail
 from .models import ExecutionLog, WorkflowExecution
 
@@ -33,6 +34,23 @@ class Executions:
 
     All methods are async - await is required.
     """
+
+    @staticmethod
+    async def redact_sensitive_fields(execution_id: str, *, scope: str) -> ExecutionRedactionResult:
+        """Sanitize stored payloads of one terminal execution (platform admin only).
+
+        Requires its exact organization UUID or ``global``. Missing/wrong-scope
+        targets return 404; active executions return 409. Repeated calls succeed.
+        Logs and related records are outside this payload sanitation operation.
+        """
+        from uuid import UUID
+
+        response = await get_client().post(
+            f"/api/executions/{UUID(execution_id)}/redact-sensitive-fields",
+            json={"scope": scope},
+        )
+        raise_for_status_with_detail(response)
+        return ExecutionRedactionResult.model_validate(response.json())
 
     @staticmethod
     async def list(
@@ -164,7 +182,7 @@ class Executions:
         execution_id: str | None = None,
         start: str = "0",
         count: int = 100,
-    ) -> "list[ExecutionLog]":
+    ) -> list[ExecutionLog]:
         """
         Get logs accumulated so far for the current (or specified) execution.
 
