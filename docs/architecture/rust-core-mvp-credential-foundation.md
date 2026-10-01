@@ -4,7 +4,8 @@ Status: architect-approved bounded build packet, not credential/runtime acceptan
 The user approved the [narrow credential prerequisite](rust-core-mvp-runtime-credentials.md).
 This packet implements its private storage/token foundation only. No merge,
 deployment, vendor use, runtime extraction or C2/C3 acceptance is authorized.
-Procedure: mtg-engineering-flow 2026-09-30.1, MTG package 2026-10-01.2.
+Initial freeze procedure: mtg-engineering-flow 2026-09-30.1, MTG package 2026-10-01.2.
+Current reconciliation uses MTG package 2026-10-01.3.
 
 ## Source and ownership
 
@@ -13,8 +14,18 @@ adding nullable immutable declaration identity and a new Alembic parent. The
 six-file delta changes no auth/SDK/attempt/deployment helper. Reconciled migration
 ownership uses the new parent; workspace-release grants remain excluded.
 
-Build against platform main `fcfbedfe189e8efab0546890828806c91cec358d` in
-`fix/runtime-sdk-purpose`. The original-caller prerequisite remains unmerged
+The initial source implementation used platform main
+`fcfbedfe189e8efab0546890828806c91cec358d`. Current authoritative main is
+`658283e8c8707ceecf9e2c0b56b779d074b7bdaf` after #1023, included in the
+`fix/runtime-sdk-purpose` reconciliation. #1023 adds Solution source-accounting
+completion evidence and a shared runtime-admission fence before pin persistence.
+It changes no selected SDK/auth/minter/deployment-pin helper. Preserve that
+admission fence in future C3 coordination; it is not implemented by this private
+grant packet. Its new Alembic head is the parent of our unmerged forward revision;
+do not create sibling histories. Reverification at the reconciled candidate is
+required; previous source/CI pins remain historical evidence.
+
+The original-caller prerequisite remains unmerged
 [AUTH-P1 #1018](https://github.com/Midtown-Technology-Group/bifrost/pull/1018),
 candidate `d82219f5aada66d879f2da71b386f50675c66d4d`. Actual agent/SDK integration
 must name that dependency; this packet does not change agent admission or infer
@@ -32,7 +43,7 @@ no public mint/revoke endpoint or automatic runtime provisioning here.
 ## Durable model
 
 Create exactly two tables in the authoritative Alembic history, currently headed
-by `20261001_ws_declaration_digest` after #1021. Recheck the parent before creating the
+by `20261001_solution_src_account` after #1023. Recheck the parent before creating the
 migration. Do not create a source-content/lookup table or another attempt model.
 
 `workflow_runtime_sdk_grants` has these immutable fields, in this digest order:
