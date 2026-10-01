@@ -48,6 +48,14 @@ than treating a global Solution as unrestricted organization authority. Pinned
 reference/compiler and credential interfaces must reconcile this delta before
 freeze; earlier CI results remain evidence only for their recorded commits.
 
+A subsequent pre-PR refresh fetched platform main
+`fcfbedfe189e8efab0546890828806c91cec358d` (#1021, immutable declaration
+replay). Its six-file delta adds retained declaration identity and advances
+Alembic to `20261001_ws_declaration_digest`; it changes no auth/SDK/attempt or
+deployment helper. This candidate includes that main. CRED-P1 uses the new
+migration parent and still excludes workspace-release grants. Earlier evidence
+retains its recorded source pins.
+
 The findings below are source evidence, not an observed agent run. Codec passes,
 SDK direct calls, and a rehydrated organization do not prove tool execution.
 The pinned readiness workflow reference remains independent and can continue.

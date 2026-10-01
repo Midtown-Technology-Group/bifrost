@@ -8,7 +8,12 @@ Procedure: mtg-engineering-flow 2026-09-30.1, MTG package 2026-10-01.2.
 
 ## Source and ownership
 
-Build against platform main `f10da7c27568e65ee36d5699b72ef3a44ea7a3d8` in
+The initial freeze used f10da7c (#1007). Main then advanced through #1021,
+adding nullable immutable declaration identity and a new Alembic parent. The
+six-file delta changes no auth/SDK/attempt/deployment helper. Reconciled migration
+ownership uses the new parent; workspace-release grants remain excluded.
+
+Build against platform main `fcfbedfe189e8efab0546890828806c91cec358d` in
 `fix/runtime-sdk-purpose`. The original-caller prerequisite remains unmerged
 [AUTH-P1 #1018](https://github.com/Midtown-Technology-Group/bifrost/pull/1018),
 candidate `d82219f5aada66d879f2da71b386f50675c66d4d`. Actual agent/SDK integration
@@ -27,7 +32,7 @@ no public mint/revoke endpoint or automatic runtime provisioning here.
 ## Durable model
 
 Create exactly two tables in the authoritative Alembic history, currently headed
-by `20260929_ws_source_supersession`. Recheck the parent before creating the
+by `20261001_ws_declaration_digest` after #1021. Recheck the parent before creating the
 migration. Do not create a source-content/lookup table or another attempt model.
 
 `workflow_runtime_sdk_grants` has these immutable fields, in this digest order:
