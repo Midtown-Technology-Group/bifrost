@@ -203,6 +203,57 @@ fix or permission to copy potentially unsafe behavior. Audit actor attribution,
 mixed-credential/default-deny ingress and exact unchanged SDK renewal also
 remain H/R gates. Keep these differences explicit before public wiring.
 
+## Legacy SDK reference characterization packet
+
+**CRED-P1-REF** is frozen as test-only characterization before the public H/R
+policy decision. Its source baseline is main
+`c0931d119198c538ad7c7cc8a577a6928fe42780`, with the existing public SDK unchanged.
+This is independent of private S issuance and does not prove consumer admission,
+installed-source custody or runtime extraction.
+
+The packet owns exactly three paths: new
+`api/tests/e2e/platform/test_legacy_engine_sdk_reference.py`, the existing internal
+`api/scripts/scheduler_fixture_server.py`, and
+`api/tests/unit/test_scheduler_fixture_oauth.py`. It pairs genuine ordinary and
+external users with actual `mint_engine_token` delegation, using both real HTTP
+and the unchanged SDK. Exact name binding never trims input. Original/effective
+orgs match for this packet; foreign-effective entitlement remains a separate gate.
+No production auth, router, SDK, schema, consumer or CI change belongs here.
+
+Compare global/org secret and non-secret projections, mapping precedence/null
+behavior, exact request actor identity, and actual entity-template OAuth recovery
+without a scope override. Source-inferred engine/external differences are
+hypotheses to execute, not approved policy. Each recovery arm uses separately
+owned synthetic configuration and fresh committed PostgreSQL observations.
+Unexpected provider calls or persistence fail rather than being normalized away.
+
+The existing internal OAuth fixture may record an exact synthetic audience marker
+`cred-p1-reference:<32 lowercase hex>`. Freeze a thread-safe maximum of 1,024
+markers, no eviction or reset, bounded attempted/status counts recorded before
+reply, static 503 on capacity exhaustion, and static 400 for malformed markers.
+Its test-service-only receipt GET accepts exactly the marker's 32 hex characters;
+an unseen valid key returns zero. Preserve existing untagged behavior. Never
+retain or report credentials, request bodies, URLs or provider exception text.
+Actual HTTP unit tests must prove isolation, capacity and zero-call evidence.
+
+These SDK reads do not emit an audit event; absence cannot establish an actor.
+A passive test-only observer may run inside the actual request-context middleware
+in a separate, owned `create_app`/uvicorn process with unchanged production
+lifespan and real loopback HTTP. It observes bounded actor/request-user identities
+without setting contexts, overriding auth, inventing audits or modifying requests.
+Ordinary positive control and failed/anonymous context isolation are mandatory.
+Compare the instrumented result profile against the existing API. Do not overwrite
+or dispose pytest's global database resources. Unsafe duplicate startup, shared
+state mutation or unavailable safe lifetime blocks this observation arm; no
+lifespan override substitutes for it.
+
+Execute only in supported hosted CI or verified VM106. Skipped E2E cases are a
+blocked gate. Verify child/socket/client shutdown and owned fixture cleanup;
+retain guarded history until disposable-stack teardown rather than bypassing
+guards. No live vendor, source-policy redesign or public credential acceptance
+follows from this packet. Observed discrepancies return to architect review
+before H/R is frozen; the test packet cannot silently fix or ratify them.
+
 ## Verification and stop conditions
 
 Required tests cover exact codecs/claims, legacy audience rejection, invalid
