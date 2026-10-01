@@ -100,11 +100,14 @@ def consumer_factories():
     """Build factories lazily so configuration and test patches take effect."""
     def workflow_consumer():
         queue_name = os.environ.get("BIFROST_WORKFLOW_QUEUE_NAME", "")
-        if configured_consumer_names() == ["workflow"] and not queue_name.endswith(
-            "-canary"
+        if configured_consumer_names() == ["workflow"] and not (
+            queue_name.endswith("-canary")
+            or (get_settings().worker_workflow_queue_scope == "production"
+                and queue_name == "workflow-executions")
         ):
             raise ValueError(
-                "workflow-only workers require an explicit isolated -canary queue"
+                "workflow-only workers require an explicit isolated -canary queue "
+                "or the explicitly enabled production workflow queue"
             )
         queue_name = queue_name or "workflow-executions"
         if queue_name == "workflow-executions":
@@ -288,7 +291,7 @@ class Worker:
                 raise
 
         # Supervised services claim separate slots in the shared process pool.
-        if not self._stopping:
+        if not self._stopping and self.settings.service_claim_enabled:
             from src.services.execution.process_pool import get_process_pool
             from src.services.service_claim import ServiceClaimLoop
 
