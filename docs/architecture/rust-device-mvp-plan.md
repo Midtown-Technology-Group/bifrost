@@ -32,6 +32,14 @@ introduced response/DB/event drift caught by the comparator. Do not implement
 business behavior before those gates pass. Missing live configuration or Go
 proof is a blocked gate, not permission to infer evidence.
 
+## Current-main reconciliation
+
+The clean-candidate gate fetched platform main
+`c527ca1e4c0e1dc338b42542799290f6eba52ede` (#1004) during execution.
+Candidates include this head. Its four changed files concern pinned workflow
+module imports and related tests; device/auth/schema/instructions are unchanged.
+The pinned F-01 source citations remain applicable. Workspace main is unchanged.
+
 ## Scope and Python ownership
 
 Rust owns only a service foundation and, after gates, POST heartbeat, claim,

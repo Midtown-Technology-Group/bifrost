@@ -17,6 +17,14 @@ provisional at `2a70092eb773750d6bd082659c2a46b428748654`.
 Sopdet authority is `Midtown-Technology-Group/sopdet` main
 `8120838b113d9980d533af69ada385f7fa405138`, unchanged.
 
+## Current-main reconciliation
+
+The clean-candidate gate fetched platform main
+`c527ca1e4c0e1dc338b42542799290f6eba52ede` (#1004) during execution.
+Candidates include this head. Its four changed files concern pinned workflow
+module imports and related tests; device/auth/schema/instructions are unchanged.
+The pinned F-01 source citations remain applicable. Workspace main is unchanged.
+
 ## Finding F-01: claimed does not establish absence of execution
 
 The user requires both current Python behavioral parity and no automatic replay
