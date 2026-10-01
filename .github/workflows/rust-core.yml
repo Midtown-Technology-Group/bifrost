@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify pinned Linux toolchain
-        run: docker build --target checks -f core-rs/Dockerfile core-rs
+        run: docker build --target checks --build-context runtime-evidence=contracts/runtime/v1/evidence -f core-rs/Dockerfile core-rs
       - name: Verify actual OTLP TLS exporters and native trust
         run: |
           docker build --target toolchain -t bifrost-rust-tls-tools -f core-rs/Dockerfile core-rs

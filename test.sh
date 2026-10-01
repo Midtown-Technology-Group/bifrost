@@ -402,7 +402,7 @@ cmd_rust() {
     fi
     require_stack_up
     local checks_image="${COMPOSE_PROJECT_NAME}-rust-checks"
-    docker build --target checks -f core-rs/Dockerfile -t "$checks_image" core-rs
+    docker build --target checks --build-context runtime-evidence=contracts/runtime/v1/evidence -f core-rs/Dockerfile -t "$checks_image" core-rs
     docker run --rm --network "${COMPOSE_PROJECT_NAME}_default" \
         -e BIFROST_RUST_TEST_DATABASE_URL=postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test \
         "$checks_image" cargo test --locked --all --features live-db

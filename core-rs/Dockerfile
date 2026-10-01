@@ -6,6 +6,9 @@ RUN rustup component add clippy rustfmt
 COPY . .
 
 FROM toolchain AS checks
+# Named read-only build context; retain one canonical artifact outside core-rs/.
+COPY --from=runtime-evidence /evidence-vectors.json /contracts/runtime/v1/evidence/evidence-vectors.json
+ENV BIFROST_RUNTIME_EVIDENCE_VECTORS=/contracts/runtime/v1/evidence/evidence-vectors.json
 RUN cargo fmt --check
 RUN cargo clippy --locked --all-targets --all-features -- -D warnings
 RUN cargo test --locked --all

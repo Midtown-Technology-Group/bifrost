@@ -91,7 +91,7 @@ status labels. No business metrics or new monitoring backend are introduced.
 Use the dedicated Linux Docker lane on `pve-t340`, preserving existing stacks:
 
 ```bash
-docker build --target checks -f core-rs/Dockerfile core-rs
+docker build --target checks --build-context runtime-evidence=contracts/runtime/v1/evidence -f core-rs/Dockerfile core-rs
 docker build --target toolchain -t bifrost-rust-tls-tools -f core-rs/Dockerfile core-rs
 bash core-rs/scripts/telemetry-tls.sh bifrost-rust-tls-tools
 docker build --pull --no-cache --build-arg BIFROST_BUILD_SHA="$(git rev-parse HEAD)" \
