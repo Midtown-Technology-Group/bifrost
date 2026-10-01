@@ -35,6 +35,7 @@ from src.services.solutions.capture import (
 from src.services.solutions.deploy import SolutionBundle, SolutionDeployConflict, SolutionDeployer
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
+    DeploymentGitProvenance,
     DeploymentResolutionMap,
     DeploymentSource,
     RuntimeEntityDefinition,
@@ -184,10 +185,16 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         shared_tables=bindings,
         solution_id=solution_id,
         deployment_id=deployment_id,
-        bundle_hash=sha256_digest(source),
+        bundle_hash=sha256_digest(canonical_json({
+            "release_id": release.release_id,
+            "workflow_ids": [str(workflow_id)],
+            "shared_tables": {name: binding.model_dump(mode="json") for name, binding in bindings.items()},
+            "source_hashes": {path: source_hash},
+        })),
         resolution_map_hash=sha256_digest(canonical_json(resolution)),
         source=DeploymentSource(artifact_key=source_key, runtime_prefix=runtime_prefix),
         workflows={entity.portable_ref: entity},
+        git=DeploymentGitProvenance(commit_sha=release.source_commit_sha),
     )
     solution = Solution(
         id=solution_id,
@@ -271,6 +278,9 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
     )
     monkeypatch.setattr(live_handoff_preflight, "SolutionDeploymentStorage", Storage)
     monkeypatch.setattr(live_handoff_commit, "SolutionDeploymentStorage", Storage)
+    from src.services.solutions import live_handoff_readback
+    from src.services.workspace_promotions import WorkspacePromotionInvalid, WorkspacePromotionPreviewService
+    monkeypatch.setattr(live_handoff_readback, "SolutionDeploymentStorage", Storage)
 
     try:
         db_session.add_all([solution, workflow, shared_table])
@@ -333,6 +343,15 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         assert solution.execution_runtime_mode == "deployment-v1"
         assert workflow.solution_id == solution_id
         assert deployment.state == "active"
+        preview_service = WorkspacePromotionPreviewService(db_session, PROVIDER_ORG_ID)
+        assert await preview_service._current_registration_snapshot(release) == {}
+        # A second activation-time read must reject exposure changes after preview.
+        workflow.api_key_enabled = True
+        await db_session.flush()
+        with pytest.raises(WorkspacePromotionInvalid, match="handoff could not be verified"):
+            await preview_service._current_registration_snapshot(release, lock_handoffs=True)
+        workflow.api_key_enabled = False
+        await db_session.flush()
         solution_pin = await pin_workflow_runtime(db_session, workflow_id)
         assert solution_pin is not None
         execution_id, attempt_token = uuid4(), uuid4()
@@ -471,6 +490,8 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         assert solution.execution_runtime_mode == "repo-v1"
         assert workflow.solution_id is None
         assert deployment.state == "superseded"
+        restored_snapshot = await preview_service._current_registration_snapshot(release, lock_handoffs=True)
+        assert restored_snapshot[f"{path}::run"]["workflow_id"] == str(workflow_id)
         old_pin = await resolve_pinned_workflow_runtime(
             db_session, deployment_id, workflow_id
         )

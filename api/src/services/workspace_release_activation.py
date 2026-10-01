@@ -52,6 +52,7 @@ from src.services.workspace_draft_canary import (
 )
 from src.services.workspace_promotions import (
     WorkspacePromotionInvalid,
+    WorkspacePromotionPreviewService,
     overlay_governed_base,
     read_generation_stable_executable_snapshot,
 )
@@ -1088,6 +1089,14 @@ class WorkspaceReleaseActivationService:
             raise WorkspaceReleaseActivationError(
                 "Live Workspace base changed after preview"
             )
+        # Re-prove omissions under the release fence and native Solution locks.
+        # A preview receipt cannot authorize mutable/reclaimed ownership later.
+        try:
+            await WorkspacePromotionPreviewService(
+                self.db, self.organization_id
+            )._current_registration_snapshot(current_descriptor, lock_handoffs=True)
+        except WorkspacePromotionInvalid as exc:
+            raise WorkspaceReleaseActivationError(str(exc)) from exc
 
     async def _canary_attestation(
         self, execution_id: UUID, artifact: WorkspacePromotionArtifact

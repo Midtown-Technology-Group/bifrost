@@ -1125,6 +1125,7 @@ async def test_activation_rebuilds_hybrid_base_under_lock(monkeypatch) -> None:
         runtime_storage_prefix="_workspace_releases/org/release/files/",
         governed_paths=(governed_path,),
         governed_source_hashes={governed_path: governed_hash},
+        effective_registrations={},
     )
     hybrid_hashes = {
         governed_path: governed_hash,
