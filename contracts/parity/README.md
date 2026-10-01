@@ -55,8 +55,9 @@ because all owned route queries are device-scoped; callers can supply separate
 engines and Redis endpoints for separate stacks. Neither instance is reused
 or reset to simulate the other backend. Shared mode intentionally passes the
 same environment to two adapters and captures evidence after their concurrent
-requests complete. W0 proves that seam with Python/Python competing claims;
-Python/Rust mixed writers require W2 and an actual Rust endpoint.
+requests complete. W0 contains a Python/Python competing-claim test; acceptance
+proof is pending its supported runtime execution. Python/Rust mixed writers
+require W2 and an actual Rust endpoint.
 
 `lifecycle(adapter, environment)` and `reclaim_and_loss(adapter, environment)`
 are reusable scenario drivers. `route_body()` supplies the same five-route
@@ -96,7 +97,7 @@ device/job/log migrations, checked against existing unit/device E2E suites.
 | Heartbeat | Pending poll 5s, otherwise 10s; version strips control chars/whitespace; session mismatch touches device but preserves job activity; cancel flag visible only to owning session. |
 | Claim | Response includes script/params/limits and 60s lease; DB claim token/session/activity committed; idle 204; competing claimers have exactly one winner; 55s old claim remains fenced and 65s old claim reclaims, with measured cutoff windows. |
 | Running | First transition accepts and replaces another session; current-token replay preserves stored session and started_at while renewing activity. No additional session fence is invented. |
-| Logs | Out-of-order seqs sort ascending, gaps allowed; durable log_sequence is highest; exactly one ordered event for inserted rows; replay ignores ts, renews activity, inserts/publishes nothing; changed text conflicts and earlier staged inserts roll back. |
+| Logs | Out-of-order seqs sort ascending, gaps allowed; durable log_sequence is highest; exactly one ordered event for successful inserted rows; replay ignores ts, renews activity, inserts/publishes nothing; changed text conflicts, but earlier staged inserts can commit during dependency teardown without a log event. |
 | Result | Terminal status/output/exit code commit; duration_ms/truncated/extra input are not stored; result replay is terminal 409; wrong fence takes precedence over terminal state. |
 | Scope/errors | Foreign-device and unknown-job are 404 before fence; authenticated error still commits device touch. |
 | Validation | Entry/batch Pydantic limits give native 422; duplicate seq gives domain 422; aggregate log chars above 1 MiB gives domain 413 before fence. Only domain errors touch device. Lost is rejected as agent result. |
@@ -116,6 +117,27 @@ commits is recoverable through the current idempotent running replay. W1/W2
 approval remains blocked on the architect's review of the uncommitted-report
 ambiguity and unchanged pinned Go runner evidence. The harness changes no
 Python behavior to hide this issue.
+
+## Handled log conflicts can commit partial rows
+
+Additional authority: `core/db_deps.py` binds `DbSession` to `get_db`, whose
+normal dependency teardown calls `commit()`. `append_logs` stages rows while
+iterating the sorted batch. If a later accepted seq conflicts, the route catches
+`DeviceOperationError` and returns a normal JSONResponse, so teardown can commit
+the earlier staged inserts despite HTTP 409. Activity and log_sequence assignment
+are bypassed and no log publication occurs. The source-derived
+`log-conflict-partial-persistence` scenario retains this discrepancy; runtime
+proof remains outstanding. It does not assert stronger rollback semantics or
+change the Python implementation. This is a separate baseline delivery risk
+requiring architect disposition before W1/W2 acceptance.
+
+Dependency cleanup versus response-delivery ordering is FastAPI-version dependent
+until verified at runtime. Capture sets a transaction-local five-second lock
+timeout, then acquires `FOR SHARE` on the owned jobs to wait for any domain
+writer's `FOR UPDATE` lock to release and reads all rows in that fresh session.
+Observation's clock window
+ends after committed-state/event capture, so teardown-generated receive clocks
+remain observable. A plain post-response read alone is insufficient here.
 
 Redis publications observed here establish payload/order after completed HTTP
 requests and committed rows, not authenticated WebSocket delivery or Go client

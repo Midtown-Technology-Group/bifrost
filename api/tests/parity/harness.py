@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import redis.asyncio as redis
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from src.models.orm.device_job_logs import DeviceJobLog
@@ -73,7 +73,6 @@ class DeviceAdapter:
         response = await self.client.post(
             route, json=body, headers={"X-Bifrost-Key": key} if key else {},
         )
-        after = datetime.now(timezone.utc)
         try:
             response_body = response.json() if response.content else None
         except ValueError:
@@ -81,6 +80,7 @@ class DeviceAdapter:
         # A new DB connection observes committed effects, independently of HTTP.
         snapshot = await self.capture.snapshot()
         events = await self.capture.drain_events()
+        after = datetime.now(timezone.utc)
         return Observation(
             step, response.status_code,
             response_body, snapshot, events, before, after,
@@ -179,6 +179,16 @@ class PostgresRedisCapture:
     async def snapshot(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
         async with self.environment.sessions() as db:
+            await db.execute(text("SET LOCAL lock_timeout = '5s'"))
+            # FastAPI's request-scoped get_db commits on dependency teardown,
+            # which may follow HTTP response delivery. Domain writers lock the
+            # job FOR UPDATE: this SHARE lock waits for their commit/rollback
+            # before any evidence reads, including handled-error partial writes.
+            await db.execute(
+                select(DeviceJob.id).where(DeviceJob.device_id.in_([
+                    self.environment.ids["device"], self.environment.ids["foreign_device"],
+                ])).with_for_update(read=True)
+            )
             for model, label, predicate, ordering in (
                 (Device, "devices", Device.id.in_([self.environment.ids["device"], self.environment.ids["foreign_device"]]), Device.display_name),
                 (DeviceJob, "jobs", DeviceJob.device_id.in_([self.environment.ids["device"], self.environment.ids["foreign_device"]]), DeviceJob.created_at),

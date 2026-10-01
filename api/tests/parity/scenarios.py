@@ -93,13 +93,17 @@ async def lifecycle(adapter: DeviceAdapter, env: SeededEnvironment) -> list[Obse
     expect(replay_logs, 204)
     assert replay_logs.events == []
     assert replay_logs.database["logs"] == logs.database["logs"]
-    # An earlier new seq must roll back if a later accepted seq conflicts.
-    conflict = await send("log-conflict-atomic", "logs", {"claim_token": token, "entries": [
-        {"seq": 2, "stream": "stdout", "text": "must-rollback"},
+    # get_db commits on normal route return. The handled conflict returns a
+    # Response, so an earlier staged insert persists without a log event.
+    conflict = await send("log-conflict-partial-persistence", "logs", {"claim_token": token, "entries": [
+        {"seq": 2, "stream": "stdout", "text": "staged-before-conflict"},
         {"seq": 3, "stream": "stderr", "text": "conflict"},
     ]})
     expect(conflict, 409, "log_seq_conflict")
-    assert conflict.database["logs"] == logs.database["logs"]
+    assert [row["seq"] for row in conflict.database["logs"]] == [1, 2, 3]
+    assert conflict.database["logs"][1]["text"] == "staged-before-conflict"
+    assert conflict.database["jobs"][0]["log_sequence"] == 3
+    assert conflict.database["jobs"][0]["last_agent_activity_at"] == replay_logs.database["jobs"][0]["last_agent_activity_at"]
     assert conflict.events == []
     result_body = {"claim_token": token, "status": "succeeded", "exit_code": 0, "output": "complete", "duration_ms": 7, "truncated": True, "extra": "ignored"}
     finished = await send("result", "result", result_body)
