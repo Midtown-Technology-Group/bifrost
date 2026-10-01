@@ -232,7 +232,8 @@ The supported literal clean-current-main `./test.sh pre-pr` gate passed in
 job `110614360691`, artifact `11198251722`. Its candidate receipt records that
 exact head, tree `fdcbdc08f15d6841c46e5de1d58e4e929eb9aad8`, main `658283e8c`,
 exit zero, cleanup status zero, and empty owned container/network/volume
-readback. Comprehensive candidate CI remains pending at this recording.
+readback. The comprehensive candidate run also completed successfully under the normal
+repository lanes.
 Earlier e049/ddb passes retain their historical pins; no result is relabeled.
 
 Independent test-only [CRED-P1-REF #1026](https://github.com/Midtown-Technology-Group/bifrost/pull/1026)
