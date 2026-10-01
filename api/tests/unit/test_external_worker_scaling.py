@@ -56,6 +56,14 @@ async def test_publisher_never_hides_or_deletes_markers_while_active():
     with pytest.raises(RuntimeError, match="foreign"):
         await azure.publish(2)
     assert len(azure.request.call_args_list) == 1
+    azure.request.reset_mock()
+    with pytest.raises(RuntimeError, match="foreign"):
+        await azure.publish(0)
+    assert [call.args[0] for call in azure.request.call_args_list] == ["GET"]
+    azure.request.reset_mock()
+    azure.request.return_value = response
+    await azure.publish(0)
+    assert [call.args[0] for call in azure.request.call_args_list] == ["GET", "DELETE"]
 
 
 @pytest.mark.asyncio

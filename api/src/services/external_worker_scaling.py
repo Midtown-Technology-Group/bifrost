@@ -163,19 +163,22 @@ class Azure:
                + self.settings.external_worker_queue_name + "/messages")
         # Never receive/hide/refresh demand while busy. Permanent opaque markers
         # retain capacity through controller failure. Clear only after durable idle.
-        if desired == 0:
-            await self.request("DELETE", url, storage=True)
-            return
         from defusedxml.ElementTree import fromstring
         messages = await self.request("GET", url, storage=True,
                                       params={"peekonly": "true", "numofmessages": 32})
         document = fromstring(messages.content)
+        if document.tag != "QueueMessagesList":
+            raise RuntimeError("Invalid scaling queue response")
         items = document.findall("QueueMessage")
         if any(item.findtext("MessageText") != "bifrost-worker-demand-v1" for item in items):
             raise RuntimeError("Scaling queue contains foreign contents")
         count = len(items)
         if count > self.settings.external_worker_max_replicas:
             raise RuntimeError("Scaling queue has unexpected contents")
+        if desired == 0:
+            if count:
+                await self.request("DELETE", url, storage=True)
+            return
         for _ in range(desired - count):
             await self.request("POST", url, storage=True, params={"messagettl": -1},
                                content="<QueueMessage><MessageText>bifrost-worker-demand-v1</MessageText></QueueMessage>")
@@ -409,3 +412,19 @@ async def controller_loop(stop: asyncio.Event) -> None:
                 pass
     finally:
         await azure.close()
+
+
+async def controller_status(db: AsyncSession) -> dict:
+    """Global infrastructure bookkeeping; authorized by the superuser router."""
+    rows = list((await db.scalars(select(SystemConfig).where(
+        SystemConfig.category == CATEGORY, SystemConfig.organization_id.is_(None)))).all())
+    demand = [entry.value_json for entry in rows if entry.key == "demand"]
+    if len(demand) > 1:
+        raise RuntimeError("External worker state is ambiguous")
+    value = demand[0] or {} if demand else {}
+    observed = value.get("observed_at")
+    age = datetime.now(UTC).timestamp() - observed if observed else None
+    return {"enabled": get_settings().external_worker_scaling_enabled,
+            "healthy": age is not None and 0 <= age <= 30,
+            "observation_age_seconds": age, "demand": value,
+            "tracked_hosts": sum(entry.key.startswith("host-") for entry in rows)}

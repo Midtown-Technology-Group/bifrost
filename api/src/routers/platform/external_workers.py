@@ -4,14 +4,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from src.config import get_settings
 from src.core.auth import CurrentSuperuser
 from src.core.db_deps import DbSession
-from src.models.orm.config import SystemConfig
 from src.services.external_worker_scaling import (
-    Azure, CATEGORY, enroll_replica, validate_settings, verify_identity,
+    Azure, controller_status, enroll_replica, validate_settings, verify_identity,
 )
 
 router = APIRouter(prefix="/api/platform/external-workers", tags=["External Workers"])
@@ -49,16 +47,7 @@ async def enroll(request: EnrollmentRequest, response: Response, db: DbSession,
 
 @router.get("")
 async def status(_admin: CurrentSuperuser, db: DbSession) -> dict:
-    rows = list((await db.scalars(select(SystemConfig).where(
-        SystemConfig.category == CATEGORY, SystemConfig.organization_id.is_(None)))).all())
-    demand = [entry.value_json for entry in rows if entry.key == "demand"]
-    if len(demand) > 1:
-        raise HTTPException(503, "External worker state is ambiguous")
-    from datetime import UTC, datetime
-    value = demand[0] or {} if demand else {}
-    observed = value.get("observed_at")
-    age = datetime.now(UTC).timestamp() - observed if observed else None
-    return {"enabled": get_settings().external_worker_scaling_enabled,
-            "healthy": age is not None and 0 <= age <= 30,
-            "observation_age_seconds": age, "demand": value,
-            "tracked_hosts": sum(entry.key.startswith("host-") for entry in rows)}
+    try:
+        return await controller_status(db)
+    except RuntimeError:
+        raise HTTPException(503, "External worker state is unavailable") from None
