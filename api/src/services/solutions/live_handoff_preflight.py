@@ -289,7 +289,8 @@ class WorkspaceLiveHandoffPreflightService:
                 "candidate deployment closure is invalid"
             ) from exc
         if (
-            manifest.shared_tables != request.shared_tables
+            manifest.root_file_bindings != request.root_file_bindings
+            or manifest.shared_tables != request.shared_tables
             or manifest.tables or manifest.file_locations
             or manifest.agents or manifest.forms or manifest.events
             or manifest.applications or manifest.dependencies
@@ -369,7 +370,8 @@ class WorkspaceLiveHandoffPreflightService:
             )
         try:
             source_bytes = source_closure(
-                live_bytes, entry_paths, has_table_bindings=bool(manifest.shared_tables)
+                live_bytes, entry_paths, has_table_bindings=bool(manifest.shared_tables),
+                has_root_file_bindings=bool(manifest.root_file_bindings)
             )
         except LiveHandoffSourceError as exc:
             raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
@@ -396,6 +398,13 @@ class WorkspaceLiveHandoffPreflightService:
                 )
 
         await asyncio.gather(*(verify_runtime(path) for path in source_paths))
+        from src.services.solutions.root_file_bindings import (
+            RootFileBindingError, require_root_workspace_files,
+        )
+        try:
+            await require_root_workspace_files(self.db, manifest.root_file_bindings)
+        except RootFileBindingError as exc:
+            raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         _verify_source_archive(await storage.read_source_artifact(), source_bytes)
         _require_live_identity(await active_workspace_release(self.db, None), request)
         workflow_ids = sorted(request.workflow_ids, key=str)
@@ -434,6 +443,7 @@ class WorkspaceLiveHandoffPreflightService:
             workflow_ids=workflow_ids,
             verified_source_paths=source_paths,
             verified_shared_tables=manifest.shared_tables,
+            verified_root_file_bindings=manifest.root_file_bindings,
             expected_active_deployment_id=request.expected_active_deployment_id,
             evidence_id=canonical_digest(evidence),
         )

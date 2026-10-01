@@ -5371,6 +5371,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/oauth/connections/{connection_name}/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect Oauth */
+        get: operations["inspect_oauth_api_oauth_connections__connection_name__diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/oauth/connections/{connection_name}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Oauth */
+        post: operations["recover_oauth_api_oauth_connections__connection_name__recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/oauth/connections/{connection_name}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile Oauth */
+        post: operations["reconcile_oauth_api_oauth_connections__connection_name__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/executions/{execution_id}/redact-sensitive-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redact Execution */
+        post: operations["redact_execution_api_executions__execution_id__redact_sensitive_fields_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/endpoints/{workflow_id}": {
         parameters: {
             query?: never;
@@ -10893,6 +10961,60 @@ export interface paths {
         put?: never;
         /** Activate Source Revision */
         post: operations["activate_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage Initial Workflow Install
+         * @description Stage the first immutable workflow-only closure for a disconnected Solution.
+         */
+        post: operations["stage_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Initial Workflow Install */
+        post: operations["inspect_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Initial Workflow Install */
+        post: operations["activate_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_activate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16992,6 +17114,10 @@ export interface components {
             resources?: {
                 [key: string]: components["schemas"]["RuntimeResourceResolution"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
             /** File Locations */
             file_locations?: {
                 [key: string]: {
@@ -18017,6 +18143,10 @@ export interface components {
             /** Resources */
             resources?: {
                 [key: string]: components["schemas"]["RuntimeResourceResolution"];
+            };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
             };
         };
         /** DeploymentSource */
@@ -20354,6 +20484,23 @@ export interface components {
             /** Sequence */
             sequence: number;
         };
+        /** ExecutionRedactionRequest */
+        ExecutionRedactionRequest: {
+            /** Scope */
+            scope?: "global" | string | null;
+        };
+        /** ExecutionRedactionResult */
+        ExecutionRedactionResult: {
+            /** Execution Id */
+            execution_id: string;
+            /** Rows Updated */
+            rows_updated: number;
+            /**
+             * Redacted
+             * @default true
+             */
+            redacted: boolean;
+        };
         /**
          * ExecutionRetryFailure
          * @description Execution-engine failures that may start another attempt.
@@ -22612,6 +22759,56 @@ export interface components {
             status: "created" | "updated" | "skipped" | "error";
             /** Error */
             error?: string | null;
+        };
+        /** InitialWorkflowInstallCommitRequest */
+        InitialWorkflowInstallCommitRequest: {
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+            /** Expected Evidence Id */
+            expected_evidence_id: string;
+        };
+        /** InitialWorkflowInstallInspectRequest */
+        InitialWorkflowInstallInspectRequest: {
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+        };
+        /** InitialWorkflowInstallInspectResponse */
+        InitialWorkflowInstallInspectResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Source Hashes */
+            source_hashes: {
+                [key: string]: string;
+            };
+            /** Evidence Id */
+            evidence_id: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * InitialWorkflowInstallRequest
+         * @description Reviewed source closure for the first immutable workflow install.
+         */
+        InitialWorkflowInstallRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+            /** Files */
+            files: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
+            /** Resources */
+            resources?: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
         };
         /**
          * InstallPackageRequest
@@ -25518,6 +25715,13 @@ export interface components {
              */
             expires_at?: string | null;
         };
+        /** OAuthDiagnostics */
+        OAuthDiagnostics: {
+            /** Providers */
+            providers: components["schemas"]["OAuthProviderMetadata"][];
+            /** Tokens */
+            tokens: components["schemas"]["OAuthTokenMetadata"][];
+        };
         /**
          * OAuthInitResponse
          * @description OAuth initialization response.
@@ -25588,6 +25792,17 @@ export interface components {
              */
             display_name?: string | null;
         };
+        /** OAuthProviderMetadata */
+        OAuthProviderMetadata: {
+            /** Provider Id */
+            provider_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Flow */
+            flow: string;
+            /** Status */
+            status: string;
+        };
         /**
          * OAuthProvidersResponse
          * @description Available OAuth providers.
@@ -25595,6 +25810,61 @@ export interface components {
         OAuthProvidersResponse: {
             /** Providers */
             providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+        };
+        /** OAuthReconciliationResult */
+        OAuthReconciliationResult: {
+            /** Provider Rows Updated */
+            provider_rows_updated: number;
+            /** Token Rows Updated */
+            token_rows_updated: number;
+        };
+        /** OAuthRecoveryRequest */
+        OAuthRecoveryRequest: {
+            /** Scope */
+            scope: "global" | string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "refresh" | "exchange_code_without_scope";
+            /** Refresh Token */
+            refresh_token?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+        };
+        /** OAuthRecoveryResult */
+        OAuthRecoveryResult: {
+            /** Connection Name */
+            connection_name: string;
+            /** Provider Id */
+            provider_id: string;
+            /** Has Refresh Token */
+            has_refresh_token: boolean;
+            /** Expires At */
+            expires_at: string;
+            /** Scope */
+            scope: string;
+        };
+        /** OAuthTokenMetadata */
+        OAuthTokenMetadata: {
+            /** Provider Id */
+            provider_id: string;
+            /** Provider Org Id */
+            provider_org_id: string | null;
+            /** Token Id */
+            token_id: string;
+            /** Token Org Id */
+            token_org_id: string | null;
+            /** Has Access Token */
+            has_access_token: boolean;
+            /** Has Refresh Token */
+            has_refresh_token: boolean;
+            /** Expires At */
+            expires_at: string | null;
+            /** Scopes */
+            scopes?: string[];
         };
         /**
          * OAuthTokenResponse
@@ -27888,6 +28158,10 @@ export interface components {
             resources?: {
                 [key: string]: string;
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
         };
         /** ReviewedWorkflowRegistration */
         ReviewedWorkflowRegistration: {
@@ -28119,6 +28393,35 @@ export interface components {
              * @description Workflow IDs assigned to the role
              */
             workflow_ids: string[];
+        };
+        /**
+         * RootFileBinding
+         * @description An explicit data grant; uploads inherit only the durable execution scope.
+         */
+        RootFileBinding: {
+            /**
+             * Location
+             * @enum {string}
+             */
+            location: "workspace" | "uploads";
+            /** Path */
+            path: string;
+            /**
+             * Directory Prefix
+             * @default false
+             */
+            directory_prefix: boolean;
+            /** Operations */
+            operations: ("exists" | "read" | "signed_get" | "create")[];
+            /** Max Bytes */
+            max_bytes: number;
+            /**
+             * Max Url Ttl Seconds
+             * @default 600
+             */
+            max_url_ttl_seconds: number;
+            /** Expected Read Sha256 */
+            expected_read_sha256?: string | null;
         };
         /** RuntimeEntityDefinition */
         RuntimeEntityDefinition: {
@@ -28799,6 +29102,11 @@ export interface components {
             /** Next Run At */
             next_run_at?: string | null;
             last_run?: components["schemas"]["SchedulerTaskRunStatus"] | null;
+        };
+        /** ScopedAdminRequest */
+        ScopedAdminRequest: {
+            /** Scope */
+            scope: "global" | string;
         };
         /**
          * SearchRequest
@@ -33747,6 +34055,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
             /** Expected Evidence Id */
             expected_evidence_id: string;
         };
@@ -33805,6 +34117,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
         };
         /** WorkspaceLiveHandoffPreflightResponse */
         WorkspaceLiveHandoffPreflightResponse: {
@@ -33836,6 +34152,10 @@ export interface components {
             /** Verified Shared Tables */
             verified_shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Verified Root File Bindings */
+            verified_root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
             };
             /** Expected Active Deployment Id */
             expected_active_deployment_id: string | null;
@@ -44717,6 +45037,144 @@ export interface operations {
             };
         };
     };
+    inspect_oauth_api_oauth_connections__connection_name__diagnostics_get: {
+        parameters: {
+            query: {
+                scope: "global" | string;
+            };
+            header?: never;
+            path: {
+                connection_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthDiagnostics"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_oauth_api_oauth_connections__connection_name__recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthRecoveryResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_oauth_api_oauth_connections__connection_name__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScopedAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthReconciliationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redact_execution_api_executions__execution_id__redact_sensitive_fields_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecutionRedactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionRedactionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     execute_endpoint_api_endpoints_workflow_id_get: {
         parameters: {
             query?: never;
@@ -55080,6 +55538,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
                 };
             };
             /** @description Validation Error */

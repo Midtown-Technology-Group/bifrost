@@ -13,7 +13,6 @@ from uuid import UUID
 import aiohttp
 from sqlalchemy import select
 
-from src.core.log_safety import log_safe
 from src.core.security import decrypt_secret, encrypt_secret
 
 if TYPE_CHECKING:
@@ -337,9 +336,6 @@ class OAuthProviderClient:
                             logger.info(
                                 f"Token request successful (status={response.status})"
                             )
-                            logger.debug(
-                                f"Raw OAuth response keys: {list(response_data.keys())}"
-                            )
 
                             # Parse token response
                             result = self._parse_token_response(response_data)
@@ -353,9 +349,8 @@ class OAuthProviderClient:
                                 or f"HTTP {response.status}"
                             )
                             logger.error(
-                                "OAuth token request failed with client error status=%s code=%s",
+                                "OAuth token request failed with client error status=%s",
                                 response.status,
-                                log_safe(response_data.get("error", "client_error")),
                             )
                             return (
                                 False,

@@ -411,9 +411,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._json(200, response)
             return
 
-        if self.path != "/oauth/token":
+        if self.path not in {"/oauth/token", "/oauth/recovery-token"}:
             self._json(404, {"error": "not_found"})
             return
+        recovery_exchange = self.path == "/oauth/recovery-token"
         form = parse_qs(body.decode())
         grant_type = form.get("grant_type", [""])[0]
         if grant_type == "refresh_token":
@@ -483,7 +484,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             if (
                 any(form.get(key) != [value] for key, value in expected.items())
                 or not redirect_uri.endswith("/api/mcp/oauth/callback")
-                or len(code_verifier) < 32
+                or ("scope" in form if recovery_exchange else len(code_verifier) < 32)
             ):
                 self._json(
                     400,

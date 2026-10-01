@@ -98,7 +98,7 @@ class InitialWorkflowInstallService:
         }
         resolution = DeploymentResolutionMap(
             workflows=entities, sources=sources,
-            shared_tables=body.reviewed_recipe.shared_tables, resources=resource_map,
+            shared_tables=body.reviewed_recipe.shared_tables, root_file_bindings=body.reviewed_recipe.root_file_bindings, resources=resource_map,
         )
         hashes = {path: item.content_hash for path, item in {**sources, **resource_map}.items()}
         manifest = CompiledDeploymentManifest(
@@ -112,7 +112,7 @@ class InitialWorkflowInstallService:
             source=DeploymentSource(
                 artifact_key=storage.source_artifact_key,
                 runtime_prefix=storage.runtime_prefix,
-            ), workflows=entities, shared_tables=resolution.shared_tables,
+            ), workflows=entities, shared_tables=resolution.shared_tables, root_file_bindings=resolution.root_file_bindings,
             resources=resource_map,
             git=DeploymentGitProvenance(commit_sha=body.source_commit_sha),
         )
@@ -186,6 +186,7 @@ class InitialWorkflowInstallService:
             closure = source_closure(
                 files, {item.path for item in recipe.workflows},
                 has_table_bindings=bool(recipe.shared_tables),
+                has_root_file_bindings=bool(recipe.root_file_bindings),
                 has_resource_bindings=bool(recipe.resources),
             )
             desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
@@ -194,6 +195,7 @@ class InitialWorkflowInstallService:
         if set(closure) != set(files):
             raise SolutionSourceRevisionError("recipe differs from complete source dependency closure")
         if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
+                or recipe.root_file_bindings != resolution.root_file_bindings
                 or manifest.workflows != resolution.workflows
                 or manifest.shared_tables != resolution.shared_tables):
             raise SolutionSourceRevisionConflict("candidate differs from reviewed recipe")
@@ -221,6 +223,13 @@ class InitialWorkflowInstallService:
         await require_shared_tables(
             self.db, recipe.shared_tables, solution_organization_id=solution.organization_id,
         )
+        from src.services.solutions.root_file_bindings import (
+            RootFileBindingError, require_root_workspace_files,
+        )
+        try:
+            await require_root_workspace_files(self.db, manifest.root_file_bindings)
+        except RootFileBindingError as exc:
+            raise SolutionSourceRevisionError(str(exc)) from exc
         candidate_ids = {item.resolved_id for item in desired.values()}
         if not candidate_ids:
             raise SolutionSourceRevisionError("initial recipe must register at least one workflow")
@@ -334,6 +343,7 @@ class InitialWorkflowInstallService:
             closure = source_closure(
                 files, {item.path for item in recipe.workflows},
                 has_table_bindings=bool(recipe.shared_tables),
+                has_root_file_bindings=bool(recipe.root_file_bindings),
                 has_resource_bindings=bool(recipe.resources),
             )
             desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))

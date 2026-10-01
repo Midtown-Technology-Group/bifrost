@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
+from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.services.solutions.deployment_manifest import (
@@ -121,9 +122,11 @@ class WorkspaceLiveHandoffPreflightRequest(BaseModel):
     expected_active_deployment_id: UUID | None
     workflow_ids: list[UUID] = Field(min_length=1, max_length=100)
     shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict, max_length=50)
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100)
 
     @model_validator(mode="after")
     def unique_workflows(self):
+        require_root_file_bindings(self.root_file_bindings)
         if len(self.workflow_ids) != len(set(self.workflow_ids)):
             raise ValueError("workflow IDs must be unique")
         if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
@@ -146,6 +149,7 @@ class WorkspaceLiveHandoffPreflightResponse(BaseModel):
     workflow_ids: list[UUID]
     verified_source_paths: list[str]
     verified_shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict)
+    verified_root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict)
     expected_active_deployment_id: UUID | None
     evidence_id: str
 
