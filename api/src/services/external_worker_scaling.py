@@ -409,6 +409,7 @@ async def controller_loop(stop: asyncio.Event) -> None:
             try:
                 await asyncio.wait_for(stop.wait(), timeout=10)
             except TimeoutError:
+                # The polling interval elapsed normally; observe demand again.
                 pass
     finally:
         await azure.close()
