@@ -400,6 +400,36 @@ async def test_core_actual_committed_sql_drift(core_environment, field):
             )
 
 
+@pytest.mark.parametrize("field", ["integration_name", "organization_id"])
+async def test_core_actual_committed_local_identity_drift(core_environment, field):
+    async with core_environment() as (env, adapter):
+        ready = await execute_readiness(adapter, env, before=env.before)
+        assert_readiness(ready, env, expected_result(env))
+        reference = await result_observation(adapter, env)
+        variables = reference.observation.database["executions"][0]["variables"]
+        assert variables[field] == env.parameters()[field]
+        # Even an enumerated fixture identity cannot replace the actual input.
+        changed = {**variables, field: str(env.ids["foreign_org"])}
+        async with env.sessions() as db:
+            await db.execute(
+                update(Execution)
+                .where(Execution.id == env.executions[0])
+                .values(variables=changed)
+            )
+            await db.commit()
+        candidate = await result_observation(adapter, env)
+        assert candidate.observation.database["executions"][0]["variables"] == changed
+        assert reference.observation.body == candidate.observation.body
+        assert reference.observation.events == candidate.observation.events == []
+        assert reference.transport == candidate.transport
+        with pytest.raises(
+            AssertionError, match="workflow input local projection differs"
+        ):
+            assert_reference_parity(
+                [reference], [candidate], env.bindings, env.bindings
+            )
+
+
 async def test_core_actual_scoped_redis_drift(core_environment):
     async with core_environment() as (env, adapter):
         ready = await execute_readiness(adapter, env, before=env.before)
