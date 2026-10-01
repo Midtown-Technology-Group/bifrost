@@ -1417,7 +1417,17 @@ class AgentExecutor:
             async with self._db() as session:
                 if caller_user_id is not None:
                     user = await session.get(User, caller_user_id)
-                    current_caller_admin = bool(user and user.is_superuser)
+                    # An unresolved authenticated caller must not fall through
+                    # to callerless workflow access with captured authority.
+                    if user is None:
+                        return ToolResult(
+                            tool_call_id=tool_call.id,
+                            tool_name=tool_call.name,
+                            result=None,
+                            error=f"Tool '{tool_call.name}' not found",
+                            duration_ms=int((time.time() - start_time) * 1000),
+                        )
+                    current_caller_admin = bool(user.is_superuser)
                 if conversation is not None and (
                     caller is None or set(caller) == {"user_id"}
                 ):
