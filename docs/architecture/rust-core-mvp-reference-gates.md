@@ -106,6 +106,16 @@ task-created failed debug projects were cleaned up, with successful empty
 container/network/volume readback. CodSpeed cross-environment failures remain
 blocking under #1003; no thresholds, retries or waivers are introduced.
 
+Automated security review separately retained a missing-caller concern despite
+having no line-threaded requested changes: chat can convert a supplied
+authenticated user that no longer resolves into callerless authorization while
+retaining its captured provider claim. Source review confirmed that transition.
+AUTH-P1 must reject the unresolved authenticated caller before workflow dispatch
+and prove it cannot invoke the execution sink; truly callerless invocation must
+remain distinct. The correction is under narrow implementation/review and is not
+yet passing evidence. Provider/external snapshot behavior otherwise follows the
+existing contract, not a new global revocation policy.
+
 This correction deliberately preserves existing run/rerun execution-org
 expressions. Their dual-use caller/target organization is **not** repaired by
 privilege propagation. Separate original-caller and effective execution scope
