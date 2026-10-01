@@ -933,10 +933,18 @@ run_scoped_pre_pr() {
     fi
 }
 
+prepare_full_pre_pr_stack() {
+    # Every backend service and test runner uses this shared dev image. Build
+    # explicitly even when stack_up finds an already-running stack.
+    docker compose -f "$COMPOSE_FILE" build api
+    local -x BIFROST_SKIP_BUILD=1
+    stack_up
+}
+
 run_full_pre_pr() {
     run_pre_pr_stage client client_ci_checks
-    run_pre_pr_stage stack stack_up
-    # stack_up just built this candidate's images. Rebuilding between snapshots
+    run_pre_pr_stage stack prepare_full_pre_pr_stack
+    # Stack preparation just built this candidate's images. Rebuilding between snapshots
     # changes attestation-bearing image IDs even when every layer is cached.
     # Freeze the built images for the backend lanes; browser startup still
     # builds and reconciles its own images before taking browser evidence.

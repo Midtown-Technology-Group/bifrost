@@ -36,11 +36,23 @@ echo 'PASS: scoped lanes defer only broad tests, check generated API, and reject
 # against those exact images without leaking the setting to later invocations.
 stages=()
 unset BIFROST_SKIP_BUILD
-run_pre_pr_stage() { stages+=("$1:${BIFROST_SKIP_BUILD:-0}"); }
+run_pre_pr_stage() {
+    stages+=("$1:${BIFROST_SKIP_BUILD:-0}")
+    [[ "$1" != stack || "$2" == prepare_full_pre_pr_stack ]]
+}
 run_full_pre_pr
 [[ "${stages[*]}" == 'client:0 stack:0 quality:1 generated:1 unit:1 e2e:1 browser:1 image:1' ]]
 [[ -z "${BIFROST_SKIP_BUILD+x}" ]]
 echo 'PASS: full lanes build once and freeze backend images without omitting tests'
+
+# An already-running stack returns early, so building must precede stack_up.
+preparation=()
+docker() { preparation+=("$*"); }
+stack_up() { preparation+=("stack:${BIFROST_SKIP_BUILD:-0}"); }
+prepare_full_pre_pr_stack
+[[ "${preparation[*]}" == 'compose -f docker-compose.test.yml build api stack:1' ]]
+[[ -z "${BIFROST_SKIP_BUILD+x}" ]]
+echo 'PASS: full stack preparation builds even when the stack is already running'
 
 # A conformance invocation after browser verification must reconcile the API's
 # authority before sending requests. Stop at reset_state to avoid Docker here.
