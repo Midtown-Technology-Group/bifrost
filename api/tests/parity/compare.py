@@ -19,6 +19,11 @@ DB_CLOCKS = {
     "jobs": {"created_at", "updated_at", "claimed_at", "started_at", "last_agent_activity_at", "cancel_requested_at"},
     "logs": {"received_at"},
 }
+DB_IDENTITIES = {
+    "devices": {"id", "organization_id"},
+    "jobs": {"id", "organization_id", "device_id", "requested_by_user_id", "requested_by_api_key_id", "requested_by_workflow_id", "requested_by_execution_id", "agent_session_id", "claim_token"},
+    "logs": {"job_id"},
+}
 
 
 def _clock(value: Any) -> datetime | None:
@@ -63,16 +68,20 @@ def canonicalize(trace: list[Observation], bindings: dict[str, str]) -> list[dic
             instant = _clock(value)
             return "seed-time" if instant == SEED_TIME else clock_names[instant]
         if isinstance(value, str):
-            if value in identities:
+            is_identity = path == ("body", "job_id") or (
+                len(path) == 3 and path[0] == "database" and path[2] in DB_IDENTITIES.get(path[1], set())
+            ) or path in {("events", "payload", "job_id"), ("events", "payload", "device_id")}
+            if is_identity and value in identities:
                 return f"identity:{identities[value]}"
-            if path[-1:] == ("claim_token",) and value not in identities:
+            if path in {("body", "claim_token"), ("database", "jobs", "claim_token")} and value not in identities:
                 UUID(value)  # Fail closed on a malformed fence token.
                 if value not in tokens:
                     tokens[value] = f"claim:{len(tokens)}"
                 return tokens[value]
-            for raw, name in identities.items():
-                if value == f"bifrost:device:{raw}" or value == f"bifrost:device_job:{raw}":
-                    return value.replace(raw, f"identity:{name}")
+            if path == ("events", "channel"):
+                for raw, name in identities.items():
+                    if value == f"bifrost:device:{raw}" or value == f"bifrost:device_job:{raw}":
+                        return value.replace(raw, f"identity:{name}")
         return value
 
     return [walk({key: value for key, value in asdict(observation).items() if key not in {"before", "after"}}, ()) for observation in trace]

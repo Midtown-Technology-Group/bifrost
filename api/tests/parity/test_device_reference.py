@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,35 @@ async def test_real_trace_comparator_detects_independent_drift(python_adapter, p
         candidate[6].events[0]["payload"]["entries"][0]["text"] = "delivery-drift"
     with pytest.raises(AssertionError, match=f"{plane} differs"):
         assert_parity(reference, candidate, parity_environment.bindings, parity_environment.bindings)
+
+
+async def test_identity_mapping_preserves_opaque_payloads(python_adapter, parity_environment):
+    trace = await lifecycle(python_adapter, parity_environment)
+    opaque = str(parity_environment.ids["job"])
+    trace[1].body["script_content"] = opaque
+    trace[1].body["params"] = {"claim_token": opaque}
+    trace[6].database["logs"][0]["text"] = opaque
+    trace[6].database["jobs"][0]["result"] = opaque
+    trace[6].events[0]["payload"]["entries"][0]["text"] = opaque
+    observed = canonicalize(trace, parity_environment.bindings)
+    assert observed[1]["body"]["script_content"] == opaque
+    assert observed[1]["body"]["params"]["claim_token"] == opaque
+    assert observed[6]["database"]["logs"][0]["text"] == opaque
+    assert observed[6]["database"]["jobs"][0]["result"] == opaque
+    assert observed[6]["events"][0]["payload"]["entries"][0]["text"] == opaque
+
+
+async def test_capture_observes_wrong_channel_publication(python_adapter, parity_environment):
+    env = parity_environment
+    path, body = route_body(env, "heartbeat")
+    reference = await python_adapter.request("event-capture", path, body, env.keys["device"])
+    channel = f"bifrost:unexpected-channel:{env.ids['job']}"
+    # Capture self-test only; this is neither an API publication nor Go proof.
+    await python_adapter.capture.redis.publish(channel, json.dumps({"type": "capture-probe", "job_id": str(env.ids["job"])}))
+    candidate = await python_adapter.request("event-capture", path, body, env.keys["device"])
+    assert candidate.events == [{"channel": channel, "payload": {"type": "capture-probe", "job_id": str(env.ids["job"])}}]
+    with pytest.raises(AssertionError, match="events differs"):
+        assert_parity([reference], [candidate], env.bindings, env.bindings)
 
 
 @pytest.mark.parametrize("route", ROUTES)
@@ -202,6 +232,25 @@ async def test_shared_database_competing_adapters(python_adapter, parity_environ
 def test_rust_backend_is_explicitly_unavailable():
     with pytest.raises(BackendUnavailable, match="unavailable in W0"):
         rust_adapter()
+
+
+@pytest.mark.parametrize("age,status", [(55, 204), (65, 200)])
+async def test_claim_lease_near_sixty_second_boundary(python_adapter, parity_environment, age, status):
+    env = parity_environment
+    claimed_at = datetime.now(timezone.utc) - timedelta(seconds=age)
+    await env.update(DeviceJob, "job", status="claimed", claimed_at=claimed_at, claim_token=env.ids["wrong_token"], agent_session_id=env.ids["session"])
+    path, body = route_body(env, "claim")
+    observed = await python_adapter.request("lease-boundary", path, body, env.keys["device"])
+    # Fail clearly if an unhealthy environment lets the fresh fixture cross
+    # the boundary; elapsed time is evidence, never normalized or retried.
+    if age == 55:
+        assert (observed.after - claimed_at).total_seconds() < 60, "fixture crossed lease boundary during HTTP request"
+    else:
+        assert (observed.before - claimed_at).total_seconds() > 60
+    expect(observed, status)
+    token = observed.database["jobs"][0]["claim_token"]
+    assert (token == str(env.ids["wrong_token"])) is (status == 204)
+    assert observed.events == []
 
 
 @pytest.mark.parametrize("terminal", ["succeeded", "failed", "timeout", "cancelled"])

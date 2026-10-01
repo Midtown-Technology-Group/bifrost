@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import event
+
 from src.core.principal import UserPrincipal
 from src.models.orm.device_jobs import DeviceJob
 from src.services.device_jobs import request_cancel, sweep_device_jobs
@@ -120,7 +122,18 @@ async def python_control(adapter: DeviceAdapter, env: SeededEnvironment, action:
             job = await request_cancel(db, user, env.ids["job"], now=SEED_TIME)
             body = {"status": job.status}
         else:
-            body = await sweep_device_jobs(db)
+            # Invoke current watchdog transition logic on owned fixture rows
+            # only. No global sweep over another test's jobs is authorized.
+            def scoped_watchdog_select(state):
+                assert state.is_select, "watchdog issued an unexpected ORM operation"
+                assert all(item["entity"] is DeviceJob for item in state.statement.column_descriptions)
+                state.statement = state.statement.where(DeviceJob.id == env.ids["job"])
+
+            event.listen(db.sync_session, "do_orm_execute", scoped_watchdog_select)
+            try:
+                body = await sweep_device_jobs(db)
+            finally:
+                event.remove(db.sync_session, "do_orm_execute", scoped_watchdog_select)
     after = datetime.now(timezone.utc)
     return Observation(f"python-{action}", 0, body, await adapter.capture.snapshot(), await adapter.capture.drain_events(), before, after)
 

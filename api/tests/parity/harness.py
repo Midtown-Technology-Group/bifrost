@@ -164,10 +164,12 @@ class PostgresRedisCapture:
         ]
 
     async def __aenter__(self) -> PostgresRedisCapture:
-        await self.pubsub.subscribe(*self.channels)
-        for _ in self.channels:
+        await self.pubsub.subscribe(self.barrier)
+        # Observe misrouted publications too, including wrong channel prefixes.
+        await self.pubsub.psubscribe("bifrost:*")
+        for kind in ("subscribe", "psubscribe"):
             ack = await self.pubsub.get_message(timeout=5)
-            assert ack and ack["type"] == "subscribe", "Redis capture subscription unavailable"
+            assert ack and ack["type"] == kind, "Redis capture subscription unavailable"
         return self
 
     async def __aexit__(self, *_: Any) -> None:
@@ -207,5 +209,14 @@ class PostgresRedisCapture:
             if message:
                 if message["channel"] == self.barrier:
                     return result
-                result.append({"channel": message["channel"], "payload": json.loads(message["data"])})
+                payload = json.loads(message["data"])
+                scoped_ids = {str(self.environment.ids[name]) for name in ("device", "foreign_device", "job")}
+                relevant = message["channel"] in self.channels or (
+                    isinstance(payload, dict) and any(
+                        isinstance(payload.get(field), str) and payload[field] in scoped_ids
+                        for field in ("job_id", "device_id")
+                    )
+                )
+                if relevant:
+                    result.append({"channel": message["channel"], "payload": payload})
         raise AssertionError("Redis evidence barrier unavailable")
