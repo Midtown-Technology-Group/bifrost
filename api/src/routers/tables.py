@@ -706,7 +706,9 @@ async def get_table_or_404(
         SharedTableBindingError, resolve_execution_shared_table,
     )
     try:
-        bound = await resolve_execution_shared_table(ctx, name_or_id)
+        bound = await resolve_execution_shared_table(
+            ctx, name_or_id, organization_id=target_org_id, explicit_scope=scope is not None,
+        )
     except SharedTableBindingError as exc:
         raise HTTPException(status_code=404, detail=f"Table '{name_or_id}' not found") from exc
     if bound is not None:
