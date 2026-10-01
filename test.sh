@@ -893,6 +893,7 @@ cmd_ci() {
     # This still includes the slow unit tests while matching CI's isolation.
     cmd_unit_all
     cmd_e2e
+    cmd_parity
     client_unit
     client_e2e
 }
