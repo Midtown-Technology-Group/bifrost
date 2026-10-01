@@ -53,25 +53,18 @@ def _assert_compatible_replay(
     request: WorkspaceSourceReleaseDeclareRequest,
     paths: dict[str, str | None],
 ) -> None:
-    existing_solution_obligations = [
-        solution_deploy_obligation_declaration(item).model_dump(
-            mode="json", exclude_none=True
-        )
-        for item in record.solution_deploy_obligations
-    ]
-    requested_solution_obligations = [
-        item.model_dump(mode="json", exclude_none=True)
-        for item in (request.solution_deploy_obligations or [])
-    ]
+    # Operational status can change and return to its original value. Only a
+    # retained digest binds the original reason and Solution obligations.
+    digest = record.declaration_digest or record.producer_declaration_digest
     if (
-        record.source_tree_sha != request.source_tree_sha
+        digest is None
+        or digest != source_release_declaration_digest(request)
+        or record.source_tree_sha != request.source_tree_sha
         or dict(record.paths or {}) != paths
         or record.declared_disposition != request.disposition
-        or record.reason != request.reason
-        or existing_solution_obligations != requested_solution_obligations
     ):
         raise WorkspaceSourceReleaseConflict(
-            "source commit already has different release accountability evidence"
+            "source commit has different or unproven release accountability evidence"
         )
 
 
@@ -226,6 +219,7 @@ class WorkspaceSourceReleaseService:
             producer_declaration_digest=(
                 producer.declaration_digest if producer is not None else None
             ),
+            declaration_digest=source_release_declaration_digest(request),
             producer_actor=(producer.actor if producer is not None else None),
             producer_actor_id=(producer.actor_id if producer is not None else None),
             disposition=disposition,
