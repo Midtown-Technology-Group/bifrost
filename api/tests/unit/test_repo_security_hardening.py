@@ -38,7 +38,9 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
     ci = _load_yaml(".github/workflows/ci.yml")
     jobs = ci["jobs"]
 
-    assert jobs["test-client-e2e"]["name"] == "Client E2E Tests"
+    assert jobs["test-client-e2e"]["name"] == (
+        "Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})"
+    )
     assert set(jobs["test-e2e-gate"]["needs"]) == {
         "affected-test-plan",
         "test-e2e",

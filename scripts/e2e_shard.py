@@ -4,14 +4,15 @@
 Usage:
     scripts/e2e_shard.py --shard-id 1 --total 4
 
-Allocates files to shards by sorted-order round-robin, weighted by an
-optional weights file (see WEIGHTS below). Stable: adding a new file only
-moves files in shards downstream of the insertion point.
+Balances every file by measured full-suite JUnit durations. New files receive
+the measured median weight. Allocations are deterministic for the same inventory
+and timing snapshot; timings never select or exclude tests.
 
 Print one path per line on stdout, suitable for piping into ./test.sh.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -19,24 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 API_ROOT = REPO_ROOT / "api"
 TESTS_ROOT = API_ROOT / "tests" / "e2e"
 
-# Files measured to dominate runtime (>= 5s each, summed across all tests
-# in the file). Bin-packed first to keep wall-clock balanced. Numbers are
-# rough seconds from a CI run; used only for ordering, not exact math.
-# Weights are from May 2026; refresh from a --durations=50 run when shards
-# drift past 3 min spread.
-#
-# Paths are relative to api/ (i.e., tests/e2e/...) to match what test.sh
-# passes to pytest inside the container (CWD=/app, mounted from ./api/).
-WEIGHTS = {
-    "tests/e2e/api/test_executions.py": 70,
-    "tests/e2e/platform/test_large_file_memory.py": 35,
-    "tests/e2e/platform/test_worker_memory.py": 32,
-    "tests/e2e/api/test_misc.py": 20,
-    "tests/e2e/platform/test_fork_pool.py": 12,
-    "tests/e2e/api/test_applications.py": 70,
-    "tests/e2e/platform/test_cli_apps_replace.py": 25,
-    "tests/e2e/platform/test_cli_apps.py": 18,
-}
+# Refresh from a complete successful JUnit report when the shard spread drifts.
+# Paths are relative to api/, matching pytest inside the test-runner.
+TIMINGS = json.loads(Path(__file__).with_name("e2e-shard-weights.json").read_text())
+WEIGHTS = TIMINGS["seconds_by_file"]
+DEFAULT_WEIGHT = TIMINGS["default_seconds"]
 
 
 def collect_test_files() -> list[str]:
@@ -50,27 +38,24 @@ def collect_test_files() -> list[str]:
 
 
 def split(files: list[str], total: int) -> list[list[str]]:
-    """Bin-pack heavies first, then round-robin the rest."""
+    """Assign every file, largest estimated runtime first, to the lightest shard."""
+    if total < 1:
+        raise ValueError("total must be positive")
+    if len(files) != len(set(files)):
+        raise ValueError("test files must be unique")
     shards: list[list[str]] = [[] for _ in range(total)]
     weights: list[int] = [0] * total
 
-    heavy = sorted(
-        ((WEIGHTS[f], f) for f in files if f in WEIGHTS),
+    weighted = sorted(
+        ((WEIGHTS.get(f, DEFAULT_WEIGHT), f) for f in files),
         reverse=True,
     )
-    light = sorted(f for f in files if f not in WEIGHTS)
 
-    # Heavies: largest into the lightest shard.
-    for w, f in heavy:
+    # Largest estimate into the lightest shard, including previously unseen files.
+    for w, f in weighted:
         i = min(range(total), key=lambda i: weights[i])
         shards[i].append(f)
         weights[i] += w
-
-    # Light files: assume each ~equal. Round-robin by sorted order keeps
-    # related files together and is stable across additions.
-    for idx, f in enumerate(light):
-        i = idx % total
-        shards[i].append(f)
 
     for s in shards:
         s.sort()
