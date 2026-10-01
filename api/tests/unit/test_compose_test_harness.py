@@ -53,7 +53,12 @@ def test_full_gate_shared_backend_build_covers_every_backend_consumer():
     services = yaml.safe_load(_COMPOSE.read_text())["services"]
     api = services["api"]
     for name in (
-        "init", "api-replica", "worker", "scheduler", "scheduler-fixtures", "test-runner"
+        "init",
+        "api-replica",
+        "worker",
+        "scheduler",
+        "scheduler-fixtures",
+        "test-runner",
     ):
         assert services[name]["image"] == api["image"], name
         assert services[name]["build"] == api["build"], name
