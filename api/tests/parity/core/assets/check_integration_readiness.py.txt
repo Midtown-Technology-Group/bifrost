@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from bifrost import UserError, integrations, workflow
+
+_OAUTH_FIELDS = ("access_token", "refresh_token", "client_id", "client_secret")
+
+
+def _value_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
+def _mapping(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        if isinstance(dumped, Mapping):
+            return dumped
+    return {}
+
+
+def _field_present(value: Any, field: str) -> bool:
+    if isinstance(value, Mapping):
+        return _value_present(value.get(field))
+    return _value_present(getattr(value, field, None))
+
+
+def _required_keys(required_config_keys: list[str] | None) -> list[str]:
+    return sorted({str(key).strip() for key in required_config_keys or [] if str(key).strip()})
+
+
+@workflow(
+    name="Utilities: Check Integration Readiness",
+    description=("Verify that an integration resolves usable scoped configuration without exposing credential values."),
+    category="Utilities",
+    tags=["integrations", "readiness", "credentials", "scope", "read-only"],
+)
+async def check_integration_readiness(
+    integration_name: str,
+    organization_id: str | None = None,
+    required_config_keys: list[str] | None = None,
+    require_mapping: bool = False,
+    require_oauth: bool = False,
+) -> dict[str, Any]:
+    """Check scoped integration configuration without returning secrets or identifiers."""
+    name = str(integration_name or "").strip()
+    scope = str(organization_id or "").strip() or None
+    required_keys = _required_keys(required_config_keys)
+    if not name:
+        raise UserError("integration_name is required")
+    if require_mapping and scope is None:
+        raise UserError("organization_id is required when require_mapping is true")
+
+    lookup_error_type: str | None = None
+    try:
+        integration = await integrations.get(name, scope=scope)
+    except Exception as exc:
+        integration = None
+        lookup_error_type = type(exc).__name__
+
+    config = _mapping(getattr(integration, "config", None)) if integration else {}
+    configured_keys = sorted(str(key) for key, value in config.items() if _value_present(value))
+    configured_key_set = set(configured_keys)
+    missing_required_keys = [key for key in required_keys if key not in configured_key_set]
+
+    oauth = getattr(integration, "oauth", None) if integration else None
+    oauth_fields = {field: _field_present(oauth, field) for field in _OAUTH_FIELDS}
+    oauth_ready = bool(
+        oauth_fields["access_token"]
+        or oauth_fields["refresh_token"]
+        or (oauth_fields["client_id"] and oauth_fields["client_secret"])
+    )
+
+    mapping_checked = scope is not None
+    mapping_present = False
+    mapping_lookup_error_type: str | None = None
+    if mapping_checked:
+        try:
+            mapping_present = bool(await integrations.get_mapping(name, scope=scope))
+        except Exception as exc:
+            mapping_lookup_error_type = type(exc).__name__
+
+    found = integration is not None
+    credential_material_present = bool(configured_keys) or oauth_ready
+    blockers: list[str] = []
+    if lookup_error_type:
+        blockers.append("integration_lookup_failed")
+    elif not found:
+        blockers.append("integration_not_found")
+    if found and not credential_material_present:
+        blockers.append("no_usable_configuration")
+    if missing_required_keys:
+        blockers.append("required_config_keys_missing")
+    if require_oauth and not oauth_ready:
+        blockers.append("oauth_not_ready")
+    if require_mapping and not mapping_present:
+        blockers.append("mapping_not_found")
+    if require_mapping and mapping_lookup_error_type:
+        blockers.append("mapping_lookup_failed")
+
+    return {
+        "integration_name": name,
+        "scope_mode": "organization" if scope else "current_or_global",
+        "found": found,
+        "lookup_error_type": lookup_error_type,
+        "configured_keys": configured_keys,
+        "required_config_keys": required_keys,
+        "missing_required_config_keys": missing_required_keys,
+        "oauth_fields_present": oauth_fields,
+        "oauth_ready": oauth_ready,
+        "credential_material_present": credential_material_present,
+        "mapping_checked": mapping_checked,
+        "mapping_present": mapping_present if mapping_checked else None,
+        "mapping_lookup_error_type": mapping_lookup_error_type,
+        "ready": not blockers,
+        "blockers": blockers,
+        "guarantees": {
+            "read_only": True,
+            "vendor_connectivity_tested": False,
+            "credential_values_returned": False,
+            "raw_scope_identifier_returned": False,
+        },
+    }
