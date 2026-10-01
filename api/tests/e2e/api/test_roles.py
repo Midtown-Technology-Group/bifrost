@@ -163,6 +163,55 @@ class TestRoleCRUD:
         assert searched.json()["total"] == 1
         assert searched.json()["users"][0]["email"] == org2_user.email
 
+    def test_delete_role_with_assigned_users_cascades(
+        self, e2e_client, platform_admin, org1_user, org2_user
+    ):
+        """Deleting a role with user assignments removes the assignments (204).
+
+        Regression test for MIDT-103: DELETE /api/roles/{id} returned 500
+        when the role had user_roles rows because Role.users had no delete
+        cascade and the ORM tried to null the user_roles.role_id PK column.
+        """
+        response = e2e_client.post(
+            "/api/roles",
+            headers=platform_admin.headers,
+            json={
+                "name": "E2E Delete Cascade Role",
+                "description": "Role deleted while users are assigned",
+            },
+        )
+        assert response.status_code == 201, f"Create role failed: {response.text}"
+        role_id = response.json()["id"]
+
+        assigned = e2e_client.post(
+            f"/api/roles/{role_id}/users",
+            headers=platform_admin.headers,
+            json={
+                "user_ids": [
+                    str(org1_user.user_id),
+                    str(org2_user.user_id),
+                ]
+            },
+        )
+        assert assigned.status_code in [200, 201, 204], (
+            f"Assign role failed: {assigned.status_code} - {assigned.text}"
+        )
+
+        deleted = e2e_client.delete(
+            f"/api/roles/{role_id}",
+            headers=platform_admin.headers,
+        )
+        assert deleted.status_code == 204, (
+            f"Delete role with assignments failed: "
+            f"{deleted.status_code} - {deleted.text}"
+        )
+
+        fetched = e2e_client.get(
+            f"/api/roles/{role_id}",
+            headers=platform_admin.headers,
+        )
+        assert fetched.status_code == 404
+
 
 @pytest.mark.e2e
 class TestRoleAccess:
