@@ -652,8 +652,9 @@ def resolve_module_sync(name: str) -> ModuleResolution:
                 continue
             module = get_module_sync(relative_path)
             if module is None:
+                immutable_kind = "release" if release_ctx is not None else "deployment"
                 raise ModuleResolutionError(
-                    f"Immutable runtime module unavailable: {relative_path}"
+                    f"Immutable {immutable_kind} module unavailable: {relative_path}"
                 )
             _verify_immutable_module_hash(relative_path, module)
             return ModuleResolution(
