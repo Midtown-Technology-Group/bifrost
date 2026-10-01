@@ -60,24 +60,33 @@ requires delegation; the Halo reporting agent's authored tool UUIDs do not match
 current source declarations. Do not replace tools or drop capabilities to obtain
 a passing test.
 
-## Concrete decision needed before nominal B implementation
+## Authorized Python prerequisite; nominal B remains gated
 
-One option is a separate Python prerequisite correction, independently reviewed
-and characterized before it becomes the parity baseline. Its bounded interface
-would carry trusted original caller admin/provider/external/role attributes
+The user authorized a separate, narrowly reviewed Python prerequisite PR on
+2026-10-01, without merge or deployment. Candidate
+`31dd41f519b5c510c77a7ac6f70b9400c94a65e3`, based on the platform main above,
+carries trusted original caller admin/provider/external/role attributes
 through public agent admission, `AgentWorkflowCaller`, `execute_tool` and pending
-dispatch. It must preserve caller organization separately from target/run
-organization, default callerless authority to the existing explicit policy, and
-never infer authority from transport admin or destination organization.
+dispatch. Ordinary admin authority is refreshed from the database at tool
+dispatch, including revocation during the model wait; external actors retain
+their existing re-resolution. Callerless defaults remain unprivileged. No
+authority may be inferred from transport admin or destination organization.
+
+This correction deliberately preserves existing run/rerun execution-org
+expressions. Their dual-use caller/target organization is **not** repaired by
+privilege propagation. Separate original-caller and effective execution scope
+remain a full runtime-protocol gate; this candidate must not be represented as
+having completed that separation or broader privilege-revocation policy.
 
 Required tests include provider non-superuser, ordinary tenant, superuser and
 external principals; enqueue/execute/rerun/chat; foreign-org and revoked-grant
 negatives; exact signed delegated caller/fence; unchanged capacity tool with
 actual SDK and strictly synthetic Cove transport; cancellation; and credential
-non-disclosure. This is a correction proposal, not approved implementation or
-passing evidence. Alternatively, authoritative complete bindings for another
-unchanged representative agent could remove this prerequisite. Until that
-choice is approved, nominal Cove B remains blocked and C2/C3 cannot invent flags.
+non-disclosure. Scope approval is not passing evidence: independent review,
+supported candidate checks and the real unchanged agent/tool/SDK reference are
+still required. Current main remains the uncorrected reference; an unmerged
+corrected candidate must be named explicitly in any comparison. Nominal Cove B
+remains blocked until those gates pass, and C2/C3 cannot invent flags.
 
 ## Preserve real model bootstrap and summarization
 
@@ -101,3 +110,30 @@ transport/runtime behavior, not live provider quality or compatibility.
 Isolated reference environments do not establish safe mixed Python/Rust writers.
 That later gate still requires both implementations against one schema/database,
 mechanical exclusion, concurrency, and in-flight rollback without data repair.
+
+## Deployed delivery configuration: partial read-only evidence
+
+On 2026-10-01, the documented Azure operating lane was read without mutation:
+`app-mtg-bifrost-production`, resource group
+`rg-mtg-bifrost-poc-core-centralus`, subscription
+`a1d63b24-1202-4bfa-9086-cf32d1d352fc`. API, worker and scheduler site-container
+configuration references app settings. Selected settings read back
+`BIFROST_WORK_DELIVERY_BACKEND=postgres`, production environment and concurrency
+values of four. These are configured references/values, not effective process
+readback for every role or instance.
+
+At 16:51:32 UTC, an unauthenticated, redirect-disabled GET to the deployed
+`/health/ready` returned 200: database and Redis healthy, work delivery healthy
+with type `postgresql` and provider `postgres`, RabbitMQ `not_configured`.
+This is one actual API response, not worker/scheduler runtime evidence.
+Deployed immutable image identities were:
+
+- API and scheduler: `ghcr.io/midtown-technology-group/bifrost-api@sha256:fe4cfca0ec804f763de04649a373580c0520f6529fba1198970ace344ba62996`.
+- Worker: `ghcr.io/midtown-technology-group/bifrost-worker@sha256:81b15c59388a70179fb9fe42adb27f2efb3fdd02d549723684c020057c89b58c`.
+- Frontend: `ghcr.io/midtown-technology-group/bifrost-client@sha256:f7189555a9821d0b3cd591f5186898789afbe0ea53503ef4bd8fb6481f3d321c`.
+
+The source/deployment gate remains incomplete for effective worker/scheduler
+settings. Do not infer their backend from checked-in defaults or treat these
+image digests as proof that current main is deployed. No RabbitMQ Rust support
+is authorized; any discovered relevant RabbitMQ runtime is a separate future
+worker-cutover prerequisite.
