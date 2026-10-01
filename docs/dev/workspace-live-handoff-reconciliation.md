@@ -10,6 +10,9 @@ preview must omit that installation's bindings without reclaiming its workflows.
 - An active Solution pointer in `deployment-v1`, finalized immutable deployment
   hashes, storage identity, current registrations and exposure controls.
 - Archive and runtime byte readback, resource contracts and dependency closure.
+  Historical artifacts retain their immutable byte proof; current shared-table
+  and Root-file contracts are checked for the active runtime and its pinned
+  dependencies. Reviewed replacements need not keep obsolete origin contracts live.
 - Activated reviewed Source/workflow revision lineage back to the original
   guarded handoff. Missing parents, cycles and unrelated installs fail closed.
 - The original Live row/release identity, source hashes, bundle hash and recomputed

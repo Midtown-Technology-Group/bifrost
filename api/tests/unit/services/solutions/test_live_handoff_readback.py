@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import pytest
 
+from bifrost.root_file_bindings import RootFileBinding
+from bifrost.solution_delivery_review import SharedRootTableBinding
 from bifrost.workspace_release import canonical_digest
 from src.services.solutions import live_handoff_readback as readback
 from src.services.solutions.deployment_manifest import (
@@ -116,9 +118,7 @@ async def test_certified_handoff_leaves_owner_and_immutable_receipt_unchanged(ha
     assert len(handoff.guard.solutions) == 1
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize('schema', [readback.SOURCE_MARKER, readback.WORKFLOW_REVISION_MARKER])
-async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schema):
+def _reviewed_successor(handoff, schema):
     origin = handoff.deployment
     origin.state = 'superseded'
     new_id = uuid4()
@@ -150,6 +150,12 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
     handoff.deployments[new_id] = candidate
     handoff.storage['revisions'] = {new_id: {'archive': source_archive({handoff.path: content}), 'runtime': content}}
     handoff.solution.active_deployment_id = new_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('schema', [readback.SOURCE_MARKER, readback.WORKFLOW_REVISION_MARKER])
+async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schema):
+    _reviewed_successor(handoff, schema)
     await handoff.guard.require(handoff.inherited)
 
 
@@ -260,3 +266,53 @@ async def test_preview_cannot_recreate_a_handed_off_entry(handoff):
     with patch('src.services.workspace_promotions._validate_closure_files', return_value={}):
         with pytest.raises(WorkspacePromotionInvalid, match='use reviewed Solution delivery'):
             await service.preview(request, uuid4())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["shared_tables", "root_file_bindings"])
+async def test_reviewed_replacement_checks_current_contract_not_obsolete_origin(handoff, monkeypatch, kind):
+    h1, h2, h3 = ("sha256:" + char * 64 for char in ("1", "2", "3"))
+    field = "metadata_hash" if kind == "shared_tables" else "expected_read_sha256"
+    binding = (SharedRootTableBinding(table_id=uuid4(), metadata_hash=h1)
+        if kind == "shared_tables" else RootFileBinding(location="workspace",
+            path="features/assets/tool.ps1", operations=("read",), max_bytes=4096,
+            expected_read_sha256=h1))
+    original_bindings = {"tool": binding}
+    resolution = handoff.resolution.model_copy(update={kind: original_bindings})
+    bundle = sha256_digest(canonical_json({"release_id": handoff.release.release_id,
+        "workflow_ids": [str(handoff.workflow.id)], "shared_tables": {
+            name: value.model_dump(mode="json") for name, value in resolution.shared_tables.items()},
+        "source_hashes": {path: source.content_hash for path, source in resolution.sources.items()}}))
+    manifest = handoff.manifest.model_copy(update={kind: original_bindings,
+        "bundle_hash": bundle, "resolution_map_hash": sha256_digest(canonical_json(resolution))})
+    origin = handoff.deployment
+    origin.compiled_manifest, origin.resolution_map = manifest, resolution
+    origin.bundle_hash, origin.compiled_manifest_hash = bundle, manifest.content_hash()
+    origin.resolution_map_hash = manifest.resolution_map_hash
+    origin.validation_result["preflight_evidence_id"] = handoff_preflight_evidence_id(
+        handoff.release, manifest, resolution, workflow_ids=[handoff.workflow.id])
+    handoff.manifest, handoff.resolution = manifest, resolution
+    _reviewed_successor(handoff, readback.WORKFLOW_REVISION_MARKER)
+    active = handoff.deployments[handoff.solution.active_deployment_id]
+    current_bindings = {"tool": binding.model_copy(update={field: h2})}
+    active.resolution_map = active.resolution_map.model_copy(update={kind: current_bindings})
+    active.resolution_map_hash = sha256_digest(canonical_json(active.resolution_map))
+    active.compiled_manifest = active.compiled_manifest.model_copy(update={kind: current_bindings,
+        "resolution_map_hash": active.resolution_map_hash})
+    active.compiled_manifest_hash = active.compiled_manifest.content_hash()
+    observed, current = [], {"hash": h2}
+    async def require_current(_db, bindings):
+        observed.append(bindings["tool"])
+        if getattr(bindings["tool"], field) != current["hash"]:
+            raise ValueError("Current Root contract drifted")
+    monkeypatch.setattr(readback, "require_shared_tables" if kind == "shared_tables"
+        else "require_root_workspace_files", require_current)
+    await readback.LiveHandoffReadback(handoff.guard.db, handoff.release).require(handoff.inherited)
+    assert observed == [current_bindings["tool"]]
+    current["hash"] = h3
+    with pytest.raises(ValueError, match="Current Root contract drifted"):
+        await readback.LiveHandoffReadback(handoff.guard.db, handoff.release).require(handoff.inherited)
+    current["hash"] = h2
+    handoff.storage["runtime"] = b"corrupted historical runtime"
+    with pytest.raises(ValueError, match="runtime source bytes differ"):
+        await readback.LiveHandoffReadback(handoff.guard.db, handoff.release).require(handoff.inherited)
