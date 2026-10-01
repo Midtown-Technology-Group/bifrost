@@ -68,11 +68,9 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     """Exclusive synthetic consumers inside an outer rollback transaction."""
     from src import config
     from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
-    from src.services.solutions.deployment_manifest import DeploymentGitProvenance
     from src.models.orm.executions import Execution
     from src.models.orm.execution_attempts import ExecutionAttempt
     from src.models.orm.operation_receipts import OperationReceipt
-    from src.models.orm.solution_deployments import SolutionDeployment
     from src.models.orm.solutions import Solution
     from src.models.orm.workflows import Workflow
     from src.models.enums import ExecutionStatus
@@ -87,7 +85,8 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     await db_session.execute(update(Workflow).values(is_active=False))
     await db_session.execute(update(Execution).values(status=ExecutionStatus.SUCCESS))
     await db_session.execute(update(ExecutionAttempt).values(completed_at=datetime.now(UTC)))
-    f = await _seed_adopted_revision(db_session, platform_admin, monkeypatch)
+    commit, tree = "a" * 40, "b" * 40
+    f = await _seed_adopted_revision(db_session, platform_admin, monkeypatch, source_commit_sha=commit)
     f.objects[(str(f.base_id), f.path)] = f.old_source
     monkeypatch.setattr(accounting, "SolutionDeploymentStorage", source_revision.SolutionDeploymentStorage)
     policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace", repository_id=1197464564,
@@ -101,8 +100,7 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
         workspace_source_release_oidc_repository_owner_id=policy.repository_owner_id)
     monkeypatch.setattr(config, "get_settings", lambda: settings)
     monkeypatch.setattr(accounting, "get_settings", lambda: settings)
-    commit, tree = "a" * 40, "b" * 40
-    manifest = f.manifest.model_copy(update={"git": DeploymentGitProvenance(commit_sha=commit)})
+    manifest = f.manifest
     identity = {"repository_id": policy.repository_id, "solution_id": str(f.solution_id),
         "source_commit_sha": commit, "artifact_digest": "sha256:" + "c" * 64,
         "ci_run_id": 123, "ci_run_attempt": 1, "producer_run_id": "456", "producer_run_attempt": 1}
@@ -118,10 +116,6 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
         "tree_sha": tree, "receipt_id": str(receipt.id), "source_mapping_schema": accounting.MAPPING_SCHEMA,
         "repository_paths": {f.path: f.path}, "runtime_hashes": {f.path: digest},
         "control_hashes": {}, "recipe_path": policy.solutions[f.solution_id]}
-    await db_session.execute(update(SolutionDeployment).where(SolutionDeployment.id == f.base_id).values(
-        compiled_manifest=manifest.model_dump(mode="json", exclude_none=True),
-        compiled_manifest_hash=manifest.content_hash(), git_commit_sha=commit).execution_options(synchronize_session=False))
-    await db_session.refresh(f.base)
     f.policy, f.proof, f.receipt, f.commit, f.tree, f.digest = policy, proof, receipt, commit, tree, digest
     return f
 
