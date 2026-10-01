@@ -784,10 +784,11 @@ def test_profile_policies_remain_fail_closed_across_runtime_modes():
 
 
 def test_generation_after_read_is_independent_of_returned_context():
-    observation, _, profile = pinned_vector()
+    observation, bindings, profile = pinned_vector()
     row = observation.database["executions"][0]
     witness = profile.generation_witnesses[row["id"]]
     fixture = object.__new__(PinnedEnvironment)
+    fixture.bindings = deepcopy(bindings)
     fixture.generation_witnesses = {row["id"]: {**deepcopy(witness), "after": None}}
     reads = []
 
@@ -828,9 +829,10 @@ def test_generation_source_read_uses_only_existing_redis_key(monkeypatch):
 
 
 def test_generation_after_read_rejects_actual_changed_source_value():
-    observation, _, profile = pinned_vector()
+    observation, bindings, profile = pinned_vector()
     row = observation.database["executions"][0]
     fixture = object.__new__(PinnedEnvironment)
+    fixture.bindings = deepcopy(bindings)
     fixture.generation_witnesses = deepcopy(profile.generation_witnesses)
     fixture.generation_witnesses[row["id"]]["after"] = None
 
@@ -844,3 +846,150 @@ def test_generation_after_read_rejects_actual_changed_source_value():
     with pytest.raises(AssertionError, match="changed during admission"):
         coroutine.send(None)
     assert fixture.generation_witnesses[row["id"]]["after"] is None
+
+
+@pytest.mark.parametrize("winner", ["creator", "other-worker"])
+def test_real_cold_producer_and_independent_after_read_bind_success(
+    monkeypatch, winner
+):
+    from src.core import module_cache_sync
+
+    from tests.parity.core import pinned as pinned_module
+
+    observation, bindings, profile = pinned_vector()
+    row = observation.database["executions"][0]
+    candidate = UUID("11111111-1111-4111-8111-111111111111")
+    calls, values = [], {}
+
+    class ProducerRedis:
+        def get(self, key):
+            calls.append(("get", key))
+            return values.get(key)
+
+        def set(self, key, value, *, nx):
+            calls.append(("set", key, value, nx))
+            assert nx is True
+            values[key] = value if winner == "creator" else "opaque-other-worker-winner"
+            return winner == "creator"
+
+    source = ProducerRedis()
+
+    class ReadOnlyRedis:
+        async def get(self, key):
+            return source.get(key)
+
+    fixture = object.__new__(PinnedEnvironment)
+    fixture.redis = ReadOnlyRedis()
+    fixture.bindings = {
+        raw: role
+        for raw, role in bindings.items()
+        if role != "observed-workspace-generation"
+    }
+    fixture.generation = None
+    clock = iter(
+        [
+            observation.before,
+            observation.before + timedelta(milliseconds=1),
+            observation.after - timedelta(milliseconds=1),
+            observation.after,
+        ]
+    )
+    monkeypatch.setattr(pinned_module, "now", lambda: next(clock))
+    before_read = fixture.read_generation(allow_absent=True)
+    with pytest.raises(StopIteration) as before_result:
+        before_read.send(None)
+    assert before_result.value.value["value"] is None
+    assert calls == [("get", WORKSPACE_GENERATION_KEY)]
+    monkeypatch.setattr(module_cache_sync, "_get_sync_redis", lambda: source)
+    monkeypatch.setattr(
+        module_cache_sync, "get_workspace_release_context", lambda: None
+    )
+    monkeypatch.setattr(module_cache_sync, "uuid4", lambda: candidate)
+    # Only the actual isolated producer helper performs the simulated NX write.
+    actual_generation = module_cache_sync.get_workspace_generation_sync()
+    assert actual_generation == (
+        candidate.hex if winner == "creator" else "opaque-other-worker-winner"
+    )
+    assert [call for call in calls if call[0] == "set"] == [
+        ("set", WORKSPACE_GENERATION_KEY, candidate.hex, True)
+    ]
+    row["execution_context"]["workspace_generation"] = actual_generation
+    fixture.generation_witnesses = {
+        row["id"]: {
+            "source": WORKSPACE_GENERATION_KEY,
+            "execution_id": row["id"],
+            "before": before_result.value.value,
+            "after": None,
+        }
+    }
+    after_read = fixture.witness_successful_generations([row])
+    with pytest.raises(StopIteration):
+        after_read.send(None)
+    assert fixture.generation_witnesses[row["id"]]["before"]["value"] is None
+    assert fixture.generation == values[WORKSPACE_GENERATION_KEY]
+    assert fixture.bindings[fixture.generation] == "observed-workspace-generation"
+    assert len([call for call in calls if call[0] == "set"]) == 1
+    profile.generation_witnesses = fixture.generation_witnesses
+    profile.validate_pending_context(observation, fixture.bindings)
+
+
+@pytest.mark.parametrize("after", [None, "", "updating:unready", 1])
+def test_cold_before_does_not_allow_absent_or_unready_success_after(after):
+    observation, bindings, profile = pinned_vector()
+    row = observation.database["executions"][0]
+    witness = profile.generation_witnesses[row["id"]]
+    witness["before"]["value"] = None
+    witness["after"]["value"] = after
+    with pytest.raises(AssertionError, match="generation read invalid"):
+        profile.validate_pending_context(observation, bindings)
+
+
+def test_cold_before_still_rejects_public_context_as_its_own_expectation():
+    observation, bindings, profile = pinned_vector()
+    row = observation.database["executions"][0]
+    profile.generation_witnesses[row["id"]]["before"]["value"] = None
+    row["execution_context"]["workspace_generation"] = "untrusted-returned-generation"
+    with pytest.raises(AssertionError, match="successful source generation differs"):
+        profile.validate_pending_context(observation, bindings)
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_cold_success_requires_the_independent_after_record(missing):
+    observation, bindings, profile = pinned_vector()
+    row = observation.database["executions"][0]
+    witness = profile.generation_witnesses[row["id"]]
+    witness["before"]["value"] = None
+    if missing:
+        del witness["after"]
+    else:
+        witness["after"] = None
+    with pytest.raises(AssertionError, match="generation (read|witness) absent"):
+        profile.validate_pending_context(observation, bindings)
+
+
+def test_unsubmitted_cold_execution_does_not_gain_after_witness_or_binding():
+    observation, bindings, profile = pinned_vector()
+    row = observation.database["executions"][0]
+    row["status"] = "Failed"
+    row["execution_context"] = None
+    fixture = object.__new__(PinnedEnvironment)
+    fixture.bindings = {
+        raw: role
+        for raw, role in bindings.items()
+        if role != "observed-workspace-generation"
+    }
+    fixture.generation_witnesses = deepcopy(profile.generation_witnesses)
+    fixture.generation_witnesses[row["id"]]["before"]["value"] = None
+    fixture.generation_witnesses[row["id"]]["after"] = None
+
+    async def forbidden_read():
+        raise AssertionError("Unsuccessful execution must not gain an after witness")
+
+    fixture.read_generation = forbidden_read
+    coroutine = fixture.witness_successful_generations([row])
+    with pytest.raises(StopIteration):
+        coroutine.send(None)
+    assert fixture.generation_witnesses[row["id"]]["after"] is None
+    assert "observed-workspace-generation" not in fixture.bindings.values()
+    profile.generation_witnesses = fixture.generation_witnesses
+    profile.validate_pending_context(observation, fixture.bindings)

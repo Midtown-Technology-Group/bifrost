@@ -51,9 +51,9 @@ PORTABLE_REF = f"{SOURCE_PATH}::{FUNCTION}"
 SOURCE_HASH = f"sha256:{SOURCE_SHA256}"
 
 
-def generation_read(value, started, completed):
+def generation_read(value, started, completed, *, allow_absent=False):
     """Record an independent Redis read; never initialize a cold generation."""
-    assert (
+    assert (allow_absent and value is None) or (
         type(value) is str and value and not value.startswith(WORKSPACE_UPDATING_PREFIX)
     ), "Pinned workspace generation cold or updating; source witness unavailable"
     assert started.tzinfo is not None and completed.tzinfo is not None
@@ -332,7 +332,7 @@ class PinnedEnvironment(ReferenceEnvironment):
                 assert not row.endpoint_enabled and not row.public_endpoint
 
     async def allocate_execution(self, role, *, request_name=None):
-        before = await self.read_generation()
+        before = await self.read_generation(allow_absent=True)
         existing = [
             raw
             for raw, owner in self.bindings.items()
@@ -341,8 +341,6 @@ class PinnedEnvironment(ReferenceEnvironment):
         assert not existing or existing == [before["value"]], (
             "Pinned workspace generation changed between owned admissions"
         )
-        self.generation = before["value"]
-        self.bindings[self.generation] = "observed-workspace-generation"
         identity = await super().allocate_execution(role, request_name=request_name)
         self.generation_witnesses[str(identity)] = {
             "source": WORKSPACE_GENERATION_KEY,
@@ -364,10 +362,10 @@ class PinnedEnvironment(ReferenceEnvironment):
         await self.redis.set(key, json.dumps(owner), ex=600)
         return identity
 
-    async def read_generation(self):
+    async def read_generation(self, *, allow_absent=False):
         started = now()
         value = await self.redis.get(WORKSPACE_GENERATION_KEY)
-        return generation_read(value, started, now())
+        return generation_read(value, started, now(), allow_absent=allow_absent)
 
     async def witness_successful_generations(self, executions):
         for execution in executions:
@@ -376,9 +374,20 @@ class PinnedEnvironment(ReferenceEnvironment):
             witness = self.generation_witnesses[execution["id"]]
             if witness["after"] is None:
                 after = await self.read_generation()
-                assert after["value"] == witness["before"]["value"], (
-                    "Pinned workspace generation changed during admission"
+                assert (
+                    witness["before"]["value"] is None
+                    or after["value"] == witness["before"]["value"]
+                ), "Pinned workspace generation changed during admission"
+                existing = [
+                    raw
+                    for raw, owner in self.bindings.items()
+                    if owner == "observed-workspace-generation"
+                ]
+                assert not existing or existing == [after["value"]], (
+                    "Pinned workspace generation changed between owned admissions"
                 )
+                self.generation = after["value"]
+                self.bindings[self.generation] = "observed-workspace-generation"
                 witness["after"] = after
 
     async def mutate_runtime_source(self):

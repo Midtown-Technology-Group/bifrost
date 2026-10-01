@@ -297,13 +297,13 @@ class PinnedProfile(CoreReferenceProfile):
             and witness["execution_id"] == owner["id"]
         ), "Pinned generation witness provenance differs"
         reads = [witness["before"], witness["after"]]
-        for read in reads:
+        for index, read in enumerate(reads):
             assert type(read) is dict and read.keys() == {
                 "value",
                 "started_at",
                 "completed_at",
             }, "Pinned generation read absent"
-            assert (
+            assert (index == 0 and read["value"] is None) or (
                 type(read["value"]) is str
                 and read["value"]
                 and not read["value"].startswith(WORKSPACE_UPDATING_PREFIX)
@@ -316,14 +316,15 @@ class PinnedProfile(CoreReferenceProfile):
         assert instant(reads[0]["completed_at"]) <= instant(reads[1]["started_at"]), (
             "Pinned generation witness order differs"
         )
-        assert (
-            reads[0]["value"]
-            == reads[1]["value"]
-            == fixture_binding(bindings, "observed-workspace-generation")
-        ), "Pinned generation changed during admission"
+        assert reads[0]["value"] is None or reads[0]["value"] == reads[1]["value"], (
+            "Pinned generation changed during admission"
+        )
+        assert reads[1]["value"] == fixture_binding(
+            bindings, "observed-workspace-generation"
+        ), "Pinned observed generation binding differs"
         assert (
             type(context.get("workspace_generation")) is str
-            and context["workspace_generation"] == reads[0]["value"]
+            and context["workspace_generation"] == reads[1]["value"]
         ), "Pinned successful source generation differs"
 
     def validate_pending_context(self, observation, bindings):
