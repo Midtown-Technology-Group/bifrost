@@ -375,7 +375,10 @@ class CoreReferenceProfile:
                 }
             if path == ("events", "channel") and isinstance(value, str):
                 for raw, role in identities.items():
-                    if value in {f"execution:{raw}", f"history:user:{raw}"}:
+                    if value in {
+                        f"bifrost:execution:{raw}",
+                        f"bifrost:history:user:{raw}",
+                    }:
                         return value.replace(raw, f"identity:{role}")
             if (
                 path

@@ -185,5 +185,6 @@ def assert_readiness(
         and event["payload"].get("status") == "Success"
     ]
     assert (
-        len(terminal) == 1 and terminal[0]["channel"] == f"execution:{execution['id']}"
+        len(terminal) == 1
+        and terminal[0]["channel"] == f"bifrost:execution:{execution['id']}"
     )

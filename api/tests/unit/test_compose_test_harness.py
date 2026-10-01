@@ -308,7 +308,7 @@ def test_core_reference_explicit_profile_service_is_started_and_removed():
     workflow = yaml.safe_load(_find_repo_file(".github/workflows/core-reference.yml").read_text())
     steps = workflow["jobs"]["reference"]["steps"]
     assert any("core-reference-observer.sh start" in step.get("run", "") for step in steps)
-    cleanup = next(step for step in steps if step["name"] == "Stop this CI job's isolated test stack")
+    cleanup = next(step for step in steps if step.get("name") == "Stop this CI job's isolated test stack")
     assert cleanup["if"] == "always()"
     assert "core-reference-observer.sh stop" in cleanup["run"]
     assert "./test.sh stack down" in cleanup["run"]

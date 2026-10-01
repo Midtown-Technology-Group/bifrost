@@ -218,7 +218,7 @@ class ScopedReferenceCapture:
             terminal = {
                 event["payload"].get("execution_id")
                 for event in self.buffered_events
-                if event["channel"] == "history:GLOBAL"
+                if event["channel"] == "bifrost:history:GLOBAL"
                 and isinstance(event["payload"], dict)
                 and event["payload"].get("type") == "history_update"
                 and event["payload"].get("status")
