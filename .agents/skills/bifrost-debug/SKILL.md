@@ -96,10 +96,9 @@ cd /tmp/bifrost-cli-<worktree-name>
 
 ## Lifecycle: who tears down what
 
-- **The stack outlives this Claude session.** Closing or clearing the session does NOT tear it down. This is intentional — the user might come back, or have another Claude session attach to the same stack.
-- To tear down explicitly: `./debug.sh down`. This removes containers and volumes (postgres data is lost — fine for a debug stack; not fine for the prod stack).
-- If the user says "stop the debug stack" or "wipe the debug data," run `./debug.sh down`.
-- If a second Claude session or a new conversation comes up while the stack is already running, that's fine — `./debug.sh status` will reveal it. Don't call `./debug.sh up` redundantly; just hand over the URL from `status`.
+Follow [debug environment ownership and cleanup](../../../docs/dev/agent-platform-rules.md#debug-environment-ownership-and-cleanup). Record the initial host/worktree/project and existing resources before booting. Clean up disposable resources you create for issue/PR verification before final handoff, including failed or abandoned work; verify containers, networks and disposable volumes are gone.
+
+Preserve pre-existing/shared stacks and data. `./debug.sh down` deletes project volumes, so use it only for confirmed disposable task-created data. A stack explicitly launched for the user's continued browser use, or retained for active review, needs an explicit owner, reason and cleanup checkpoint in the handoff. Session closure alone is not a cleanup mechanism or permission to retain the stack indefinitely.
 
 ## Hot reload — don't restart for code changes
 
@@ -132,7 +131,7 @@ Group by project name to find each worktree's URL: `cd <worktree> && ./debug.sh 
 
 **Login still shows the setup wizard:**
 - The seed-user provisioning runs on every API boot. If the wizard appears, the seed env vars probably aren't loaded — check `docker compose -f docker-compose.debug.yml exec api env | grep BIFROST_DEFAULT_USER`. If empty, `.env.debug` isn't being sourced; investigate `load_env_files` in `debug.sh`.
-- "User already exists" on the wizard: a previous (broken) seed user lingers without an org. Run `./debug.sh down` (wipes the DB volume) and `./debug.sh up` again.
+- "User already exists" on the wizard: a previous (broken) seed user lingers without an org. Only for confirmed disposable task-owned data, run `./debug.sh down` (wipes the DB volume) and `./debug.sh up` again; preserve pre-existing data and report the blocker otherwise.
 
 **Mode A can't be reached at the public URL:**
 - Run `./debug.sh status`. If it only shows the private URL, inspect `./debug.sh logs netbird` for Peer Expose permissions or certificate provisioning errors.
