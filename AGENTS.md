@@ -9,7 +9,17 @@ Read applicable nested guidance and the companion sections for the changed surfa
 - Durable jobs: [shared job rules](docs/dev/agent-platform-rules.md#long-running-platform-jobs-critical). Upstream delivery: [fork boundaries](docs/dev/agent-platform-rules.md#read-first-persona-b).
 - Tests, CI or PRs: [verification](docs/dev/agent-platform-rules.md#pre-completion-verification-required). Environment setup: [development](docs/dev/agent-platform-rules.md#development-environment-critical---read-first).
 
-`CLAUDE.md` remains the tool-native playbook. Shared routing comes from `mtg-engineering-flow` without overriding repository gates.
+List companion headings with `python3 docs/dev/read-guidance.py platform` (or
+`claude`), then pass exact headings to read their complete sections. For example,
+client changes need `"Project-Specific Rules"`, `"Pre-Completion Verification (REQUIRED)"`
+and, when developing live behavior, `"Development Environment (CRITICAL - READ FIRST)"`.
+Read additional sections when the changed surface requires them. The reader
+includes subsections and fenced examples; it does not replace nested guidance,
+referenced skills or their required checks. On Windows use `python`.
+
+`CLAUDE.md` remains the tool-native playbook; consult its applicable sections
+when this guide or a selected reference directs you there. Shared routing comes
+from `mtg-engineering-flow` without overriding repository gates.
 
 ## Critical boundaries
 
