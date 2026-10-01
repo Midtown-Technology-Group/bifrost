@@ -59,6 +59,13 @@ class SharedRootTableBinding(SharedRootTableGrant):
     def grants(self) -> tuple[SharedRootTableGrant, ...]:
         return (self, *(self.additional_scopes or ()))
 
+    def with_scope(self, grant: SharedRootTableGrant) -> SharedRootTableBinding:
+        """Append an exact grant through the same canonical scope validation."""
+        return SharedRootTableBinding(
+            **self.model_dump(exclude={"additional_scopes"}),
+            additional_scopes=(*(self.additional_scopes or ()), grant),
+        )
+
     @model_validator(mode="after")
     def unique_scopes(self) -> SharedRootTableBinding:
         grants = self.grants()
