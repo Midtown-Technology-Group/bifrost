@@ -2,7 +2,7 @@ name: Runtime control protocol
 
 on:
   pull_request:
-    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane, rust/runtime-contract]
   workflow_dispatch:
 
 permissions:
@@ -36,3 +36,5 @@ jobs:
         run: bash api/scripts/ci/prepare-test-images.sh api
       - name: Verify shared vectors and both real encoder exchanges
         run: bash scripts/ci/runtime-control-interchange.sh
+      - name: Compare evidence bytes with pinned independent Python oracle
+        run: bash scripts/ci/runtime-evidence-interchange.sh

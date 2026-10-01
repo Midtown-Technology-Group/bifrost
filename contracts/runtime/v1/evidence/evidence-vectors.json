@@ -1,0 +1,5950 @@
+{
+  "schema": "bifrost.synthetic-canonical-source-probe/v1",
+  "procedure": "mtg-engineering-flow/2026-09-30.1",
+  "evidence": "supported-Docker synthetic source-helper execution only",
+  "platform_ref": "ba783472b770291e612433ad7ca9564fe671dade",
+  "mounted_foundation_ref": "a5e129ac3cbcb1f3098e7dd0923721fccc84cb16",
+  "workspace_ref": "83c1cb034dbbcfa29eb1723506735b13b4788536",
+  "image": "sha256:1ed49b5898986723c040dab6cf98f05951e71a57c226e025d353f15b300ca581",
+  "python": "3.14.7",
+  "isolation": {
+    "network": "none",
+    "mounts": "readonly source/shared/SDK/probe/authored text",
+    "authored_workflow_import": false,
+    "database_or_workload_execution_called": false,
+    "observer": "delegating json.dumps trace where helper returns only digest/ciphertext"
+  },
+  "versions": {
+    "pydantic": "2.13.3",
+    "pydantic-core": "2.46.3",
+    "SQLAlchemy": "2.0.49",
+    "cryptography": "50.0.0"
+  },
+  "sources": {
+    "src/services/solutions/deployment_manifest.py": {
+      "ref": "ba783472b770291e612433ad7ca9564fe671dade",
+      "sha256": "815284d4127a646cfbe1fa713ed01bc3ea3ba7e3854f162c9b53d4f216b618bc"
+    },
+    "bifrost/workspace_release.py": {
+      "ref": "ba783472b770291e612433ad7ca9564fe671dade",
+      "sha256": "6e7d20a4ad7c5fd5b3a51b0932f7c70a69477c217c3f6496902051c61957ed92"
+    },
+    "bifrost/solution_delivery_review.py": {
+      "ref": "ba783472b770291e612433ad7ca9564fe671dade",
+      "sha256": "a48d4d7f95ddcfc73fb34c896ad5fc22565faa84bdda1878e56db5155c7c8540",
+      "compiler": {
+        "path": "bifrost/solution_delivery_review.py",
+        "function": "compile_workflow_registrations",
+        "line": 294,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      }
+    },
+    "features/utilities/workflows/check_integration_readiness.py": {
+      "ref": "83c1cb034dbbcfa29eb1723506735b13b4788536",
+      "sha256": "f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de",
+      "use": "read as bytes and AST only; never imported"
+    },
+    "src/services/solutions/deployment_runtime.py": {
+      "ref": "ba783472b770291e612433ad7ca9564fe671dade",
+      "sha256": "5282fb57793eab13861193590e3f47bcfca6901c52b38fb9b12dfc14c73cc331"
+    },
+    "src/services/execution/attempts.py": {
+      "ref": "ba783472b770291e612433ad7ca9564fe671dade",
+      "sha256": "82ed8abc28a1a51d17ddcdaeeabf9473468ef8474c172bb01e7bc5b66b067afa"
+    },
+    "src/services/work_delivery_store.py": {
+      "ref": "ba783472b770291e612433ad7ca9564fe671dade",
+      "sha256": "a208dbeb2c16fd50b6062b07362533278be00e1fe0c66aad152ab3c3c6bd4a6c"
+    }
+  },
+  "vectors": [
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "integer-zero",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a307d",
+      "sha256": "5f6328656746d13c22c3ccd636815585e49a93fb389171fb8e7ed0e7b0dbe09d",
+      "digest": "sha256:5f6328656746d13c22c3ccd636815585e49a93fb389171fb8e7ed0e7b0dbe09d"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-zero",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05",
+      "digest": "sha256:8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-negative-zero",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-0.0",
+              "bits_be_hex": "8000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":-0.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a2d302e307d",
+      "sha256": "b9687cbb2cf71ee76cbc40c7b858b78bca62393029b3e5ef6d1978cfeebcdb58",
+      "digest": "sha256:b9687cbb2cf71ee76cbc40c7b858b78bca62393029b3e5ef6d1978cfeebcdb58"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "integer-one",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "int",
+              "decimal": "1"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a317d",
+      "sha256": "e9b91ccb0d9507fe9e04c0951966a0894221abfcde832bf87a9a137d5254b14a",
+      "digest": "sha256:e9b91ccb0d9507fe9e04c0951966a0894221abfcde832bf87a9a137d5254b14a"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-one",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.0",
+              "bits_be_hex": "3ff0000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a312e307d",
+      "sha256": "d26e232ef195ccc20557edf3b200e89c89ed0bbba358e14d6f934432e1d1da7b",
+      "digest": "sha256:d26e232ef195ccc20557edf3b200e89c89ed0bbba358e14d6f934432e1d1da7b"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e-4",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0001",
+              "bits_be_hex": "3f1a36e2eb1c432d"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0.0001}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a302e303030317d",
+      "sha256": "dbb414d1f625892fe9b6ed6a4c06870de8c0e99633343b69eabdbd272c597c5a",
+      "digest": "sha256:dbb414d1f625892fe9b6ed6a4c06870de8c0e99633343b69eabdbd272c597c5a"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e-5",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-05",
+              "bits_be_hex": "3ee4f8b588e368f1"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e-05}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652d30357d",
+      "sha256": "30663f9412e71365a97b4ab5b0806e9c76b810269bf1d4f215f10aad292eb2e8",
+      "digest": "sha256:30663f9412e71365a97b4ab5b0806e9c76b810269bf1d4f215f10aad292eb2e8"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e-6",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-06",
+              "bits_be_hex": "3eb0c6f7a0b5ed8d"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e-06}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652d30367d",
+      "sha256": "9454c8ca626965cecdae4c155a9d49656d511fe9bbfdf30822c977388e3aa696",
+      "digest": "sha256:9454c8ca626965cecdae4c155a9d49656d511fe9bbfdf30822c977388e3aa696"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e-7",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-07",
+              "bits_be_hex": "3e7ad7f29abcaf48"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e-07}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652d30377d",
+      "sha256": "55bc90504a8dcf31e86759fda41f1b8f3a526f5a0bf23b8f04f43166e221570e",
+      "digest": "sha256:55bc90504a8dcf31e86759fda41f1b8f3a526f5a0bf23b8f04f43166e221570e"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e15",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1000000000000000.0",
+              "bits_be_hex": "430c6bf526340000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1000000000000000.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a313030303030303030303030303030302e307d",
+      "sha256": "e8dbc9b41e9ae95206c7f5ec14ef0f4f645e1826a40b4633e516ff9274919350",
+      "digest": "sha256:e8dbc9b41e9ae95206c7f5ec14ef0f4f645e1826a40b4633e516ff9274919350"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e16",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e+16",
+              "bits_be_hex": "4341c37937e08000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e+16}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652b31367d",
+      "sha256": "e5b747336a3bed69dc379761de593bf4d96d3dd23fda70509e2ca39f03a915e6",
+      "digest": "sha256:e5b747336a3bed69dc379761de593bf4d96d3dd23fda70509e2ca39f03a915e6"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "float-1e20",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e+20",
+              "bits_be_hex": "4415af1d78b58c40"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e+20}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652b32307d",
+      "sha256": "561fa1ac154c8d0958db0c161827e65f2d018675ee85f9bc3103e397585ca9e9",
+      "digest": "sha256:561fa1ac154c8d0958db0c161827e65f2d018675ee85f9bc3103e397585ca9e9"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "negative-1e-5",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-1e-05",
+              "bits_be_hex": "bee4f8b588e368f1"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":-1e-05}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a2d31652d30357d",
+      "sha256": "19150b4255c70058573f24d6b540b1ab52923adfa96d11c38cf60f0a04460ce9",
+      "digest": "sha256:19150b4255c70058573f24d6b540b1ab52923adfa96d11c38cf60f0a04460ce9"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "smallest-subnormal",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "5e-324",
+              "bits_be_hex": "0000000000000001"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":5e-324}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a35652d3332347d",
+      "sha256": "e2d3dd8688811a9165901c8181f2338d07656fccce4fc1fa246c83c8f701263b",
+      "digest": "sha256:e2d3dd8688811a9165901c8181f2338d07656fccce4fc1fa246c83c8f701263b"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "largest-finite",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.7976931348623157e+308",
+              "bits_be_hex": "7fefffffffffffff"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1.7976931348623157e+308}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a312e37393736393331333438363233313537652b3330387d",
+      "sha256": "ab14be24ada6bb1722a5c0534aa964cc1551cea302041e9b13ef1a4ec701497a",
+      "digest": "sha256:ab14be24ada6bb1722a5c0534aa964cc1551cea302041e9b13ef1a4ec701497a"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "roundtrip",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.0000000000000002",
+              "bits_be_hex": "3ff0000000000001"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1.0000000000000002}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a312e303030303030303030303030303030327d",
+      "sha256": "4e5c8db558fa722915aec90fbb5fa2f9374bcc01399914ec93c16f44a01926c0",
+      "digest": "sha256:4e5c8db558fa722915aec90fbb5fa2f9374bcc01399914ec93c16f44a01926c0"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "null-present",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "startup",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "git_commit_sha",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"git_commit_sha\":null,\"startup\":null,\"workflow_value\":0.0}",
+      "hex": "7b226769745f636f6d6d69745f736861223a6e756c6c2c2273746172747570223a6e756c6c2c22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "a2f85a1322fada8a1781bb4100014137781cb9f0c322c2a165911445def16f52",
+      "digest": "sha256:a2f85a1322fada8a1781bb4100014137781cb9f0c322c2a165911445def16f52"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "null-absent",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05",
+      "digest": "sha256:8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "nested-order",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "z",
+            {
+              "kind": "int",
+              "decimal": "2"
+            }
+          ],
+          [
+            "a",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "z",
+                  {
+                    "kind": "int",
+                    "decimal": "1"
+                  }
+                ],
+                [
+                  "a",
+                  {
+                    "kind": "null"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "ordered",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "int",
+                  "decimal": "2"
+                },
+                {
+                  "kind": "int",
+                  "decimal": "1"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"a\":{\"a\":null,\"z\":1},\"ordered\":[2,1],\"z\":2}",
+      "hex": "7b2261223a7b2261223a6e756c6c2c227a223a317d2c226f726465726564223a5b322c315d2c227a223a327d",
+      "sha256": "574f01e8d981925ebc9a3a2de97fc4b77211560faae01168eaae7549f1ae9130",
+      "digest": "sha256:574f01e8d981925ebc9a3a2de97fc4b77211560faae01168eaae7549f1ae9130"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "unicode-and-escapes",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "\ud83d\ude00",
+            {
+              "kind": "string",
+              "value": "astral"
+            }
+          ],
+          [
+            "\ue000",
+            {
+              "kind": "string",
+              "value": "private"
+            }
+          ],
+          [
+            "\u00e9",
+            {
+              "kind": "string",
+              "value": "precomposed"
+            }
+          ],
+          [
+            "a",
+            {
+              "kind": "string",
+              "value": "quote\" slash\\ line\n\t\u0000 \u2028\u2029"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"a\":\"quote\\\" slash\\\\ line\\n\\t\\u0000 \u2028\u2029\",\"\u00e9\":\"precomposed\",\"\ue000\":\"private\",\"\ud83d\ude00\":\"astral\"}",
+      "hex": "7b2261223a2271756f74655c2220736c6173685c5c206c696e655c6e5c745c753030303020e280a8e280a9222c22c3a9223a22707265636f6d706f736564222c22ee8080223a2270726976617465222c22f09f9880223a2261737472616c227d",
+      "sha256": "8c99f76e43edcc02983be940dad88ef751109cec2fab226f5ef938115f15d4e8",
+      "digest": "sha256:8c99f76e43edcc02983be940dad88ef751109cec2fab226f5ef938115f15d4e8"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "unicode-composed",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "\u00e9"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"name\":\"\u00e9\"}",
+      "hex": "7b226e616d65223a22c3a9227d",
+      "sha256": "2f16b8477146a1b2ba7d6bb7cf7c9979c191cc2838a107dbf5f0d920b4cb3ba1",
+      "digest": "sha256:2f16b8477146a1b2ba7d6bb7cf7c9979c191cc2838a107dbf5f0d920b4cb3ba1"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "unicode-decomposed",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "e\u0301"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"name\":\"e\u0301\"}",
+      "hex": "7b226e616d65223a2265cc81227d",
+      "sha256": "6a547588c4055916e090ed61467326046dd52810679d03bfb84d862a7123522e",
+      "digest": "sha256:6a547588c4055916e090ed61467326046dd52810679d03bfb84d862a7123522e"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "nan",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "nan",
+              "bits_be_hex": "7ff8000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "exception",
+      "exception_type": "ValueError",
+      "expected_failure_observed": true
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "positive-infinity",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "inf",
+              "bits_be_hex": "7ff0000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "exception",
+      "exception_type": "ValueError",
+      "expected_failure_observed": true
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "negative-infinity",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-inf",
+              "bits_be_hex": "fff0000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "exception",
+      "exception_type": "ValueError",
+      "expected_failure_observed": true
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "model-none-and-nested-null",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "CompiledDeploymentManifest",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "schema_version",
+              {
+                "kind": "int",
+                "decimal": "1"
+              }
+            ],
+            [
+              "solution_id",
+              {
+                "kind": "string",
+                "value": "00000000-0000-0000-0000-000000000001"
+              }
+            ],
+            [
+              "deployment_id",
+              {
+                "kind": "string",
+                "value": "00000000-0000-0000-0000-000000000002"
+              }
+            ],
+            [
+              "bundle_hash",
+              {
+                "kind": "string",
+                "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ],
+            [
+              "resolution_map_hash",
+              {
+                "kind": "string",
+                "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ],
+            [
+              "source",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "artifact_key",
+                    {
+                      "kind": "string",
+                      "value": "synthetic.zip"
+                    }
+                  ],
+                  [
+                    "runtime_prefix",
+                    {
+                      "kind": "string",
+                      "value": "synthetic/"
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "workflows",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "synthetic.py::run",
+                    {
+                      "kind": "object",
+                      "entries": [
+                        [
+                          "portable_ref",
+                          {
+                            "kind": "string",
+                            "value": "synthetic.py::run"
+                          }
+                        ],
+                        [
+                          "resolved_id",
+                          {
+                            "kind": "string",
+                            "value": "00000000-0000-0000-0000-000000000003"
+                          }
+                        ],
+                        [
+                          "definition",
+                          {
+                            "kind": "object",
+                            "entries": [
+                              [
+                                "nested",
+                                {
+                                  "kind": "object",
+                                  "entries": [
+                                    [
+                                      "default",
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  ]
+                                }
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "source_ref",
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        [
+                          "source_hash",
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        [
+                          "dependency_solution_id",
+                          {
+                            "kind": "null"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "agents",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "forms",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "events",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "applications",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "tables",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "file_locations",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "connections",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "config_requirements",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "dependencies",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "git",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "repository",
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  [
+                    "resolved_ref",
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  [
+                    "commit_sha",
+                    {
+                      "kind": "null"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"agents\":{},\"applications\":{},\"bundle_hash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"config_requirements\":{},\"connections\":{},\"dependencies\":{},\"deployment_id\":\"00000000-0000-0000-0000-000000000002\",\"events\":{},\"file_locations\":{},\"forms\":{},\"git\":{},\"resolution_map_hash\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"schema_version\":1,\"solution_id\":\"00000000-0000-0000-0000-000000000001\",\"source\":{\"artifact_key\":\"synthetic.zip\",\"runtime_prefix\":\"synthetic/\"},\"tables\":{},\"workflows\":{\"synthetic.py::run\":{\"definition\":{\"nested\":{\"default\":null}},\"portable_ref\":\"synthetic.py::run\",\"resolved_id\":\"00000000-0000-0000-0000-000000000003\"}}}",
+      "hex": "7b226167656e7473223a7b7d2c226170706c69636174696f6e73223a7b7d2c2262756e646c655f68617368223a227368613235363a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c22636f6e6669675f726571756972656d656e7473223a7b7d2c22636f6e6e656374696f6e73223a7b7d2c22646570656e64656e63696573223a7b7d2c226465706c6f796d656e745f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226576656e7473223a7b7d2c2266696c655f6c6f636174696f6e73223a7b7d2c22666f726d73223a7b7d2c22676974223a7b7d2c227265736f6c7574696f6e5f6d61705f68617368223a227368613235363a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22736368656d615f76657273696f6e223a312c22736f6c7574696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22736f75726365223a7b2261727469666163745f6b6579223a2273796e7468657469632e7a6970222c2272756e74696d655f707265666978223a2273796e7468657469632f227d2c227461626c6573223a7b7d2c22776f726b666c6f7773223a7b2273796e7468657469632e70793a3a72756e223a7b22646566696e6974696f6e223a7b226e6573746564223a7b2264656661756c74223a6e756c6c7d7d2c22706f727461626c655f726566223a2273796e7468657469632e70793a3a72756e222c227265736f6c7665645f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033227d7d7d",
+      "sha256": "27c145cfd03d561b3bba34690ce18ef63cc498943ee61ab0ff4ba3d4d5fcf8f1",
+      "digest": "sha256:27c145cfd03d561b3bba34690ce18ef63cc498943ee61ab0ff4ba3d4d5fcf8f1"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "model-explicit-empty",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "CompiledDeploymentManifest",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "schema_version",
+              {
+                "kind": "int",
+                "decimal": "1"
+              }
+            ],
+            [
+              "solution_id",
+              {
+                "kind": "string",
+                "value": "00000000-0000-0000-0000-000000000001"
+              }
+            ],
+            [
+              "deployment_id",
+              {
+                "kind": "string",
+                "value": "00000000-0000-0000-0000-000000000002"
+              }
+            ],
+            [
+              "bundle_hash",
+              {
+                "kind": "string",
+                "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ],
+            [
+              "resolution_map_hash",
+              {
+                "kind": "string",
+                "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ],
+            [
+              "source",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "artifact_key",
+                    {
+                      "kind": "string",
+                      "value": "synthetic.zip"
+                    }
+                  ],
+                  [
+                    "runtime_prefix",
+                    {
+                      "kind": "string",
+                      "value": "synthetic/"
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "workflows",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "synthetic.py::run",
+                    {
+                      "kind": "object",
+                      "entries": [
+                        [
+                          "portable_ref",
+                          {
+                            "kind": "string",
+                            "value": "synthetic.py::run"
+                          }
+                        ],
+                        [
+                          "resolved_id",
+                          {
+                            "kind": "string",
+                            "value": "00000000-0000-0000-0000-000000000003"
+                          }
+                        ],
+                        [
+                          "definition",
+                          {
+                            "kind": "object",
+                            "entries": [
+                              [
+                                "nested",
+                                {
+                                  "kind": "object",
+                                  "entries": [
+                                    [
+                                      "default",
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  ]
+                                }
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "source_ref",
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        [
+                          "source_hash",
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        [
+                          "dependency_solution_id",
+                          {
+                            "kind": "null"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "agents",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "forms",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "events",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "applications",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "tables",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "file_locations",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "connections",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "config_requirements",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "dependencies",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ],
+            [
+              "git",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "repository",
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  [
+                    "resolved_ref",
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  [
+                    "commit_sha",
+                    {
+                      "kind": "null"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"agents\":{},\"applications\":{},\"bundle_hash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"config_requirements\":{},\"connections\":{},\"dependencies\":{},\"deployment_id\":\"00000000-0000-0000-0000-000000000002\",\"events\":{},\"file_locations\":{},\"forms\":{},\"git\":{},\"resolution_map_hash\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"schema_version\":1,\"solution_id\":\"00000000-0000-0000-0000-000000000001\",\"source\":{\"artifact_key\":\"synthetic.zip\",\"runtime_prefix\":\"synthetic/\"},\"tables\":{},\"workflows\":{\"synthetic.py::run\":{\"definition\":{\"nested\":{\"default\":null}},\"portable_ref\":\"synthetic.py::run\",\"resolved_id\":\"00000000-0000-0000-0000-000000000003\"}}}",
+      "hex": "7b226167656e7473223a7b7d2c226170706c69636174696f6e73223a7b7d2c2262756e646c655f68617368223a227368613235363a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c22636f6e6669675f726571756972656d656e7473223a7b7d2c22636f6e6e656374696f6e73223a7b7d2c22646570656e64656e63696573223a7b7d2c226465706c6f796d656e745f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226576656e7473223a7b7d2c2266696c655f6c6f636174696f6e73223a7b7d2c22666f726d73223a7b7d2c22676974223a7b7d2c227265736f6c7574696f6e5f6d61705f68617368223a227368613235363a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c22736368656d615f76657273696f6e223a312c22736f6c7574696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22736f75726365223a7b2261727469666163745f6b6579223a2273796e7468657469632e7a6970222c2272756e74696d655f707265666978223a2273796e7468657469632f227d2c227461626c6573223a7b7d2c22776f726b666c6f7773223a7b2273796e7468657469632e70793a3a72756e223a7b22646566696e6974696f6e223a7b226e6573746564223a7b2264656661756c74223a6e756c6c7d7d2c22706f727461626c655f726566223a2273796e7468657469632e70793a3a72756e222c227265736f6c7665645f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033227d7d7d",
+      "sha256": "27c145cfd03d561b3bba34690ce18ef63cc498943ee61ab0ff4ba3d4d5fcf8f1",
+      "digest": "sha256:27c145cfd03d561b3bba34690ce18ef63cc498943ee61ab0ff4ba3d4d5fcf8f1"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "integer-zero",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:5f6328656746d13c22c3ccd636815585e49a93fb389171fb8e7ed0e7b0dbe09d",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a307d",
+      "sha256": "5f6328656746d13c22c3ccd636815585e49a93fb389171fb8e7ed0e7b0dbe09d",
+      "digest": "sha256:5f6328656746d13c22c3ccd636815585e49a93fb389171fb8e7ed0e7b0dbe09d"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-zero",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05",
+      "digest": "sha256:8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-negative-zero",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-0.0",
+              "bits_be_hex": "8000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-0.0",
+              "bits_be_hex": "8000000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:b9687cbb2cf71ee76cbc40c7b858b78bca62393029b3e5ef6d1978cfeebcdb58",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":-0.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a2d302e307d",
+      "sha256": "b9687cbb2cf71ee76cbc40c7b858b78bca62393029b3e5ef6d1978cfeebcdb58",
+      "digest": "sha256:b9687cbb2cf71ee76cbc40c7b858b78bca62393029b3e5ef6d1978cfeebcdb58"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "integer-one",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "int",
+              "decimal": "1"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "int",
+              "decimal": "1"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:e9b91ccb0d9507fe9e04c0951966a0894221abfcde832bf87a9a137d5254b14a",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a317d",
+      "sha256": "e9b91ccb0d9507fe9e04c0951966a0894221abfcde832bf87a9a137d5254b14a",
+      "digest": "sha256:e9b91ccb0d9507fe9e04c0951966a0894221abfcde832bf87a9a137d5254b14a"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-one",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.0",
+              "bits_be_hex": "3ff0000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.0",
+              "bits_be_hex": "3ff0000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:d26e232ef195ccc20557edf3b200e89c89ed0bbba358e14d6f934432e1d1da7b",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a312e307d",
+      "sha256": "d26e232ef195ccc20557edf3b200e89c89ed0bbba358e14d6f934432e1d1da7b",
+      "digest": "sha256:d26e232ef195ccc20557edf3b200e89c89ed0bbba358e14d6f934432e1d1da7b"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e-4",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0001",
+              "bits_be_hex": "3f1a36e2eb1c432d"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0001",
+              "bits_be_hex": "3f1a36e2eb1c432d"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:dbb414d1f625892fe9b6ed6a4c06870de8c0e99633343b69eabdbd272c597c5a",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0.0001}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a302e303030317d",
+      "sha256": "dbb414d1f625892fe9b6ed6a4c06870de8c0e99633343b69eabdbd272c597c5a",
+      "digest": "sha256:dbb414d1f625892fe9b6ed6a4c06870de8c0e99633343b69eabdbd272c597c5a"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e-5",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-05",
+              "bits_be_hex": "3ee4f8b588e368f1"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-05",
+              "bits_be_hex": "3ee4f8b588e368f1"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:30663f9412e71365a97b4ab5b0806e9c76b810269bf1d4f215f10aad292eb2e8",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e-05}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652d30357d",
+      "sha256": "30663f9412e71365a97b4ab5b0806e9c76b810269bf1d4f215f10aad292eb2e8",
+      "digest": "sha256:30663f9412e71365a97b4ab5b0806e9c76b810269bf1d4f215f10aad292eb2e8"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e-6",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-06",
+              "bits_be_hex": "3eb0c6f7a0b5ed8d"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-06",
+              "bits_be_hex": "3eb0c6f7a0b5ed8d"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:9454c8ca626965cecdae4c155a9d49656d511fe9bbfdf30822c977388e3aa696",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e-06}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652d30367d",
+      "sha256": "9454c8ca626965cecdae4c155a9d49656d511fe9bbfdf30822c977388e3aa696",
+      "digest": "sha256:9454c8ca626965cecdae4c155a9d49656d511fe9bbfdf30822c977388e3aa696"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e-7",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-07",
+              "bits_be_hex": "3e7ad7f29abcaf48"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e-07",
+              "bits_be_hex": "3e7ad7f29abcaf48"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:55bc90504a8dcf31e86759fda41f1b8f3a526f5a0bf23b8f04f43166e221570e",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e-07}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652d30377d",
+      "sha256": "55bc90504a8dcf31e86759fda41f1b8f3a526f5a0bf23b8f04f43166e221570e",
+      "digest": "sha256:55bc90504a8dcf31e86759fda41f1b8f3a526f5a0bf23b8f04f43166e221570e"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e15",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1000000000000000.0",
+              "bits_be_hex": "430c6bf526340000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1000000000000000.0",
+              "bits_be_hex": "430c6bf526340000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:e8dbc9b41e9ae95206c7f5ec14ef0f4f645e1826a40b4633e516ff9274919350",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1000000000000000.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a313030303030303030303030303030302e307d",
+      "sha256": "e8dbc9b41e9ae95206c7f5ec14ef0f4f645e1826a40b4633e516ff9274919350",
+      "digest": "sha256:e8dbc9b41e9ae95206c7f5ec14ef0f4f645e1826a40b4633e516ff9274919350"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e16",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e+16",
+              "bits_be_hex": "4341c37937e08000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e+16",
+              "bits_be_hex": "4341c37937e08000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:e5b747336a3bed69dc379761de593bf4d96d3dd23fda70509e2ca39f03a915e6",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e+16}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652b31367d",
+      "sha256": "e5b747336a3bed69dc379761de593bf4d96d3dd23fda70509e2ca39f03a915e6",
+      "digest": "sha256:e5b747336a3bed69dc379761de593bf4d96d3dd23fda70509e2ca39f03a915e6"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "float-1e20",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e+20",
+              "bits_be_hex": "4415af1d78b58c40"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1e+20",
+              "bits_be_hex": "4415af1d78b58c40"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:561fa1ac154c8d0958db0c161827e65f2d018675ee85f9bc3103e397585ca9e9",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1e+20}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a31652b32307d",
+      "sha256": "561fa1ac154c8d0958db0c161827e65f2d018675ee85f9bc3103e397585ca9e9",
+      "digest": "sha256:561fa1ac154c8d0958db0c161827e65f2d018675ee85f9bc3103e397585ca9e9"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "negative-1e-5",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-1e-05",
+              "bits_be_hex": "bee4f8b588e368f1"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-1e-05",
+              "bits_be_hex": "bee4f8b588e368f1"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:19150b4255c70058573f24d6b540b1ab52923adfa96d11c38cf60f0a04460ce9",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":-1e-05}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a2d31652d30357d",
+      "sha256": "19150b4255c70058573f24d6b540b1ab52923adfa96d11c38cf60f0a04460ce9",
+      "digest": "sha256:19150b4255c70058573f24d6b540b1ab52923adfa96d11c38cf60f0a04460ce9"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "smallest-subnormal",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "5e-324",
+              "bits_be_hex": "0000000000000001"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "5e-324",
+              "bits_be_hex": "0000000000000001"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:e2d3dd8688811a9165901c8181f2338d07656fccce4fc1fa246c83c8f701263b",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":5e-324}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a35652d3332347d",
+      "sha256": "e2d3dd8688811a9165901c8181f2338d07656fccce4fc1fa246c83c8f701263b",
+      "digest": "sha256:e2d3dd8688811a9165901c8181f2338d07656fccce4fc1fa246c83c8f701263b"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "largest-finite",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.7976931348623157e+308",
+              "bits_be_hex": "7fefffffffffffff"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.7976931348623157e+308",
+              "bits_be_hex": "7fefffffffffffff"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:ab14be24ada6bb1722a5c0534aa964cc1551cea302041e9b13ef1a4ec701497a",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1.7976931348623157e+308}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a312e37393736393331333438363233313537652b3330387d",
+      "sha256": "ab14be24ada6bb1722a5c0534aa964cc1551cea302041e9b13ef1a4ec701497a",
+      "digest": "sha256:ab14be24ada6bb1722a5c0534aa964cc1551cea302041e9b13ef1a4ec701497a"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "roundtrip",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.0000000000000002",
+              "bits_be_hex": "3ff0000000000001"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "1.0000000000000002",
+              "bits_be_hex": "3ff0000000000001"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:4e5c8db558fa722915aec90fbb5fa2f9374bcc01399914ec93c16f44a01926c0",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":1.0000000000000002}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a312e303030303030303030303030303030327d",
+      "sha256": "4e5c8db558fa722915aec90fbb5fa2f9374bcc01399914ec93c16f44a01926c0",
+      "digest": "sha256:4e5c8db558fa722915aec90fbb5fa2f9374bcc01399914ec93c16f44a01926c0"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "null-present",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "startup",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "git_commit_sha",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "startup",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "git_commit_sha",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:a2f85a1322fada8a1781bb4100014137781cb9f0c322c2a165911445def16f52",
+      "outcome": "encoded",
+      "utf8": "{\"git_commit_sha\":null,\"startup\":null,\"workflow_value\":0.0}",
+      "hex": "7b226769745f636f6d6d69745f736861223a6e756c6c2c2273746172747570223a6e756c6c2c22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "a2f85a1322fada8a1781bb4100014137781cb9f0c322c2a165911445def16f52",
+      "digest": "sha256:a2f85a1322fada8a1781bb4100014137781cb9f0c322c2a165911445def16f52"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "null-absent",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":0.0}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05",
+      "digest": "sha256:8cbb752032e4ce43cd6d622c29cbdd910a40d52ea63b474604e0178653fffd05"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "nested-order",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "z",
+            {
+              "kind": "int",
+              "decimal": "2"
+            }
+          ],
+          [
+            "a",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "z",
+                  {
+                    "kind": "int",
+                    "decimal": "1"
+                  }
+                ],
+                [
+                  "a",
+                  {
+                    "kind": "null"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "ordered",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "int",
+                  "decimal": "2"
+                },
+                {
+                  "kind": "int",
+                  "decimal": "1"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "z",
+            {
+              "kind": "int",
+              "decimal": "2"
+            }
+          ],
+          [
+            "a",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "z",
+                  {
+                    "kind": "int",
+                    "decimal": "1"
+                  }
+                ],
+                [
+                  "a",
+                  {
+                    "kind": "null"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "ordered",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "int",
+                  "decimal": "2"
+                },
+                {
+                  "kind": "int",
+                  "decimal": "1"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:574f01e8d981925ebc9a3a2de97fc4b77211560faae01168eaae7549f1ae9130",
+      "outcome": "encoded",
+      "utf8": "{\"a\":{\"a\":null,\"z\":1},\"ordered\":[2,1],\"z\":2}",
+      "hex": "7b2261223a7b2261223a6e756c6c2c227a223a317d2c226f726465726564223a5b322c315d2c227a223a327d",
+      "sha256": "574f01e8d981925ebc9a3a2de97fc4b77211560faae01168eaae7549f1ae9130",
+      "digest": "sha256:574f01e8d981925ebc9a3a2de97fc4b77211560faae01168eaae7549f1ae9130"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "unicode-and-escapes",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "\ud83d\ude00",
+            {
+              "kind": "string",
+              "value": "astral"
+            }
+          ],
+          [
+            "\ue000",
+            {
+              "kind": "string",
+              "value": "private"
+            }
+          ],
+          [
+            "\u00e9",
+            {
+              "kind": "string",
+              "value": "precomposed"
+            }
+          ],
+          [
+            "a",
+            {
+              "kind": "string",
+              "value": "quote\" slash\\ line\n\t\u0000 \u2028\u2029"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "\ud83d\ude00",
+            {
+              "kind": "string",
+              "value": "astral"
+            }
+          ],
+          [
+            "\ue000",
+            {
+              "kind": "string",
+              "value": "private"
+            }
+          ],
+          [
+            "\u00e9",
+            {
+              "kind": "string",
+              "value": "precomposed"
+            }
+          ],
+          [
+            "a",
+            {
+              "kind": "string",
+              "value": "quote\" slash\\ line\n\t\u0000 \u2028\u2029"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:8c99f76e43edcc02983be940dad88ef751109cec2fab226f5ef938115f15d4e8",
+      "outcome": "encoded",
+      "utf8": "{\"a\":\"quote\\\" slash\\\\ line\\n\\t\\u0000 \u2028\u2029\",\"\u00e9\":\"precomposed\",\"\ue000\":\"private\",\"\ud83d\ude00\":\"astral\"}",
+      "hex": "7b2261223a2271756f74655c2220736c6173685c5c206c696e655c6e5c745c753030303020e280a8e280a9222c22c3a9223a22707265636f6d706f736564222c22ee8080223a2270726976617465222c22f09f9880223a2261737472616c227d",
+      "sha256": "8c99f76e43edcc02983be940dad88ef751109cec2fab226f5ef938115f15d4e8",
+      "digest": "sha256:8c99f76e43edcc02983be940dad88ef751109cec2fab226f5ef938115f15d4e8"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "unicode-composed",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "\u00e9"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "\u00e9"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:2f16b8477146a1b2ba7d6bb7cf7c9979c191cc2838a107dbf5f0d920b4cb3ba1",
+      "outcome": "encoded",
+      "utf8": "{\"name\":\"\u00e9\"}",
+      "hex": "7b226e616d65223a22c3a9227d",
+      "sha256": "2f16b8477146a1b2ba7d6bb7cf7c9979c191cc2838a107dbf5f0d920b4cb3ba1",
+      "digest": "sha256:2f16b8477146a1b2ba7d6bb7cf7c9979c191cc2838a107dbf5f0d920b4cb3ba1"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "unicode-decomposed",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "e\u0301"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "e\u0301"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:6a547588c4055916e090ed61467326046dd52810679d03bfb84d862a7123522e",
+      "outcome": "encoded",
+      "utf8": "{\"name\":\"e\u0301\"}",
+      "hex": "7b226e616d65223a2265cc81227d",
+      "sha256": "6a547588c4055916e090ed61467326046dd52810679d03bfb84d862a7123522e",
+      "digest": "sha256:6a547588c4055916e090ed61467326046dd52810679d03bfb84d862a7123522e"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "nan",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "nan",
+              "bits_be_hex": "7ff8000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "nan",
+              "bits_be_hex": "7ff8000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:d7ea303e2ebf3cbf1c7f5cf50354c9c374f06c963047678f850876dd871d46df",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":NaN}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a4e614e7d",
+      "sha256": "d7ea303e2ebf3cbf1c7f5cf50354c9c374f06c963047678f850876dd871d46df",
+      "digest": "sha256:d7ea303e2ebf3cbf1c7f5cf50354c9c374f06c963047678f850876dd871d46df"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "positive-infinity",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "inf",
+              "bits_be_hex": "7ff0000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "inf",
+              "bits_be_hex": "7ff0000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:20792f4c81ccd0fccf084f190d25d022f7a7af7cd04a5ed30468311e1777d2e7",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":Infinity}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a496e66696e6974797d",
+      "sha256": "20792f4c81ccd0fccf084f190d25d022f7a7af7cd04a5ed30468311e1777d2e7",
+      "digest": "sha256:20792f4c81ccd0fccf084f190d25d022f7a7af7cd04a5ed30468311e1777d2e7"
+    },
+    {
+      "profile": "PythonWorkspaceIdentityV1",
+      "name": "negative-infinity",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "canonical_digest",
+        "line": 33,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-inf",
+              "bits_be_hex": "fff0000000000000"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "-inf",
+              "bits_be_hex": "fff0000000000000"
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:35d8c3e870199dd2792c1d7b5543c1c1a03367989e2d3fbe87c1090e205f1433",
+      "outcome": "encoded",
+      "utf8": "{\"workflow_value\":-Infinity}",
+      "hex": "7b22776f726b666c6f775f76616c7565223a2d496e66696e6974797d",
+      "sha256": "35d8c3e870199dd2792c1d7b5543c1c1a03367989e2d3fbe87c1090e205f1433",
+      "digest": "sha256:35d8c3e870199dd2792c1d7b5543c1c1a03367989e2d3fbe87c1090e205f1433"
+    },
+    {
+      "profile": "PythonWorkspaceManifestV1",
+      "name": "prefixed-leaf-normalization",
+      "producer": {
+        "path": "bifrost/workspace_release.py",
+        "function": "workspace_manifest_id",
+        "line": 40,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "features/demo.py",
+            {
+              "kind": "string",
+              "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }
+          ],
+          [
+            "modules/helper.py",
+            {
+              "kind": "string",
+              "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "schema",
+            {
+              "kind": "string",
+              "value": "bifrost.workspace-file-manifest/v1"
+            }
+          ],
+          [
+            "files",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "features/demo.py",
+                  {
+                    "kind": "string",
+                    "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                  }
+                ],
+                [
+                  "modules/helper.py",
+                  {
+                    "kind": "string",
+                    "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ],
+        "ensure_ascii": false
+      },
+      "helper_digest": "sha256:a30c17545786f26170a718cf67128045599915bce4ede2e980aaa349d1051e32",
+      "outcome": "encoded",
+      "utf8": "{\"files\":{\"features/demo.py\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"modules/helper.py\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"schema\":\"bifrost.workspace-file-manifest/v1\"}",
+      "hex": "7b2266696c6573223a7b2266656174757265732f64656d6f2e7079223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226d6f64756c65732f68656c7065722e7079223a2263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363227d2c22736368656d61223a22626966726f73742e776f726b73706163652d66696c652d6d616e69666573742f7631227d",
+      "sha256": "a30c17545786f26170a718cf67128045599915bce4ede2e980aaa349d1051e32",
+      "digest": "sha256:a30c17545786f26170a718cf67128045599915bce4ede2e980aaa349d1051e32"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "controls-default",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "WorkflowRegistrationControls",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "display_name",
+              {
+                "kind": "null"
+              }
+            ],
+            [
+              "execution_mode",
+              {
+                "kind": "string",
+                "value": "async"
+              }
+            ],
+            [
+              "timeout_seconds",
+              {
+                "kind": "int",
+                "decimal": "1800"
+              }
+            ],
+            [
+              "cache_ttl_seconds",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "time_saved",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "value",
+              {
+                "kind": "f64",
+                "repr": "0.0",
+                "bits_be_hex": "0000000000000000"
+              }
+            ],
+            [
+              "retry_policy",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "version",
+                    {
+                      "kind": "string",
+                      "value": "execution-retry/v1"
+                    }
+                  ],
+                  [
+                    "enabled",
+                    {
+                      "kind": "bool",
+                      "value": false
+                    }
+                  ],
+                  [
+                    "max_attempts",
+                    {
+                      "kind": "int",
+                      "decimal": "2"
+                    }
+                  ],
+                  [
+                    "retry_on",
+                    {
+                      "kind": "array",
+                      "items": []
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "access_level",
+              {
+                "kind": "string",
+                "value": "role_based"
+              }
+            ],
+            [
+              "role_ids",
+              {
+                "kind": "array",
+                "items": []
+              }
+            ],
+            [
+              "endpoint_enabled",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "public_endpoint",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "allowed_methods",
+              {
+                "kind": "array",
+                "items": [
+                  {
+                    "kind": "string",
+                    "value": "POST"
+                  }
+                ]
+              }
+            ],
+            [
+              "disable_global_key",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"disable_global_key\":false,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[],\"time_saved\":0,\"timeout_seconds\":1800,\"value\":0.0}",
+      "hex": "7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b5d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a313830302c2276616c7565223a302e307d",
+      "sha256": "fb879d2bea1145827262801892482f7fd75bb2e7467076aaf9814ab1e4c08acf",
+      "digest": "sha256:fb879d2bea1145827262801892482f7fd75bb2e7467076aaf9814ab1e4c08acf"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "controls-explicit-int-zero",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "WorkflowRegistrationControls",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "display_name",
+              {
+                "kind": "null"
+              }
+            ],
+            [
+              "execution_mode",
+              {
+                "kind": "string",
+                "value": "async"
+              }
+            ],
+            [
+              "timeout_seconds",
+              {
+                "kind": "int",
+                "decimal": "1800"
+              }
+            ],
+            [
+              "cache_ttl_seconds",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "time_saved",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "value",
+              {
+                "kind": "f64",
+                "repr": "0.0",
+                "bits_be_hex": "0000000000000000"
+              }
+            ],
+            [
+              "retry_policy",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "version",
+                    {
+                      "kind": "string",
+                      "value": "execution-retry/v1"
+                    }
+                  ],
+                  [
+                    "enabled",
+                    {
+                      "kind": "bool",
+                      "value": false
+                    }
+                  ],
+                  [
+                    "max_attempts",
+                    {
+                      "kind": "int",
+                      "decimal": "2"
+                    }
+                  ],
+                  [
+                    "retry_on",
+                    {
+                      "kind": "array",
+                      "items": []
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "access_level",
+              {
+                "kind": "string",
+                "value": "role_based"
+              }
+            ],
+            [
+              "role_ids",
+              {
+                "kind": "array",
+                "items": []
+              }
+            ],
+            [
+              "endpoint_enabled",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "public_endpoint",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "allowed_methods",
+              {
+                "kind": "array",
+                "items": [
+                  {
+                    "kind": "string",
+                    "value": "POST"
+                  }
+                ]
+              }
+            ],
+            [
+              "disable_global_key",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"disable_global_key\":false,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[],\"time_saved\":0,\"timeout_seconds\":1800,\"value\":0.0}",
+      "hex": "7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b5d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a313830302c2276616c7565223a302e307d",
+      "sha256": "fb879d2bea1145827262801892482f7fd75bb2e7467076aaf9814ab1e4c08acf",
+      "digest": "sha256:fb879d2bea1145827262801892482f7fd75bb2e7467076aaf9814ab1e4c08acf"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "controls-explicit-float-zero",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "WorkflowRegistrationControls",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "display_name",
+              {
+                "kind": "null"
+              }
+            ],
+            [
+              "execution_mode",
+              {
+                "kind": "string",
+                "value": "async"
+              }
+            ],
+            [
+              "timeout_seconds",
+              {
+                "kind": "int",
+                "decimal": "1800"
+              }
+            ],
+            [
+              "cache_ttl_seconds",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "time_saved",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "value",
+              {
+                "kind": "f64",
+                "repr": "0.0",
+                "bits_be_hex": "0000000000000000"
+              }
+            ],
+            [
+              "retry_policy",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "version",
+                    {
+                      "kind": "string",
+                      "value": "execution-retry/v1"
+                    }
+                  ],
+                  [
+                    "enabled",
+                    {
+                      "kind": "bool",
+                      "value": false
+                    }
+                  ],
+                  [
+                    "max_attempts",
+                    {
+                      "kind": "int",
+                      "decimal": "2"
+                    }
+                  ],
+                  [
+                    "retry_on",
+                    {
+                      "kind": "array",
+                      "items": []
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "access_level",
+              {
+                "kind": "string",
+                "value": "role_based"
+              }
+            ],
+            [
+              "role_ids",
+              {
+                "kind": "array",
+                "items": []
+              }
+            ],
+            [
+              "endpoint_enabled",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "public_endpoint",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "allowed_methods",
+              {
+                "kind": "array",
+                "items": [
+                  {
+                    "kind": "string",
+                    "value": "POST"
+                  }
+                ]
+              }
+            ],
+            [
+              "disable_global_key",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"disable_global_key\":false,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[],\"time_saved\":0,\"timeout_seconds\":1800,\"value\":0.0}",
+      "hex": "7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b5d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a313830302c2276616c7565223a302e307d",
+      "sha256": "fb879d2bea1145827262801892482f7fd75bb2e7467076aaf9814ab1e4c08acf",
+      "digest": "sha256:fb879d2bea1145827262801892482f7fd75bb2e7467076aaf9814ab1e4c08acf"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "controls-negative-zero",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "WorkflowRegistrationControls",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "display_name",
+              {
+                "kind": "null"
+              }
+            ],
+            [
+              "execution_mode",
+              {
+                "kind": "string",
+                "value": "async"
+              }
+            ],
+            [
+              "timeout_seconds",
+              {
+                "kind": "int",
+                "decimal": "1800"
+              }
+            ],
+            [
+              "cache_ttl_seconds",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "time_saved",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "value",
+              {
+                "kind": "f64",
+                "repr": "-0.0",
+                "bits_be_hex": "8000000000000000"
+              }
+            ],
+            [
+              "retry_policy",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "version",
+                    {
+                      "kind": "string",
+                      "value": "execution-retry/v1"
+                    }
+                  ],
+                  [
+                    "enabled",
+                    {
+                      "kind": "bool",
+                      "value": false
+                    }
+                  ],
+                  [
+                    "max_attempts",
+                    {
+                      "kind": "int",
+                      "decimal": "2"
+                    }
+                  ],
+                  [
+                    "retry_on",
+                    {
+                      "kind": "array",
+                      "items": []
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "access_level",
+              {
+                "kind": "string",
+                "value": "role_based"
+              }
+            ],
+            [
+              "role_ids",
+              {
+                "kind": "array",
+                "items": []
+              }
+            ],
+            [
+              "endpoint_enabled",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "public_endpoint",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "allowed_methods",
+              {
+                "kind": "array",
+                "items": [
+                  {
+                    "kind": "string",
+                    "value": "POST"
+                  }
+                ]
+              }
+            ],
+            [
+              "disable_global_key",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"disable_global_key\":false,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[],\"time_saved\":0,\"timeout_seconds\":1800,\"value\":-0.0}",
+      "hex": "7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b5d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a313830302c2276616c7565223a2d302e307d",
+      "sha256": "a8d0837f12f2fe45baabba0245abacd35e275b609a3deca18c62eea9c44c6ea0",
+      "digest": "sha256:a8d0837f12f2fe45baabba0245abacd35e275b609a3deca18c62eea9c44c6ea0"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "controls-1e-5",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "WorkflowRegistrationControls",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "display_name",
+              {
+                "kind": "null"
+              }
+            ],
+            [
+              "execution_mode",
+              {
+                "kind": "string",
+                "value": "async"
+              }
+            ],
+            [
+              "timeout_seconds",
+              {
+                "kind": "int",
+                "decimal": "1800"
+              }
+            ],
+            [
+              "cache_ttl_seconds",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "time_saved",
+              {
+                "kind": "int",
+                "decimal": "0"
+              }
+            ],
+            [
+              "value",
+              {
+                "kind": "f64",
+                "repr": "1e-05",
+                "bits_be_hex": "3ee4f8b588e368f1"
+              }
+            ],
+            [
+              "retry_policy",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "version",
+                    {
+                      "kind": "string",
+                      "value": "execution-retry/v1"
+                    }
+                  ],
+                  [
+                    "enabled",
+                    {
+                      "kind": "bool",
+                      "value": false
+                    }
+                  ],
+                  [
+                    "max_attempts",
+                    {
+                      "kind": "int",
+                      "decimal": "2"
+                    }
+                  ],
+                  [
+                    "retry_on",
+                    {
+                      "kind": "array",
+                      "items": []
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "access_level",
+              {
+                "kind": "string",
+                "value": "role_based"
+              }
+            ],
+            [
+              "role_ids",
+              {
+                "kind": "array",
+                "items": []
+              }
+            ],
+            [
+              "endpoint_enabled",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "public_endpoint",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ],
+            [
+              "allowed_methods",
+              {
+                "kind": "array",
+                "items": [
+                  {
+                    "kind": "string",
+                    "value": "POST"
+                  }
+                ]
+              }
+            ],
+            [
+              "disable_global_key",
+              {
+                "kind": "bool",
+                "value": false
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"disable_global_key\":false,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[],\"time_saved\":0,\"timeout_seconds\":1800,\"value\":1e-05}",
+      "hex": "7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b5d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a313830302c2276616c7565223a31652d30357d",
+      "sha256": "6cd3a5e306ea0da4afb0d9e08065a8181fd5b926932dc216fb2f22d5cb617eb7",
+      "digest": "sha256:6cd3a5e306ea0da4afb0d9e08065a8181fd5b926932dc216fb2f22d5cb617eb7"
+    },
+    {
+      "profile": "PythonDeploymentDocumentV1",
+      "name": "selected-A-shaped-recipe",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "model",
+        "class": "ReviewedWorkflowRecipe",
+        "model_dump_json": {
+          "kind": "object",
+          "entries": [
+            [
+              "schema_version",
+              {
+                "kind": "string",
+                "value": "bifrost.solution-workflow-delivery/v1"
+              }
+            ],
+            [
+              "solution_id",
+              {
+                "kind": "string",
+                "value": "00000000-0000-0000-0000-000000000001"
+              }
+            ],
+            [
+              "files",
+              {
+                "kind": "object",
+                "entries": [
+                  [
+                    "features/utilities/workflows/check_integration_readiness.py",
+                    {
+                      "kind": "string",
+                      "value": "features/utilities/workflows/check_integration_readiness.py"
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "workflows",
+              {
+                "kind": "array",
+                "items": [
+                  {
+                    "kind": "object",
+                    "entries": [
+                      [
+                        "id",
+                        {
+                          "kind": "string",
+                          "value": "00000000-0000-0000-0000-000000000003"
+                        }
+                      ],
+                      [
+                        "path",
+                        {
+                          "kind": "string",
+                          "value": "features/utilities/workflows/check_integration_readiness.py"
+                        }
+                      ],
+                      [
+                        "function_name",
+                        {
+                          "kind": "string",
+                          "value": "check_integration_readiness"
+                        }
+                      ],
+                      [
+                        "organization_id",
+                        {
+                          "kind": "string",
+                          "value": "00000000-0000-0000-0000-000000000004"
+                        }
+                      ],
+                      [
+                        "runtime_bounds",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "max_duration_seconds",
+                              {
+                                "kind": "int",
+                                "decimal": "60"
+                              }
+                            ],
+                            [
+                              "max_external_calls",
+                              {
+                                "kind": "int",
+                                "decimal": "10"
+                              }
+                            ],
+                            [
+                              "max_records_read",
+                              {
+                                "kind": "int",
+                                "decimal": "100"
+                              }
+                            ],
+                            [
+                              "max_output_bytes",
+                              {
+                                "kind": "int",
+                                "decimal": "4096"
+                              }
+                            ],
+                            [
+                              "max_records_written",
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            [
+                              "max_output_rows",
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            [
+                              "max_pages",
+                              {
+                                "kind": "null"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "controls",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "display_name",
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            [
+                              "execution_mode",
+                              {
+                                "kind": "string",
+                                "value": "async"
+                              }
+                            ],
+                            [
+                              "timeout_seconds",
+                              {
+                                "kind": "int",
+                                "decimal": "60"
+                              }
+                            ],
+                            [
+                              "cache_ttl_seconds",
+                              {
+                                "kind": "int",
+                                "decimal": "0"
+                              }
+                            ],
+                            [
+                              "time_saved",
+                              {
+                                "kind": "int",
+                                "decimal": "0"
+                              }
+                            ],
+                            [
+                              "value",
+                              {
+                                "kind": "f64",
+                                "repr": "0.0",
+                                "bits_be_hex": "0000000000000000"
+                              }
+                            ],
+                            [
+                              "retry_policy",
+                              {
+                                "kind": "object",
+                                "entries": [
+                                  [
+                                    "version",
+                                    {
+                                      "kind": "string",
+                                      "value": "execution-retry/v1"
+                                    }
+                                  ],
+                                  [
+                                    "enabled",
+                                    {
+                                      "kind": "bool",
+                                      "value": false
+                                    }
+                                  ],
+                                  [
+                                    "max_attempts",
+                                    {
+                                      "kind": "int",
+                                      "decimal": "2"
+                                    }
+                                  ],
+                                  [
+                                    "retry_on",
+                                    {
+                                      "kind": "array",
+                                      "items": []
+                                    }
+                                  ]
+                                ]
+                              }
+                            ],
+                            [
+                              "access_level",
+                              {
+                                "kind": "string",
+                                "value": "role_based"
+                              }
+                            ],
+                            [
+                              "role_ids",
+                              {
+                                "kind": "array",
+                                "items": [
+                                  {
+                                    "kind": "string",
+                                    "value": "00000000-0000-0000-0000-000000000005"
+                                  }
+                                ]
+                              }
+                            ],
+                            [
+                              "endpoint_enabled",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ],
+                            [
+                              "public_endpoint",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ],
+                            [
+                              "allowed_methods",
+                              {
+                                "kind": "array",
+                                "items": [
+                                  {
+                                    "kind": "string",
+                                    "value": "POST"
+                                  }
+                                ]
+                              }
+                            ],
+                            [
+                              "disable_global_key",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ]
+                          ]
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ],
+            [
+              "shared_tables",
+              {
+                "kind": "object",
+                "entries": []
+              }
+            ]
+          ]
+        }
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"files\":{\"features/utilities/workflows/check_integration_readiness.py\":\"features/utilities/workflows/check_integration_readiness.py\"},\"schema_version\":\"bifrost.solution-workflow-delivery/v1\",\"shared_tables\":{},\"solution_id\":\"00000000-0000-0000-0000-000000000001\",\"workflows\":[{\"controls\":{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"disable_global_key\":false,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[\"00000000-0000-0000-0000-000000000005\"],\"time_saved\":0,\"timeout_seconds\":60,\"value\":0.0},\"function_name\":\"check_integration_readiness\",\"id\":\"00000000-0000-0000-0000-000000000003\",\"organization_id\":\"00000000-0000-0000-0000-000000000004\",\"path\":\"features/utilities/workflows/check_integration_readiness.py\",\"runtime_bounds\":{\"max_duration_seconds\":60,\"max_external_calls\":10,\"max_output_bytes\":4096,\"max_records_read\":100}}]}",
+      "hex": "7b2266696c6573223a7b2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e7079223a2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e7079227d2c22736368656d615f76657273696f6e223a22626966726f73742e736f6c7574696f6e2d776f726b666c6f772d64656c69766572792f7631222c227368617265645f7461626c6573223a7b7d2c22736f6c7574696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22776f726b666c6f7773223a5b7b22636f6e74726f6c73223a7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b2230303030303030302d303030302d303030302d303030302d303030303030303030303035225d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a36302c2276616c7565223a302e307d2c2266756e6374696f6e5f6e616d65223a22636865636b5f696e746567726174696f6e5f72656164696e657373222c226964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226f7267616e697a6174696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c2270617468223a2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e7079222c2272756e74696d655f626f756e6473223a7b226d61785f6475726174696f6e5f7365636f6e6473223a36302c226d61785f65787465726e616c5f63616c6c73223a31302c226d61785f6f75747075745f6279746573223a343039362c226d61785f7265636f7264735f72656164223a3130307d7d5d7d",
+      "sha256": "d012b4ad8dc5d60170e88d4cb987251e1602572825f5dc8397a1c75824ed4fff",
+      "digest": "sha256:d012b4ad8dc5d60170e88d4cb987251e1602572825f5dc8397a1c75824ed4fff"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "selected-A-compiled-definition",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "display_name",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "60"
+            }
+          ],
+          [
+            "cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "access_level",
+            {
+              "kind": "string",
+              "value": "role_based"
+            }
+          ],
+          [
+            "role_ids",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "00000000-0000-0000-0000-000000000005"
+                }
+              ]
+            }
+          ],
+          [
+            "endpoint_enabled",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "public_endpoint",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "allowed_methods",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "POST"
+                }
+              ]
+            }
+          ],
+          [
+            "disable_global_key",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "path",
+            {
+              "kind": "string",
+              "value": "features/utilities/workflows/check_integration_readiness.py"
+            }
+          ],
+          [
+            "function_name",
+            {
+              "kind": "string",
+              "value": "check_integration_readiness"
+            }
+          ],
+          [
+            "name",
+            {
+              "kind": "string",
+              "value": "Utilities: Check Integration Readiness"
+            }
+          ],
+          [
+            "description",
+            {
+              "kind": "string",
+              "value": "Verify that an integration resolves usable scoped configuration without exposing credential values."
+            }
+          ],
+          [
+            "category",
+            {
+              "kind": "string",
+              "value": "Utilities"
+            }
+          ],
+          [
+            "tags",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "integrations"
+                },
+                {
+                  "kind": "string",
+                  "value": "readiness"
+                },
+                {
+                  "kind": "string",
+                  "value": "credentials"
+                },
+                {
+                  "kind": "string",
+                  "value": "scope"
+                },
+                {
+                  "kind": "string",
+                  "value": "read-only"
+                }
+              ]
+            }
+          ],
+          [
+            "type",
+            {
+              "kind": "string",
+              "value": "workflow"
+            }
+          ],
+          [
+            "tool_description",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "organization_id",
+            {
+              "kind": "string",
+              "value": "00000000-0000-0000-0000-000000000004"
+            }
+          ],
+          [
+            "parameters_schema",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "$schema",
+                  {
+                    "kind": "string",
+                    "value": "https://json-schema.org/draft/2020-12/schema"
+                  }
+                ],
+                [
+                  "type",
+                  {
+                    "kind": "string",
+                    "value": "object"
+                  }
+                ],
+                [
+                  "properties",
+                  {
+                    "kind": "object",
+                    "entries": [
+                      [
+                        "integration_name",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "type",
+                              {
+                                "kind": "string",
+                                "value": "string"
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Integration Name"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "organization_id",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "anyOf",
+                              {
+                                "kind": "array",
+                                "items": [
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "string"
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "null"
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Organization Id"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "null"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "required_config_keys",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "anyOf",
+                              {
+                                "kind": "array",
+                                "items": [
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "array"
+                                        }
+                                      ],
+                                      [
+                                        "items",
+                                        {
+                                          "kind": "object",
+                                          "entries": [
+                                            [
+                                              "type",
+                                              {
+                                                "kind": "string",
+                                                "value": "string"
+                                              }
+                                            ]
+                                          ]
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "null"
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Required Config Keys"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "null"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "require_mapping",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "type",
+                              {
+                                "kind": "string",
+                                "value": "boolean"
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Require Mapping"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "require_oauth",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "type",
+                              {
+                                "kind": "string",
+                                "value": "boolean"
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Require Oauth"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ]
+                          ]
+                        }
+                      ]
+                    ]
+                  }
+                ],
+                [
+                  "additionalProperties",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "required",
+                  {
+                    "kind": "array",
+                    "items": [
+                      {
+                        "kind": "string",
+                        "value": "integration_name"
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "runtime_bounds",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "max_duration_seconds",
+                  {
+                    "kind": "int",
+                    "decimal": "60"
+                  }
+                ],
+                [
+                  "max_external_calls",
+                  {
+                    "kind": "int",
+                    "decimal": "10"
+                  }
+                ],
+                [
+                  "max_records_read",
+                  {
+                    "kind": "int",
+                    "decimal": "100"
+                  }
+                ],
+                [
+                  "max_output_bytes",
+                  {
+                    "kind": "int",
+                    "decimal": "4096"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "parameters_schema_contract",
+            {
+              "kind": "string",
+              "value": "bifrost.workflow-parameters-schema/v1"
+            }
+          ],
+          [
+            "effects",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "source_enforced_bounds",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "source_requested_bounds",
+            {
+              "kind": "null"
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"access_level\":\"role_based\",\"allowed_methods\":[\"POST\"],\"cache_ttl_seconds\":0,\"category\":\"Utilities\",\"description\":\"Verify that an integration resolves usable scoped configuration without exposing credential values.\",\"disable_global_key\":false,\"display_name\":null,\"effects\":null,\"endpoint_enabled\":false,\"execution_mode\":\"async\",\"function_name\":\"check_integration_readiness\",\"name\":\"Utilities: Check Integration Readiness\",\"organization_id\":\"00000000-0000-0000-0000-000000000004\",\"parameters_schema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"additionalProperties\":false,\"properties\":{\"integration_name\":{\"title\":\"Integration Name\",\"type\":\"string\"},\"organization_id\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null,\"title\":\"Organization Id\"},\"require_mapping\":{\"default\":false,\"title\":\"Require Mapping\",\"type\":\"boolean\"},\"require_oauth\":{\"default\":false,\"title\":\"Require Oauth\",\"type\":\"boolean\"},\"required_config_keys\":{\"anyOf\":[{\"items\":{\"type\":\"string\"},\"type\":\"array\"},{\"type\":\"null\"}],\"default\":null,\"title\":\"Required Config Keys\"}},\"required\":[\"integration_name\"],\"type\":\"object\"},\"parameters_schema_contract\":\"bifrost.workflow-parameters-schema/v1\",\"path\":\"features/utilities/workflows/check_integration_readiness.py\",\"public_endpoint\":false,\"retry_policy\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"role_ids\":[\"00000000-0000-0000-0000-000000000005\"],\"runtime_bounds\":{\"max_duration_seconds\":60,\"max_external_calls\":10,\"max_output_bytes\":4096,\"max_records_read\":100},\"source_enforced_bounds\":null,\"source_requested_bounds\":null,\"tags\":[\"integrations\",\"readiness\",\"credentials\",\"scope\",\"read-only\"],\"time_saved\":0,\"timeout_seconds\":60,\"tool_description\":null,\"type\":\"workflow\",\"value\":0.0}",
+      "hex": "7b226163636573735f6c6576656c223a22726f6c655f6261736564222c22616c6c6f7765645f6d6574686f6473223a5b22504f5354225d2c2263616368655f74746c5f7365636f6e6473223a302c2263617465676f7279223a225574696c6974696573222c226465736372697074696f6e223a22566572696679207468617420616e20696e746567726174696f6e207265736f6c76657320757361626c652073636f70656420636f6e66696775726174696f6e20776974686f7574206578706f73696e672063726564656e7469616c2076616c7565732e222c2264697361626c655f676c6f62616c5f6b6579223a66616c73652c22646973706c61795f6e616d65223a6e756c6c2c2265666665637473223a6e756c6c2c22656e64706f696e745f656e61626c6564223a66616c73652c22657865637574696f6e5f6d6f6465223a226173796e63222c2266756e6374696f6e5f6e616d65223a22636865636b5f696e746567726174696f6e5f72656164696e657373222c226e616d65223a225574696c69746965733a20436865636b20496e746567726174696f6e2052656164696e657373222c226f7267616e697a6174696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22706172616d65746572735f736368656d61223a7b2224736368656d61223a2268747470733a2f2f6a736f6e2d736368656d612e6f72672f64726166742f323032302d31322f736368656d61222c226164646974696f6e616c50726f70657274696573223a66616c73652c2270726f70657274696573223a7b22696e746567726174696f6e5f6e616d65223a7b227469746c65223a22496e746567726174696f6e204e616d65222c2274797065223a22737472696e67227d2c226f7267616e697a6174696f6e5f6964223a7b22616e794f66223a5b7b2274797065223a22737472696e67227d2c7b2274797065223a226e756c6c227d5d2c2264656661756c74223a6e756c6c2c227469746c65223a224f7267616e697a6174696f6e204964227d2c22726571756972655f6d617070696e67223a7b2264656661756c74223a66616c73652c227469746c65223a2252657175697265204d617070696e67222c2274797065223a22626f6f6c65616e227d2c22726571756972655f6f61757468223a7b2264656661756c74223a66616c73652c227469746c65223a2252657175697265204f61757468222c2274797065223a22626f6f6c65616e227d2c2272657175697265645f636f6e6669675f6b657973223a7b22616e794f66223a5b7b226974656d73223a7b2274797065223a22737472696e67227d2c2274797065223a226172726179227d2c7b2274797065223a226e756c6c227d5d2c2264656661756c74223a6e756c6c2c227469746c65223a22526571756972656420436f6e666967204b657973227d7d2c227265717569726564223a5b22696e746567726174696f6e5f6e616d65225d2c2274797065223a226f626a656374227d2c22706172616d65746572735f736368656d615f636f6e7472616374223a22626966726f73742e776f726b666c6f772d706172616d65746572732d736368656d612f7631222c2270617468223a2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e7079222c227075626c69635f656e64706f696e74223a66616c73652c2272657472795f706f6c696379223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c22726f6c655f696473223a5b2230303030303030302d303030302d303030302d303030302d303030303030303030303035225d2c2272756e74696d655f626f756e6473223a7b226d61785f6475726174696f6e5f7365636f6e6473223a36302c226d61785f65787465726e616c5f63616c6c73223a31302c226d61785f6f75747075745f6279746573223a343039362c226d61785f7265636f7264735f72656164223a3130307d2c22736f757263655f656e666f726365645f626f756e6473223a6e756c6c2c22736f757263655f7265717565737465645f626f756e6473223a6e756c6c2c2274616773223a5b22696e746567726174696f6e73222c2272656164696e657373222c2263726564656e7469616c73222c2273636f7065222c22726561642d6f6e6c79225d2c2274696d655f7361766564223a302c2274696d656f75745f7365636f6e6473223a36302c22746f6f6c5f6465736372697074696f6e223a6e756c6c2c2274797065223a22776f726b666c6f77222c2276616c7565223a302e307d",
+      "sha256": "68462480d23027a013d3ade4b4a944771d98c2f0345db798d2431c60cdb55055",
+      "digest": "sha256:68462480d23027a013d3ade4b4a944771d98c2f0345db798d2431c60cdb55055"
+    },
+    {
+      "profile": "PythonDeploymentEvidenceV1",
+      "name": "selected-A-synthetic-queue-evidence",
+      "producer": {
+        "path": "src/services/solutions/deployment_manifest.py",
+        "function": "canonical_json",
+        "line": 52,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "solution_id",
+            {
+              "kind": "string",
+              "value": "00000000-0000-0000-0000-000000000001"
+            }
+          ],
+          [
+            "solution_deployment_id",
+            {
+              "kind": "string",
+              "value": "00000000-0000-0000-0000-000000000002"
+            }
+          ],
+          [
+            "bundle_hash",
+            {
+              "kind": "string",
+              "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          [
+            "compiled_manifest_hash",
+            {
+              "kind": "string",
+              "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }
+          ],
+          [
+            "git_commit_sha",
+            {
+              "kind": "string",
+              "value": "83c1cb034dbbcfa29eb1723506735b13b4788536"
+            }
+          ],
+          [
+            "runtime_storage_prefix",
+            {
+              "kind": "string",
+              "value": "_solutions/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/"
+            }
+          ],
+          [
+            "workflow_portable_ref",
+            {
+              "kind": "string",
+              "value": "features/utilities/workflows/check_integration_readiness.py::check_integration_readiness"
+            }
+          ],
+          [
+            "workflow_name",
+            {
+              "kind": "string",
+              "value": "Utilities: Check Integration Readiness"
+            }
+          ],
+          [
+            "workflow_function_name",
+            {
+              "kind": "string",
+              "value": "check_integration_readiness"
+            }
+          ],
+          [
+            "workflow_path",
+            {
+              "kind": "string",
+              "value": "features/utilities/workflows/check_integration_readiness.py"
+            }
+          ],
+          [
+            "workflow_source_hash",
+            {
+              "kind": "string",
+              "value": "sha256:f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de"
+            }
+          ],
+          [
+            "workflow_timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "60"
+            }
+          ],
+          [
+            "workflow_time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "workflow_value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ],
+          [
+            "workflow_execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "workflow_type",
+            {
+              "kind": "string",
+              "value": "workflow"
+            }
+          ],
+          [
+            "workflow_cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "workflow_organization_id",
+            {
+              "kind": "string",
+              "value": "00000000-0000-0000-0000-000000000004"
+            }
+          ],
+          [
+            "solution_global_repo_access",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "deployment_source_hashes",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "features/utilities/workflows/check_integration_readiness.py",
+                  {
+                    "kind": "string",
+                    "value": "sha256:f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "workflow_runtime_bounds",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "max_duration_seconds",
+                  {
+                    "kind": "int",
+                    "decimal": "60"
+                  }
+                ],
+                [
+                  "max_external_calls",
+                  {
+                    "kind": "int",
+                    "decimal": "10"
+                  }
+                ],
+                [
+                  "max_records_read",
+                  {
+                    "kind": "int",
+                    "decimal": "100"
+                  }
+                ],
+                [
+                  "max_output_bytes",
+                  {
+                    "kind": "int",
+                    "decimal": "4096"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "workflow_parameters_schema",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "$schema",
+                  {
+                    "kind": "string",
+                    "value": "https://json-schema.org/draft/2020-12/schema"
+                  }
+                ],
+                [
+                  "type",
+                  {
+                    "kind": "string",
+                    "value": "object"
+                  }
+                ],
+                [
+                  "properties",
+                  {
+                    "kind": "object",
+                    "entries": [
+                      [
+                        "integration_name",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "type",
+                              {
+                                "kind": "string",
+                                "value": "string"
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Integration Name"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "organization_id",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "anyOf",
+                              {
+                                "kind": "array",
+                                "items": [
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "string"
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "null"
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Organization Id"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "null"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "required_config_keys",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "anyOf",
+                              {
+                                "kind": "array",
+                                "items": [
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "array"
+                                        }
+                                      ],
+                                      [
+                                        "items",
+                                        {
+                                          "kind": "object",
+                                          "entries": [
+                                            [
+                                              "type",
+                                              {
+                                                "kind": "string",
+                                                "value": "string"
+                                              }
+                                            ]
+                                          ]
+                                        }
+                                      ]
+                                    ]
+                                  },
+                                  {
+                                    "kind": "object",
+                                    "entries": [
+                                      [
+                                        "type",
+                                        {
+                                          "kind": "string",
+                                          "value": "null"
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Required Config Keys"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "null"
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "require_mapping",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "type",
+                              {
+                                "kind": "string",
+                                "value": "boolean"
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Require Mapping"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ]
+                          ]
+                        }
+                      ],
+                      [
+                        "require_oauth",
+                        {
+                          "kind": "object",
+                          "entries": [
+                            [
+                              "type",
+                              {
+                                "kind": "string",
+                                "value": "boolean"
+                              }
+                            ],
+                            [
+                              "title",
+                              {
+                                "kind": "string",
+                                "value": "Require Oauth"
+                              }
+                            ],
+                            [
+                              "default",
+                              {
+                                "kind": "bool",
+                                "value": false
+                              }
+                            ]
+                          ]
+                        }
+                      ]
+                    ]
+                  }
+                ],
+                [
+                  "additionalProperties",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "required",
+                  {
+                    "kind": "array",
+                    "items": [
+                      {
+                        "kind": "string",
+                        "value": "integration_name"
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "outcome": "encoded",
+      "utf8": "{\"bundle_hash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"compiled_manifest_hash\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"deployment_source_hashes\":{\"features/utilities/workflows/check_integration_readiness.py\":\"sha256:f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de\"},\"git_commit_sha\":\"83c1cb034dbbcfa29eb1723506735b13b4788536\",\"runtime_storage_prefix\":\"_solutions/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/\",\"solution_deployment_id\":\"00000000-0000-0000-0000-000000000002\",\"solution_global_repo_access\":false,\"solution_id\":\"00000000-0000-0000-0000-000000000001\",\"workflow_cache_ttl_seconds\":0,\"workflow_execution_mode\":\"async\",\"workflow_function_name\":\"check_integration_readiness\",\"workflow_name\":\"Utilities: Check Integration Readiness\",\"workflow_organization_id\":\"00000000-0000-0000-0000-000000000004\",\"workflow_parameters_schema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"additionalProperties\":false,\"properties\":{\"integration_name\":{\"title\":\"Integration Name\",\"type\":\"string\"},\"organization_id\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null,\"title\":\"Organization Id\"},\"require_mapping\":{\"default\":false,\"title\":\"Require Mapping\",\"type\":\"boolean\"},\"require_oauth\":{\"default\":false,\"title\":\"Require Oauth\",\"type\":\"boolean\"},\"required_config_keys\":{\"anyOf\":[{\"items\":{\"type\":\"string\"},\"type\":\"array\"},{\"type\":\"null\"}],\"default\":null,\"title\":\"Required Config Keys\"}},\"required\":[\"integration_name\"],\"type\":\"object\"},\"workflow_path\":\"features/utilities/workflows/check_integration_readiness.py\",\"workflow_portable_ref\":\"features/utilities/workflows/check_integration_readiness.py::check_integration_readiness\",\"workflow_runtime_bounds\":{\"max_duration_seconds\":60,\"max_external_calls\":10,\"max_output_bytes\":4096,\"max_records_read\":100},\"workflow_source_hash\":\"sha256:f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de\",\"workflow_time_saved\":0,\"workflow_timeout_seconds\":60,\"workflow_type\":\"workflow\",\"workflow_value\":0.0}",
+      "hex": "7b2262756e646c655f68617368223a227368613235363a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c22636f6d70696c65645f6d616e69666573745f68617368223a227368613235363a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c226465706c6f796d656e745f736f757263655f686173686573223a7b2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e7079223a227368613235363a66343962316239333565663234363766363665636366336334623237353037373366363634643166306534316638666636623038653366313130333561316465227d2c226769745f636f6d6d69745f736861223a2238336331636230333464626263666132396562313732333530363733356231336234373838353336222c2272756e74696d655f73746f726167655f707265666978223a225f736f6c7574696f6e732f30303030303030302d303030302d303030302d303030302d3030303030303030303030312f30303030303030302d303030302d303030302d303030302d3030303030303030303030322f222c22736f6c7574696f6e5f6465706c6f796d656e745f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c22736f6c7574696f6e5f676c6f62616c5f7265706f5f616363657373223a66616c73652c22736f6c7574696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22776f726b666c6f775f63616368655f74746c5f7365636f6e6473223a302c22776f726b666c6f775f657865637574696f6e5f6d6f6465223a226173796e63222c22776f726b666c6f775f66756e6374696f6e5f6e616d65223a22636865636b5f696e746567726174696f6e5f72656164696e657373222c22776f726b666c6f775f6e616d65223a225574696c69746965733a20436865636b20496e746567726174696f6e2052656164696e657373222c22776f726b666c6f775f6f7267616e697a6174696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22776f726b666c6f775f706172616d65746572735f736368656d61223a7b2224736368656d61223a2268747470733a2f2f6a736f6e2d736368656d612e6f72672f64726166742f323032302d31322f736368656d61222c226164646974696f6e616c50726f70657274696573223a66616c73652c2270726f70657274696573223a7b22696e746567726174696f6e5f6e616d65223a7b227469746c65223a22496e746567726174696f6e204e616d65222c2274797065223a22737472696e67227d2c226f7267616e697a6174696f6e5f6964223a7b22616e794f66223a5b7b2274797065223a22737472696e67227d2c7b2274797065223a226e756c6c227d5d2c2264656661756c74223a6e756c6c2c227469746c65223a224f7267616e697a6174696f6e204964227d2c22726571756972655f6d617070696e67223a7b2264656661756c74223a66616c73652c227469746c65223a2252657175697265204d617070696e67222c2274797065223a22626f6f6c65616e227d2c22726571756972655f6f61757468223a7b2264656661756c74223a66616c73652c227469746c65223a2252657175697265204f61757468222c2274797065223a22626f6f6c65616e227d2c2272657175697265645f636f6e6669675f6b657973223a7b22616e794f66223a5b7b226974656d73223a7b2274797065223a22737472696e67227d2c2274797065223a226172726179227d2c7b2274797065223a226e756c6c227d5d2c2264656661756c74223a6e756c6c2c227469746c65223a22526571756972656420436f6e666967204b657973227d7d2c227265717569726564223a5b22696e746567726174696f6e5f6e616d65225d2c2274797065223a226f626a656374227d2c22776f726b666c6f775f70617468223a2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e7079222c22776f726b666c6f775f706f727461626c655f726566223a2266656174757265732f7574696c69746965732f776f726b666c6f77732f636865636b5f696e746567726174696f6e5f72656164696e6573732e70793a3a636865636b5f696e746567726174696f6e5f72656164696e657373222c22776f726b666c6f775f72756e74696d655f626f756e6473223a7b226d61785f6475726174696f6e5f7365636f6e6473223a36302c226d61785f65787465726e616c5f63616c6c73223a31302c226d61785f6f75747075745f6279746573223a343039362c226d61785f7265636f7264735f72656164223a3130307d2c22776f726b666c6f775f736f757263655f68617368223a227368613235363a66343962316239333565663234363766363665636366336334623237353037373366363634643166306534316638666636623038653366313130333561316465222c22776f726b666c6f775f74696d655f7361766564223a302c22776f726b666c6f775f74696d656f75745f7365636f6e6473223a36302c22776f726b666c6f775f74797065223a22776f726b666c6f77222c22776f726b666c6f775f76616c7565223a302e307d",
+      "sha256": "64061990d87171d6c28f24c346d6a8fa11e827be1daa27b2b84de610862b4a5e",
+      "digest": "sha256:64061990d87171d6c28f24c346d6a8fa11e827be1daa27b2b84de610862b4a5e"
+    },
+    {
+      "profile": "PythonAttemptPolicyV1",
+      "name": "selected-A-shaped-policy",
+      "producer": {
+        "path": "src/services/execution/attempts.py",
+        "function": "_policy_digest",
+        "line": 16,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "runtime_mode",
+            {
+              "kind": "string",
+              "value": "deployment-v1"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "attempt_policy",
+            {
+              "kind": "string",
+              "value": "workflow-attempt/v1"
+            }
+          ],
+          [
+            "runtime_mode",
+            {
+              "kind": "string",
+              "value": "deployment-v1"
+            }
+          ],
+          [
+            "execution_retry",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ]
+      },
+      "helper_digest": "sha256:09f01a3097bf8e9c3bab6de57e9eadfa5965eb7a45f877a5be412a4333159ad3",
+      "outcome": "encoded",
+      "utf8": "{\"attempt_policy\":\"workflow-attempt/v1\",\"execution_retry\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"runtime_mode\":\"deployment-v1\"}",
+      "hex": "7b22617474656d70745f706f6c696379223a22776f726b666c6f772d617474656d70742f7631222c22657865637574696f6e5f7265747279223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c2272756e74696d655f6d6f6465223a226465706c6f796d656e742d7631227d",
+      "sha256": "09f01a3097bf8e9c3bab6de57e9eadfa5965eb7a45f877a5be412a4333159ad3",
+      "digest": "sha256:09f01a3097bf8e9c3bab6de57e9eadfa5965eb7a45f877a5be412a4333159ad3"
+    },
+    {
+      "profile": "PythonAttemptPolicyV1",
+      "name": "synthetic-ASCII-escaping",
+      "producer": {
+        "path": "src/services/execution/attempts.py",
+        "function": "_policy_digest",
+        "line": 16,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "runtime_mode",
+            {
+              "kind": "string",
+              "value": "synthetic-\u00e9-\ud83d\ude00"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "attempt_policy",
+            {
+              "kind": "string",
+              "value": "workflow-attempt/v1"
+            }
+          ],
+          [
+            "runtime_mode",
+            {
+              "kind": "string",
+              "value": "synthetic-\u00e9-\ud83d\ude00"
+            }
+          ],
+          [
+            "execution_retry",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "dump_options": {
+        "sort_keys": true,
+        "separators": [
+          ",",
+          ":"
+        ]
+      },
+      "helper_digest": "sha256:9da4c1ad1ded6ebe76b1671432480447025fc368adaa5423cfb15bdacce00e32",
+      "outcome": "encoded",
+      "utf8": "{\"attempt_policy\":\"workflow-attempt/v1\",\"execution_retry\":{\"enabled\":false,\"max_attempts\":2,\"retry_on\":[],\"version\":\"execution-retry/v1\"},\"runtime_mode\":\"synthetic-\\u00e9-\\ud83d\\ude00\"}",
+      "hex": "7b22617474656d70745f706f6c696379223a22776f726b666c6f772d617474656d70742f7631222c22657865637574696f6e5f7265747279223a7b22656e61626c6564223a66616c73652c226d61785f617474656d707473223a322c2272657472795f6f6e223a5b5d2c2276657273696f6e223a22657865637574696f6e2d72657472792f7631227d2c2272756e74696d655f6d6f6465223a2273796e7468657469632d5c75303065392d5c75643833645c7564653030227d",
+      "sha256": "9da4c1ad1ded6ebe76b1671432480447025fc368adaa5423cfb15bdacce00e32",
+      "digest": "sha256:9da4c1ad1ded6ebe76b1671432480447025fc368adaa5423cfb15bdacce00e32"
+    },
+    {
+      "profile": "PythonDeliveryPlaintextV1",
+      "name": "synthetic-envelope",
+      "producer": {
+        "path": "src/services/work_delivery_store.py",
+        "function": "_encrypted",
+        "line": 75,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "input": {
+        "kind": "object",
+        "entries": [
+          [
+            "body",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "z",
+                  {
+                    "kind": "string",
+                    "value": "\u00e9\ud83d\ude00"
+                  }
+                ],
+                [
+                  "a",
+                  {
+                    "kind": "null"
+                  }
+                ],
+                [
+                  "number",
+                  {
+                    "kind": "f64",
+                    "repr": "1e-05",
+                    "bits_be_hex": "3ee4f8b588e368f1"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "headers",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "synthetic",
+                  {
+                    "kind": "bool",
+                    "value": true
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic",
+      "serialized_input": {
+        "kind": "object",
+        "entries": [
+          [
+            "body",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "z",
+                  {
+                    "kind": "string",
+                    "value": "\u00e9\ud83d\ude00"
+                  }
+                ],
+                [
+                  "a",
+                  {
+                    "kind": "null"
+                  }
+                ],
+                [
+                  "number",
+                  {
+                    "kind": "f64",
+                    "repr": "1e-05",
+                    "bits_be_hex": "3ee4f8b588e368f1"
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "headers",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "synthetic",
+                  {
+                    "kind": "bool",
+                    "value": true
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      },
+      "dump_options": {},
+      "outcome": "encoded",
+      "utf8": "{\"body\": {\"z\": \"\\u00e9\\ud83d\\ude00\", \"a\": null, \"number\": 1e-05}, \"headers\": {\"synthetic\": true}}",
+      "hex": "7b22626f6479223a207b227a223a20225c75303065395c75643833645c7564653030222c202261223a206e756c6c2c20226e756d626572223a2031652d30357d2c202268656164657273223a207b2273796e746865746963223a20747275657d7d",
+      "sha256": "4329f8ba309b0c006a4a0f02afc4c97b53cc15c764c4dc903869ee0e5d2f0f46",
+      "digest": "sha256:4329f8ba309b0c006a4a0f02afc4c97b53cc15c764c4dc903869ee0e5d2f0f46"
+    }
+  ],
+  "observations": [
+    {
+      "name": "controls-default",
+      "value_type": "int",
+      "value": {
+        "kind": "int",
+        "decimal": "0"
+      },
+      "model_dump_json": {
+        "kind": "object",
+        "entries": [
+          [
+            "display_name",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "1800"
+            }
+          ],
+          [
+            "cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "access_level",
+            {
+              "kind": "string",
+              "value": "role_based"
+            }
+          ],
+          [
+            "role_ids",
+            {
+              "kind": "array",
+              "items": []
+            }
+          ],
+          [
+            "endpoint_enabled",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "public_endpoint",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "allowed_methods",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "POST"
+                }
+              ]
+            }
+          ],
+          [
+            "disable_global_key",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic model construction"
+    },
+    {
+      "name": "controls-explicit-int-zero",
+      "value_type": "float",
+      "value": {
+        "kind": "f64",
+        "repr": "0.0",
+        "bits_be_hex": "0000000000000000"
+      },
+      "model_dump_json": {
+        "kind": "object",
+        "entries": [
+          [
+            "display_name",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "1800"
+            }
+          ],
+          [
+            "cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "access_level",
+            {
+              "kind": "string",
+              "value": "role_based"
+            }
+          ],
+          [
+            "role_ids",
+            {
+              "kind": "array",
+              "items": []
+            }
+          ],
+          [
+            "endpoint_enabled",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "public_endpoint",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "allowed_methods",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "POST"
+                }
+              ]
+            }
+          ],
+          [
+            "disable_global_key",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic model construction"
+    },
+    {
+      "name": "controls-explicit-float-zero",
+      "value_type": "float",
+      "value": {
+        "kind": "f64",
+        "repr": "0.0",
+        "bits_be_hex": "0000000000000000"
+      },
+      "model_dump_json": {
+        "kind": "object",
+        "entries": [
+          [
+            "display_name",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "1800"
+            }
+          ],
+          [
+            "cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "value",
+            {
+              "kind": "f64",
+              "repr": "0.0",
+              "bits_be_hex": "0000000000000000"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "access_level",
+            {
+              "kind": "string",
+              "value": "role_based"
+            }
+          ],
+          [
+            "role_ids",
+            {
+              "kind": "array",
+              "items": []
+            }
+          ],
+          [
+            "endpoint_enabled",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "public_endpoint",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "allowed_methods",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "POST"
+                }
+              ]
+            }
+          ],
+          [
+            "disable_global_key",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic model construction"
+    },
+    {
+      "name": "controls-negative-zero",
+      "value_type": "float",
+      "value": {
+        "kind": "f64",
+        "repr": "-0.0",
+        "bits_be_hex": "8000000000000000"
+      },
+      "model_dump_json": {
+        "kind": "object",
+        "entries": [
+          [
+            "display_name",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "1800"
+            }
+          ],
+          [
+            "cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "value",
+            {
+              "kind": "f64",
+              "repr": "-0.0",
+              "bits_be_hex": "8000000000000000"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "access_level",
+            {
+              "kind": "string",
+              "value": "role_based"
+            }
+          ],
+          [
+            "role_ids",
+            {
+              "kind": "array",
+              "items": []
+            }
+          ],
+          [
+            "endpoint_enabled",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "public_endpoint",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "allowed_methods",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "POST"
+                }
+              ]
+            }
+          ],
+          [
+            "disable_global_key",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic model construction"
+    },
+    {
+      "name": "controls-1e-5",
+      "value_type": "float",
+      "value": {
+        "kind": "f64",
+        "repr": "1e-05",
+        "bits_be_hex": "3ee4f8b588e368f1"
+      },
+      "model_dump_json": {
+        "kind": "object",
+        "entries": [
+          [
+            "display_name",
+            {
+              "kind": "null"
+            }
+          ],
+          [
+            "execution_mode",
+            {
+              "kind": "string",
+              "value": "async"
+            }
+          ],
+          [
+            "timeout_seconds",
+            {
+              "kind": "int",
+              "decimal": "1800"
+            }
+          ],
+          [
+            "cache_ttl_seconds",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "time_saved",
+            {
+              "kind": "int",
+              "decimal": "0"
+            }
+          ],
+          [
+            "value",
+            {
+              "kind": "f64",
+              "repr": "1e-05",
+              "bits_be_hex": "3ee4f8b588e368f1"
+            }
+          ],
+          [
+            "retry_policy",
+            {
+              "kind": "object",
+              "entries": [
+                [
+                  "version",
+                  {
+                    "kind": "string",
+                    "value": "execution-retry/v1"
+                  }
+                ],
+                [
+                  "enabled",
+                  {
+                    "kind": "bool",
+                    "value": false
+                  }
+                ],
+                [
+                  "max_attempts",
+                  {
+                    "kind": "int",
+                    "decimal": "2"
+                  }
+                ],
+                [
+                  "retry_on",
+                  {
+                    "kind": "array",
+                    "items": []
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "access_level",
+            {
+              "kind": "string",
+              "value": "role_based"
+            }
+          ],
+          [
+            "role_ids",
+            {
+              "kind": "array",
+              "items": []
+            }
+          ],
+          [
+            "endpoint_enabled",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "public_endpoint",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ],
+          [
+            "allowed_methods",
+            {
+              "kind": "array",
+              "items": [
+                {
+                  "kind": "string",
+                  "value": "POST"
+                }
+              ]
+            }
+          ],
+          [
+            "disable_global_key",
+            {
+              "kind": "bool",
+              "value": false
+            }
+          ]
+        ]
+      },
+      "fixture": "synthetic model construction"
+    },
+    {
+      "name": "selected-A-AST-compiled-value",
+      "value": {
+        "kind": "f64",
+        "repr": "0.0",
+        "bits_be_hex": "0000000000000000"
+      },
+      "fixture": "synthetic fixed UUID recipe / actual pinned authored bytes / AST compiler, not installed A"
+    },
+    {
+      "name": "selected-A-synthetic-queue-helper",
+      "queue_producer": {
+        "path": "src/services/solutions/deployment_runtime.py",
+        "function": "queue_evidence",
+        "line": 73,
+        "ref": "ba783472b770291e612433ad7ca9564fe671dade"
+      },
+      "value": {
+        "kind": "f64",
+        "repr": "0.0",
+        "bits_be_hex": "0000000000000000"
+      },
+      "fixture": "constructed dataclass from compiled definition; DB pin resolver/install NOT invoked; bundle/manifest hashes synthetic"
+    }
+  ],
+  "barriers": [],
+  "vector_count": 64,
+  "barrier_count": 0
+}

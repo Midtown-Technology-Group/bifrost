@@ -22,6 +22,7 @@ from src.services.solution_deploy_obligations import (
     SolutionDeployObligationService,
     _effective_entity_id_map,
     reconcile_solution_deploy_obligation,
+    solution_deploy_obligation_declaration,
     solution_deploy_obligation_response,
     solution_source_content_id,
     verify_solution_artifact,
@@ -739,7 +740,19 @@ async def test_source_declaration_replay_cannot_drop_solution_evidence() -> None
         solution_deploy_obligations=[
             _record([("bifrost.solution.yaml", b"slug: example\nname: Example\n")])
         ],
+        producer_declaration_digest=None,
     )
+    original = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=source.source_commit_sha,
+        source_tree_sha=source.source_tree_sha,
+        disposition=source.declared_disposition,
+        reason=source.reason,
+        solution_deploy_obligations=[
+            solution_deploy_obligation_declaration(item)
+            for item in source.solution_deploy_obligations
+        ],
+    )
+    source.declaration_digest = source_release_declaration_digest(original)
     database = SimpleNamespace(scalar=AsyncMock(return_value=source))
     request = WorkspaceSourceReleaseDeclareRequest(
         source_commit_sha="a" * 40,

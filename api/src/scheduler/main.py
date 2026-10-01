@@ -103,6 +103,7 @@ class Scheduler:
         self._job_slots = PLATFORM_JOB_CONCURRENCY
         self._platform_job_tasks: list[asyncio.Task[None]] = []
         self._kubernetes_build_task: asyncio.Task[None] | None = None
+        self._external_workers_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start the scheduler."""
@@ -140,6 +141,12 @@ class Scheduler:
             self._leadership_loop(),
             name="scheduler-leadership",
         )
+        if self.settings.external_worker_scaling_enabled:
+            from src.services.external_worker_scaling import controller_loop
+            self._external_workers_task = asyncio.create_task(
+                controller_loop(self._shutdown_event), name="external-worker-scaling"
+            )
+            self._external_workers_task.add_done_callback(self._background_task_done)
         for task in self._platform_job_tasks:
             task.add_done_callback(self._background_task_done)
         self._leadership_task.add_done_callback(self._background_task_done)
@@ -150,7 +157,7 @@ class Scheduler:
         # Keep running until shutdown
         await self._shutdown_event.wait()
 
-        for task in (*self._platform_job_tasks, self._leadership_task, self._kubernetes_build_task):
+        for task in (*self._platform_job_tasks, self._leadership_task, self._kubernetes_build_task, self._external_workers_task):
             if (
                 self.running
                 and task is not None
@@ -779,7 +786,7 @@ class Scheduler:
 
         tasks = [
             task
-            for task in (*self._platform_job_tasks, self._leadership_task, self._kubernetes_build_task)
+            for task in (*self._platform_job_tasks, self._leadership_task, self._kubernetes_build_task, self._external_workers_task)
             if task is not None
         ]
         for task in tasks:
@@ -789,6 +796,7 @@ class Scheduler:
         self._platform_job_tasks = []
         self._leadership_task = None
         self._kubernetes_build_task = None
+        self._external_workers_task = None
 
         if self._heartbeat_task:
             self._heartbeat_task.cancel()

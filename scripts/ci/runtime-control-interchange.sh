@@ -17,7 +17,7 @@ python_peer() {
         -e BIFROST_RUNTIME_VECTORS=/contracts/runtime/v1/control-vectors.json \
         bifrost-test-api-dev:latest "$@"
 }
-docker build --target checks -t bifrost-runtime-control-checks -f core-rs/Dockerfile core-rs
+docker build --target checks --build-context runtime-evidence=contracts/runtime/v1/evidence -t bifrost-runtime-control-checks -f core-rs/Dockerfile core-rs
 python_peer -m pytest --confcutdir=tests/runtime_protocol tests/runtime_protocol -q --no-cov
 docker run --rm --network none bifrost-runtime-control-checks \
     cargo run --offline --locked -p bifrost-contracts --example runtime_control_vectors -- emit > "$EXCHANGE_DIR/rust.json"
