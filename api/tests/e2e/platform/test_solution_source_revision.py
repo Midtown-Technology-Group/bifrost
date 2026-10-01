@@ -643,8 +643,11 @@ async def test_git_resource_updates_and_revert_preserve_durable_attempt_reads(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("organization_id,explicit_scope", [
+    (PROVIDER_ORG_ID, False), (PROVIDER_ORG_ID, True), (None, True),
+])
 async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queue_pin(
-    committed_delivery_db, platform_admin, monkeypatch, async_session_factory
+    committed_delivery_db, platform_admin, monkeypatch, async_session_factory, organization_id, explicit_scope
 ):
     db_session = committed_delivery_db
     from contextlib import asynccontextmanager
@@ -664,7 +667,7 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
         async with async_session_factory() as session:
             yield session
     monkeypatch.setattr(operation_receipts, "get_db_context", receipt_context)
-    fixture = await _seed_adopted_revision(db_session, platform_admin, monkeypatch)
+    fixture = await _seed_adopted_revision(db_session, platform_admin, monkeypatch, organization_id=organization_id)
     (solution_id, base_id, workflow_id, path, new_source, objects) = (
         fixture.solution_id, fixture.base_id, fixture.workflow_id,
         fixture.path, fixture.new_source, fixture.objects
@@ -673,7 +676,8 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
         policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
             repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
             workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
-            ci_workflow_id=257449914, solutions={solution_id: "config/solution-delivery/fixture.json"})
+            ci_workflow_id=257449914, solutions={solution_id: "config/solution-delivery/fixture.json"},
+            **({"solution_organization_ids": {solution_id: organization_id}} if explicit_scope else {}))
         request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=123,
             ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
         desired = VerifiedGitSource(solution_id, request.source_commit_sha, "c" * 40,
@@ -710,7 +714,11 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
         assert result.model_dump(mode="json")["runtime_verified"] is False
         assert objects == snapshot_objects  # Same create-only staging bytes.
         active = await db_session.get(SolutionDeployment, result.deployment_id)
+        assert active.organization_id == organization_id
         assert active.validation_result["github_delivery"]["ci_run_id"] == 123
+        assert active.validation_result["github_delivery"]["organization_id"] == (
+            str(organization_id) if organization_id is not None else None
+        )
         receipt = await db_session.get(OperationReceipt, result.receipt_id)
         assert receipt.status == "succeeded"
         queued = await resolve_pinned_workflow_runtime(db_session, base_id, workflow_id)
@@ -724,3 +732,45 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
         # Immutable history and permanent receipts are not row-deleted. The
         # canonical test.sh phase reset destroys this disposable test DB.
         await db_session.rollback()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("organization_id,explicit_global_scope", [
+    (None, False), (PROVIDER_ORG_ID, True),
+])
+async def test_git_delivery_rejects_install_scope_mismatch_before_any_candidate(
+    committed_delivery_db, platform_admin, monkeypatch, organization_id, explicit_global_scope
+):
+    from sqlalchemy import select
+    from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.services.solutions.github_delivery_source import GitDeliveryIdentity, GitDeliverySourceError, VerifiedGitSource
+    from src.services.solutions.github_source_delivery import GitSourceDeliveryService
+
+    db = committed_delivery_db
+    f = await _seed_adopted_revision(db, platform_admin, monkeypatch, organization_id=organization_id)
+    policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
+        repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
+        workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
+        ci_workflow_id=257449914, solutions={f.solution_id: "config/solution-delivery/fixture.json"},
+        **({"solution_organization_ids": {f.solution_id: None}} if explicit_global_scope else {}))
+    request = SolutionGitSourceDeliveryRequest(source_commit_sha="a" * 40, ci_run_id=123,
+        ci_run_attempt=1, artifact_digest="sha256:" + "b" * 64)
+    desired = VerifiedGitSource(f.solution_id, request.source_commit_sha, "c" * 40,
+        policy.solutions[f.solution_id], {f.path: sha256_digest(f.new_source)},
+        {f.path: f.new_source}, request.artifact_digest)
+
+    class Reader:
+        async def verify_ci(self, *_):
+            pass
+        async def source(self, *_):
+            return desired
+
+    objects = dict(f.objects)
+    with pytest.raises(GitDeliverySourceError, match="organization/runtime scope"):
+        await GitSourceDeliveryService(db, policy, Reader()).deliver(
+            f.solution_id, request, GitDeliveryIdentity("789", 1))
+    assert f.objects == objects
+    assert (await db.get(Solution, f.solution_id)).active_deployment_id == f.base_id
+    assert list(await db.scalars(select(SolutionDeployment.id).where(
+        SolutionDeployment.solution_id == f.solution_id))) == [f.base_id]

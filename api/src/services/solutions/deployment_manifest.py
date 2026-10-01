@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections.abc import Mapping
 from typing import Any, Literal
 from uuid import UUID
@@ -17,6 +16,7 @@ from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindin
 from bifrost.solution_delivery_review import (
     WORKFLOW_PARAMETERS_SCHEMA_CONTRACT as WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
     SharedRootTableBinding as SharedRootTableBinding,
+    require_shared_table_bindings,
     MAX_DEPLOYMENT_RESOURCE_BYTES as MAX_DEPLOYMENT_RESOURCE_BYTES,
     MAX_DEPLOYMENT_RESOURCES_BYTES as MAX_DEPLOYMENT_RESOURCES_BYTES,
 )
@@ -272,10 +272,7 @@ def _validate_manifest_resolution_agreement(
                 raise ValueError("invalid immutable resource path")
             if resource.object_key != f"{expected_prefix}_resources/{path}":
                 raise ValueError("resource object is outside its immutable deployment")
-    if len({item.table_id for item in manifest.shared_tables.values()}) != len(manifest.shared_tables):
-        raise ValueError("shared table IDs must be unique")
-    if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in manifest.shared_tables):
-        raise ValueError("shared table binding name is invalid")
+    require_shared_table_bindings(manifest.shared_tables)
     if set(manifest.shared_tables) & set(manifest.tables):
         raise ValueError("shared table binding conflicts with an owned table")
 
