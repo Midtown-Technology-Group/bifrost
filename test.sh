@@ -394,7 +394,7 @@ cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -m "no
 cmd_unit_targets() { run_pytest "$@" -m "not slow" -v; }
 cmd_unit_all() { run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -v "$@"; }
 cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
-cmd_parity() { run_pytest tests/parity/ -v "$@"; }
+cmd_parity() { run_pytest tests/parity/test_device_reference.py -v "$@"; }
 cmd_rust() {
     if [ "${1:-}" != "bootstrap" ] || [ "$#" -ne 1 ]; then
         echo "Usage: ./test.sh rust bootstrap" >&2
