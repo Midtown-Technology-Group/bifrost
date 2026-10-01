@@ -10,6 +10,16 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import redis.asyncio as redis
+from sqlalchemy import delete
+from sqlalchemy.exc import DBAPIError
+from src.models.orm.config import Config
+from src.models.orm.integrations import (
+    Integration,
+    IntegrationConfigSchema,
+    IntegrationMapping,
+)
+from src.models.orm.solution_deployments import SolutionDeployment
 
 from tests.parity.core.adapter import ReferenceAdapter
 from tests.parity.core.environment import SOURCE, SOURCE_SHA256
@@ -27,7 +37,7 @@ from tests.parity.core.scenarios import (
     execute_readiness,
     expected_result,
 )
-from tests.parity.core.sdk_observer import assert_synthetic_request
+from tests.parity.core.sdk_observer import PREFIX, assert_synthetic_request
 
 pytestmark = pytest.mark.e2e
 
@@ -133,6 +143,66 @@ async def test_core_pinned_python_readiness_and_real_source(pinned_environment):
         destination = Path("/tmp/bifrost/core-pinned-reference-readiness.json")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(report, indent=2) + "\n")
+
+
+async def test_core_pinned_cleanup_retains_fixture_and_history_guard(
+    pinned_environment,
+):
+    async with pinned_environment() as (env, adapter):
+        captured = await execute_readiness(adapter, env, before=env.before)
+        assert_pinned_ready(captured, env)
+        assert env.capture is not None
+        capture = env.capture
+        before = await capture.snapshot()
+
+    # Snapshot opens fresh DB sessions; it does not use the closed capture Redis.
+    assert env.client.is_closed and adapter.client.is_closed
+    assert await capture.snapshot() == before
+    await env.verify_storage()
+    async with env.sessions() as db:
+        for model, identity in (
+            (Integration, env.ids["integration"]),
+            (IntegrationConfigSchema, env.ids["schema"]),
+            (IntegrationMapping, env.ids["mapping"]),
+            (Config, env.ids["config"]),
+        ):
+            assert await db.get(model, identity) is not None
+        # Use the ordinary test connection and exact owned row. The existing
+        # database guard must still reject deletion; roll back its transaction.
+        with pytest.raises(
+            DBAPIError, match="SolutionDeployment history cannot be deleted"
+        ):
+            await db.execute(
+                delete(SolutionDeployment).where(
+                    SolutionDeployment.id == env.ids["deployment"],
+                    SolutionDeployment.solution_id == env.ids["solution"],
+                )
+            )
+        await db.rollback()
+    assert await capture.snapshot() == before
+    async with redis.from_url(os.environ["BIFROST_REDIS_URL"]) as observer:
+        for execution in env.executions:
+            assert not await observer.exists(
+                f"{PREFIX}{execution}:owner",
+                f"{PREFIX}{execution}:requests",
+                f"{PREFIX}{execution}:sources",
+            )
+
+
+async def test_core_pinned_unsettled_cleanup_retains_observer_evidence(
+    pinned_environment,
+):
+    with pytest.raises(AssertionError, match="Owned execution authority missing"):
+        async with pinned_environment(activate=False) as (env, adapter):
+            execution = await env.allocate_execution("unsubmitted")
+            assert env.capture is not None
+            capture = env.capture
+            before = await capture.snapshot()
+    assert env.client.is_closed and adapter.client.is_closed
+    assert await capture.snapshot() == before
+    await env.verify_storage()
+    async with redis.from_url(os.environ["BIFROST_REDIS_URL"]) as observer:
+        assert await observer.exists(f"{PREFIX}{execution}:owner")
 
 
 async def test_core_pinned_independent_python_installations(pinned_environment):

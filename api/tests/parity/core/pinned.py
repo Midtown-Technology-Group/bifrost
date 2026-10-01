@@ -16,9 +16,9 @@ from bifrost.solution_delivery_review import (
     WORKFLOW_RECIPE_SCHEMA,
     ReviewedWorkflowRecipe,
 )
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import select, text
 from src.core.module_cache_contract import MODULE_INDEX_KEY, MODULE_KEY_PREFIX
-from src.models.orm.executions import Execution, ExecutionLog, WorkflowExecutionAttempt
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.solution_deployments import (
     SolutionDeployment,
     SolutionDeploymentDependency,
@@ -98,7 +98,6 @@ class PinnedEnvironment(ReferenceEnvironment):
 
     def __init__(self, engine):
         super().__init__(engine)
-        self.legacy_cleanup_path = self.path
         self.path = SOURCE_PATH
         self.ids.update(workflow=uuid4(), deployment=uuid4())
         self.bindings.update(
@@ -344,111 +343,76 @@ class PinnedEnvironment(ReferenceEnvironment):
         await self.redis.srem(MODULE_INDEX_KEY, key)
 
     async def cleanup(self):
-        # Pin references intentionally prevent normal public hard-delete. Test-only
-        # cleanup removes only owned rows/keys after independent settlement proof.
-        async with self.sessions() as db:
-            await db.execute(text("SET LOCAL lock_timeout = '5s'"))
-            executions = (
-                await db.scalars(
-                    select(Execution)
-                    .where(Execution.id.in_(self.executions))
-                    .with_for_update()
-                )
-            ).all()
-            assert {row.id for row in executions} == set(self.executions), (
-                "Owned execution authority missing; retain pinned fixture"
-            )
-            assert all(
-                row.status in {"Success", "Failed", "Cancelled", "Timeout"}
-                and row.completed_at is not None
-                for row in executions
-            ), "Owned execution nonterminal; retain pinned fixture"
-            active_attempts = (
-                await db.scalars(
-                    select(WorkflowExecutionAttempt).where(
-                        WorkflowExecutionAttempt.execution_id.in_(self.executions),
-                        WorkflowExecutionAttempt.completed_at.is_(None),
-                    )
-                )
-            ).all()
-            assert not active_attempts, (
-                "Owned workflow attempt active; retain pinned fixture"
-            )
-            deliveries = (
-                await db.scalars(
-                    select(WorkDelivery).where(
-                        WorkDelivery.message_id.in_(
-                            [str(value) for value in self.executions]
-                        )
-                    )
-                )
-            ).all()
-            assert len(deliveries) == len(self.executions) and all(
-                row.status in {"completed", "poison"} for row in deliveries
-            ), "Owned delivery active; retain pinned fixture"
-            if "solution" in self.ids:
-                dependencies = (
+        # Deployment history is retained by the platform. Keep the whole fixture,
+        # including source and tenant/principal/config dependencies, until the
+        # supported isolated installation is disposed. Only retire observer keys
+        # after proving that owned execution work has settled.
+        try:
+            async with self.sessions() as db:
+                await db.execute(text("SET LOCAL lock_timeout = '5s'"))
+                executions = (
                     await db.scalars(
-                        select(SolutionDeploymentDependency).where(
-                            SolutionDeploymentDependency.dependency_deployment_id
-                            == self.ids["deployment"]
+                        select(Execution)
+                        .where(Execution.id.in_(self.executions))
+                        .with_for_update()
+                    )
+                ).all()
+                assert {row.id for row in executions} == set(self.executions), (
+                    "Owned execution authority missing; retain pinned fixture"
+                )
+                assert all(
+                    row.status in {"Success", "Failed", "Cancelled", "Timeout"}
+                    and row.completed_at is not None
+                    for row in executions
+                ), "Owned execution nonterminal; retain pinned fixture"
+                active_attempts = (
+                    await db.scalars(
+                        select(WorkflowExecutionAttempt).where(
+                            WorkflowExecutionAttempt.execution_id.in_(self.executions),
+                            WorkflowExecutionAttempt.completed_at.is_(None),
                         )
                     )
                 ).all()
-                assert not dependencies, (
-                    "Unexpected external pin dependency; retain fixture"
+                assert not active_attempts, (
+                    "Owned workflow attempt active; retain pinned fixture"
                 )
-                await db.execute(
-                    delete(ExecutionLog).where(
-                        ExecutionLog.execution_id.in_(self.executions)
+                deliveries = (
+                    await db.scalars(
+                        select(WorkDelivery).where(
+                            WorkDelivery.message_id.in_(
+                                [str(value) for value in self.executions]
+                            )
+                        )
                     )
-                )
-                await db.execute(
-                    delete(Execution).where(Execution.id.in_(self.executions))
-                )
-                await db.execute(
-                    delete(Workflow).where(
-                        Workflow.id == self.ids["workflow"],
-                        Workflow.solution_id == self.ids["solution"],
+                ).all()
+                assert len(deliveries) == len(self.executions) and all(
+                    row.status in {"completed", "poison"} for row in deliveries
+                ), "Owned delivery active; retain pinned fixture"
+                if "solution" in self.ids:
+                    dependencies = (
+                        await db.scalars(
+                            select(SolutionDeploymentDependency).where(
+                                SolutionDeploymentDependency.dependency_deployment_id
+                                == self.ids["deployment"]
+                            )
+                        )
+                    ).all()
+                    assert not dependencies, (
+                        "Unexpected external pin dependency; retain fixture"
                     )
+            for execution in self.executions:
+                await self.redis.delete(
+                    f"{PREFIX}{execution}:owner",
+                    f"{PREFIX}{execution}:requests",
+                    f"{PREFIX}{execution}:sources",
                 )
-                await db.execute(
-                    update(Solution)
-                    .where(Solution.id == self.ids["solution"])
-                    .values(active_deployment_id=None)
-                )
-                await db.execute(
-                    delete(SolutionDeploymentDependency).where(
-                        SolutionDeploymentDependency.deployment_id
-                        == self.ids["deployment"]
-                    )
-                )
-                await db.execute(
-                    delete(SolutionDeployment).where(
-                        SolutionDeployment.id == self.ids["deployment"],
-                        SolutionDeployment.solution_id == self.ids["solution"],
-                    )
-                )
-                await db.execute(
-                    delete(Solution).where(Solution.id == self.ids["solution"])
-                )
-                await db.commit()
-        if self.storage is not None:
-            keys = [
-                self.storage.source_artifact_key,
-                self.storage.manifest_key,
-                f"{self.storage.runtime_prefix}{SOURCE_PATH}",
-            ]
-            async with self.storage._client_factory() as client:
-                for key in keys:
-                    await client.delete_object(Bucket=self.storage._bucket, Key=key)
-            storage_path = f"{self.storage.runtime_prefix}{SOURCE_PATH}"
-            await self.redis.delete(f"{MODULE_KEY_PREFIX}{storage_path}")
-            await self.redis.srem(MODULE_INDEX_KEY, storage_path)
-        for execution in self.executions:
-            await self.redis.delete(f"{PREFIX}{execution}:sources")
-        self.path = self.legacy_cleanup_path
-        await super().cleanup()
+        finally:
+            # A failed settlement check retains all evidence, but must not leak
+            # clients into the next test's event loop.
+            try:
+                await self.redis.aclose()
+            finally:
+                await self.client.aclose()
 
 
 class PinnedCapture(ScopedReferenceCapture):
