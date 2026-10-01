@@ -2,7 +2,7 @@ name: Core control-plane reference
 
 on:
   pull_request:
-    branches: [main, rust/core-mvp-baseline]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
   workflow_dispatch:
 
 permissions:
