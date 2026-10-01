@@ -161,6 +161,46 @@ Active-install/source eligibility and real source/session/deadline/caller hooks
 are additional unresolved integration cases, not changes to legacy SDK behavior.
 Nothing uses these private helpers for a real runtime yet.
 
+## Private foundation candidate evidence
+
+Candidate `ddb5131887ba22dc9038efc99b32b7d3a6d70bdd`, on
+`fix/runtime-sdk-purpose`, contains exactly the seven owned paths above and
+current main `fcfbedfe189e8efab0546890828806c91cec358d`. Independent Sol
+security/persistence review identified the initial lock cycle and accepted the
+narrow repaired source conditionally; the corresponding three PostgreSQL
+contention cases then passed in supported CI.
+
+[Comprehensive run 36923189109](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36923189109)
+passed at that exact branch checkout, not a synthetic merge. The API test-image
+digest was `sha256:9ebfafdac5b89cbb295b0e51fca6fe9d9633ea49d0d9e39044467802fab6a4c7`.
+Alembic upgraded from `20261001_ws_declaration_digest` to the single new
+`20261001_runtime_sdk_grants` revision. All 81 new token/codec and 32 new
+PostgreSQL grant cases passed, including committed-Start/idempotence, flush-only
+denial, failed-commit rollback, secondary-lock contention, fencing and renewal.
+The full unit lane passed 11,642 tests, with three existing skips and 35
+deselections. Lint/type, client unit/E2E, all four backend E2E shards and MCP
+conformance also passed; release/build/deployment jobs were skipped by their
+normal policies.
+
+This establishes tested private foundation behavior. The exact clean
+current-main `./test.sh pre-pr` publication gate and applicable real application
+proof remain incomplete; the separate prerequisite PR has not been opened.
+Physical-host runtime substitution is forbidden. The private functions have no
+HTTP/runtime callers, source permission remains empty, and neither full CRED
+nor C2/C3 acceptance follows from this run.
+
+Public H/R interfaces still require characterization and review. In current
+source, mapping responses use the legacy engine transport's superuser flag to
+omit default secrets; substituting an ordinary original caller expands the
+response. Preserve that response profile explicitly without granting general
+superuser authority. Also, `mint_engine_token` records original external status
+in `delegated_is_external`, while the selected SDK data filter reads the primary
+principal flag and its user row. That is a source-derived external-classification
+risk requiring executable characterization, not an approved broad external-auth
+fix or permission to copy potentially unsafe behavior. Audit actor attribution,
+mixed-credential/default-deny ingress and exact unchanged SDK renewal also
+remain H/R gates. Keep these differences explicit before public wiring.
+
 ## Verification and stop conditions
 
 Required tests cover exact codecs/claims, legacy audience rejection, invalid
