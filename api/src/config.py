@@ -115,6 +115,20 @@ class Settings(BaseSettings):
         ),
     )
 
+    external_worker_scaling_enabled: bool = False
+    external_worker_app_resource_id: str = ""
+    external_worker_max_replicas: int = Field(default=2, ge=1, le=10)
+    external_worker_queue_account: str = ""
+    external_worker_queue_name: str = ""
+    external_worker_tenant_id: str = ""
+    external_worker_client_id: str = ""
+    external_worker_principal_id: str = ""
+    external_worker_defined_network_id: str = ""
+    external_worker_defined_role_id: str = ""
+    external_worker_idle_seconds: int = Field(default=120, ge=120, le=3600)
+    worker_workflow_queue_scope: Literal["canary", "production"] = "canary"
+    service_claim_enabled: bool = True
+
     # ==========================================================================
     # Workflow Execution
     # ==========================================================================
