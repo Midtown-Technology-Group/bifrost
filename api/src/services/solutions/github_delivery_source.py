@@ -62,6 +62,11 @@ class VerifiedGitSource:
     artifact_digest: str
     workflow_recipe: ReviewedWorkflowRecipe | None = None
     resources: dict[str, bytes] = field(default_factory=dict)
+    # Populated only by the protected tree reader, never by request payloads.
+    repository_paths: dict[str, str] = field(default_factory=dict)
+    control_hashes: dict[str, str] = field(default_factory=dict)
+    installation_registry: dict[str, Any] | None = None
+    ancestor_commit_shas: tuple[str, ...] = ()
 
 
 def delivery_audience(solution_id: UUID, commit_sha: str, ci_run_id: int,
@@ -162,6 +167,33 @@ class ProtectedGitReader:
         if branch.get("protected") is not True or branch.get("commit", {}).get("sha") != commit_sha:
             raise GitDeliverySourceError("Source was superseded or main is not protected; deliver full current state")
 
+    async def verified_ancestors(self, commit_sha: str, candidates: set[str], *, limit: int = 100) -> tuple[str, ...]:
+        """Bounded first-parent Git proof for delayed accounting, not time order.
+
+        A truncated walk leaves older debt unresolved. Delivery is still allowed;
+        no missing ancestor is guessed from timestamps or equal source bytes.
+        """
+        matched: list[str] = []
+        seen = {commit_sha}
+        current = commit_sha
+        remaining = candidates - seen
+        for _ in range(min(max(limit, 0), 100)):
+            if not remaining:
+                break
+            document = await self.document(f"git/commits/{current}")
+            parents = document.get("parents", [])
+            if document.get("sha") != current or not isinstance(parents, list) or len(parents) != 1:
+                break
+            parent = parents[0].get("sha") if isinstance(parents[0], dict) else None
+            if not isinstance(parent, str) or re.fullmatch(r"[0-9a-f]{40}", parent) is None or parent in seen:
+                break
+            seen.add(parent)
+            if parent in remaining:
+                matched.append(parent)
+                remaining.remove(parent)
+            current = parent
+        return tuple(matched)
+
     async def verify_ci(self, commit_sha: str, run_id: int, attempt: int) -> None:
         repository = await self.document("")
         if (repository.get("id") != self.policy.repository_id
@@ -223,7 +255,8 @@ class ProtectedGitReader:
         if recipe_path not in index:
             raise GitDeliverySourceError("Reviewed installed Solution recipe is absent")
         try:
-            recipe = json.loads(await self.blob(index[recipe_path], limit=128 * 1024),
+            recipe_bytes = await self.blob(index[recipe_path], limit=128 * 1024)
+            recipe = json.loads(recipe_bytes,
                                 object_pairs_hook=_unique_json_object)
             workflow_recipe = None
             if isinstance(recipe, dict) and recipe.get("schema_version") == WORKFLOW_RECIPE_SCHEMA:
@@ -279,4 +312,39 @@ class ProtectedGitReader:
         digest = canonical_digest(digest_input)
         if digest != artifact_digest:
             raise GitDeliverySourceError("Protected Git artifact differs from the bound producer digest")
-        return VerifiedGitSource(solution_id, commit_sha, tree_sha, recipe_path, hashes, files, digest, workflow_recipe, resources)
+        control_hashes = {recipe_path: hashlib.sha256(recipe_bytes).hexdigest()}
+        registry_path = "config/solution-delivery/installations.json"
+        registry_proof = None
+        if registry_path in index:
+            raw_registry = await self.blob(index[registry_path], limit=128 * 1024)
+            try:
+                registry = json.loads(raw_registry, object_pairs_hook=_unique_json_object)
+                if (not isinstance(registry, dict)
+                        or set(registry) != {"schema_version", "installations"}
+                        or registry["schema_version"] != "bifrost.solution-delivery-installations/v1"
+                        or not isinstance(registry["installations"], list)
+                        or not 1 <= len(registry["installations"]) <= 100):
+                    raise ValueError("Invalid installation registry")
+                rows = registry["installations"]
+                for row in rows:
+                    if (not isinstance(row, dict) or set(row) != {"target", "recipe"}
+                            or row["target"] not in {"production", "canary"}):
+                        raise ValueError("Invalid installation registry entry")
+                    delivery_path(row["recipe"])
+                selected = [row for row in rows if row["recipe"] == recipe_path]
+                if len(selected) != 1:
+                    raise ValueError("Recipe has no unique registry target")
+                target = selected[0]["target"]
+                recipes = [row["recipe"] for row in rows if row["target"] == target]
+                if len(set(recipes)) != len(recipes) or set(recipes) != set(self.policy.solutions.values()):
+                    raise ValueError("Registry target differs from configured installations")
+                registry_proof = {"path": registry_path, "target": target,
+                    "installations": {str(identity): {"recipe_path": path,
+                        "organization_id": str(self.policy.organization_id_for(identity))
+                        if self.policy.organization_id_for(identity) is not None else None}
+                        for identity, path in self.policy.solutions.items()}}
+                control_hashes[registry_path] = hashlib.sha256(raw_registry).hexdigest()
+            except (ValueError, TypeError, KeyError, UnicodeError) as exc:
+                raise GitDeliverySourceError("Protected installation registry is invalid") from exc
+        return VerifiedGitSource(solution_id, commit_sha, tree_sha, recipe_path, hashes, files, digest,
+            workflow_recipe, resources, {**recipe["files"], **resource_mapping}, control_hashes, registry_proof)
