@@ -123,6 +123,8 @@ DISPATCH_IDENTITIES = {
     ("dispatch_metadata", "file_path"),
 }
 LOCAL_IDENTITIES = {
+    ("integration_name",),
+    ("organization_id",),
     ("name",),
     ("scope",),
     ("integration", "integration_id"),
@@ -160,6 +162,13 @@ def validate_measurements(observation: Observation) -> None:
     window_ms = (observation.after - observation.before).total_seconds() * 1000
     executions = observation.database["executions"]
     for row in executions:
+        variables = row["variables"]
+        if isinstance(variables, dict):
+            for field in ("integration_name", "organization_id"):
+                if field in variables:
+                    assert variables[field] == row["parameters"][field], (
+                        "workflow input local projection differs"
+                    )
         for field in RESOURCES:
             value = row[field]
             if value is None:
