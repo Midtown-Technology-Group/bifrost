@@ -7,6 +7,7 @@ for one preview/activation only; activation holds the native Solution row lock.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from uuid import UUID
 
@@ -81,7 +82,7 @@ class LiveHandoffReadback:
         # Initial handoffs predate complete control definitions. Retain the Live
         # exposure baseline until a reviewed workflow revision defines controls.
         current = rows[workflow_id]
-        definition = active_resolution.resolve_workflow_id(workflow_id).definition
+        definition = json.loads(canonical_json(active_resolution.resolve_workflow_id(workflow_id).definition))
         snapshot = _workflow_snapshot(current)
         for field in ("endpoint_enabled", "public_endpoint", "api_key_enabled", "access_level", "role_ids"):
             expected = definition[field] if field in definition else inherited.get(field)

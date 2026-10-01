@@ -89,13 +89,14 @@ def handoff(monkeypatch):
     storage_state = {'archive': source_archive({path: content}), 'runtime': content}
     class Storage:
         def __init__(self, sid, did):
+            self.deployment_id = did
             self.source_artifact_key = deployment_source_artifact_key(sid, did)
             self.runtime_prefix = deployment_runtime_prefix(sid, did)
         async def read_source_artifact(self):
-            return storage_state['archive']
+            return storage_state.get('revisions', {}).get(self.deployment_id, storage_state)['archive']
         async def read_runtime_file(self, requested_path):
             assert requested_path == path
-            return storage_state['runtime']
+            return storage_state.get('revisions', {}).get(self.deployment_id, storage_state)['runtime']
     monkeypatch.setattr(readback, 'SolutionDeploymentStorage', Storage)
     monkeypatch.setattr(readback, 'require_shared_tables', AsyncMock())
     monkeypatch.setattr(readback, 'require_root_workspace_files', AsyncMock())
@@ -122,9 +123,19 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
     origin.state = 'superseded'
     new_id = uuid4()
     prefix = deployment_runtime_prefix(handoff.solution.id, new_id)
+    content = b'async def run():\n    return 2\n'
+    entity = next(iter(handoff.resolution.workflows.values()))
+    definition = dict(entity.definition)
+    if schema == readback.WORKFLOW_REVISION_MARKER:
+        handoff.workflow.endpoint_enabled = True
+        definition.update(endpoint_enabled=True, public_endpoint=False, api_key_enabled=False,
+            access_level='role_based', role_ids=[])
+    entity = entity.model_copy(update={'source_hash': sha256_digest(content), 'definition': definition})
     resolution = handoff.resolution.model_copy(update={'sources': {handoff.path: RuntimeSourceResolution(
-        object_key=prefix+handoff.path, content_hash=handoff.resolution.sources[handoff.path].content_hash)}})
+        object_key=prefix+handoff.path, content_hash=sha256_digest(content))},
+        'workflows': {entity.portable_ref: entity}})
     manifest = handoff.manifest.model_copy(update={'deployment_id': new_id,
+        'workflows': resolution.workflows,
         'resolution_map_hash': sha256_digest(canonical_json(resolution)),
         'source': DeploymentSource(artifact_key=deployment_source_artifact_key(handoff.solution.id, new_id), runtime_prefix=prefix)})
     candidate = SimpleNamespace(**{**vars(origin), 'id': new_id, 'state': 'active',
@@ -136,6 +147,7 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
             'workflow_ids': [str(handoff.workflow.id)],
             'source_hashes': {handoff.path: resolution.sources[handoff.path].content_hash}}})
     handoff.deployments[new_id] = candidate
+    handoff.storage['revisions'] = {new_id: {'archive': source_archive({handoff.path: content}), 'runtime': content}}
     handoff.solution.active_deployment_id = new_id
     await handoff.guard.require(handoff.inherited)
 
