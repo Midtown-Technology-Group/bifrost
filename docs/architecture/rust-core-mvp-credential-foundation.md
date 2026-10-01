@@ -140,9 +140,15 @@ never headers/model arguments or effective-org inference.
 Initial finite expiry preserves the trusted parent's **predeclared** credential
 deadline, not post-Start issuance plus a fresh lifetime. No-timeout initial expiry
 also preserves its predeclared bound. Reject expired initial issuance; floor
-microseconds to JWT seconds. Private renewal permits only timeout zero, with
-now+600 seconds and the same audience/purpose/grant/operations/session.
+microseconds to JWT seconds. Finite-timeout grants cannot renew; their JWT
+expiry cannot exceed `credential_deadline`. Timeout-zero grants explicitly have
+`credential_deadline = NULL`: private renewal issues only a bounded now+600-second
+access window, retaining the same audience/purpose/grant/operations/session.
+Each renewal freshly validates the committed active attempt, exact stored fence
+and unrevoked grant. There is no renewable hard deadline in this private profile.
 It cannot use ordinary-user/legacy-engine refresh fallback or expand authority.
+Adding a hard lifetime for timeout-zero executions is a separate authorization
+policy decision, not an implicit interpretation of this nullable field.
 
 Lookup retains existing active-fence semantics: completed_at NULL and claimed/
 running, plus exact stored identity/Start/worker and unrevoked grant. No new
