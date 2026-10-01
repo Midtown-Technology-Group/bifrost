@@ -241,11 +241,19 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
     consumers: dict[UUID, SourceConsumer] = {}
     visiting: set[UUID] = set()
 
+    async def current_deployment(identity: UUID):
+        deployment = await repository.get_by_id_for_runtime(identity)
+        if deployment is not None:
+            # Runtime closure is write-once; receipt/mapping evidence and state
+            # can change through Core writes while this session retains a row.
+            await db.refresh(deployment, attribute_names=["validation_result", "state"])
+        return deployment
+
     async def visit(deployment_id: UUID, *, admission: bool, expected_solution: UUID | None = None,
                     expected_scope: UUID | None = None, expected_bundle: str | None = None) -> None:
         if deployment_id in visiting:
             raise UnprovenSourceConsumers("Solution dependency cycle")
-        deployment = await repository.get_by_id_for_runtime(deployment_id)
+        deployment = await current_deployment(deployment_id)
         if (deployment is None or deployment.state not in {"active", "superseded", "committed_unpushed"}
                 or expected_solution is not None and deployment.solution_id != expected_solution
                 or expected_solution is not None and deployment.organization_id != expected_scope
@@ -273,7 +281,7 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
                 seen.add(origin.parent_deployment_id)
                 if len(seen) > 100:
                     raise UnprovenSourceConsumers("Solution origin exceeds its traversal bound")
-                origin = await repository.get_by_id_for_runtime(origin.parent_deployment_id)
+                origin = await current_deployment(origin.parent_deployment_id)
                 if origin is None or origin.solution_id != deployment.solution_id:
                     raise UnprovenSourceConsumers("Solution origin chain differs")
             _, original = validate_runtime_closure(origin.compiled_manifest, origin.resolution_map,
@@ -309,7 +317,7 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
             str(deployment.organization_id) if deployment.organization_id is not None else None,
             deployment.compiled_manifest_hash, sources, proof, admission)
         for edge in deployment.dependencies:
-            child = await repository.get_by_id_for_runtime(edge.dependency_deployment_id)
+            child = await current_deployment(edge.dependency_deployment_id)
             if child is None or child.organization_id not in {None, deployment.organization_id}:
                 raise UnprovenSourceConsumers("Solution dependency scope differs")
             await visit(edge.dependency_deployment_id, admission=False,
