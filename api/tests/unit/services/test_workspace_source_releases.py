@@ -106,6 +106,12 @@ class _ExistingDeclareDatabase:
     async def scalar(self, _statement):
         return self.record
 
+    async def commit(self):
+        pass
+
+    async def refresh(self, _record, attribute_names=None):
+        pass
+
 
 class _InsertDeclareDatabase:
     def __init__(self):
@@ -173,9 +179,9 @@ async def test_declaration_rejects_solution_paths_before_persistence() -> None:
     )
 
     with pytest.raises(ValueError, match="solutions/"):
-        await WorkspaceSourceReleaseService(
-            _InsertDeclareDatabase(), uuid4()
-        ).declare(request, created_by=uuid4())
+        await WorkspaceSourceReleaseService(_InsertDeclareDatabase(), uuid4()).declare(
+            request, created_by=uuid4()
+        )
 
 
 def test_pending_declaration_requires_exact_paths() -> None:
@@ -418,6 +424,7 @@ async def test_concurrent_exact_declaration_is_idempotent() -> None:
         paths=record.paths,
         disposition="pending",
     )
+    record.declaration_digest = source_release_declaration_digest(request)
 
     response = await service.declare(request, created_by=uuid4())
 
@@ -441,6 +448,16 @@ async def test_replay_rejects_disposition_changes_symmetrically(
         disposition=declared_disposition,
         declared_disposition=declared_disposition,
     )
+    original = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition=declared_disposition,
+        reason="original classification"
+        if declared_disposition == "non_production"
+        else None,
+    )
+    record.declaration_digest = source_release_declaration_digest(original)
     request = WorkspaceSourceReleaseDeclareRequest(
         source_commit_sha=record.source_commit_sha,
         source_tree_sha=record.source_tree_sha,
@@ -458,16 +475,35 @@ async def test_replay_rejects_disposition_changes_symmetrically(
 
 
 @pytest.mark.asyncio
-async def test_pending_replay_remains_idempotent_after_attention_transition() -> None:
-    record = _source_record(
-        disposition="attention_required",
-        declared_disposition="pending",
-    )
+@pytest.mark.parametrize(
+    "digest_kind,declared_reason",
+    [
+        ("producer", None),
+        ("retained", None),
+        ("retained", "initial operator review"),
+    ],
+)
+async def test_pending_replay_remains_idempotent_after_deadline_sweep(
+    digest_kind: str,
+    declared_reason: str | None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    record = _source_record(due_at=now - timedelta(seconds=1))
     request = WorkspaceSourceReleaseDeclareRequest(
         source_commit_sha=record.source_commit_sha,
         source_tree_sha=record.source_tree_sha,
         paths=record.paths,
         disposition="pending",
+        reason=declared_reason,
+    )
+    record.reason = declared_reason
+    if digest_kind == "producer":
+        record.producer_declaration_digest = source_release_declaration_digest(request)
+    elif digest_kind == "retained":
+        record.declaration_digest = source_release_declaration_digest(request)
+    await sweep_overdue_workspace_releases(_Database([[], [record]]), now=now)
+    assert (
+        record.reason == "reviewed Workspace source has not reached verified production"
     )
 
     response = await WorkspaceSourceReleaseService(
@@ -476,6 +512,130 @@ async def test_pending_replay_remains_idempotent_after_attention_transition() ->
 
     assert response.id == record.id
     assert response.disposition == "attention_required"
+    assert response.reason == record.reason
+    assert response.due_at == record.due_at
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason",
+    [
+        None,
+        "original review",
+        "reviewed Workspace source has not reached verified production",
+    ],
+)
+async def test_legacy_replay_after_sweep_requires_retained_original_evidence(reason):
+    now = datetime.now(timezone.utc)
+    record = _source_record(due_at=now - timedelta(seconds=1))
+    record.reason = "original review"
+    await sweep_overdue_workspace_releases(_Database([[], [record]]), now=now)
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition="pending",
+        reason=reason,
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="different"):
+        await WorkspaceSourceReleaseService(
+            _ExistingDeclareDatabase(record), record.organization_id
+        ).declare(request, created_by=uuid4())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transitions", [("non_production",), ("deferred", "non_production")]
+)
+async def test_legacy_replay_rejects_mutated_reason_after_return_to_declared_status(
+    transitions,
+) -> None:
+    record = _source_record(
+        disposition="non_production", declared_disposition="non_production"
+    )
+    record.paths = {}
+    record.reason = "original classification"
+    service = WorkspaceSourceReleaseService(
+        _ExistingDeclareDatabase(record), record.organization_id
+    )
+    for disposition in transitions:
+        await service.set_manual_disposition(
+            record.id, disposition=disposition, reason="replacement classification"
+        )
+    assert record.disposition == record.declared_disposition
+    assert record.declaration_digest is None
+    assert record.producer_declaration_digest is None
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition="non_production",
+        reason="replacement classification",
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="different"):
+        await service.declare(request, created_by=uuid4())
+    assert record.declaration_digest is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disposition", ["pending", "non_production"])
+async def test_legacy_replay_cannot_infer_original_identity_from_unchanged_state(
+    disposition,
+) -> None:
+    record = _source_record(
+        disposition=disposition, declared_disposition=disposition
+    )
+    record.reason = "recorded classification"
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition=disposition,
+        reason=record.reason,
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="unproven"):
+        await WorkspaceSourceReleaseService(
+            _ExistingDeclareDatabase(record), record.organization_id
+        ).declare(request, created_by=uuid4())
+    assert record.declaration_digest is None
+
+
+@pytest.mark.asyncio
+async def test_admin_declaration_retains_full_request_digest_without_producer_identity() -> (
+    None
+):
+    database = _InsertDeclareDatabase()
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha="a" * 40,
+        source_tree_sha="b" * 40,
+        paths={"features/example.py": "c" * 64},
+        disposition="pending",
+        reason="initial review",
+    )
+    await WorkspaceSourceReleaseService(database, uuid4()).declare(
+        request, created_by=uuid4()
+    )
+    assert database.record.declaration_digest == source_release_declaration_digest(
+        request
+    )
+    assert database.record.producer_declaration_digest is None
+
+
+@pytest.mark.asyncio
+async def test_replay_rejects_changed_declaration_digest_after_deadline() -> None:
+    record = _source_record(disposition="attention_required")
+    record.reason = "reviewed Workspace source has not reached verified production"
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition="pending",
+    )
+    record.producer_declaration_digest = "f" * 64
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="different"):
+        await WorkspaceSourceReleaseService(
+            _ExistingDeclareDatabase(record), record.organization_id
+        ).declare(request, created_by=uuid4())
 
 
 @pytest.mark.asyncio

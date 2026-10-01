@@ -318,6 +318,9 @@ class WorkspaceSourceRelease(Base):
     producer_declaration_digest: Mapped[str | None] = mapped_column(
         String(64), nullable=True
     )
+    # Original request identity for all callers. Producer provenance remains
+    # separate, and operational reason/disposition may change after declaration.
+    declaration_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     producer_actor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     producer_actor_id: Mapped[str | None] = mapped_column(String(30), nullable=True)
     disposition: Mapped[str] = mapped_column(

@@ -50,7 +50,7 @@ preparation=()
 docker() { preparation+=("$*"); }
 stack_up() { preparation+=("stack:${BIFROST_SKIP_BUILD:-0}"); }
 prepare_full_pre_pr_stack
-[[ "${preparation[*]}" == 'compose -f docker-compose.test.yml build api stack:1' ]]
+[[ "${preparation[*]}" == "compose -f $COMPOSE_FILE build api stack:1" ]]
 [[ -z "${BIFROST_SKIP_BUILD+x}" ]]
 echo 'PASS: full stack preparation builds even when the stack is already running'
 

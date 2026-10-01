@@ -127,6 +127,34 @@ def test_policy_fails_closed_for_partial_or_unsafe_configuration(changes):
         SolutionGitDeliveryPolicy.model_validate(values)
 
 
+def test_legacy_policy_keeps_exact_scoped_install_and_rejects_unknown_install():
+    configured = policy()
+    assert configured.organization_id_for(SID) == configured.organization_id
+    with pytest.raises(ValueError, match="allowlist"):
+        configured.organization_id_for(UUID(int=20))
+
+
+def test_explicit_install_scopes_distinguish_global_and_scoped_solutions():
+    values = policy().model_dump()
+    scoped_id = UUID(int=20)
+    values.update(solutions={SID: RECIPE, scoped_id: "config/solution-delivery/scoped.json"},
+                  solution_organization_ids={SID: None, scoped_id: values["organization_id"]})
+    configured = SolutionGitDeliveryPolicy.model_validate(values)
+    assert configured.organization_id_for(SID) is None
+    assert configured.organization_id_for(scoped_id) == configured.organization_id
+    with pytest.raises(ValueError, match="allowlist"):
+        configured.organization_id_for(UUID(int=30))
+
+
+@pytest.mark.parametrize("scopes", [{}, {UUID(int=20): None}, {SID: None, UUID(int=20): None},
+                                   {SID: "invalid"}])
+def test_explicit_scope_map_requires_exact_allowlist_coverage(scopes):
+    values = policy().model_dump()
+    values["solution_organization_ids"] = scopes
+    with pytest.raises(ValidationError):
+        SolutionGitDeliveryPolicy.model_validate(values)
+
+
 def fixture(workflow_recipe=None, resource_files=None):
     files = {"fixture.py": b"from helper import value\nasync def fixture():\n    return value\n",
              "helper.py": b"value = 'merged-earlier'\n"}
