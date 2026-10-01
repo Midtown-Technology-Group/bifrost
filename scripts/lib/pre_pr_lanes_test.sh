@@ -31,3 +31,13 @@ pre_pr_plan_lane() { echo skip; }
 run_scoped_pre_pr
 [[ "${#stages[@]}" == 0 ]]
 echo 'PASS: scoped lanes defer only broad tests, check generated API, and reject empty targets'
+
+# Full verification must build before freezing images, then execute every lane
+# against those exact images without leaking the setting to later invocations.
+stages=()
+unset BIFROST_SKIP_BUILD
+run_pre_pr_stage() { stages+=("$1:${BIFROST_SKIP_BUILD:-0}"); }
+run_full_pre_pr
+[[ "${stages[*]}" == 'client:0 stack:0 quality:1 generated:1 unit:1 e2e:1 browser:1 image:1' ]]
+[[ -z "${BIFROST_SKIP_BUILD+x}" ]]
+echo 'PASS: full lanes build once and freeze backend images without omitting tests'
