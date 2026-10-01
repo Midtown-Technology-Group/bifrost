@@ -7,15 +7,17 @@ providers while remaining entirely inside the debug/test Compose network.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 from urllib.parse import parse_qs, urlencode, urlparse
-
 
 ROOT = Path(tempfile.gettempdir()) / "bifrost-scheduler-fixtures"
 WORK_REPO = ROOT / "solution-update-work"
@@ -29,6 +31,73 @@ FIXTURE_OAUTH_CODE = "scheduler-fixture-code"
 FIXTURE_OAUTH_SCOPE = "fixture.read"
 FIXTURE_MCP_ACCESS_TOKEN = "scheduler-fixture-access-service"
 FIXTURE_MCP_TOOL_NAME = "scheduler_fixture_echo"
+REFERENCE_AUDIENCE_PREFIX = "cred-p1-reference:"
+REFERENCE_RECEIPT_LIMIT = 1024
+REFERENCE_ATTEMPT_LIMIT = 65535
+
+
+class _ReferenceReceipt:
+    def __init__(self) -> None:
+        self.attempted = 0
+        self.statuses: dict[int, int] = {}
+        self.pending: set[int] = set()
+        self.exhausted = False
+
+
+class ReferenceOAuthReceipts:
+    """Bounded test-only counts; never retain OAuth inputs or response values."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counts: dict[str, _ReferenceReceipt] = {}
+
+    def admit(self, key: str) -> tuple[int | None, str | None]:
+        """Count admitted slots, not rejected calls; no reset/eviction/wrap."""
+        if not re.fullmatch(r"[0-9a-f]{32}", key):
+            raise ValueError("invalid_reference_marker")
+        with self._lock:
+            if key not in self._counts:
+                if len(self._counts) >= REFERENCE_RECEIPT_LIMIT:
+                    return None, "reference_receipt_capacity"
+                self._counts[key] = _ReferenceReceipt()
+            receipt = self._counts[key]
+            if receipt.attempted >= REFERENCE_ATTEMPT_LIMIT:
+                receipt.exhausted = True
+                return None, "reference_receipt_exhausted"
+            receipt.attempted += 1
+            receipt.pending.add(receipt.attempted)
+            return receipt.attempted, None
+
+    def record(self, key: str, slot: int, status: int) -> None:
+        if type(status) is not int or not 100 <= status <= 599:
+            raise ValueError("invalid_reference_status")
+        if type(slot) is not int or not 1 <= slot <= REFERENCE_ATTEMPT_LIMIT:
+            raise ValueError("invalid_reference_slot")
+        with self._lock:
+            receipt = self._counts.get(key)
+            if receipt is None or slot not in receipt.pending:
+                raise ValueError("reference_slot_not_pending")
+            receipt.pending.remove(slot)
+            receipt.statuses[status] = receipt.statuses.get(status, 0) + 1
+
+    def snapshot(self, key: str) -> dict[str, object]:
+        with self._lock:
+            receipt = self._counts.get(key)
+            if receipt is None:
+                return {"attempted": 0, "statuses": {}, "exhausted": False}
+            return {
+                "attempted": receipt.attempted,
+                "statuses": {str(status): count for status, count in receipt.statuses.items()},
+                "exhausted": receipt.exhausted,
+            }
+
+
+class ReferenceFixtureServer(ThreadingHTTPServer):
+    """Each owned fixture process has one ledger, with no reset or eviction."""
+
+    def __init__(self, address, handler) -> None:
+        self.reference_receipts = ReferenceOAuthReceipts()
+        super().__init__(address, handler)
 
 
 def mcp_tool_catalog() -> list[dict[str, object]]:
@@ -254,6 +323,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
     server_version = "BifrostSchedulerFixture/1.0"
 
     def _json(self, status: int, payload: object) -> None:
+        receipt_slot = getattr(self, "_reference_receipt_slot", None)
+        if receipt_slot is not None:
+            key, slot = receipt_slot
+            cast(ReferenceFixtureServer, self.server).reference_receipts.record(
+                key, slot, status,
+            )
+            self._reference_receipt_slot = None
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -275,8 +351,19 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        receipt_prefix = "/__reference/oauth-receipts/"
+        if parsed.path.startswith(receipt_prefix):
+            key = parsed.path[len(receipt_prefix):]
+            if parsed.query or not re.fullmatch(r"[0-9a-f]{32}", key):
+                self._json(400, {"error": "invalid_reference_marker"})
+                return
+            self._json(
+                200,
+                cast(ReferenceFixtureServer, self.server).reference_receipts.snapshot(key),
+            )
+            return
         if parsed.path == "/health":
             self._json(200, {"status": "ok"})
             return
@@ -312,7 +399,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
         self._json(404, {"error": "not_found"})
 
-    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
 
@@ -417,6 +504,21 @@ class FixtureHandler(BaseHTTPRequestHandler):
         recovery_exchange = self.path == "/oauth/recovery-token"
         form = parse_qs(body.decode())
         grant_type = form.get("grant_type", [""])[0]
+        audiences = form.get("audience", [])
+        if any(value.startswith("cred-p1-reference") for value in audiences):
+            if (
+                grant_type != "client_credentials"
+                or len(audiences) != 1
+                or not re.fullmatch(r"cred-p1-reference:[0-9a-f]{32}", audiences[0])
+            ):
+                self._json(400, {"error": "invalid_reference_marker"})
+                return
+            key = audiences[0][len(REFERENCE_AUDIENCE_PREFIX):]
+            slot, rejection = cast(ReferenceFixtureServer, self.server).reference_receipts.admit(key)
+            if rejection is not None:
+                self._json(503, {"error": rejection})
+                return
+            self._reference_receipt_slot = (key, slot)
         if grant_type == "refresh_token":
             expected = {
                 "grant_type": "refresh_token",
@@ -533,7 +635,7 @@ def main() -> None:
         ]
     )
     # This server is reachable only inside the isolated debug Compose network.
-    server = ThreadingHTTPServer(("0.0.0.0", 8080), FixtureHandler)  # NOSONAR
+    server = ReferenceFixtureServer(("0.0.0.0", 8080), FixtureHandler)  # NOSONAR
 
     def stop(*_: object) -> None:
         raise SystemExit
