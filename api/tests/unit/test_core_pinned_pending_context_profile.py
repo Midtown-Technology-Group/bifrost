@@ -1,5 +1,6 @@
 """Pure source-produced deployment vectors; runtime belongs to the supported lane."""
 
+import json
 from copy import deepcopy
 from datetime import timedelta
 from hashlib import sha256
@@ -205,12 +206,16 @@ def pinned_vector(label="left"):
     row = observation.database["executions"][0]
     request = deepcopy(row["dispatch_evidence"]["request"])
     request["dispatch_metadata"]["path"] = SOURCE_PATH
+    request["dispatch_metadata"]["solution_id"] = ids["solution"]
     dispatch = _pending_dispatch_envelope(
         request,
         solution_deployment_id=ids["deployment"],
         runtime_evidence=deepcopy(evidence),
         runtime_mode="deployment-v1",
     )
+    # Committed JSON capture has separate wire objects, unlike the producer's
+    # in-memory shallow projection. Preserve that boundary in pure vectors.
+    dispatch = json.loads(canonical_json(dispatch))
     row.update(
         runtime_mode="deployment-v1",
         solution_deployment_id=ids["deployment"],
@@ -399,6 +404,66 @@ def test_pinned_independent_projection_is_complete_and_preserves_raw():
     )
     assert left == original
     assert "solution_id" not in left.database["executions"][0]["execution_context"]
+    for section in ("request", "publish"):
+        assert projected[0]["database"]["executions"][0]["dispatch_evidence"][section][
+            "dispatch_metadata"
+        ]["solution_id"] == {"identity": "solution", "wire_type": "str"}
+    assert projected[0]["database"]["work_deliveries"][0]["envelope"]["body"][
+        "dispatch_metadata"
+    ]["solution_id"] == {"identity": "solution", "wire_type": "str"}
+
+
+@pytest.mark.parametrize(
+    "bad", ["missing", None, "foreign-solution", "known-other-owner", 17]
+)
+def test_pinned_dispatch_metadata_solution_cannot_be_laundered(bad):
+    observation, bindings, profile = pinned_vector()
+    if bad == "known-other-owner":
+        bad = next(raw for raw, role in bindings.items() if role == "deployment")
+    row = observation.database["executions"][0]
+    body = observation.database["work_deliveries"][0]["envelope"]["body"]
+    metadata = [
+        row["dispatch_evidence"][section]["dispatch_metadata"]
+        for section in ("request", "publish")
+    ] + [body["dispatch_metadata"]]
+    for item in metadata:
+        if bad == "missing":
+            item.pop("solution_id")
+        else:
+            item["solution_id"] = bad
+    rehash(row)
+    with pytest.raises(AssertionError, match="metadata Solution owner differs"):
+        profile.canonicalize([observation], bindings)
+
+
+@pytest.mark.parametrize("plane", ["request", "publish", "delivery"])
+def test_pinned_dispatch_metadata_solution_requires_each_plane(plane):
+    observation, bindings, profile = pinned_vector()
+    row = observation.database["executions"][0]
+    metadata_by_plane = {
+        name: row["dispatch_evidence"][name]["dispatch_metadata"]
+        for name in ("request", "publish")
+    }
+    metadata_by_plane["delivery"] = observation.database["work_deliveries"][0][
+        "envelope"
+    ]["body"]["dispatch_metadata"]
+    assert len({id(value) for value in metadata_by_plane.values()}) == 3
+    before = deepcopy(metadata_by_plane)
+    wrong_owner = next(raw for raw, role in bindings.items() if role == "deployment")
+    metadata_by_plane[plane]["solution_id"] = wrong_owner
+    for name, value in metadata_by_plane.items():
+        if name == plane:
+            assert value["solution_id"] == wrong_owner
+        else:
+            assert value == before[name]
+    rehash(row)
+    expected = (
+        "Pending delivery body projection differs"
+        if plane == "delivery"
+        else "Pending publish request projection differs"
+    )
+    with pytest.raises(AssertionError, match=expected):
+        profile.canonicalize([observation], bindings)
 
 
 def test_pinned_real_producer_uses_nested_evidence_and_metadata_path(monkeypatch):

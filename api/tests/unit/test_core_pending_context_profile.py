@@ -20,6 +20,8 @@ from tests.parity.core.profile import (
     GENERATED_IDENTITIES,
     PROFILE,
     CoreReferenceProfile,
+    assert_reference_parity,
+    clock_rank_diagnostics,
     digest,
     validate_pending_context,
 )
@@ -215,6 +217,76 @@ def test_pending_independent_projection_preserves_raw_evidence():
         [right], right_bindings
     )
     assert left == original
+
+
+def test_clock_failure_diagnoses_unrelated_rank_change_without_hiding_it():
+    left, left_bindings = pending_vector()
+    right, right_bindings = pending_vector("right")
+    for observation in (left, right):
+        observation.database["executions"][0]["started_at"] = (
+            observation.before + timedelta(seconds=1.002)
+        ).isoformat()
+        observation.database["executions"][0]["completed_at"] = (
+            observation.before + timedelta(seconds=1.004)
+        ).isoformat()
+    left.database["organizations"][0]["updated_at"] = (
+        left.before + timedelta(seconds=1.0005)
+    ).isoformat()
+    right.database["organizations"][0]["updated_at"] = (
+        right.before + timedelta(seconds=1.003)
+    ).isoformat()
+    for observation in (left, right):
+        observation.database["executions"][0]["variables"] = {
+            "private_clock": "secret-clock"
+        }
+    original = deepcopy((left, right))
+    assert (
+        PROFILE.canonicalize([left], left_bindings)[0]["database"]["executions"][0][
+            "started_at"
+        ]
+        != PROFILE.canonicalize([right], right_bindings)[0]["database"]["executions"][
+            0
+        ]["started_at"]
+    )
+    with pytest.raises(AssertionError, match="differs") as failure:
+        assert_reference_parity(
+            [CapturedStep(left, TransportEvidence())],
+            [CapturedStep(right, TransportEvidence())],
+            left_bindings,
+            right_bindings,
+        )
+    diagnostic = str(failure.value)
+    assert "Core clock ranks (schema paths only)" in diagnostic
+    assert "database.organizations[0].updated_at" in diagnostic
+    assert "database.executions[0].started_at" in diagnostic
+    assert "secret-clock" not in diagnostic
+    assert left.before.isoformat() not in diagnostic
+    assert (left, right) == original
+
+
+@pytest.mark.parametrize("drift", ["order", "equality", "outside-window"])
+def test_clock_diagnostics_preserve_order_equality_and_window_failures(drift):
+    left, left_bindings = pending_vector()
+    right, right_bindings = pending_vector("right")
+    for observation in (left, right):
+        row = observation.database["executions"][0]
+        row["started_at"] = (observation.before + timedelta(seconds=1.2)).isoformat()
+        row["completed_at"] = (observation.before + timedelta(seconds=1.4)).isoformat()
+    row = right.database["executions"][0]
+    if drift == "order":
+        row["started_at"], row["completed_at"] = row["completed_at"], row["started_at"]
+    elif drift == "equality":
+        row["completed_at"] = row["started_at"]
+    else:
+        row["started_at"] = (right.after + timedelta(seconds=1)).isoformat()
+    with pytest.raises(AssertionError):
+        assert_reference_parity(
+            [CapturedStep(left, TransportEvidence())],
+            [CapturedStep(right, TransportEvidence())],
+            left_bindings,
+            right_bindings,
+        )
+    assert clock_rank_diagnostics([left])["groups_truncated"] is False
 
 
 def test_real_pending_producer_keeps_public_metadata_path_separate(monkeypatch):

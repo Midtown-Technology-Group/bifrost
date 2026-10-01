@@ -806,13 +806,96 @@ class CoreReferenceProfile:
 PROFILE = CoreReferenceProfile()
 
 
+def clock_rank_diagnostics(trace: list[Observation]) -> dict[str, Any]:
+    """Explain the existing global ranks using schema paths, never raw values.
+
+    Equality classes and ordering remain the comparator's policy. This report
+    does not establish which interleaving occurred in an earlier CI run.
+    """
+    labels: dict[datetime, list[str]] = {}
+    first_windows: dict[datetime, bool] = {}
+    for index, observation in enumerate(trace):
+        values = []
+        if isinstance(observation.body, dict):
+            values.extend(
+                (f"body.{field}", observation.body.get(field))
+                for field in ("started_at", "completed_at", "scheduled_at")
+            )
+        for table, fields in CLOCKS.items():
+            values.extend(
+                (f"database.{table}[{row_index}].{field}", row.get(field))
+                for row_index, row in enumerate(observation.database[table])
+                for field in sorted(fields)
+            )
+        values.extend(
+            (f"events[{event_index}].payload.{field}", event["payload"].get(field))
+            for event_index, event in enumerate(observation.events)
+            if isinstance(event["payload"], dict)
+            for field in ("timestamp", "started_at", "completed_at")
+        )
+        for row_index, row in enumerate(observation.database["work_deliveries"]):
+            prefix = f"database.work_deliveries[{row_index}].envelope"
+            values.extend(
+                [
+                    (
+                        prefix + ".headers.x-enqueued-at",
+                        row["envelope"]["headers"].get("x-enqueued-at"),
+                    ),
+                    (
+                        prefix + ".body.pending_context.created_at",
+                        row["envelope"]["body"]["pending_context"]["created_at"],
+                    ),
+                ]
+            )
+        for path, value in values:
+            if value is None:
+                continue
+            clock = instant(value)
+            first_windows.setdefault(
+                clock,
+                clock == SEED_TIME or observation.before <= clock <= observation.after,
+            )
+            labels.setdefault(clock, []).append(f"observation[{index}].{path}")
+    groups = [
+        {
+            "rank": rank,
+            "seed": clock == SEED_TIME,
+            "first_seen_within_window": first_windows[clock],
+            "fields": sorted(set(labels[clock]))[:8],
+            "fields_truncated": len(set(labels[clock])) > 8,
+        }
+        for rank, clock in enumerate(sorted(labels))
+    ]
+    return {"groups": groups[:32], "groups_truncated": len(groups) > 32}
+
+
+def assert_parity_with_clock_diagnostics(
+    left, right, left_bindings, right_bindings, *, profile
+):
+    """Keep clock drift red and add bounded provenance to its failure message."""
+    try:
+        assert_parity(left, right, left_bindings, right_bindings, profile=profile)
+    except AssertionError as exc:
+        fields = set().union(*CLOCKS.values()) | {"x-enqueued-at"}
+        if not any(f".{field}" in str(exc) for field in fields):
+            raise
+        diagnostics = {
+            "left": clock_rank_diagnostics(left),
+            "right": clock_rank_diagnostics(right),
+        }
+        raise AssertionError(
+            f"{exc}\nCore clock ranks (schema paths only): "
+            + json.dumps(diagnostics, sort_keys=True)
+        ) from exc
+
+
 def assert_reference_parity(
     left: list[CapturedStep],
     right: list[CapturedStep],
     left_bindings: dict[str, str],
     right_bindings: dict[str, str],
 ) -> None:
-    assert_parity(
+    assert_parity_with_clock_diagnostics(
         [step.observation for step in left],
         [step.observation for step in right],
         left_bindings,

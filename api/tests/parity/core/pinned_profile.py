@@ -23,7 +23,6 @@ from src.services.solutions.workflow_revision_recipe import (
     compile_workflow_registrations,
 )
 
-from tests.parity.compare import assert_parity
 from tests.parity.core.environment import SOURCE
 from tests.parity.core.pinned import (
     PORTABLE_REF,
@@ -35,6 +34,7 @@ from tests.parity.core.pinned import (
 from tests.parity.core.profile import (
     PENDING_PATH,
     CoreReferenceProfile,
+    assert_parity_with_clock_diagnostics,
     digest,
     fixture_binding,
     instant,
@@ -280,6 +280,10 @@ class PinnedProfile(CoreReferenceProfile):
             dispatch["request"]["caller_solution_deployment_id"] is None
             and dispatch["publish"]["file_path"] is None
         ), "Pinned A incoming dispatch contract differs"
+        assert (
+            dispatch["request"]["dispatch_metadata"].get("solution_id")
+            == solution["id"]
+        ), "Pinned dispatch metadata Solution owner differs"
 
     def expected_source_path(self, observation, owner, bindings):
         return SOURCE_PATH
@@ -432,6 +436,30 @@ class PinnedProfile(CoreReferenceProfile):
                 identity |= leaf in RUNTIME_IDENTITIES
                 hash_field |= leaf in RUNTIME_HASHES
             identity |= path in {
+                (
+                    "database",
+                    "executions",
+                    "dispatch_evidence",
+                    "request",
+                    "dispatch_metadata",
+                    "solution_id",
+                ),
+                (
+                    "database",
+                    "executions",
+                    "dispatch_evidence",
+                    "publish",
+                    "dispatch_metadata",
+                    "solution_id",
+                ),
+                (
+                    "database",
+                    "work_deliveries",
+                    "envelope",
+                    "body",
+                    "dispatch_metadata",
+                    "solution_id",
+                ),
                 (*PENDING_PATH, "solution_deployment_id"),
                 (
                     "database",
@@ -582,7 +610,7 @@ def assert_pinned_parity(left, right, left_env, right_env):
             for key, value in env.generation_witnesses.items()
         },
     )
-    assert_parity(
+    assert_parity_with_clock_diagnostics(
         [step.observation for step in left],
         [step.observation for step in right],
         left_env.bindings,
