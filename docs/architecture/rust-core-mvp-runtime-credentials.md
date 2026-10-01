@@ -1,8 +1,11 @@
 # Runtime SDK credential decision proposal
 
-Status: **pending scope approval and security review**. No credential issuance,
-authorization implementation, schema change, merge or deployment is approved by
-this document. Procedure: mtg-engineering-flow 2026-09-30.1; skills package
+Status: **narrow prerequisite scope approved; interfaces and security acceptance
+pending**. The user authorized dedicated runtime SDK audience/purpose, closed
+attempt/session grants, non-upgrading renewal and associated positive/negative
+authorization tests. This does not authorize broader auth redesign, merge,
+deployment, vendor use or C2/C3 acceptance. This document alone does not freeze
+issuance/storage/crypto/schema or open authority-bearing implementation gates. Procedure: mtg-engineering-flow 2026-09-30.1; skills package
 2026-10-01.2. This implements a decision gate in the
 [runtime extraction audit](rust-core-mvp-runtime-extraction-gates.md), not a
 change to the public Python SDK.
@@ -184,7 +187,9 @@ source fallback needs broad credentials, authored tools must change, or Prepare
 still executes tenant hooks. Permission for this prerequisite does not accept C2,
 freeze the full runtime protocol or authorize C3, merge, deployment or vendor use.
 
-Review target: approve or reject the **separate narrow runtime SDK-purpose
-prerequisite** with closed operation grants and unchanged allowed SDK behavior.
-Exact issuance/crypto/grant schema, dependency custody, provider scope and complete
-source/log projection remain explicit architect-reviewed gates before their code.
+Approved work package: **CRED-P1**, the separate narrow runtime SDK-purpose
+prerequisite with closed operation grants and unchanged allowed SDK behavior.
+Before builders, the architect freezes exact issuance/crypto/grant storage,
+handler and renewal interfaces and their negative tests. Dependency custody,
+provider scope and complete source/log projection remain separate gates. The
+AUTH-P1 and CRED-P1 approvals do not establish C2/C3 acceptance.
