@@ -3,10 +3,110 @@
 from __future__ import annotations
 
 import json
+from typing import Any
+
+from src.models.enums import ExecutionStatus
+from src.services.execution.attempts import (
+    ATTEMPT_PHASES,
+    FAILURE_PHASES,
+    TERMINAL_ATTEMPT_STATUSES,
+)
+from src.services.execution_attempts import (
+    ACTIVE_ATTEMPT_STATUSES as INFRA_ACTIVE_STATUSES,
+    TERMINAL_ATTEMPT_STATUSES as INFRA_TERMINAL_STATUSES,
+)
 
 from tests.parity.core.adapter import ReferenceAdapter
 from tests.parity.core.capture import CapturedStep, now
 from tests.parity.core.environment import SYNTHETIC_VALUE, ReferenceEnvironment
+
+
+_ERROR_CLASSES = frozenset(
+    {
+        "WorkflowLoadError", "ExecutableNotFound", "WorkflowNotFoundError",
+        "ContextNotFound", "ExecutionError", "ConsumerDeliveryPoisoned",
+        "ProcessCrashError", "OrphanedExecution", "WorkerShutdownError",
+        "ResultPersistenceError", "WorkspaceGenerationMissingError",
+        "WorkspaceGenerationChangedError", "WorkspaceSourceUpdatingError",
+        "ModuleResolutionError", "AssertionError", "RuntimeError", "TypeError",
+        "ValueError", "ImportError", "ModuleNotFoundError", "SyntaxError",
+        "UserError", "PermissionError", "TimeoutError", "CancelledError",
+    }
+)
+_EXECUTION_STATUSES = frozenset(status.value for status in ExecutionStatus)
+# Active workflow statuses match WorkflowExecutionAttempt's DB constraint.
+_ATTEMPT_STATUSES = TERMINAL_ATTEMPT_STATUSES | {
+    "dispatching", "published", "claimed", "running",
+}
+_FAILURE_CODES = frozenset(
+    {
+        "execution_timeout", "cancelled", "worker_process_lost",
+        "result_persist_failed", "tenant_code_error", "result_context_missing",
+        "cancelled_before_start", "consumer_cancelled_before_route",
+        "workflow_not_found", "setup_failed", "admission_rejected",
+        "pending_context_missing",
+    }
+)
+
+
+def readiness_failure_summary(step: CapturedStep) -> str:
+    """Project evidence through fixed enums; never serialize exception text or rows.
+
+    Unknown values become a fixed marker, even when they resemble a class name.
+    This summary can appear in public CI output, unlike the captured evidence.
+    """
+    def safe(value: Any, allowed: frozenset[str]) -> str | None:
+        if value is None:
+            return None
+        return value if isinstance(value, str) and value in allowed else "unclassified"
+
+    observation = step.observation
+    body = observation.body if isinstance(observation.body, dict) else {}
+    event_errors = {
+        error_class
+        for event in observation.events
+        if isinstance(event.get("payload"), dict)
+        and event["payload"].get("type") == "execution_update"
+        if (error_class := safe(event["payload"].get("errorType"), _ERROR_CLASSES))
+        is not None
+    }
+    fields: dict[str, dict[str, frozenset[str]]] = {
+        "executions": {
+            "status": _EXECUTION_STATUSES,
+            "runtime_mode": frozenset({"legacy", "repo-v1", "deployment-v1"}),
+        },
+        "workflow_execution_attempts": {
+            "status": _ATTEMPT_STATUSES, "phase": ATTEMPT_PHASES,
+            "failure_phase": FAILURE_PHASES, "failure_code": _FAILURE_CODES,
+        },
+        "execution_attempts": {
+            "status": frozenset(INFRA_ACTIVE_STATUSES + INFRA_TERMINAL_STATUSES),
+            "failure_code": _FAILURE_CODES | _ERROR_CLASSES,
+        },
+        "work_deliveries": {
+            # WorkDelivery's DB constraint is the status authority.
+            "status": frozenset({"queued", "claimed", "completed", "poison", "interrupted"}),
+        },
+    }
+    summary = {
+        "response_status": safe(body.get("status"), _EXECUTION_STATUSES),
+        "response_error_class": safe(body.get("error_type"), _ERROR_CLASSES),
+        "event_error_classes": sorted(event_errors),
+        "committed": {
+            table: [
+                {key: safe(row.get(key), allowed) for key, allowed in columns.items()}
+                for row in observation.database.get(table, [])
+            ]
+            for table, columns in fields.items()
+        },
+        "transport_counts": {
+            "source": len(getattr(step.transport, "source_requests", [])),
+            "sdk": len(step.transport.sdk_requests),
+            "model": len(step.transport.model_requests),
+            "vendor": len(step.transport.vendor_requests),
+        },
+    }
+    return "Core readiness failure: " + json.dumps(summary, sort_keys=True)
 
 
 async def execute_readiness(
@@ -95,7 +195,7 @@ def assert_readiness(
     step: CapturedStep, environment: ReferenceEnvironment, expected: dict
 ) -> None:
     observation = step.observation
-    assert observation.body["status"] == "Success"
+    assert observation.body["status"] == "Success", readiness_failure_summary(step)
     assert observation.body["result"] == expected
     serialized = json.dumps(observation.body["result"])
     assert SYNTHETIC_VALUE not in serialized
