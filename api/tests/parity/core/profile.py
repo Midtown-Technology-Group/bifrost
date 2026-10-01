@@ -296,6 +296,7 @@ class CoreReferenceProfile:
         }
 
         def walk(value: Any, path: tuple[str, ...]) -> Any:
+            leaf = next(reversed(path), None)
             if isinstance(value, dict):
                 return {key: walk(item, (*path, key)) for key, item in value.items()}
             if isinstance(value, list):
@@ -326,11 +327,12 @@ class CoreReferenceProfile:
                 ("events", "payload", "duration_ms"),
             }
             if measurement and value is not None:
+                assert leaf is not None
                 return {
                     "measured_unit": "milliseconds"
-                    if path[-1] == "duration_ms"
+                    if leaf == "duration_ms"
                     else "bytes"
-                    if path[-1].endswith("_bytes")
+                    if leaf.endswith("_bytes")
                     else "seconds",
                     "type": type(value).__name__,
                 }
@@ -365,7 +367,7 @@ class CoreReferenceProfile:
             if path[:4] == ("database", "work_deliveries", "envelope", "body"):
                 identity |= path[4:] in DISPATCH_IDENTITIES
             if path[:4] == ("database", "work_deliveries", "envelope", "headers"):
-                identity |= path[-1] in {"x-idempotency-key", "x-original-message-id"}
+                identity |= leaf in {"x-idempotency-key", "x-original-message-id"}
             if identity and value is not None and str(value) in identities:
                 return {
                     "identity": identities[str(value)],
