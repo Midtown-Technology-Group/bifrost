@@ -696,6 +696,7 @@ async def test_entity_template_recovery_without_oauth_scope_override(
     transport,
 ):
     caller = callers[kind]
+    should_refresh = not (caller.external and not caller.engine)
     async with _integration(
         e2e_client,
         platform_admin,
@@ -726,7 +727,6 @@ async def test_entity_template_recovery_without_oauth_scope_override(
             await _state(async_session_factory, fixture) == before,
             "get_mapping changed committed OAuth state",
         )
-        should_refresh = not (caller.external and not caller.engine)
         start = datetime.now(UTC)
         payload = await _call(caller, "get", fixture.name, transport=transport)
         _assert_profile(payload, caller, fixture, "get", refreshed=should_refresh)
@@ -854,6 +854,7 @@ def _reference_api_process(listener: socket.socket, connection: Connection) -> N
         try:
             while not server.started:
                 if task.done():
+                    # Propagate task failure before interpreting startup state.
                     await task
                     raise RuntimeError("Unchanged reference application startup failed")
                 await asyncio.sleep(0.01)
@@ -882,6 +883,7 @@ def _reference_api_process(listener: socket.socket, connection: Connection) -> N
                     server.should_exit = True
                     break
                 await asyncio.sleep(0.01)
+            # Finish actual server shutdown before validating or acknowledging it.
             await task
             _require(
                 requested_stop
@@ -900,6 +902,7 @@ def _reference_api_process(listener: socket.socket, connection: Connection) -> N
         finally:
             server.should_exit = True
             if not task.done():
+                # An earlier assertion does not excuse an unawaited owned shutdown.
                 await task
 
     try:
@@ -909,6 +912,8 @@ def _reference_api_process(listener: socket.socket, connection: Connection) -> N
         try:
             connection.send({"kind": "blocked"})
         except (BrokenPipeError, EOFError, OSError):
+            # A closed parent pipe cannot carry a denial. Still exit nonzero and
+            # close the owned resources without replacing failure with an IPC error.
             pass
         raise SystemExit(1) from None
     finally:
@@ -1047,6 +1052,8 @@ async def _observed_api(factory):
                 )
                 acknowledged = True
             except BaseException as error:  # noqa: BLE001 - Retain error while cleaning owned process.
+                # CancelledError remains failure evidence while cleanup runs;
+                # the group below retains it, plus any original failure.
                 cleanup_failures.append(error)
             finally:
                 # Release our descriptor only after attempting to consume the
@@ -1085,6 +1092,8 @@ async def _observed_api(factory):
                         "Reference shutdown changed shared baseline",
                     )
                 except BaseException as error:  # noqa: BLE001 - Preserve all cleanup evidence.
+                    # Cancellation during verification is a failure, not proof of
+                    # safe teardown. Preserve it for the group raised below.
                     cleanup_failures.append(error)
         else:
             listener.close()
