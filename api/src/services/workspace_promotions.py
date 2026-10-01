@@ -142,6 +142,7 @@ class _BaseSnapshot:
     hashes: dict[str, str]
     registrations: dict[str, dict[str, Any]]
     governed_paths: tuple[str, ...] = ()
+    handed_off_registration_keys: tuple[str, ...] = ()
 
 
 def _digest(payload: Any) -> str:
@@ -1378,6 +1379,10 @@ class WorkspacePromotionPreviewService:
         protected_source, source_files = await self._read_protected_source(request)
         files = _validate_closure_files(request, source_files)
         base = await self._resolve_base(request)
+        if f"{request.entry.path}::{request.entry.function}" in base.handed_off_registration_keys:
+            raise WorkspacePromotionInvalid(
+                "workflow was handed to a Solution; use reviewed Solution delivery"
+            )
         metadata = _entry_metadata(
             files[request.entry.path], request.entry.path, request.entry.function
         )
@@ -2309,13 +2314,15 @@ class WorkspacePromotionPreviewService:
             repo_files, immutable_files, descriptor.governed_paths
         )
         hashes = {path: sha256_bytes(raw) for path, raw in sorted(files.items())}
+        registrations = await self._current_registration_snapshot(descriptor)
         return _BaseSnapshot(
             release_id=descriptor.release_id,
             manifest_id=_manifest_id(hashes),
             files=files,
             hashes=hashes,
-            registrations=await self._current_registration_snapshot(descriptor),
+            registrations=registrations,
             governed_paths=descriptor.governed_paths,
+            handed_off_registration_keys=tuple(sorted(set(descriptor.effective_registrations) - set(registrations))),
         )
 
     async def _current_registration_snapshot(

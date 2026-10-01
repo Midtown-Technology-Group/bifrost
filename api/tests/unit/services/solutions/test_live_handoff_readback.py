@@ -28,7 +28,7 @@ from src.models.orm.workflows import Workflow
 def handoff(monkeypatch):
     solution_id, deployment_id, workflow_id = uuid4(), uuid4(), uuid4()
     path, content = 'features/cipp.py', b'async def run():\n    return 1\n'
-    bounds = {'max_duration_seconds': 30}
+    bounds = {'max_duration_seconds': 30, 'max_external_calls': 10, 'max_records_read': 100, 'max_output_bytes': 4096}
     inherited = {'workflow_id': str(workflow_id), 'path': path, 'function': 'run',
         'name': 'CIPP', 'type': 'workflow', 'organization_id': None, 'is_active': True,
         'source_sha256': sha256_digest(content).removeprefix('sha256:'),
@@ -202,3 +202,18 @@ async def test_shadow_loose_uuid_is_not_hidden_by_a_valid_solution(handoff, monk
     service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
     with pytest.raises(WorkspacePromotionInvalid, match='changed outside its release'):
         await service._current_registration_snapshot(handoff.release)
+
+@pytest.mark.asyncio
+async def test_preview_cannot_recreate_a_handed_off_entry(handoff):
+    from src.services.workspace_promotions import _BaseSnapshot
+    base = _BaseSnapshot(release_id=handoff.release.release_id, manifest_id='sha256:'+'a'*64,
+        files={}, hashes={}, registrations={}, handed_off_registration_keys=(handoff.path+'::run',))
+    service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+    service._validate_source_release_cohort = AsyncMock()
+    service._read_protected_source = AsyncMock(return_value=(None, {}))
+    service._resolve_base = AsyncMock(return_value=base)
+    request = SimpleNamespace(entry=SimpleNamespace(path=handoff.path, function='run'))
+    from unittest.mock import patch
+    with patch('src.services.workspace_promotions._validate_closure_files', return_value={}):
+        with pytest.raises(WorkspacePromotionInvalid, match='use reviewed Solution delivery'):
+            await service.preview(request, uuid4())

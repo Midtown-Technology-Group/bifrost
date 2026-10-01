@@ -25,6 +25,7 @@ from src.services.solutions.deployment_manifest import (
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.live_handoff_preflight import handoff_preflight_evidence_id
 from src.services.solutions.root_file_bindings import require_root_workspace_files
+from src.services.solutions.resource_delivery import read_deployment_resources
 from src.services.solutions.shared_table_bindings import require_shared_tables
 from src.services.solutions.source_revision import (
     _archive_files, _require_registration, _workflow_snapshot,
@@ -64,7 +65,7 @@ class LiveHandoffReadback:
         solution_id = workflow.solution_id
         if solution_id not in self.solutions:
             self.solutions[solution_id] = await self._solution(solution_id, scope)
-        active_manifest, active_resolution, origin_resolution, rows = self.solutions[solution_id]
+        _active_manifest, active_resolution, origin_resolution, rows = self.solutions[solution_id]
         if workflow_id not in rows:
             raise UnprovenLiveHandoff("Inherited workflow is absent from the active runtime")
         origin = origin_resolution.resolve_workflow_id(workflow_id)
@@ -138,12 +139,7 @@ class LiveHandoffReadback:
                     raise UnprovenLiveHandoff("Active runtime source bytes differ from the immutable archive")
 
         await asyncio.gather(*(verify(path, source) for path, source in resolution.sources.items()))
-        async def verify_resource(path, resource):
-            async with slots:
-                content = await storage.read_runtime_file(f"_resources/{path}")
-            if len(content) != resource.size_bytes or sha256_digest(content) != resource.content_hash:
-                raise UnprovenLiveHandoff("Active runtime resource bytes differ from the immutable closure")
-        await asyncio.gather(*(verify_resource(path, resource) for path, resource in resolution.resources.items()))
+        await read_deployment_resources(deployment.solution_id, deployment.id, resolution)
         await require_shared_tables(self.db, manifest.shared_tables)
         await require_root_workspace_files(self.db, manifest.root_file_bindings)
 
