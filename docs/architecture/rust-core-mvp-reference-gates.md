@@ -284,3 +284,17 @@ Unicode coverage, transport depth limits and full model validation remain the
 documented gates in #1020. No C2/C3 authority, new-main source capture, runtime
 extraction, vendor use, merge or deployment follows from this result. Other CI
 and normal local/live proof gates retain their own dispositions.
+
+## Latest unchanged-input reconciliation
+
+A fresh fetch on 2026-10-01 retains platform main
+`f770094eb28d8315a414fe8cb306f510da752d89` and advances workspace main to
+`c1856d2fbc7530c65c67adfd28e4896ec402ccbf`. The latter changes only
+`features/ninjaone/scripts/Dell.Idrac.EnterpriseLicenseMonitor.ps1`. Selected
+Cove authored bytes and the boundary checker remain identical to retained
+`e8605dc8`. The workspace-owned static AST audit again passes 2,107 boundary
+files (1,984 standard authored), zero forbidden imports and an empty allowlist;
+#1112 remains an ancestor. No authored source was imported or executed.
+The [C1-R packet](rust-core-mvp-agent-reference.md) distinguishes current main,
+retained source blobs and the approved unmerged AUTH reference overlay.
+This reconciliation does not restart the exhausted #1017 repair cycle.

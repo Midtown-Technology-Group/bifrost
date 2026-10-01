@@ -15,9 +15,11 @@ six-file delta changes no auth/SDK/attempt/deployment helper. Reconciled migrati
 ownership uses the new parent; workspace-release grants remain excluded.
 
 The initial source implementation used platform main
-`fcfbedfe189e8efab0546890828806c91cec358d`. Current authoritative main is
-`658283e8c8707ceecf9e2c0b56b779d074b7bdaf` after #1023, included in the
-`fix/runtime-sdk-purpose` reconciliation. #1023 adds Solution source-accounting
+`fcfbedfe189e8efab0546890828806c91cec358d`. The tested private candidate includes
+`658283e8c8707ceecf9e2c0b56b779d074b7bdaf` after #1023. Current authoritative main
+is `f770094eb28d8315a414fe8cb306f510da752d89`; the subsequent delta changes CI
+capacity/concurrency only. Do not relabel candidate checks as checks of a later
+main merge. #1023 adds Solution source-accounting
 completion evidence and a shared runtime-admission fence before pin persistence.
 It changes no selected SDK/auth/minter/deployment-pin helper. Preserve that
 admission fence in future C3 coordination; it is not implemented by this private
@@ -237,7 +239,7 @@ repository lanes.
 Earlier e049/ddb passes retain their historical pins; no result is relabeled.
 
 Independent test-only [CRED-P1-REF #1026](https://github.com/Midtown-Technology-Group/bifrost/pull/1026)
-is open at `50efd185dfd0b98682650e93db6022581184eaa7`. Its preceding candidate
+is open at `e1f4c358efa08cbe8c1562dd8e409002aec9ee31`. Its preceding candidate
 `99ab8dd653ba8f42381f8d627aa56e2f4903935a`, containing main `658283e8c`, passed
 [comprehensive run 36933538470](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933538470).
 The literal pre-PR job `110608843578`, artifact `11196429549`, records tree
@@ -249,7 +251,19 @@ shard 4 recorded 509 passed and 21 unrelated existing skips. Later 50efd only
 moves a pure predicate before its guarded use and explains awaited task/IPC
 failure handling for CodeQL review. Its own supported run
 [36936246934](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36936246934)
-remains pending; 99ab results are evidence for 99ab, not a later candidate pass.
+completed successfully at 50efd. CodeQL nevertheless rejected the local
+predicate binding. A separately reviewed e1f correction inlines the same frozen
+caller predicate at its two uses, retaining every request/state/receipt/time
+expectation and asynchronous cleanup. Current ordinary
+[CI run 36938634756](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36938634756)
+passed at exact e1f, including all four E2E shards, lint/type and unit lanes.
+Shard 4 independently records all 25 selected reference cases passed and 509
+passed/21 unrelated existing skips overall.
+[CodeQL run 36938634851](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36938634851),
+Sonar and CodSpeed also passed. The ordinary run intentionally skipped the
+manual pre-PR job: literal-gate/artifact evidence above belongs to exact 99ab,
+not e1f. No benchmark thresholds, exceptions, authentication or test expectations
+were waived; historical candidates retain their own pins.
 
 The reference observed these compatibility differences:
 

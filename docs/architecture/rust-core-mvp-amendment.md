@@ -19,7 +19,9 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
 As of the latest fetch, platform main is `f770094eb28d8315a414fe8cb306f510da752d89`
-and workspace main is `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`. The
+and workspace main is `c1856d2fbc7530c65c67adfd28e4896ec402ccbf`. Its advance
+from retained `e8605dc8` changes one iDRAC PowerShell script only; selected
+Python inputs and boundary checker bytes are unchanged. The
 current workspace audit passes 2,107 boundary files (1,984 standard authored
 files), zero forbidden imports and an empty allowlist. Earlier source/test
 evidence below retains its actual provenance.
@@ -367,3 +369,11 @@ Current core disposition: **CONTINUE boundary design/reference work; authority-
 bearing implementation gated**. This is not an MVP completion recommendation.
 At completion name the validated next domain and intentionally retained Python,
 or the exact falsification, narrower Rust role and retirement/revert plan.
+
+The independent [C1-R agent reference packet](rust-core-mvp-agent-reference.md)
+records unchanged authored inputs, the approved unmerged AUTH source overlay,
+named-lane custody, model wire and passive-observation boundaries. Its lane
+foundation is source/static evidence only. Closed observation messages and
+shutdown completeness must be frozen before observer/fixture implementation;
+public installation and actual reference execution remain pending. This work
+cannot restart the exhausted #1017 repair cycle or confer CRED/C2/C3 acceptance.
