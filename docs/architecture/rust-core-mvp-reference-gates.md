@@ -16,6 +16,15 @@ with an empty `PLATFORM_INTERNAL_IMPORT_ALLOWLIST`. Selected workflow and agent
 source bytes are unchanged from the retained
 `83c1cb034dbbcfa29eb1723506735b13b4788536` provenance pin.
 
+A subsequent fresh reconciliation returned platform main
+`bd98a10a647c6dde934e2f9b48328798298e53ef` and workspace main
+`19ea0fbb97fcb1701931067e20c279b30e1663db`. Both prerequisites remain
+ancestors. The workspace AST boundary audit passed 2,107 boundary files
+(1,984 standard authored files), with zero forbidden imports and an empty
+allowlist. Selected authored workflow/agent bytes and platform business source
+used by these references are unchanged. Platform #1019 changes debug-resource
+ownership/cleanup instructions; the candidates retain those current rules.
+
 The findings below are source evidence, not an observed agent run. Codec passes,
 SDK direct calls, and a rehydrated organization do not prove tool execution.
 The pinned readiness workflow reference remains independent and can continue.
@@ -71,6 +80,22 @@ dispatch. Ordinary admin authority is refreshed from the database at tool
 dispatch, including revocation during the model wait; external actors retain
 their existing re-resolution. Callerless defaults remain unprivileged. No
 authority may be inferred from transport admin or destination organization.
+
+The approved prerequisite is published separately as
+[#1018](https://github.com/Midtown-Technology-Group/bifrost/pull/1018).
+Its current main-reconciled candidate is
+`b6b20a43dafed1fdd446d7026471193a30873ee4`; the original behavior candidate
+above passed supported hosted CI, including 11,533 unit tests, all four backend
+E2E shards, and the real-service delivery failure matrix
+([run 36895595796](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36895595796)).
+Independent Sol review found no concrete regression; automated review of the
+original candidate reported no actionable comments. The reconciled candidate
+has a separate CI run. These checks do not establish nominal Cove-agent
+acceptance. Local application proof remains unavailable because the task's
+PostgreSQL startup failed at Unix-socket permissions; all three confirmed
+task-created failed debug projects were cleaned up, with successful empty
+container/network/volume readback. CodSpeed cross-environment failures remain
+blocking under #1003; no thresholds, retries or waivers are introduced.
 
 This correction deliberately preserves existing run/rerun execution-org
 expressions. Their dual-use caller/target organization is **not** repaired by
