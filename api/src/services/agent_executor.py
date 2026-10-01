@@ -35,6 +35,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from shared.external_access import resolve_external_claim, resolve_provider_org_claim
 from shared.scope_resolver import has_scope_bypass
 from src.core.principal import UserPrincipal
 from src.models.contracts.agents import (
@@ -403,6 +404,9 @@ class AgentExecutor:
                         else None
                     ),
                     "is_platform_admin": user.is_superuser,
+                    "is_provider_org": user.is_provider_org,
+                    "is_external": user.is_external,
+                    "roles": user.roles,
                 }
                 if user
                 else (
@@ -1406,10 +1410,21 @@ class AgentExecutor:
             workflow_id = self._tool_workflow_id_map.get(tool_call.name)
             resolved_workflow: tuple[str, str] | None = None
             can_access = False
+            current_caller_admin: bool | None = None
+            legacy_provider = False
+            legacy_external = False
             user = None
             async with self._db() as session:
                 if caller_user_id is not None:
                     user = await session.get(User, caller_user_id)
+                    current_caller_admin = bool(user and user.is_superuser)
+                if conversation is not None and (
+                    caller is None or set(caller) == {"user_id"}
+                ):
+                    legacy_user = user if user is not None else conversation.user
+                    if legacy_user is not None:
+                        legacy_provider = await resolve_provider_org_claim(session, legacy_user)
+                        legacy_external = await resolve_external_claim(session, legacy_user)
                 workflow = await session.get(Workflow, workflow_id) if workflow_id else None
                 if workflow is not None:
                     # Keep ORM access inside the owning async session. Session exit
@@ -1482,9 +1497,19 @@ class AgentExecutor:
                         else agent.organization_id if agent else None
                     ),
                     is_platform_admin=(
-                        bool(caller.get("is_platform_admin", False))
+                        current_caller_admin
+                        if current_caller_admin is not None
+                        else bool(caller.get("is_platform_admin", False))
                         if caller
                         else user.is_superuser if user else False
+                    ),
+                    is_provider_org=(
+                        bool(caller.get("is_provider_org", False))
+                        if caller and "is_provider_org" in caller else legacy_provider
+                    ),
+                    is_external=(
+                        bool(caller.get("is_external", False))
+                        if caller and "is_external" in caller else legacy_external
                     ),
                     agent_id=agent.id if agent else None,
                     agent_run_id=getattr(self, "_agent_run_id", None),
