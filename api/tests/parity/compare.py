@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
-from tests.parity.harness import Observation, SEED_TIME
+from tests.parity.harness import SEED_TIME, Observation
 
 BODY_CLOCKS = {"server_time", "last_seen_at", "claimed_at"}
 DB_CLOCKS = {
@@ -26,6 +26,13 @@ DB_IDENTITIES = {
 }
 
 
+class ComparisonProfile(Protocol):
+    """An explicitly selected comparison policy; the device default stays fixed."""
+
+    def canonicalize(self, trace: list[Observation], bindings: dict[str, str]) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
+
 def _clock(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
@@ -38,7 +45,11 @@ def _clock(value: Any) -> datetime | None:
         raise AssertionError("invalid server clock") from exc
 
 
-def canonicalize(trace: list[Observation], bindings: dict[str, str]) -> list[dict[str, Any]]:
+def canonicalize(
+    trace: list[Observation], bindings: dict[str, str], profile: ComparisonProfile | None = None,
+) -> list[dict[str, Any]]:
+    if profile is not None:
+        return profile.canonicalize(trace, bindings)
     clocks: set[datetime] = set()
     for observation in trace:
         candidates = [(observation.body or {}).get(field) for field in BODY_CLOCKS] if isinstance(observation.body, dict) else []
@@ -87,14 +98,39 @@ def canonicalize(trace: list[Observation], bindings: dict[str, str]) -> list[dic
     return [walk({key: value for key, value in asdict(observation).items() if key not in {"before", "after"}}, ()) for observation in trace]
 
 
+def difference_path(expected: Any, actual: Any, path: str = "") -> str | None:
+    """Locate a mismatch without exposing either observed value."""
+    if expected == actual:
+        return None
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if expected.keys() != actual.keys():
+            return f"{path}.<keys>"
+        for key in expected:
+            mismatch = difference_path(expected[key], actual[key], f"{path}.{key}")
+            if mismatch is not None:
+                return mismatch
+    elif isinstance(expected, list) and isinstance(actual, list):
+        if len(expected) != len(actual):
+            return f"{path}.<length>"
+        for index, (left, right) in enumerate(zip(expected, actual, strict=True)):
+            mismatch = difference_path(left, right, f"{path}[{index}]")
+            if mismatch is not None:
+                return mismatch
+    return path
+
+
 def assert_parity(
     reference: list[Observation], candidate: list[Observation],
     reference_bindings: dict[str, str], candidate_bindings: dict[str, str],
+    profile: ComparisonProfile | None = None,
 ) -> None:
-    expected = canonicalize(reference, reference_bindings)
-    actual = canonicalize(candidate, candidate_bindings)
+    expected = canonicalize(reference, reference_bindings, profile)
+    actual = canonicalize(candidate, candidate_bindings, profile)
     assert len(expected) == len(actual), "observation count differs"
     for left, right in zip(expected, actual, strict=True):
         assert left["step"] == right["step"], "scenario step/order differs"
         for plane in ("status", "body", "database", "events"):
-            assert left[plane] == right[plane], f"{left['step']}: {plane} differs"
+            assert left[plane] == right[plane], (
+                f"{left['step']}: {plane} differs at "
+                f"{difference_path(left[plane], right[plane], plane)}"
+            )

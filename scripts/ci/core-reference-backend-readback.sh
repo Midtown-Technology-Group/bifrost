@@ -20,3 +20,8 @@ done
 # This read-only probe must not run the root entrypoint's host-results chown.
 printf 'test-runner: '
 docker compose -f docker-compose.test.yml --profile test run --rm --no-deps --user 1000:1000 test-runner python -c "$probe"
+
+if [ "${CORE_REFERENCE_ISOLATED:-0}" = 1 ]; then
+    docker compose -f docker-compose.test.yml exec -T worker python -c 'import os; assert os.environ["BIFROST_API_URL"] == "http://core-sdk-observer:8080"; print("worker SDK transport=test observer")'
+    docker compose -f docker-compose.test.yml --profile test run --rm --no-deps --user 1000:1000 test-runner python -c 'import os; assert os.environ["CORE_REFERENCE_ISOLATED"] == "1"; print("runner core reference isolation=explicit")'
+fi

@@ -1,0 +1,978 @@
+{
+  "schema": "bifrost.core-reference/v1",
+  "proof": "Python Scenario A only; public repo registration; no Rust/model/vendor acceptance",
+  "source_sha256": "f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de",
+  "observation": {
+    "step": "readiness",
+    "status": 200,
+    "body": {
+      "execution_id": {
+        "identity": "readiness",
+        "wire_type": "str"
+      },
+      "workflow_id": {
+        "identity": "workflow",
+        "wire_type": "str"
+      },
+      "workflow_name": "check_integration_readiness",
+      "status": "Success",
+      "result": {
+        "integration_name": {
+          "identity": "integration-name",
+          "wire_type": "str"
+        },
+        "scope_mode": "organization",
+        "found": true,
+        "lookup_error_type": null,
+        "configured_keys": [
+          "fixture_value"
+        ],
+        "required_config_keys": [
+          "fixture_value"
+        ],
+        "missing_required_config_keys": [],
+        "oauth_fields_present": {
+          "access_token": false,
+          "refresh_token": false,
+          "client_id": false,
+          "client_secret": false
+        },
+        "oauth_ready": false,
+        "credential_material_present": true,
+        "mapping_checked": true,
+        "mapping_present": true,
+        "mapping_lookup_error_type": null,
+        "ready": true,
+        "blockers": [],
+        "guarantees": {
+          "read_only": true,
+          "vendor_connectivity_tested": false,
+          "credential_values_returned": false,
+          "raw_scope_identifier_returned": false
+        }
+      },
+      "error": null,
+      "error_type": null,
+      "details": null,
+      "duration_ms": {
+        "measured_unit": "milliseconds",
+        "type": "int"
+      },
+      "started_at": null,
+      "completed_at": null,
+      "scheduled_at": null,
+      "logs": null,
+      "variables": null,
+      "is_transient": true
+    },
+    "database": {
+      "organizations": [
+        {
+          "id": {
+            "identity": "foreign_org",
+            "wire_type": "str"
+          },
+          "name": "Core reference foreign tenant",
+          "domain": null,
+          "is_active": true,
+          "is_provider": false,
+          "settings": {},
+          "created_at": "seed-time",
+          "created_by": "core-reference",
+          "updated_at": "seed-time"
+        },
+        {
+          "id": {
+            "identity": "org",
+            "wire_type": "str"
+          },
+          "name": "Core reference tenant",
+          "domain": null,
+          "is_active": true,
+          "is_provider": false,
+          "settings": {},
+          "created_at": "seed-time",
+          "created_by": "core-reference",
+          "updated_at": "seed-time"
+        }
+      ],
+      "users": [
+        {
+          "id": {
+            "identity": "user",
+            "wire_type": "str"
+          },
+          "email": {
+            "identity": "caller-email",
+            "wire_type": "str"
+          },
+          "name": "Core reference caller",
+          "hashed_password": null,
+          "is_active": true,
+          "is_superuser": false,
+          "is_verified": false,
+          "is_registered": true,
+          "is_system": false,
+          "is_external": false,
+          "mfa_enabled": false,
+          "memory_enabled": true,
+          "mfa_enforced_at": null,
+          "organization_id": {
+            "identity": "org",
+            "wire_type": "str"
+          },
+          "last_login": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "avatar_data": null,
+          "avatar_content_type": null,
+          "webauthn_user_id": null
+        },
+        {
+          "id": {
+            "identity": "setup_user",
+            "wire_type": "str"
+          },
+          "email": {
+            "identity": "setup-email",
+            "wire_type": "str"
+          },
+          "name": "Core reference setup",
+          "hashed_password": null,
+          "is_active": true,
+          "is_superuser": true,
+          "is_verified": false,
+          "is_registered": true,
+          "is_system": false,
+          "is_external": false,
+          "mfa_enabled": false,
+          "memory_enabled": true,
+          "mfa_enforced_at": null,
+          "organization_id": {
+            "identity": "org",
+            "wire_type": "str"
+          },
+          "last_login": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "avatar_data": null,
+          "avatar_content_type": null,
+          "webauthn_user_id": null
+        }
+      ],
+      "roles": [
+        {
+          "id": {
+            "identity": "role",
+            "wire_type": "str"
+          },
+          "name": "Core reference execution role",
+          "description": null,
+          "permissions": {},
+          "created_by": "core-reference",
+          "created_at": "seed-time",
+          "updated_at": "seed-time"
+        }
+      ],
+      "user_roles": [
+        {
+          "user_id": {
+            "identity": "user",
+            "wire_type": "str"
+          },
+          "role_id": {
+            "identity": "role",
+            "wire_type": "str"
+          },
+          "assigned_by": "core-reference",
+          "assigned_at": "seed-time"
+        }
+      ],
+      "workflow_roles": [
+        {
+          "workflow_id": {
+            "identity": "workflow",
+            "wire_type": "str"
+          },
+          "role_id": {
+            "identity": "role",
+            "wire_type": "str"
+          },
+          "assigned_by": {
+            "identity": "setup-email",
+            "wire_type": "str"
+          },
+          "assigned_at": "clock:1"
+        }
+      ],
+      "executions": [
+        {
+          "id": {
+            "identity": "readiness",
+            "wire_type": "str"
+          },
+          "workflow_name": "check_integration_readiness",
+          "workflow_version": null,
+          "status": "Success",
+          "parameters": {
+            "require_oauth": false,
+            "organization_id": {
+              "identity": "org",
+              "wire_type": "str"
+            },
+            "require_mapping": true,
+            "integration_name": {
+              "identity": "integration-name",
+              "wire_type": "str"
+            },
+            "required_config_keys": [
+              "fixture_value"
+            ]
+          },
+          "result": {
+            "found": true,
+            "ready": true,
+            "blockers": [],
+            "guarantees": {
+              "read_only": true,
+              "credential_values_returned": false,
+              "vendor_connectivity_tested": false,
+              "raw_scope_identifier_returned": false
+            },
+            "scope_mode": "organization",
+            "oauth_ready": false,
+            "configured_keys": [
+              "fixture_value"
+            ],
+            "mapping_checked": true,
+            "mapping_present": true,
+            "integration_name": {
+              "identity": "integration-name",
+              "wire_type": "str"
+            },
+            "lookup_error_type": null,
+            "oauth_fields_present": {
+              "client_id": false,
+              "access_token": false,
+              "client_secret": false,
+              "refresh_token": false
+            },
+            "required_config_keys": [
+              "fixture_value"
+            ],
+            "mapping_lookup_error_type": null,
+            "credential_material_present": true,
+            "missing_required_config_keys": []
+          },
+          "result_type": "json",
+          "variables": {
+            "name": {
+              "identity": "integration-name",
+              "wire_type": "str"
+            },
+            "found": true,
+            "oauth": null,
+            "scope": {
+              "identity": "org",
+              "wire_type": "str"
+            },
+            "config": {
+              "fixture_value": "core-parity-synthetic-config-value"
+            },
+            "blockers": [],
+            "integration": {
+              "oauth": null,
+              "config": {
+                "fixture_value": "core-parity-synthetic-config-value"
+              },
+              "entity_id": "synthetic-entity",
+              "entity_name": "Synthetic entity",
+              "integration_id": {
+                "identity": "integration",
+                "wire_type": "str"
+              },
+              "config_secret_keys": "[REDACTED]"
+            },
+            "oauth_ready": false,
+            "oauth_fields": {
+              "client_id": false,
+              "access_token": "[REDACTED]",
+              "client_secret": "[REDACTED]",
+              "refresh_token": "[REDACTED]"
+            },
+            "require_oauth": false,
+            "required_keys": [
+              "fixture_value"
+            ],
+            "configured_keys": [
+              "fixture_value"
+            ],
+            "mapping_checked": true,
+            "mapping_present": true,
+            "organization_id": {
+              "identity": "org",
+              "wire_type": "str"
+            },
+            "require_mapping": true,
+            "integration_name": {
+              "identity": "integration-name",
+              "wire_type": "str"
+            },
+            "lookup_error_type": null,
+            "configured_key_set": [
+              "fixture_value"
+            ],
+            "required_config_keys": [
+              "fixture_value"
+            ],
+            "missing_required_keys": [],
+            "mapping_lookup_error_type": null,
+            "credential_material_present": "[REDACTED]"
+          },
+          "execution_context": {
+            "roi": {
+              "value": 0.0,
+              "time_saved": 0
+            },
+            "name": "Core reference caller",
+            "email": {
+              "identity": "caller-email",
+              "wire_type": "str"
+            },
+            "embed": {},
+            "scope": {
+              "identity": "org",
+              "wire_type": "str"
+            },
+            "startup": null,
+            "user_id": {
+              "identity": "user",
+              "wire_type": "str"
+            },
+            "is_agent": false,
+            "parameters": {
+              "require_oauth": false,
+              "organization_id": {
+                "identity": "org",
+                "wire_type": "str"
+              },
+              "require_mapping": true,
+              "integration_name": {
+                "identity": "integration-name",
+                "wire_type": "str"
+              },
+              "required_config_keys": [
+                "fixture_value"
+              ]
+            },
+            "public_url": "http://localhost:8000",
+            "form_inputs": {},
+            "is_external": false,
+            "execution_id": {
+              "identity": "readiness",
+              "wire_type": "str"
+            },
+            "organization": {
+              "id": {
+                "identity": "org",
+                "wire_type": "str"
+              },
+              "name": "Core reference tenant",
+              "is_active": true,
+              "is_provider": false
+            },
+            "workflow_name": "check_integration_readiness",
+            "is_function_key": false,
+            "is_provider_org": false,
+            "is_platform_admin": false,
+            "workspace_generation": {
+              "identity": "installed-source-generation",
+              "wire_type": "str"
+            },
+            "artifact_workspace_id": null
+          },
+          "error_message": null,
+          "started_at": "clock:10",
+          "completed_at": "clock:14",
+          "duration_ms": {
+            "measured_unit": "milliseconds",
+            "type": "int"
+          },
+          "peak_memory_bytes": {
+            "measured_unit": "bytes",
+            "type": "int"
+          },
+          "process_rss_bytes": {
+            "measured_unit": "bytes",
+            "type": "int"
+          },
+          "cpu_user_seconds": {
+            "measured_unit": "seconds",
+            "type": "float"
+          },
+          "cpu_system_seconds": {
+            "measured_unit": "seconds",
+            "type": "float"
+          },
+          "cpu_total_seconds": {
+            "measured_unit": "seconds",
+            "type": "float"
+          },
+          "time_saved": 0,
+          "value": "0.00",
+          "executed_by": {
+            "identity": "user",
+            "wire_type": "str"
+          },
+          "executed_by_name": "Core reference caller",
+          "organization_id": {
+            "identity": "org",
+            "wire_type": "str"
+          },
+          "form_id": null,
+          "workflow_id": {
+            "identity": "workflow",
+            "wire_type": "str"
+          },
+          "solution_deployment_id": null,
+          "runtime_mode": "repo-v1",
+          "runtime_evidence": null,
+          "runtime_evidence_hash": null,
+          "dispatch_evidence": {
+            "publish": {
+              "sync": true,
+              "embed": {},
+              "event": null,
+              "org_id": {
+                "identity": "org",
+                "wire_type": "str"
+              },
+              "form_id": null,
+              "startup": null,
+              "user_id": {
+                "identity": "user",
+                "wire_type": "str"
+              },
+              "file_path": null,
+              "user_name": "Core reference caller",
+              "api_key_id": null,
+              "parameters": {
+                "require_oauth": false,
+                "organization_id": {
+                  "identity": "org",
+                  "wire_type": "str"
+                },
+                "require_mapping": true,
+                "integration_name": {
+                  "identity": "integration-name",
+                  "wire_type": "str"
+                },
+                "required_config_keys": [
+                  "fixture_value"
+                ]
+              },
+              "user_email": {
+                "identity": "caller-email",
+                "wire_type": "str"
+              },
+              "form_inputs": {},
+              "is_external": false,
+              "workflow_id": {
+                "identity": "workflow",
+                "wire_type": "str"
+              },
+              "execution_id": {
+                "identity": "readiness",
+                "wire_type": "str"
+              },
+              "runtime_mode": "repo-v1",
+              "is_provider_org": false,
+              "runtime_evidence": null,
+              "dispatch_metadata": {
+                "name": "check_integration_readiness",
+                "path": {
+                  "identity": "source-path",
+                  "wire_type": "str"
+                },
+                "type": "workflow",
+                "value": 0.0,
+                "time_saved": 0,
+                "solution_id": null,
+                "function_name": "check_integration_readiness",
+                "execution_mode": "sync",
+                "organization_id": {
+                  "identity": "org",
+                  "wire_type": "str"
+                },
+                "timeout_seconds": 1800,
+                "cache_ttl_seconds": 300,
+                "can_access_global_repo": false
+              },
+              "is_platform_admin": false,
+              "solution_deployment_id": null,
+              "execution_record_exists": true
+            },
+            "request": {
+              "sync": true,
+              "embed": {},
+              "event": null,
+              "org_id": {
+                "identity": "org",
+                "wire_type": "str"
+              },
+              "form_id": null,
+              "startup": null,
+              "user_id": {
+                "identity": "user",
+                "wire_type": "str"
+              },
+              "file_path": null,
+              "user_name": "Core reference caller",
+              "api_key_id": null,
+              "parameters": {
+                "require_oauth": false,
+                "organization_id": {
+                  "identity": "org",
+                  "wire_type": "str"
+                },
+                "require_mapping": true,
+                "integration_name": {
+                  "identity": "integration-name",
+                  "wire_type": "str"
+                },
+                "required_config_keys": [
+                  "fixture_value"
+                ]
+              },
+              "user_email": {
+                "identity": "caller-email",
+                "wire_type": "str"
+              },
+              "form_inputs": {},
+              "is_external": false,
+              "workflow_id": {
+                "identity": "workflow",
+                "wire_type": "str"
+              },
+              "execution_id": {
+                "identity": "readiness",
+                "wire_type": "str"
+              },
+              "schema_version": "bifrost.workflow-pending-dispatch/v1",
+              "is_provider_org": false,
+              "dispatch_metadata": {
+                "name": "check_integration_readiness",
+                "path": {
+                  "identity": "source-path",
+                  "wire_type": "str"
+                },
+                "type": "workflow",
+                "value": 0.0,
+                "time_saved": 0,
+                "solution_id": null,
+                "function_name": "check_integration_readiness",
+                "execution_mode": "sync",
+                "organization_id": {
+                  "identity": "org",
+                  "wire_type": "str"
+                },
+                "timeout_seconds": 1800,
+                "cache_ttl_seconds": 300,
+                "can_access_global_repo": false
+              },
+              "is_platform_admin": false,
+              "caller_solution_deployment_id": null
+            },
+            "publish_hash": "validated:sha256",
+            "request_hash": "validated:sha256",
+            "schema_version": "bifrost.workflow-pending-dispatch/v1"
+          },
+          "dispatch_evidence_hash": "validated:sha256",
+          "retry_policy": {
+            "enabled": false,
+            "version": "execution-retry/v1",
+            "retry_on": [],
+            "max_attempts": 2
+          },
+          "attempt_tracking_version": "v1",
+          "api_key_id": null,
+          "is_local_execution": false,
+          "execution_model": "process",
+          "session_id": null,
+          "created_at": "clock:2",
+          "scheduled_at": null
+        }
+      ],
+      "workflow_execution_attempts": [
+        {
+          "id": {
+            "identity": "workflow_execution_attempts:0:id:0",
+            "wire_type": "str"
+          },
+          "execution_id": {
+            "identity": "readiness",
+            "wire_type": "str"
+          },
+          "attempt_number": 1,
+          "claim_token": {
+            "identity": "workflow_execution_attempts:0:claim_token:0",
+            "wire_type": "str"
+          },
+          "status": "succeeded",
+          "phase": "terminal",
+          "failure_phase": null,
+          "failure_code": null,
+          "worker_id": {
+            "identity": "workflow_execution_attempts:0:worker_id:0",
+            "wire_type": "str"
+          },
+          "worker_incarnation_id": {
+            "identity": "workflow_execution_attempts:0:worker_incarnation_id:0",
+            "wire_type": "str"
+          },
+          "process_id": {
+            "identity": "workflow_execution_attempts:0:process_id:0",
+            "wire_type": "str"
+          },
+          "runtime_mode": "repo-v1",
+          "runtime_evidence_hash": null,
+          "dispatch_evidence_hash": "validated:sha256",
+          "policy_digest": "sha256:04789a2ee04c575b1cdf04bb38d60f5fbe838019de0c32d9b037b32a5ce22e61",
+          "policy_version": "workflow-attempt/v1",
+          "published_at": "clock:7",
+          "claimed_at": "clock:9",
+          "started_at": "clock:11",
+          "heartbeat_at": "clock:13",
+          "completed_at": "clock:13",
+          "duration_ms": {
+            "measured_unit": "milliseconds",
+            "type": "int"
+          },
+          "peak_memory_bytes": {
+            "measured_unit": "bytes",
+            "type": "int"
+          },
+          "cpu_total_seconds": {
+            "measured_unit": "seconds",
+            "type": "float"
+          },
+          "created_at": "clock:3"
+        }
+      ],
+      "execution_logs": [],
+      "execution_attempts": [],
+      "execution_lifecycle_events": [],
+      "work_deliveries": [
+        {
+          "id": {
+            "identity": "work_deliveries:0:id:0",
+            "wire_type": "str"
+          },
+          "queue_name": "workflow-executions",
+          "message_id": {
+            "identity": "readiness",
+            "wire_type": "str"
+          },
+          "status": "completed",
+          "available_at": "clock:6",
+          "created_at": "clock:6",
+          "settled_at": "clock:12",
+          "started_at": "clock:8",
+          "lease_owner": null,
+          "lease_token": null,
+          "lease_expires_at": null,
+          "claim_count": 1,
+          "encrypted_envelope_present": true,
+          "envelope": {
+            "body": {
+              "execution_id": {
+                "identity": "readiness",
+                "wire_type": "str"
+              },
+              "workflow_id": {
+                "identity": "workflow",
+                "wire_type": "str"
+              },
+              "sync": true,
+              "execution_record_exists": true,
+              "dispatch_metadata": {
+                "name": "check_integration_readiness",
+                "function_name": "check_integration_readiness",
+                "path": {
+                  "identity": "source-path",
+                  "wire_type": "str"
+                },
+                "timeout_seconds": 1800,
+                "time_saved": 0,
+                "value": 0.0,
+                "execution_mode": "sync",
+                "organization_id": {
+                  "identity": "org",
+                  "wire_type": "str"
+                },
+                "solution_id": null,
+                "can_access_global_repo": false,
+                "type": "workflow",
+                "cache_ttl_seconds": 300
+              },
+              "pending_context": {
+                "execution_id": {
+                  "identity": "readiness",
+                  "wire_type": "str"
+                },
+                "workflow_id": {
+                  "identity": "workflow",
+                  "wire_type": "str"
+                },
+                "solution_deployment_id": null,
+                "runtime_evidence": null,
+                "runtime_mode": "repo-v1",
+                "script_name": null,
+                "parameters": {
+                  "integration_name": {
+                    "identity": "integration-name",
+                    "wire_type": "str"
+                  },
+                  "organization_id": {
+                    "identity": "org",
+                    "wire_type": "str"
+                  },
+                  "required_config_keys": [
+                    "fixture_value"
+                  ],
+                  "require_mapping": true,
+                  "require_oauth": false
+                },
+                "org_id": {
+                  "identity": "org",
+                  "wire_type": "str"
+                },
+                "org_id_overridden": false,
+                "user_id": {
+                  "identity": "user",
+                  "wire_type": "str"
+                },
+                "user_name": "Core reference caller",
+                "user_email": {
+                  "identity": "caller-email",
+                  "wire_type": "str"
+                },
+                "form_id": null,
+                "api_key_id": null,
+                "startup": null,
+                "form_inputs": {},
+                "embed": {},
+                "sync": true,
+                "is_platform_admin": false,
+                "is_provider_org": false,
+                "is_external": false,
+                "event": null,
+                "artifact_workspace_id": null,
+                "created_at": "clock:4",
+                "cancelled": false
+              }
+            },
+            "headers": {
+              "x-idempotency-key": {
+                "identity": "readiness",
+                "wire_type": "str"
+              },
+              "x-origin-queue": "workflow-executions",
+              "x-schema-version": "1",
+              "x-enqueued-at": "clock:5",
+              "x-retry-count": 0,
+              "x-replayed-count": 0,
+              "x-original-message-id": {
+                "identity": "readiness",
+                "wire_type": "str"
+              }
+            }
+          }
+        }
+      ],
+      "agent_runs": [],
+      "agent_run_steps": [],
+      "ai_usage": [],
+      "audit_logs": []
+    },
+    "events": [
+      {
+        "channel": "bifrost:execution:identity:readiness",
+        "payload": {
+          "type": "execution_update",
+          "executionId": {
+            "identity": "readiness",
+            "wire_type": "str"
+          },
+          "status": "Success",
+          "duration_ms": {
+            "measured_unit": "milliseconds",
+            "type": "int"
+          }
+        }
+      },
+      {
+        "channel": "bifrost:history:user:identity:user",
+        "payload": {
+          "type": "history_update",
+          "execution_id": {
+            "identity": "readiness",
+            "wire_type": "str"
+          },
+          "workflow_name": "check_integration_readiness",
+          "status": "Success",
+          "executed_by": {
+            "identity": "user",
+            "wire_type": "str"
+          },
+          "executed_by_name": "Core reference caller",
+          "org_id": {
+            "identity": "org",
+            "wire_type": "str"
+          },
+          "started_at": null,
+          "completed_at": "clock:15",
+          "duration_ms": {
+            "measured_unit": "milliseconds",
+            "type": "int"
+          },
+          "timestamp": "clock:16"
+        }
+      },
+      {
+        "channel": "bifrost:history:GLOBAL",
+        "payload": {
+          "type": "history_update",
+          "execution_id": {
+            "identity": "readiness",
+            "wire_type": "str"
+          },
+          "workflow_name": "check_integration_readiness",
+          "status": "Success",
+          "executed_by": {
+            "identity": "user",
+            "wire_type": "str"
+          },
+          "executed_by_name": "Core reference caller",
+          "org_id": {
+            "identity": "org",
+            "wire_type": "str"
+          },
+          "started_at": null,
+          "completed_at": "clock:15",
+          "duration_ms": {
+            "measured_unit": "milliseconds",
+            "type": "int"
+          },
+          "timestamp": "clock:16"
+        }
+      }
+    ]
+  },
+  "transport": {
+    "sdk_requests": [
+      {
+        "method": "POST",
+        "path": "/api/sdk/integrations/get",
+        "query": [],
+        "request": {
+          "name": "identity:integration-name",
+          "scope": "identity:org"
+        },
+        "authorization": {
+          "scheme": "Bearer",
+          "signature_valid": true,
+          "owner_verified": true,
+          "claims": {
+            "engine": true,
+            "is_superuser": true,
+            "engine_execution_id": "identity:readiness",
+            "org_id": "identity:org",
+            "engine_solution_id": null,
+            "engine_global_repo_access": false,
+            "delegated_user_id": "identity:user",
+            "delegated_email": "identity:caller-email",
+            "delegated_name": "Core reference caller",
+            "delegated_is_superuser": false,
+            "delegated_is_provider_org": false,
+            "delegated_is_external": false,
+            "engine_attempt_token_present": true,
+            "engine_attempt_token_digest": "execution:readiness:attempt:1"
+          }
+        },
+        "upstream_status": 200,
+        "status": 200,
+        "response": {
+          "integration_id": "identity:integration",
+          "entity_id": "synthetic-entity",
+          "entity_name": "Synthetic entity",
+          "config": {
+            "fixture_value": "core-parity-synthetic-config-value"
+          },
+          "oauth": null,
+          "config_secret_keys": []
+        },
+        "synthetic_mutation": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/sdk/integrations/get_mapping",
+        "query": [],
+        "request": {
+          "name": "identity:integration-name",
+          "scope": "identity:org",
+          "entity_id": null
+        },
+        "authorization": {
+          "scheme": "Bearer",
+          "signature_valid": true,
+          "owner_verified": true,
+          "claims": {
+            "engine": true,
+            "is_superuser": true,
+            "engine_execution_id": "identity:readiness",
+            "org_id": "identity:org",
+            "engine_solution_id": null,
+            "engine_global_repo_access": false,
+            "delegated_user_id": "identity:user",
+            "delegated_email": "identity:caller-email",
+            "delegated_name": "Core reference caller",
+            "delegated_is_superuser": false,
+            "delegated_is_provider_org": false,
+            "delegated_is_external": false,
+            "engine_attempt_token_present": true,
+            "engine_attempt_token_digest": "execution:readiness:attempt:1"
+          }
+        },
+        "upstream_status": 200,
+        "status": 200,
+        "response": {
+          "id": "identity:mapping",
+          "integration_id": "identity:integration",
+          "organization_id": "identity:org",
+          "entity_id": "synthetic-entity",
+          "entity_name": "Synthetic entity",
+          "oauth_token_id": null,
+          "config": {
+            "fixture_value": "core-parity-synthetic-config-value"
+          },
+          "created_at": "seed-time",
+          "updated_at": "seed-time"
+        },
+        "synthetic_mutation": null
+      }
+    ],
+    "model_requests": [],
+    "vendor_requests": []
+  },
+  "measurements": {
+    "before": "2026-10-01T18:59:58.026275+00:00",
+    "after": "2026-10-01T19:00:01.578119+00:00",
+    "duration_ms": 485,
+    "peak_memory_bytes": 10726400,
+    "process_rss_bytes": 66289664,
+    "cpu_user_seconds": 0.0651,
+    "cpu_system_seconds": 0.0141,
+    "cpu_total_seconds": 0.0792
+  }
+}

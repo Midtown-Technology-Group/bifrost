@@ -1,0 +1,24 @@
+{
+  "schema": "bifrost.core-reference-source/v1",
+  "platform_main": "ba783472b770291e612433ad7ca9564fe671dade",
+  "foundation": "a5e129ac3cbcb1f3098e7dd0923721fccc84cb16",
+  "workspace_commit": "83c1cb034dbbcfa29eb1723506735b13b4788536",
+  "scenario_a": {
+    "authored_path": "features/utilities/workflows/check_integration_readiness.py",
+    "retained_path": "api/tests/parity/core/assets/check_integration_readiness.py.txt",
+    "git_blob": "6dbd6bcc18716f8bc807e8fc2411c180f44f425c",
+    "sha256": "f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de",
+    "function": "check_integration_readiness",
+    "authored_kind": "workflow",
+    "installation": "Public editor PUT followed by tenant workflow registration with an explicit owned role",
+    "proof_limit": "R0 source-readback characterization may use repo-v1; final A needs supported pinned Solution deployment or workspace release"
+  },
+  "future_scenario_b1": {
+    "authored_path": "agents/387064f6-af8d-4b88-97b4-adbf0207a2fa.agent.yaml",
+    "name": "Cove Recovery Steward Escalation Analyst",
+    "git_blob": "e0c998da3dc84868bdfc5d03ff52d368db3bcb9d",
+    "sha256": "b79b5064f375098dabc119083cf2ff16778b683722b5df394f6cb8a06ca22914",
+    "status": "Unimplemented; declaration/prompt/budgets/two original read-only tools must remain unchanged",
+    "model_binding": "Isolated installation profile only; never global assignment"
+  }
+}
