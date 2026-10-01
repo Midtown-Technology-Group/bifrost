@@ -60,13 +60,12 @@ def _assert_compatible_replay(
     if digest is not None:
         same_declaration = digest == source_release_declaration_digest(request)
     else:
-        reason_changed = record.reason != request.reason
-        if record.declared_disposition == "pending" and record.disposition != "pending":
-            # Legacy push declarations have no digest. Their normal pending
-            # declaration carries no reason. Do not accept a new reason or
-            # rewrite the current attention/completion diagnostic on replay.
-            reason_changed = request.reason is not None
-        same_declaration = not reason_changed
+        # Once operational state changes, the original reason cannot be
+        # reconstructed. Do not guess that an old pending request had no reason.
+        same_declaration = (
+            record.disposition == record.declared_disposition
+            and record.reason == request.reason
+        )
     existing_solution_obligations = (
         [
             solution_deploy_obligation_declaration(item).model_dump(

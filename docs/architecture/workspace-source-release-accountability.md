@@ -70,9 +70,12 @@ the digest too, without inventing a GitHub producer identity.
 
 The nullable `declaration_digest` migration does not backfill old diagnostics as
 original declarations. Historical producer digests remain valid replay
-anchors. Legacy pending records with no digest support the producer's normal
-reason-free replay; original reasons lost before this migration cannot be
-reconstructed from current operational text. This schema change follows the
+anchors. Legacy records with no digest remain replayable while their declared
+status and reason are unchanged. After an operational transition they fail closed:
+original reasons cannot be reconstructed from current operational text, and a
+changed declaration must never be accepted by guessing an empty reason.
+Historical recovery needs retained original evidence, not a diagnostic backfill.
+This schema change follows the
 fixed-target migration lane before a compatible runtime image is deployed.
 
 `GET /api/workspace-promotions/source-releases` returns

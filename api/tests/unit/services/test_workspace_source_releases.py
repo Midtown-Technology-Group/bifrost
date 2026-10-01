@@ -461,7 +461,6 @@ async def test_replay_rejects_disposition_changes_symmetrically(
 @pytest.mark.parametrize(
     "digest_kind,declared_reason",
     [
-        ("legacy", None),
         ("producer", None),
         ("retained", None),
         ("retained", "initial operator review"),
@@ -498,6 +497,33 @@ async def test_pending_replay_remains_idempotent_after_deadline_sweep(
     assert response.disposition == "attention_required"
     assert response.reason == record.reason
     assert response.due_at == record.due_at
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason",
+    [
+        None,
+        "original review",
+        "reviewed Workspace source has not reached verified production",
+    ],
+)
+async def test_legacy_replay_after_sweep_requires_retained_original_evidence(reason):
+    now = datetime.now(timezone.utc)
+    record = _source_record(due_at=now - timedelta(seconds=1))
+    record.reason = "original review"
+    await sweep_overdue_workspace_releases(_Database([[], [record]]), now=now)
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition="pending",
+        reason=reason,
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="different"):
+        await WorkspaceSourceReleaseService(
+            _ExistingDeclareDatabase(record), record.organization_id
+        ).declare(request, created_by=uuid4())
 
 
 @pytest.mark.asyncio
