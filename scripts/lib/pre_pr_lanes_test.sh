@@ -50,7 +50,7 @@ authority=$(BIFROST_TEST_PUBLIC_URL=http://localhost:3000 bash -Eeuo pipefail -c
     require_stack_up() { :; }
     reset_state() { echo "$BIFROST_TEST_PUBLIC_URL"; return 91; }
     mcp_conformance
-')
+' ./test.sh)
 status=$?
 set -e
 [[ "$status" == 91 && "$authority" == http://api:8000 ]]
