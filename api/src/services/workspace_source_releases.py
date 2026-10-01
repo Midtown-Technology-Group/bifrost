@@ -190,6 +190,8 @@ class WorkspaceSourceReleaseService:
         )
         if existing is not None:
             _assert_compatible_replay(existing, request, paths)
+            if await self._reconcile_solution_delivery():
+                await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
 
         now = _utc_now()
@@ -256,9 +258,21 @@ class WorkspaceSourceReleaseService:
             if existing is None:
                 raise
             _assert_compatible_replay(existing, request, paths)
+            if await self._reconcile_solution_delivery():
+                await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
+        await self._reconcile_solution_delivery()
         await self.db.refresh(record, attribute_names=["solution_deploy_obligations"])
         return source_release_response(record, now=now)
+
+    async def _reconcile_solution_delivery(self) -> bool:
+        from src.config import get_settings
+        if get_settings().solution_git_delivery_policy is None:
+            return False
+        from src.services.solution_source_accountability import reconcile_solution_owned_source
+        await reconcile_solution_owned_source(self.db)
+        await self.db.commit()
+        return True
 
     async def set_manual_disposition(
         self,
@@ -696,6 +710,8 @@ async def sweep_overdue_workspace_releases(
 ) -> dict[str, list[str]]:
     """Turn missed source and history deadlines into durable attention state."""
     now = now or _utc_now()
+    from src.services.solution_source_accountability import reconcile_solution_owned_source
+    await reconcile_solution_owned_source(db)
     # Projection takes the Live release row before source-accountability rows.
     # Keep the scheduler in the same order so the two transactions cannot
     # deadlock while a history lock completes at the attention deadline.

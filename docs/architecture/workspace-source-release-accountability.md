@@ -9,6 +9,45 @@ production keeps running older bytes.
 
 ## Contract
 
+### Solution delivery of Root source
+
+Protected Git Solution delivery retains repository-to-runtime path mappings,
+runtime hashes, recipe and installation-registry blob hashes, selected install
+scopes, Git commit/tree, CI identity and a successful operation receipt. These
+come from the protected Git reader; a producer cannot submit mappings or source
+bytes as accounting evidence.
+
+The accounting adapter runs after durable declaration (including exact replay),
+after verified delivery (including a successful receipt replay), and before the
+existing overdue sweep. It takes the global Live fence, all active installation
+rows in UUID order, and then source rows. Delivery releases its one-install
+writer before this aggregate reconciliation. Accounting does not activate a
+deployment or retire Live.
+
+Completion requires **every** declared path. The adapter checks active install
+pointers, exact scopes, compiled closures, current workflow registrations and
+immutable runtime bytes. It follows exact dependency pins and includes accepted
+executions and unfinished workflow attempts, including superseded deployments.
+A stale sibling, accepted pin, unknown mapping, mutable install, uncertain loose
+import/file read or unpinned execution leaves the declaration unresolved. A
+worker success is not completion evidence. Recipe changes remain production
+controls; registry changes require each configured installation to have matching
+scope, recipe and protected commit/tree readback.
+
+Completion uses `bifrost.solution-owned-source-completion/v1`. A different newer
+commit cannot release an old declaration merely because bytes match. The
+protected Git reader can retain bounded first-parent ancestor attestations;
+only a verified descendant with complete per-path replacement readback can
+supersede old OIDC declarations, using
+`bifrost.solution-owned-source-supersession/v1`. Missing ancestors, removed or
+unmapped paths and ambiguous historical admin declarations remain unresolved
+for explicit review. Reverts create new declarations and new deployment pins.
+
+Reconciliation is idempotent and never reopens completed entries. A crash after
+durable activation can be recovered by exact delivery replay, declaration
+replay or the scheduler without manual accounting changes. Read failures retain
+the debt; transport failures propagate rather than falsely reporting closure.
+
 The trusted `bifrost-workspace` workflow triggered by every push to protected
 `main` must call `POST /api/workspace-promotions/source-releases/github` for
 that commit. Human administrators may use
