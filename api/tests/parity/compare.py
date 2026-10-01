@@ -98,6 +98,27 @@ def canonicalize(
     return [walk({key: value for key, value in asdict(observation).items() if key not in {"before", "after"}}, ()) for observation in trace]
 
 
+def difference_path(expected: Any, actual: Any, path: str = "") -> str | None:
+    """Locate a mismatch without exposing either observed value."""
+    if expected == actual:
+        return None
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if expected.keys() != actual.keys():
+            return f"{path}.<keys>"
+        for key in expected:
+            mismatch = difference_path(expected[key], actual[key], f"{path}.{key}")
+            if mismatch is not None:
+                return mismatch
+    elif isinstance(expected, list) and isinstance(actual, list):
+        if len(expected) != len(actual):
+            return f"{path}.<length>"
+        for index, (left, right) in enumerate(zip(expected, actual, strict=True)):
+            mismatch = difference_path(left, right, f"{path}[{index}]")
+            if mismatch is not None:
+                return mismatch
+    return path
+
+
 def assert_parity(
     reference: list[Observation], candidate: list[Observation],
     reference_bindings: dict[str, str], candidate_bindings: dict[str, str],
@@ -109,4 +130,7 @@ def assert_parity(
     for left, right in zip(expected, actual, strict=True):
         assert left["step"] == right["step"], "scenario step/order differs"
         for plane in ("status", "body", "database", "events"):
-            assert left[plane] == right[plane], f"{left['step']}: {plane} differs"
+            assert left[plane] == right[plane], (
+                f"{left['step']}: {plane} differs at "
+                f"{difference_path(left[plane], right[plane], plane)}"
+            )
