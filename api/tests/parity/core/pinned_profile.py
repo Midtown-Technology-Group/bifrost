@@ -22,7 +22,6 @@ from src.services.solutions.deployment_storage import (
 from src.services.solutions.workflow_revision_recipe import (
     compile_workflow_registrations,
 )
-
 from tests.parity.core.environment import SOURCE
 from tests.parity.core.pinned import (
     PORTABLE_REF,

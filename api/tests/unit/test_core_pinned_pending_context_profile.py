@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import pytest
+
 from bifrost.solution_delivery_review import (
     WORKFLOW_RECIPE_SCHEMA,
     ReviewedWorkflowRecipe,
@@ -37,7 +38,6 @@ from src.services.solutions.deployment_storage import (
 from src.services.solutions.workflow_revision_recipe import (
     compile_workflow_registrations,
 )
-
 from tests.parity.core.capture import CapturedStep
 from tests.parity.core.environment import SOURCE
 from tests.parity.core.pinned import (
@@ -921,7 +921,6 @@ def test_real_cold_producer_and_independent_after_read_bind_success(
     monkeypatch, winner
 ):
     from src.core import module_cache_sync
-
     from tests.parity.core import pinned as pinned_module
 
     observation, bindings, profile = pinned_vector()
