@@ -106,6 +106,12 @@ class _ExistingDeclareDatabase:
     async def scalar(self, _statement):
         return self.record
 
+    async def commit(self):
+        pass
+
+    async def refresh(self, _record, attribute_names=None):
+        pass
+
 
 class _InsertDeclareDatabase:
     def __init__(self):
@@ -418,6 +424,7 @@ async def test_concurrent_exact_declaration_is_idempotent() -> None:
         paths=record.paths,
         disposition="pending",
     )
+    record.declaration_digest = source_release_declaration_digest(request)
 
     response = await service.declare(request, created_by=uuid4())
 
@@ -441,6 +448,16 @@ async def test_replay_rejects_disposition_changes_symmetrically(
         disposition=declared_disposition,
         declared_disposition=declared_disposition,
     )
+    original = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition=declared_disposition,
+        reason="original classification"
+        if declared_disposition == "non_production"
+        else None,
+    )
+    record.declaration_digest = source_release_declaration_digest(original)
     request = WorkspaceSourceReleaseDeclareRequest(
         source_commit_sha=record.source_commit_sha,
         source_tree_sha=record.source_tree_sha,
@@ -524,6 +541,63 @@ async def test_legacy_replay_after_sweep_requires_retained_original_evidence(rea
         await WorkspaceSourceReleaseService(
             _ExistingDeclareDatabase(record), record.organization_id
         ).declare(request, created_by=uuid4())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transitions", [("non_production",), ("deferred", "non_production")]
+)
+async def test_legacy_replay_rejects_mutated_reason_after_return_to_declared_status(
+    transitions,
+) -> None:
+    record = _source_record(
+        disposition="non_production", declared_disposition="non_production"
+    )
+    record.paths = {}
+    record.reason = "original classification"
+    service = WorkspaceSourceReleaseService(
+        _ExistingDeclareDatabase(record), record.organization_id
+    )
+    for disposition in transitions:
+        await service.set_manual_disposition(
+            record.id, disposition=disposition, reason="replacement classification"
+        )
+    assert record.disposition == record.declared_disposition
+    assert record.declaration_digest is None
+    assert record.producer_declaration_digest is None
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition="non_production",
+        reason="replacement classification",
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="different"):
+        await service.declare(request, created_by=uuid4())
+    assert record.declaration_digest is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disposition", ["pending", "non_production"])
+async def test_legacy_replay_cannot_infer_original_identity_from_unchanged_state(
+    disposition,
+) -> None:
+    record = _source_record(
+        disposition=disposition, declared_disposition=disposition
+    )
+    record.reason = "recorded classification"
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition=disposition,
+        reason=record.reason,
+    )
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="unproven"):
+        await WorkspaceSourceReleaseService(
+            _ExistingDeclareDatabase(record), record.organization_id
+        ).declare(request, created_by=uuid4())
+    assert record.declaration_digest is None
 
 
 @pytest.mark.asyncio

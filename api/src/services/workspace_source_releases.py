@@ -53,45 +53,18 @@ def _assert_compatible_replay(
     request: WorkspaceSourceReleaseDeclareRequest,
     paths: dict[str, str | None],
 ) -> None:
-    # The sweep and completion paths replace the operational reason. A retained
-    # producer digest binds the original declaration, including its reason and
-    # Solution obligations, without comparing that mutable diagnostic.
+    # Operational status can change and return to its original value. Only a
+    # retained digest binds the original reason and Solution obligations.
     digest = record.declaration_digest or record.producer_declaration_digest
-    if digest is not None:
-        same_declaration = digest == source_release_declaration_digest(request)
-    else:
-        # Once operational state changes, the original reason cannot be
-        # reconstructed. Do not guess that an old pending request had no reason.
-        same_declaration = (
-            record.disposition == record.declared_disposition
-            and record.reason == request.reason
-        )
-    existing_solution_obligations = (
-        [
-            solution_deploy_obligation_declaration(item).model_dump(
-                mode="json", exclude_none=True
-            )
-            for item in record.solution_deploy_obligations
-        ]
-        if digest is None
-        else []
-    )
-    requested_solution_obligations = [
-        item.model_dump(mode="json", exclude_none=True)
-        for item in (request.solution_deploy_obligations or [])
-    ]
     if (
-        record.source_tree_sha != request.source_tree_sha
+        digest is None
+        or digest != source_release_declaration_digest(request)
+        or record.source_tree_sha != request.source_tree_sha
         or dict(record.paths or {}) != paths
         or record.declared_disposition != request.disposition
-        or not same_declaration
-        or (
-            digest is None
-            and existing_solution_obligations != requested_solution_obligations
-        )
     ):
         raise WorkspaceSourceReleaseConflict(
-            "source commit already has different release accountability evidence"
+            "source commit has different or unproven release accountability evidence"
         )
 
 
