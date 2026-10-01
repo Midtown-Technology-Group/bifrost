@@ -5,8 +5,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from io import BytesIO
+from typing import cast
 from uuid import UUID, uuid4
 from zipfile import ZipFile
 
@@ -483,7 +485,11 @@ class PinnedCapture(ScopedReferenceCapture):
         for execution in self.environment.executions:
             key = f"{PREFIX}{execution}:sources"
             cursor = self.cursors.get(key, 0)
-            records = await self.redis.lrange(key, cursor, -1)
+            # The inherited Redis command annotation also permits sync results;
+            # this client is explicitly redis.asyncio with decode_responses=True.
+            records = await cast(
+                Awaitable[list[str]], self.redis.lrange(key, cursor, -1)
+            )
             self.cursors[key] = cursor + len(records)
             sources.extend(json.loads(record) for record in records)
         return PinnedTransportEvidence(

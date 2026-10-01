@@ -26,7 +26,10 @@ agree across immutable storage, committed execution, dispatch and delivery.
 transport plane. The observer allows only the registered canonical deployment
 source GET, empty body/query, signature-verified caller/org/Solution and a
 matching committed active execution-attempt fence. It permits the closed
-CachedModule response fields from the current source contract; source bytes,
+CachedModule response fields from the current source contract. Source inspection
+confirms the immutable cold path constructs `content`, `path` and `hash`, omitting
+`generation` and `storage_path`; the guard accepts that exact three-field shape.
+This is contract inspection, not a claim of a successful runtime fetch. Source bytes,
 path and hash must match the exact retained blob and durable pin. Raw synthetic
 source and safe claims remain observable; bearer JWTs and raw fence tokens never
 enter the transport records. Normal R0 registries still reject source GETs.
