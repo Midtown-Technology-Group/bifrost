@@ -338,21 +338,28 @@ async def reconcile_hosts(db: AsyncSession, azure: Azure, live: set[str]) -> Non
                   SystemConfig.key.like("host-%"), SystemConfig.organization_id.is_(None)))).all())
     if not states:
         return
+    now = datetime.now(UTC).timestamp()
     token = await defined_token(db)
     async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
         for state in states:
             value = dict(state.value_json or {})
             if value.get("replica") in live:
                 value.pop("absent_since", None)
+                value.pop("absence_observed_at", None)
                 if value.get("code") and datetime.now(UTC).timestamp() - value["created"] > 300:
                     value.pop("code")
                     state.value_json = value
                 state.value_json = value
                 continue
-            absent_since = value.get("absent_since", datetime.now(UTC).timestamp())
+            observed_at = value.get("absence_observed_at")
+            absent_since = value.get("absent_since", now)
+            # Missing/stale observations (including outages) cannot prove absence.
+            if observed_at is None or not 0 <= now - observed_at <= 30 or now < absent_since:
+                absent_since = now
             value["absent_since"] = absent_since
+            value["absence_observed_at"] = now
             state.value_json = value
-            if datetime.now(UTC).timestamp() - absent_since < 120:
+            if now - absent_since < 120:
                 continue
             host_id = value.get("host_id")
             if not host_id:

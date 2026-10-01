@@ -118,6 +118,7 @@ async def test_enrollment_survives_lost_response_and_restart_without_duplicate_h
                 state = await row(db, key)
                 value = dict(state.value_json)
                 value["absent_since"] = datetime.now(UTC).timestamp() - 121
+                value["absence_observed_at"] = datetime.now(UTC).timestamp()
                 state.value_json = value
                 await db.commit()
             async with async_session_factory() as db:
@@ -125,6 +126,82 @@ async def test_enrollment_survives_lost_response_and_restart_without_duplicate_h
                 await db.commit()
                 assert deleted == ["/v1/hosts/host-TEST"]
                 assert await db.scalar(select(SystemConfig.id).where(SystemConfig.category == CATEGORY, SystemConfig.key == key)) is None
+    finally:
+        async with async_session_factory() as db:
+            await db.execute(delete(SystemConfig).where(SystemConfig.category == CATEGORY, SystemConfig.key == key))
+            await db.commit()
+
+
+@pytest.mark.parametrize("interruption", ["outage", "live", "legacy", "clock_rollback"])
+async def test_orphan_cleanup_requires_fresh_continuous_absence(async_session_factory, interruption):
+    replica = "test-worker--" + uuid4().hex
+    key = "host-" + hashlib.sha256(replica.encode()).hexdigest()
+    azure = SimpleNamespace(settings=Settings())
+    clock = SimpleNamespace(now=1000.0)
+    requests = []
+
+    def transport(request):
+        requests.append((request.method, request.url.path))
+        return httpx.Response(200 if request.method == "DELETE" else 404)
+
+    original_client = httpx.AsyncClient
+
+    def client(**kwargs):
+        return original_client(transport=httpx.MockTransport(transport), **kwargs)
+
+    async def observe(timestamp, live):
+        clock.now = timestamp
+        async with async_session_factory() as db:
+            await reconcile_hosts(db, azure, live)
+            await db.commit()
+            state = await db.scalar(select(SystemConfig).where(
+                SystemConfig.category == CATEGORY, SystemConfig.key == key))
+            return dict(state.value_json) if state else None
+
+    try:
+        async with async_session_factory() as db:
+            state = await row(db, key)
+            state.value_json = {"replica": replica, "host_id": "host-TEST", "intent": "test-intent"}
+            await db.commit()
+        with patch("src.services.external_worker_scaling.httpx.AsyncClient", side_effect=client), patch(
+            "src.services.external_worker_scaling.defined_token", new=AsyncMock(return_value="test-token")
+        ), patch("src.services.external_worker_scaling.verify_owned_host", new=AsyncMock(return_value=True)), patch(
+            "src.services.external_worker_scaling.datetime"
+        ) as mock_datetime:
+            mock_datetime.now.side_effect = lambda _: datetime.fromtimestamp(clock.now, UTC)
+            value = await observe(1000, set())
+            assert value["absent_since"] == 1000
+            if interruption == "outage":
+                # No successful observations during a controller/API outage.
+                restart = 1200
+            elif interruption == "live":
+                value = await observe(1020, {replica})
+                assert "absent_since" not in value
+                restart = 1040
+            elif interruption == "legacy":
+                # Existing persisted timers without freshness cannot authorize deletion.
+                async with async_session_factory() as db:
+                    state = await row(db, key)
+                    value = dict(state.value_json)
+                    value.pop("absence_observed_at", None)
+                    value["absent_since"] = 800
+                    state.value_json = value
+                    await db.commit()
+                restart = 1020
+            else:
+                restart = 900
+            value = await observe(restart, set())
+            assert value["absent_since"] == restart
+            assert value["absence_observed_at"] == restart
+            assert not requests
+            # Frequent successful observations, each committed in a new session,
+            # must establish the entire new absence interval before deletion.
+            for elapsed in (20, 40, 60, 80, 100, 119):
+                value = await observe(restart + elapsed, set())
+                assert value["absent_since"] == restart
+                assert not requests
+            assert await observe(restart + 120, set()) is None
+            assert requests == [("DELETE", "/v1/hosts/host-TEST"), ("GET", "/v2/hosts/host-TEST")]
     finally:
         async with async_session_factory() as db:
             await db.execute(delete(SystemConfig).where(SystemConfig.category == CATEGORY, SystemConfig.key == key))
