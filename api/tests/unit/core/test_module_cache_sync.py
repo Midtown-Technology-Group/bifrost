@@ -519,6 +519,205 @@ def test_deployment_import_rejects_manifest_hash_mismatch(monkeypatch):
         module_cache_sync.clear_solution_context()
 
 
+def test_deployment_namespace_comes_from_pinned_source_manifest_not_mutable_install_root(
+    monkeypatch,
+):
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=f"_solutions/{solution_id}/{deployment_id}/",
+        source_hashes={"modules/cipp.py": "sha256:" + "a" * 64},
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_cached_module_resolution",
+        lambda _name: pytest.fail("mutable cached namespace must not shadow pinned sources"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_exact_scoped_module",
+        lambda _name: pytest.fail("mutable install-root lookup must not resolve a pinned namespace"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_fetch_module_resolution_from_api",
+        lambda _name: pytest.fail("mutable API resolver must not resolve a pinned namespace"),
+    )
+    try:
+        result = module_cache_sync.resolve_module_sync("modules")
+        assert result.kind == "namespace"
+        assert result.path == "modules"
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
+@pytest.mark.parametrize(
+    ("source_path", "import_name", "kind"),
+    [
+        ("modules/cipp.py", "modules.cipp", "module"),
+        ("modules/cipp/__init__.py", "modules.cipp", "package"),
+    ],
+)
+def test_deployment_concrete_import_uses_pinned_bytes_and_ignores_mutable_shadow(
+    monkeypatch, source_path, import_name, kind
+):
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    content = "VALUE = 'pinned deployment source'\n"
+    expected_hash = hashlib.sha256(content.encode()).hexdigest()
+    pinned_prefix = f"_solutions/{solution_id}/{deployment_id}/"
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=pinned_prefix,
+        source_hashes={source_path: "sha256:" + expected_hash},
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_cached_module_resolution",
+        lambda _name: pytest.fail("mutable resolution cache must not shadow pinned source"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_exact_scoped_module",
+        lambda _name: pytest.fail("mutable install-root module must not shadow pinned source"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_fetch_module_resolution_from_api",
+        lambda _name: pytest.fail("mutable API module must not shadow pinned source"),
+    )
+    fetched_paths = []
+
+    def fetch(path):
+        fetched_paths.append(path)
+        return {"content": content, "path": path, "hash": expected_hash}
+
+    monkeypatch.setattr(module_cache_sync, "get_module_sync", fetch)
+    try:
+        result = module_cache_sync.resolve_module_sync(import_name)
+        assert result.kind == kind
+        assert result.content == content
+        assert result.hash == expected_hash
+        assert result.storage_path == pinned_prefix + source_path
+        assert fetched_paths == [source_path]
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
+@pytest.mark.parametrize(
+    ("content", "module_hash"),
+    [
+        ("VALUE = 'tampered'\n", "a" * 64),
+        ("VALUE = 'pinned'\n", "b" * 64),
+    ],
+)
+def test_deployment_concrete_import_rejects_wrongly_labelled_pinned_bytes(
+    monkeypatch, content, module_hash
+):
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    source_path = "modules/cipp.py"
+    expected_content = "VALUE = 'pinned'\n"
+    expected_hash = hashlib.sha256(expected_content.encode()).hexdigest()
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=f"_solutions/{solution_id}/{deployment_id}/",
+        source_hashes={source_path: "sha256:" + expected_hash},
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "get_module_sync",
+        lambda path: {"content": content, "path": path, "hash": module_hash},
+    )
+    try:
+        with pytest.raises(RuntimeError, match="import integrity mismatch"):
+            module_cache_sync.resolve_module_sync("modules.cipp")
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
+def test_deployment_source_manifest_absence_does_not_fall_back_to_mutable_modules(
+    monkeypatch,
+):
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=f"_solutions/{solution_id}/{deployment_id}/",
+        source_hashes={},
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_cached_module_resolution",
+        lambda _name: pytest.fail("mutable cached sources must not satisfy absent pin"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_exact_scoped_module",
+        lambda _name: pytest.fail("mutable install sources must not satisfy absent pin"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_fetch_module_resolution_from_api",
+        lambda _name: pytest.fail("mutable API sources must not satisfy absent pin"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "get_module_sync",
+        lambda _path: pytest.fail("unlisted source must not be fetched from mutable storage"),
+    )
+    try:
+        result = module_cache_sync.resolve_module_sync("modules.cipp")
+        assert result.kind == "not_found"
+        assert result.path == "modules/cipp"
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
+def test_deployment_missing_source_manifest_fails_closed(monkeypatch):
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=f"_solutions/{solution_id}/{deployment_id}/",
+        source_hashes=None,
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_cached_module_resolution",
+        lambda _name: pytest.fail("missing pin must not use mutable cache"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_exact_scoped_module",
+        lambda _name: pytest.fail("missing pin must not use mutable install source"),
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_fetch_module_resolution_from_api",
+        lambda _name: pytest.fail("missing pin must not use mutable API source"),
+    )
+    try:
+        with pytest.raises(
+            module_cache_sync.ModuleResolutionError,
+            match="Immutable deployment source manifest unavailable",
+        ):
+            module_cache_sync.resolve_module_sync("modules.cipp")
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
 def test_get_module_index_sync_repopulates_from_api_then_storage(monkeypatch):
     module_cache_sync = _module_cache_sync()
     redis_client = MagicMock()

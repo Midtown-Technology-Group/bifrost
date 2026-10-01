@@ -17,6 +17,9 @@ def _run(tmp_path: Path, *, api_changed: str, pull_fails: bool = False) -> list[
     docker.write_text(
         """#!/usr/bin/env bash
 set -euo pipefail
+if [ "${1:-}" = login ]; then
+  cat >/dev/null
+fi
 printf '%s\\n' "$*" >> "$DOCKER_LOG"
 if [ "${1:-}" = pull ] && [ "${PULL_FAILS:-false}" = true ]; then
   exit 1
@@ -87,6 +90,9 @@ def test_client_e2e_builds_reviewed_production_image(tmp_path: Path) -> None:
     docker.write_text(
         """#!/usr/bin/env bash
 set -euo pipefail
+if [ "${1:-}" = login ]; then
+  cat >/dev/null
+fi
 printf '%s\\n' "$*" >> "$DOCKER_LOG"
 """,
         encoding="utf-8",

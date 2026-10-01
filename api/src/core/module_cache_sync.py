@@ -629,23 +629,32 @@ def resolve_module_sync(name: str) -> ModuleResolution:
         return ModuleResolution(kind="not_found", path=name.replace(".", "/"))
 
     release_ctx = get_workspace_release_context()
-    if release_ctx is not None:
-        if get_solution_context() is not None:
-            raise RuntimeError("solution and Workspace release import roots cannot overlap")
+    ctx = get_solution_context()
+    if release_ctx is not None and ctx is not None:
+        raise RuntimeError("solution and Workspace release import roots cannot overlap")
+    immutable_ctx = release_ctx or (
+        ctx if ctx is not None and ctx.runtime_storage_prefix else None
+    )
+    if immutable_ctx is not None:
         # Targeted lookup must honor the same immutable tree as entry loading.
-        # Mutable resolver misses (and old hits) can outlive an activation until
-        # history projection catches up, so neither cache nor API is authoritative.
+        # Mutable install/workspace resolver entries cannot identify namespaces
+        # or imports within a pinned deployment, even when their hashes match.
+        source_hashes = immutable_ctx.source_hashes
+        runtime_prefix = immutable_ctx.runtime_storage_prefix
+        if source_hashes is None:
+            raise ModuleResolutionError("Immutable deployment source manifest unavailable")
         base_path = name.replace(".", "/")
         for relative_path, kind in (
             (f"{base_path}.py", "module"),
             (f"{base_path}/__init__.py", "package"),
         ):
-            if relative_path not in release_ctx.source_hashes:
+            if relative_path not in source_hashes:
                 continue
             module = get_module_sync(relative_path)
             if module is None:
+                immutable_kind = "release" if release_ctx is not None else "deployment"
                 raise ModuleResolutionError(
-                    f"Immutable release module unavailable: {relative_path}"
+                    f"Immutable {immutable_kind} module unavailable: {relative_path}"
                 )
             _verify_immutable_module_hash(relative_path, module)
             return ModuleResolution(
@@ -653,14 +662,13 @@ def resolve_module_sync(name: str) -> ModuleResolution:
                 path=relative_path,
                 content=module["content"],
                 hash=module["hash"],
-                storage_path=f"{release_ctx.runtime_storage_prefix}{relative_path}",
+                storage_path=f"{runtime_prefix}{relative_path}",
             )
         prefix = f"{base_path}/"
-        if any(path.startswith(prefix) for path in release_ctx.source_hashes):
+        if any(path.startswith(prefix) for path in source_hashes):
             return ModuleResolution(kind="namespace", path=base_path)
         return ModuleResolution(kind="not_found", path=base_path)
 
-    ctx = get_solution_context()
     cache_key = (
         name,
         ctx.solution_id if ctx is not None else None,
