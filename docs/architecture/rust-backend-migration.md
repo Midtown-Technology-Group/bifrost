@@ -78,8 +78,9 @@ flowchart TB
   the migration architecture. **Configuration discrepancy:** `src/config.py`
   still defaults `work_delivery_backend` to `rabbitmq`; Compose interpolation
   and `k8s/configmap.yaml` do too. The repo alone therefore does not prove a live
-  instance uses PostgreSQL. Before any worker cutover, read its actual setting
-  and establish PostgreSQL parity. Do not add a Rust RabbitMQ transport.
+  instance uses PostgreSQL. Before W1/W2, verify effective deployed delivery settings read-only as required
+  by the entry gate in section 12; worker cutover additionally requires a verified
+  Python PostgreSQL baseline and PostgreSQL parity. Do not add a Rust RabbitMQ transport.
 - `services/execution/attempts.py` and `models/orm/executions.py` maintain
   workflow-specific durable dispatch/claim/run evidence.
   `models/orm/execution_attempts.py` and `services/execution_attempts.py` contain
@@ -298,7 +299,8 @@ before Rust becomes the execution-state owner. Rust never imports Python.
 ## 5. Proposed execution protocol: `bifrost.execution/v1`
 
 This is a proposal to characterize and ratify in W3-A, not an existing endpoint.
-Use internal authenticated HTTPS JSON claim/control/report operations initially;
+Use internal authenticated HTTPS JSON claim/control/report operations initially,
+with redirects disabled for credential-bearing calls as specified below;
 no gRPC framework, broker or custom multiplexed socket is needed. The Rust
 coordinator claims durable delivery and admits the attempt; the runtime asks for
 work only when it has capacity. Do not grant runtime arbitrary queue-row access.
@@ -370,7 +372,16 @@ an existing behavior.
 Transport authentication is separate from the document: short-lived,
 attempt/session-bound credentials passed in headers or a protected credential
 channel; no global API key, DB password, signing key or object-store credential
-in envelopes/logs. Preserve active-attempt token checks from `core/auth.py`,
+in envelopes/logs. **Disable automatic redirects for every credential-bearing
+internal HTTP call**, including claim/control/report, token renewal and scoped
+source retrieval. Treat every redirect as a transport/configuration failure; do
+not make a second request to its Location, even on the same origin. In particular,
+never forward attempt/session credentials, cookies or other authority to a
+different origin (scheme/host/port) or from HTTPS to HTTP. Attempt/session binding
+is not origin binding. Endpoint changes require trusted configuration review and
+HTTPS validation, not discovery through a credentialed redirect. W3-A must prove
+this policy for the actual selected clients, including custom credential headers.
+Preserve active-attempt token checks from `core/auth.py`,
 engine/delegated identity separation, cancellation revocation and service token
 renewal. Runtime receives immutable content through scoped retrieval; verify
 hashes before imports. Log scrubbing runs locally before transmission and the
@@ -737,6 +748,23 @@ parity then requires review before further porting.
 | 6 | Auth/API families, policy/approvals, agent durable control, MCP facade/transport, storage adapters | Each independent slice reviewed; Python AI/runtime may remain |
 | 7 | Retire unneeded Python control-plane modules/containers after rollback window | Import audit, SDK/CLI distribution, no hidden Python control dependency; separate migration-ownership proposal |
 
+**W1 entry gate:** W0-A and W0-B must both be reviewed and accepted by the
+architect. The harness must demonstrate that deliberate response, state and event
+drift fails comparison; a test runner that merely passes happy paths is not enough.
+Before W1/W2, the deployment owner must record read-only effective delivery settings
+for each in-scope deployed environment, including API publishers, workers and
+scheduler, with exact environment/image identity and sanitized diagnostics. Do
+not infer deployment settings from these checked-in defaults.
+
+If the relevant deployments already use PostgreSQL, record the stale defaults and
+track their cleanup separately. If any relevant deployment still uses RabbitMQ,
+make migration of that **Python deployment to PostgreSQL delivery**, with recovery,
+drain and rollback evidence, an explicit blocking prerequisite for Rust worker
+cutover. Device-route experiments do not port worker transport or satisfy that
+prerequisite. No Rust RabbitMQ compatibility path is permitted. Missing live access
+or inconclusive evidence holds the gate; it never authorizes guessing or deploying
+from this RFC PR.
+
 Within each wave parallelize only packages with disjoint owned paths and frozen
 interfaces. This architect task uses no delegated agents; the plan enables the
 later Muse Spark 1.3 fleet. Wave 3 decisions may start after the device evidence,
@@ -864,10 +892,14 @@ part of a builder task unless separately authorized.
   no runtime port. Audit `context.db`, SDK buffering/logging, transient/data-provider/
   service paths and current import validation; list every external state write.
 - Outputs: ratified envelope/events/control/artifact schemas, auth/token renewal,
-  event journal/retention, environment/source closure and retry/completion matrix.
+  event journal/retention, environment/source closure and retry/completion matrix;
+  selected-client configuration enforcing the no-redirect credential policy.
 - Acceptance: serialize representative current execution requests/results without
   Python objects or losing context; offline recipe produces registration from
   reviewed bytes without imports; fixtures round-trip in Python/Rust validators.
+  Credentialed-client tests cover 301/302/303/307/308 to same-origin, cross-origin
+  HTTPS and HTTPS-to-HTTP targets, including token renewal/source retrieval:
+  assert no second request and no credential received at redirect targets.
   Run scoped compiler/protocol tests, Rust checks if validators added, pre-pr.
 - Stop: authoritative metadata requires arbitrary imports, supported SDK behavior
   requires backend DB access without a safe replacement, or no representable pin.
@@ -917,7 +949,7 @@ Open decision tickets (documents/tasks here, not pre-created GitHub issues):
 | --- | --- | --- |
 | Exact Rust toolchain/compatible lockfile/target image | Architect + W0-A | Cold CI build and MSRV inventory |
 | Go Sopdet repo/ref and spawn-ack recovery behavior | Device owner + W2-B | Unchanged client fault/compatibility run |
-| Actual PostgreSQL delivery configuration per target | Deployment owner before worker cutover | Read-only effective settings and worker diagnostics |
+| Actual PostgreSQL delivery configuration per target | Deployment owner before W1/W2; Python PostgreSQL baseline before Rust worker cutover | Read-only effective API/worker/scheduler settings; separate Python transport migration if needed |
 | Fernet/HKDF Rust adapter | Security reviewer + W3-B | Cross-language vectors/security review |
 | `context.db` support and buffered-write parity | SDK owner + W3-A/C | Caller census and reference behavior fixtures |
 | Runtime event journal/control offline behavior | Execution owner + W3-A | Crash/reconnect/expired-credential fixtures |
