@@ -25,6 +25,15 @@ allowlist. Selected authored workflow/agent bytes and platform business source
 used by these references are unchanged. Platform #1019 changes debug-resource
 ownership/cleanup instructions; the candidates retain those current rules.
 
+The next pre-PR refresh advanced platform main again to
+`86caddecd8bbcf1feea9b0f5ed7865c0ea724d7b` (#1013, external-worker
+control plane). This architecture candidate includes that merge. Earlier
+characterization results retain their exact source pins; they are not evidence
+for the newly landed scheduler/worker configuration and scaling behavior.
+Reconcile those changes before freezing extraction or granting lifecycle
+authority. The prerequisite correction and selected reference gates are not
+relaxed by this advancement.
+
 The findings below are source evidence, not an observed agent run. Codec passes,
 SDK direct calls, and a rehydrated organization do not prove tool execution.
 The pinned readiness workflow reference remains independent and can continue.
