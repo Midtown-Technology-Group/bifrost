@@ -135,6 +135,17 @@ transport. Ordinary app audience rejection protects old replicas; all accepting
 replicas need the reviewed purpose policy. Egress confinement supplements this
 policy, not substitutes for it.
 
+Source review at main `f770094eb` found an unresolved provider-transport gate:
+`api/src/services/oauth_provider.py:327` posts the credential-bearing payload
+through aiohttp without `allow_redirects=False`. Locked aiohttp 3.14.3 defaults
+to following redirects, including 307/308 body replay. The selected public
+integration recovery path reuses this helper. The successful normal synthetic
+exchange in #1026 does not establish redirect target non-delivery. Public H/R
+cannot pass the transport gate until a narrowly reviewed correction or explicit
+scope disposition preserves allowed recovery and proves zero credential-bearing
+delivery to 301/302/303/307/308 targets. No shared OAuth implementation change,
+provider call or transport acceptance is authorized by this source finding.
+
 ## Effects, source and dependency custody remain gates
 
 Allowed `integrations.get` can perform client-credentials OAuth recovery and commit

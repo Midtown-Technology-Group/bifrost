@@ -18,7 +18,7 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
-As of the latest fetch, platform main is `fcfbedfe189e8efab0546890828806c91cec358d`
+As of the latest fetch, platform main is `f770094eb28d8315a414fe8cb306f510da752d89`
 and workspace main is `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`. The
 current workspace audit passes 2,107 boundary files (1,984 standard authored
 files), zero forbidden imports and an empty allowlist. Earlier source/test
