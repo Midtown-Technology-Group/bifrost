@@ -11,9 +11,9 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Authority | Exact fetched/current head | Disposition |
 | --- | --- | --- |
 | Platform main | `ba783472b770291e612433ad7ca9564fe671dade` | #1001 ancestor; authoritative source |
-| Workspace main | `83c1cb034dbbcfa29eb1723506735b13b4788536` | #1112 ancestor; fresh audit below |
+| Workspace main | `970f3030ef66d20abe83fd7ef0e400cd114da80d` | #1112 ancestor; refreshed audit below |
 | RFC #1005 | `2a70092eb773750d6bd082659c2a46b428748654` | Open, provisional; redirect findings resolved |
-| Device evidence #1006 | `a1fc9def0f357c042f213f68b799087d58635939` | Preserve F-01; device-only STOP |
+| Device evidence #1006 | `05bbb1db5426e1b531ed38c37f0aa82dfa71d3f0` | Preserve F-01; device-only STOP |
 | Parity #1008 | `09539559961dd22ed3fd3f9179de84bc8f3bd772` | Reuse, extend; retain all device cases/vector |
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
@@ -35,12 +35,20 @@ This diagnostic is not backend proof or a cause for the type failures. Checked-i
 settings are not deployed settings. No host security-policy alteration is part
 of this program.
 
-At exact workspace main, its own boundary AST audit inspected **2,097 boundary
-Python files** (1,975 standard authored plus Solution/top-level locations), found
+At the refreshed workspace main, its own boundary AST audit inspected **2,100 boundary
+Python files** (1,978 standard authored plus Solution/top-level locations), found
 zero platform `src.*`/SQLAlchemy imports, and confirmed an empty allowlist.
 The import audit found no direct platform dependency requiring accommodation;
 unchanged workspace SDK/runtime compatibility remains an acceptance gate. No
 workspace files were changed.
+
+The retained authored-source pin remains `83c1cb034dbbcfa29eb1723506735b13b4788536`;
+the selected A/B source bytes did not change at the refreshed head. The
+[selected reference gates](rust-core-mvp-reference-gates.md) record the source
+finding that blocks nominal Cove B: Python drops original-caller provider
+authority before its workflow tool's local SDK scope check. A separate correction
+or a fully evidenced alternative authored binding is required; Rust cannot infer
+the missing flag to make parity pass. Pinned A and control-codec work continue.
 
 The original device experiment was chosen for a bounded protocol/state machine
 and an external Go compatibility authority. Its spawn-before-running ambiguity
