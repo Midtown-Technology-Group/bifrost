@@ -1,0 +1,4187 @@
+{
+  "profile": "bifrost.runtime/v1/control_profile/v1",
+  "max_frame_bytes": 16777216,
+  "max_depth": 64,
+  "wire": [
+    {
+      "name": "hello",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "ok"
+    },
+    {
+      "name": "start",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "ok"
+    },
+    {
+      "name": "prepared_heartbeat",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000a\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"state\":\"prepared\",\"monotonic_elapsed_ms\":0}}",
+      "expected": "ok"
+    },
+    {
+      "name": "executing_heartbeat",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000b\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":\"00000000-0000-0000-0000-000000000004\",\"state\":\"executing\",\"monotonic_elapsed_ms\":1}}",
+      "expected": "ok"
+    },
+    {
+      "name": "cancel",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Cancel\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000008\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"cancel_id\":\"00000000-0000-0000-0000-000000000007\",\"reason\":\"requested\",\"grace_ms\":1000}}",
+      "expected": "ok"
+    },
+    {
+      "name": "cancelling_heartbeat",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000c\",\"sequence\":3,\"correlation_id\":null,\"body\":{\"start_message_id\":\"00000000-0000-0000-0000-000000000004\",\"state\":\"cancelling\",\"monotonic_elapsed_ms\":2}}",
+      "expected": "ok"
+    },
+    {
+      "name": "completed",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000d\",\"sequence\":3,\"correlation_id\":null,\"body\":{\"start_message_id\":\"00000000-0000-0000-0000-000000000004\",\"cancel_id\":null,\"reason\":\"completed\",\"result_message_id\":\"00000000-0000-0000-0000-000000000009\",\"error\":null}}",
+      "expected": "ok"
+    },
+    {
+      "name": "cancelled",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000e\",\"sequence\":4,\"correlation_id\":null,\"body\":{\"start_message_id\":\"00000000-0000-0000-0000-000000000004\",\"cancel_id\":\"00000000-0000-0000-0000-000000000007\",\"reason\":\"cancelled\",\"result_message_id\":null,\"error\":null}}",
+      "expected": "ok"
+    },
+    {
+      "name": "prepare_rejected",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"cancel_id\":null,\"reason\":\"prepare_rejected\",\"result_message_id\":null,\"error\":{\"type\":\"RuntimePreparationError\",\"message\":\"synthetic café failure\",\"traceback\":null}}}",
+      "expected": "ok"
+    },
+    {
+      "name": "missing-envelope-protocol",
+      "json": "{\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-envelope-type",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-envelope-session_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-envelope-message_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-envelope-sequence",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-envelope-correlation_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-envelope-body",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Hello-runtime_incarnation_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Hello-supported_protocols",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Hello-capabilities",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Hello-artifact",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"]}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Start-prepare_message_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Start-committed_start_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Start-parent_duration_seconds",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Heartbeat-start_message_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000a\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"state\":\"prepared\",\"monotonic_elapsed_ms\":0}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Heartbeat-state",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000a\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"monotonic_elapsed_ms\":0}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Heartbeat-monotonic_elapsed_ms",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000a\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"state\":\"prepared\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Cancel-cancel_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Cancel\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000008\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"reason\":\"requested\",\"grace_ms\":1000}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Cancel-reason",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Cancel\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000008\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"cancel_id\":\"00000000-0000-0000-0000-000000000007\",\"grace_ms\":1000}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Cancel-grace_ms",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Cancel\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000008\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"cancel_id\":\"00000000-0000-0000-0000-000000000007\",\"reason\":\"requested\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Stopped-start_message_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"cancel_id\":null,\"reason\":\"prepare_rejected\",\"result_message_id\":null,\"error\":{\"type\":\"RuntimePreparationError\",\"message\":\"synthetic café failure\",\"traceback\":null}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Stopped-cancel_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"reason\":\"prepare_rejected\",\"result_message_id\":null,\"error\":{\"type\":\"RuntimePreparationError\",\"message\":\"synthetic café failure\",\"traceback\":null}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Stopped-reason",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"cancel_id\":null,\"result_message_id\":null,\"error\":{\"type\":\"RuntimePreparationError\",\"message\":\"synthetic café failure\",\"traceback\":null}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Stopped-result_message_id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"cancel_id\":null,\"reason\":\"prepare_rejected\",\"error\":{\"type\":\"RuntimePreparationError\",\"message\":\"synthetic café failure\",\"traceback\":null}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-Stopped-error",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"cancel_id\":null,\"reason\":\"prepare_rejected\",\"result_message_id\":null}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-nested-artifact-image_digest",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-nested-artifact-requirements_lock_sha256",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-nested-artifact-sdk-distribution",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-nested-artifact-sdk-version",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-nested-error-traceback",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"cancel_id\":null,\"reason\":\"prepare_rejected\",\"result_message_id\":null,\"error\":{\"type\":\"RuntimePreparationError\",\"message\":\"synthetic café failure\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unknown-version",
+      "json": "{\"protocol\":\"bifrost.runtime/v2\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "version-not-string",
+      "json": "{\"protocol\":true,\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unknown-envelope-key",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}},\"secret_key\":\"forbidden-placeholder\"}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unknown-body-key",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"},\"signing_key\":\"forbidden-placeholder\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "uppercase-uuid",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"AAAAAAAA-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "short-uuid",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"1\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "uuid-non-hex",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"gggggggg-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "bool-sequence",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":true,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "float-sequence",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1.0,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "negative-sequence",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":-1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "zero-sequence",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":0,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unsafe-sequence",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":9007199254740992,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unexpected-correlation",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "empty-artifact-id",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "empty-sdk-version",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":\"\"},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "invalid-lock-hash",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":\"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF\",\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "missing-interpreter-version",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "nested-unknown-key",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null,\"secret\":\"forbidden-placeholder\"},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "duplicate-capability",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\",\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unsupported-Prepare",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Prepare\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-Prepared",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Prepared\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-Result",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Result\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-LogBatch",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"LogBatch\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-ModelObservation",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"ModelObservation\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-WorkflowToolRequested",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"WorkflowToolRequested\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-ToolOutcome",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"ToolOutcome\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-ToolObservation",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"ToolObservation\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-Usage",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Usage\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-ExecutePython",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"ExecutePython\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "unsupported-empty",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "bad-start-parent_duration_seconds-True",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":true}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "bad-start-parent_duration_seconds-0",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":0}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "bad-start-parent_duration_seconds-1.0",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":1.0}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "bad-start-prepare_message_id-None",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":null,\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "start-without-correlation",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "bool-heartbeat",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000a\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"state\":\"prepared\",\"monotonic_elapsed_ms\":false}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "unknown-heartbeat-state",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Heartbeat\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000a\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"state\":\"running\",\"monotonic_elapsed_ms\":0}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "coordinator-loss-as-cancel",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Cancel\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000008\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"cancel_id\":\"00000000-0000-0000-0000-000000000007\",\"reason\":\"worker_lost\",\"grace_ms\":1000}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "duplicate-envelope",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "duplicate-nested",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"artifact_id\":\"another\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "nan",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":NaN,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "infinity",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1e999,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "lone-surrogate",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"\\ud800\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "trailing-json",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}{}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "not-json",
+      "json": "not-json",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "empty-json",
+      "json": "",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "depth-64",
+      "json": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "depth-65",
+      "json": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "invalid-utf8",
+      "hex": "ff",
+      "expected": "InvalidJson"
+    }
+  ],
+  "binary": [
+    {
+      "name": "empty-stream",
+      "hex": "",
+      "expected": "eof"
+    },
+    {
+      "name": "truncated-prefix",
+      "hex": "000001",
+      "expected": "TruncatedFrame"
+    },
+    {
+      "name": "zero-length",
+      "hex": "00000000",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "oversize-prefix",
+      "hex": "01000001",
+      "expected": "FrameTooLarge"
+    },
+    {
+      "name": "truncated-payload",
+      "hex": "000000027b",
+      "expected": "TruncatedFrame"
+    },
+    {
+      "name": "partial-read-hello",
+      "hex": "000002587b2270726f746f636f6c223a22626966726f73742e72756e74696d652f7631222c2274797065223a2248656c6c6f222c2273657373696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c226d6573736167655f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c2273657175656e6365223a312c22636f7272656c6174696f6e5f6964223a6e756c6c2c22626f6479223a7b2272756e74696d655f696e6361726e6174696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c22737570706f727465645f70726f746f636f6c73223a5b22626966726f73742e72756e74696d652f7631225d2c226361706162696c6974696573223a5b22636f6e74726f6c5f70726f66696c652f7631225d2c226172746966616374223a7b2261727469666163745f6964223a22707974686f6e2d72756e74696d652d636f6e74726f6c2d66697874757265222c22696d6167655f646967657374223a6e756c6c2c22696e746572707265746572223a7b22696d706c656d656e746174696f6e223a2263707974686f6e222c2276657273696f6e223a22332e31342e30227d2c2273646b223a7b22646973747269627574696f6e223a6e756c6c2c2276657273696f6e223a6e756c6c7d2c22726571756972656d656e74735f6c6f636b5f736861323536223a6e756c6c2c2272756e74696d655f70726f746f636f6c223a22626966726f73742e72756e74696d652f7631227d7d7d",
+      "expected": "ok"
+    },
+    {
+      "name": "partial-read-start",
+      "hex": "0000017b7b2270726f746f636f6c223a22626966726f73742e72756e74696d652f7631222c2274797065223a225374617274222c2273657373696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c226d6573736167655f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c2273657175656e6365223a312c22636f7272656c6174696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c22626f6479223a7b22707265706172655f6d6573736167655f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c22636f6d6d69747465645f73746172745f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c22706172656e745f6475726174696f6e5f7365636f6e6473223a33307d7d",
+      "expected": "ok"
+    }
+  ],
+  "sessions": [
+    {
+      "name": "valid-workflow-start-stop",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "valid-agent-start-stop",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "agent_run",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "cancel-after-start",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Cancel",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000008",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "requested",
+              "grace_ms": 1000
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000c",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "cancelling",
+              "monotonic_elapsed_ms": 2
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000e",
+            "sequence": 4,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "cancelled",
+              "result_message_id": null,
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "in-flight-heartbeat-after-cancel",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Cancel",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000008",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "requested",
+              "grace_ms": 1000
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000e",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "cancelled",
+              "result_message_id": null,
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "prepared-heartbeat-and-rejection",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000a",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "prepared",
+              "monotonic_elapsed_ms": 0
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000f",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "cancel_id": null,
+              "reason": "prepare_rejected",
+              "result_message_id": null,
+              "error": {
+                "type": "RuntimePreparationError",
+                "message": "synthetic café failure",
+                "traceback": null
+              }
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "missing-start-authorization",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "early-authorization",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "start-before-hello",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "executing-before-start",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000a",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "prepared",
+              "monotonic_elapsed_ms": 0
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "wrong-process",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "unrelated-child",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "wrong-session",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000063",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "wrong-direction",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "wrong-artifact",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "unrelated-image",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "unknown-capability",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "full_workload/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "unknown-negotiated-version",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v2"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "UnsupportedProtocol"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "wrong-preparation",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000063",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000063",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "wrong-commit",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000063",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "wrong-duration",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 31
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "duplicate-start-no-replay",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 2,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "InvalidTransition"
+        }
+      ]
+    },
+    {
+      "name": "sequence-gap",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        }
+      ]
+    },
+    {
+      "name": "stale-start-heartbeat",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000063",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "monotonic-regression",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 100
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "InvalidTransition"
+        }
+      ]
+    },
+    {
+      "name": "wrong-stop-identity",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000063",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "InvalidBinding"
+        }
+      ]
+    },
+    {
+      "name": "stop-completion-before-start",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "InvalidBinding"
+        }
+      ]
+    },
+    {
+      "name": "reports-after-stop",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 4,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "InvalidTransition"
+        }
+      ]
+    },
+    {
+      "name": "no-repeated-authorization",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        }
+      ]
+    },
+    {
+      "name": "typed-attempt-mismatch",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "InvalidBinding",
+      "events": []
+    },
+    {
+      "name": "empty-process-binding",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "InvalidBinding",
+      "events": []
+    },
+    {
+      "name": "launch-digest-not-child-proof",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": "sha256:synthetic-parent-image"
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "InvalidBinding"
+        }
+      ]
+    },
+    {
+      "name": "queued-prepared-heartbeat-after-start",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000a",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "prepared",
+              "monotonic_elapsed_ms": 0
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 1
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000a",
+            "sequence": 4,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "prepared",
+              "monotonic_elapsed_ms": 2
+            }
+          },
+          "expected": "InvalidTransition"
+        }
+      ]
+    },
+    {
+      "name": "queued-prepared-heartbeat-after-prestart-cancel",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Cancel",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000008",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "requested",
+              "grace_ms": 1000
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000a",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "prepared",
+              "monotonic_elapsed_ms": 0
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000c",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "cancelling",
+              "monotonic_elapsed_ms": 2
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000a",
+            "sequence": 4,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "state": "prepared",
+              "monotonic_elapsed_ms": 3
+            }
+          },
+          "expected": "InvalidTransition"
+        }
+      ]
+    },
+    {
+      "name": "queued-completed-stop-after-cancel",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Cancel",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000008",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "requested",
+              "grace_ms": 1000
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "queued-prepare-rejected-after-start",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000f",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": null,
+              "cancel_id": null,
+              "reason": "prepare_rejected",
+              "result_message_id": null,
+              "error": {
+                "type": "RuntimePreparationError",
+                "message": "synthetic café failure",
+                "traceback": null
+              }
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "no-completed-regression-after-cancel-ack",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Cancel",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000008",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "requested",
+              "grace_ms": 1000
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000c",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "cancelling",
+              "monotonic_elapsed_ms": 2
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": null,
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "InvalidBinding"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000d",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "completed",
+              "result_message_id": "00000000-0000-0000-0000-000000000009",
+              "error": null
+            }
+          },
+          "expected": "InvalidTransition"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Stopped",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000e",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "cancelled",
+              "result_message_id": null,
+              "error": null
+            }
+          },
+          "expected": "StoppedObserved"
+        }
+      ]
+    },
+    {
+      "name": "no-executing-regression-after-cancel-ack",
+      "binding": {
+        "supervisor_incarnation_id": "00000000-0000-0000-0000-000000000014",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "process_identity": "child-handle:1",
+        "logical_kind": "workflow",
+        "logical_id": "00000000-0000-0000-0000-000000000015",
+        "attempt_kind": "workflow_execution_attempt",
+        "attempt_id": "00000000-0000-0000-0000-000000000016",
+        "attempt_number": 1,
+        "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+        "expected_artifact_id": "python-runtime-control-fixture",
+        "expected_image_digest": null
+      },
+      "expected_binding": "ok",
+      "events": [
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Hello",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000003",
+            "sequence": 1,
+            "correlation_id": null,
+            "body": {
+              "runtime_incarnation_id": "00000000-0000-0000-0000-000000000002",
+              "supported_protocols": [
+                "bifrost.runtime/v1"
+              ],
+              "capabilities": [
+                "control_profile/v1"
+              ],
+              "artifact": {
+                "artifact_id": "python-runtime-control-fixture",
+                "image_digest": null,
+                "interpreter": {
+                  "implementation": "cpython",
+                  "version": "3.14.0"
+                },
+                "sdk": {
+                  "distribution": null,
+                  "version": null
+                },
+                "requirements_lock_sha256": null,
+                "runtime_protocol": "bifrost.runtime/v1"
+              }
+            }
+          },
+          "expected": "Prepared"
+        },
+        {
+          "action": "authorize",
+          "authorization": {
+            "committed_start_id": "00000000-0000-0000-0000-000000000006",
+            "parent_duration_seconds": 30
+          },
+          "expected": "ok"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Start",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000004",
+            "sequence": 1,
+            "correlation_id": "00000000-0000-0000-0000-000000000005",
+            "body": {
+              "prepare_message_id": "00000000-0000-0000-0000-000000000005",
+              "committed_start_id": "00000000-0000-0000-0000-000000000006",
+              "parent_duration_seconds": 30
+            }
+          },
+          "expected": "Executing"
+        },
+        {
+          "action": "frame",
+          "direction": "ParentToRuntime",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Cancel",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-000000000008",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "cancel_id": "00000000-0000-0000-0000-000000000007",
+              "reason": "requested",
+              "grace_ms": 1000
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000c",
+            "sequence": 2,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "cancelling",
+              "monotonic_elapsed_ms": 2
+            }
+          },
+          "expected": "Cancelling"
+        },
+        {
+          "action": "frame",
+          "direction": "RuntimeToParent",
+          "process_identity": "child-handle:1",
+          "frame": {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Heartbeat",
+            "session_id": "00000000-0000-0000-0000-000000000001",
+            "message_id": "00000000-0000-0000-0000-00000000000b",
+            "sequence": 3,
+            "correlation_id": null,
+            "body": {
+              "start_message_id": "00000000-0000-0000-0000-000000000004",
+              "state": "executing",
+              "monotonic_elapsed_ms": 3
+            }
+          },
+          "expected": "InvalidTransition"
+        }
+      ]
+    }
+  ]
+}

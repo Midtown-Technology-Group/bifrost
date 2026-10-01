@@ -2,6 +2,8 @@
 
 use serde::Serialize;
 
+pub mod runtime;
+
 #[derive(Serialize)]
 pub struct HealthResponse {
     pub status: &'static str,
