@@ -2,7 +2,7 @@ name: Runtime control protocol
 
 on:
   pull_request:
-    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
+    branches: [main, rust/core-mvp-baseline, rust/core-parity-lane, rust/runtime-contract]
   workflow_dispatch:
 
 permissions:
