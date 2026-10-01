@@ -303,6 +303,12 @@ def _constant(_value: str) -> None:
     _fail(ErrorCode.INVALID_JSON)
 
 
+def _integer_token(value: str) -> int | float:
+    # serde_json classifies lexical -0 as a float. Preserve that distinction
+    # so UInt/Positive reject it as InvalidFrame rather than accepting integer 0.
+    return -0.0 if value == "-0" else int(value)
+
+
 def _check_tree(value: object) -> None:
     stack = [(value, 0)]
     while stack:
@@ -328,7 +334,10 @@ def decode_json(data: bytes) -> Frame:
         _fail(ErrorCode.FRAME_TOO_LARGE)
     try:
         value = json.loads(
-            data.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_constant
+            data.decode("utf-8"),
+            object_pairs_hook=_pairs,
+            parse_constant=_constant,
+            parse_int=_integer_token,
         )
     except (UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
         if isinstance(exc, ProtocolError):

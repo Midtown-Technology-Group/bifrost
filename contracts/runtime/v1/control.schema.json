@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:bifrost:runtime:v1:control-profile",
   "title": "C1-P0 partial runtime/v1 control profile",
-  "description": "Structural schema only. Binary framing, duplicate keys, UTF8/surrogates, lexical integer validation, depth, Start correlation equality and parent session transitions are enforced by the codecs/session validators. No full workload protocol or execution authority.",
+  "description": "Structural schema only. Binary framing, duplicate keys, UTF8/surrogates, lexical integer validation, depth, Start correlation equality and parent session transitions are enforced by the codecs/session validators. No full workload protocol or execution authority. Lexical -0 is rejected for UInt/Positive even though mathematical JSON Schema integer validation alone treats it as zero.",
   "oneOf": [
     {
       "type": "object",

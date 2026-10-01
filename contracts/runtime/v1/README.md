@@ -28,8 +28,11 @@ They do not flush or manage lifecycle; the eventual supervisor owns its pipes.
 
 All structural keys are required, including nullable fields; extra keys fail.
 UUIDs use canonical lowercase spelling. Integers are lexical JSON integers
-within 0..9,007,199,254,740,991; positive fields exclude zero. Boolean and `1.0`
-are rejected as integers. Invalid UTF8, duplicate keys at any depth, non-finite
+within 0..9,007,199,254,740,991; positive fields exclude zero. Boolean, `1.0`, and
+lexical `-0` are rejected as integers with `InvalidFrame`. Python preserves `-0`
+as a floating-point token to match Rust's classification before typed validation;
+it must not normalize it into accepted unsigned integer zero. Invalid UTF8,
+duplicate keys at any depth, non-finite
 numbers, lone surrogates, trailing JSON and excessive depth fail before a
 session transition. Unknown protocol/frame variants fail; there is no fallback
 to a full workload adapter, HTTP or pickle. Error text contains static categories,
@@ -38,7 +41,8 @@ not supplied bytes or credentials.
 The JSON Schema documents structure; codecs additionally enforce binary
 framing, UTF8, duplicate keys, lexical integer/depth rules and Start's
 `correlation_id == prepare_message_id`. JSON Schema's mathematical `integer`
-definition alone does not exclude `1.0`. Non-Start correlation IDs must be null.
+definition alone does not exclude `1.0` or lexical `-0`. Non-Start correlation
+IDs must be null.
 Encodings are ordinary compact JSON, **not canonical signed/hashed bytes**.
 Cross-language tests compare decoded typed values/semantic JSON, not invented
 evidence canonicalization.
