@@ -117,9 +117,11 @@ dependencies = [
  "bifrost-domain",
  "opentelemetry",
  "opentelemetry-otlp",
+ "opentelemetry-proto",
  "opentelemetry_sdk",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tower",
  "tracing",
@@ -1755,6 +1757,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac2a5518c70fa84342385732db33fb3f44bc4cc748936eb5833d2df34d6445ef"
 dependencies = [
  "async-trait",
+ "axum",
  "base64",
  "bytes",
  "h2",

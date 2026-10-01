@@ -92,6 +92,8 @@ Use the dedicated Linux Docker lane on `pve-t340`, preserving existing stacks:
 
 ```bash
 docker build --target checks -f core-rs/Dockerfile core-rs
+docker build --target toolchain -t bifrost-rust-tls-tools -f core-rs/Dockerfile core-rs
+bash core-rs/scripts/telemetry-tls.sh bifrost-rust-tls-tools
 docker build --pull --no-cache --build-arg BIFROST_BUILD_SHA="$(git rev-parse HEAD)" \
   -t bifrost-rust-w0-bootstrap:0.1.0 -f core-rs/Dockerfile core-rs
 ./test.sh stack up
@@ -108,6 +110,14 @@ mutations occur only in rolled-back transactions on the disposable database.
 Default `cargo test --all` covers invalid config, unavailable DB, request-secret
 sanitation and shutdown (including an in-flight readiness request); it does not
 claim migrated-schema proof.
+
+The explicit `telemetry-tls` test runs actual `Telemetry::init`, an application
+health request, trace/metric exports and bounded shutdown against a local TLS
+OTLP server. The script generates disposable CA/server keys and trusts the CA
+only in each isolated test process via `SSL_CERT_FILE`; a second server signed
+by an untrusted CA must fail flush and deliver neither signal. Required fixture
+environment variables fail when missing. No PEM private keys are committed and
+host/runtime trust stores are untouched.
 
 `container-smoke.sh` exercises the actual image over the isolated stack network:
 successful readiness through PgBouncer, 503 against the verified unmigrated default
