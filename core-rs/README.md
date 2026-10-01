@@ -41,7 +41,10 @@ constraints, the unique active-job index and SELECT access. The schema capabilit
 floor is `20260924_device_job_logs` and its migration ancestors. New unrelated
 columns/revisions can coexist; required capabilities cannot disappear. Checks
 operate in a read-only transaction with a 2-second transaction-local statement
-timeout. Statement caching is disabled for PgBouncer transaction pooling. W0 uses
+timeout. Statement caching and persistent named statements are both disabled for
+PgBouncer transaction pooling. Future repository queries through `pool()` must
+also set `.persistent(false)`; cache capacity alone does not prevent SQLx0.9
+from creating named prepared statements. W0 uses
 a static catalog query, not SQLx query macros; device SQLx offline metadata is a
 later repository package's acceptance gate.
 

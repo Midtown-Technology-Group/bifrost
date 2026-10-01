@@ -84,8 +84,12 @@ mod live_tests {
         ] {
             // DDL is confined to this transaction and rolled back even on failure.
             let mut tx = database.pool().begin().await?;
-            sqlx::query(mutation).execute(&mut *tx).await?;
+            sqlx::query(mutation)
+                .persistent(false)
+                .execute(&mut *tx)
+                .await?;
             let ready: bool = sqlx::query_scalar(include_str!("schema.sql"))
+                .persistent(false)
                 .fetch_one(&mut *tx)
                 .await?;
             assert!(!ready, "incompatible migrated schema accepted");
@@ -132,14 +136,17 @@ impl Database {
         );
         // Transaction-local settings work with PgBouncer transaction pooling.
         sqlx::query("SET TRANSACTION READ ONLY")
+            .persistent(false)
             .execute(&mut *tx)
             .await
             .map_err(|_| ReadinessError::Unavailable)?;
         sqlx::query("SET LOCAL statement_timeout = '2000ms'")
+            .persistent(false)
             .execute(&mut *tx)
             .await
             .map_err(|_| ReadinessError::Unavailable)?;
         let compatible: bool = sqlx::query_scalar(include_str!("schema.sql"))
+            .persistent(false)
             .fetch_one(&mut *tx)
             .await
             .map_err(|_| ReadinessError::Schema)?;
@@ -148,7 +155,7 @@ impl Database {
         }
         // Catalog visibility alone does not prove the runtime role can read the tables.
         sqlx::query("SELECT d.id, j.claim_token, l.seq FROM public.devices d CROSS JOIN public.device_jobs j CROSS JOIN public.device_job_logs l WHERE FALSE")
-            .execute(&mut *tx).await.map_err(|_| ReadinessError::Schema)?;
+            .persistent(false).execute(&mut *tx).await.map_err(|_| ReadinessError::Schema)?;
         tx.commit().await.map_err(|_| ReadinessError::Unavailable)?;
         tracing::debug!(
             duration_ms = start.elapsed().as_millis() as u64,
