@@ -28,6 +28,21 @@ def _allocator():
     return module
 
 
+@pytest.mark.parametrize("workflow", [
+    "codspeed", "arm64-worker-compat", "snyk", "doc-renderer",
+    "dependabot-lockfile-regen",
+])
+def test_expensive_workflows_cancel_only_superseded_pr_snapshots(workflow):
+    config = yaml.safe_load(_repo_file(f".github/workflows/{workflow}.yml").read_text())
+    concurrency = config["concurrency"]
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+    assert "github.event_name" in concurrency["group"]
+    assert "github.event.pull_request.number" in concurrency["group"]
+    assert "github.ref" in concurrency["group"]
+    if workflow == "codspeed":
+        assert all(job["timeout-minutes"] == 20 for job in config["jobs"].values())
+
+
 def test_backend_shards_cover_each_file_once_and_balance_known_and_new_files(
     monkeypatch,
 ):
