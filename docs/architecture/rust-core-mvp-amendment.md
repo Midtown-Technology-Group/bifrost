@@ -125,6 +125,12 @@ Source pins do not freeze installed dependencies or the engine/SDK artifact.
 Record actual runtime image, interpreter, SDK and lock identity separately from
 mutable-template package inventory; never call a requirements-text hash immutable.
 
+The [runtime extraction gates](rust-core-mvp-runtime-extraction-gates.md)
+record current-source findings that prevent reusing the worker/template unchanged:
+pre-scrub installer/startup authority, broad engine HTTP authority, unfenced Redis
+helpers, and OAuth effects behind read-shaped SDK operations. Those gates do not
+change existing public behavior or authorize a new runtime credential policy.
+
 ## 4. Selected-route authority ledger
 
 Rust must preserve typed transport and original-caller identity, not generic JWT
