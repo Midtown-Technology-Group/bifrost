@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from src.core.principal import UserPrincipal
 from src.models.contracts.policies import FilePolicies
@@ -1015,6 +1015,18 @@ async def test_checked_workspace_write_without_context_user_is_forbidden(
             SimpleNamespace(user_id=USER_ID, is_superuser=True),
             db=SimpleNamespace(),
         )
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_signed_sdk_file_context_without_user_is_forbidden():
+    ctx = _ctx(is_superuser=True)
+    ctx.user = None
+    request = Request({"type": "http", "method": "GET", "path": "/api/files/read", "headers": []})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await files._require_signed_file_context(ctx, request)
 
     assert exc_info.value.status_code == 403
 

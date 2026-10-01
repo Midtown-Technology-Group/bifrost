@@ -117,6 +117,7 @@ class WorkspaceLiveHandoffCandidateService:
             files = source_closure(
                 live_bytes, {path for path, _ in registrations.values()},
                 has_table_bindings=bool(request.shared_tables),
+                has_root_file_bindings=bool(request.root_file_bindings),
             )
             archive = source_archive(files)
         except LiveHandoffSourceError as exc:
@@ -158,7 +159,7 @@ class WorkspaceLiveHandoffCandidateService:
                 },
             )
         resolution = DeploymentResolutionMap(
-            workflows=entities, sources=sources, shared_tables=request.shared_tables
+            workflows=entities, sources=sources, shared_tables=request.shared_tables, root_file_bindings=request.root_file_bindings
         )
         manifest = CompiledDeploymentManifest(
             solution_id=solution_id,
@@ -188,6 +189,7 @@ class WorkspaceLiveHandoffCandidateService:
             ),
             workflows=entities,
             shared_tables=request.shared_tables,
+            root_file_bindings=request.root_file_bindings,
             git=DeploymentGitProvenance(commit_sha=release.source_commit_sha),
         )
         await storage.write_source_artifact(archive, idempotent=True)

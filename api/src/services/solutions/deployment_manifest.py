@@ -12,6 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from src.core.solution_delivery_policy import delivery_path
+from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 
 from bifrost.solution_delivery_review import (
     WORKFLOW_PARAMETERS_SCHEMA_CONTRACT as WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
@@ -137,6 +138,7 @@ class CompiledDeploymentManifest(ImmutableContract):
     resources: dict[str, RuntimeResourceResolution] = Field(
         default_factory=dict, max_length=256, exclude_if=lambda value: not value
     )
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100, exclude_if=lambda value: not value)
     file_locations: dict[str, dict[str, Any]] = Field(default_factory=dict)
     connections: dict[str, dict[str, Any]] = Field(default_factory=dict)
     config_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
@@ -167,6 +169,8 @@ class DeploymentResolutionMap(ImmutableContract):
     resources: dict[str, RuntimeResourceResolution] = Field(
         default_factory=dict, max_length=256, exclude_if=lambda value: not value
     )
+
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100, exclude_if=lambda value: not value)
 
     def resolve_workflow(self, portable_ref: str) -> RuntimeEntityDefinition:
         return self.workflows[portable_ref]
@@ -247,6 +251,9 @@ def _validate_manifest_resolution_agreement(
             raise ValueError(f"manifest/resolution mismatch for {kind}")
     if manifest.dependencies != resolution.dependencies:
         raise ValueError("manifest/resolution dependency mismatch")
+    require_root_file_bindings(manifest.root_file_bindings)
+    if manifest.root_file_bindings != resolution.root_file_bindings:
+        raise ValueError("Root file binding contracts differ")
     if manifest.shared_tables != resolution.shared_tables:
         raise ValueError("manifest/resolution shared table mismatch")
     if manifest.resources != resolution.resources:

@@ -10899,6 +10899,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage Initial Workflow Install
+         * @description Stage the first immutable workflow-only closure for a disconnected Solution.
+         */
+        post: operations["stage_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Initial Workflow Install */
+        post: operations["inspect_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/initial-workflow/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Initial Workflow Install */
+        post: operations["activate_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/candidate": {
         parameters: {
             query?: never;
@@ -16992,6 +17046,10 @@ export interface components {
             resources?: {
                 [key: string]: components["schemas"]["RuntimeResourceResolution"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
             /** File Locations */
             file_locations?: {
                 [key: string]: {
@@ -18017,6 +18075,10 @@ export interface components {
             /** Resources */
             resources?: {
                 [key: string]: components["schemas"]["RuntimeResourceResolution"];
+            };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
             };
         };
         /** DeploymentSource */
@@ -22612,6 +22674,56 @@ export interface components {
             status: "created" | "updated" | "skipped" | "error";
             /** Error */
             error?: string | null;
+        };
+        /** InitialWorkflowInstallCommitRequest */
+        InitialWorkflowInstallCommitRequest: {
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+            /** Expected Evidence Id */
+            expected_evidence_id: string;
+        };
+        /** InitialWorkflowInstallInspectRequest */
+        InitialWorkflowInstallInspectRequest: {
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+        };
+        /** InitialWorkflowInstallInspectResponse */
+        InitialWorkflowInstallInspectResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Source Hashes */
+            source_hashes: {
+                [key: string]: string;
+            };
+            /** Evidence Id */
+            evidence_id: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * InitialWorkflowInstallRequest
+         * @description Reviewed source closure for the first immutable workflow install.
+         */
+        InitialWorkflowInstallRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            reviewed_recipe: components["schemas"]["ReviewedWorkflowRecipe"];
+            /** Files */
+            files: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
+            /** Resources */
+            resources?: components["schemas"]["src__models__contracts__solution_deployments__SolutionSourceFile"][];
         };
         /**
          * InstallPackageRequest
@@ -27888,6 +28000,10 @@ export interface components {
             resources?: {
                 [key: string]: string;
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
         };
         /** ReviewedWorkflowRegistration */
         ReviewedWorkflowRegistration: {
@@ -28119,6 +28235,35 @@ export interface components {
              * @description Workflow IDs assigned to the role
              */
             workflow_ids: string[];
+        };
+        /**
+         * RootFileBinding
+         * @description An explicit data grant; uploads inherit only the durable execution scope.
+         */
+        RootFileBinding: {
+            /**
+             * Location
+             * @enum {string}
+             */
+            location: "workspace" | "uploads";
+            /** Path */
+            path: string;
+            /**
+             * Directory Prefix
+             * @default false
+             */
+            directory_prefix: boolean;
+            /** Operations */
+            operations: ("exists" | "read" | "signed_get" | "create")[];
+            /** Max Bytes */
+            max_bytes: number;
+            /**
+             * Max Url Ttl Seconds
+             * @default 600
+             */
+            max_url_ttl_seconds: number;
+            /** Expected Read Sha256 */
+            expected_read_sha256?: string | null;
         };
         /** RuntimeEntityDefinition */
         RuntimeEntityDefinition: {
@@ -33747,6 +33892,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
             /** Expected Evidence Id */
             expected_evidence_id: string;
         };
@@ -33805,6 +33954,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
         };
         /** WorkspaceLiveHandoffPreflightResponse */
         WorkspaceLiveHandoffPreflightResponse: {
@@ -33836,6 +33989,10 @@ export interface components {
             /** Verified Shared Tables */
             verified_shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Verified Root File Bindings */
+            verified_root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
             };
             /** Expected Active Deployment Id */
             expected_active_deployment_id: string | null;
@@ -55080,6 +55237,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SolutionSourceRevisionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
                 };
             };
             /** @description Validation Error */
