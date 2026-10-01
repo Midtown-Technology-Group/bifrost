@@ -460,6 +460,7 @@ class SolutionSourceRevisionService:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
                 has_table_bindings=bool(old_resolution.shared_tables),
+                has_root_file_bindings=bool(old_resolution.root_file_bindings),
             )
             archive = source_archive(closure)
         except LiveHandoffSourceError as exc:
@@ -491,7 +492,7 @@ class SolutionSourceRevisionService:
                 update={"source_hash": sources[entity.source_ref].content_hash}
             )
         resolution = DeploymentResolutionMap(
-            workflows=entities, sources=sources, shared_tables=old_resolution.shared_tables
+            workflows=entities, sources=sources, shared_tables=old_resolution.shared_tables, root_file_bindings=old_resolution.root_file_bindings
         )
         manifest = CompiledDeploymentManifest(
             solution_id=solution_id,
@@ -515,6 +516,7 @@ class SolutionSourceRevisionService:
             ),
             workflows=entities,
             shared_tables=old_resolution.shared_tables,
+            root_file_bindings=old_resolution.root_file_bindings,
             git=DeploymentGitProvenance(commit_sha=request.source_commit_sha),
         )
         await storage.write_source_artifact(archive, idempotent=True)
@@ -572,6 +574,7 @@ class SolutionSourceRevisionService:
             raise SolutionSourceRevisionError("revision closure is invalid") from exc
         if (
             set(resolution.workflows) != set(old_resolution.workflows)
+            or resolution.root_file_bindings != old_resolution.root_file_bindings
             or resolution.shared_tables != old_resolution.shared_tables
             or manifest.tables or manifest.file_locations or manifest.resources
             or manifest.agents or manifest.forms or manifest.events or manifest.applications
@@ -615,6 +618,7 @@ class SolutionSourceRevisionService:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
                 has_table_bindings=bool(old_resolution.shared_tables),
+                has_root_file_bindings=bool(old_resolution.root_file_bindings),
             )
         except LiveHandoffSourceError as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc
@@ -646,6 +650,13 @@ class SolutionSourceRevisionService:
         await asyncio.gather(
             *(verify(path, content) for path, content in closure.items())
         )
+        from src.services.solutions.root_file_bindings import (
+            RootFileBindingError, require_root_workspace_files,
+        )
+        try:
+            await require_root_workspace_files(self.db, manifest.root_file_bindings)
+        except RootFileBindingError as exc:
+            raise SolutionSourceRevisionError(str(exc)) from exc
         subscription_snapshot, active_subscriptions = await self._subscriptions(
             [row.id for row in workflows]
         )

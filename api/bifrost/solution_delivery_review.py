@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 from uuid import UUID
 
+from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bifrost.workspace_effects import normalize_workflow_bounds, normalize_workflow_effects
@@ -36,6 +37,8 @@ def delivery_path(value: str) -> str:
             or "\0" in value or any(part in {"", ".", ".."} for part in value.split("/"))):
         raise ValueError("Expected a normalized repository-relative delivery path")
     return value
+
+
 
 
 class SharedRootTableBinding(BaseModel):
@@ -126,9 +129,11 @@ class ReviewedWorkflowRecipe(BaseModel):
     workflows: list[ReviewedWorkflowRegistration] = Field(min_length=1, max_length=256)
     shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict, max_length=100)
     resources: dict[str, str] = Field(default_factory=dict, max_length=256, exclude_if=lambda value: not value)
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100, exclude_if=lambda value: not value)
 
     @model_validator(mode="after")
     def unique_install(self) -> ReviewedWorkflowRecipe:
+        require_root_file_bindings(self.root_file_bindings)
         if len({item.id for item in self.workflows}) != len(self.workflows):
             raise ValueError("Workflow identities must be unique")
         if len({(item.path, item.function_name) for item in self.workflows}) != len(self.workflows):
@@ -493,7 +498,8 @@ def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resource
         recipe = ReviewedWorkflowRecipe.model_validate(value)
         validate_resource_files(recipe, resource_files, sources)
         closure = source_closure(sources, {item.path for item in recipe.workflows},
-            has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources))
+            has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources),
+            has_root_file_bindings=bool(recipe.root_file_bindings))
         if set(closure) != set(sources):
             raise WorkflowRecipeError("Recipe differs from the complete dependency closure")
         return recipe, compile_workflow_registrations(recipe, sources)

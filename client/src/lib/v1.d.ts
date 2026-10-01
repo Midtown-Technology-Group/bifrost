@@ -17114,6 +17114,10 @@ export interface components {
             resources?: {
                 [key: string]: components["schemas"]["RuntimeResourceResolution"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
             /** File Locations */
             file_locations?: {
                 [key: string]: {
@@ -18139,6 +18143,10 @@ export interface components {
             /** Resources */
             resources?: {
                 [key: string]: components["schemas"]["RuntimeResourceResolution"];
+            };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
             };
         };
         /** DeploymentSource */
@@ -28150,6 +28158,10 @@ export interface components {
             resources?: {
                 [key: string]: string;
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
         };
         /** ReviewedWorkflowRegistration */
         ReviewedWorkflowRegistration: {
@@ -28381,6 +28393,35 @@ export interface components {
              * @description Workflow IDs assigned to the role
              */
             workflow_ids: string[];
+        };
+        /**
+         * RootFileBinding
+         * @description An explicit data grant; uploads inherit only the durable execution scope.
+         */
+        RootFileBinding: {
+            /**
+             * Location
+             * @enum {string}
+             */
+            location: "workspace" | "uploads";
+            /** Path */
+            path: string;
+            /**
+             * Directory Prefix
+             * @default false
+             */
+            directory_prefix: boolean;
+            /** Operations */
+            operations: ("exists" | "read" | "signed_get" | "create")[];
+            /** Max Bytes */
+            max_bytes: number;
+            /**
+             * Max Url Ttl Seconds
+             * @default 600
+             */
+            max_url_ttl_seconds: number;
+            /** Expected Read Sha256 */
+            expected_read_sha256?: string | null;
         };
         /** RuntimeEntityDefinition */
         RuntimeEntityDefinition: {
@@ -34014,6 +34055,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
             /** Expected Evidence Id */
             expected_evidence_id: string;
         };
@@ -34072,6 +34117,10 @@ export interface components {
             shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
             };
+            /** Root File Bindings */
+            root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
+            };
         };
         /** WorkspaceLiveHandoffPreflightResponse */
         WorkspaceLiveHandoffPreflightResponse: {
@@ -34103,6 +34152,10 @@ export interface components {
             /** Verified Shared Tables */
             verified_shared_tables?: {
                 [key: string]: components["schemas"]["SharedRootTableBinding"];
+            };
+            /** Verified Root File Bindings */
+            verified_root_file_bindings?: {
+                [key: string]: components["schemas"]["RootFileBinding"];
             };
             /** Expected Active Deployment Id */
             expected_active_deployment_id: string | null;
