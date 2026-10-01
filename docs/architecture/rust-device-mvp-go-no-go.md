@@ -114,7 +114,7 @@ activity/sequence and absent successful-path event. See
 | Acceptance area | Evidence | Disposition |
 |---|---|---|
 | Current prerequisites and workspace boundary | Exact fetched heads and authored audit | Verified at stated heads |
-| Rust W0 foundation | Bounded candidate workstream; separate validation ledger | Unaccepted pending gates |
+| Rust W0 foundation | All four supported Rust CI jobs passed at `5ad50104` | Operational gate verified; normal pre-PR/CodSpeed still blocked |
 | Response/DB/event drift detection | 90 supported reference/mutant cases passed at `b392ebca` | Core drift gate verified; normal pre-PR gate still failed |
 | Five route parity | No Rust device routes implemented | Not attempted after F-01 |
 | Unchanged Sopdet | Exact source pinned; existing Go agent tests pass | Backend compatibility unproved |
@@ -183,8 +183,9 @@ passed its cold image, security/license, formatting/Clippy/tests and actual HTTP
 OTLP positive/negative tests. Trusted TLS delivered a request span and duration
 histogram; an untrusted chain delivered neither signal. These tests use ephemeral
 CA/server keys and process-local trust only, with no committed private keys or
-host/runtime trust changes. Final migrated-schema/PgBouncer/service smoke readback
-remains pending. Independent source review found no additional security blocker. SDK 0.33 trace shutdown
+host/runtime trust changes. The final migrated-schema/PgBouncer test and real
+production-image smoke also passed: compatible-schema readiness, incompatible-
+schema 503, sanitized logs and SIGTERM exit 0. All four Rust workflow jobs passed. Independent source review found no additional security blocker. SDK 0.33 trace shutdown
 acknowledgement does not guarantee final export delivery: that SDK discards the
 last trace-export result. Collector receipt must be verified separately, as the
 positive TLS test does; a successful shutdown log alone is not delivery evidence.
@@ -205,6 +206,10 @@ GitHub's synthetic merge `3d939da790e438d116a7e853d9c3dfec4407f20b`.
 The sanitized twelve-step lifecycle artifact contains symbolic token labels,
 not credential values; downloaded JSON SHA-256 is
 `dcd0d7d17f9e44473d20c4f464929a1c37666957f21218d67851d07f186f7aa7`.
+W0-B retains the exact observed JSON at
+`contracts/parity/reference/python-device-lifecycle-v1.json`; its documentation-only
+closeout is `09539559961dd22ed3fd3f9179de84bc8f3bd772`, with harness/tests unchanged.
+This is observed evidence, not a replacement expectation or formal W0 acceptance.
 The harness cannot attribute a scoped event if both its job/device identity and
 channel scope disappear; this limitation is explicit, not normalized away.
 Existing response-copy mutants are supplementary to the actual HTTP, committed
