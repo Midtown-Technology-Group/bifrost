@@ -88,6 +88,7 @@ from .resources import resources
 from .forms import forms
 from .integrations import integrations
 from .knowledge import knowledge
+from .oauth_admin import oauth_admin
 from .organizations import organizations
 from .roles import roles
 from .tables import tables
@@ -261,6 +262,7 @@ __all__ = [
     'forms',
     'integrations',
     'knowledge',
+    'oauth_admin',
     'organizations',
     'roles',
     'tables',
