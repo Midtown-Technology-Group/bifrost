@@ -197,7 +197,8 @@ class WorkspaceLiveHandoffCommitService:
             raise WorkspaceLiveHandoffPreflightError(
                 "handoff deployment closure is invalid"
             ) from exc
-        if manifest.shared_tables != request.shared_tables:
+        if (manifest.shared_tables != request.shared_tables
+                or manifest.root_file_bindings != request.root_file_bindings):
             raise WorkspaceLiveHandoffPreflightConflict("handoff resource bindings changed")
         try:
             await require_shared_tables(self.db, manifest.shared_tables, solution_organization_id=solution.organization_id)
@@ -255,6 +256,7 @@ class WorkspaceLiveHandoffCommitService:
                 live_bytes,
                 {workflow.path.replace("\\", "/").lstrip("/") for workflow in selected},
                 has_table_bindings=bool(manifest.shared_tables),
+                has_root_file_bindings=bool(manifest.root_file_bindings),
             )
         except (
             FileNotFoundError,

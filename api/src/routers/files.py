@@ -18,7 +18,7 @@ from typing import Literal, TypeVar, cast
 from urllib.parse import unquote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,9 +65,39 @@ WATCH_SESSION_TTL_SECONDS = 120
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/files", tags=["Files"])
+async def _require_signed_file_context(ctx: Context, request: Request) -> None:
+    """Dropping SDK context must not select Root with a Solution engine token."""
+    from src.services.solution_scope import parse_ctx_solution_id
+
+    # Generic editor calls already operate on Root and do not send SDK file
+    # context. Their authorization is a separate existing contract.
+    if request.url.path.startswith("/api/files/editor"):
+        return
+    if (
+        ctx.user.is_engine_token and ctx.user.engine_solution_id is not None
+        and parse_ctx_solution_id(ctx) is None
+    ):
+        raise HTTPException(status_code=403, detail="Solution engines require their signed file context")
+
+
+router = APIRouter(
+    prefix="/api/files", tags=["Files"], dependencies=[Depends(_require_signed_file_context)],
+)
 _USE_CONTEXT_SOLUTION_ID = object()
 _T = TypeVar("_T")
+
+
+async def _reviewed_root_access(ctx, request, operation):
+    from src.services.solutions.root_file_bindings import (
+        RootFileBindingError, resolve_execution_root_file,
+    )
+    try:
+        return await resolve_execution_root_file(
+            ctx, location=request.location, path=request.path, operation=operation,
+            scope=request.scope, mode=getattr(request, "mode", "cloud"),
+        )
+    except RootFileBindingError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 # =============================================================================
@@ -961,6 +991,13 @@ async def _build_signed_url(
     """Policy-check and generate a single presigned URL."""
     from shared.file_paths import resolve_s3_key
 
+    root_access = None
+    if request.method == "GET":
+        root_access = await _reviewed_root_access(ctx, request, "signed_get")
+        if root_access is not None:
+            if request.expires_in > root_access.binding.max_url_ttl_seconds:
+                raise HTTPException(status_code=422, detail="Root download TTL exceeds the reviewed bound")
+            ctx = root_access.context
     solution_id = _ctx_solution_id(ctx, request.location)
     shared_workspace = request.location == "workspace" and solution_id is None
     if request.method == "GET":
@@ -1024,7 +1061,7 @@ async def _build_signed_url(
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-        if shared_workspace:
+        if shared_workspace and root_access is None:
             from src.services.workspace_release_files import (
                 governed_workspace_release_file_view,
             )
@@ -1075,6 +1112,14 @@ async def _build_signed_url(
                 },
             )
 
+    if root_access is not None:
+        from src.services.solutions.root_file_bindings import read_reviewed_root_bytes
+        try:
+            await read_reviewed_root_bytes(root_access, request.path, retain_bytes=False)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Root download object not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     file_storage = FileStorageService(db)
 
     if request.method == "PUT":
@@ -1093,6 +1138,8 @@ async def _build_signed_url(
             expires_in=request.expires_in,
         )
 
+    if root_access is not None:
+        root_access.audit(request.path, "signed_get")
     return SignedUrlResponse(
         url=url,
         path=s3_path,
@@ -1186,6 +1233,9 @@ async def read_file(
 ) -> FileReadResponse:
     """Read a file from a managed or custom location."""
     try:
+        root_access = await _reviewed_root_access(ctx, request, "read")
+        if root_access is not None:
+            ctx = root_access.context
         _require_local_mode_superuser(request.mode, ctx.user)
         from src.services.solution_scope import file_read_tiers
 
@@ -1218,7 +1268,7 @@ async def read_file(
         for tier in tiers:
             if not await _authorize_file_policy(
                 ctx,
-                action="exists",
+                action="read" if root_access is not None else "exists",
                 location=request.location,
                 scope=tier.scope,
                 path=request.path,
@@ -1228,6 +1278,11 @@ async def read_file(
                 continue
             had_allowed_tier = True
             try:
+                if root_access is not None:
+                    from src.services.solutions.root_file_bindings import read_reviewed_root_bytes
+                    content = await read_reviewed_root_bytes(root_access, request.path)
+                    root_access.audit(request.path, "read")
+                    break
                 content = (
                     await release_view.read(request.path)
                     if release_view is not None
@@ -1382,6 +1437,16 @@ async def write_file(
 ) -> None:
     """Write a file to a managed or custom location."""
     try:
+        root_access = await _reviewed_root_access(ctx, request, "create")
+        if root_access is not None:
+            ctx = root_access.context
+            if request.expected_version is not None or request.impact_candidate_id is not None:
+                raise HTTPException(status_code=422, detail="Root backups allow create-only data writes")
+            if len(request.content) > root_access.binding.max_bytes * 4 // 3 + 4:
+                raise HTTPException(status_code=422, detail="Root backup exceeds the reviewed byte bound")
+            content = base64.b64decode(request.content, validate=True) if request.binary else request.content.encode("utf-8")
+            root_access.validate_bytes(content, create=True)
+            request = request.model_copy(update={"create_only": True})
         _require_local_mode_superuser(request.mode, ctx.user)
         effective_scope = _resolve_effective_scope(ctx, request.location, request.scope)
         solution_id = _ctx_solution_id(ctx, request.location)
@@ -1586,6 +1651,8 @@ async def write_file(
                 action="write",
             )
 
+        if root_access is not None:
+            root_access.audit(request.path, "create")
         logger.info(f"Wrote file: {log_safe(request.path)} ({len(content)} bytes, mode={log_safe(request.mode)}, location={log_safe(request.location)})")
 
     except ValueError as e:
@@ -2026,6 +2093,9 @@ async def file_exists(
 ) -> FileExistsResponse:
     """Check if a file exists."""
     try:
+        root_access = await _reviewed_root_access(ctx, request, "exists")
+        if root_access is not None:
+            ctx = root_access.context
         _require_local_mode_superuser(request.mode, ctx.user)
         from src.services.solution_scope import file_read_tiers
 
@@ -2065,6 +2135,11 @@ async def file_exists(
             )
             if not allowed:
                 continue
+            if root_access is not None:
+                from src.services.solutions.root_file_bindings import read_reviewed_root_bytes
+                await read_reviewed_root_bytes(root_access, request.path, retain_bytes=False)
+                root_access.audit(request.path, "exists")
+                return FileExistsResponse(exists=True)
             if release_view is not None:
                 await release_view.read(request.path)
                 return FileExistsResponse(
@@ -2081,6 +2156,8 @@ async def file_exists(
                 return FileExistsResponse(exists=True)
         return FileExistsResponse(exists=False)
 
+    except FileNotFoundError:
+        return FileExistsResponse(exists=False)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

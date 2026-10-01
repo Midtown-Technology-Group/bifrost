@@ -123,7 +123,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             validate_resource_files(recipe, resources, files)
             desired = compile_workflow_registrations(recipe, files, indexer)
             closure = source_closure(files, {item.path for item in recipe.workflows},
-                has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources))
+                has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources),
+                has_root_file_bindings=bool(recipe.root_file_bindings))
         except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc
         if set(closure) != set(files):
@@ -180,7 +181,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         resource_map = {path: RuntimeResourceResolution(object_key=f"{storage.runtime_prefix}_resources/{path}",
             content_hash=sha256_digest(content), size_bytes=len(content)) for path, content in resources.items()}
         hashes = {path: item.content_hash for path, item in {**sources, **resource_map}.items()}
-        resolution = DeploymentResolutionMap(workflows=entities, sources=sources, shared_tables=recipe.shared_tables,
+        resolution = DeploymentResolutionMap(workflows=entities, sources=sources, shared_tables=recipe.shared_tables, root_file_bindings=recipe.root_file_bindings,
             resources=resource_map)
         manifest = CompiledDeploymentManifest(solution_id=solution_id, deployment_id=deployment_id,
             bundle_hash=sha256_digest(canonical_json({"base_manifest_hash": base.compiled_manifest_hash,
@@ -188,7 +189,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                 "source_hashes": hashes})),
             resolution_map_hash=sha256_digest(canonical_json(resolution)),
             source=DeploymentSource(artifact_key=storage.source_artifact_key, runtime_prefix=storage.runtime_prefix),
-            workflows=entities, shared_tables=recipe.shared_tables, resources=resource_map,
+            workflows=entities, shared_tables=recipe.shared_tables, root_file_bindings=recipe.root_file_bindings, resources=resource_map,
             git=DeploymentGitProvenance(commit_sha=commit_sha))
         await storage.write_source_artifact(source_archive(files), idempotent=True)
         slots = asyncio.Semaphore(16)
@@ -234,7 +235,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         files = _archive_files(await storage.read_source_artifact(), set(resolution.sources))
         resources = await read_deployment_resources(solution_id, deployment_id, resolution)
         _solution, base, rows, desired = await self._desired(solution_id, expected, recipe, files, resources, lock=lock)
-        if desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables:
+        if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
+                or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionError("Workflow candidate differs from its reviewed recipe")
         slots = asyncio.Semaphore(16)
         async def verify(path: str, content: bytes) -> None:
@@ -245,6 +247,13 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                 if await storage.read_runtime_file(path) != content:
                     raise SolutionSourceRevisionError("Workflow candidate runtime bytes changed")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
+        from src.services.solutions.root_file_bindings import (
+            RootFileBindingError, require_root_workspace_files,
+        )
+        try:
+            await require_root_workspace_files(self.db, manifest.root_file_bindings)
+        except RootFileBindingError as exc:
+            raise SolutionSourceRevisionError(str(exc)) from exc
         subscriptions, active = await self._subscriptions([row.id for row in rows])
         hashes = {path: source.content_hash for path, source in {**resolution.sources, **resolution.resources}.items()}
         evidence = {"schema_version": WORKFLOW_REVISION_MARKER, "solution_id": str(solution_id),
@@ -306,5 +315,6 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
         validate_resource_files(recipe, resources, files)
         desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
-        if desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables:
+        if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
+                or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionConflict("Current registrations or table bindings differ from reviewed Git")

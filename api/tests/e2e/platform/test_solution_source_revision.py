@@ -112,7 +112,7 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
     from src.services.solutions import deployment_api, deployment_resources, resource_delivery, source_revision, workflow_revision
@@ -146,7 +146,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
             "function_name": "run",
             "name": "Revision test",
             "type": "workflow",
-            "organization_id": str(PROVIDER_ORG_ID),
+            "organization_id": str(organization_id) if organization_id else None,
             "timeout_seconds": 20,
             "execution_mode": "async",
             "time_saved": 0,
@@ -159,6 +159,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     )
     resolution = DeploymentResolutionMap(
         shared_tables=bindings,
+        root_file_bindings=root_file_bindings or {},
         workflows={entity.portable_ref: entity},
         sources={
             path: RuntimeSourceResolution(
@@ -168,6 +169,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     )
     manifest = CompiledDeploymentManifest(
         shared_tables=bindings,
+        root_file_bindings=root_file_bindings or {},
         solution_id=solution_id,
         deployment_id=base_id,
         bundle_hash=sha256_digest(old_source),
@@ -182,7 +184,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         id=solution_id,
         slug=f"source-revision-{uuid4().hex[:12]}",
         name="Source revision test",
-        organization_id=PROVIDER_ORG_ID,
+        organization_id=organization_id,
         execution_runtime_mode="deployment-v1",
         setup_complete=True,
         allow_outbound_access=False,
@@ -194,7 +196,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         function_name="run",
         path=path,
         type="workflow",
-        organization_id=PROVIDER_ORG_ID,
+        organization_id=organization_id,
         solution_id=solution_id,
         is_active=True,
         endpoint_enabled=False,
@@ -209,7 +211,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     )
     base = SolutionDeployment(
         id=base_id,
-        organization_id=PROVIDER_ORG_ID,
+        organization_id=organization_id,
         solution_id=solution_id,
         state="draft",
         bundle_hash=manifest.bundle_hash,
@@ -287,7 +289,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     for next_state in ("building", "validated", "ready", "activating", "active"):
         await repository.transition(
             base_id,
-            PROVIDER_ORG_ID,
+            organization_id,
             expected_state=previous_state,
             new_state=next_state,
         )
