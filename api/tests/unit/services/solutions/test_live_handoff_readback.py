@@ -130,7 +130,8 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
         handoff.workflow.endpoint_enabled = True
         definition.update(endpoint_enabled=True, public_endpoint=False, api_key_enabled=False,
             access_level='role_based', role_ids=[])
-    entity = entity.model_copy(update={'source_hash': sha256_digest(content), 'definition': definition})
+    entity = RuntimeEntityDefinition.model_validate({**entity.model_dump(mode='json'),
+        'source_hash': sha256_digest(content), 'definition': definition})
     resolution = handoff.resolution.model_copy(update={'sources': {handoff.path: RuntimeSourceResolution(
         object_key=prefix+handoff.path, content_hash=sha256_digest(content))},
         'workflows': {entity.portable_ref: entity}})
@@ -163,36 +164,66 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
 ])
 async def test_missing_loose_binding_fails_closed(handoff, change):
     workflow, solution, deployment = handoff.workflow, handoff.solution, handoff.deployment
-    if change == 'missing_owner': workflow.solution_id = None
-    elif change == 'inactive': workflow.is_active = False
-    elif change == 'scope': workflow.organization_id = uuid4()
-    elif change == 'path': workflow.path = 'other.py'
-    elif change == 'function': workflow.function_name = 'other'
-    elif change == 'name': workflow.name = 'other'
-    elif change == 'timeout': workflow.timeout_seconds = 0
-    elif change == 'public_endpoint': workflow.public_endpoint = True
-    elif change == 'api_key_enabled': workflow.api_key_enabled = True
-    elif change == 'roles': workflow.roles = [SimpleNamespace(id=uuid4())]
-    elif change == 'legacy_runtime': solution.execution_runtime_mode = 'repo-v1'
-    elif change == 'missing_pointer': solution.active_deployment_id = None
-    elif change == 'wrong_pointer': solution.active_deployment_id = uuid4()
-    elif change == 'inactive_solution': solution.status = 'inactive'
-    elif change == 'inactive_deployment': deployment.state = 'ready'
-    elif change == 'unactivated': deployment.activated_at = None
-    elif change == 'manifest_hash': deployment.compiled_manifest_hash = 'sha256:'+'f'*64
-    elif change == 'resolution_hash': deployment.resolution_map_hash = 'sha256:'+'f'*64
-    elif change == 'artifact_key': deployment.source_artifact_key = 'mutable/source.zip'
-    elif change == 'runtime_prefix': deployment.runtime_storage_prefix = 'mutable/'
-    elif change == 'bundle_hash': deployment.bundle_hash = 'sha256:'+'f'*64
-    elif change == 'receipt_digest': deployment.validation_result['preflight_evidence_id'] = 'sha256:'+'f'*64
-    elif change == 'receipt_release': deployment.validation_result['release_id'] = 'sha256:'+'f'*64
-    elif change == 'receipt_row': deployment.validation_result['release_row_id'] = str(uuid4())
-    elif change == 'receipt_paths': deployment.validation_result['verified_source_paths'] = []
-    elif change == 'receipt_workflows': deployment.validation_result['workflow_ids'] = []
-    elif change == 'unreviewed': deployment.validation_result['schema_version'] = 'bifrost.initial-reviewed-workflow-install/v1'
-    elif change == 'detached_revision': deployment.validation_result['schema_version'] = readback.SOURCE_MARKER
-    elif change == 'archive_bytes': handoff.storage['archive'] = source_archive({handoff.path: b'changed'})
-    elif change == 'runtime_bytes': handoff.storage['runtime'] = b'changed'
+    if change == 'missing_owner':
+        workflow.solution_id = None
+    elif change == 'inactive':
+        workflow.is_active = False
+    elif change == 'scope':
+        workflow.organization_id = uuid4()
+    elif change == 'path':
+        workflow.path = 'other.py'
+    elif change == 'function':
+        workflow.function_name = 'other'
+    elif change == 'name':
+        workflow.name = 'other'
+    elif change == 'timeout':
+        workflow.timeout_seconds = 0
+    elif change == 'public_endpoint':
+        workflow.public_endpoint = True
+    elif change == 'api_key_enabled':
+        workflow.api_key_enabled = True
+    elif change == 'roles':
+        workflow.roles = [SimpleNamespace(id=uuid4())]
+    elif change == 'legacy_runtime':
+        solution.execution_runtime_mode = 'repo-v1'
+    elif change == 'missing_pointer':
+        solution.active_deployment_id = None
+    elif change == 'wrong_pointer':
+        solution.active_deployment_id = uuid4()
+    elif change == 'inactive_solution':
+        solution.status = 'inactive'
+    elif change == 'inactive_deployment':
+        deployment.state = 'ready'
+    elif change == 'unactivated':
+        deployment.activated_at = None
+    elif change == 'manifest_hash':
+        deployment.compiled_manifest_hash = 'sha256:'+'f'*64
+    elif change == 'resolution_hash':
+        deployment.resolution_map_hash = 'sha256:'+'f'*64
+    elif change == 'artifact_key':
+        deployment.source_artifact_key = 'mutable/source.zip'
+    elif change == 'runtime_prefix':
+        deployment.runtime_storage_prefix = 'mutable/'
+    elif change == 'bundle_hash':
+        deployment.bundle_hash = 'sha256:'+'f'*64
+    elif change == 'receipt_digest':
+        deployment.validation_result['preflight_evidence_id'] = 'sha256:'+'f'*64
+    elif change == 'receipt_release':
+        deployment.validation_result['release_id'] = 'sha256:'+'f'*64
+    elif change == 'receipt_row':
+        deployment.validation_result['release_row_id'] = str(uuid4())
+    elif change == 'receipt_paths':
+        deployment.validation_result['verified_source_paths'] = []
+    elif change == 'receipt_workflows':
+        deployment.validation_result['workflow_ids'] = []
+    elif change == 'unreviewed':
+        deployment.validation_result['schema_version'] = 'bifrost.initial-reviewed-workflow-install/v1'
+    elif change == 'detached_revision':
+        deployment.validation_result['schema_version'] = readback.SOURCE_MARKER
+    elif change == 'archive_bytes':
+        handoff.storage['archive'] = source_archive({handoff.path: b'changed'})
+    elif change == 'runtime_bytes':
+        handoff.storage['runtime'] = b'changed'
     with pytest.raises((ValueError, KeyError)):
         await handoff.guard.require(handoff.inherited)
 
