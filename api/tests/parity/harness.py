@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from abc import abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -45,9 +46,15 @@ class Observation:
 
 
 class EvidenceCapture(Protocol):
-    async def snapshot(self) -> dict[str, Any]: ...
+    @abstractmethod
+    async def snapshot(self) -> dict[str, Any]:
+        """Read committed state for the explicitly owned fixture scope."""
+        raise NotImplementedError
 
-    async def drain_events(self) -> list[dict[str, Any]]: ...
+    @abstractmethod
+    async def drain_events(self) -> list[dict[str, Any]]:
+        """Read ordered events through the capture's subscription barrier."""
+        raise NotImplementedError
 
 
 class BackendUnavailable(RuntimeError):

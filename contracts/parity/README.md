@@ -8,7 +8,17 @@ Acceptance is outstanding: on 2026-10-01 the supported `pve-t340` Docker lane
 could not start PostgreSQL/RabbitMQ because `docker-default` AppArmor denied
 Unix sockets. No response snapshot has been fabricated or frozen. The lifecycle
 test emits sanitized `/tmp/bifrost/parity-lifecycle.json` only after actual
-successful execution; review and freeze that evidence after host repair.
+successful execution; review and freeze that evidence after a complete supported
+reference run.
+
+Hosted reference run [36826144370](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36826144370)
+at `0f519eeb2a4847992e698ffa665fd3aa5bc89687` executed 87 tests: 69 passed,
+18 failed because the characterization incorrectly assumed FastAPI's default
+validation detail list. Passing tests include lifecycle, handled-conflict partial
+commit, reclaim/loss, independent Python comparison, cloned-observation comparator
+mutants and real wrong-channel Redis capture. The corrected exact Bifrost
+validation envelopes and new pre-capture HTTP/SQL mutants require a fresh complete
+hosted run. W0 acceptance, frozen vectors and Rust/Go proof remain outstanding.
 
 Run through the supported Linux Docker harness:
 
@@ -89,21 +99,36 @@ an approved clock capture mechanism before accepting comparisons.
 
 Authority is the checked-in `device_protocol.py`, `device_jobs.py`,
 `device_keys.py`, Pydantic `device_jobs.py`, ORM models and current Alembic
-device/job/log migrations, checked against existing unit/device E2E suites.
+device/job/log migrations, plus `main.py`'s global validation handler and
+`models/contracts/common.py`'s ErrorResponse. These were checked against existing
+unit/device E2E suites. Native Pydantic errors pass through Bifrost's global
+handler: HTTP 422 body is exactly `{error: "validation_error", message: <joined
+field messages>, details: null}`, not FastAPI's default detail list.
 
 | Boundary | Executable characterization |
 | --- | --- |
-| All five routes | Auth matrix: missing header is FastAPI 422; malformed/wrong-secret/unknown-ID/wrong-prefix/uppercase UUID/key-disabled is 401; disabled status takes precedence over key-enabled and returns 403. Rejections do not touch rows or publish. |
+| All five routes | Auth matrix: missing header is Bifrost validation_error 422 with message `header.X-Bifrost-Key: Field required` and null details; malformed/wrong-secret/unknown-ID/wrong-prefix/uppercase UUID/key-disabled is 401; disabled status takes precedence over key-enabled and returns 403. Rejections do not touch rows or publish. |
 | Heartbeat | Pending poll 5s, otherwise 10s; version strips control chars/whitespace; session mismatch touches device but preserves job activity; cancel flag visible only to owning session. |
 | Claim | Response includes script/params/limits and 60s lease; DB claim token/session/activity committed; idle 204; competing claimers have exactly one winner; 55s old claim remains fenced and 65s old claim reclaims, with measured cutoff windows. |
 | Running | First transition accepts and replaces another session; current-token replay preserves stored session and started_at while renewing activity. No additional session fence is invented. |
 | Logs | Out-of-order seqs sort ascending, gaps allowed; durable log_sequence is highest; exactly one ordered event for successful inserted rows; replay ignores ts, renews activity, inserts/publishes nothing; changed text conflicts, but earlier staged inserts can commit during dependency teardown without a log event. |
 | Result | Terminal status/output/exit code commit; duration_ms/truncated/extra input are not stored; result replay is terminal 409; wrong fence takes precedence over terminal state. |
 | Scope/errors | Foreign-device and unknown-job are 404 before fence; authenticated error still commits device touch. |
-| Validation | Entry/batch Pydantic limits give native 422; duplicate seq gives domain 422; aggregate log chars above 1 MiB gives domain 413 before fence. Only domain errors touch device. Lost is rejected as agent result. |
+| Validation | Entry/batch Pydantic limits give Bifrost's exact global validation_error envelope/messages at 422; duplicate seq gives domain 422; aggregate log chars above 1 MiB gives domain 413 before fence. Only domain errors touch device. Lost is rejected as agent result. |
 | Cancel | Python pending/claimed cancel terminal immediately; running remains running with flag, then agent may finish cancelled. |
 | Reclaim/loss | Claimed age beyond lease yields fresh token, old token fences all mutations; committed running ACK replay is idempotent; watchdog silence and timeout backstop each yield lost; late current-token mutations terminal; lost never requeues. |
-| Comparator | Actual successful traces independently mutated in status, body, DB log_sequence and delivered log text must fail their own comparison plane. Opaque payload UUIDs must survive mapping, misrouted publications must be observable, and independent Python environments must compare equal. |
+| Comparator | Fresh captures must detect real forwarded HTTP status/body mutations, an actual committed owned-job SQL log_sequence mutation, and a misrouted Redis publication independently. Cloned successful observations also exercise comparator-only mutations. Opaque payload UUIDs must survive mapping and independent Python environments must compare equal. |
+
+The deliberate mutation tests are synthetic harness self-tests, not Rust or Go
+compatibility evidence. `ResponseDriftTransport` forwards each request through
+`httpx.AsyncHTTPTransport` to the real Python API, records the original successful
+response, then changes status or body before `DeviceAdapter` parses it. Fresh
+committed-state/event capture must remain equal while the intended HTTP plane
+fails comparison. The SQL test commits a log_sequence change to the exact owned
+job between identical heartbeat steps; a fresh connection must observe it and
+the database comparison must fail while HTTP/event planes remain equal. Neither
+test edits a captured Observation to simulate these boundaries. The existing
+wrong-channel Redis publication test exercises the actual event subscriber.
 
 ## Critical spawn ambiguity retained from reference
 
@@ -127,7 +152,7 @@ iterating the sorted batch. If a later accepted seq conflicts, the route catches
 the earlier staged inserts despite HTTP 409. Activity and log_sequence assignment
 are bypassed and no log publication occurs. The source-derived
 `log-conflict-partial-persistence` scenario retains this discrepancy; runtime
-proof remains outstanding. It does not assert stronger rollback semantics or
+confirmation passed in the hosted Python reference run above. It does not assert stronger rollback semantics or
 change the Python implementation. This is a separate baseline delivery risk
 requiring architect disposition before W1/W2 acceptance.
 

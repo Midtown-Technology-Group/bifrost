@@ -7,8 +7,11 @@ import json
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
+from sqlalchemy import update
 
 from src.models.orm.device_jobs import DeviceJob
 from src.models.orm.devices import Device
@@ -87,6 +90,93 @@ async def test_capture_observes_wrong_channel_publication(python_adapter, parity
         assert_parity([reference], [candidate], env.bindings, env.bindings)
 
 
+class ResponseDriftTransport(httpx.AsyncBaseTransport):
+    """Forward real HTTP, then inject a synthetic wire mutation before capture.
+
+    This is a capture/comparator self-test, never a replacement API or consumer.
+    """
+
+    def __init__(self, plane: str):
+        assert plane in {"status", "body"}
+        self.plane = plane
+        self.upstream = httpx.AsyncHTTPTransport(retries=0)
+        self.original_status: int | None = None
+        self.original_body: dict[str, Any] | None = None
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await self.upstream.handle_async_request(request)
+        try:
+            await response.aread()
+            self.original_status = response.status_code
+            self.original_body = response.json()
+            assert self.original_status == 200
+            assert self.original_body is not None
+            body = dict(self.original_body)
+            status = self.original_status
+            if self.plane == "status":
+                status = 202
+            else:
+                assert body["cancel_requested"] is False
+                body["cancel_requested"] = True
+            return httpx.Response(status, json=body, request=request)
+        finally:
+            await response.aclose()
+
+    async def aclose(self) -> None:
+        await self.upstream.aclose()
+
+
+@pytest.mark.parametrize("plane", ["status", "body"])
+async def test_capture_detects_forwarded_http_wire_drift(python_adapter, parity_environment, plane):
+    env = parity_environment
+    path, body = route_body(env, "heartbeat")
+    reference = await python_adapter.request("wire-capture", path, body, env.keys["device"])
+    expect(reference, 200)
+    transport = ResponseDriftTransport(plane)
+    wrapped = DeviceAdapter("python-wire-mutant", str(python_adapter.client.base_url), python_adapter.capture, transport=transport)
+    try:
+        candidate = await wrapped.request("wire-capture", path, body, env.keys["device"])
+        assert transport.original_status == 200
+        assert transport.original_body is not None
+        assert transport.original_body["cancel_requested"] is False
+        if plane == "status":
+            assert candidate.status == 202
+        else:
+            assert candidate.status == 200
+            assert candidate.body["cancel_requested"] is True
+        left = canonicalize([reference], env.bindings)[0]
+        right = canonicalize([candidate], env.bindings)[0]
+        assert left["database"] == right["database"]
+        assert left["events"] == right["events"] == []
+        with pytest.raises(AssertionError, match=f"{plane} differs"):
+            assert_parity([reference], [candidate], env.bindings, env.bindings)
+    finally:
+        await wrapped.close()
+
+
+async def test_capture_detects_actual_committed_database_drift(python_adapter, parity_environment):
+    env = parity_environment
+    path, body = route_body(env, "heartbeat")
+    reference = await python_adapter.request("database-capture", path, body, env.keys["device"])
+    expect(reference, 200)
+    assert reference.database["jobs"][0]["log_sequence"] == 0
+    # A real, committed SQL mutation restricted to the owned synthetic job.
+    # Retain updated_at exactly so the deliberate difference is log_sequence.
+    async with env.sessions() as db:
+        changed = await db.execute(update(DeviceJob).where(DeviceJob.id == env.ids["job"]).values(log_sequence=41, updated_at=DeviceJob.updated_at))
+        assert changed.rowcount == 1
+        await db.commit()
+    candidate = await python_adapter.request("database-capture", path, body, env.keys["device"])
+    expect(candidate, 200)
+    assert candidate.database["jobs"][0]["log_sequence"] == 41
+    left = canonicalize([reference], env.bindings)[0]
+    right = canonicalize([candidate], env.bindings)[0]
+    assert left["body"] == right["body"]
+    assert left["events"] == right["events"] == []
+    with pytest.raises(AssertionError, match="database differs"):
+        assert_parity([reference], [candidate], env.bindings, env.bindings)
+
+
 @pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize("credential,expected,code", [
     ("missing", 422, None), ("malformed", 401, "invalid_key"),
@@ -123,7 +213,7 @@ async def test_auth_reference(python_adapter, parity_environment, route, credent
     assert observed.database == before
     assert observed.events == []
     if credential == "missing":
-        assert observed.body["detail"][0]["loc"] == ["header", "X-Bifrost-Key"]
+        assert observed.body == {"error": "validation_error", "message": "header.X-Bifrost-Key: Field required", "details": None}
     else:
         assert observed.body == {"error": {"code": code, "message": "device is disabled" if expected == 403 else "invalid device key", "retryable": False}}
 
@@ -146,26 +236,26 @@ async def test_ownership_precedes_fence(python_adapter, parity_environment, rout
 
 
 VALIDATION = [
-    ("heartbeat", {}, 422, None),
-    ("heartbeat", {"agent_version": "a" * 65}, 422, None),
-    ("heartbeat", {"agent_version": 1}, 422, None),
-    ("running", {"claim_token": "invalid"}, 422, None),
-    ("logs", {"entries": []}, 422, None),
-    ("logs", {"entries": [{"seq": 0, "stream": "stdout", "text": "x"}]}, 422, None),
-    ("logs", {"entries": [{"seq": 1, "stream": "other", "text": "x"}]}, 422, None),
-    ("logs", {"entries": [{"seq": 1, "stream": "stdout", "text": "x" * 65537}]}, 422, None),
-    ("logs", {"entries": [{"seq": 1, "stream": "stdout", "text": "x"}] * 513}, 422, None),
-    ("logs", {"entries": [{"seq": 1, "stream": "stdout", "text": "x"}] * 2}, 422, "invalid_parameter"),
-    ("logs", {"entries": [{"seq": index + 1, "stream": "stdout", "text": "x" * 65536} for index in range(17)]}, 413, "payload_too_large"),
-    ("result", {"status": "lost"}, 422, None),
-    ("result", {"output": "x" * 65537}, 422, None),
-    ("result", {"error": "x" * 4097}, 422, None),
-    ("result", {"duration_ms": -1}, 422, None),
+    ("heartbeat", {}, 422, None, "agent_session_id: Field required"),
+    ("heartbeat", {"agent_version": "a" * 65}, 422, None, "agent_version: String should have at most 64 characters"),
+    ("heartbeat", {"agent_version": 1}, 422, None, "agent_version: Input should be a valid string"),
+    ("running", {"claim_token": "invalid"}, 422, None, "claim_token: Input should be a valid UUID, invalid character: found `i` at 1"),
+    ("logs", {"entries": []}, 422, None, "entries: List should have at least 1 item after validation, not 0"),
+    ("logs", {"entries": [{"seq": 0, "stream": "stdout", "text": "x"}]}, 422, None, "entries.0.seq: Input should be greater than or equal to 1"),
+    ("logs", {"entries": [{"seq": 1, "stream": "other", "text": "x"}]}, 422, None, "entries.0.stream: Input should be 'stdout' or 'stderr'"),
+    ("logs", {"entries": [{"seq": 1, "stream": "stdout", "text": "x" * 65537}]}, 422, None, "entries.0.text: String should have at most 65536 characters"),
+    ("logs", {"entries": [{"seq": 1, "stream": "stdout", "text": "x"}] * 513}, 422, None, "entries: List should have at most 512 items after validation, not 513"),
+    ("logs", {"entries": [{"seq": 1, "stream": "stdout", "text": "x"}] * 2}, 422, "invalid_parameter", None),
+    ("logs", {"entries": [{"seq": index + 1, "stream": "stdout", "text": "x" * 65536} for index in range(17)]}, 413, "payload_too_large", None),
+    ("result", {"status": "lost"}, 422, None, "status: Input should be 'succeeded', 'failed', 'timeout' or 'cancelled'"),
+    ("result", {"output": "x" * 65537}, 422, None, "output: String should have at most 65536 characters"),
+    ("result", {"error": "x" * 4097}, 422, None, "error: String should have at most 4096 characters"),
+    ("result", {"duration_ms": -1}, 422, None, "duration_ms: Input should be greater than or equal to 0"),
 ]
 
 
-@pytest.mark.parametrize("route,changes,status,code", VALIDATION, ids=[f"validation-{index}" for index in range(len(VALIDATION))])
-async def test_validation_reference(python_adapter, parity_environment, route, changes, status, code):
+@pytest.mark.parametrize("route,changes,status,code,message", VALIDATION, ids=[f"validation-{index}" for index in range(len(VALIDATION))])
+async def test_validation_reference(python_adapter, parity_environment, route, changes, status, code, message):
     env = parity_environment
     path, body = route_body(env, route)
     if route == "heartbeat" and not changes:
@@ -180,8 +270,7 @@ async def test_validation_reference(python_adapter, parity_environment, route, c
         assert observed.database["devices"][0]["last_seen_at"] is not None
     else:
         assert observed.database == before
-        assert observed.body["detail"]
-        assert all(error["loc"][0] == "body" for error in observed.body["detail"])
+        assert observed.body == {"error": "validation_error", "message": message, "details": None}
     assert observed.database["jobs"] == before["jobs"]
     assert observed.database["logs"] == []
 
