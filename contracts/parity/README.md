@@ -1,24 +1,48 @@
 # Device reference characterization (W0-B)
 
-Version: 1. Baseline: `d39aa0adf15ba12dfde5f2f39628cac88c2e98a0`.
+Version: 1. Device-source baseline: `d39aa0adf15ba12dfde5f2f39628cac88c2e98a0`.
+Platform main merged through `e77947fab5762e49dd5fdc390bd65ca84bc22c3c`;
+its changes do not alter the device authority used here.
 Procedure: `mtg-engineering-flow` 2026-09-30.1. RFC #1005 is provisional.
 This package is an executable Python reference, not Rust or Go compatibility
 evidence. Rust routes deliberately raise `BackendUnavailable` until W2.
-Acceptance is outstanding: on 2026-10-01 the supported `pve-t340` Docker lane
-could not start PostgreSQL/RabbitMQ because `docker-default` AppArmor denied
-Unix sockets. No response snapshot has been fabricated or frozen. The lifecycle
-test emits sanitized `/tmp/bifrost/parity-lifecycle.json` only after actual
-successful execution; review and freeze that evidence after a complete supported
-reference run.
 
-Hosted reference run [36826144370](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36826144370)
-at `0f519eeb2a4847992e698ffa665fd3aa5bc89687` executed 87 tests: 69 passed,
-18 failed because the characterization incorrectly assumed FastAPI's default
-validation detail list. Passing tests include lifecycle, handled-conflict partial
-commit, reclaim/loss, independent Python comparison, cloned-observation comparator
-mutants and real wrong-channel Redis capture. The corrected exact Bifrost
-validation envelopes and new pre-capture HTTP/SQL mutants require a fresh complete
-hosted run. W0 acceptance, frozen vectors and Rust/Go proof remain outstanding.
+Supported hosted reference run
+[36827831696](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36827831696/job/110257404657)
+at harness head `b392ebcac796f4cc5cf1cc2a21948025a93b1725`, synthetic merge
+`3d939da790e438d116a7e853d9c3dfec4407f20b`, passed **90 tests in 116.69s**.
+It confirms all five Python routes, exact Bifrost validation envelopes,
+handled-conflict partial persistence, reclaim/loss, independent seeded Python
+comparison and shared competing claims. Fresh captures independently detect
+forwarded real HTTP status/body mutations, an actual committed owned-job SQL
+mutation and a scope-preserving wrong-channel Redis publication. These synthetic
+harness self-tests establish drift detection, not Rust or Go compatibility.
+The prior run 36826144370 passed 69 of 87 tests; its 18 failures came from the
+characterization assuming FastAPI's default validation detail list. The final
+run confirms the correction against Bifrost's existing global handler without
+changing server behavior.
+
+The exact downloaded, sanitized 12-step lifecycle observation is retained as
+[python-device-lifecycle-v1.json](reference/python-device-lifecycle-v1.json).
+It is observed evidence, not redefined expected behavior or formal W0 acceptance.
+Its source is hosted artifact
+[device-reference-3d939da790e438d116a7e853d9c3dfec4407f20b](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36827831696/artifacts/11145639528);
+SHA256 `dcd0d7d17f9e44473d20c4f464929a1c37666957f21218d67851d07f186f7aa7`.
+The architect and independent reviewer inspected it before retention: fixture
+identities and claim tokens are labels, and credentials/raw hash bytes are absent.
+The lifecycle test emits sanitized `/tmp/bifrost/parity-lifecycle.json` only after
+actual successful execution. No observation has been fabricated.
+
+Acceptance remains outstanding. The authenticated clean-candidate normal
+`./test.sh pre-pr` gate at `b392ebcac796f4cc5cf1cc2a21948025a93b1725`
+finished with exit 1: API quality reported 3,954 errors and 89 warnings,
+predominantly unresolved third-party imports. The supported local `pve-t340`
+project `bifrost-test-35c8fc78` separately could not start PostgreSQL/RabbitMQ
+because `docker-default` AppArmor denied Unix sockets (E-01). The passing hosted
+reference job does not waive existing gates. No host pytest or security-profile
+bypass was used. W1/W2 remain stopped pending architect disposition of the
+possible-spawn replay and partial-log persistence risks; Rust/Go, mixed-writer
+and cutover proof remain outstanding.
 
 Run through the supported Linux Docker harness:
 
@@ -65,9 +89,9 @@ because all owned route queries are device-scoped; callers can supply separate
 engines and Redis endpoints for separate stacks. Neither instance is reused
 or reset to simulate the other backend. Shared mode intentionally passes the
 same environment to two adapters and captures evidence after their concurrent
-requests complete. W0 contains a Python/Python competing-claim test; acceptance
-proof is pending its supported runtime execution. Python/Rust mixed writers
-require W2 and an actual Rust endpoint.
+requests complete. The independent-environment and shared Python/Python
+competing-claim tests passed in the supported run above. Python/Rust mixed
+writers require W2 and an actual Rust endpoint.
 
 `lifecycle(adapter, environment)` and `reclaim_and_loss(adapter, environment)`
 are reusable scenario drivers. `route_body()` supplies the same five-route
@@ -156,9 +180,9 @@ confirmation passed in the hosted Python reference run above. It does not assert
 change the Python implementation. This is a separate baseline delivery risk
 requiring architect disposition before W1/W2 acceptance.
 
-Dependency cleanup versus response-delivery ordering is FastAPI-version dependent
-until verified at runtime. Capture sets a transaction-local five-second lock
-timeout, then acquires `FOR SHARE` on the owned jobs to wait for any domain
+Dependency cleanup versus response-delivery ordering is FastAPI-version dependent.
+The supported reference run verifies the current dependency and capture behavior.
+Capture sets a transaction-local five-second lock timeout, then acquires `FOR SHARE` on the owned jobs to wait for any domain
 writer's `FOR UPDATE` lock to release and reads all rows in that fresh session.
 Observation's clock window
 ends after committed-state/event capture, so teardown-generated receive clocks
