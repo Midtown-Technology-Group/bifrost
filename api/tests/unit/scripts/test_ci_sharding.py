@@ -60,7 +60,7 @@ def test_measured_inventory_covers_every_backend_file_exactly_once(monkeypatch):
     assert set(allocator.WEIGHTS) <= set(files)
     assert all(weight > 0 for weight in allocator.WEIGHTS.values())
     shards = allocator.split(files, 4)
-    assert sorted(file for shard in shards for file in shard) == files
+    assert sorted(file for shard in shards for file in shard) == sorted(files)
     loads = [
         sum(allocator.WEIGHTS.get(file, allocator.DEFAULT_WEIGHT) for file in shard)
         for shard in shards
