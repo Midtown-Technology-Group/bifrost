@@ -1,6 +1,6 @@
 use crate::config::TelemetryConfig;
 use opentelemetry::{KeyValue, trace::TracerProvider};
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 use opentelemetry_sdk::{
     Resource,
     metrics::SdkMeterProvider,
@@ -32,6 +32,7 @@ impl Telemetry {
         let (traces, metrics) = if let Some(endpoint) = &config.endpoint {
             let exporter = opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
+                .with_tls_config(tonic::transport::ClientTlsConfig::new().with_native_roots())
                 .with_endpoint(endpoint)
                 .with_timeout(Duration::from_secs(2))
                 .build()
@@ -50,6 +51,7 @@ impl Telemetry {
                 .build();
             let exporter = opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
+                .with_tls_config(tonic::transport::ClientTlsConfig::new().with_native_roots())
                 .with_endpoint(endpoint)
                 .with_timeout(Duration::from_secs(2))
                 .build()
@@ -98,23 +100,26 @@ impl Telemetry {
         tokio::time::timeout(
             Duration::from_secs(8),
             tokio::task::spawn_blocking(move || {
+                let mut flushed = true;
                 if let Some(provider) = self.traces {
                     let success = provider
                         .shutdown_with_timeout(Duration::from_secs(2))
                         .is_ok();
                     tracing::info!(signal = "traces", success, "OTLP exporter shutdown");
+                    flushed &= success;
                 }
                 if let Some(provider) = self.metrics {
                     let success = provider
                         .shutdown_with_timeout(Duration::from_secs(2))
                         .is_ok();
                     tracing::info!(signal = "metrics", success, "OTLP exporter shutdown");
+                    flushed &= success;
                 }
+                if flushed { Ok(()) } else { Err(TelemetryError) }
             }),
         )
         .await
         .map_err(|_| TelemetryError)?
-        .map_err(|_| TelemetryError)?;
-        Ok(())
+        .map_err(|_| TelemetryError)?
     }
 }

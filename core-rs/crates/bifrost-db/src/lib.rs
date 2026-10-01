@@ -84,6 +84,14 @@ mod live_tests {
         ] {
             // DDL is confined to this transaction and rolled back even on failure.
             let mut tx = database.pool().begin().await?;
+            sqlx::query("SET LOCAL lock_timeout = '1000ms'")
+                .persistent(false)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("SET LOCAL statement_timeout = '2000ms'")
+                .persistent(false)
+                .execute(&mut *tx)
+                .await?;
             sqlx::query(mutation)
                 .persistent(false)
                 .execute(&mut *tx)

@@ -60,7 +60,11 @@ jobs:
         run: docker build --pull --no-cache --build-arg BIFROST_BUILD_SHA="$GITHUB_SHA" -t bifrost-rust-ci -f core-rs/Dockerfile core-rs
       - name: Invalid configuration must reject startup
         run: |
-          if docker run --rm bifrost-rust-ci; then
-            echo 'Rust service accepted missing database configuration' >&2
+          set +e
+          startup_output=$(docker run --rm bifrost-rust-ci 2>&1)
+          startup_status=$?
+          set -e
+          if [ "$startup_status" -ne 1 ] || [ "$startup_output" != 'invalid or missing configuration: BIFROST_DATABASE_URL' ]; then
+            echo 'Rust service did not return the expected sanitized configuration error and exit code' >&2
             exit 1
           fi

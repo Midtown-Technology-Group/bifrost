@@ -148,7 +148,8 @@ pub enum ServeError {
     ShutdownTimeout,
 }
 
-/// Stop intake, fail readiness, drain HTTP, then close the pool. No detached tasks.
+/// Stop intake, fail readiness, drain HTTP, then close the pool.
+/// A fatal timeout requires the process owner to exit, releasing residual Axum tasks.
 pub async fn serve(
     listener: TcpListener,
     state: AppState,
@@ -164,8 +165,7 @@ pub async fn serve(
             tracing::info!("graceful shutdown started");
             let _ = started_tx.send(());
         });
-    let server = std::future::IntoFuture::into_future(server);
-    tokio::pin!(server);
+    let mut server = Box::pin(std::future::IntoFuture::into_future(server));
     let result = tokio::select! {
         result = &mut server => result.map_err(|_| ServeError::Server),
         _ = started_rx => match tokio::time::timeout(shutdown_timeout, &mut server).await {
@@ -173,10 +173,18 @@ pub async fn serve(
             Err(_) => Err(ServeError::ShutdownTimeout),
         },
     };
+    drop(server);
     state.begin_shutdown();
     tokio::time::timeout(shutdown_timeout, state.database.close())
         .await
         .map_err(|_| ServeError::ShutdownTimeout)?;
-    tracing::info!("HTTP server and database pool stopped");
+    if result.is_ok() {
+        tracing::info!("HTTP drain completed and database pool closed");
+    } else {
+        tracing::error!(
+            reason = "http_shutdown_failed",
+            "database pool closed; process exit required for residual HTTP tasks"
+        );
+    }
     result
 }

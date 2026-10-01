@@ -61,6 +61,10 @@ The two configurable shutdown phases each have a deadline. OTLP flush is bounded
 by an additional 8 seconds: SDK0.33 traces use a 2-second deadline, while metrics
 shutdown internally uses 5 seconds despite its supplied timeout argument. Set
 the container stop grace period above the combined deadlines (default 28 seconds).
+An HTTP shutdown timeout drops the serving future before pool close and returns
+an error; the owning process must exit to release any residual Axum connection
+tasks. Exporter shutdown completion and successful flush are distinct: provider
+failures emit a sanitized unsuccessful outcome and return an error.
 
 JSON logs/traces record router templates, server-generated request IDs, service,
 version/build SHA, status, duration, DB wait/transaction duration and drain/exporter

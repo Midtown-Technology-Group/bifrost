@@ -64,13 +64,16 @@ WITH required(table_name, column_name, type_name, not_null) AS (VALUES
     ('device_jobs', 'CHECK (((max_output_bytes >= 1024) AND (max_output_bytes <= 16777216)))'),
     ('device_job_logs', 'PRIMARY KEY (job_id, seq)'),
     ('device_job_logs', 'FOREIGN KEY (job_id) REFERENCES device_jobs(id) ON DELETE CASCADE')
-)
+), active_predicate(expression) AS (VALUES (
+    '(status)::text = ANY ((ARRAY[''pending''::character varying, ''claimed''::character varying, ''running''::character varying])::text[])'
+))
 SELECT
     EXISTS (SELECT 1 FROM public.alembic_version WHERE version_num <> '')
     AND NOT EXISTS (
         SELECT 1 FROM required r LEFT JOIN actual a
           ON a.table_name = r.table_name AND a.column_name = r.column_name
         WHERE a.column_name IS NULL OR a.type_name <> r.type_name OR a.not_null <> r.not_null
+            OR NOT has_column_privilege(current_user, 'public.' || r.table_name, r.column_name, 'SELECT')
     )
     AND NOT EXISTS (
         SELECT 1 FROM required_constraints r WHERE NOT EXISTS (
@@ -89,5 +92,11 @@ SELECT
             AND i.indisunique AND i.indisvalid AND i.indisready
             AND pg_get_indexdef(i.indexrelid, 1, true) = 'device_id'
             AND i.indnkeyatts = 1 AND i.indnatts = 1
-            AND pg_get_expr(i.indpred, i.indrelid) = '(status)::text = ANY ((ARRAY[''pending''::character varying, ''claimed''::character varying, ''running''::character varying])::text[])'
+            -- The only permitted deparse variation is one pair of parentheses
+            -- enclosing the entire identical boolean expression. No tokens,
+            -- casts, statuses, operators or internal grouping are normalized.
+            AND pg_get_expr(i.indpred, i.indrelid) IN (
+                SELECT expression FROM active_predicate
+                UNION ALL SELECT '(' || expression || ')' FROM active_predicate
+            )
     );
