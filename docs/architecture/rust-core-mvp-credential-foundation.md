@@ -218,51 +218,71 @@ nor C2/C3 acceptance follows from this run.
 ## Current prerequisite and reference candidates
 
 Separate [CRED-P1-S #1024](https://github.com/Midtown-Technology-Group/bifrost/pull/1024)
-is open, unmerged and unwired. The supported literal clean-current-main
-`./test.sh pre-pr` gate passed at `e04957239e1d8c23eb6c304d93408bf44d988ec6`
-in [run 36928245925](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36928245925),
-which also passed ordinary CI. Its artifact records exit zero and empty owned
-container/network/volume readback after teardown. That proof is historical to
-that candidate, not proof for later source.
-
-The current candidate is `6419069da195b053c885ab349f431ff4fae62098`, containing
-main `658283e8c8707ceecf9e2c0b56b779d074b7bdaf` and the single migration parent
+is open, unmerged and unwired at
+`6419069da195b053c885ab349f431ff4fae62098`. It contains main
+`658283e8c8707ceecf9e2c0b56b779d074b7bdaf` and migration parent
 `20261001_solution_src_account`. It verifies signatures and claims through
-PyJWT `decode_complete` before inspecting the closed header. Exact locked PyJWT
-2.15.1 source/hash and static checks support that API; candidate Sonar passed.
-[Literal pre-PR run 36933342485](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933342485)
-and ordinary candidate CI remain pending. CodSpeed #1003 is still blocking;
-no threshold waiver or benchmark retry establishes acceptance.
+locked PyJWT 2.15.1 `decode_complete` before inspecting the closed header.
+Candidate Sonar and CodSpeed analysis passed. The historical cross-environment
+benchmark issue #1003 remains open; it is not a current-head CodSpeed failure.
+No threshold waiver or benchmark retry is accepted.
 
-The independent test-only CRED-P1-REF candidate
-`99ab8dd653ba8f42381f8d627aa56e2f4903935a` also includes that current main.
-Its three owned test/fixture paths have independent source review, including
-actual lifespan shutdown acknowledgement and committed OAuth-state negatives.
-A root-owned associated CI-only addition supplies the same optional literal
-pre-PR job; it changes no production behavior or existing test gate.
-[Supported run 36933538470](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933538470)
-is pending. No reference PR is opened before its required gate passes; no
-source-enumerated scenario is represented as a passing runtime result.
-Applicable actual application/consumer proof, public H/R integration and all
-C2/C3 gates remain uncompleted.
+The supported literal clean-current-main `./test.sh pre-pr` gate passed in
+[run 36933342485](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933342485),
+job `110614360691`, artifact `11198251722`. Its candidate receipt records that
+exact head, tree `fdcbdc08f15d6841c46e5de1d58e4e929eb9aad8`, main `658283e8c`,
+exit zero, cleanup status zero, and empty owned container/network/volume
+readback. Comprehensive candidate CI remains pending at this recording.
+Earlier e049/ddb passes retain their historical pins; no result is relabeled.
 
-Public H/R interfaces still require characterization and review. In current
-source, mapping responses use the legacy engine transport's superuser flag to
-omit default secrets; substituting an ordinary original caller expands the
-response. Preserve that response profile explicitly without granting general
-superuser authority. Also, `mint_engine_token` records original external status
-in `delegated_is_external`, while the selected SDK data filter reads the primary
-principal flag and its user row. That is a source-derived external-classification
-risk requiring executable characterization, not an approved broad external-auth
-fix or permission to copy potentially unsafe behavior. Audit actor attribution,
-mixed-credential/default-deny ingress and exact unchanged SDK renewal also
-remain H/R gates. Keep these differences explicit before public wiring.
+Independent test-only [CRED-P1-REF #1026](https://github.com/Midtown-Technology-Group/bifrost/pull/1026)
+is open at `50efd185dfd0b98682650e93db6022581184eaa7`. Its preceding candidate
+`99ab8dd653ba8f42381f8d627aa56e2f4903935a`, containing main `658283e8c`, passed
+[comprehensive run 36933538470](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36933538470).
+The literal pre-PR job `110608843578`, artifact `11196429549`, records tree
+`185e43207bfe3e9a3efbd9a5fee8282ae34e81c7`, exit zero and empty owned resources.
+All 25 selected public HTTP/unchanged-SDK reference cases passed, with no selected
+skip. All 18 OAuth fixture unit cases passed; the full unit lane recorded
+11,592 passed, three unrelated existing skips and 35 deselections. Reference
+shard 4 recorded 509 passed and 21 unrelated existing skips. Later 50efd only
+moves a pure predicate before its guarded use and explains awaited task/IPC
+failure handling for CodeQL review. Its own supported run
+[36936246934](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36936246934)
+remains pending; 99ab results are evidence for 99ab, not a later candidate pass.
+
+The reference observed these compatibility differences:
+
+- All four caller profiles received organization secret/non-secret config.
+  Direct external humans excluded global defaults and OAuth; ordinary humans
+  and both legacy engine delegation profiles received those values through get.
+- Mapping reads omitted global/default secrets for both engine profiles, while
+  ordinary-human mapping included them. Replacing transport authority with an
+  ordinary caller would expand the mapping response.
+- Entity-template recovery performed exactly one synthetic provider exchange
+  with committed token changes for ordinary humans and both engine profiles.
+  Direct external humans performed zero exchanges with unchanged committed
+  provider/token state.
+- Actual application request-context observation attributed both engine profiles
+  to System/Engine in the effective organization; humans retained their actual
+  identity. These reads emitted no owned-resource AuditLog event. That absence
+  is not proof of actor attribution or a durable recovery audit event.
+
+These are executed observations, not approved dedicated-purpose policy. The
+engine token records `delegated_is_external`, but the selected data filter reads
+primary principal/user-row external status. H/R must explicitly settle external
+admission, the mapping response profile, route-local actor attribution,
+mixed-credential/default-deny ingress and maintenance disposition before public
+wiring. Neither copying engine external disclosure nor switching to direct-human
+restrictions is silently authorized. The narrow credential mechanism approval
+remains unchanged. Public H/R, real caller/session/source/supervisor custody and
+all C2/C3 gates remain uncompleted; source permissions remain empty.
 
 ## Legacy SDK reference characterization packet
 
 **CRED-P1-REF** is frozen as test-only characterization before the public H/R
-policy decision. Its source baseline is main
-`c0931d119198c538ad7c7cc8a577a6928fe42780`, with the existing public SDK unchanged.
+policy decision. Its initial design baseline was main
+`c0931d119198c538ad7c7cc8a577a6928fe42780`; the executed 99ab candidate includes
+main `658283e8c` as recorded above, with the public SDK unchanged.
 This is independent of private S issuance and does not prove consumer admission,
 installed-source custody or runtime extraction.
 
@@ -277,8 +297,8 @@ No production auth, router, SDK, schema, consumer or CI change belongs here.
 
 Compare global/org secret and non-secret projections, mapping precedence/null
 behavior, exact request actor identity, and actual entity-template OAuth recovery
-without a scope override. Source-inferred engine/external differences are
-hypotheses to execute, not approved policy. Each recovery arm uses separately
+without a scope override. The engine/external differences are now executed observations recorded above,
+not approved dedicated-purpose policy. Each recovery arm uses separately
 owned synthetic configuration and fresh committed PostgreSQL observations.
 Unexpected provider calls or persistence fail rather than being normalized away.
 

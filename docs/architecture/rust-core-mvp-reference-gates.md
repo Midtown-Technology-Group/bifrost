@@ -56,6 +56,45 @@ deployment helper. This candidate includes that main. CRED-P1 uses the new
 migration parent and still excludes workspace-release grants. Earlier evidence
 retains its recorded source pins.
 
+Current documentation reconciliation fetched platform main
+`f770094eb28d8315a414fe8cb306f510da752d89` (#1025, CI capacity guards)
+and unchanged workspace main `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`.
+This documentation candidate includes that main. Its delta from the prior
+`658283e8c` baseline changes workflow concurrency/benchmark job time bounds and
+CI-sharding assertions; selected production source is unchanged. Reference
+runs below retain their actual earlier source and checkout pins.
+
+### C1-R1: the single authorized additional cycle
+
+The five-cycle stop at #1017 candidate `abf468d70` remains historical:
+run `36928399496` failed two comparisons and passed 371 tests. The user then
+explicitly authorized exactly one additional diagnosis/repair cycle, with
+independent review and unchanged identity, causal-order and drift expectations.
+
+At head `75c84583f33a0a6ddf17b77b3ceee18d99e4a2b3`,
+[supported run 36936257108](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36936257108)
+passed all 385 tests in 225.68 seconds. Actual checkout was synthetic merge
+`9e340dacd4a010750df87ba31597d31bf901a17d`, combining that head with stacked
+base `00c3a1075fe09dad8e9c7cd42cee387db5d0ca5a`; the head contains main
+`658283e8c`. Artifact `11198098727` retains both repo-v1 and reviewed-Solution
+readiness observations. Readback verified PostgreSQL delivery in API, replica,
+worker, scheduler and test runner. The job's owned-stack teardown succeeded;
+its log shows removal of the owned stack/network/volumes, but no independent
+post-teardown empty-resource inventory is claimed.
+
+The focused repair validates actual installation Solution identity before
+aliasing its three request/publish/durable-envelope metadata paths. Coherent
+and independent-plane negatives passed. Pure vectors materialize the producer's
+JSON wire envelope to avoid shallow dictionary aliases. Independent review
+caught that alias before publication. Clock canonicalization and equality,
+ordering/window comparisons are unchanged; only bounded failure diagnostics
+were added. A passing run does not establish the earlier clock failure's cause
+or long-term stability. No sixth unprompted or repeat execution occurred:
+queued run `36935881851` was cancelled with no executed steps before final lint.
+Current-head literal pre-PR proof and ordinary CI remain separate incomplete
+gates. This reference pass does not accept runtime extraction, Rust lifecycle
+ownership, C2/C3, merge or deployment.
+
 The findings below are source evidence, not an observed agent run. Codec passes,
 SDK direct calls, and a rehydrated organization do not prove tool execution.
 The pinned readiness workflow reference remains independent and can continue.
