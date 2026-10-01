@@ -203,3 +203,37 @@ settings. Do not infer their backend from checked-in defaults or treat these
 image digests as proof that current main is deployed. No RabbitMQ Rust support
 is authorized; any discovered relevant RabbitMQ runtime is a separate future
 worker-cutover prerequisite.
+
+## C1-Q2 sampled byte experiment: supported evidence
+
+[#1020](https://github.com/Midtown-Technology-Group/bifrost/pull/1020) candidate
+`9ca29b1cfca4df6de18266c6d987938937eaf7ff` passed the supported
+[control/oracle run 36922225572](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36922225572).
+The actual synthetic merge checkout was
+`e768f6444a5792389048c2b834957c75c6e2d553`, with Python image
+`sha256:c381dcf4b11d70a59fbf68f745e61a0f5995ab9c9f16cc9060946fd5afaf348c`
+and Rust checks image
+`sha256:22bca4693bc7dc2b9474a9444b726baaf87c3c3dc9f338a51a5be344e606c9f8`.
+The peer ran CPython 3.14.7; the Rust contracts package remains 0.1.0.
+
+The independent peer verified actual Rust-emitted bytes/hashes for all 64
+historical source witnesses (61 encoded, three rejected), retaining artifact
+SHA-256 `1be1929bca57e1204a33bbad9ff2d15338adf9f4862ce26b13280917c19d514a`.
+The generated campaign comprised 40,940 exponent cases, 82,142 decimal-power
+neighbors, four explicit nonfinite cases, one million deterministic raw-bit
+patterns (seed `0000b1f2057c1a02`), and 14 string cases. It matched 1,122,627
+finite byte outcomes and 473 nonfinite rejections. Its framed matched-byte
+digest was `67a2930a94b44a12f6aa619188fdfe534c5cca7b865bff368277a346f68b74be`.
+A coherent deliberately altered UTF-8/hex pair failed at the expected exact-byte
+drift, proving the oracle did not merely compare candidates to themselves.
+
+Candidate `30131dab0bd16ceccd57a1ebf6964d47a2e2de15` had failed before the
+oracle at Clippy; the next candidate corrected two source lints without changing
+thresholds, dependencies or fixture bytes. This was a changed-source repair,
+not an unchanged rerun. The pass covers sampled numeric/string compatibility
+and historical fixture projections, not a production canonical serializer.
+Named repr regressions, targeted ties, bounded-tree/permutation fuzzing, broad
+Unicode coverage, transport depth limits and full model validation remain the
+documented gates in #1020. No C2/C3 authority, new-main source capture, runtime
+extraction, vendor use, merge or deployment follows from this result. Other CI
+and normal local/live proof gates retain their own dispositions.
