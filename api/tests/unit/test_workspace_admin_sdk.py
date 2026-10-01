@@ -124,3 +124,15 @@ async def test_recovery_registers_input_secrets_for_execution_scrubbing(
     )
     await OAuthAdmin.recover("NinjaOne", refresh_token="submitted-secret")
     assert "submitted-secret" in registered
+
+
+async def test_redaction_resolves_scope_server_side_without_fetching_payload(client):
+    target = str(uuid4())
+    client.post.return_value = response(
+        {"execution_id": target, "rows_updated": 1, "redacted": True}
+    )
+    assert (await Executions.redact_sensitive_fields(target)).redacted
+    client.post.assert_awaited_once_with(
+        f"/api/executions/{target}/redact-sensitive-fields", json={}
+    )
+    client.get.assert_not_awaited()

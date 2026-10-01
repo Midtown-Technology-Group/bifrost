@@ -94,6 +94,7 @@ async def test_execution_redaction_exact_target_scope_and_audit(
     with pytest.raises(service.AdminOperationError) as error:
         await service.redact_execution(db_session, admin, target.id, "global")
     assert error.value.status_code == 404
+    await service.redact_execution(db_session, admin, target.id)
     for _ in range(2):
         await service.redact_execution(db_session, admin, target.id, org.id)
     await db_session.refresh(target)
@@ -120,7 +121,7 @@ async def test_execution_redaction_exact_target_scope_and_audit(
         .scalars()
         .all()
     )
-    assert len(audits) == 2
+    assert len(audits) == 3
     assert all(
         audit.user_id == seed_user.id and audit.organization_id == org.id
         for audit in audits

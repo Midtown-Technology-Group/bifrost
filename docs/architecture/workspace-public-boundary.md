@@ -18,13 +18,15 @@ Existing workflow IDs, names, and signatures remain unchanged.
 | repair_ninjaone_oauth | Session, secret decryption, removed OAuthConnectionRepository, OAuthProviderClient, URL resolution | bifrost.oauth_admin.recover(connection_name, refresh_token=…, scope="global") |
 | repair_ninjaone_oauth_copy_refresh_token | Session and direct SQL across providers/tokens | bifrost.oauth_admin.reconcile("NinjaOne", scope="global") |
 | repair_ninjaone_oauth_no_scope_exchange | Session, secret decryption, removed repository, URL resolution, inline vendor HTTP | bifrost.oauth_admin.recover(connection_name, code=…, redirect_uri=…, scope="global") |
-| redact_execution_sensitive_fields | Session, SQLAlchemy update, Execution ORM | bifrost.executions.get(id) for target scope, then redact_sensitive_fields(id, scope=…) |
+| redact_execution_sensitive_fields | Session, SQLAlchemy update, Execution ORM | bifrost.executions.redact_sensitive_fields(id); server resolves target scope |
 
 ## Security and behavior
 
 These are privileged administrator actions. Their REST endpoints authenticate
 the caller, require a platform administrator (including the original delegated
-workflow caller), and require an exact organization UUID or global. A
+workflow caller). OAuth operations require an exact organization UUID or global.
+Execution sanitation resolves scope from the exact target ID on the server; an
+optional supplied organization UUID or global must match. A
 delegated platform administrator can explicitly select a target scope even when
 the engine assigns the caller’s organization to a global workflow; non-admin
 delegation grants no administrative access. Audit records use the
@@ -55,7 +57,8 @@ execution afterward; this migration does not redesign input persistence.
 SDK recovery registers credential inputs with the existing execution secret
 scrubber for logs and outputs.
 
-Execution sanitation writes fixed redaction markers to parameters, result,
+Execution sanitation never returns the target payload to workspace code merely
+to discover its organization. It writes fixed redaction markers to parameters, result,
 variables, and execution context, and clears the error message. It never
 accepts arbitrary fields. Missing or wrong-scope executions return 404;
 non-terminal executions return 409; repeated calls on terminal executions

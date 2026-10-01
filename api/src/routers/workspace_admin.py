@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from bifrost.admin_models import (
+    ExecutionRedactionRequest,
     ExecutionRedactionResult,
     OAuthDiagnostics,
     OAuthReconciliationResult,
@@ -77,6 +78,6 @@ async def reconcile_oauth(
     response_model=ExecutionRedactionResult,
 )
 async def redact_execution(
-    execution_id: UUID, request: ScopedAdminRequest, ctx: Context
+    execution_id: UUID, request: ExecutionRedactionRequest, ctx: Context
 ):
     return await service.redact_execution(ctx.db, ctx.user, execution_id, request.scope)

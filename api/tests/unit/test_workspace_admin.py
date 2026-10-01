@@ -468,3 +468,36 @@ async def test_provider_controlled_error_material_is_never_logged(monkeypatch, c
     assert "status=400" in caplog.text
     for secret in ("secret-error-code", "secret-description", "secret-refresh"):
         assert secret not in caplog.text
+
+
+@pytest.mark.parametrize("org_id", [None, uuid4()])
+async def test_redaction_resolves_and_pins_target_scope_without_payload_read(
+    seams, org_id
+):
+    db, *_ = seams
+    execution = SimpleNamespace(id=uuid4(), status=ExecutionStatus.SUCCESS)
+    db.execute.return_value.one_or_none.return_value = (org_id,)
+    db.execute.return_value.scalar_one_or_none.return_value = execution
+    result = await service.redact_execution(db, principal(), execution.id)
+    assert result.redacted
+    statements = [str(call.args[0]) for call in db.execute.await_args_list]
+    assert statements[0].startswith("SELECT executions.organization_id")
+    assert "executions.id =" in statements[0] and "FOR UPDATE" in statements[0]
+    assert "executions.organization_id" in statements[1]
+    assert (
+        service.emit_audit.await_args.kwargs["actor_override"].organization_id == org_id
+    )
+
+
+async def test_redaction_auto_scope_missing_and_unauthorized(seams):
+    db, *_ = seams
+    user = principal()
+    user.is_superuser = False
+    with pytest.raises(service.AdminOperationError) as denied:
+        await service.redact_execution(db, user, uuid4())
+    assert denied.value.status_code == 403
+    db.execute.assert_not_awaited()
+    db.execute.return_value.one_or_none.return_value = None
+    with pytest.raises(service.AdminOperationError) as missing:
+        await service.redact_execution(db, principal(), uuid4())
+    assert missing.value.status_code == 404

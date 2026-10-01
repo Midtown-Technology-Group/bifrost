@@ -90,7 +90,7 @@ Event publishing operations (async).
 
 **`executions.list(workflow_name: str | None = None, status: str | None = None, start_date: str | None = None, end_date: str | None = None, limit: int = 50, workflow_id: str | None = None, exclude_local: bool | None = None, continuation_token: str | None = None) -> ExecutionList`**
 
-**`executions.redact_sensitive_fields(execution_id: str, scope: str) -> ExecutionRedactionResult`**
+**`executions.redact_sensitive_fields(execution_id: str, scope: str | None = None) -> ExecutionRedactionResult`**
   Sanitize stored payloads of one terminal execution (platform admin only).
 
 ### files

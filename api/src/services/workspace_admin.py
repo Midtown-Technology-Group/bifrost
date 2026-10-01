@@ -335,9 +335,25 @@ async def reconcile_oauth(
 
 
 async def redact_execution(
-    db: AsyncSession, user: UserPrincipal, execution_id: UUID, scope: str | UUID
+    db: AsyncSession,
+    user: UserPrincipal,
+    execution_id: UUID,
+    scope: str | UUID | None = None,
 ) -> ExecutionRedactionResult:
-    org_id = authorize_admin(user, scope)
+    org_id = authorize_admin(user, scope if scope is not None else "global")
+    if scope is None:
+        # Resolve scope inside the privileged action; never fetch sensitive
+        # execution payloads into workspace code merely to discover its org.
+        target = (
+            await db.execute(
+                select(Execution.organization_id)
+                .where(Execution.id == execution_id)
+                .with_for_update()
+            )
+        ).one_or_none()
+        if target is None:
+            raise AdminOperationError(404, "Execution not found")
+        org_id = target[0]
     execution = (
         await db.execute(
             select(Execution)

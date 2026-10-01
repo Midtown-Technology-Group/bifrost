@@ -36,18 +36,22 @@ class Executions:
     """
 
     @staticmethod
-    async def redact_sensitive_fields(execution_id: str, *, scope: str) -> ExecutionRedactionResult:
+    async def redact_sensitive_fields(
+        execution_id: str, *, scope: str | None = None
+    ) -> ExecutionRedactionResult:
         """Sanitize stored payloads of one terminal execution (platform admin only).
 
-        Requires its exact organization UUID or ``global``. Missing/wrong-scope
-        targets return 404; active executions return 409. Repeated calls succeed.
+        The server resolves the target organization without returning its payload.
+        An optional organization UUID or ``global`` must match the target.
+        Missing/wrong-scope targets return 404; active executions return 409.
+        Repeated calls succeed.
         Logs and related records are outside this payload sanitation operation.
         """
         from uuid import UUID
 
         response = await get_client().post(
             f"/api/executions/{UUID(execution_id)}/redact-sensitive-fields",
-            json={"scope": scope},
+            json={"scope": scope} if scope is not None else {},
         )
         raise_for_status_with_detail(response)
         return ExecutionRedactionResult.model_validate(response.json())
@@ -222,6 +226,7 @@ class Executions:
         # If no execution_id provided, get from current context
         if execution_id is None:
             from ._context import get_execution_context
+
             ctx = get_execution_context()
             execution_id = ctx.execution_id
 

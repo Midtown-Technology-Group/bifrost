@@ -58,3 +58,10 @@ class ExecutionRedactionResult(BaseModel):
     execution_id: str
     rows_updated: int
     redacted: bool = True
+
+
+class ExecutionRedactionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Omission resolves the exact target organization on the server without
+    # disclosing the execution payload. A supplied scope must match the target.
+    scope: Literal["global"] | UUID | None = None

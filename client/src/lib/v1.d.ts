@@ -20476,6 +20476,11 @@ export interface components {
             /** Sequence */
             sequence: number;
         };
+        /** ExecutionRedactionRequest */
+        ExecutionRedactionRequest: {
+            /** Scope */
+            scope?: "global" | string | null;
+        };
         /** ExecutionRedactionResult */
         ExecutionRedactionResult: {
             /** Execution Id */
@@ -45093,7 +45098,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ScopedAdminRequest"];
+                "application/json": components["schemas"]["ExecutionRedactionRequest"];
             };
         };
         responses: {
