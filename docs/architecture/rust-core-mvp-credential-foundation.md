@@ -229,8 +229,14 @@ Unexpected provider calls or persistence fail rather than being normalized away.
 
 The existing internal OAuth fixture may record an exact synthetic audience marker
 `cred-p1-reference:<32 lowercase hex>`. Freeze a thread-safe maximum of 1,024
-markers, no eviction or reset, bounded attempted/status counts recorded before
-reply, static 503 on capacity exhaustion, and static 400 for malformed markers.
+markers, no eviction or reset, and at most 65,535 admitted attempts per marker.
+Reserve/count admission atomically before entering the existing OAuth handler;
+record its finite integer HTTP status (100–599) at most once before reply.
+The next attempt marks permanent exhaustion and receives a static 503 before
+handler effects; already admitted requests may finish. GET returns bounded
+`attempted`, `statuses` and `exhausted`; zero/one-call proof requires
+`exhausted=false`. These counters cover admitted attempts, not rejected requests
+after exhaustion. Use static 503 on marker capacity and 400 for malformed markers.
 Its test-service-only receipt GET accepts exactly the marker's 32 hex characters;
 an unseen valid key returns zero. Preserve existing untagged behavior. Never
 retain or report credentials, request bodies, URLs or provider exception text.
