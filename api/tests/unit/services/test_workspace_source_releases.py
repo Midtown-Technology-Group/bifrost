@@ -173,9 +173,9 @@ async def test_declaration_rejects_solution_paths_before_persistence() -> None:
     )
 
     with pytest.raises(ValueError, match="solutions/"):
-        await WorkspaceSourceReleaseService(
-            _InsertDeclareDatabase(), uuid4()
-        ).declare(request, created_by=uuid4())
+        await WorkspaceSourceReleaseService(_InsertDeclareDatabase(), uuid4()).declare(
+            request, created_by=uuid4()
+        )
 
 
 def test_pending_declaration_requires_exact_paths() -> None:
@@ -458,16 +458,36 @@ async def test_replay_rejects_disposition_changes_symmetrically(
 
 
 @pytest.mark.asyncio
-async def test_pending_replay_remains_idempotent_after_attention_transition() -> None:
-    record = _source_record(
-        disposition="attention_required",
-        declared_disposition="pending",
-    )
+@pytest.mark.parametrize(
+    "digest_kind,declared_reason",
+    [
+        ("legacy", None),
+        ("producer", None),
+        ("retained", None),
+        ("retained", "initial operator review"),
+    ],
+)
+async def test_pending_replay_remains_idempotent_after_deadline_sweep(
+    digest_kind: str,
+    declared_reason: str | None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    record = _source_record(due_at=now - timedelta(seconds=1))
     request = WorkspaceSourceReleaseDeclareRequest(
         source_commit_sha=record.source_commit_sha,
         source_tree_sha=record.source_tree_sha,
         paths=record.paths,
         disposition="pending",
+        reason=declared_reason,
+    )
+    record.reason = declared_reason
+    if digest_kind == "producer":
+        record.producer_declaration_digest = source_release_declaration_digest(request)
+    elif digest_kind == "retained":
+        record.declaration_digest = source_release_declaration_digest(request)
+    await sweep_overdue_workspace_releases(_Database([[], [record]]), now=now)
+    assert (
+        record.reason == "reviewed Workspace source has not reached verified production"
     )
 
     response = await WorkspaceSourceReleaseService(
@@ -476,6 +496,46 @@ async def test_pending_replay_remains_idempotent_after_attention_transition() ->
 
     assert response.id == record.id
     assert response.disposition == "attention_required"
+    assert response.reason == record.reason
+    assert response.due_at == record.due_at
+
+
+@pytest.mark.asyncio
+async def test_admin_declaration_retains_full_request_digest_without_producer_identity() -> (
+    None
+):
+    database = _InsertDeclareDatabase()
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha="a" * 40,
+        source_tree_sha="b" * 40,
+        paths={"features/example.py": "c" * 64},
+        disposition="pending",
+        reason="initial review",
+    )
+    await WorkspaceSourceReleaseService(database, uuid4()).declare(
+        request, created_by=uuid4()
+    )
+    assert database.record.declaration_digest == source_release_declaration_digest(
+        request
+    )
+    assert database.record.producer_declaration_digest is None
+
+
+@pytest.mark.asyncio
+async def test_replay_rejects_changed_declaration_digest_after_deadline() -> None:
+    record = _source_record(disposition="attention_required")
+    record.reason = "reviewed Workspace source has not reached verified production"
+    request = WorkspaceSourceReleaseDeclareRequest(
+        source_commit_sha=record.source_commit_sha,
+        source_tree_sha=record.source_tree_sha,
+        paths=record.paths,
+        disposition="pending",
+    )
+    record.producer_declaration_digest = "f" * 64
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="different"):
+        await WorkspaceSourceReleaseService(
+            _ExistingDeclareDatabase(record), record.organization_id
+        ).declare(request, created_by=uuid4())
 
 
 @pytest.mark.asyncio

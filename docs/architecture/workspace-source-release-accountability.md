@@ -61,6 +61,20 @@ if the same commit is redeclared with different evidence. The producer must
 fail its GitHub Actions job when declaration fails. This removes operator
 memory from record creation while retaining an exact audit trail.
 
+Declarations now retain a canonical request digest independently of producer
+provenance and mutable operational status. Replaying an identical declaration
+after a deadline sweep, delivery or disposition returns the same record and
+preserves its current diagnostic. Changing the original reason, path hashes,
+tree, disposition or child obligations returns 409. Admin declarations retain
+the digest too, without inventing a GitHub producer identity.
+
+The nullable `declaration_digest` migration does not backfill old diagnostics as
+original declarations. Historical producer digests remain valid replay
+anchors. Legacy pending records with no digest support the producer's normal
+reason-free replay; original reasons lost before this migration cannot be
+reconstructed from current operational text. This schema change follows the
+fixed-target migration lane before a compatible runtime image is deployed.
+
 `GET /api/workspace-promotions/source-releases` returns
 `tracking_state=not_configured` until the producer configuration begins or the
 first declaration arrives. Operators and monitors must treat that state as

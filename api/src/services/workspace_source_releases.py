@@ -53,12 +53,30 @@ def _assert_compatible_replay(
     request: WorkspaceSourceReleaseDeclareRequest,
     paths: dict[str, str | None],
 ) -> None:
-    existing_solution_obligations = [
-        solution_deploy_obligation_declaration(item).model_dump(
-            mode="json", exclude_none=True
-        )
-        for item in record.solution_deploy_obligations
-    ]
+    # The sweep and completion paths replace the operational reason. A retained
+    # producer digest binds the original declaration, including its reason and
+    # Solution obligations, without comparing that mutable diagnostic.
+    digest = record.declaration_digest or record.producer_declaration_digest
+    if digest is not None:
+        same_declaration = digest == source_release_declaration_digest(request)
+    else:
+        reason_changed = record.reason != request.reason
+        if record.declared_disposition == "pending" and record.disposition != "pending":
+            # Legacy push declarations have no digest. Their normal pending
+            # declaration carries no reason. Do not accept a new reason or
+            # rewrite the current attention/completion diagnostic on replay.
+            reason_changed = request.reason is not None
+        same_declaration = not reason_changed
+    existing_solution_obligations = (
+        [
+            solution_deploy_obligation_declaration(item).model_dump(
+                mode="json", exclude_none=True
+            )
+            for item in record.solution_deploy_obligations
+        ]
+        if digest is None
+        else []
+    )
     requested_solution_obligations = [
         item.model_dump(mode="json", exclude_none=True)
         for item in (request.solution_deploy_obligations or [])
@@ -67,8 +85,11 @@ def _assert_compatible_replay(
         record.source_tree_sha != request.source_tree_sha
         or dict(record.paths or {}) != paths
         or record.declared_disposition != request.disposition
-        or record.reason != request.reason
-        or existing_solution_obligations != requested_solution_obligations
+        or not same_declaration
+        or (
+            digest is None
+            and existing_solution_obligations != requested_solution_obligations
+        )
     ):
         raise WorkspaceSourceReleaseConflict(
             "source commit already has different release accountability evidence"
@@ -226,6 +247,7 @@ class WorkspaceSourceReleaseService:
             producer_declaration_digest=(
                 producer.declaration_digest if producer is not None else None
             ),
+            declaration_digest=source_release_declaration_digest(request),
             producer_actor=(producer.actor if producer is not None else None),
             producer_actor_id=(producer.actor_id if producer is not None else None),
             disposition=disposition,
