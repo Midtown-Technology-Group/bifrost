@@ -21,6 +21,7 @@ docker build --target checks -t bifrost-runtime-control-checks -f core-rs/Docker
 python_peer -m pytest --confcutdir=tests/runtime_protocol tests/runtime_protocol -q --no-cov
 docker run --rm --network none bifrost-runtime-control-checks \
     cargo run --offline --locked -p bifrost-contracts --example runtime_control_vectors -- emit > "$EXCHANGE_DIR/rust.json"
+chmod 644 "$EXCHANGE_DIR/rust.json"
 python_peer -m tests.runtime_protocol.interchange validate /exchange/rust.json
 python_peer -m tests.runtime_protocol.interchange emit > "$EXCHANGE_DIR/python.json"
 docker run --rm --network none -v "$EXCHANGE_DIR:/exchange:ro" bifrost-runtime-control-checks \

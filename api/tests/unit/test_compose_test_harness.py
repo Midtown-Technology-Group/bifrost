@@ -291,3 +291,9 @@ def test_reference_delivery_selection_reaches_every_runtime_consumer():
         assert services[name]["environment"]["BIFROST_WORK_DELIVERY_BACKEND"] == (
             "${BIFROST_TEST_WORK_DELIVERY_BACKEND:-rabbitmq}"
         ), name
+
+
+def test_runtime_control_tests_share_the_actual_readonly_fixture():
+    runner = yaml.safe_load(_COMPOSE.read_text())["services"]["test-runner"]
+    assert runner["environment"]["BIFROST_RUNTIME_VECTORS"] == "/contracts/runtime/v1/control-vectors.json"
+    assert "./core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1:/contracts/runtime/v1:ro" in runner["volumes"]
