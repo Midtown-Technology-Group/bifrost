@@ -198,3 +198,5 @@ Before builders, the architect freezes exact issuance/crypto/grant storage,
 handler and renewal interfaces and their negative tests. Dependency custody,
 provider scope and complete source/log projection remain separate gates. The
 AUTH-P1 and CRED-P1 approvals do not establish C2/C3 acceptance.
+
+The architect has frozen only the [CRED-P1-S private foundation](rust-core-mvp-credential-foundation.md): two grant/operation tables, closed tokens and private issuance/revocation/renewal helpers. Source permissions are empty; HTTP integration and real runtime/session/caller/source acceptance remain gated. This narrower first packet does not authorize a source-storage port or general runtime provisioning.
