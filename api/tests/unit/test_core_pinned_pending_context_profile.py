@@ -15,6 +15,8 @@ from bifrost.workflow_parameters import WorkflowParameterCompiler
 from src.core import redis_client as redis_module
 from src.core.module_cache_contract import WORKSPACE_GENERATION_KEY
 from src.jobs.rabbitmq import _message_headers, infer_idempotency_key
+from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.solutions import Solution
 from src.services.execution import async_executor
 from src.services.execution.async_executor import _pending_dispatch_envelope
 from src.services.solutions.deployment_manifest import (
@@ -46,6 +48,7 @@ from tests.parity.core.pinned import (
     SOURCE_SHA256,
     PinnedEnvironment,
     PinnedTransportEvidence,
+    capture_pinned_row,
     generation_read,
 )
 from tests.parity.core.pinned_profile import PinnedProfile
@@ -993,3 +996,89 @@ def test_unsubmitted_cold_execution_does_not_gain_after_witness_or_binding():
     assert "observed-workspace-generation" not in fixture.bindings.values()
     profile.generation_witnesses = fixture.generation_witnesses
     profile.validate_pending_context(observation, fixture.bindings)
+
+
+SOLUTION_OWNER_FIELDS = (
+    "id",
+    "organization_id",
+    "status",
+    "active_deployment_id",
+    "execution_runtime_mode",
+    "allow_outbound_access",
+    "git_connected",
+)
+DEPLOYMENT_SOURCE_FIELDS = (
+    "id",
+    "solution_id",
+    "organization_id",
+    "created_by",
+    "compiled_manifest",
+    "resolution_map",
+    "compiled_manifest_hash",
+    "resolution_map_hash",
+    "git_commit_sha",
+    "runtime_storage_prefix",
+    "source_artifact_key",
+    "bundle_hash",
+    "validation_result",
+    "state",
+)
+
+
+@pytest.mark.parametrize("authority", [False, True, None])
+def test_pinned_capture_retains_genuine_orm_outbound_authority(authority):
+    observation, bindings, profile = pinned_vector()
+    solution = observation.database["solutions"][0]
+    original = deepcopy(solution)
+    row = Solution(**{**solution, "allow_outbound_access": authority})
+    column = Solution.__table__.columns["global_repo_access"]
+    assert Solution.__mapper__.get_property_by_column(column).key == (
+        "allow_outbound_access"
+    )
+    captured = capture_pinned_row(Solution, row)
+    assert captured["global_repo_access"] is authority
+    assert captured["allow_outbound_access"] is authority
+    assert solution == original and row.allow_outbound_access is authority
+    observation.database["solutions"] = [captured]
+    if authority is False:
+        profile.validate_pending_context(observation, bindings)
+    else:
+        with pytest.raises(AssertionError, match="installation owner differs"):
+            profile.validate_pending_context(observation, bindings)
+
+
+@pytest.mark.parametrize(
+    ("model", "required"),
+    [(Solution, SOLUTION_OWNER_FIELDS), (SolutionDeployment, DEPLOYMENT_SOURCE_FIELDS)],
+)
+def test_pinned_capture_retains_complete_required_source_fields(model, required):
+    observation, bindings, profile = pinned_vector()
+    original = observation.database[model.__tablename__][0]
+    captured = capture_pinned_row(model, model(**original))
+    assert set(required) <= captured.keys()
+    assert all(captured[field] == original[field] for field in required)
+    observation.database[model.__tablename__] = [captured]
+    profile.validate_pending_context(observation, bindings)
+
+
+def test_pinned_missing_authority_is_not_replaced_by_historical_column():
+    observation, bindings, profile = pinned_vector()
+    row = Solution(**observation.database["solutions"][0])
+    captured = capture_pinned_row(Solution, row)
+    del captured["allow_outbound_access"]
+    assert captured["global_repo_access"] is False
+    observation.database["solutions"] = [captured]
+    with pytest.raises(KeyError, match="allow_outbound_access"):
+        profile.validate_pending_context(observation, bindings)
+
+
+@pytest.mark.parametrize(
+    ("table", "field"),
+    [("solutions", field) for field in SOLUTION_OWNER_FIELDS]
+    + [("solution_deployments", field) for field in DEPLOYMENT_SOURCE_FIELDS],
+)
+def test_pinned_missing_required_source_field_still_fails(table, field):
+    observation, bindings, profile = pinned_vector()
+    del observation.database[table][0][field]
+    with pytest.raises(KeyError, match=field):
+        profile.validate_pending_context(observation, bindings)

@@ -51,6 +51,20 @@ PORTABLE_REF = f"{SOURCE_PATH}::{FUNCTION}"
 SOURCE_HASH = f"sha256:{SOURCE_SHA256}"
 
 
+def capture_pinned_row(model, row):
+    """Retain raw columns and the genuine Solution authority attribute."""
+    captured = {
+        column.name: value_wire(
+            getattr(row, model.__mapper__.get_property_by_column(column).key)
+        )
+        for column in model.__table__.columns
+    }
+    if model is Solution:
+        # This mapped attribute retains the historical global_repo_access column.
+        captured["allow_outbound_access"] = value_wire(row.allow_outbound_access)
+    return captured
+
+
 def generation_read(value, started, completed, *, allow_absent=False):
     """Record an independent Redis read; never initialize a cold generation."""
     assert (allow_absent and value is None) or (
@@ -496,15 +510,7 @@ class PinnedCapture(ScopedReferenceCapture):
             ):
                 rows = (await db.scalars(select(model).where(predicate))).all()
                 result[model.__tablename__] = [
-                    {
-                        column.name: value_wire(
-                            getattr(
-                                row, model.__mapper__.get_property_by_column(column).key
-                            )
-                        )
-                        for column in model.__table__.columns
-                    }
-                    for row in rows
+                    capture_pinned_row(model, row) for row in rows
                 ]
         return result
 
