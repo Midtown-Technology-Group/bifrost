@@ -696,7 +696,6 @@ async def test_entity_template_recovery_without_oauth_scope_override(
     transport,
 ):
     caller = callers[kind]
-    should_refresh = not (caller.external and not caller.engine)
     async with _integration(
         e2e_client,
         platform_admin,
@@ -729,9 +728,15 @@ async def test_entity_template_recovery_without_oauth_scope_override(
         )
         start = datetime.now(UTC)
         payload = await _call(caller, "get", fixture.name, transport=transport)
-        _assert_profile(payload, caller, fixture, "get", refreshed=should_refresh)
+        _assert_profile(
+            payload,
+            caller,
+            fixture,
+            "get",
+            refreshed=not (caller.external and not caller.engine),
+        )
         after = await _state(async_session_factory, fixture)
-        if not should_refresh:
+        if caller.external and not caller.engine:
             _require(
                 await _receipt(fixture.receipt_key)
                 == {"attempted": 0, "statuses": {}, "exhausted": False},
