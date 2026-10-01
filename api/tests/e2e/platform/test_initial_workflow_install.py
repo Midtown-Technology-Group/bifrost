@@ -298,12 +298,19 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
     path = f"solutions/initial_http_{token}.py"
     workflow_id, deployment_id, revision_id = uuid4(), uuid4(), uuid4()
     resource_path = "data/rates.json"
+    helper_path = f"modules/initial_http_{token}.py"
+    helper_source = (
+        "from bifrost import resources\n"
+        "async def read_resource():\n"
+        "    return 'initial:' + await resources.read('data/rates.json')\n"
+    )
     resource_bytes = b'{"records":[{"rate":4}]}'
     source = (
-        "from bifrost import workflow, resources\n"
+        "from bifrost import workflow\n"
+        f"from modules.initial_http_{token} import read_resource\n"
         "@workflow(name='Initial HTTP reviewed task', effects=[])\n"
         "async def run(user: str = 'system'):\n"
-        "    return await resources.read('data/rates.json')\n"
+        "    return await read_resource()\n"
     )
     solution_id = None
     created_solution = False
@@ -317,12 +324,16 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         created_solution = True
 
         recipe = _recipe(solution_id, workflow_id, path, organization_id, resource_path=resource_path)
+        recipe.files[helper_path] = "solutions/helper.py"
         candidate_body = {
             "source_commit_sha": "b" * 40,
             "reviewed_recipe": recipe.model_dump(mode="json"),
             "files": [{
                 "path": path,
                 "content_base64": base64.b64encode(source.encode()).decode(),
+            }, {
+                "path": helper_path,
+                "content_base64": base64.b64encode(helper_source.encode()).decode(),
             }],
             "resources": [{
                 "path": resource_path,
@@ -352,6 +363,7 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         assert source.encode() in source_archive_bytes
         assert resource_bytes in resources_archive_bytes
         assert runtime_bytes == source.encode()
+        assert await storage.read_runtime_file(helper_path) == helper_source.encode()
         assert resource_runtime_bytes == resource_bytes
         assert str(deployment_id).encode() in manifest_bytes
 
@@ -389,7 +401,7 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
             e2e_client, headers, str(workflow_id), request_sync=True, max_wait=60,
         )
         assert execution_result["status"] == "Success", execution_result
-        assert execution_result["result"] == resource_bytes.decode("utf-8")
+        assert execution_result["result"] == "initial:" + resource_bytes.decode("utf-8")
         execution = await db_session.get(Execution, UUID(execution_result["execution_id"]))
         assert execution is not None
         assert execution.solution_deployment_id == deployment_id
@@ -412,6 +424,7 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         revision_base = f"/api/solutions/{solution_id}/deployments/{revision_id}/workflow-revision"
         revised_resource = b'{"records":[{"rate":8}]}'
         revised_source = source + "\n# Reviewed source revision\n"
+        revised_helper = helper_source.replace("'initial:'", "'reviewed:'")
         revision_inspect = {
             "expected_active_deployment_id": str(deployment_id),
             "expected_active_manifest_hash": deployment.compiled_manifest_hash,
@@ -420,7 +433,10 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         revision_body = {
             **revision_inspect,
             "source_commit_sha": "c" * 40,
-            "files": [{"path": path, "content_base64": base64.b64encode(revised_source.encode()).decode()}],
+            "files": [
+                {"path": path, "content_base64": base64.b64encode(revised_source.encode()).decode()},
+                {"path": helper_path, "content_base64": base64.b64encode(revised_helper.encode()).decode()},
+            ],
             "resources": [{"path": resource_path, "content_base64": base64.b64encode(revised_resource).decode()}],
         }
         revised = e2e_client.post(f"{revision_base}/candidate", headers=headers, json=revision_body)
@@ -455,8 +471,10 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
 
         revised_storage = SolutionDeploymentStorage(solution_id, revision_id)
         assert await revised_storage.read_runtime_file(path) == revised_source.encode()
+        assert await revised_storage.read_runtime_file(helper_path) == revised_helper.encode()
         assert await revised_storage.read_resource(resource_path, len(revised_resource)) == revised_resource
         assert await storage.read_runtime_file(path) == source.encode()
+        assert await storage.read_runtime_file(helper_path) == helper_source.encode()
         assert await storage.read_resource(resource_path, len(resource_bytes)) == resource_bytes
         await db_session.refresh(execution)
         assert execution.solution_deployment_id == deployment_id
@@ -472,7 +490,7 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
             e2e_client, headers, str(workflow_id), request_sync=True, max_wait=60,
         )
         assert revised_result["status"] == "Success", revised_result
-        assert revised_result["result"] == revised_resource.decode("utf-8")
+        assert revised_result["result"] == "reviewed:" + revised_resource.decode("utf-8")
         revised_execution = await db_session.get(Execution, UUID(revised_result["execution_id"]))
         assert revised_execution is not None
         assert revised_execution.solution_deployment_id == revision_id
@@ -504,6 +522,7 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
                         storage.resources_artifact_key,
                         deployment_manifest_key(solution_id, candidate_id),
                         f"{storage.runtime_prefix}{path}",
+                        f"{storage.runtime_prefix}{helper_path}",
                         f"{storage.runtime_prefix}_resources/{resource_path}",
                     ):
                         await client.delete_object(Bucket=storage._bucket, Key=key)
