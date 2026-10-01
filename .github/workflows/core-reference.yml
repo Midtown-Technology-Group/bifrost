@@ -48,9 +48,7 @@ jobs:
         run: bash scripts/ci/core-reference-backend-readback.sh
       - name: Verify SDK observer readiness
         run: |
-          source scripts/lib/test_helpers.sh
-          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
-          docker compose -f docker-compose.test.yml exec -T core-sdk-observer curl --fail --silent http://localhost:8080/health/ready
+          bash scripts/ci/core-reference-observer.sh start
       - name: Verify environment wiring and core/device drift capture
         env:
           BIFROST_SKIP_BUILD: '1'
@@ -58,7 +56,9 @@ jobs:
           ./test.sh tests/unit/test_compose_test_harness.py tests/parity/ -v
       - name: Stop this CI job's isolated test stack
         if: always()
-        run: ./test.sh stack down
+        run: |
+          bash scripts/ci/core-reference-observer.sh stop
+          ./test.sh stack down
       - name: Preserve synthetic core reference observation
         if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
