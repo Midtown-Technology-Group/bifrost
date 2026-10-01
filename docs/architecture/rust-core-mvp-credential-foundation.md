@@ -140,6 +140,17 @@ own uncommitted Start. It first checks committed eligibility, then locks and
 refreshes the relevant rows before atomic insertion; do not wait for an
 uncommitted claimed-to-running write and call it preexisting committed Start.
 
+The attempt is the first blocking row lock, serializing identical provisions.
+Subsequent execution, deployment and Solution share locks use `NOWAIT`. Existing
+Python writers use both execution-before-attempt and attempt-before-execution
+orders; adding another blocking edge can deadlock terminal persistence. A later
+lock conflict denies provisioning and rolls back the whole private transaction,
+releasing its attempt lock without exposing a token or partial grant. Do not
+retry automatically or change Python terminal writers. PostgreSQL interleaving
+tests must prove prompt denial, lock release and absence of partial grants,
+alongside uncontended concurrent idempotence. This unwired helper's contention
+behavior is not acceptance of a public runtime admission or retry contract.
+
 First-packet eligibility is deliberately conservative: non-bypass original org
 must match the resolved SDK org, in addition to effective-execution/default
 binding. The existing SDK's local default is the execution's effective org;
