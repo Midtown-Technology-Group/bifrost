@@ -47,8 +47,7 @@ jobs:
         env:
           BIFROST_SKIP_BUILD: '1'
         run: |
-          ./test.sh tests/unit/test_compose_test_harness.py -v
-          ./test.sh parity
+          ./test.sh tests/unit/test_compose_test_harness.py tests/parity/ -v
       - name: Stop this CI job's isolated test stack
         if: always()
         run: ./test.sh stack down

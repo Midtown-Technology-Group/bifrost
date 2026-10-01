@@ -17,5 +17,6 @@ for service in api api-replica worker scheduler; do
     printf '%s: ' "$service"
     docker compose -f docker-compose.test.yml exec -T "$service" python -c "$probe"
 done
+# This read-only probe must not run the root entrypoint's host-results chown.
 printf 'test-runner: '
-docker compose -f docker-compose.test.yml --profile test run --rm --no-deps test-runner python -c "$probe"
+docker compose -f docker-compose.test.yml --profile test run --rm --no-deps --user 1000:1000 test-runner python -c "$probe"
