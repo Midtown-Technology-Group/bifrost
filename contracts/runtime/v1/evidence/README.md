@@ -215,6 +215,9 @@ The finite entry point rejects the historical workspace non-finite inputs; a
 tests-only source witness renders their recorded tokens. Model adapters cover
 the selected classes and empty shared-table fixture only; unknown model fields,
 classes or unobserved grant content fail.
+They validate known field names and selected container locations, not every
+Pydantic leaf type/default shape. The immutable artifact check protects the eight
+captured model inputs; this adapter is not a validator for new model documents.
 
 Main `f10da7c27568e65ee36d5699b72ef3a44ea7a3d8` (#1007) changes the recipe and
 manifest module files for shared-table scopes. Source inspection found the
@@ -250,3 +253,21 @@ behavior and production acceptance of sampled finite-number compatibility
 remain unresolved. The pinned Python peer independently hashes Rust-returned
 bytes and verifies numerical/Unicode differences; tests do not derive inputs
 from expected byte strings.
+
+The NDJSON adapter retains baseline serde_json's nesting budget of 128. Its
+typed wrappers consume nesting too, so some trees accepted by the direct typed
+encoder at depth 64 are rejected as `InvalidFixture` before encoding. Direct
+typed tests establish that encoder boundary; this interchange campaign does
+not establish all depth-boundary outcomes. No `unbounded_depth` feature is used.
+
+The supported campaign compares exponent/mantissa strata, decimal-power
+neighbors, one million deterministic raw patterns and selected scalar Unicode
+strings. Named CPython repr regressions, targeted halfway/tie neighborhoods,
+bounded-tree differential fuzzing, broad permutations and full Unicode scalar
+coverage remain production-acceptance gates. A sampled pass does not resolve
+those gates or the separate source/runtime authority questions.
+
+The original capture/replay ran on physical `pve-t340`; retain that historical
+identity rather than relabeling it as VM106 acceptance. New runtime verification
+uses supported hosted CI or verified VM106. It must not restart VM101 or run
+new physical-host Docker/host pytest. Artifact provenance remains unchanged.

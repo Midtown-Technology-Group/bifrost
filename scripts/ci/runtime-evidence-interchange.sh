@@ -16,6 +16,9 @@ python_oracle() {
 docker build --target checks \
     --build-context runtime-evidence=contracts/runtime/v1/evidence \
     -t bifrost-runtime-evidence-checks -f core-rs/Dockerfile core-rs
+git rev-parse HEAD
+docker image inspect bifrost-test-api-dev:latest --format '{{.Id}} {{json .RepoDigests}}'
+docker image inspect bifrost-runtime-evidence-checks --format '{{.Id}}'
 docker run --rm --network none bifrost-runtime-evidence-checks \
     cargo run --offline --locked -p bifrost-contracts \
     --example runtime_evidence_vectors -- emit > "$EXCHANGE_DIR/fixtures.json"
