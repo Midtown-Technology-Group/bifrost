@@ -84,6 +84,21 @@ the lease or changing transient-error handling does not close the crash window.
 
 ## Evidence and acceptance matrix
 
+Characterization also exposed F-02, a source-derived log-batch quirk awaiting
+runtime confirmation: `append_logs` can stage a new lower sequence before a later
+conflicting existing sequence raises an error. The route converts that exception
+to a normal 409 response; `get_db` commits on normal dependency return. Those
+staged rows can therefore persist without the successful-path broadcast, while
+activity/sequence updates after the loop are not reached. Do not assume atomic
+rollback or silently correct the reference during porting.
+[Staging and conflict](https://github.com/Midtown-Technology-Group/bifrost/blob/d39aa0adf15ba12dfde5f2f39628cac88c2e98a0/api/src/services/device_jobs.py#L564),
+[handled response](https://github.com/Midtown-Technology-Group/bifrost/blob/d39aa0adf15ba12dfde5f2f39628cac88c2e98a0/api/src/routers/device_protocol.py#L249),
+[dependency commit](https://github.com/Midtown-Technology-Group/bifrost/blob/d39aa0adf15ba12dfde5f2f39628cac88c2e98a0/api/src/core/database.py#L149).
+The harness must wait for the owned transaction to release its row lock before
+capturing committed state; a post-response SELECT alone is insufficient evidence
+of dependency teardown completion. Actual response/cleanup ordering must be
+characterized in the supported pinned FastAPI environment.
+
 | Acceptance area | Evidence | Disposition |
 |---|---|---|
 | Current prerequisites and workspace boundary | Exact fetched heads and authored audit | Verified at stated heads |
