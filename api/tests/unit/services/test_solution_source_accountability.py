@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.solution_source_accountability import SourceConsumer, completion_for_source, supersession_for_source
+from src.services.solution_source_accountability import SourceConsumer, completion_for_source, supersession_for_source, has_untracked_root_reads
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 SHA, TREE, HASH = "a" * 40, "b" * 40, "c" * 64
@@ -79,6 +79,17 @@ def test_loose_runtime_must_match_and_dynamic_or_unpinned_consumers_fail_closed(
     assert decide(record(), loose_hashes={PATH: HASH}) is not None
     assert decide(record(), loose_hashes={PATH: "f" * 64}) is None
     assert decide(record(), uncertain_loose=True) is None
+
+
+@pytest.mark.parametrize("source", [b"from bifrost import files as storage\n", b"from bifrost.files import read as fetch\n",
+    b"import bifrost.files as storage\n", b"from bifrost import *\n", b"endpoint = '/api/files/read'\n",
+    b"endpoint = '/api/sdk/modules/path'\n"])
+def test_root_read_aliases_cannot_disappear_from_loose_consumer_evidence(source):
+    assert has_untracked_root_reads(source)
+
+
+def test_reviewed_resource_reads_are_not_root_file_reads():
+    assert not has_untracked_root_reads(b"from bifrost import resources, tables\n")
 
 
 def test_matching_already_active_source_still_needs_exact_tree_and_admission():

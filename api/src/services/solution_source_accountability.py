@@ -7,6 +7,7 @@ Missing mappings, mutable installs and uncertain loose consumers fail closed.
 from __future__ import annotations
 
 import asyncio
+import ast
 import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -48,6 +49,21 @@ ACCEPTED = (ExecutionStatus.SCHEDULED, ExecutionStatus.PENDING, ExecutionStatus.
 
 class UnprovenSourceConsumers(ValueError):
     """The observed platform cannot establish complete source ownership."""
+
+
+def has_untracked_root_reads(raw: bytes) -> bool:
+    """Import aliases must not hide operational files from the code graph."""
+    parsed = ast.parse(raw)
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Import) and any(alias.name == "bifrost.files" for alias in node.names):
+            return True
+        if isinstance(node, ast.ImportFrom) and (node.module == "bifrost.files"
+                or node.module == "bifrost" and any(alias.name in {"files", "*"} for alias in node.names)):
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and any(
+                route in node.value for route in ("/api/files/read", "/api/sdk/modules/")):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -337,7 +353,7 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
             | set(analysis.dynamic_importers) | set(analysis.dynamic_reference_importers) | set(analysis.dynamic_exporters)))
         # The import graph cannot prove arbitrary operational file reads. Keep
         # these loose consumers unresolved until their reviewed handoff.
-        uncertain |= any(b"files.read" in contents[path] or b"files.read_bytes" in contents[path]
+        uncertain |= any(has_untracked_root_reads(contents[path])
             for path in reachable if path in contents)
         loose_hashes = {path: release.source_hashes[path] for path in reachable if path in release.source_hashes}
     else:
