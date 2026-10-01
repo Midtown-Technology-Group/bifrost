@@ -48,6 +48,17 @@ def _find_compose() -> pathlib.Path:
 _COMPOSE = _find_compose()
 
 
+def test_full_gate_shared_backend_build_covers_every_backend_consumer():
+    """Building api must refresh all images frozen by the full gate."""
+    services = yaml.safe_load(_COMPOSE.read_text())["services"]
+    api = services["api"]
+    for name in (
+        "init", "api-replica", "worker", "scheduler", "scheduler-fixtures", "test-runner"
+    ):
+        assert services[name]["image"] == api["image"], name
+        assert services[name]["build"] == api["build"], name
+
+
 def _find_repo_file(path: str) -> pathlib.Path:
     """Locate a repo-root file in-container or on host."""
     candidates = [
