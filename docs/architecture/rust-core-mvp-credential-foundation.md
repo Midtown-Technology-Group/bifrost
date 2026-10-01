@@ -134,6 +134,22 @@ may finish, as in the current request-bound model. Do not hold locks over vendor
 calls. Actual supervisor close/restart hooks, original-org provenance, trusted
 deadline capture and lifecycle ownership remain real integration gates.
 
+The private issuer uses the existing trusted platform session factory and an
+independent transaction, rather than a caller-owned session that could see its
+own uncommitted Start. It first checks committed eligibility, then locks and
+refreshes the relevant rows before atomic insertion; do not wait for an
+uncommitted claimed-to-running write and call it preexisting committed Start.
+
+First-packet eligibility is deliberately conservative: non-bypass original org
+must match the resolved SDK org, in addition to effective-execution/default
+binding. The existing SDK's local default is the execution's effective org;
+legitimately authorized foreign-effective admission therefore needs genuine
+trusted entitlement evidence before this profile can support it. Do not invent
+an approval flag or substitute the engine transport's superuser authority.
+Active-install/source eligibility and real source/session/deadline/caller hooks
+are additional unresolved integration cases, not changes to legacy SDK behavior.
+Nothing uses these private helpers for a real runtime yet.
+
 ## Verification and stop conditions
 
 Required tests cover exact codecs/claims, legacy audience rejection, invalid
