@@ -112,9 +112,10 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
+    from src.services.solutions.deployment_manifest import DeploymentGitProvenance
     from src.services.solutions import deployment_api, deployment_resources, resource_delivery, source_revision, workflow_revision
 
     solution_id, base_id, revision_id, workflow_id = (
@@ -168,6 +169,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         },
     )
     manifest = CompiledDeploymentManifest(
+        git=DeploymentGitProvenance(commit_sha=source_commit_sha),
         shared_tables=bindings,
         root_file_bindings=root_file_bindings or {},
         solution_id=solution_id,
