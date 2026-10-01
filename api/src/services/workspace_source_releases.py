@@ -282,6 +282,12 @@ class WorkspaceSourceReleaseService:
         reason: str,
         supersession_evidence: WorkspaceSourceSupersessionEvidence | None = None,
     ) -> WorkspaceSourceReleaseResponse:
+        if disposition == "superseded":
+            # Supersession inspects Solution pointers after its source row.
+            # Serialize with the aggregate accounting fence before either row
+            # set, preventing Source -> Solution / Solution -> Source deadlock.
+            from src.services.workspace_release_projection import acquire_workspace_release_lock
+            await acquire_workspace_release_lock(self.db, None)
         record = await self._get(record_id, for_update=True)
         if record is None:
             raise KeyError(record_id)
