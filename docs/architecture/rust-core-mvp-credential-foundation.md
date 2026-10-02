@@ -256,7 +256,13 @@ predicate binding. A separately reviewed e1f correction inlines the same frozen
 caller predicate at its two uses, retaining every request/state/receipt/time
 expectation and asynchronous cleanup. Current ordinary
 [CI run 36938634756](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36938634756)
-passed at exact e1f, including all four E2E shards, lint/type and unit lanes.
+passed for PR head e1f, including all four E2E shards, lint/type and unit lanes.
+The actual tested checkout is GitHub synthetic merge
+`bcd08c0b7957ec7a51132cec22f3e225428726ea`, with parents platform main
+`f770094eb28d8315a414fe8cb306f510da752d89` and candidate
+`e1f4c358efa08cbe8c1562dd8e409002aec9ee31`, tree
+`4b6090e6d15c6e72b17d2dce3b0022c61f8395f2`. Its checkout log and GitHub commit
+record independently agree. Do not call this an exact branch-head execution.
 Shard 4 independently records all 25 selected reference cases passed and 509
 passed/21 unrelated existing skips overall.
 [CodeQL run 36938634851](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36938634851),
