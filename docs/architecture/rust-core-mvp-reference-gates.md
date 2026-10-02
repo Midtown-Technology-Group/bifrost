@@ -679,3 +679,31 @@ registration metadata lives in manifest/resolution, while actual Workflow
 columns provide the persisted projection. No invented columns/schema change.
 The material-reader contract, its independent oracle/credential/storage
 adapters and nominal consumer remain gated; green units do not satisfy C1.
+
+
+## Material-reader source interface disposition
+
+Independent review found two mechanical gaps in the original proposal:
+per-cell caps did not enforce aggregate fetched material, and asyncpg
+Transaction context exit could await rollback beyond the observer deadline.
+The [corrected material reader](rust-core-mvp-agent-material-reader.md) freezes
+single-row same-statement per-cell/remaining-total admission, exact charging
+and fixed-charge preflight; fixed timed transaction control and narrow emergency
+termination affect only the dedicated observer connection. Uncertain exit has
+no snapshot, recovery/reuse or server-cleanup success claim. Primary source is
+[pinned asyncpg0.31 Transaction](https://raw.githubusercontent.com/MagicStack/asyncpg/v0.31.0/asyncpg/transaction.py)
+and [Connection](https://raw.githubusercontent.com/MagicStack/asyncpg/v0.31.0/asyncpg/connection.py).
+
+Final packet9eb08293 and independent review518f3ef6 release only
+C1-R-MATERIAL-S's two source paths. Pre-enqueue SetupIds never fabricates R;
+RunIds uses actual public202 R; E remains unknown until committed Step4.
+Authenticated Agent has zero role joins, separate from the two workflow grants.
+A legitimate pre-Step4 capacity row stays unattributed, not an E discovery.
+The reader has no partial oracle acceptance. Full semantic oracle, private
+adapters, raw connection/secret custody, live Redis evidence and nominal closure
+remain outstanding. Instrumented units will not constitute committed DB proof.
+
+The dedicated host source package also resolves its own-digest circularity
+through a pure fixed-template constructor. Exact emitted literal and committed
+release pins require review and freezing BEFORE any privileged execution;
+no dynamic caller-supplied digest creates authority. No bootstrap was executed.

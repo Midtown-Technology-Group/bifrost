@@ -35,6 +35,27 @@ UID and FD behavior is not installed custody evidence. Builder reports source
 checks and review-ready bytes without committing, pushing or dispatching CI;
 the accountable architect owns integration and publication.
 
+## Noncircular source-pin construction
+
+Root selected a pure fixed-template `bootstrap_literal(ReleasePins)` source
+constructor after the builder identified that a helper cannot embed its own
+final committed digest. ReleasePins contains only exact committed source root,
+git-lock parent, source commit and helper/unchanged-codec/entrypoint SHA256s.
+Strict canonical paths/digests and literal data encoding are required; no
+command/template/path-suffix selector or executable interpolation is accepted.
+The deterministic emitted literal remains at most16384 bytes. These pins are
+trusted coordinator release assertions, not proof of source identity themselves.
+
+Before any privileged invocation, accountable and independent review must
+freeze the actual clean committed inputs AND emitted literal bytes/hash. The
+coordinator must compare those frozen values against the actual candidate and
+protected snapshots; unreviewed dynamic regeneration at runtime cannot replace
+that gate. Normal operations use protected saved release identity. This source
+construction adds no privileged argv/stdin selector and authorizes no bootstrap
+execution. Required units reject missing/extra/malformed/injection-bearing pins
+and verify deterministic literal construction. Coordinator integration remains
+separately owned and unreleased.
+
 The exact reviewed proposal follows. Its historical release-status sentences
 are retained as provenance and are superseded only by the disposition above.
 
