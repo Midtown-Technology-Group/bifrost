@@ -1,5 +1,20 @@
 # C1-R dedicated privileged host interface
 
+**CURRENT DISPOSITION: C1-R-HOST-S SOURCE STOP (2026-10-02).**
+The builder reached the explicit complexity gate: an incomplete854-line
+custom elevated helper, with bootstrap, disposal and units still missing.
+Finishing the accepted footprint was estimated above1100 lines. The untracked
+draft is deliberately incomplete and exits1 unconditionally on invocation;
+SHA256 `84937e4ebf8ace19a8ee618e7200074f2f00eaf387e0077eaba33058195a443a`.
+AST/locked Ruff passed only; no import, unit/runtime/privileged execution,
+bootstrap, integration or acceptance occurred. Do not execute/complete this
+package under the earlier source release below. The accountable architect is
+reviewing smaller privilege alternatives; no replacement implementation is
+released. The reviewed contract/release remains historical provenance, not a
+waiver of its own STOP rule. Reader work is independent. This is a component
+falsification, not proof that Rust control-plane ownership is viable or unsound.
+
+
 Disposition: root accepts the independently reviewed revision3 contract below
 for **bounded source implementation only**. It supersedes the integration
 specification's historical generic-renderer elevation and pathname chown

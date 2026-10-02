@@ -707,3 +707,35 @@ The dedicated host source package also resolves its own-digest circularity
 through a pure fixed-template constructor. Exact emitted literal and committed
 release pins require review and freezing BEFORE any privileged execution;
 no dynamic caller-supplied digest creates authority. No bootstrap was executed.
+
+
+## Host helper complexity STOP and unresolved oracle findings
+
+C1-R-HOST-S stopped under its explicit complexity condition: the custom elevated
+helper draft reached854 lines before bootstrap/disposal/tests, estimated above
+1100 if completed. Retained fail-closed untracked source SHA256
+`84937e4ebf8ace19a8ee618e7200074f2f00eaf387e0077eaba33058195a443a` is not
+review-ready and must not execute. Only AST/locked Ruff ran. No privileged
+operation, Docker/runtime, bootstrap or helper unit test occurred. Earlier
+source release is suspended for this component. Root requested source-only
+comparison of smaller fixed operations under the already trusted coordinator
+versus provisioning in existing owned init/fixture processes; neither is released.
+The goal is to remove a custom elevated framework, not redistribute its lines
+or weaken secret custody, role exclusions, TLS, actual readers or closure.
+
+Independent full-oracle interface review SHA256
+`d026ad14ff4c4ddc66c973f9cfe407071984df3b008638c23f8c819351165220`
+found five source-freeze gaps: parent/summary publisher projections, frozen JSON
+versus codec dict/list inputs, raw event parsing ownership, boolean/numeric
+comparison and lifecycle/fresh-snapshot provenance. The proposal remains
+unreleased pending correction; no partial oracle can satisfy C1.
+
+Actual parent source assigns its existing run_obj after commit rather than
+rereading summary changes (agent_run.py565-577; expire_on_commit=False).
+Summary publishes its separately loaded object after its own commit. Event
+receive order is still not a global DB/process clock order. A workflow attempt's
+process_id is the pool handle `process-N`, not an OS PID; public worker detail
+reports a cached heartbeat PID and sets is_alive=True by inference. A future
+actual-process witness must join real OS/container observation to that handle,
+not turn either field into liveness proof. These are unresolved concrete gates,
+not normalization opportunities.
