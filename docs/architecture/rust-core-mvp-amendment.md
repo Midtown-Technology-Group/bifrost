@@ -18,9 +18,11 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
-As of the latest fetch, platform main is `bf81a30b594a7d28d1282f60d41e14d32dc44722`
+As of the latest fetch, platform main is `4abdf1a163986b6bd86aa7bafe6fa56b963acbb6`
 and workspace main is `4fbb35b27691b993917affc9cdf8d0af44f3cef8`.
-Platform #1029 changes client compiler/types/tests only. Workspace advances
+Platform #1029 changes client compiler/types/tests; #1031 then normalizes Root
+registration inventories and permits bounded download-only Root grants up to
+256MiB while retaining the128MiB raw-read cap. Workspace advances
 be6→4fbb via #1144's exact NinjaOne device/alert reset and #1141's reviewed Halo
 Source-delivery configuration: five files,208 insertions/43 deletions. No selected
 Cove input, readiness workflow or boundary-checker byte changes. This is source

@@ -1053,3 +1053,24 @@ SHA256 remains `b3e71f317b8d72d85ab17f7a28a32c631e3b72546872e67c00dd8eccdc8bf2e4
 Platform current main remains bf81a30b with #1001 present. Historic receipt and
 running USER-01 diagnostic keep actual candidate/runtime pins; this source
 advance does not ratify dependency preparation or C2/C3 authority.
+
+## Latest platform source reconciliation: 4abdf1a1
+
+The next clean-doc gate refresh found platform main
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` (#1031), now included. Its eight-file
++153/-9 delta normalizes Root registration/retirement inventory paths using
+SQL ltrim(replace(path, backslash, slash), slash), matching current runtime
+source-path interpretation and retaining solution/active predicates and locks.
+Future Rust inventory parity must include legacy Windows and leading-slash
+registrations rather than infer a new identity from the normalized spelling.
+
+Public RootFileBinding max_bytes now permits up to256MiB only when signed_get
+is present and operations are a subset of exists/signed_get. Raw read remains
+bounded at128MiB; oversized raw/mixed/readless grants are rejected. Related
+unit/E2E tests assert normalized inventory and large signed-download behavior.
+This does not broaden the selected C1 finite source reads or authorize runtime
+credential grants, C2 dependency preparation, new installer authority or a new
+source-reader implementation. The Stage0 and running USER-01 diagnostic remain
+pinned to their actual earlier sources; current main is not retroactive parity
+or runtime proof. #1001 remains present. Source freshness rejection was repaired
+by including current main, without weakening the gate.
