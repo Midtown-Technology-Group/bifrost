@@ -315,3 +315,9 @@ The [C1-R evidence packet](rust-core-mvp-agent-reference.md#pure-codec-supported
 records exact checkout, job IDs, broader suite skips and remaining nominal gates.
 This is new-candidate codec proof, not transfer of the historical foundation's
 source review into model/tool/summary or mixed-writer acceptance.
+
+## Current workspace reconciliation and reference integration
+
+Current fetched platform main remains `e58db4955ddd30177bd613f1d85b7e203ad7832a`; workspace main advanced to `9941427941587d253540942b714c5e2b7abfc410` (#1129). Its two-file delta from c185 changes Ninja alert reconciliation and its unit tests. Selected Cove sources and the static boundary checker are unchanged. The exact detached 9941427 checkout passes the workspace-owned AST audit: 2,107 boundary files, 1,984 standard authored files, zero forbidden imports and an empty allowlist. Workspace #1112 remains an ancestor; no authored code was imported or executed. The earlier c185 snapshot above remains historical evidence.
+
+The [reference integration specification](rust-core-mvp-agent-reference-integration.md) now records private observer TLS, verified-reader mode0600 capability ownership, role-isolated status mounts, the dedicated host-status directory, named-only staged reset bypass and retained transient init custody. These are bounded reference-lane construction decisions, not public authorization changes, C2/C3 acceptance or a new #1017 repair cycle. No actual nominal model/tool/summary run, live vendor call, merge or deployment follows from this source review.
