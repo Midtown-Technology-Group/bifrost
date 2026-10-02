@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from bifrost.workspace_release import canonical_digest
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.contracts.workspace_promotions import (
@@ -146,7 +146,10 @@ class WorkspaceReleaseRetirementService:
             UUID(item["workflow_id"])
             for item in descriptor.effective_registrations.values()
         ]
-        predicates = [Workflow.path.in_(descriptor.governed_paths)]
+        # Match execution's path normalization, including uncaptured legacy
+        # UUIDs. Inactive audit rows still require a reviewed disposition.
+        runtime_path = func.ltrim(func.replace(Workflow.path, "\\", "/"), "/")
+        predicates = [runtime_path.in_(descriptor.governed_paths)]
         if registration_ids:
             predicates.append(Workflow.id.in_(registration_ids))
         rows = (

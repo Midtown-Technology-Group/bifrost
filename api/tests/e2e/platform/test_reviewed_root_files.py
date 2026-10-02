@@ -29,7 +29,7 @@ from tests.e2e.platform.test_solution_source_revision import (
 pytestmark = pytest.mark.e2e
 
 
-async def fixture(db, admin, monkeypatch, install_org, execution_org):
+async def fixture(db, admin, monkeypatch, install_org, execution_org, *, package_bound=1024):
     prefix = f"features/reviewed_root_{uuid4().hex}"
     installer, package = prefix + "/installer.ps1", prefix + "/package.zip"
     catalog = prefix + "/clients.json"
@@ -38,7 +38,7 @@ async def fixture(db, admin, monkeypatch, install_org, execution_org):
         "installer": RootFileBinding(location="workspace", path=installer,
             operations=["read", "exists", "signed_get"], max_bytes=len(script), expected_read_sha256=sha256_digest(script)),
         "download": RootFileBinding(location="uploads", path=package,
-            operations=["exists", "signed_get"], max_bytes=1024),
+            operations=["exists", "signed_get"], max_bytes=package_bound),
         "backup": RootFileBinding(location="workspace", path=BACKUP_PREFIX,
             directory_prefix=True, operations=["create"], max_bytes=64 * 1024),
         "catalog": RootFileBinding(location="workspace", path=catalog,
@@ -85,6 +85,47 @@ async def fixture(db, admin, monkeypatch, install_org, execution_org):
     f.installer_key, f.package_key, f.script = installer_key, package_key, script
     f.policy, f.attempt, f.execution_id = policy, attempt, execution_id
     return f
+
+
+@pytest.mark.asyncio
+async def test_large_signed_download_streams_bound_and_denies_raw_read(
+    db_session, platform_admin, monkeypatch,
+):
+    """Exercise signed authority and the stream boundary without a large allocation."""
+    bound = 135419864
+    f = await fixture(db_session, platform_admin, monkeypatch, None, PROVIDER_ORG_ID,
+                      package_bound=bound)
+    observed = []
+    size = bound
+
+    async def chunks(storage, key, *, chunk_size):
+        assert key == f.package_key
+        observed.append(chunk_size)
+        remaining = size
+        chunk = b"x" * chunk_size
+        while remaining:
+            count = min(remaining, chunk_size)
+            yield chunk[:count]
+            remaining -= count
+
+    monkeypatch.setattr(FileStorageService, "iter_raw_s3_chunks", chunks)
+    async with f.client:
+        request = {"path": f.package, "location": "uploads", "method": "GET"}
+        signed = await f.client.post("/api/files/signed-url", json=request)
+        assert signed.status_code == 200, signed.text
+        assert signed.json()["path"] == f.package_key
+        assert signed.json()["expires_in"] == 600
+        reads_before_denial = len(observed)
+        denied_read = await f.client.post("/api/files/read", json={
+            "path": f.package, "location": "uploads"})
+        assert denied_read.status_code == 404  # Ordinary Solution tier cannot see this Root object.
+        assert "content" not in denied_read.json()
+        assert len(observed) == reads_before_denial
+        size = bound + 1
+        overflow = await f.client.post("/api/files/signed-url", json=request)
+        assert overflow.status_code == 422
+        assert "url" not in overflow.json()
+        assert max(observed) <= 64 * 1024
 
 
 @pytest.mark.asyncio
