@@ -19,11 +19,11 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
 As of the latest fetch, platform main is `01cadfe09710d293a40da14d6cf4056165289e31`
-and workspace main is `b3cf568378e43359e1149e88a65bea139b4b01c9`. Its latest
-advance from `9cfd2a6ad` changes fourteen scoped onboarding/Cisco Solution,
-release and test/CI/doc files; the four selected Cove source inputs and boundary
-checker bytes are unchanged. The current workspace audit passes 2,112 boundary
-files (1,989 standard authored
+and workspace main is `6bb2399a4e185ffadbd2651953ab9c90320b4d5a`. Its latest
+advance from `b3cf56837` changes twenty-four Halo/Cisco/Ninja Source-delivery,
+caller/scope, documentation and test files; the four selected Cove source inputs
+and boundary checker bytes are unchanged. The current workspace audit passes
+2,115 boundary files (1,992 standard authored
 files), zero forbidden imports and an empty allowlist. Earlier source/test
 evidence below retains its actual provenance.
 

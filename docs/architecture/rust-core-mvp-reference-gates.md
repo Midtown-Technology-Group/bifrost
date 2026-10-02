@@ -9,11 +9,11 @@ deployment is authorized.
 
 Current reconciliation (2026-10-02): platform main
 `01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
-`b3cf568378e43359e1149e88a65bea139b4b01c9`. Both prerequisites remain
-ancestors. Workspace's latest fourteen-file onboarding/Cisco Solution, release
-and test/CI/doc delta changes no selected Cove fixture source or boundary
-checker. A fresh stdlib AST audit applying the repository's exact authored/boundary
-roots and exclusions passes2,112 boundary files (1,989 standard authored), zero
+`6bb2399a4e185ffadbd2651953ab9c90320b4d5a`. Both prerequisites remain
+ancestors. Workspace's latest twenty-four-file Halo/Cisco/Ninja Source-delivery,
+caller/scope and doc/test delta changes no selected Cove fixture source or
+boundary checker. A fresh stdlib AST audit applying the exact repository
+roots/exclusions passes2,115 boundary files (1,992 standard authored), zero
 forbidden imports and empty allowlist.
 Historical source/test/deployed-image evidence below keeps its original pins.
 
@@ -852,3 +852,30 @@ including the unchanged pre-PR gate requested once, is pending. Prior failed
 5d5 stays blocking historical evidence; no all32-runtime, nominal, authority or
 full-MVP acceptance is claimed. Temporary Sol review capacity failures did not
 waive independent review; a different Sol reviewer completed the source gate.
+
+
+## Corrected reader runtime checkpoint and semantic-oracle gates
+
+Corrected source d35451eebfbaee4c5b0246356955a1f0302147d5 completed supported
+[run37001683085](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37001683085)
+SUCCESS. All191 selected reader units pass without skips;12,778 backend units
+pass with3 unrelated skips/35 deselections. All6 actual PostgreSQL cases pass
+without skips, including all32 fixed material queries, genuine driver UUID
+metadata/material retention, read-only acquisition/COMMIT, preserving caller
+transactions and deliberate schema/type drift detection. All required quality,
+pre-PR/API/client/MCP lanes pass. Artifact11224351520 verifies exact head/tree,
+main01cadfe, exit0/cleanup0 and actual EMPTY owned containers/volumes/networks.
+The failed5d5 physical-column result remains historical evidence; no waiver.
+These are reader mechanics, not populated complete lineage, postclosure freshness,
+nominal agent or Rust authority/coexistence acceptance.
+
+The [semantic-oracle design candidate](rust-core-mvp-agent-oracle-interface.md)
+now reconciles four source seams: exact two native UUID observation classes,
+request/pending {} defaults, existing reader acquisition rather than obsolete
+A/B alternatives, and selected Numeric(10,2) Decimal-zero versus compiler-float
+zero projection. Different reviews63035e35/27947dc4 accept those narrow corrections,
+but full oracle builder release remains BLOCKED by typed adapter/client/source
+custody, event matching cardinality, detector antecedent, actual process/host
+closure and consumer call/result binding. No new reader SQL, general numerical
+rounding, parser copy, proof boolean or oracle implementation follows. #1017's
+exhausted cycle and host literal SOURCE STOP remain unchanged.

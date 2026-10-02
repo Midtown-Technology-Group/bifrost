@@ -119,6 +119,29 @@ remain unchanged. A single corrected-candidate supported
 with unchanged pre-PR requested is pending. This is a changed-source verification,
 not a rerun of failed5d5, a schema change or acceptance waiver.
 
+Corrected-candidate [run37001683085](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37001683085)
+is SUCCESS at exactd354:191 selected reader units/zero selected skips and12,778
+backend units pass (3 unrelated skips/35 deselections). API shard2 job110820785483
+passes all6 actual PostgreSQL cases/zero selected skips, with581 total passes.
+The material catalog test executes every fixed query with native key/budget
+bindings; actual driver metadata/material identity positives also pass.
+All other required quality/pre-PR/API/client/MCP lanes pass.
+Pre-PR artifact11224351520 ZIP SHA256
+`fc134338b2468f42943afef92ea88841b928eaf08fd4ac0516d23040dd51aedc`
+records exact d354/tree1bdc0314/main01cadfe, exit0/cleanup0 and actual EMPTY owned
+containers/volumes/networks. API image registry digest
+`sha256:14501fd95c9df3d9085feccf96a45a8c3bd413d1c5bce1b285dadb58e0d4eb65`.
+Unit log SHA256 `8727b69f5febfc255bbf69e743aa9ae7406217cd26d181024ee60ad0d5da6a2e`;
+API shard2 log SHA256
+`75dfccb14dd98bfadbd992788ffe1d3dba48b98e5d82efa6b9da55fa6e662145`.
+
+This closes the bounded reader/real-driver mechanics gate. Absent identity
+fixtures do not prove populated32-group lineage, canonical source/decryption,
+secret/process custody, fresh postclosure consumer or the complete nominal.
+The [semantic-oracle reconciliation](rust-core-mvp-agent-oracle-interface.md)
+consumes actual existing acquisition and native output types; it still releases
+no oracle/adapters/live consumer or C2/C3 implementation.
+
 Disposition: root freezes the independently reviewed MATERIAL-ONLY interface
 below. Builder package **C1-R-MATERIAL-S** may implement only
 `api/tests/e2e/platform/agent_reference_lineage.py` and
