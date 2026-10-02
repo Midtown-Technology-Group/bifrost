@@ -1023,3 +1023,16 @@ imports and explicit empty allowlist. Checker SHA256
 Prior7fa audit and installation/runtime evidence retain their actual pins;
 current source is not relabeled as an installed Solution or nominal execution.
 No workspace accommodation, authored rewrite, role mutation or C2/C3 release.
+
+## Latest platform source reconciliation: bf81a30b
+
+The docs-only pre-PR refresh discovered platform main
+`bf81a30b594a7d28d1282f60d41e14d32dc44722` (#1029), now included in this branch.
+Its seven-file client-only delta adopts the TypeScript7 native compiler and
+adjusts client types/tests/configuration. It changes no backend, schema,
+selected workspace fixture, identity diagnostic or runtime authority source.
+#1001 remains an ancestor; workspace remains freshly audited be6f914bb.
+The earlier supported diagnostic keeps its actual main01cadfe source pin;
+new current main is not retroactive execution or repair of #1034. The initial
+docs gate correctly rejected a stale base before checks; rerun follows source
+reconciliation rather than waiving the freshness gate.
