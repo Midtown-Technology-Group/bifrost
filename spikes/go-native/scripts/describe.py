@@ -42,11 +42,13 @@ def main() -> None:
     assert not any(t["Action"] == "fail" for t in tests), "test failure"
     artifact = out / "workflow"
     changed = out / "workflow-warm-edit"
+    scanner, _ = json.JSONDecoder().raw_decode((out / "govulncheck.jsonl").read_text())
     assert digest(artifact) != digest(changed), "source edit did not change artifact"
     info = {
         "runtime": "go-native/v1", "profile": "local-authoring-only",
         "source_sha256": source_digest, "source_files": files,
         "artifact_sha256": digest(artifact), "artifact_size_bytes": artifact.stat().st_size,
+        "local_probe_sha256": digest(out / "probe"),
         "warm_artifact_sha256": digest(changed),
         "go_version": "go1.27.1", "goos": "linux", "goarch": "amd64", "cgo": False,
         "dependency_inputs_sha256": hashlib.sha256(modules.encode()).hexdigest(),
@@ -59,6 +61,7 @@ def main() -> None:
         "sdk_version": "0.0.0-spike.1", "recipe_version": "go-native-spike/v1",
         "build_recipe_sha256": digest(root / "scripts/measure.sh"),
         "builder_image": image, "scanner_image": (out / "scanner-image.txt").read_text().strip(),
+        "scanner_configuration": scanner["config"],
         "entrypoint": "workflow", "build_entrypoint": "./cmd/workflow",
         "build_flags": ["-mod=readonly", "-trimpath", "-buildvcs=false"],
         "reviewed_deployment": False,

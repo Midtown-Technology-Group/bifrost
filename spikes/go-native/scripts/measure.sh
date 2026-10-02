@@ -15,6 +15,10 @@ mkdir -p "$scratch/independent-compiler"
 cp -a "$spike_root/." "$scratch/warm-source/"
 task_uid=$(id -u)
 task_gid=$(id -g)
+if [ "$task_uid" -eq 0 ]; then
+  echo 'The spike builder requires a nonroot supported-lane identity.' >&2
+  exit 2
+fi
 
 # A fixed official proxy/checksum service is the only fetch path. No credentials,
 # direct VCS fallback, toolchain downloads, application code or hooks run here.
@@ -102,6 +106,7 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   GOMODCACHE=/modules GOCACHE=/compiler GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
   sh -c 'go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
 cp "$scratch/out/generated-input.json" "$scratch/out/generated-output.json" "$evidence_dir/"
+cp "$scratch/out/probe" "$evidence_dir/probe"
 
 # Empty root with only the two immutable binaries mounted: no compiler, shell,
 # secrets, module cache or external network. /out is only fixture measurement data.

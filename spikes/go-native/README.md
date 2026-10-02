@@ -37,13 +37,31 @@ the selected execution lane.
 stdin; output is JSON on stdout. `cmd/probe` launches an already-built executable
 with an explicit environment. Neither wrapper is a production runtime protocol.
 The manifest is a design/build input and explicitly cannot register an entity.
-Schemas are explicit; automatic schema generation is not claimed.
+Schemas are explicit and checked against a constrained build-time AST extractor
+for single-file struct types containing strings, booleans and slices. Unsupported
+types, generics, serialization hooks and cross-file ambiguity fail explicitly.
+Business constraints such as a nonempty name remain explicit schema/handler rules.
 
 Measurements, source digests, dependency graph, binary build info, scanner/image
-identity and unsigned provenance are written to the requested evidence directory.
+identity and an experimental ephemeral Ed25519 descriptor signature are written
+to the requested evidence directory. Its private key never reaches a builder or
+workload and is deleted at task cleanup; this is not a production trust anchor.
 Production attestation, stronger hostile multi-tenant isolation, independent cold
 reproducibility, process-tree/resource stress, Rust result projection and real
 restricted credential positives/negatives remain separate acceptance gates.
 
 See [the decision packet](../../docs/architecture/go-first-class-spike/decision.md)
 for the reconciled shared architecture and exact Rust integration blockers.
+
+The CI artifact includes both compiled binaries. On a disposable Linux/amd64
+developer test machine, the downloaded authoring proof can run without Go:
+
+```sh
+chmod +x workflow probe
+./probe --artifact "$PWD/workflow" --output "$PWD/local-execution.json"
+```
+
+That starts synthetic HTTPS capability fixtures, executes the same binary 20
+times, and exercises cancellation. It writes local measurement evidence, not
+BiFrost durable lifecycle state. Use the pinned scratch Docker execution from the
+measurement script for the isolated acceptance proof.
