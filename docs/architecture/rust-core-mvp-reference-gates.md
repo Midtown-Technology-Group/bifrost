@@ -879,3 +879,24 @@ custody, event matching cardinality, detector antecedent, actual process/host
 closure and consumer call/result binding. No new reader SQL, general numerical
 rounding, parser copy, proof boolean or oracle implementation follows. #1017's
 exhausted cycle and host literal SOURCE STOP remain unchanged.
+
+
+## Source-client owner design checkpoint
+
+The [source-client owner supplement](rust-core-mvp-source-client-owner.md)
+records candidate c9f83f8f and different review fe3e9845. Root accepts the bounded
+source design with its conditions, while retaining STOP-to-builder and runtime
+acceptance. Actual SDK configuration/token paths still execute despite explicit
+static credentials; local-signing feasibility is not installed zero-send proof.
+One actual owner must retain acquisition, responses and client close uncertainty
+under the shared deadline, without releasing partial objects.
+
+The existing dedicated nominal pytest runner could own the observer. An extra
+process or IPC framework is unnecessary, but its actual post-exec bootstrap,
+import order, sanitized source/profile, client call site and disposal are not
+implemented or frozen. The runner currently execs pytest and the nominal case
+file is absent at reader d354. Parent logging suppression does not survive exec.
+No transport source builder, nominal acceptance, host retry, #1017 repair,
+credential-policy expansion or C2/C3 implementation is released by this design.
+Both main heads remain platform01cadfe/workspace6bb2399; #1011 at213d had passing
+current checks and all4 review threads resolved before this documentation update.
