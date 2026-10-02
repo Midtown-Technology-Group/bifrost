@@ -232,7 +232,9 @@ def test_debug_storage_credential_is_private_stable_and_respects_override(
     env.update(XDG_STATE_HOME=str(tmp_path), COMPOSE_PROJECT_NAME="debug-storage-test")
     subprocess.run(
         [
-            "bash", "-euc", function.group() + "\n" + """
+            "bash",
+            "-euc",
+            function.group() + "\n" + """
 configure_debug_storage
 test -n "$SEAWEEDFS_SECRET_KEY"
 task_first_key="$SEAWEEDFS_SECRET_KEY"
@@ -245,7 +247,10 @@ configure_debug_storage
 test "$SEAWEEDFS_SECRET_KEY" = explicit-local-test-credential
 """,
         ],
-        env=env, check=True, capture_output=True, text=True,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
     )
     directory = tmp_path / "bifrost/debug/debug-storage-test"
     secret = directory / "storage-secret"
