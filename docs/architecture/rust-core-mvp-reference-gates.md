@@ -1075,3 +1075,55 @@ source-reader implementation. The Stage0 and running USER-01 diagnostic remain
 pinned to their actual earlier sources; current main is not retroactive parity
 or runtime proof. #1001 remains present. Source freshness rejection was repaired
 by including current main, without weakening the gate.
+
+## Controlled USER-01 experiment: terminal, inconclusive, stopped
+
+The separately reviewed closed-only1000ms diagnostic candidate
+`659c85261c3260745c1b678fda12d40d102df26d` (tree
+`aa191672cb5f43f9099dee8e55e0a2f092ebf1bb`, main4abdf1a1) passed supported
+[CI37027300135](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37027300135),
+including quality, units, four API shards, both browser shards and literal
+pre-PR. No production behavior, fixture, dependency, timeout or expectation
+changed. The supported quality result verifies the prior diagnostic lint repair.
+
+Browser shard2/job110905349562 artifact11236471918 contains one USER-01 pass,
+retry0, with exact sourceRevision659c8526/sourceDirtyfalse. ZIP SHA256
+`1e0d550db11e166d846efb4801b57763d64067284a2bdc1e121018cd1bd02e75`.
+The finite `bifrost.user01-closing-experiment/v1` attachment SHA256 is
+`c549c7d71b2c05a7a8a82f75d645a57d9fd19c20b06875e3b381532e15d5b21c`:
+12 unsaturated events, one bulk request, unsaturated request counter. At
+selection bubble148.9ms the held picker is connected/closed with computed1s
+animation. At footer pointerdown1366.7ms and click1367.4ms the closed/mounted and
+computed1s flags are false. Both picker flags and defaultPreventedAtPhase are
+false throughout footer phases. The intervention applied, but required condition
+coverage was **MISSED**. This is **INCONCLUSIVE**, not a product repair or
+counterexample to the closing-layer hypothesis. #1034 remains unresolved.
+The accepted package is **STOPPED** after this one candidate: no duration tuning,
+retry loop, expectation waiver or causal fix follows from green CI.
+Different independent retained-evidence review SHA256
+`304c54692ca152b22a7cc1577237716992f03533ff03e6862b2e02c03cb0454a`
+accepts collection/provenance and this limited disposition.
+
+Manual pre-PR job110905349539 artifact11235737542 ZIP SHA256
+`4d2447f922ae951244209099909daeed9217c3494ba17f0d81275b05fd6f1572`
+binds exact candidate/tree/main, exit0 and cleanup_status0 with actual EMPTY
+owned containers/networks/volumes. This covers that job's Compose project only.
+Its API image ID is94de98d47599714059dea366436bd260fb3317cb478b4567f512f78a428d01e2,
+registry digest2f9c703c002e412e0b8a758f48373f338a0c52e5715b40f172360d7e37c235bc;
+no browser image or other job's teardown is inferred from this receipt.
+No full C1, writer exclusion, dependency preparation, C2/C3, merge or deployment
+acceptance is established.
+
+## Latest workspace source reconciliation: bd3739ff
+
+Fresh workspace main `bd3739ff9e037d4542e8a00f582e779f4cfbe260` (#1145)
+changes focused CI classification and exact Git review of Solution recipes:
+nine files,+180/-15. Selected A/Cove authored inputs and public-boundary checker
+are unchanged. Dedicated source-audit worktree is clean; original user checkout
+is untouched. Exact-root stdlib AST audit again finds2,116 boundary files,
+1,993 standard authored files, zero forbidden imports and empty allowlist.
+Checker SHA256 remains
+`b3e71f317b8d72d85ab17f7a28a32c631e3b72546872e67c00dd8eccdc8bf2e4`.
+#1112 remains an ancestor. Platform main remains4abdf1a1. This is current source
+evidence; earlier executions retain their actual pins and no new runtime or
+credential authority follows from the workspace CI change.
