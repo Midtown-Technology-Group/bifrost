@@ -1,0 +1,78 @@
+name: Rust Core
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-core-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  integration:
+    name: Rust migrated schema and PgBouncer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Start isolated Python-migrated test stack
+        run: ./test.sh stack up
+      - name: Verify bootstrap against isolated Python-migrated database
+        run: ./test.sh rust bootstrap
+      - name: Build and exercise the valid production binary
+        run: |
+          docker build --build-arg BIFROST_BUILD_SHA="$GITHUB_SHA" -t bifrost-rust-runtime-smoke -f core-rs/Dockerfile core-rs
+          bash core-rs/scripts/container-smoke.sh bifrost-rust-runtime-smoke
+      - name: Remove this CI job's isolated test stack
+        if: always()
+        run: ./test.sh stack down
+  checks:
+    name: Rust formatting, lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify pinned Linux toolchain
+        run: docker build --target checks -f core-rs/Dockerfile core-rs
+      - name: Verify actual OTLP TLS exporters and native trust
+        run: |
+          docker build --target toolchain -t bifrost-rust-tls-tools -f core-rs/Dockerfile core-rs
+          bash core-rs/scripts/telemetry-tls.sh bifrost-rust-tls-tools
+  dependencies:
+    name: Rust security and license policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Audit the locked dependency graph
+        run: |
+          docker build --target toolchain -t bifrost-rust-tools -f core-rs/Dockerfile core-rs
+          docker run --rm bifrost-rust-tools sh -eu -c 'cargo install --locked cargo-deny --version 0.20.2; cargo deny --locked check advisories licenses bans sources'
+  image:
+    name: Rust cold production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build without previous build layers
+        run: docker build --pull --no-cache --build-arg BIFROST_BUILD_SHA="$GITHUB_SHA" -t bifrost-rust-ci -f core-rs/Dockerfile core-rs
+      - name: Invalid configuration must reject startup
+        run: |
+          set +e
+          startup_output=$(docker run --rm bifrost-rust-ci 2>&1)
+          startup_status=$?
+          set -e
+          if [ "$startup_status" -ne 1 ] || [ "$startup_output" != 'invalid or missing configuration: BIFROST_DATABASE_URL' ]; then
+            echo 'Rust service did not return the expected sanitized configuration error and exit code' >&2
+            exit 1
+          fi
