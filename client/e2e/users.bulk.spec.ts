@@ -150,72 +150,126 @@ test.describe("Bulk user actions", () => {
 
 		// Observe the immediate picker-to-footer interaction without changing it.
 		const submit = dialog.getByRole("button", { name: /move users/i });
-		const observation = await submit.evaluateHandle((footer) => {
-			const started = performance.now();
-			const events: {
-				type: string;
-				phase: "capture" | "bubble";
-				footerTarget: boolean;
-				closedPickerMounted: boolean;
-				defaultPreventedAtPhase: boolean;
-				elapsedMs: number;
-			}[] = [];
-			let saturated = false;
-			const listeners: (() => void)[] = [];
-			for (const capture of [true, false]) {
-				for (const type of ["pointerdown", "pointerup", "click"]) {
-					const listener = (event: Event) => {
-						const target = event.target;
-						if (!(target instanceof Element)) return;
-						const footerTarget = footer === target || footer.contains(target);
-						if (
-							!footerTarget &&
-							!target.closest('[data-slot="popover-content"]')
-						) return;
-						if (events.length >= 24) {
-							saturated = true;
-							return;
-						}
-						events.push({
-							type,
-							phase: capture ? "capture" : "bubble",
-							footerTarget,
-							closedPickerMounted:
-								document.querySelector(
-									'[data-slot="popover-content"][data-state="closed"]',
-								) !== null,
-							defaultPreventedAtPhase: event.defaultPrevented,
-							elapsedMs: performance.now() - started,
-						});
-					};
-					document.addEventListener(type, listener, capture);
-					listeners.push(() =>
-						document.removeEventListener(type, listener, capture),
-					);
-				}
-			}
-			return {
-				readAndDispose() {
-					for (const remove of listeners) remove();
-					return { events, saturated };
-				},
-			};
-		});
-		let bulkRequests = 0;
-		let requestCounterSaturated = false;
-		const countBulkRequest = (request: Request) => {
-			if (
-				request.method() !== "PATCH" ||
-				new URL(request.url()).pathname !== "/api/users/bulk"
-			) return;
-			if (bulkRequests >= 4) requestCounterSaturated = true;
-			else bulkRequests++;
-		};
-		page.on("request", countBulkRequest);
+		const cleanupActions: (() => Promise<void>)[] = [];
+		let recordObservation: (() => Promise<void>) | undefined;
 		let observationFailed = false;
 		try {
-			// Pick the destination org from the OrganizationSelect.
-			await dialog.getByRole("combobox").click();
+			const pickerTrigger = dialog.getByRole("combobox", {
+				name: "Organization scope",
+				exact: true,
+			});
+			await pickerTrigger.click();
+			const pickerId = await pickerTrigger.getAttribute("aria-controls");
+			if (!pickerId) throw new Error("Organization picker identity unavailable");
+			const pickerSelector = await page.evaluate((id) => `#${CSS.escape(id)}`, pickerId);
+			const pickerLocator = page.locator(pickerSelector);
+			if ((await pickerLocator.count()) !== 1) {
+				throw new Error("Organization picker identity ambiguous");
+			}
+			const picker = await pickerLocator.elementHandle();
+			if (!picker) throw new Error("Organization picker element unavailable");
+			cleanupActions.push(async () => { await picker.dispose(); });
+			const pickerAdmitted = await picker.evaluate((node, id) =>
+				node.id === id &&
+				node.getAttribute("data-slot") === "popover-content" &&
+				node.getAttribute("data-state") === "open", pickerId);
+			if (!pickerAdmitted) {
+				throw new Error("Organization picker identity mismatch");
+			}
+			// Controlled diagnostic lifetime, explicitly different from production timing.
+			const closingStyle = await page.addStyleTag({
+				content: `${pickerSelector}[data-state="closed"] { animation-duration: 1000ms !important; }`,
+			});
+			cleanupActions.push(async () => { await closingStyle.dispose(); });
+			cleanupActions.push(async () => {
+				await closingStyle.evaluate((node) => node.remove());
+			});
+			const observation = await submit.evaluateHandle((footer, actualPicker) => {
+				const started = performance.now();
+				const events: {
+					type: string;
+					phase: "capture" | "bubble";
+					footerTarget: boolean;
+					closedPickerMounted: boolean;
+					closedPickerHasOneSecondAnimation: boolean;
+					defaultPreventedAtPhase: boolean;
+					elapsedMs: number;
+				}[] = [];
+				let saturated = false;
+				const listeners: (() => void)[] = [];
+				for (const capture of [true, false]) {
+					for (const type of ["pointerdown", "pointerup", "click"]) {
+						const listener = (event: Event) => {
+							const target = event.target;
+							if (!(target instanceof Element)) return;
+							const footerTarget = footer === target || footer.contains(target);
+							if (
+								!footerTarget &&
+								!actualPicker.contains(target)
+							) return;
+							if (events.length >= 24) {
+								saturated = true;
+								return;
+							}
+							events.push({
+								type,
+								phase: capture ? "capture" : "bubble",
+								footerTarget,
+								closedPickerMounted:
+									actualPicker.isConnected &&
+									actualPicker.getAttribute("data-state") === "closed",
+								closedPickerHasOneSecondAnimation:
+									actualPicker.isConnected &&
+									actualPicker.getAttribute("data-state") === "closed" &&
+									getComputedStyle(actualPicker).animationDuration === "1s",
+								defaultPreventedAtPhase: event.defaultPrevented,
+								elapsedMs: performance.now() - started,
+							});
+						};
+						document.addEventListener(type, listener, capture);
+						listeners.push(() =>
+							document.removeEventListener(type, listener, capture),
+						);
+					}
+				}
+				return {
+					readAndDispose() {
+						for (const remove of listeners) remove();
+						return { events, saturated };
+					},
+				};
+			}, picker);
+			cleanupActions.push(async () => { await observation.dispose(); });
+			cleanupActions.push(async () => {
+				await observation.evaluate((owner) => { owner.readAndDispose(); });
+			});
+			let bulkRequests = 0;
+			let requestCounterSaturated = false;
+			const countBulkRequest = (request: Request) => {
+				if (
+					request.method() !== "PATCH" ||
+					new URL(request.url()).pathname !== "/api/users/bulk"
+				) return;
+				if (bulkRequests >= 4) requestCounterSaturated = true;
+				else bulkRequests++;
+			};
+			page.on("request", countBulkRequest);
+			cleanupActions.push(async () => { page.off("request", countBulkRequest); });
+			recordObservation = async () => {
+				const captured = await observation.evaluate((owner) => owner.readAndDispose());
+				await closingStyle.evaluate((node) => node.remove());
+				await test.info().attach("bulk-user-interaction-observation", {
+					body: Buffer.from(JSON.stringify({
+						schema: "bifrost.user01-closing-experiment/v1",
+						closedAnimationDurationMs: 1000,
+						...captured,
+						bulkRequests,
+						requestCounterSaturated,
+					})),
+					contentType: "application/json",
+				});
+			};
+			// Pick the destination from the already bound OrganizationSelect.
 			await page.getByRole("option", { name: DEST_ORG_NAME }).click();
 
 			// Submit and watch for the success toast.
@@ -226,29 +280,22 @@ test.describe("Bulk user actions", () => {
 				),
 			).toBeVisible({ timeout: 10000 });
 		} finally {
-			try {
-				const captured = await observation.evaluate((owner) => owner.readAndDispose());
-				await test.info().attach("bulk-user-interaction-observation", {
-					body: Buffer.from(JSON.stringify({
-						schema: "bifrost.user01-observation/v1",
-						...captured,
-						bulkRequests,
-						requestCounterSaturated,
-					})),
-					contentType: "application/json",
-				});
-			} catch {
-				observationFailed = true;
-			} finally {
-				page.off("request", countBulkRequest);
+			if (recordObservation) {
 				try {
-					await observation.dispose();
+					await recordObservation();
+				} catch {
+					observationFailed = true;
+				}
+			}
+			for (const cleanup of cleanupActions.reverse()) {
+				try {
+					await cleanup();
 				} catch {
 					observationFailed = true;
 				}
 			}
 		}
-		// An interaction failure propagates before this point and is never masked.
+		// Setup/interaction failures propagate before this point and are never masked.
 		if (observationFailed) {
 			throw new Error("Bulk-user interaction observation unavailable");
 		}
