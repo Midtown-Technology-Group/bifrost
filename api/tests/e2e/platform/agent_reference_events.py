@@ -67,7 +67,7 @@ def _decode(raw: bytes) -> dict[str, Any]:
     if type(value) is not dict:
         raise ValueError("invalid_payload")
     # Root depth is one. Nodes are JSON values/containers, not member names.
-    pending = [(value, 1)]
+    pending: list[tuple[Any, int]] = [(value, 1)]
     nodes = 0
     while pending:
         item, depth = pending.pop()
