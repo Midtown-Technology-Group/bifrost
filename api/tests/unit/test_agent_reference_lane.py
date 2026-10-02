@@ -64,6 +64,12 @@ def base():
     services["test-runner"]["volumes"] = [
         {
             "type": "bind",
+            "source": str(ROOT / "test-fixtures/agent-reference"),
+            "target": "/app/reference-assets",
+            "read_only": True,
+        },
+        {
+            "type": "bind",
             "source": str(ROOT / "api/tests"),
             "target": "/app/tests",
             "read_only": True,
@@ -122,12 +128,10 @@ def test_renderer_closes_services_network_consumers_and_assets(base):
         for name in lane.SERVICES
         if name != "test-runner"
     )
-    assert (
-        next(m for m in runner["volumes"] if m["target"] == "/app/reference-assets")[
-            "read_only"
-        ]
-        is True
-    )
+    assets = [m for m in runner["volumes"] if m["target"] == "/app/reference-assets"]
+    assert len(assets) == 1
+    assert assets[0]["read_only"] is True
+    assert assets[0]["source"] == str(ROOT / "test-fixtures/agent-reference")
     assert not any(m["target"] == "/app/.env.debug" for m in runner["volumes"])
     for name in ("api", "api-replica", "test-runner"):
         mount = next(
@@ -145,6 +149,26 @@ def test_renderer_closes_services_network_consumers_and_assets(base):
         assert mount["volume"].get("subpath") == (
             None if name == "test-runner" else name
         )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "duplicate", "writable", "foreign-source", "other-reader"]
+)
+def test_reference_assets_are_exactly_once_readonly_runner_only(base, mutation):
+    mounts = base["services"]["test-runner"]["volumes"]
+    assets = next(m for m in mounts if m["target"] == "/app/reference-assets")
+    if mutation == "missing":
+        mounts.remove(assets)
+    elif mutation == "duplicate":
+        mounts.append(assets.copy())
+    elif mutation == "writable":
+        assets["read_only"] = False
+    elif mutation == "foreign-source":
+        assets["source"] = "/unapproved/source"
+    else:
+        base["services"]["api"]["volumes"].append(assets.copy())
+    with pytest.raises(ValueError):
+        rendered(base)
 
 
 @pytest.mark.parametrize(
@@ -172,7 +196,11 @@ def test_renderer_rejects_changed_custody_inputs(base, mutation):
     if mutation == "network":
         base["networks"]["default"]["external"] = True
     elif mutation == "mount":
-        base["services"]["test-runner"]["volumes"][0]["source"] = "/root/.aws"
+        next(
+            m
+            for m in base["services"]["test-runner"]["volumes"]
+            if m["target"] == "/app/tests"
+        )["source"] = "/root/.aws"
     elif mutation == "env":
         base["services"]["api"]["environment"]["HTTP_PROXY"] = "http://proxy"
     elif mutation == "default-backend":

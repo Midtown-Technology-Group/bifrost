@@ -128,6 +128,7 @@ BIND_PATHS = {
     "/app/tests": "api/tests",
     "/app/scripts": "api/scripts",
     "/repo/scripts": "scripts",
+    "/app/reference-assets": "test-fixtures/agent-reference",
     "/app/alembic": "api/alembic",
     "/app/alembic.ini": "api/alembic.ini",
     "/app/.coveragerc": "api/.coveragerc",
@@ -347,6 +348,11 @@ def render(
             require(isinstance(mount, dict), "unresolved mount")
             target, kind = mount.get("target"), mount.get("type")
             if kind == "bind":
+                if target == "/app/reference-assets":
+                    require(
+                        name == "test-runner" and mount.get("read_only") is True,
+                        "unexpected reference asset authority",
+                    )
                 expected = BIND_PATHS.get(target) or STRIP_BINDS.get(target)
                 if expected:
                     require(
@@ -385,13 +391,9 @@ def render(
                 )
             mounts.append(mount)
         if name == "test-runner":
-            mounts.append(
-                {
-                    "type": "bind",
-                    "source": str(root / "test-fixtures/agent-reference"),
-                    "target": "/app/reference-assets",
-                    "read_only": True,
-                }
+            require(
+                sum(m["target"] == "/app/reference-assets" for m in mounts) == 1,
+                "missing or duplicate reference assets",
             )
             require(context.is_absolute(), "invalid custody context")
             mounts.append(
