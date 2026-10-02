@@ -1579,3 +1579,36 @@ async def test_wrong_returned_material_identity_and_recheck_growth_never_succeed
     assert result.snapshot is None and result.acquisition is None
     assert len(material_calls(connection, "user")) == 1
     assert connection.transaction_reads == 1
+
+
+@pytest.mark.parametrize("uuid_type", [UUID, reader._DriverUUID])
+def test_native_uuid_retains_only_two_exact_implementation_types(uuid_type) -> None:
+    value = uuid_type(str(U))
+    cell = next(cell for cell in reader._GROUPS["user"].cells if cell.name == "id")
+    assert reader._native(value, cell) is value
+    assert value.bytes == U.bytes
+
+
+def test_native_uuid_rejects_foreign_subclass_and_serialized_surrogates() -> None:
+    class ForeignUUID(UUID):
+        pass
+
+    cell = next(cell for cell in reader._GROUPS["user"].cells if cell.name == "id")
+    for value in (ForeignUUID(str(U)), str(U), U.bytes, U.int, True):
+        with pytest.raises(reader._Fault) as failure:
+            reader._native(value, cell)
+        assert failure.value.code is reader.ReaderCode.MATERIAL_INVALID
+
+
+def test_native_uuid_rejects_class_equality_spoofing() -> None:
+    class EqualitySpoof(type):
+        def __eq__(cls, other):
+            return True
+
+    class ForeignUUID(UUID, metaclass=EqualitySpoof):
+        pass
+
+    cell = next(cell for cell in reader._GROUPS["user"].cells if cell.name == "id")
+    with pytest.raises(reader._Fault) as failure:
+        reader._native(ForeignUUID(str(U)), cell)
+    assert failure.value.code is reader.ReaderCode.MATERIAL_INVALID

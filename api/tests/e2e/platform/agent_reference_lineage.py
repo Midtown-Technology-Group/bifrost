@@ -21,6 +21,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeAlias, Union, cast
 from uuid import UUID
 
+from asyncpg.pgproto.pgproto import UUID as _DriverUUID
+
 if TYPE_CHECKING:
     from asyncpg import Connection
 
@@ -1340,8 +1342,14 @@ def _native(value: object, cell: _Cell) -> object:
         if cell.nullable:
             return None
         raise _Fault(ReaderCode.MATERIAL_INVALID)
+    if cell.kind == "uuid":
+        # Preserve the actual driver object. Its optimized UUID has a distinct
+        # exact type despite stdlib-compatible MRO; no other subclass is admitted.
+        value_type = type(value)
+        if value_type is not UUID and value_type is not _DriverUUID:
+            raise _Fault(ReaderCode.MATERIAL_INVALID)
+        return value
     expected = {
-        "uuid": UUID,
         "bool": bool,
         "int": int,
         "float": float,
