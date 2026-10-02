@@ -194,6 +194,9 @@ class TestIntegrationOAuthPKCEWorkflow:
                 e2e_client, platform_admin, pkce_provider, state=state, code="code-replay"
             )
             assert replay.status_code == 400, f"Replay was not rejected: {replay.text}"
+            # Pins the early nonce guard: any regression to consume-after-store
+            # (or a different rejection) changes this detail and fails here.
+            assert replay.json()["detail"] == "OAuth state already used (replay rejected)"
 
             token_count = await db_session.scalar(
                 select(func.count())
