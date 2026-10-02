@@ -7,6 +7,15 @@ deployment is authorized.
 
 ## Source and evidence
 
+Current reconciliation (2026-10-02): platform main
+`01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
+`611edddc5aa621f43dfd8a21ef73e1b23ea62e5e`. Both prerequisites remain
+ancestors. Workspace's latest four-file Meraki recipe/proof delta changes no
+selected Cove input or boundary checker. A fresh stdlib AST audit applying the
+repository's exact authored/boundary roots and exclusions passes2,111 boundary
+files (1,988 standard authored), zero forbidden imports and empty allowlist.
+Historical source/test/deployed-image evidence below keeps its original pins.
+
 On 2026-10-01, fresh fetches returned platform main
 `ba783472b770291e612433ad7ca9564fe671dade` and workspace main
 `970f3030ef66d20abe83fd7ef0e400cd114da80d`. Platform #1001 and workspace #1112
@@ -739,3 +748,38 @@ reports a cached heartbeat PID and sets is_alive=True by inference. A future
 actual-process witness must join real OS/container observation to that handle,
 not turn either field into liveness proof. These are unresolved concrete gates,
 not normalization opportunities.
+
+## Reviewed smaller host design and committed-read acquisition
+
+Root accepts [minimal host alternative A](rust-core-mvp-agent-host-interface.md)
+within the existing trusted CI Docker-admin coordinator. Independent review
+`c57438fe661b0c79d0f82003d2898b85b4313b87e464eca9092d18cabeba0474`
+accepts the explicit removal of root-local framework/state, unchanged-codec
+validation outside elevation, and stock deletion of the saved owned status
+volume only after verified consumers/references are gone. Its discovered
+prior-inode gap is closed by actual final FD identity/body in a bounded private
+publisher receipt. Exact literal/argument source and footprint remain unfrozen;
+no replacement implementation/runtime release. The failed862-line draft84937
+is preserved outside Git at the recorded mode0600 path, not executed or restored.
+Secret/TLS/role/source/actual-reader/closure gates are unchanged; volume cleanup
+never repairs failed evidence into acceptance. Alternative B fails actual
+entrypoint/RO-material/preexisting-subpath/host-disposition prerequisites.
+
+Different independent review of original material readerf3258a03 and unit0ea55bca
+found no concrete source blocker (reporta9b42579); AST/locked Ruff passed only.
+The separately reviewed [read-acquisition supplement](rust-core-mvp-agent-read-acquisition.md)
+releases only the SAME two source paths. It adds actual PostgreSQL16 own virtual
+transaction identity before/after each readonly read and reader-internal real
+BEGIN/COMMIT monotonic samples, with a conservative4096-byte reservation within
+the unchanged1MiB/3-second caps. Independent interface reviewfbe0b69 accepted
+it with explicit FAILED/no-snapshot identity-change, stateless repeated-identity
+exposure and sampled-completion deadline checks. Source packetdab896c7 includes
+those conditions. PostgreSQL metadata alone cannot order acquisition after real
+closure; the actual consumer's awaited call/closed receipt joins remain gated.
+No migrations, permanent XID allocation, connection acquisition/recovery,
+domain writer, public credential authority or oracle acceptance is introduced.
+
+These packages do not restart #1017's exhausted repair cycle. Actual installed
+PG/OS/process/mount/privilege evidence, bounded immutable source/canonical
+adapters, complete semantic oracle and genuine nominal closure remain required
+before any Rust lifecycle or C2/C3 acceptance.

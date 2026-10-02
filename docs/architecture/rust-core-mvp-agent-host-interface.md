@@ -1,167 +1,124 @@
-# C1-R dedicated privileged host interface
+# C1-R host provisioning and disposition
 
-**CURRENT DISPOSITION: C1-R-HOST-S SOURCE STOP (2026-10-02).**
-The builder reached the explicit complexity gate: an incomplete854-line
-custom elevated helper, with bootstrap, disposal and units still missing.
-Finishing the accepted footprint was estimated above1100 lines. The untracked
-draft is deliberately incomplete and exits1 unconditionally on invocation;
+Status: **minimal design accepted; replacement source interface not yet frozen**.
+2026-10-02. Root and independent Sol review select alternative A within the
+existing trusted CI host/Docker-admin boundary. This is source architecture,
+not privileged/runtime execution, nominal acceptance, merge or deployment.
+
+## Superseded component and exact evidence
+
+C1-R-HOST-S's custom elevated subsystem remains SOURCE STOP. Its incomplete
+854-line draft required bootstrap/disposal/tests still to come, estimated above
+1100 lines. Completing that framework exceeded its own complexity gate.
+The final862-line fail-closed draft was never imported/executed or integrated;
+AST/locked Ruff alone passed. Root preserved exact bytes outside the reference
+worktree at `/tmp/bifrost-agent-reference-host-stopped-84937e4e.py`, mode0600,
 SHA256 `84937e4ebf8ace19a8ee618e7200074f2f00eaf387e0077eaba33058195a443a`.
-AST/locked Ruff passed only; no import, unit/runtime/privileged execution,
-bootstrap, integration or acceptance occurred. Do not execute/complete this
-package under the earlier source release below. The accountable architect is
-reviewing smaller privilege alternatives; no replacement implementation is
-released. The reviewed contract/release remains historical provenance, not a
-waiver of its own STOP rule. Reader work is independent. This is a component
-falsification, not proof that Rust control-plane ownership is viable or unsound.
+Do not restore/complete/execute it under the historical release.
 
+The [historical e037 interface](https://github.com/Midtown-Technology-Group/bifrost/blob/c5559c33f3168c8f5aa1db7220db45a0ffe74f73/docs/architecture/rust-core-mvp-agent-host-interface.md)
+is retained as provenance only. Its active root-prefix, snapshots, bootstrap,
+private record and operation-dispatch requirements are superseded here, not
+carried forward into another helper. Controlling [integration](rust-core-mvp-agent-reference-integration.md),
+[wire](rust-core-mvp-agent-observation-wire.md) and unchanged codec remain governing
+except these explicitly selected internal provisioning/cleanup changes.
 
-Disposition: root accepts the independently reviewed revision3 contract below
-for **bounded source implementation only**. It supersedes the integration
-specification's historical generic-renderer elevation and pathname chown
-proposal. It does not authorize privileged execution, installed bootstrap,
-nominal C1 acceptance, merge or deployment.
+Reviewed alternative packet SHA256:
+`d283a95ba1eefce46c928ec22d9e48a642a4b5fdcb87d09845b0430385717931`.
+Independent review, including root's publisher receipt correction, SHA256:
+`c57438fe661b0c79d0f82003d2898b85b4313b87e464eca9092d18cabeba0474`.
+Source inspected: reference `a01437e68948ec08d96c070229e93144f40cde43`.
 
-Reviewed packet SHA256:
-`e037055560dcdaac9e26d7f43e6f0108f6964c1031448eff214339907a1454db`.
-Independent final review SHA256:
-`763395dfe587df8cb5729a4663a484e2aa7a3888007d0c61a610b5685ebde7b1`.
-These identify the exact pre-release packet/report; the release disposition in
-this document supersedes their statements that source implementation awaits
-root approval. Historical integration hash before this supersession was
-`fa3c1c41c7bacef60b885dea6da40a0dc879cc9ff0c330b18a98670862c09eb7`.
-The controlling wire and shared codec are unchanged.
+## Three fixed effects under the existing trusted coordinator
 
-Builder package **C1-R-HOST-S** owns only new
-`scripts/agent-reference-host.py` and
-`api/tests/unit/test_agent_reference_host.py` in the reference worktree at
-`a01437e68948ec08d96c070229e93144f40cde43`. Implement the dedicated helper,
-its fixed bootstrap literal and closed private record using installed stdlib
-and the unchanged shared codec. Freeze exact record fields and bootstrap/source
-bytes for accountable and independent review before runtime. No generic
-renderer elevation, lane wiring, product edits, new dependency, sudoers/service,
-recursive cleanup, new wire family or actual privileged invocation is included.
-Stop/report if the specified bounded authority cannot be implemented cleanly.
+The isolated host coordinator already controls the local Docker-root daemon.
+Host administration and that coordinator are trusted; authored workflow/container
+processes and their JSON are not. Another root-local identity registry cannot
+exclude the administrator who controls it. Retain real FD/namespace/resource
+checks while removing that redundant framework. If hostility by this existing
+Docker/sudo administrator must become a threat requirement, stop and redesign
+rather than claim these literals isolate it. [Docker daemon security](https://docs.docker.com/engine/security/).
 
-Acceptance after source review: scoped host-helper units in supported CI,
-`./test.sh quality api`, clean committed `./test.sh pre-pr`; actual installed
-custody and named reference execution remain separate, unreleased gates.
-Physical-host product/runtime tests are prohibited. Instrumented unit Docker,
-UID and FD behavior is not installed custody evidence. Builder reports source
-checks and review-ready bytes without committing, pushing or dispatching CI;
-the accountable architect owns integration and publication.
+Only THREE independently reviewed constant installed-stdlib literals are proposed:
 
-## Noncircular source-pin construction
+| Operation | Fixed effects | Closed actual inputs |
+| --- | --- | --- |
+| Provision | FD-based ownership transfer of exactly six existing0600 materials; exclusive api/api-replica0700 directories in fresh saved status volume; exclusive runner-owned0700 C/host-status | Independently verified C/parent and volume/Mountpoint identities, expected installed readers, original material identities |
+| Publish | Fixed exclusive0600 temporary file, expected owner before visibility, atomic replacement/fsync, actual final FD identity and bounded reread | Saved C/directory/readers, actual prior-final identity/digest or fixed first-absence sentinel, one prevalidated body<=4096 |
+| Host-status disposal | Admitted fixed regular final/temp files only, then empty directory removal through pinned descriptors | Actual saved directory/file identities after verified reader removal/unmount |
 
-Root selected a pure fixed-template `bootstrap_literal(ReleasePins)` source
-constructor after the builder identified that a helper cannot embed its own
-final committed digest. ReleasePins contains only exact committed source root,
-git-lock parent, source commit and helper/unchanged-codec/entrypoint SHA256s.
-Strict canonical paths/digests and literal data encoding are required; no
-command/template/path-suffix selector or executable interpolation is accepted.
-The deterministic emitted literal remains at most16384 bytes. These pins are
-trusted coordinator release assertions, not proof of source identity themselves.
+Fixed sudo/system-Python `-I -S -B -c` invocation executes the frozen literal bytes,
+never a mutable source pathname, codec, renderer, fixture or product module.
+No shell interpolation, generic operation/command/path selector, elevated Docker
+client/TAR/schema parser, root registry, helper service, new dependency or sudoers
+change. Installed executable/stdlib protection remains an actual runtime gate.
+Exact argv/data grammar, allowed ancestry, complete short-read/write/EOF behavior,
+literal bytes/hashes and partial-failure disposition need a separate source freeze.
+This document releases no replacement implementation by implication.
 
-Before any privileged invocation, accountable and independent review must
-freeze the actual clean committed inputs AND emitted literal bytes/hash. The
-coordinator must compare those frozen values against the actual candidate and
-protected snapshots; unreviewed dynamic regeneration at runtime cannot replace
-that gate. Normal operations use protected saved release identity. This source
-construction adds no privileged argv/stdin selector and authorizes no bootstrap
-execution. Required units reject missing/extra/malformed/injection-bearing pins
-and verify deterministic literal construction. Coordinator integration remains
-separately owned and unreleased.
+Ordinary host may lack access to protected DockerRootDir/Mountpoint inodes.
+The first provision therefore captures their actual nofollow FD identities,
+anchored to the trusted coordinator's independently saved fresh default-local
+volume inspect/name/path and empty/no-consumer proof. It returns bounded fixed
+ordered private directory-identity metadata, including created role/host-status
+directories, for later continuity checks. No fabricated ordinary pre-stat,
+additional root probe, existing-volume adoption or registry is permitted.
+Exact receipt/argument framing remains part of the unreleased literal interface.
 
-The exact reviewed proposal follows. Its historical release-status sentences
-are retained as provenance and are superseded only by the disposition above.
+Six transferred basenames are fixed: observer-ingest-key, observer-control-key,
+model-oracle-input.json, observer-server-key.pem, observer-ca.pem,
+observer-server.pem. Preserve contents/inode/nlink1/mode and descriptor checks;
+host-only CA private key/CSR/extensions/owner records remain host-owned/unmounted.
+Expected readers come from the actual stopped-created NORMAL init's account and
+entrypoint, followed by independent AFTER-start foreground UID:GID/executable/
+argv/readability proof. No Config.User, hardcoded1000 or TAR entry alone is enough.
+Reuse that actual init ID; retain distinct template-Alembic custody/exit/removal.
+No secret mode, mount role, source custody, TLS or initialization-order relaxation.
 
----
+## Actual publisher receipt and unchanged evidence semantics
 
-# C1-R fixed privileged host interface — revision 3
+Ordinary host UID cannot stat a prior final inside runner-owned0700 host-status.
+Publisher therefore returns ONE private bounded receipt: canonical ASCII
+`<actual_final_st_dev>:<actual_final_st_ino>\n` prefix<=64 bytes, followed by actual
+final host_status bytes<=4096 and EOF. Integers are canonical positive decimal
+<=2^64-1. Reopen the actual fixed final nofollow/nonblock, require regular/nlink1/
+0600/expected owner, and read body from that SAME FD. Return its actual fstat,
+not an anticipated inode or another pathname. Coordinator bounds/parses this
+internal frame, validates actual body through the unchanged pure codec, compares
+to the admitted body, and retains actual tuple plus SHA256(body). Next publication
+uses this observed prior identity; missing/uncertain/changed continuity fails.
+No body/receipt/capability in logs, argv or environment. This is not a shared wire
+family, observer ACK, actual exit truth, filesystem-erasure or closure proof.
 
-SOURCE PROPOSAL ONLY; helper implementation remains UNRELEASED. This does not approve privileged execution, sudo policy, nominal C1, #1017 repair, C2/C3 authority, merge or deployment. Guidance package2026-10-01.5; engineering-flow2026-09-30.1. Independent source review `1c413104be74d5a026206bc0b2122e3f44005d6e88697bd79d366df58cc3750c` supplies the selected simplification. Revision2 is preserved byte-for-byte at `/tmp/bifrost-agent-reference-privileged-host-interface.rev2.md`, SHA256 `f49030a16eb8882f2239ead7d4bce30cd5c19516fb4a08d5edecbcbbfce82ac6`.
+The ordinary trusted coordinator validates unchanged host_status BEFORE publish
+and AFTER actual returned-byte readback. The privileged operation only writes
+bounded bytes to a fixed destination. One writer, strict generations and sticky
+failure remain; crash means failed attempt, no resume/adoption/replay into success.
+Actual finish identity, saved API exits, closed ACK/status/Uvicorn lifespan,
+domain/public/DB/source/process/event joins remain independently required.
 
-Actual read-only reference: `/home/thomas/src/bifrost-agent-capacity-reference`, branch `test/agent-capacity-reference`, clean HEAD `a9020248ef370a914eec3ab4271628450e32f44b`; main remains `01cadfe09710d293a40da14d6cf4056165289e31`. Architecture HEAD `db55c92104f4e128c2a4cf3d677c72733be80352`; controlling integration SHA256 `fa3c1c41c7bacef60b885dea6da40a0dc879cc9ff0c330b18a98670862c09eb7`, wire `6986ac7220acd086b37cc25dd2c37d81c71a14e0f7a89943f5996119d5c10f54`, unchanged pure codec `0152ff30f04ad1419f330132ceac7146b013f31931b6176ccac0212a37fc835b`. Current ordinary CI36968919042 is parent-reported pending; this packet does not poll it or transfer any prior test proof.
+## Cleanup and complexity gate
 
-## Selected reduction and trust
+After retaining safe evidence and the acceptance/failure disposition, inventory
+ALL actual daemon references, remove verified owned consumers and prove mounts
+gone. Revalidate saved exclusively new default-local volume metadata/Mountpoint;
+then use stock daemon volume removal only for that saved volume, without force,
+prune, name discovery or retry. Verify absence. Foreign references, changed
+identity, truncated inventory or uncertainty fail cleanup with a retained owner.
+This supersedes per-entry privileged recursion over API-created volume contents.
+Corrupt/missing status still fails nominal acceptance even if owned-volume cleanup
+succeeds. Fixed host-status disposal rejects unknown/replaced entries; no recursive
+host deletion or permission repair. Generic down-v must not preempt these gates.
 
-Use the actual installed Docker CLI for fixed local operations; remove the bespoke AF_UNIX HTTP client, HEAD/GET/header/base64/path-stat parsers and fixed API1.51 compatibility gate. Retained hosted pre-pr artifact11209974788 records SERVER28.0.4 and Compose2.38.2. Moby28.0.4's source default API is1.48; neither that source constant nor recorded server version is an observed installed client pin or live maximum. No API_VERSION override, version negotiation implementation or endpoint fallback is added. [Moby28.0.4 API source](https://raw.githubusercontent.com/moby/moby/v28.0.4/api/common.go).
+Target120–180 TOTAL privileged executable-logic lines; STOP at200 or more across
+all THREE emitted literals, including duplicated/inlined logic. No compressed
+syntax, hidden constructor/import or another file/operation evades the ceiling.
+Ordinary integration growth is separately reviewed; reuse existing verifiers.
+Independent code/literal/footprint review precedes supported units/quality and
+literal clean committed pre-pr. Installed custody, actual replacement visibility,
+genuine lifecycle/closure and exact resource/context absence precede nominal PASS.
 
-The existing isolated CI coordinator, host administration and local Docker-root daemon remain trusted. Containers, mounted readers, authored code and receipt JSON gain no privileged authority. This does not defend against a malicious principal already holding host sudo/Docker-root. No sudoers, service, daemon, helper container, generic root command relay, recovery registry, dependency or product change.
-
-Retain only the necessary protected two-source snapshot and one helper-private per-lane identity: immutable caller/context/source/project/lane, actual newly owned object identities, latest published generation and failed/disposed disposition. It cannot adopt prior resources, resume a failed operation or repair uncertainty. Exact internal closed fields are builder source followed by root/independent review; this is not a new shared wire family. Existing schemas/codec and cross-stream acceptance remain unchanged.
-
-## Smallest proposed source footprint and fixed invocation
-
-Helper package, if separately released: ONLY NEW `scripts/agent-reference-host.py` and NEW `api/tests/unit/test_agent_reference_host.py`. Dedicated stdlib helper plus unchanged pure codec; never import/execute the generic renderer elevated. Root integration separately owns the lane, its existing units, test.sh and the named-only template-init retention hook. No automatic release of those integration edits follows this packet.
-
-Notation: immutable `L`32-lowercase-hex lane; exact fresh context `C` under the independently resolved worktree git-lock parent, basename `agent-reference.` plus8 alphanumeric mktemp characters; `P=bifrost-agent-reference-` plus first8 SHA256 hex of exact worktree root UTF8. Approved clean candidate/worktree/lock-parent are trusted release constants, not elevated git or caller JSON selectors.
-
-Proposed root-owned0700 prefix `/run/bifrost-agent-reference-host`; exclusively new0700 `L` directory containing ONLY0600 `agent-reference-host.py`, `agent_reference_contract.py`, `state.json`, fixed replacement `state.json.tmp`, `operation.lock`, plus one empty root-owned0700 `docker-config` directory. Snapshot closes mutable-source validation/execution races; state preserves original identities across short-lived prepare/publish/dispose calls; empty Docker config prevents ambient configuration. Prefix/session creation remains a proposed architecture footprint, not a preexisting approved registry.
-
-Bootstrap argv is exactly `[/usr/bin/sudo,-n,--,/usr/bin/python3,-I,-S,-B,-c,BOOTSTRAP_LITERAL,--context,C,--lane-id,L]`. Fixed reviewed literal<=16384 UTF8 bytes; runtime constants pin independently verified clean committed helper/codec/source/worktree/parent. It receives source DATA only: `BIFROST-AR-HOST-SNAPSHOT/1\n`,9 decimal digits/newline helper length, helper bytes,9 digits/newline codec length, codec bytes, EOF; each<=131072, total<=262200, stdin deadline1s. Coordinator opens only fixed committed files nofollow/nonblock and verifies bytes against that candidate. Bootstrap checks digests, exclusively copies root-owned snapshots, rereads/hash-checks the same protected files, then invokes bootstrap-only `register-host-session --context C --lane-id L`. Register rejects prior state, joins original owner/context and independently empty project, then saves minimal identity. No source is executed from stdin or the mutable checkout.
-
-Normal argv is exactly `[/usr/bin/sudo,-n,--,/usr/bin/python3,-I,-S,-B,/run/bifrost-agent-reference-host/L/agent-reference-host.py,OP,--context,C,--lane-id,L]`; OP is ONLY prepare-observer-resources, publish-host-status, dispose-observer-resources or dispose-host-session. Register is not a resumable public operation. Prepare succeeds at most once; publishers strictly advance generation; disposal happens once. Failed uncertainty forbids resumed preparation/publication or nominal acceptance; cleanup may act only on already attested objects and cannot erase that failure. Nonpublish stdin empty; publish only existing host_status bytes. No executable/path/UID/image/command/digest/endpoint/chmod selector.
-
-Source implementation need not freeze nonexistent helper hashes first. BEFORE runtime, exact committed helper/codec/bootstrap literal and invocation require root plus independent review against actual candidate. Protected root snapshots are rechecked before each invocation. Load codec explicitly from its fixed protected file, no worktree/cwd sys.path. Before loading protected helper/codec source, reject any preexisting __pycache__, .pyc/.pyo or other entry outside the closed session set. Both fixed invocations use -B: protected source loading must not read or write a bytecode cache; PYTHONDONTWRITEBYTECODE is not an environment fallback under isolated -I. Trusted installed stdlib caches outside this protected session are not this claim. Source negatives must catch a preexisting or newly produced protected cache; cleanup never recursively removes one or widens the allowed entries. Python -I -S -B removes environment/cwd import exposure and site loading; independently verify actual executable and stdlib ancestry. Allow at most8 verified root-owned symlinks to the fixed system executable, all targets/ancestors protected; no mutable venv/fallback. [Python options](https://docs.python.org/3/using/cmdline.html#interface-options).
-
-Verify actual sudo/system executables and policy, not assumed sudo ALL. SUDO_UID/GID must be trusted sudo-generated original canonical nonroot caller and agree with actual C/parent ownership and saved identity; effective/real helper root is separate. No sudo-E/caller assignments/spoofed preserved IDs/LD_PRELOAD/Python selectors. owner.json<=4096 must be original-owner0600 regular/nlink1 with exact root/project/source/lane_id matching release facts; its JSON confirms consistency, never creates authority. Host commonly1001 is observed, not assumed. Root-original/missing provenance or moved/replaced context STOP. Actual C/owner.json checks are mandatory for prepare, publish and dispose-observer; only the explicitly terminal dispose-host-session predicate below permits registered C already absent. No container can invoke the snapshot through an added mount/socket/credential.
-
-## Fixed installed CLI and bounded tar read
-
-Independently verify root-owned installed `/usr/bin/docker` executable/allowed symlink ancestry and local root-owned nonsymlink `/run/docker.sock`; actual bounded CLI version/info readbacks establish client/server and daemon identity/DockerRootDir. Rootless/remapped/remote/proxy or changed endpoint STOP. This relies on the existing trusted local daemon boundary; no new peer/HTTP parser. Client binary/version must be observed on supported CI before use, not inferred from server28.0.4.
-
-Every helper Docker child has exact fixed prefix `[/usr/bin/docker,--host,unix:///run/docker.sock]`, cwd `/`, stdin DEVNULL, stdout/stderr private pipes, no terminal. Environment is ONLY PATH=/usr/bin:/bin, LC_ALL=C, DOCKER_CONFIG=/run/bifrost-agent-reference-host/L/docker-config. The protected directory must remain empty before/after each child. No HOME config, DOCKER_CONTEXT, DOCKER_API_VERSION, TLS/proxy selectors or caller Docker config; no shell. Allow only fixed version/info, bounded inventories, exact saved-ID/image/volume inspect, create/remove the one saved new observer-status volume, and the three copy operations below. Container creation/stop/removal remains ordinary root-owned coordinator custody, not arbitrary helper CLI input.
-
-For saved full64 normal-init ID `I`, run these EXACT argv suffixes separately: `[cp,I:/etc/passwd,-]`, `[cp,I:/etc/group,-]`, `[cp,I:/entrypoint.sh,-]`. No -L, -a, generic path, container exec, local destination, stdin archive or alternate copy command. Require zero child exit and complete bounded stdout TAR; overflow/read/exit failure kills/reaps and fails, never substitutes bytes. Docker documents stdout TAR and stopped-container support; CLI28.0.4's destination-minus branch streams CopyFromContainer bytes directly. This is source feasibility, not installed-client or actual copy proof. [Docker cp documentation](https://docs.docker.com/reference/cli/docker/container/cp/), [CLI28.0.4 source](https://raw.githubusercontent.com/docker/cli/v28.0.4/cli/command/container/cp.go).
-
-Archive<=131072 bytes, selected member content1..65536. Parse only admitted uncompressed bytes with stdlib tarfile in memory, scanning the full bounded archive with ignore_zeros=True so a member after zero padding cannot be hidden. Exactly one effective ordinary regular member named passwd/group/entrypoint.sh respectively; no absolute/traversal name, extra member, directory, symlink/hardlink/device/sparse entry. Bound PAX metadata4096 aggregate/256 each value and accept ONLY timestamp keys mtime/atime/ctime; no path/linkpath/size/sparse overrides. Read the member stream only in memory; never filesystem tar.extract/extractall, host extraction or custom TAR decoder. Unexpected installed archive metadata STOP for review. No timestamp equality/security assertion is needed.
-
-Explicitly DROPPED: X-Docker-Container-Path-Stat, HEAD→GET→HEAD, header Go-mode/UID claims, exact/nanosecond timestamp proof, original container-file inode/nlink proof. TAR metadata is not an independent original-file stat; no privileged container-file mutation uses it. Retained proof is actual bounded selected content/type/name, pinned entrypoint bytes, account mapping and unchanged actual stopped-created container/image/config before/after each copy. Trusted host/daemon changes between snapshots cannot be disproved; no fabricated absence-of-transient-change assertion.
-
-## Creation, expected readers and provision
-
-After fresh empty project registration, ordinary coordinator precreates NORMAL init once with exact `docker compose -f "$COMPOSE_FILE" --profile e2e up --no-start --no-deps --no-build --no-recreate --pull never init`, sanitized immutable COMPOSE_PROJECT_NAME=P. Measured Compose2.38.2 source supports these options; actual installed command/config still requires custody. `compose create --no-deps` is not substituted. [Compose2.38.2 up source](https://raw.githubusercontent.com/docker/compose/v2.38.2/cmd/compose/up.go).
-
-Save actual fullID, project/service/non-oneoff labels, actual image sha256:<64>, ordinary `[python,-m,scripts.init_container]`, unchanged Entrypoint/environment/mount projection. Require top-level Created plus State.Status=created, Running/Paused/Restarting/Dead=false, Pid0, RestartCount0/never-started timestamps. No State.Created field or initialization-success claim from pre-start ExitCode0. Before/after each copy require the same actual identity/config/image/state. Require unique canonical bifrost user/group, finite nonroot UID/GID<=2147483647 with consistent primary group, and exact source-pinned unchanged gosu entrypoint bytes. Runner's frozen1000:1000 must match installed account; no guessed UID/fallback. This determines EXPECTED readers only.
-
-Ordinary startup must reuse the exact normal-init ID/config and later prove real execution/exited0. Existing retained template-Alembic instance is DIFFERENT: its original migration argv/two DB overrides, saved image/config/ID, actual exit0 then removal; ordinary --rm behavior unchanged elsewhere. No second probe or substitute identity. Actual API/fixture PID1 argv/executable/UID:GID/readability after startup, and actual runner after creation/before release, remain independent gates; Config.User/root Docker exec/account derivation are insufficient. A mismatch STOP, no ownership repair/restart.
-
-Prepare owns ONLY new P_observer-status: independently absent beforehand; local driver/scope, no options, exact project=P and volume=observer-status Compose labels. Inspect actual DockerRootDir and canonical exact Mountpoint `<DockerRootDir>/volumes/<name>/_data`; protected no-symlink ancestry, initially empty pinned dev/inode. Save actual metadata/identities. Create only api/api-replica0700 directories and descriptor-fchown expected reader. Create only fresh C/host-status0700 expected runner-owned, RO directory bind runner only. Host1001 cannot traverse it; helper can. Actual mount/subpath/nocopy/source/RW/inode and runner atomic replacement visibility remain supported gates; no old volume adoption/recursive operation/whole-volume RW.
-
-Only six fresh original-host-owned0600 regular/nlink1 files may receive descriptor fchown after nofollow/nonblock open/fstat identity checks: observer-ingest-key, observer-control-key, model-oracle-input.json, observer-server-key.pem, observer-ca.pem, observer-server.pem. Retain0600, exact inode/owner/mode/size before/after. No capability/PEM value/hash in private state/output. CA private key/CSR/ext config/owner/raw custody remain host-owned/unmounted. Canonical mount role exclusions, TLS origins, source/tests RO mounts and default User/Entrypoint unchanged. Actual later ownership/readability/TLS proof is not derived from expected UID.
-
-Initial fixture-units phase never arms a real case, requests nominal finish or stops/restarts APIs; existing benign DB initialization is separate from no model/SDK/business effects. Both named reset bypasses check staged closed argv/binding/prior phase/API custody before reset, then actual runner creation/verification/release before effects. Nominal finish coordinator and real lifecycle/closed ACK order remain controlling, not replaced by helper status.
-
-## Fixed FD publication and non-resumable local identity
-
-Open directory ancestry componentwise O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC and regular files O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC before fstat. Save parent/name/dev/inode/owner/mode; privileged effects use pinned dirFDs/fixed basenames and before/after namespace checks. Source/directory replacement fails; no resolve-then-privileged-path mutation. FD safety prevents redirected effects, not a proof that trusted host never transiently renamed an object. One nonblocking exclusive operation.lock, no queue/retry.
-
-Private state<=16384, exact closed fields reviewed with builder: original source/caller/context/project/lane, snapshot/object identities, expected readers, actual normal-init/image/daemon/volume, registered API/runner identities and nonce joins, latest published generation/file digest, prepared/failed/disposed disposition. No receipts/raw credentials/customer data, caller-supplied authority, history reconstruction or restart adoption. Fixed exclusive state.json.tmp, bounded write/fsync/atomic dirFD replace/readback; uncertain partial mutation means STOP and explicit retained owner, never resume successful publication. A second invocation only continues the same live coordinator/session with saved identities; it does not recover a crashed run.
-
-publish-host-status reads existing canonical shared host_status<=4096/EOF within1s and validates through unchanged codec. Initial generation0 watching has canonical null case/run/finish; later strictly increasing generation, no repeat/wrap; actual coordinator mono_ns nondecreasing/nonfuture. Join saved lane/API/runner/image/nonce and actual fixed role-status custody; independently refresh actual saved container State/ExitCode for exit claims. Caller JSON is disposition input, not proof of ACK/DB/public identity; canonical validity alone never certifies closure.
-
-Reopen saved runner-owned0700 host-status and prior final generation/digest; exclusive fixed host-disposition.json.tmp0600, descriptor-fchown runner before final visibility, bounded write/fsync/fstat. Atomic dirFD replace to host-disposition.json/fsync, reopen same inode nofollow/nonblock, validate owner/mode/size/canonical bytes exactly equal admitted input and namespace continuity; only then persist last generation. Existing temp/write failure/readback mismatch is sticky failure, no auto-resend/repair. Single latest status and one in-flight write; actual runner RO mount must witness replacement.
-
-Publisher success stdout is ACTUAL reread canonical bytes<=4096, no newline, privately compared by coordinator. Other success `agent-reference-host-ok\n`; failure stderr `agent-reference-host-failed\n` plus nonzero, no value/argv/env/path/parser-context/raw output. Failed diagnostic status cannot become successful closure; lifecycle flags/receipts/DB/public joins remain actual separate consumers.
-
-## Disposal, bounds and uncertainty
-
-Acceptance/failure evidence first. Ordinary coordinator stops/removes verified consumers but must leave observer volume until helper validates it; compose down-v must not preempt validation. Independently inventory ALL daemon containers including stopped/foreign; any reference to exact volume/registered material/host-status mounts blocks disposal. Recheck saved owner/context/daemon/volume/Mountpoint/dev-inodes. Only fixed role status.json/status.json.tmp and host-disposition.json/host-disposition.json.tmp are candidates: finals regular/nlink1/expected-owner0600 within imported shared cap/canonical; temp must be already attested to exact created identity. Unknown entry/unrecorded partial temp/replaced inode/corrupt final fails with retained owner; no cleanup-made PASS.
-
-Unlink only those attested entries through pinned FDs; rmdir only saved empty role/host-status directories; require empty unchanged mountpoint, remove ONLY registered volume and independently verify absence. Ordinary host unlinks its individual material files through original-owned parent after unmount and performs ordinary owned lab/context cleanup. Final dispose-host-session has a separate terminal predicate: protected previously attested observer-disposed/no-live-consumer progression, trusted same sudo original caller, unchanged protected source/session and reopened saved parent identity, and trusted same ordinary coordinator context cleanup. Require exact registered C basename ENOENT through that pinned parent dirFD, plus independently verified exact project/volume absence; do not treat a missing parent, permission failure, unreadable entry, symlink, observed move or replacement as absence. Prepare/publish/dispose-observer never skip actual C/owner checks. This proves exact registered-name absence with saved identities/progression and trusted cleanup, not global annihilation of the original inode or absence of an unobserved rename by trusted host administration. Any observed move or cleanup uncertainty is sticky failure and blocks terminal disposal. Only then remove this session's fixed snapshots/record/lock, empty docker-config and empty L directory, never common prefix/other lane. No recursive privileged deletion, ACL/mode widening or ownership-repair fallback. Failure can leave owned objects requiring explicit disposition; verified cleanup cannot be promised for unknown/corrupt evidence.
-
-Source framing/state/input bounds above; host/role status caps imported unchanged shared constants. Per CLI metadata stdout1048576, stderr8192; project inventories32containers/8networks/8volumes, all-daemon128containers; no truncated absence proof. Per CLI child<=3s with incremental bounded pipe reads/kill/reap, bootstrap/prepare/dispose total30s, publisher<=min(3s,remaining host deadline), stdin1s; all count inside existing nominal240s and applicable stop15s, never extend them. Coordinator externally bounds/reaps privileged processes. Caps do not bound Docker/kernel allocation, unblock fsync or prove remote daemon work stopped when a CLI dies; timeout/unreaped process/unverified removal is failed uncertainty, not retry/completion.
-
-## Remaining decisions and release gates
-
-Root still must approve the minimal prefix/bootstrap/local-record footprint and explicitly release the two-file helper source package. Exact internal fields, fixed literal and narrow operation code then require independent source review; exact clean committed helper/codec/bootstrap digests and actual process custody are runtime gates, not arbitrary caller claims. No generic renderer elevated or new shared schema.
-
-Required source negatives: original-owner/snapshot/source swaps; symlink/inode/namespace replacement; unrelated volume/driver/foreign consumers; stopped-ID recreation/state drift; bounded TAR/type/path/extra/PAX/account/entrypoint mismatch; overflow/timeout/reap failure; repeated prepare/concurrent lock/generation rollback/stale temp/failed readback; unsafe disposal. Unit Docker/UID/FD instruments do not prove actual construction.
-
-Future supported gates only after release: actual installed client/sudo/Python/daemon/Compose ownership/config/readback; selected helper units, `./test.sh quality api`, clean literal `./test.sh pre-pr`, then root-authorized `./test.sh agent-reference` with real same-init/separate-migration, fresh mount/readers/TLS/atomic publication/lifecycle/ACK/domain/cleanup evidence. No physical-host runtime. STOP if exact narrow privilege or protected source/config cannot be established, actual readers differ, metadata/archives exceed profile, identity/namespace/time/cleanup is uncertain, or more authority/permission/generic paths/framework is required. Original container inode/nlink/transient-change absence and hostile host-root isolation are outside retained proof; a new requirement for them returns to architecture.
-
-Only this Markdown and the authorized frozen revision2 copy were written. Read-only source/git/hash and public primary-source review; no repository/dependency/product edits, authored imports, tests, Docker/privileged/runtime commands, CI, commit or push. Smallest next step: root and independent review this simplified exact packet; implementation remains unreleased until that explicit decision.
-
-Root correction2026-10-02 closes the independent bytecode-cache finding with fixed -I -S -B and protected-loader no-cache/closed-entry rejection. Final independent readback remains required; helper implementation is still unreleased.
-
-Root terminal correction2026-10-02 freezes the operation-specific dispose-host-session predicate and its exact-name/trusted-cleanup proof limit; final independent readback remains required.
+Provisioning within current init/fixture alone (alternative B) is source-falsified:
+entrypoint drops root before Python, private mounts are RO, subpaths must exist
+before API creation, and host disposition still needs an actual host observer.
+Adding writable secret mounts/root entrypoint effects is not an implicit fallback.

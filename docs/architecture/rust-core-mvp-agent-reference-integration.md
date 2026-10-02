@@ -2,6 +2,14 @@
 
 Disposition: root-selected source-only integration specification. Bounded consumer implementation requires an explicit package handoff; execution and runtime acceptance remain gated. The reviewed proposal was revision3, SHA256 `cd8c58c13b7b54eca346ce59cd64a764407822c1702ef5c66381698925ec420a`; independent review identified the reset-order issue now corrected below. Guidance package is 2026-10-01.5; selected procedures are mtg-engineering-flow 2026-09-30.1, router 2026-10-01.1 and mtg-grill-with-docs. Runtime proof remains hosted CI or independently verified VM106, never physical-host pytest/Docker.
 
+Current host provisioning design is the [minimal three-operation interface](rust-core-mvp-agent-host-interface.md).
+It supersedes the stopped e037 root-prefix/snapshot/bootstrap/registry subsystem,
+places unchanged-codec host-body validation in the already trusted coordinator,
+and uses stock daemon removal for the saved exclusively owned status volume only
+after verified consumer removal and reference checks. Secret modes, role mounts,
+TLS, actual readers and closure are unchanged. No replacement literals or lane
+integration have been released; do not execute the historical helper.
+
 ## Exact source and controlling interface
 
 Inspected clean worktree `/home/thomas/src/bifrost-agent-capacity-reference`, branch `test/agent-capacity-reference`, HEAD `ef752000299b299d804e8f945195e5eb9e20168d`. Codec commit is `2a3b268c9`; module SHA256 is `023cd12547181548ca5c09b3a4aeff540b1649b75ec79d3e207f1626907a0ea0`. Root verified ordinary CI36950604053 completed SUCCESS at ef752:249 codec cases passed; no nominal case executed. This is root-supplied CI evidence, not execution performed by this source-only task or nominal runtime acceptance. Historical reference remains main `f770094eb28d8315a414fe8cb306f510da752d89` plus explicitly unmerged AUTH composite `60da4685f9515649b03dee00d44b1386475dcc84`; retained assets have their own provenance. Current main reconciliation added #1027 product files outside the selected agent/SDK source. Do not relabel older evidence as current execution proof.

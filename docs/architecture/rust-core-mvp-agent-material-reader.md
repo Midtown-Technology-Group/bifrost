@@ -1,5 +1,23 @@
 # C1-R committed material-reader interface
 
+The [read-acquisition supplement](rust-core-mvp-agent-read-acquisition.md)
+now controls transaction identity and reader-owned acquisition samples.
+Root separately releases **C1-R-MATERIAL-ACQ-S** on the SAME two owned files;
+the original transaction/result shapes below are extended only by that explicit
+supplement. It leaves actual consumer closure binding, source adapters and
+semantic acceptance gated. Reader construction never certifies postclosure
+freshness or domain success by itself.
+
+Independent source implementation review of the original1813-line reader
+`f3258a0346f7d6c01f01313780b2742afccb4cd77c828dfb85fb32637b12f021`
+and1038-line units
+`0ea55bca6d48ae440d5796fca97095a0918ceb6ae61902edeb87b9d518ba793c`
+found no concrete source blocker; report SHA256
+`a9b425791fdd3aed5dcbb7a1257d6f5d0040f9bfd758aec3e655bebcfcf8600f`.
+AST catalog/SQL/native-alias admission and locked Ruff0.15.12 checks passed.
+No tests/DB/runtime/CI ran for those bytes. The acquisition implementation
+supplement requires its own different review and supported verification.
+
 Disposition: root freezes the independently reviewed MATERIAL-ONLY interface
 below. Builder package **C1-R-MATERIAL-S** may implement only
 `api/tests/e2e/platform/agent_reference_lineage.py` and
