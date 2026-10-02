@@ -17,6 +17,49 @@ unproved. The receipt observes two test-runner sessions, not deployed API,
 worker/scheduler principals or mechanical mixed-writer exclusion.
 
 
+## Architect verification-lane amendment
+
+The four-file source implementation received distinct independent source review:
+`b5179ee1d5c274202b3f2effaee8b164c2abd15782408643ce7329fcff861011`.
+This accepts source for supported verification; no unit, quality, catalog or
+custody test has run for it yet.
+
+Current main `4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` has no hosted job
+that invokes the required literal clean-candidate `./test.sh pre-pr`. Ordinary
+CI cannot substitute for that gate. The architect releases this precise
+verification-only exception to the original no-input/no-job workflow scope:
+reuse the optional `pre_pr` boolean input and the existing Manual Pre-PR Gate
+from reviewed source `659c85261c3260745c1b678fda12d40d102df26d`, without
+other prior-branch files or the identity uploader. Four-path ownership remains
+unchanged. This is an explicit package amendment, not compliance with the
+original narrower workflow rule.
+
+Independent amendment review SHA256:
+`f5e54e656292f12d18e618dd709ae79e34d34d7b78b9b802c47d47f3d3b89208`.
+Freeze the six inserted input lines at SHA256
+`786869cc02add641f8b97ef997ce1e871b58b78b188ea0e532de47ee353bd342`
+and the 130-line job section including its two leading comments at SHA256
+`b4aad74c032f4a238d445abf0709b0ebb9535a691f92d76a37142e4ef119f73c`.
+Exact inverse removal must recover the accepted candidate workflow. Obtain
+independent insertion review before dispatch.
+
+The optional job runs only for this repository's explicitly selected manual
+branch event, checks out `github.sha`, invokes the unchanged gate and preserves
+its clean-candidate/current-main checks. Existing required jobs, permissions,
+action pins and diagnostic uploader remain unchanged. The optional job has
+contents/packages read permissions and retains the prior reviewed isolated
+pre-PR logs/JUnit as well as candidate, stage, image and actual project-resource
+cleanup evidence; this capture is broader than the original receipt-only
+uploader and is explicitly included in this exception. It releases no product,
+role, DDL, schema, runtime, deployment or lifecycle authority.
+
+Image preparation may use the existing reviewed-source rebuild path. Record
+actual image ID/digest or local-build custody rather than assuming registry
+consumption. A passing pre-PR job may defer E2E and does not establish catalog
+collection. Actual named nonskipped catalog JUnit, receipt readback hash and
+candidate/tree/run/job/shard/image/artifact association remain mandatory.
+Cleanup evidence applies only to its own job. Stage1 and C2/C3 remain stopped.
+
 ## Architect test-seam and supported-directory clarifications
 
 The pure helper retains matrix/graph/serialization responsibility and no
