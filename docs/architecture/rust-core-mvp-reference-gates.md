@@ -528,3 +528,51 @@ Repaired module SHA256
 New supported [run36967563219](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36967563219)
 is pending; the prior run's unit success does not certify repaired-source
 quality or literal pre-PR. No #1017 rerun or repair is included.
+
+
+## Latest workspace boundary readback
+
+A subsequent fresh fetch advanced workspace main to
+`e1d3ba3880c62c20dd66ec237dc93c062db885c4` (#1131). The13-file delta from
+retained e33 adds reviewed Cove/AutoTask delivery inputs and adopted-contract
+closure/release checks. The four selected authored Cove fixture sources and
+workspace boundary checker remain unchanged. Exact detached current-head
+stdlib AST audit passed:2,111 boundary files,1,988 standard authored files,
+zero forbidden platform imports, zero SQLAlchemy imports and explicitly empty
+platform-internal-import allowlist. #1112 remains an ancestor; platform main
+and #1001 ancestry remain unchanged. This is source evidence, with no product
+import or deployed/runtime proof. Historical source/image/test pins stay exact.
+
+C1-R-RECIPE is separately released for source construction: a two-file test
+helper/unit package builds the exact bootstrap-only and retained-bootstrap plus
+both-tool recipes through the existing public SDK AST compiler/reviewer.
+Actual public-generated Solution and Role UUIDs remain caller inputs. Recipe
+controls/bounds/source paths and byte digests are frozen in the setup packet;
+no arbitrary authored import, HTTP/ORM registration, source mutation, metadata
+relaxation, nominal case or private authority accompanies this release. Root
+and independent review plus supported compiler/unit/quality gates are still
+required before the nominal consumer may use it. Privileged helper source is
+not released by this independent package.
+
+
+## Privileged evidence complexity hold
+
+The proposed protected host helper is still source-design-only. Root holds its
+implementation release: a custom Unix-socket HTTP/header parser, privileged
+bootstrap and cross-invocation registry must justify their complexity against
+the explicitly trusted isolated coordinator/Docker-root boundary. Extra archive
+path-stat/timestamp claims are not public device/workflow contracts and are not
+reason to create a large security-critical subsystem for reference evidence.
+The selected simplification for review is fixed bounded Docker CLI archive
+reads from the exact stopped normal-init ID, single-member tar and pinned
+source/config/image/state checks, with no original inode/nlink claim. Protected
+source snapshot and the minimum repeated-publication/cleanup ownership evidence
+remain required; no resumed/adopted session is accepted. This is a design hold,
+not accepted runtime custody or a replacement for real process/reader proof.
+
+Recipe units need the actual carried bytes in ordinary supported CI. Root owns
+a separate test-only integration to mount that exact asset directory read-only
+in test-runner and keep exactly one identical mount in the named lane. Missing
+assets must fail rather than skip, embed substitutes or alter authored code.
+The two-file recipe builder does not own Compose/renderer changes and cannot
+certify this unimplemented mount gate through source-only unit construction.
