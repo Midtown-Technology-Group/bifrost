@@ -19,20 +19,22 @@ CREATE TABLE ownership.agent_runs (
   confidence double precision, confidence_reason text,
   summary_generated_at timestamptz, summary_status text NOT NULL DEFAULT 'pending',
   summary_delivery_id uuid, summary_error text, summary_prompt_version text,
-  verdict text, verdict_note text
+  verdict text, verdict_note text,
+  UNIQUE (id, control_owner)
 );
 CREATE TABLE ownership.execution_attempts (
   id uuid PRIMARY KEY,
   logical_job_type text NOT NULL CHECK (logical_job_type = 'agent_run'),
-  logical_job_id uuid NOT NULL REFERENCES ownership.agent_runs(id) ON DELETE CASCADE,
-  status text NOT NULL, lease_token uuid, completed_at timestamptz
+  logical_job_id uuid NOT NULL,
+  status text NOT NULL, lease_token uuid, completed_at timestamptz,
+  control_owner text NOT NULL CHECK (control_owner IN ('python', 'rust')),
+  FOREIGN KEY (logical_job_id, control_owner)
+    REFERENCES ownership.agent_runs(id, control_owner) ON DELETE CASCADE
 );
 RESET ROLE;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ownership
   TO fixture_python, fixture_rust;
 GRANT SELECT, UPDATE ON ownership.agent_runs TO fixture_summary;
--- Row-lock SELECT requires UPDATE permission; guard has no login or members.
-GRANT SELECT, UPDATE ON ownership.agent_runs TO fixture_guard;
 -- No runtime login owns any table, trigger, function or schema.
 GRANT CREATE ON SCHEMA ownership TO fixture_guard;
 SET ROLE fixture_guard;
@@ -77,21 +79,21 @@ BEGIN
 END $$;
 CREATE FUNCTION ownership.guard_attempt() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, ownership AS $$
-DECLARE parent_owner text; actor text; parent_id uuid;
+DECLARE bound_owner text; actor text;
 BEGIN
   actor := CASE session_user WHEN 'fixture_python' THEN 'python'
     WHEN 'fixture_rust' THEN 'rust' ELSE NULL END;
   IF TG_OP = 'UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR
     NEW.logical_job_id IS DISTINCT FROM OLD.logical_job_id OR
-    NEW.logical_job_type IS DISTINCT FROM OLD.logical_job_type) THEN
+    NEW.logical_job_type IS DISTINCT FROM OLD.logical_job_type OR
+    NEW.control_owner IS DISTINCT FROM OLD.control_owner) THEN
     RAISE EXCEPTION 'immutable attempt identity' USING ERRCODE='42501';
   END IF;
-  parent_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.logical_job_id ELSE NEW.logical_job_id END;
-  -- Parent before attempt is this experiment's explicit lock order. It is NOT
-  -- ratification of the credential/source-accounting program's full lock order.
-  SELECT control_owner INTO parent_owner FROM ownership.agent_runs
-    WHERE id = parent_id FOR SHARE;
-  IF actor IS NULL OR actor IS DISTINCT FROM parent_owner THEN
+  -- The immutable composite FK binds the child to its parent's owner. Checking
+  -- the child's bound value also works during an owner-authorized cascade after
+  -- the parent disappears. No trigger-level parent-first lock order is claimed.
+  bound_owner := CASE WHEN TG_OP = 'DELETE' THEN OLD.control_owner ELSE NEW.control_owner END;
+  IF actor IS NULL OR actor IS DISTINCT FROM bound_owner THEN
     RAISE EXCEPTION 'foreign attempt owner' USING ERRCODE='42501';
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;

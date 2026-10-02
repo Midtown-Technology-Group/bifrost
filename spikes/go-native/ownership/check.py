@@ -10,7 +10,7 @@ ATTEMPT = "33333333-3333-4333-8333-333333333333"
 checks = []
 
 
-def sql(role, statement, denied=False):
+def sql(role, statement, denied=False, denial_state="42501"):
     result = subprocess.run(
         ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose",
          "-h", "127.0.0.1", "-U", role, "-d", "ownership_fixture", "-Atc", statement],
@@ -18,10 +18,11 @@ def sql(role, statement, denied=False):
         timeout=10,
     )
     if denied:
-        assert result.returncode != 0 and "42501" in result.stderr, result.stderr
+        assert result.returncode != 0 and denial_state in result.stderr, result.stderr
     else:
         assert result.returncode == 0, result.stderr
-    checks.append({"role": role, "sql": statement, "expected_denial": denied, "passed": True})
+    checks.append({"role": role, "sql": statement, "expected_denial": denied,
+                   "denial_state": denial_state if denied else None, "passed": True})
     return result.stdout.strip()
 
 
@@ -36,10 +37,13 @@ sql("fixture_python", "INSERT INTO ownership.agent_runs(id,control_owner,status)
 sql("fixture_summary", f"UPDATE ownership.agent_runs SET asked='question', answered='answer', summary_status='completed' WHERE id='{RUST}'")
 for mutation in ["status='completed'", "output='{}'", "tokens_used=99", "verdict='up'"]:
     sql("fixture_summary", f"UPDATE ownership.agent_runs SET {mutation} WHERE id='{RUST}'", True)
-sql("fixture_rust", f"INSERT INTO ownership.execution_attempts VALUES ('{ATTEMPT}','agent_run','{RUST}','running',NULL,NULL)")
+sql("fixture_rust", f"INSERT INTO ownership.execution_attempts VALUES ('{ATTEMPT}','agent_run','{RUST}','running',NULL,NULL,'rust')")
+sql("fixture_python", f"INSERT INTO ownership.execution_attempts VALUES ('77777777-7777-4777-8777-777777777777','agent_run','{RUST}','running',NULL,NULL,'rust')", True)
+sql("fixture_python", f"INSERT INTO ownership.execution_attempts VALUES ('77777777-7777-4777-8777-777777777777','agent_run','{RUST}','running',NULL,NULL,'python')", True, "23503")
 sql("fixture_python", f"UPDATE ownership.execution_attempts SET status='failed' WHERE id='{ATTEMPT}'", True)
 sql("fixture_python", f"DELETE FROM ownership.execution_attempts WHERE id='{ATTEMPT}'", True)
 sql("fixture_rust", f"UPDATE ownership.execution_attempts SET logical_job_id='{PYTHON}' WHERE id='{ATTEMPT}'", True)
+sql("fixture_rust", f"UPDATE ownership.execution_attempts SET control_owner='python' WHERE id='{ATTEMPT}'", True)
 sql("fixture_python", "SET ROLE fixture_rust", True)
 sql("fixture_python", "SET session_replication_role=replica", True)
 sql("fixture_python", "ALTER TABLE ownership.agent_runs DISABLE TRIGGER ALL", True)
@@ -53,7 +57,7 @@ assert sql("fixture_rust", "SELECT count(*) FROM pg_class c JOIN pg_roles r ON r
 parent = "55555555-5555-4555-8555-555555555555"
 attempt = "66666666-6666-4666-8666-666666666666"
 sql("fixture_rust", f"INSERT INTO ownership.agent_runs(id,control_owner,status) VALUES ('{parent}','rust','completed')")
-sql("fixture_rust", f"INSERT INTO ownership.execution_attempts(id,logical_job_type,logical_job_id,status) VALUES ('{attempt}','agent_run','{parent}','succeeded')")
+sql("fixture_rust", f"INSERT INTO ownership.execution_attempts(id,logical_job_type,logical_job_id,status,control_owner) VALUES ('{attempt}','agent_run','{parent}','succeeded','rust')")
 sql("fixture_python", f"DELETE FROM ownership.agent_runs WHERE id='{parent}'", True)
 sql("fixture_rust", f"DELETE FROM ownership.agent_runs WHERE id='{parent}'")
 assert sql("fixture_rust", f"SELECT count(*) FROM ownership.execution_attempts WHERE id='{attempt}'") == "0"

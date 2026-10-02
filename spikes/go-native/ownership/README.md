@@ -15,6 +15,11 @@ function's `current_user`. Ownership and attempt identity cannot be reassigned.
 Ancillary summary writes have an exact column allowlist; lifecycle mutations,
 usage metering and reviewer verdicts receive no blanket summary exemption.
 Unknown future columns are protected by the whole-row comparison.
+An immutable owner column on the attempt is bound to the parent by a composite
+foreign key. This permits owner-authorized cascade deletion after the parent
+disappears and rejects an incumbent-owned attempt referencing a Rust-owned parent.
+The trigger acquires no extra parent lock and claims no parent-first lock order;
+the complete source/credential/lifecycle transaction order remains a shared gate.
 
 CI connects separately as each actual runtime login and exercises positive
 owner writes, cross-owner finalization/deletion, attempt mutation, ownership
