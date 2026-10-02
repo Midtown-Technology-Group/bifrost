@@ -1,6 +1,6 @@
 # C1-R host provisioning and disposition
 
-Status: **minimal design and literal interface frozen for bounded source authoring**.
+Status: **replacement source experiment STOP; no host implementation release**.
 2026-10-02. Root and independent Sol review select alternative A within the
 existing trusted CI host/Docker-admin boundary. This is source architecture,
 not privileged/runtime execution, nominal acceptance, merge or deployment.
@@ -54,8 +54,9 @@ client/TAR/schema parser, root registry, helper service, new dependency or sudoe
 change. Installed executable/stdlib protection remains an actual runtime gate.
 Exact argv/data grammar, ancestry, short-read/write/EOF and partial-failure
 semantics are frozen in the [bounded source work package](rust-core-mvp-agent-host-literals.md).
-Only its two source files may be authored. Literal bytes/hashes, measured
-footprint, different implementation review and actual execution remain gated.
+Its former two-file authoring release ended at the measured201-line STOP,
+before any operation body. Exact draft/review/archive evidence is retained
+there; no further source or actual execution is released.
 
 Ordinary host may lack access to protected DockerRootDir/Mountpoint inodes.
 The first provision therefore captures their actual nofollow FD identities,

@@ -759,10 +759,13 @@ validation outside elevation, and stock deletion of the saved owned status
 volume only after verified consumers/references are gone. Its discovered
 prior-inode gap is closed by actual final FD identity/body in a bounded private
 publisher receipt. [Literal source interface](rust-core-mvp-agent-host-literals.md)
-is frozen after different revision2 review3f8ee97d for only two-file source
-work package C1-R-HOST-LITERAL-S. Actual emitted code/footprint and different
-implementation review remain gated; >=200 total executable lines is STOP.
-No privilege/runtime release. The failed862-line draft84937
+was frozen after different revision2 review3f8ee97d for two-file source
+work package C1-R-HOST-LITERAL-S. Its common validation prefix alone emitted
+67x3=201 executable lines before operation bodies; independent8902d169 confirms
+SOURCE STOP. Exact incomplete draftbd06 is archived mode0600 outside Git and
+only its owned untracked source removed. No helper, further authoring or
+privilege/runtime release. This construction failure is not an impossibility
+proof for all implementations or the Rust strategy. The failed862-line draft84937
 is preserved outside Git at the recorded mode0600 path, not executed or restored.
 Secret/TLS/role/source/actual-reader/closure gates are unchanged; volume cleanup
 never repairs failed evidence into acceptance. Alternative B fails actual
@@ -794,3 +797,27 @@ These packages do not restart #1017's exhausted repair cycle. Actual installed
 PG/OS/process/mount/privilege evidence, bounded immutable source/canonical
 adapters, complete semantic oracle and genuine nominal closure remain required
 before any Rust lifecycle or C2/C3 acceptance.
+
+
+## Remaining adapter and actual-process source gates
+
+Material transport/canonical adapter packetdce31021 has different design review
+0ae2c2d7 ACCEPT WITH CONDITIONS. Preserve actual same isolated source-defined
+synthetic application secret; no guessed fresh secret or normal-init change.
+Presigned URLs currently leak through HTTPX INFO logging: the dedicated observer
+must disable Python logging before dependency imports/use, without changing API,
+worker or collector logs. Closed clients reject cookies/Set-Cookie and redirects,
+use trust_env=False, bounded raw chunks and one absolute deadline including
+actual response close; uncertain close retains owner and no objects. A206 must
+cover the complete admitted object. Exact client/secret/source custody and
+T/C typed acquisition seams remain pre-builder gates; no implementation release.
+
+Actual-process packetd2c5484e has different review4267739e ACCEPT DESIGN but
+STOP exact implementation release. Root selects diagnostic-only heartbeat1s
+and validated synthetic Cove Login latency4s within unchanged60/120s limits,
+not a benchmark/default change or guaranteed window. Cached is_alive is still
+not OS liveness. Bounded native Redis GETRANGE, actual runner/host causal ordering
+and retained ancestry comparisons need freezing before source authoring.
+Neither conditional design nor the187 injected reader cases establishes full
+nominal source/process/closure/authority. Narrow real PostgreSQL reader/schema
+characterization may proceed independently; no domain acceptance follows.
