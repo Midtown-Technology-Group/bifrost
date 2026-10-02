@@ -25,13 +25,19 @@ merged since the last stable tag:
    is a major.
 3. A PR with neither falls back to a patch.
 4. The highest bump across all merged PRs wins.
+5. A changed server/CLI contract compared with the last stable tag imposes a
+   major-version floor: existing CLIs reject mismatched contracts. PR labels
+   cannot lower that floor. Missing, non-literal or inconsistent server/CLI
+   contract versions fail release calculation.
 
 `scripts/release/next-release-version.sh` prints `vX.Y.Z` (or exits non-zero
 when nothing has merged since the last tag); the pure decision lives in
 `scripts/next-version.py`. On every push to `main`, the **Release draft**
 workflow opens or updates one `Release vX.Y.Z` issue with the computed version
 and a tagging checklist, so no one has to ask for a release. Tagging remains a
-human gate.
+human gate. The [automatic release plan](plans/2026-10-02-fork-release-automation.md)
+replaces the issue-closing ritual with a reviewed release PR and explicit
+packaging dispatch; that automation is not yet deployed.
 
 ## First release baseline
 
@@ -58,9 +64,10 @@ which upstream tag or commit range the MTG release incorporated.
 6. Merge the plugin-manifest bump (`./scripts/update-plugin-version.sh X.Y.Z`).
 7. Close the open `Release vX.Y.Z` issue as completed. The **Release tag**
    workflow tags `main` at that version (guarded by green main checks and a
-   version-drift check), and CI builds signed images and opens a GitHub Release
-   draft.
-8. Edit the release notes to include a **Fixed vulnerabilities** section (OpenSSF
+   version-drift check), The current token-created tag does not trigger downstream push CI;
+   packaging must be explicitly dispatched on the checked tag. Tag CI builds
+   signed images and publishes the GitHub Release after asset upload.
+8. Release notes must include a **Fixed vulnerabilities** section (OpenSSF
    Passing requirement) and an upstream baseline note when relevant.
 
 ## Related files

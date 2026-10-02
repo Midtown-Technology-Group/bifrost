@@ -12,7 +12,9 @@ The bump is decided per PR, label-first and conventional-commit-second:
   minor, any other conventional type is a patch;
 - otherwise the bump is ``--default`` (default: patch).
 
-The highest bump across all PRs wins. Exits 3 when there are no PRs (nothing to
+The highest bump across all PRs wins. With --contract-base, a changed CLI
+contract imposes a major-version floor. Missing or inconsistent contracts fail
+closed. Exits 3 when there are no PRs (nothing to
 release); other non-zero codes are real errors. ``--since`` drops PRs merged at
 or before an exact ISO 8601 tag boundary.
 
@@ -23,8 +25,10 @@ release-draft workflow share one decision.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime
 
@@ -85,13 +89,57 @@ def bump_for(entry: dict) -> str | None:
     return None
 
 
-def next_version(base: str, entries: list[dict], default: str = "patch") -> str:
+def contract_bump(base_ref: str) -> str | None:
+    """An exact CLI contract mismatch requires a major release, regardless of labels."""
+    paths = ("api/shared/contract_version.py", "api/bifrost/contract_version.py")
+
+    def read_contract(ref: str, path: str) -> int:
+        result = subprocess.run(
+            ["git", "show", f"{ref}:{path}"], capture_output=True, text=True
+        )
+        if result.returncode:
+            raise ValueError(f"cannot read release contract at {ref}:{path}")
+        values = []
+        for node in ast.parse(result.stdout).body:
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                if node.target.id == "CONTRACT_VERSION" and isinstance(
+                    node.value, ast.Constant
+                ):
+                    values.append(node.value.value)
+            elif (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "CONTRACT_VERSION"
+                    for target in node.targets
+                )
+                and isinstance(node.value, ast.Constant)
+            ):
+                values.append(node.value.value)
+        if len(values) != 1 or type(values[0]) is not int or values[0] < 1:
+            raise ValueError(
+                f"release contract is not one positive literal at {ref}:{path}"
+            )
+        return values[0]
+
+    previous = [read_contract(base_ref, path) for path in paths]
+    current = [read_contract("HEAD", path) for path in paths]
+    if previous[0] != previous[1] or current[0] != current[1]:
+        raise ValueError("server and CLI release contracts disagree")
+    return "major" if previous != current else None
+
+
+def next_version(
+    base: str,
+    entries: list[dict],
+    default: str = "patch",
+    minimum_bump: str | None = None,
+) -> str:
     """Next version after ``base`` for the given PR entries."""
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", base.strip())
     if not match:
         raise ValueError(f"base must be MAJOR.MINOR.PATCH, got {base!r}")
     major, minor, patch = (int(part) for part in match.groups())
-    level = 0
+    level = _RANK[minimum_bump] if minimum_bump else 0
     for entry in entries:
         level = max(level, _RANK[bump_for(entry) or default])
     if level == _RANK["major"]:
@@ -116,8 +164,9 @@ def main(argv: list[str] | None = None) -> int:
         "--since",
         help="drop PRs merged at or before this ISO 8601 tag boundary",
     )
+    parser.add_argument("--json", help="PR array as a string; defaults to stdin")
     parser.add_argument(
-        "--json", help="PR array as a string; defaults to stdin"
+        "--contract-base", help="exact stable tag or commit to compare CLI contracts"
     )
     args = parser.parse_args(argv)
 
@@ -134,7 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.since:
         boundary = _parse_iso(args.since)
         if boundary is None:
-            print("next-version: --since must be an ISO 8601 timestamp", file=sys.stderr)
+            print(
+                "next-version: --since must be an ISO 8601 timestamp", file=sys.stderr
+            )
             return 2
         entries = [
             entry
@@ -143,11 +194,15 @@ def main(argv: list[str] | None = None) -> int:
         ]
 
     if not entries:
-        print("next-version: no merged pull requests since the last release", file=sys.stderr)
+        print(
+            "next-version: no merged pull requests since the last release",
+            file=sys.stderr,
+        )
         return NO_RELEASE
     try:
-        print(next_version(args.base, entries, args.default))
-    except ValueError as exc:
+        minimum_bump = contract_bump(args.contract_base) if args.contract_base else None
+        print(next_version(args.base, entries, args.default, minimum_bump))
+    except (ValueError, SyntaxError) as exc:
         print(f"next-version: {exc}", file=sys.stderr)
         return 2
     return 0

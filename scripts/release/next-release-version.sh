@@ -73,12 +73,18 @@ if [[ -z "$base" ]]; then
   exit 0
 fi
 
-if next="$(printf '%s' "$pr_json" | python3 "$decide" --base "$base" --default "$default" --since "$tag_iso")"; then
-  echo "v${next}"
-  exit 0
+contract_args=()
+if [[ -n "$last_tag" ]]; then
+  contract_args=(--contract-base "$last_tag")
 fi
 
-status=$?
+if next="$(printf '%s' "$pr_json" | python3 "$decide" --base "$base" --default "$default" --since "$tag_iso" "${contract_args[@]}")"; then
+  echo "v${next}"
+  exit 0
+else
+  status=$?
+fi
+
 if [[ "$status" -eq "$NO_RELEASE_STATUS" ]]; then
   echo "next-release-version: nothing merged since ${last_tag:-the first tag}" >&2
 fi
