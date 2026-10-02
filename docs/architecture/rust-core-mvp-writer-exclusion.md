@@ -129,3 +129,48 @@ Both reviewed exact reference701aaccd source. Verdict: accept source investigati
 with conditions; do not freeze schema/guards or release builders. Root applies
 the review's Stage 0 correction above: inspect existing identities first;
 proposed roles and guard-body tests belong to a later authorized stage.
+
+## Stage 0 source candidate and execution checkpoint
+
+The exact one-test diagnostic is published on `test/agent-capacity-reference`
+at `827f44e86540c3effe2e5645e8df89aae9cbecd8`, tree
+`34069c220c9e13e10de444fc5b22eb20f2560ae2`. Owned scope is only
+`api/tests/e2e/platform/test_writer_identity_preflight.py`:345 normally formatted
+lines, SHA256 `fe157094fd0de96ec18e8267df22d46e7cce7773f84c81453dfc35943072e0b0`.
+Different final source review accepts those exact bytes, SHA256
+`9a14c17a97300ed7996c5539b910014563e186b9cb5617950abde1e3f2b7836c`.
+AST, pinned Ruff0.15.12 check/format-check and whitespace checks pass.
+
+The initial246-line candidate `c79ea32a` stopped when mandatory formatting
+produced343lines. Root had incorrectly copied the prior reader test package's
+250-line cap as a general repo limit. Fresh instruction/config inspection and
+different independent review establish that it is package-specific. Root
+separately corrected only this diagnostic footprint decision; formatted ASTs
+are identical. The required schema-owner observation then adds two lines.
+No helper relocation, compression, format skip, weakened observation or general
+cap exception occurred. Both stopped drafts remain inert0600 outside Git; the
+historical STOP is retained. Other package limits remain unchanged.
+Scope limits must retain their source and package; formatting precedes counting.
+
+The collector uses one direct and two independently connected existing pooled
+snapshots, fixed catalog SELECTs, read-only repeatable-read transactions, native
+type/row/byte admission and one shared30-second async deadline. Native asyncpg
+CHAROID fields retain exact one-byte admission with closed ASCII representation
+recorded in the receipt. Actual installed decoding remains a runtime check.
+Schema/table/attached-trigger owners and observed privileges remain honest,
+including unsafe values. Scope explicitly excludes complete role-admin graphs,
+all definer helpers, actual API/worker/scheduler sessions and deployed posture.
+
+Only a fixed sanitized catalog receipt is0644 for the existing artifact uploader;
+all secret/custody modes remain unchanged. Exclusive same-FD bounded readback
+and pathname identity checks do not establish immutable storage or authority.
+Passing JUnit, complete receipt, actual candidate/image/plan provenance and
+verified teardown must be inspected independently. Standard isolated test
+setup/reset is effectful; only the diagnostic DB queries are read-only.
+
+[Supported CI37015218198](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37015218198)
+was dispatched once against exact827f44 with existing `pre_pr=true`. It is pending
+at this checkpoint. No observed role/ownership receipt or runtime success is
+claimed. No new workflow, conftest, role, permission, migration, public credential
+or lifecycle behavior changed. Full A+B, host construction STOP, dependency
+approval, #1017 STOP and C2/C3 gates remain independent.

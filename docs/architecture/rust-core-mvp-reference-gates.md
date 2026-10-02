@@ -975,3 +975,14 @@ not role creation or a guard-body test before guards exist. No receipt, migratio
 permission implementation or authority-builder release is claimed. SQL denial
 and transport ownership alone cannot prove pre-effect domain admission or safe
 mixed writers. Full A+B and one-database active-owner rollback remain required.
+
+### Existing writer identity diagnostic: source accepted, actual collection pending
+
+The [Stage 0 checkpoint](rust-core-mvp-writer-exclusion.md#stage-0-source-candidate-and-execution-checkpoint)
+records independently reviewed one-test candidate827f44, the corrected
+package-specific footprint provenance and missing schema-owner completion.
+Supported CI37015218198 is pending; source acceptance is not an actual DB/pool
+receipt or writer-exclusion proof. No DDL/roles/permissions/public hooks changed.
+Only diagnostic SELECTs are read-only; standard isolated harness setup/reset
+remains effectful. Existing actual artifact/JUnit/identity/cleanup verification
+is required before interpreting collected privileges.
