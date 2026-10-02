@@ -344,3 +344,34 @@ trigger, DB/event/usage/result/summary joins and closure remain required.
 #1017 stays STOPPED after its one extra cycle; neither new docs nor source
 review transfers its385 passes into a healthy ordinary CI gate. No merge,
 deployment, vendor use, H/R or C2/C3 acceptance is authorized by these updates.
+
+
+## Current foundation execution disposition
+
+C1-R construction candidate `bb74d2b72c4a7f0a4f9eab4a045e7aa2e64ccdae`
+contains platform main01cadfe and the unchanged AUTH-P1 source at
+`fe69d963dffc8057b07a9438cb547a6e4b906f9a`. The latter PR#1018 now has
+passing current-head ordinary checks; it remains unmerged. Its ten owned source
+and test files are byte-identical to the previously reviewed AUTH candidate.
+
+The foundation's own [supported run36959618248](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36959618248)
+is **FAILED**: quality reports five Pyright test-double errors, the full unit
+job reports12,144 passed/15 failed/3 skipped/35 deselected, and the literal
+pre-PR job fails on those type errors. Its uploaded artifact11206864753 is
+failure evidence, not a passing gate. Relevant unit defects involve resource
+preflight test prerequisites, preserved configured entrypoints, TLS test
+connection routing and a CPython3.14.7 decoder assumption. Repairs require
+independent source review and a new supported candidate run; no expectations,
+authorization boundaries or deliberately detectable drift may be waived. The
+unchanged observer already converts invalid body projections into retained
+failed signed witnesses; source inspection corrected a preliminary root
+suspicion that this path was absent. The real finite nested-body invariant
+remains mandatory, while lowering Python frame recursion limits is not proof
+of a C JSON decoder exception on the selected runtime.
+
+The full model/Cove fixture is a separate uncommitted source candidate. It has
+not run and is not represented by this foundation run. Private materials,
+actual installed-image/capability custody, public worker trigger, independent
+DB/event/result/usage/summary joins and consumer closure are still incomplete.
+No nominal agent reference, Rust parity, mixed-writer safety or MVP acceptance
+follows from these checks. #1017's exhausted cycle remains STOPPED.

@@ -10,6 +10,8 @@ The source review inspected the [controlling wire](rust-core-mvp-agent-observati
 
 Current foundation is construction/custody, not a working case. Fixture/TLS and observer/server source packages now exist as uncommitted source at ef752; scoped AST/Ruff checks pass, but they have not executed. Fixture model/Cove entrypoint and `api/tests/e2e/platform/agent_reference_cases.py` are incomplete/absent. `./test.sh agent-reference` still refuses missing required inputs. The [additive model oracle](rust-core-mvp-agent-model-oracle.md) defines its closed input/readback and selected full transcript; consumer release awaits independent shared-codec review. No stopped #1017 cycle, Sopdet, new Rust authority, SDK/product/source extraction or ORM registration is authorized.
 
+Latest construction execution is recorded in the [current foundation disposition](rust-core-mvp-reference-gates.md#current-foundation-execution-disposition). It supersedes the preceding historical uncommitted-source snapshot only for the exact committed candidate and named checks. The infrastructure [health exception](rust-core-mvp-agent-model-oracle.md#infrastructure-health-exception) retains existing Compose startup without admitting a model/Cove case. Actual custody and nominal execution remain gated.
+
 ## Users, files and capability custody
 
 The closed unit-phase argv now names fixture, lane, original codec, additive
