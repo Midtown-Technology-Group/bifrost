@@ -964,3 +964,14 @@ input or boundary-checker byte changes. Current stdlib AST audit passes2,115
 boundary files/1,992 standard authored, zero forbidden imports, empty allowlist.
 No workspace accommodation or authored rewrite occurred. Earlier tests/proposals
 retain their exact6bb/e860/83c source pins rather than being relabeled current.
+
+## Mechanical writer-exclusion investigation
+
+The [reviewed investigation](rust-core-mvp-writer-exclusion.md) identifies missing
+immutable lifecycle owners, shared configured DB identity, encrypted delivery
+parent ambiguity, ancestor/ancillary writers and lock/effect ordering gaps.
+Its next diagnostic is read-only existing pool identity/ownership evidence,
+not role creation or a guard-body test before guards exist. No receipt, migration,
+permission implementation or authority-builder release is claimed. SQL denial
+and transport ownership alone cannot prove pre-effect domain admission or safe
+mixed writers. Full A+B and one-database active-owner rollback remain required.
