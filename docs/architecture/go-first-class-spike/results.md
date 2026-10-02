@@ -4,6 +4,72 @@ Decision: **CONTINUE SPIKE**. G1/G2 authoring, build and local execution are pro
 Rust admission and durable finalization remain blocked on the existing shared
 runtime frontier. This is runnable evidence, not first-class acceptance.
 
+## Continuation: shared contract and writer-exclusion code
+
+The spike continued beyond the original G1/G2 checkpoint below. Exact additional
+tested candidate: `ba71c3e6acc75bce374e1693e449440345b50b18`.
+[Hosted run 36956313136](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36956313136)
+passed both the isolated build/runtime/interchange job and PostgreSQL ownership
+job. Artifact source is not relabeled as a later documentation commit.
+
+- Independent standard-library Go implements the published C1-P0 codec and
+  parent-input session validator. All 99 wire, seven binary and 35 session vectors
+  from unchanged #1015 `9f35278f90ba3757318ac9f07895bda9957330de` pass. Overall Go
+  tests report 167 passing named tests/subtests, including the earlier suites.
+- Actual Go encodings are accepted by the unchanged Python and Rust codecs;
+  Python and Rust encodings are accepted by Go. Each direction validates nine
+  owned synthetic golden frames. The original Rust contract crate also passes
+  its four suites over the same corpus, with locked dependencies and offline
+  execution after separate trusted fetching.
+- A disposable PostgreSQL candidate passes 33 actual-login checks across Python,
+  Rust and summary roles: positive ownership writes/readback, foreign finalization
+  and deletion, immutable identities, bounded summary fields, and denied role,
+  trigger, replication-setting, TRUNCATE and custom-setting bypasses. Runtime roles
+  are neither table owners nor superusers/BYPASSRLS. This is a reduced fixture,
+  not an accepted migration, pool identity proof or hidden-writer inventory test.
+- The exact original workflow binary is unchanged: SHA256
+  `9c853f132b8cdd3d30c2521179f46f0cc883765fcd122602f2ab28b6aeac6356`.
+  It still runs 20 original and 20 edited samples plus cancellation in isolation.
+
+New-run timings: cold compile with pre-resolved modules 11.517s, independent cold
+11.006s, edited warm compile 275.97ms, edit-to-artifact 510.27ms, median execution
+3.606ms/p95 3.962ms, median first SDK request 3.195ms and cancellation 0.315ms
+(one cancellation sample). Module resolution/verification was 189.70ms. Runner
+variation prevents claiming an optimization over the historical run below.
+These remain local-authoring measurements, excluding a full lifecycle adapter.
+
+Evidence is retained under
+`/home/thomas/src/bifrost-go-spike-artifacts/ba71c3e6acc75bce374e1693e449440345b50b18/`,
+including binaries, signed descriptor, test/scanner output, all four interchange
+receipts and PostgreSQL check details. All actual tests ran in hosted CI; no
+physical-host runtime, application stack, vendor operation or production change.
+
+Two failures produced specific fixes without changing/omitting vectors:
+run36955502455 found the Go binary reader classified zero-length framing incorrectly;
+run36956068660 found rustup attempted a write to the immutable toolchain image.
+The codec now preserves `InvalidFrame` for zero-length framing, and interchange
+selects the installed exact toolchain explicitly. Successful evidence above is
+from the corrected source candidate, not a rerun of either failing candidate.
+
+Current architectural source readback: #1011
+`59baf40f15103d1d4f579c1f5337eb5405df4882`, platform main
+`e58db4955ddd30177bd613f1d85b7e203ad7832a`, workspace main
+`9941427941587d253540942b714c5e2b7abfc410`. #1024/#1026 remain at their recorded
+open heads. #1011 remains architecture-only and still gates authority-bearing
+C2/C3 acceptance. The active goal is not closed by this checkpoint.
+
+The concrete next contract change is in
+[native-contract-revision.md](native-contract-revision.md): a common native
+artifact observation and trusted pre-Start adapter that does not link tenant
+packages. It preserves ordinary Go initializers by launching them only after
+validated Start and bound provision. Current P0 mandates interpreter fields and
+rejects Result; neither can be bypassed by relabeling Go or a fixture file.
+Full native/Result/provision schema ratification and actual session/Start/receipt
+authority with real writer exclusion remain the specific G3–G5 gates. The shared
+workflow and agent model is retained; no smaller Go lifecycle was introduced.
+
+## Original G1/G2 checkpoint
+
 Procedure: mtg-engineering-flow 2026-09-30.1; MTG package 2026-10-01.5.
 SDK/prototype version: **0.0.0-spike.1**. Go: **1.27.1**, Linux/amd64, CGO disabled.
 No production, vendor mutation, credential expansion, merge or lifecycle schema
