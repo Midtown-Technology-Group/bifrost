@@ -781,3 +781,45 @@ Private real unit0700/readback/file600 plus labeled pure777 metadata; actual E2E
 Supported transfer red: hostunreadableUID1000 source600 copied to validatedhost600, exact bytes/hash+witness/readback; absent unrelated shard neutral; symlink/FIFO-nonblocking-rejection/wronguid/mode/link/type/oversize/source drift/target collision/copy readback mismatch/expiry and close errors fail; original control failure preserved. No arbitrary customer/driver payload exports claimed safe. Source cannot prove sudo/host facts alone.
 Acceptance: actual named collector JUnit PASS in same run/shard, independent original receipt contract/privacy/native/source review, copy sha/bytecount matching witness and original internal600 custody, exact candidate/tree/image/run binding, current transfer host readback, cleanup resource inventories and literal pre-PR. Missing receipt/witness/named PASS or actual capture failure remains architecture STOP regardless uploader success. Capture-only successful transport never establishes collection/security readiness.
 Supported quality/unit/native E2E/scanner actual results and final independent immutable-source review required. No scanner dismissal/suppression or broader scope amendment. Root must freeze exact reviewed final source and release separately; this report executes none of these gates.
+
+
+## R2 implementation checkpoint — source accepted, runtime pending
+
+Root released the exact design above at RFC commit
+`83eff96adf35362c0d123fabb395cc7fdb2d47e4`, after distinct design acceptance.
+[WEX-CAT0 #1035](https://github.com/Midtown-Technology-Group/bifrost/pull/1035)
+now contains candidate `ad156a60b13fb17ddb5aee9fdf70806c815ae7b3`, tree
+`e7b9f4646cee6484bbde43749130329cc3450c5b`, based on platform main
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6`. Three owned files changed
+from83d; the pure helper is byte-identical. SQL, query hashes, native
+admissions, caps, deadline and migration pin remain unchanged.
+
+The first implementation review stopped on two test defects: workflow lookup
+selected `/.github` inside the supported `/app` container, and real-descriptor
+regression tests lacked independent cleanup on failure. Both were corrected
+before commit. Lookup admits the explicit host/container layouts only; a
+function-scoped ownership fixture disposes remaining real descriptors without
+closing successfully released/recycled history integers or masking the original
+failure. Distinct final source review SHA256
+`4e3cc609c342dc7c51795de9629a2cc9920b8d550f6f86d5d07be275838463fc`
+accepted source for supported verification only. Locked Ruff0.15.12 lint/format,
+stdlib AST and diff checks passed. Collector SHA256
+`51f0e1561e95ff1d188b4618d1175fc182e4f1d94f75669cae4a8e31ab2dc166`;
+unit SHA256 `089bace3b944fd00f4d95be56162b9f7813b1362b1ca3002a9a32010ab24d6c0`;
+workflow SHA256 `72f321044d9763762667c14aead611d3e8303a4775fc36f7420100c53d3df336`.
+The exact frozen inline copier SHA above is unchanged.
+
+[Exact-head CI37051137191](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37051137191)
+includes the unchanged optional literal pre-PR gate. Normal PR CI37051126591
+is separate. Both were pending when this checkpoint was written. No predecessor
+PASS, fake-root/UID unit seam or successful upload proves this candidate's actual
+cross-UID custody, scanner result or same-job cleanup. All retained acceptance
+evidence listed above remains required; no scanner suppression or expectation
+waiver is authorized. Earlier83d CodeQL failure remains historical.
+
+Fresh workspace main is `6574eff6625f79984700b81ed0fcbc0c139d5a51` (#1147).
+The exact diff from auditeda175 changes only Solution installation JSON;
+authored Python and the boundary checker are byte-identical. The full prior
+2,116-file AST audit therefore carries forward: zero forbidden platform
+imports, empty allowlist. This is source-boundary evidence, not deployed
+Solution/runtime evidence. No Stage1/C2/C3, merge or deployment acceptance.
