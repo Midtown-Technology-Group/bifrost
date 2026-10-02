@@ -823,3 +823,52 @@ authored Python and the boundary checker are byte-identical. The full prior
 2,116-file AST audit therefore carries forward: zero forbidden platform
 imports, empty allowlist. This is source-boundary evidence, not deployed
 Solution/runtime evidence. No Stage1/C2/C3, merge or deployment acceptance.
+
+
+## R2 retained verification — bounded diagnostic accepted
+
+The preceding pending checkpoint is historical. Both
+[exact-head CI37051137191](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37051137191)
+and [normal PR CI37051126591](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37051126591)
+completed SUCCESS forad156. API lint/type passed; backend unit lane recorded
+11,748 passes, including114 catalog cases, three unrelated skips and35
+deselections. CodeQL and Sonar checks passed without dismissal/suppression.
+Distinct final retained review SHA256
+`29a1faf8518665d96b3ac0eb7595b9c7848dc71859fff8a5e038ad8f45eb4255`
+accepts collection/private transfer/associated cleanup only.
+
+Exact-head shard4/job110984747411 artifact11246624214 contains one named
+nonskipped collector PASS0.344s. ZIP SHA256
+`bfa3d0f843926ca47e793557e5133c737da607e7a1a92cb0e34c5214b606b60a`;
+receipt519,962bytes SHA256
+`0c7132ab25da5bb02ec98cf6284e44a7f1b4c48c684b388ea38aa1c07b7a753a`.
+Actual source regular0600 UID1000/gid1000 exports to host regular0600
+UID1001/gid1001 inside0700 capture directory. Receipt and witness agree on
+source custody, byte count and SHA; source hashes match the reviewed candidate.
+That same ZIP's own E2E project inventory records successful EMPTY containers,
+volumes and networks. Actual E2E API pull digest is
+`sha256:8110465a6306c39d1e4b41c5133640ab9b9bd4ba62661de1523607b8b0ee75eb`.
+
+Separate manual pre-PR artifact11247525354 binds exact head/tree/main, exit0
+and EMPTY resources for its own job only; ZIP SHA256
+`971e21cc5f615012e1f4deed95b75687defdc97349a4a0aed040cb97878fa67f`.
+Normal PR shard4 artifact11247471269 independently verifies the same transport
+properties; actual synthetic merge1750baaa has tree equalad156. Its API digest
+`sha256:87d9d2ff461ccf74047e2a5164d510d164e8d6ae697c1ba9d6c3d3480a449a7e`
+is separate provenance, never borrowed to validate the manual job.
+
+Complete ordered Q0/Q2–Q8 metadata exactly matches83d; only expected Q1
+process/start observations differ. Fixed query/contract/source admissions and
+160/162 structural reconciliation carry forward. This does not prove full
+collateral semantics or writer isolation: test authority remains superuser/
+BYPASSRLS, policy/nonempty-array gaps remain, and777 parent/sudo custody is
+trusted CI observation rather than an immutable capability namespace.
+
+Scanner alerts893–896 report fixed. Advisory897–906 remain visible/open;
+independent source disposition SHA256
+`2da30c82e5de3167c54fd931d8de05aa2a64642ad9ba8c92de44f578d3897679`
+found no new collector blocker: control exceptions propagate after all cleanup
+attempts, while test-only finalizer cleanup is best effort. Its empty-handler
+local explanatory comment remains a minor review item; advisory closure is
+not claimed. No schema/role/guard/public-credential/runtime-owner implementation,
+Stage1/C2/C3 or MVP CONTINUE follows. No merge or deployment.
