@@ -321,7 +321,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 							<RunCard
 								key={r.id}
 								run={r}
-								verdict={(r.verdict as Verdict) ?? null}
+								verdict={(r.verdict ?? null) as Verdict}
 								highlight={query}
 								onOpen={() => setOpenRunId(r.id)}
 								onVerdict={(v) => applyVerdict(r.id, v)}
