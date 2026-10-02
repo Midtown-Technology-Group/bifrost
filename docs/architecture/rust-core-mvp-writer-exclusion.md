@@ -304,3 +304,9 @@ neither contains this graph nor proves safe principals. Subsequent permissions,
 roles/DDL, OLD/NEW concurrency and denied-commit external-effect experiments
 remain separately gated. No current-main public issuer, Stage1/C2/C3 acceptance,
 new schema ownership or deployment follows from this source audit.
+
+The concrete [WEX-CAT0 catalog diagnostic package](rust-core-mvp-writer-catalog-receipt.md)
+is independently reviewed and released only for test implementation and its
+narrow receipt/JUnit capture. It freezes exact SQL, native schemas, bounded
+metadata-only discovery, custody and failure rules. Raw collection can pass
+with reconciliation pending; Stage1/security acceptance remains separately gated.
