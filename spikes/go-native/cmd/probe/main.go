@@ -61,7 +61,7 @@ func launch(binary, endpoint, ca, input string) (*exec.Cmd, *bytes.Buffer, *byte
 	return cmd, out, diagnostics, nil
 }
 
-func probe(binary, output string) error {
+func probe(binary, output string, descending bool) error {
 	var first atomic.Int64
 	var hold atomic.Bool
 	entered := make(chan struct{}, 1)
@@ -105,6 +105,27 @@ func probe(binary, output string) error {
 		}
 		samples = append(samples, sample{StartupToSDKMS: ms(time.Unix(0, first.Load()).Sub(started)), ExecutionMS: ms(time.Since(started)), MaxRSSKiB: cmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss})
 	}
+	// Exercise the branch actually changed by the warm edit. The successful
+	// readiness samples above have no missing keys and alone cannot observe it.
+	missingInput := `{"integration_name":"Fixture","required_keys":[" zeta ","alpha","zeta","","credential"]}`
+	branch, branchOut, _, err := launch(binary, s.URL, ca, missingInput)
+	if err != nil {
+		return err
+	}
+	if err = branch.Wait(); err != nil {
+		return errors.New("edited behavior fixture failed")
+	}
+	var branchResult struct {
+		Ready   bool     `json:"ready"`
+		Missing []string `json:"missing_keys"`
+	}
+	expected := []string{"alpha", "zeta"}
+	if descending {
+		expected = []string{"zeta", "alpha"}
+	}
+	if json.Unmarshal(branchOut.Bytes(), &branchResult) != nil || branchResult.Ready || len(branchResult.Missing) != 2 || branchResult.Missing[0] != expected[0] || branchResult.Missing[1] != expected[1] || bytes.Contains(branchOut.Bytes(), []byte("synthetic-secret")) {
+		return errors.New("source edit did not produce expected changed output")
+	}
 	hold.Store(true)
 	cmd, _, _, err := launch(binary, s.URL, ca, input)
 	if err != nil {
@@ -134,7 +155,7 @@ func probe(binary, output string) error {
 		return errors.New("cooperative cancellation exceeded local deadline")
 	}
 	cancelMS := ms(time.Since(started))
-	data := map[string]any{"profile": "local-authoring-only", "sdk_version": bifrost.SDKVersion, "samples": samples, "cancellation_ms": cancelMS, "same_artifact_runs": 20, "runtime_compiler_available": false, "rust_admission": false, "durable_projection": false}
+	data := map[string]any{"profile": "local-authoring-only", "sdk_version": bifrost.SDKVersion, "samples": samples, "cancellation_ms": cancelMS, "same_artifact_runs": 21, "missing_keys_observation": branchResult.Missing, "runtime_compiler_available": false, "rust_admission": false, "durable_projection": false}
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
@@ -144,12 +165,13 @@ func probe(binary, output string) error {
 func main() {
 	binary := flag.String("artifact", "", "already built absolute artifact path")
 	output := flag.String("output", "", "measurement JSON path")
+	descending := flag.Bool("descending", false, "expect the behavior-changing warm source edit")
 	flag.Parse()
 	if !filepath.IsAbs(*binary) || *output == "" {
 		fmt.Fprintln(os.Stderr, "artifact and output are required")
 		os.Exit(1)
 	}
-	if err := probe(*binary, *output); err != nil {
+	if err := probe(*binary, *output, *descending); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

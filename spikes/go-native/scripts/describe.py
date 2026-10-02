@@ -33,6 +33,9 @@ def main() -> None:
     source_digest, files = closure(root)
     modules = "\n".join((root / f).read_text() for f in ("go.mod", "go.sum"))
     runtime = json.loads((out / "execution.json").read_text())
+    warm_runtime = json.loads((out / "warm-execution.json").read_text())
+    assert runtime["missing_keys_observation"] == ["alpha", "zeta"]
+    assert warm_runtime["missing_keys_observation"] == ["zeta", "alpha"]
     samples = runtime["samples"]
     metrics = {}
     for key in ("startup_to_sdk_ms", "execution_ms", "max_rss_kib"):
@@ -50,6 +53,8 @@ def main() -> None:
         "artifact_sha256": digest(artifact), "artifact_size_bytes": artifact.stat().st_size,
         "local_probe_sha256": digest(out / "probe"),
         "warm_artifact_sha256": digest(changed),
+        "behavior_edit_observation": {"original_missing_keys": runtime["missing_keys_observation"],
+                                      "edited_missing_keys": warm_runtime["missing_keys_observation"]},
         "go_version": "go1.27.1", "goos": "linux", "goarch": "amd64", "cgo": False,
         "dependency_inputs_sha256": hashlib.sha256(modules.encode()).hexdigest(),
         "module_graph_sha256": digest(out / "module-graph.txt"),

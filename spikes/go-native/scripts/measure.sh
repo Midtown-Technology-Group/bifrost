@@ -126,7 +126,7 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --mount "type=bind,src=$scratch/out/probe,dst=/probe,readonly" \
   --mount "type=bind,src=$evidence_dir/workflow-warm-edit,dst=/workflow,readonly" \
   --mount "type=bind,src=$scratch/results,dst=/out" \
-  --entrypoint /probe bifrost-go-spike-runtime --artifact /workflow --output /out/warm-execution.json
+  --entrypoint /probe bifrost-go-spike-runtime --artifact /workflow --output /out/warm-execution.json --descending
 cp "$scratch/results/warm-execution.json" "$evidence_dir/warm-execution.json"
 
 docker build --file "$spike_root/builder.Dockerfile" --tag bifrost-go-spike-scanner "$spike_root"

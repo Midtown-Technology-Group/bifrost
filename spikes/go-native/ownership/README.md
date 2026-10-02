@@ -23,6 +23,16 @@ bypass, TRUNCATE and a forged custom setting. Final readback checks committed
 fixture data using the incumbent reader. This is database evidence, not an
 Execution API acceptance test.
 
+The pooled fixture also executes through actual PgBouncer in transaction mode,
+reads backend `session_user`/`current_user` and role privilege flags for each
+runtime login, and races a live owner transaction with a denied incumbent write.
+Its negative control forces the Python backend user while accepting a Rust
+frontend login: readback detects the mismatch and the guard denies the Rust-owned
+mutation. Transaction rollback leaves the owner's committed result unchanged.
+The task-created pool is stopped and reaped in cleanup; version and checks are
+retained as `ownership-pool-evidence.json`. This proves the candidate's pool
+mechanism, not the configured BiFrost production/test application pool.
+
 Run only in hosted CI or an authorized disposable test VM. The hosted PostgreSQL
 service uses local trust authentication solely for synthetic disposable roles;
 there are no application credentials. Do not apply fixture SQL to a BiFrost DB.
@@ -30,7 +40,7 @@ there are no application credentials. Do not apply fixture SQL to a BiFrost DB.
 Remaining acceptance work: reviewed additive Alembic schema and all actual
 tables/FKs, unchanged Python public behavior, actual hidden writer and summary
 metering paths, concrete annotation/delete authority, source-accounting and
-credential lock order, concurrent race tests, PgBouncer distinct backend login
-readback, mixed ownership rollback and drain, and full shared protocol/session
+credential lock order, full lifecycle race tests, configured BiFrost pool backend
+identity readback, mixed ownership rollback and drain, and full shared protocol/session
 authority. A shared backend login followed by SET ROLE fails this design's
 identity requirement. It must never be silently treated as separate custody.
