@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -78,15 +78,18 @@ async def list_active_workspace_workflows(
     *,
     for_update: bool = False,
 ) -> list[WorkflowORM]:
-    """Return every active mutable-Workspace registration on exact paths."""
+    """Return active Root registrations at the paths used by runtime admission."""
 
     normalized_paths = sorted(set(paths))
     if not normalized_paths:
         return []
+    runtime_path = func.ltrim(func.replace(WorkflowORM.path, "\\", "/"), "/")
     statement = (
         select(WorkflowORM)
         .where(
-            WorkflowORM.path.in_(normalized_paths),
+            # Legacy Windows paths and leading slashes resolve to the same
+            # runtime source. Inventory must include them before ID checks.
+            runtime_path.in_(normalized_paths),
             WorkflowORM.solution_id.is_(None),
             WorkflowORM.is_active.is_(True),
         )
