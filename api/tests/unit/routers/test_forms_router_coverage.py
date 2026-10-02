@@ -186,6 +186,7 @@ async def test_generate_upload_url_validates_field_constraints_and_returns_metad
     assert response.blob_uri.endswith("/Quarterly Report.pdf")
     assert response.file_metadata.container == "uploads"
     storage.generate_presigned_upload_url.assert_awaited_once()
+    assert storage.generate_presigned_upload_url.await_args.kwargs["content_length"] == 1024
     assert f"uploads/{org_id}/" in storage.generate_presigned_upload_url.await_args.kwargs["path"]
 
 
