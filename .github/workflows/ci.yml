@@ -1525,6 +1525,18 @@ jobs:
       # runs `scripts/update-plugin-version.sh <version>` locally before
       # tagging, so when this fails the maintainer either forgot the skill step
       # or the bump commit didn't make it onto the tagged ref.
+      - name: Refuse rebuilding a published immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          releases="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
+          published="$(printf '%s' "$releases" | jq --arg tag "$GITHUB_REF_NAME" '[.[][] | select(.tag_name == $tag and .draft == false)] | length')"
+          if [ "$published" -ne 0 ]; then
+            echo 'This release is already published. Verify it; never rebuild its versioned images or replace assets.' >&2
+            exit 1
+          fi
+
       - name: Verify plugin manifest matches tag
         run: |
           TAG_VERSION="${{ steps.version.outputs.version }}"
@@ -1903,6 +1915,26 @@ jobs:
         with:
           subject-path: ${{ steps.source_tarball.outputs.tarball }}
 
+      - name: Retain release-specific notes and verification instructions
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          if [ -f release/notes.md ] && grep -Fxq "# Bifrost $VERSION" release/notes.md; then
+            cp release/notes.md release/package-notes.md
+          else
+            # Manual pre-releases still use the tag-bound PR inventory. Stable
+            # MTG automatic releases always have matching reviewed notes.
+            if [ "$GITHUB_REPOSITORY" = Midtown-Technology-Group/bifrost ] && [[ "$VERSION" != *-* ]]; then
+              echo 'Stable MTG release has no matching reviewed notes.' >&2
+              exit 1
+            fi
+            gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$VERSION" --jq .body > release/package-notes.md
+          fi
+          python3 scripts/release/package-notes.py "$VERSION" >> release/package-notes.md
+
       - name: Create release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
@@ -1916,72 +1948,7 @@ jobs:
             bifrost.pyi.sigstore
             stubs/DISTRIBUTION.md
           fail_on_unmatched_files: false
-          body: |
-            ## Bifrost ${{ steps.get_version.outputs.version }}
-
-            ### Highlights
-
-            - Immutable Solution deployments with compare-and-swap activation and runtime pinning.
-            - Standalone v2 applications, SDK streaming, and a more capable local development workflow.
-            - Security hardening across authentication, multi-tenancy boundaries, path containment, and dependency supply chains.
-            - Expanded diagnostics, OpenTelemetry coverage, and worker-capacity controls.
-
-            ### Upgrade notes
-
-            This is a major-version release candidate. The legacy `bifrost export` and
-            `bifrost import` commands have been removed; Solutions are their
-            lifecycle-aware replacement. CLI consumers must use a CLI build matching
-            the server contract version.
-
-            ### Contributors
-
-            Thomas Bray, Jack Musick, and Paul Szatkowski.
-
-            ### Docker Images
-
-            **API:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:${{ steps.get_version.outputs.image_tag }}
-            ```
-
-            **Client:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.CLIENT_IMAGE }}:${{ steps.get_version.outputs.image_tag }}
-            ```
-
-            **Worker:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE }}:${{ steps.get_version.outputs.image_tag }}
-            ```
-
-            ### Type Stubs for IDEs
-            Download `bifrost.pyi` from the assets below and place it in your workspace directory for IDE autocomplete and type checking support.
-
-            See `DISTRIBUTION.md` for instructions.
-
-            ### Signed artifacts (Sigstore / cosign — keyless)
-
-            Each release asset has a matching `.sigstore` bundle (Sigstore's
-            self-contained signature + certificate + Rekor inclusion proof,
-            produced via keyless OIDC — no maintainer-held keys involved).
-
-            Verify with cosign (>= v2.4):
-
-            ```bash
-            cosign verify-blob \
-              --bundle bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz.sigstore \
-              --certificate-identity-regexp 'https://github\.com/${{ github.repository }}/.*' \
-              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz
-            ```
-
-            A SLSA build-provenance attestation is also published and verifiable via:
-
-            ```bash
-            gh attestation verify bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz \
-              --owner ${{ github.repository_owner }}
-            ```
-
+          body_path: release/package-notes.md
           # Immutable releases only accept asset uploads while they are drafts.
           # Publish in the next step after every asset has been uploaded.
           draft: true
@@ -2002,4 +1969,11 @@ jobs:
           else
             args+=(--latest)
           fi
+          # Do not publish until every required source asset is uploaded.
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
+          printf '%s' "$release" | jq -e --arg name "bifrost-$VERSION-source.tar.gz" '
+            [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
+            [$name, ($name + ".sha256"), ($name + ".sigstore")] |
+            all(. as $required | $assets | index($required) != null)' > /dev/null
           gh release edit "$VERSION" "${args[@]}"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
