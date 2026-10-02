@@ -401,10 +401,50 @@ certificate and hostname verification, fixed SNI, absent-trust/SAN/expiry
 negatives, redirect rejection and ambient-environment attacks remain mandatory.
 Locked Ruff0.15.12 and format checks pass. Its own
 [supported run36963527229](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36963527229)
-is pending; source review does not predict its result.
+has passing lint/type checks and literal pre-PR job110702387902. Root inspected
+artifact11209062488: exact bb3d3fd tree
+`5de2091717211c0ad6c38e363b612125561bc0e2`, current main01cadfe, exit0 and
+empty owned container/volume/network queries after teardown. Unit tests and
+the overall run remain pending; these gates do not predict their results.
 
 The nominal public case, verified reader/image/interpreter custody, privileged
 host closure interfaces and complete DB/event/usage/result/summary joins remain
 unimplemented or unexecuted gates. No Rust parity, mixed-writer acceptance,
 merge, deployment, vendor use or C2/C3 acceptance follows. These C1-R repairs
 are independent of #1017; its exhausted extra cycle remains STOPPED.
+
+## Public agent setup review disposition
+
+Independent source review of the bounded public case proposal against unchanged
+product source through bb3d3fd found three required corrections. Public
+registration/MFA/provider-role setup, both immutable workflow installs, actual
+Agent creation and the first AI profile's six assignments are source-supported
+in direction; no executable nominal case is yet accepted.
+
+The selected collector must retain every actual selected-channel publication,
+including genuine detail/all/org fanout duplicates: maximum64 business
+publications across pre- and post-binding together, each raw payload at most
+65536 bytes, aggregate payload at most4194304 bytes. Prebinding consumes the same
+budget. Overflow permanently fails the case; no eviction, deduplication,
+silent discard or synthetic ordering is allowed. This is a bounded collector
+contract, not a Redis client allocator or decoded-object memory guarantee.
+Subscription acknowledgements require separately bounded handling and cannot
+provide additional business-event capacity. Exact ACK deadlines, raw-byte
+projection and joined reader predicates remain frozen-interface prerequisites.
+
+After the already selected public synthetic-password SECRET update, perform a
+fresh `GET /api/config?scope=global` and verify the same actual row/key/integration/
+organization, secret type and `[SECRET]` mask. The PUT response contains stored
+encrypted material and is private; it is not the masked readback. Actual
+private equality/SDK/Cove Login remains separate decryption evidence.
+
+Bootstrap eligibility must permit independently inventoried migration/startup
+system state while requiring actual public `/auth/status` needs_setup=true,
+no qualifying human, no default-user bootstrap and no selected preexisting
+business/AI/deployment/tool/run state. Do not DELETE or seed state to pass.
+Subsequent public registration requires actual testing/development mode; do
+not bypass production registration or MFA restrictions. Exact original admitted
+caller context and child/source/attempt/delivery/summary joins, recipe bounds,
+privileged host interfaces and nominal closure remain open release gates.
+These source-backed corrections do not change product authorization or approve
+public CRED H/R, C2/C3, Rust parity, merge or deployment.
