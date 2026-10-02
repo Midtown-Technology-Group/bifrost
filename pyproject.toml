@@ -140,9 +140,10 @@ dependencies = [
     # LLM Providers (AI Agent System)
     # =========================================================================
     # Exact pins are intentional: the Harness API is still pre-1.0 and is the
-    # execution boundary for every Bifrost agent surface.
-    "pydantic-ai-slim[openai,anthropic,google,retries]==2.35.3",
-    "pydantic-ai-harness==0.27.0",
+    # execution boundary for every Bifrost agent surface. The `typesafe` extra
+    # (TypeSafe Jev `DecisionModel`) is for the MIDT-274 spike; no live calls.
+    "pydantic-ai-slim[openai,anthropic,google,retries,typesafe]==2.51.0",
+    "pydantic-ai-harness==0.36.0",
 
     # =========================================================================
     # MCP (Model Context Protocol)
