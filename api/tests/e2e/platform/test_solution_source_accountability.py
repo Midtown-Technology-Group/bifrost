@@ -189,6 +189,39 @@ async def test_database_consumer_drift_keeps_source_unresolved(db_session, platf
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("runtime_mode", ["repo-v1", "deployment-v1"])
+async def test_later_unpinned_install_blocks_completion_before_any_bundle_read(
+    db_session, platform_admin, accounting_install, monkeypatch, runtime_mode,
+):
+    """A valid earlier install must not trigger I/O ahead of a known blocker."""
+    from unittest.mock import Mock
+    from uuid import UUID
+    from src.models.orm.solutions import Solution
+    from src.services import solution_source_accountability as accounting
+
+    f = accounting_install
+    await _attach_accounting_proof(db_session, f)
+    later_id = UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    assert f.solution_id < later_id
+    db_session.add(Solution(id=later_id, slug="accounting-unpinned-blocker",
+        name="Unpinned accounting blocker", organization_id=PROVIDER_ORG_ID,
+        status="active", execution_runtime_mode=runtime_mode, active_deployment_id=None))
+    record = WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=f.commit, source_tree_sha=f.tree,
+        paths={f.path: f.digest.removeprefix("sha256:")}, disposition="pending",
+        declared_disposition="pending", declaration_actor="platform_admin",
+        created_by=platform_admin.user_id)
+    db_session.add(record)
+    await db_session.flush()
+    storage = Mock(side_effect=AssertionError("Known blocker must precede bundle I/O"))
+    monkeypatch.setattr(accounting, "SolutionDeploymentStorage", storage)
+
+    assert await accounting.reconcile_solution_owned_source(db_session) == []
+    storage.assert_not_called()
+    assert record.disposition == "pending" and record.completion_evidence is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("recovery", ["rotation", "exact_replay"])
 async def test_recovery_reaches_older_eligible_source_behind_100_blockers(
     db_session, platform_admin, accounting_install, recovery

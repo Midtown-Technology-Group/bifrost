@@ -509,13 +509,25 @@ def _without_presentation(value: Any) -> Any:
     return value
 
 
+def _accepts_previous_parameter_schema(old: dict, new: dict) -> bool:
+    previous, desired = _without_presentation(old), _without_presentation(new)
+    if previous == desired:
+        return True
+    # Adding null preserves every previously accepted value. Keep the original
+    # branch exact and reject other schema changes or outer constraints; this
+    # is deliberately narrower than general JSON Schema subsumption.
+    return (isinstance(desired, dict) and set(desired) == {"anyOf"}
+        and isinstance(desired["anyOf"], list) and len(desired["anyOf"]) == 2
+        and previous in desired["anyOf"] and {"type": "null"} in desired["anyOf"])
+
+
 def require_compatible_parameters(old: dict, new: dict) -> None:
     """Existing callers keep their accepted keyword set and type constraints."""
     old_properties, new_properties = old.get("properties", {}), new.get("properties", {})
     if (not set(old_properties).issubset(new_properties)
             or not set(new.get("required", [])).issubset(old.get("required", []))
             or old.get("additionalProperties") is True and new.get("additionalProperties") is not True
-            or any(_without_presentation(schema) != _without_presentation(new_properties[name])
+            or any(not _accepts_previous_parameter_schema(schema, new_properties[name])
                    for name, schema in old_properties.items())):
         raise WorkflowRecipeError("Breaking parameter changes require verified live caller reconciliation")
 

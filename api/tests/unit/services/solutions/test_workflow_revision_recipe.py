@@ -169,3 +169,28 @@ def test_breaking_parameter_updates_require_live_caller_reconciliation(change):
         new["properties"]["user"] = {"type": "object", "properties": {"default": {"type": "integer"}}}
     with pytest.raises(ValueError, match="caller reconciliation"):
         require_compatible_parameters(old, new)
+
+
+@pytest.mark.parametrize("old_property", [
+    {"type": "string"},
+    {"type": "string", "enum": ["success", "failed"]},
+    {"type": "object", "properties": {"default": {"type": "string"}}},
+])
+def test_nullable_widening_keeps_the_previous_parameter_branch_exact(old_property):
+    old = {"properties": {"result": old_property}, "required": ["result"]}
+    nullable = {"properties": {"result": {"anyOf": [old_property, {"type": "null"}]}}}
+    require_compatible_parameters(old, nullable)
+    with pytest.raises(ValueError, match="caller reconciliation"):
+        require_compatible_parameters(nullable, old)
+
+
+@pytest.mark.parametrize("new_property", [
+    {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+    {"anyOf": [{"type": "string", "enum": ["success", "failed"]}, {"type": "null"}], "maxLength": 2},
+    {"anyOf": [{"type": "string", "enum": ["success"]}, {"type": "null"}]},
+])
+def test_nullable_union_cannot_hide_changed_or_narrower_type_constraints(new_property):
+    old = {"properties": {"result": {"type": "string", "enum": ["success", "failed"]}}}
+    desired = {"properties": {"result": new_property}}
+    with pytest.raises(ValueError, match="caller reconciliation"):
+        require_compatible_parameters(old, desired)
