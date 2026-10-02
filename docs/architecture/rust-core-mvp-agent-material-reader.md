@@ -81,9 +81,29 @@ negative close that gap without widening the frozen interface. AST, exact
 Ruff0.15.12 and whitespace checks pass. The clean candidate is pushed as
 `5d5dac9f790f522b7eee5a3ad00f58db6d04dba0`, tree
 `b750bdf82154a7ad6204f4985cb2bb7ae3e14526`, containing current main01cadfe.
-A single supported changed-candidate CI request includes the unchanged pre-PR
-gate; runtime verification is pending. No actual PostgreSQL or new unit execution
-is yet claimed.
+The single supported changed-candidate [run36986398696](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36986398696)
+FAILED one actual PostgreSQL catalog case; five new cases passed. All191 selected
+reader units passed with zero skips, and12,778 total backend units passed
+(3 unrelated skips/35 deselections). Quality, unchanged literal pre-PR and all
+other API shards/client/MCP lanes passed. Failure is blocking, not waived.
+Pre-PR artifact11217738787 (ZIP SHA256
+`b788bce2b255369511e30915216d28fc30b9e6d8983ca2653fdae21225e56bef`)
+records exact source/tree/main, exit0, cleanup0 and actual empty owned resources.
+Unit log SHA256 `934f0b72dd1eef3b40eba4a794590f08810fffbb1d0c272257c346c6982c0206`;
+failed API shard2 log SHA256
+`df081ae9dac50e9d4421c882a338260f2d0b7e479204ba603af859fa03456eb1`.
+
+Actual transactions, acquisition/COMMIT, caller-transaction preservation and
+three intended schema/type negatives passed. The material catalog case passed
+its native metadata/material-object identity checks before failing on Solution
+SQL: physical column `allow_outbound_access` does not exist. Current ORM maps
+that public attribute to physical `global_repo_access`; authoritative Alembic
+20260604_add_solutions retains the historical name. No schema alteration or
+new outbound policy follows. A narrow fixed SELECT correction aliases
+`global_repo_access AS allow_outbound_access`, preserving logical output,
+resource charges and existing expectations. Independent source review and a
+new changed-candidate supported run are required. No all32-query or nominal
+acceptance follows from the failed run.
 
 Disposition: root freezes the independently reviewed MATERIAL-ONLY interface
 below. Builder package **C1-R-MATERIAL-S** may implement only

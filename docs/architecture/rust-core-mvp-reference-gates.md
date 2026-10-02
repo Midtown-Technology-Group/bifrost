@@ -833,7 +833,12 @@ and rejects hostile class-equality subclasses; no public reference/auth/schema
 behavior changes. Different review1a0ede47 accepts exact source5d5dac9f7,
 including a225-line read-only PostgreSQL characterization file and corrected
 native primary-key-only bind arguments for all32 fixed material queries.
-Its new supported CI/pre-PR verification is pending; prior e3bed injected-unit
-success does not prove these new bytes. Fixed actual-record positives are
+Supported run36986398696 FAILED one of6 actual PostgreSQL cases;5 passed.
+All191 selected reader/12,778 total units, quality and unchanged literal pre-PR
+passed; artifact11217738787 verifies exact source/tree/main/exit0/actualEMPTY.
+The all32 material test caught a real physical-column alias mismatch:
+Solution's public attribute allow_outbound_access maps to existing physical
+Alembic column global_repo_access. A narrow SELECT alias correction is under
+independent review; no schema or policy change, test waiver or all32 acceptance. Fixed actual-record positives are
 projection mechanics, not stored full lineage, postclosure freshness or nominal
 acceptance. Host SOURCE STOP and exhausted #1017 repair disposition remain.
