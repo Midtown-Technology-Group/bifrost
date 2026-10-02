@@ -31,9 +31,10 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
 
 # Tenant tests cannot see final output, signing identity, Git credentials or the
 # build compiler cache. Their entire writable state is disposed after testing.
+# Go executes compiled tests from /tmp, so this dedicated test scratch is exec.
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
   --user "$task_uid:$task_gid" --pids-limit 256 --memory 3g --cpus 2 \
-  --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+  --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g \
   --mount "type=bind,src=$spike_root,dst=/src,readonly" \
   --mount "type=bind,src=$scratch/modules,dst=/modules,readonly" \
   --workdir /src "$toolchain_image" env -i PATH=/usr/local/go/bin:/usr/bin:/bin \
