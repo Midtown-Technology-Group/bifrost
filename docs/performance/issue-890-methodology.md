@@ -2,6 +2,13 @@
 
 This is the execution plan for [issue #890](https://github.com/Midtown-Technology-Group/bifrost/issues/890). The issue remains the scope and decision authority. Keep measured results in dated files beside this plan, with the exact source revision and commands used.
 
+CodSpeed was retired on 2026-10-01 by maintainer direction after repeated
+cross-environment alerts without a documented actionable regression. Its CI
+workflow and benchmark-only dependency have been removed. Retained fixtures
+remain available for local profiling, and dated CodSpeed results remain
+historical evidence. Use the controlled load lab and production telemetry for
+new performance investigations; no dedicated CodSpeed runners are being enabled.
+
 ## Measurement order
 
 1. Describe a reduced, anonymous production workload: payload and queue-item sizes, workflow nodes, integration/tool calls, agent loop lengths, and observed concurrency. Record how each shape was obtained. Never copy tenant identifiers, secrets, or customer content into fixtures.
@@ -15,9 +22,9 @@ This is the execution plan for [issue #890](https://github.com/Midtown-Technolog
 
 | Layer | Purpose | Initial implementation |
 | --- | --- | --- |
-| CodSpeed simulation | Stable regression checks for pure CPU helpers | Retain `api/benchmarks/test_benchmarks.py`; organize only when adding related cases. |
-| CodSpeed walltime | Representative operation latency and differential profiles | Add authenticated API/DB read, small workflow, queue round trip, nested serialization, agent loop, and mocked integration cases incrementally. |
-| CodSpeed memory | Allocation and density changes for those same operations | Reuse macro fixtures and record peak/retained memory where supported. |
+| Local CPU profiling | Attribute computational work in representative paths | Retain `api/benchmarks/` fixtures; record the interpreter and profiler identity. |
+| Controlled walltime measurements | Representative operation latency and differential profiles | Use equivalent source-bound environments and the load lab for API/DB, workflow, queue, agent and integration paths. |
+| Allocation profiling | Allocation and density changes for those same operations | Reuse synthetic fixtures and record peak/retained memory with profiler identity. |
 | External load harness | Whole-system saturation, overload, and recovery | Fixed production-shaped fixture, bounded concurrency ramp, B3 resource limits, per-role measurements. |
 | Production telemetry | Check whether the fixture resembles real workload shape | Compare anonymized distributions and role resource use; do not replay customer data. |
 
@@ -29,11 +36,11 @@ The `agent` scenario uses the real synchronous agent endpoint, a local OpenAI-co
 
 The issue-specific Compose override pins API, scheduler, worker, client, and renderer to the same four host CPUs, matching B3's core count as a shared CPU budget. The [role-budget sweep](2026-09-25-role-budget.md) records the production-pinned client and renderer images and their idle memory. This is an approximation: the VM's processor is not Azure's B3 processor, its host has 16 GiB RAM, PostgreSQL/Redis/RabbitMQ remain local test services rather than production dependencies, and the client/renderer receive no representative user traffic. Report measured role memory and do not call this a literal B3 capacity number until the remaining resource and dependency differences are bounded.
 
-CodSpeed's current Python 3.12 simulation workflow is useful for small helpers but cannot establish B3 capacity or cost. Measure CI variance before considering dedicated runners. Use the current supported CodSpeed walltime/memory interface when those cases are implemented; do not assume the illustrative commands in the issue are supported. Record tool versions and modes with results.
+The retired CodSpeed Python 3.12 simulation workflow covered small helpers and did not establish B3 capacity or cost. Record tool versions and measurement modes with new local profiling or load-lab results.
 
 [PR #918](https://github.com/Midtown-Technology-Group/bifrost/pull/918) changed only documentation, yet its hosted-runner CodSpeed report marked the nested-result walltime benchmark 97.85% faster (2.6 ms versus 1.3 ms) and warned that the execution environment is inconsistent. This is a no-code-change control showing that a single hosted walltime comparison is not decision-grade. It does not quantify the full variance distribution; repeat identical-code runs on a controlled runner before using a small benchmark difference to justify an extraction.
 
-The first CodSpeed macro slice validates and serializes an actual `ExecutionsListResponse` page of 1,000 synthetic metadata rows and a `WorkflowExecutionResponse` with a nested result of about 1.5 MB. The sizes come from the production list page limit and the largest result in the bounded production detail sample; the contents are entirely synthetic. `.github/workflows/codspeed.yml` retains the existing simulation microbenchmarks and runs these two contract paths in the action's supported `walltime,memory` modes. This measures serialization costs, not database reads, worker dispatch, or whole-system density.
+The retained serialization fixtures validate and serialize an actual `ExecutionsListResponse` page of 1,000 synthetic metadata rows and a `WorkflowExecutionResponse` with a nested result of about 1.5 MB. The sizes come from the production list page limit and the largest result in the bounded production detail sample; the contents are entirely synthetic. Their contract smoke test remains in the backend unit suite. These fixtures exercise serialization, not database reads, worker dispatch, or whole-system density.
 
 ## Decision record
 

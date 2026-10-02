@@ -29,7 +29,7 @@ def _allocator():
 
 
 @pytest.mark.parametrize("workflow", [
-    "codspeed", "arm64-worker-compat", "snyk", "doc-renderer",
+    "arm64-worker-compat", "snyk", "doc-renderer",
     "dependabot-lockfile-regen",
 ])
 def test_expensive_workflows_cancel_only_superseded_pr_snapshots(workflow):
@@ -39,8 +39,6 @@ def test_expensive_workflows_cancel_only_superseded_pr_snapshots(workflow):
     assert "github.event_name" in concurrency["group"]
     assert "github.event.pull_request.number" in concurrency["group"]
     assert "github.ref" in concurrency["group"]
-    if workflow == "codspeed":
-        assert all(job["timeout-minutes"] == 20 for job in config["jobs"].values())
 
 
 def test_backend_shards_cover_each_file_once_and_balance_known_and_new_files(
