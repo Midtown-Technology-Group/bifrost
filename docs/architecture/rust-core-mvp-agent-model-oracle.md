@@ -12,6 +12,10 @@ Retained source origin is workspace `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`, 
 
 Locked wheel source only, read without installation/import: Pydantic AI slim 2.35.3 SHA256 `f5d0c7a5e0797e770117df06c13e019da45e17d1adc909cc36181bcea6012be4`; OpenAI 3.3.0 SHA256 `ded6b2112e6d299c7a2573ff6f165dc92fb64ceaa4d7daa42345f091157bd373`, under `/tmp/bifrost-agent-reference-locked-wire-source`. Reading `pydantic_ai/messages.py` from the same wheel used stdlib zipfile as text only. No Python product/dependency module was executed.
 
+## Infrastructure health exception
+
+Retain the existing fixture infrastructure `GET /health` on port8080: `scheduler_fixture_server.py` matches `urlparse(self.path).path == "/health"` and returns HTTP200 with `{"status":"ok"}`. Preserve that parsed-path/query handling for the existing Compose healthcheck. This request is independent of arm state, model/Cove header policy, keys, case counts, ledger and the shared request budget. It proves process health only; it establishes no private custody or reference readiness. Main must validate private construction before opening listeners. All other unknown paths/methods remain closed. Add a pre-arm health characterization that proves response and unchanged counters/no case admission.
+
 ## Source-derived selected catalog
 
 `api/bifrost/solution_delivery_review.py:386` calls the static `WorkflowParameterCompiler` on carried source, preserves decorator name/description/category and stores complete parameters_schema. `api/bifrost/workflow_parameters.py:70` emits `$schema`, property `title`, defaults, explicit additionalProperties and required only when nonempty. `api/src/services/tool_registry.py:98,346` passes a dict schema through and normalizes category/name by lowercasing and joining with one underscore. Its legacy empty-list permissiveness does NOT apply to these complete compiled schemas.
