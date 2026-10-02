@@ -14,6 +14,12 @@ signature verification, actual UID/mount construction, application/server
 lifecycle and host coordination remain integration responsibilities and gates.
 Structural validation alone is never evidence of any of those properties.
 
+Current documentation base includes platform main
+`e58db4955ddd30177bd613f1d85b7e203ad7832a` (#1027); the source proposal and
+local reference foundation below retain their explicit older `f770094e` pin.
+New handoff readback is outside this pure codec package. No evidence is
+transferred across those source identities.
+
 Reviewed source candidate SHA256 is
 `961bfd5d4e9f6f0517b7e2177fabacfbd64f569cc3272e398dc7215dfd024c3f`.
 The retained proposal below includes historical source-review dispositions;

@@ -8,17 +8,26 @@ Architect review uses MTG guidance package 2026-10-01.5 and Sol builders.
 
 ## Exact source and unchanged inputs
 
-Platform main inspected is `f770094eb28d8315a414fe8cb306f510da752d89`.
+Current platform main is `e58db4955ddd30177bd613f1d85b7e203ad7832a`.
+The retained C1-R foundation remains pinned to
+`f770094eb28d8315a414fe8cb306f510da752d89`; it has not been rebased or
+runtime-tested against the newer main.
 Latest workspace main is `c1856d2fbc7530c65c67adfd28e4896ec402ccbf`; retained
 inputs come from `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`. The intervening
 change affects one Ninja iDRAC PowerShell script only; selected Python and
 boundary checker bytes are unchanged.
 The workspace boundary audit covers 2,107 Python files with zero forbidden
 platform imports and an empty internal-import allowlist. Prerequisites #1001
-and #1112 remain ancestors. Current platform advancement from `658283e8c`
-changes CI capacity/concurrency only, not the selected production behavior.
+and #1112 remain ancestors. Advancement from `658283e8c` to the retained foundation changed CI capacity.
+New main #1027 changes reviewed Live-to-Solution handoff readback: it validates
+current ownership/lineage and active/dependency resource contracts, keeps
+historical byte proof separate, and repeats omission proof under the release
+fence and native Solution locks. It changes no selected agent executor or SDK
+source. C1-R does not exercise Live handoff; C2/C3 must still preserve these
+checks. No prior CI result is relabeled as testing this newer source.
 
-The local reference branch `test/agent-capacity-reference` combines that main
+The local reference branch `test/agent-capacity-reference` combines the retained
+`f770094e` main
 with the two approved, unmerged AUTH-P1 behavior commits
 `31dd41f519b5c510c77a7ac6f70b9400c94a65e3` and
 `24347e799bc7bd63c24563b2fc2cd4ee80eda624`. Composite
