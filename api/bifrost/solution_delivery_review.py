@@ -41,13 +41,50 @@ def delivery_path(value: str) -> str:
 
 
 
-class SharedRootTableBinding(BaseModel):
+class SharedRootTableGrant(BaseModel):
     """Reviewed access to an existing Root table without adopting its data."""
     model_config = ConfigDict(frozen=True, extra="forbid")
     table_id: UUID
     metadata_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     access: Literal["read", "read-write"] = "read"
     organization_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class SharedRootTableBinding(SharedRootTableGrant):
+    """Exact reviewed scopes for one alias, preserving legacy single-table bytes."""
+    additional_scopes: tuple[SharedRootTableGrant, ...] | None = Field(
+        default=None, max_length=99, exclude_if=lambda value: not value,
+    )
+
+    def grants(self) -> tuple[SharedRootTableGrant, ...]:
+        return (self, *(self.additional_scopes or ()))
+
+    def with_scope(self, grant: SharedRootTableGrant) -> SharedRootTableBinding:
+        """Append an exact grant through the same canonical scope validation."""
+        return SharedRootTableBinding(
+            **self.model_dump(exclude={"additional_scopes"}),
+            additional_scopes=(*(self.additional_scopes or ()), grant),
+        )
+
+    @model_validator(mode="after")
+    def unique_scopes(self) -> SharedRootTableBinding:
+        grants = self.grants()
+        if len({grant.organization_id for grant in grants}) != len(grants):
+            raise ValueError("Shared table organization scopes must be unique")
+        if len({grant.table_id for grant in grants}) != len(grants):
+            raise ValueError("Shared table IDs must be unique")
+        return self
+
+
+def require_shared_table_bindings(bindings: dict[str, SharedRootTableBinding]) -> None:
+    """Bound every exact grant and reject duplicate identities across aliases."""
+    grants = [grant for binding in bindings.values() for grant in binding.grants()]
+    if len(grants) > 100:
+        raise ValueError("Shared table grants exceed the install limit")
+    if len({grant.table_id for grant in grants}) != len(grants):
+        raise ValueError("Shared table IDs must be unique")
+    if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in bindings):
+        raise ValueError("Shared table names must be canonical")
 
 
 @dataclass(frozen=True)
@@ -154,14 +191,11 @@ class ReviewedWorkflowRecipe(BaseModel):
                         or any(part.startswith(".") for part in path.split("/"))
                         or path.rsplit("/", 1)[-1].lower() == "storage-state.json"):
                     raise ValueError("Resources require reviewed JSON or PowerShell source, without auth or hidden state paths")
-        if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
-            raise ValueError("Shared table identities must be unique")
-        if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in self.shared_tables):
-            raise ValueError("Shared table names must be canonical")
+        require_shared_table_bindings(self.shared_tables)
         if any(binding.organization_id is not None
-               and any(item.organization_id != binding.organization_id for item in self.workflows)
-               for binding in self.shared_tables.values()):
-            raise ValueError("Organization Root table bindings require every workflow in that organization")
+               and any(item.organization_id not in {None, binding.organization_id} for item in self.workflows)
+               for group in self.shared_tables.values() for binding in group.grants()):
+            raise ValueError("Organization Root table bindings require every workflow to be global or in that organization")
         return self
 
 
@@ -475,13 +509,25 @@ def _without_presentation(value: Any) -> Any:
     return value
 
 
+def _accepts_previous_parameter_schema(old: dict, new: dict) -> bool:
+    previous, desired = _without_presentation(old), _without_presentation(new)
+    if previous == desired:
+        return True
+    # Adding null preserves every previously accepted value. Keep the original
+    # branch exact and reject other schema changes or outer constraints; this
+    # is deliberately narrower than general JSON Schema subsumption.
+    return (isinstance(desired, dict) and set(desired) == {"anyOf"}
+        and isinstance(desired["anyOf"], list) and len(desired["anyOf"]) == 2
+        and previous in desired["anyOf"] and {"type": "null"} in desired["anyOf"])
+
+
 def require_compatible_parameters(old: dict, new: dict) -> None:
     """Existing callers keep their accepted keyword set and type constraints."""
     old_properties, new_properties = old.get("properties", {}), new.get("properties", {})
     if (not set(old_properties).issubset(new_properties)
             or not set(new.get("required", [])).issubset(old.get("required", []))
             or old.get("additionalProperties") is True and new.get("additionalProperties") is not True
-            or any(_without_presentation(schema) != _without_presentation(new_properties[name])
+            or any(not _accepts_previous_parameter_schema(schema, new_properties[name])
                    for name, schema in old_properties.items())):
         raise WorkflowRecipeError("Breaking parameter changes require verified live caller reconciliation")
 

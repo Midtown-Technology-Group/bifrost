@@ -412,7 +412,7 @@ services:
       - ./doc_renderer_service:/app/doc_renderer_service:ro
       - ./api/fuzz:/app/fuzz:ro
       - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities
-      - ./api/benchmarks:/app/benchmarks:ro  # CodSpeed fixture smoke tests
+      - ./api/benchmarks:/app/benchmarks:ro  # Execution serialization fixture smoke tests
       - ./api/tests:/app/tests:ro
       - ./core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1:/contracts/runtime/v1:ro
       - ./docs/architecture/execution-operations.md:/app/docs/architecture/execution-operations.md:ro

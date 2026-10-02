@@ -2,10 +2,11 @@
 
 import base64
 import json
+from dataclasses import replace
 from typing import Literal
 from uuid import UUID, uuid5
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import SYSTEM_USER_UUID
@@ -16,6 +17,7 @@ from src.models.contracts.solution_deployments import (
 )
 from src.models.orm.solutions import Solution
 from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.workspace_promotions import WorkspaceSourceRelease
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.operation_receipts import (
     OperationReceiptDisposition, canonical_operation_scope_key, canonical_request_fingerprint,
@@ -53,19 +55,37 @@ class GitSourceDeliveryService:
         # before writing a receipt, artifact or candidate.
         await self.reader.verify_ci(request.source_commit_sha, request.ci_run_id, request.ci_run_attempt)
         source = await self.reader.source(solution_id, request.source_commit_sha, request.artifact_digest)
+        from src.config import get_settings
+        from src.services.github_actions_oidc import workspace_source_release_tracking_organization_id
+        tracking_org = workspace_source_release_tracking_organization_id(get_settings())
+        if tracking_org is not None:
+            older = set((await self.db.scalars(select(WorkspaceSourceRelease.source_commit_sha).where(
+                WorkspaceSourceRelease.organization_id == tracking_org,
+                WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
+                WorkspaceSourceRelease.disposition.in_(("pending", "attention_required", "deferred")))
+                .order_by(WorkspaceSourceRelease.created_at.desc()).limit(100))).all())
+            if older:
+                source = replace(source, ancestor_commit_shas=await self.reader.verified_ancestors(source.commit_sha, older))
         async with solution_write_lock(solution_id):
-            return await self._deliver_locked(source, request, producer)
+            result = await self._deliver_locked(source, request, producer)
+        # Receipt replays also reach accounting recovery. Release the one-install
+        # writer before the aggregate Live -> installs -> source-row fence.
+        from src.services.solution_source_accountability import reconcile_solution_owned_source
+        await reconcile_solution_owned_source(self.db, policy=self.policy)
+        await self.db.commit()
+        return result
 
     async def _deliver_locked(self, source: VerifiedGitSource, request: SolutionGitSourceDeliveryRequest,
                               producer: GitDeliveryIdentity) -> SolutionGitSourceDeliveryResponse:
+        organization_id = self.policy.organization_id_for(source.solution_id)
         solution = await self.db.get(Solution, source.solution_id, populate_existing=True)
-        if (solution is None or solution.organization_id != self.policy.organization_id
+        if (solution is None or solution.organization_id != organization_id
                 or solution.status != "active" or solution.execution_runtime_mode != "deployment-v1"
                 or solution.active_deployment_id is None):
             raise GitDeliverySourceError("Configured Solution is outside the adopted organization/runtime scope")
         repository = SolutionDeploymentRepository(self.db)
         base = await repository.get_runtime_closure(solution.active_deployment_id,
-                                                    solution.organization_id, solution.id)
+                                                    organization_id, solution.id)
         if base is None or base.state != "active":
             raise SolutionSourceRevisionConflict("Installed deployment is not active")
         manifest, resolution = validate_runtime_closure(base.compiled_manifest, base.resolution_map,
@@ -89,21 +109,30 @@ class GitSourceDeliveryService:
             "producer_run_id": producer.run_id, "producer_run_attempt": producer.run_attempt}
         claim = await claim_operation_receipt(namespace="solution.git-source-delivery",
             scope_key=canonical_operation_scope_key(identity), request_fingerprint=canonical_request_fingerprint(identity))
-        if claim.disposition != OperationReceiptDisposition.OWNER:
-            if claim.disposition == OperationReceiptDisposition.SUCCEEDED and matches:
-                return self._response(source, base, claim.receipt_id, "already_active")
-            # Same job may still be running or may have lost its response. Never
-            # reclaim its effect. A fresh CI job attempt re-reads the pointer;
-            # deterministic candidates resume staging against the observed base.
-            raise SolutionSourceRevisionConflict(
-                f"Delivery receipt {claim.receipt_id} requires readback or a fresh job attempt")
-        assert claim.owner_token is not None
         proof = {"repository": self.policy.repository, "repository_id": self.policy.repository_id,
             "repository_owner_id": self.policy.repository_owner_id, "recipe_path": source.recipe_path,
+            "organization_id": str(organization_id) if organization_id is not None else None,
             "commit_sha": source.commit_sha, "tree_sha": source.tree_sha,
             "artifact_digest": source.artifact_digest, "ci_run_id": request.ci_run_id,
             "ci_run_attempt": request.ci_run_attempt, "producer_run_id": producer.run_id,
             "producer_run_attempt": producer.run_attempt, "receipt_id": str(claim.receipt_id)}
+        proof.update({"source_mapping_schema": "bifrost.solution-git-source-mapping/v1",
+            "solution_id": str(source.solution_id), "repository_paths": source.repository_paths,
+            "runtime_hashes": source.source_hashes, "control_hashes": source.control_hashes,
+            "installation_registry": source.installation_registry,
+            "ancestor_commit_shas": list(source.ancestor_commit_shas)})
+        if claim.disposition != OperationReceiptDisposition.OWNER:
+            if claim.disposition == OperationReceiptDisposition.SUCCEEDED and matches:
+                await self.reader.verify_ci(source.commit_sha, request.ci_run_id, request.ci_run_attempt)
+                # Fresh protected readback may recover mapping/ancestry evidence
+                # after a delivery-before-declaration race. It never reclaims a
+                # receipt or changes source, registrations or a runtime pointer.
+                await self._record_proof(base, source, organization_id, proof)
+                await self.db.commit()
+                return self._response(source, base, claim.receipt_id, "already_active")
+            raise SolutionSourceRevisionConflict(
+                f"Delivery receipt {claim.receipt_id} requires readback or a fresh job attempt")
+        assert claim.owner_token is not None
         state: Literal["active", "already_active"] = "already_active"
         if not matches:
             deployment_id = source_candidate_id(source, base.id, base.compiled_manifest_hash)
@@ -130,23 +159,14 @@ class GitSourceDeliveryService:
                 await workflow_service.activate_workflows(solution.id, deployment_id, activation, source.workflow_recipe)
             else:
                 await service.activate(solution.id, deployment_id, activation)
-            base = await repository.get_runtime_closure(deployment_id, self.policy.organization_id, solution.id)
+            base = await repository.get_runtime_closure(deployment_id, organization_id, solution.id)
             assert base is not None
             state = "active"
         else:
             await self.reader.verify_ci(source.commit_sha, request.ci_run_id, request.ci_run_attempt)
         # Deploy-owned evidence uses the deployment write path. The global
         # Solution ORM guard deliberately rejects editing a loaded managed row.
-        recorded_id = await self.db.scalar(update(SolutionDeployment).where(
-            SolutionDeployment.id == base.id,
-            SolutionDeployment.solution_id == source.solution_id,
-            SolutionDeployment.organization_id == self.policy.organization_id,
-            SolutionDeployment.state == "active",
-            SolutionDeployment.compiled_manifest_hash == base.compiled_manifest_hash,
-        ).values(validation_result={**(base.validation_result or {}), "github_delivery": proof})
-            .returning(SolutionDeployment.id).execution_options(synchronize_session=False))
-        if recorded_id is None:
-            raise SolutionSourceRevisionConflict("Active deployment changed before delivery evidence")
+        await self._record_proof(base, source, organization_id, proof)
         result = self._response(source, base, claim.receipt_id, state)
         # Only small nonsecret metadata is retained in the replay envelope.
         # Complete receipt and pointer mutation in the same SQL transaction.
@@ -157,8 +177,9 @@ class GitSourceDeliveryService:
         await self.db.commit()
         self.db.expire_all()
         observed = await self.db.get(Solution, source.solution_id)
-        active = await repository.get_runtime_closure(result.deployment_id, self.policy.organization_id, source.solution_id)
-        if (observed is None or observed.active_deployment_id != result.deployment_id
+        active = await repository.get_runtime_closure(result.deployment_id, organization_id, source.solution_id)
+        if (observed is None or observed.organization_id != organization_id
+                or observed.active_deployment_id != result.deployment_id
                 or observed.execution_runtime_mode != "deployment-v1" or active is None
                 or active.state != "active" or active.compiled_manifest_hash != result.compiled_manifest_hash):
             raise SolutionSourceRevisionConflict("Independent installed pointer readback differs")
@@ -171,6 +192,19 @@ class GitSourceDeliveryService:
             for item in source.workflow_recipe.workflows:
                 await redis_client.invalidate_workflow_metadata_cache(str(item.id))
         return result
+
+    async def _record_proof(self, base: SolutionDeployment, source: VerifiedGitSource,
+                            organization_id: UUID | None, proof: dict) -> None:
+        recorded_id = await self.db.scalar(update(SolutionDeployment).where(
+            SolutionDeployment.id == base.id,
+            SolutionDeployment.solution_id == source.solution_id,
+            SolutionDeployment.organization_id == organization_id,
+            SolutionDeployment.state == "active",
+            SolutionDeployment.compiled_manifest_hash == base.compiled_manifest_hash,
+        ).values(validation_result={**(base.validation_result or {}), "github_delivery": proof})
+            .returning(SolutionDeployment.id).execution_options(synchronize_session=False))
+        if recorded_id is None:
+            raise SolutionSourceRevisionConflict("Active deployment changed before delivery evidence")
 
     @staticmethod
     def _response(source: VerifiedGitSource, deployment: SolutionDeployment, receipt_id: UUID,

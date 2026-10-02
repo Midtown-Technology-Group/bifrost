@@ -34,8 +34,8 @@ resource behavior. Review runtime dependencies and external effects separately.
 exact table UUIDs and returns read-only bindings by table name. It reads table
 metadata, never documents. It supports global Root tables and Root tables in
 the target Solution's exact organization, with inline row policies. Organization
-bindings carry an explicit `organization_id`; a global installation cannot
-claim an organization's table. A named policy reference requires a separate immutable policy
+bindings carry an explicit `organization_id`; a Global installation can use
+one only for a signed execution in that organization. A named policy reference requires a separate immutable policy
 contract and is rejected. The operator may explicitly request `read-write`
 access after reviewing the callers and row policies.
 
@@ -53,10 +53,19 @@ rollback. Ordinary users and a caller-supplied Solution query do not receive
 this grant. The existing organization and row policy checks still apply.
 Read bindings cannot authorize writes. A shared metadata lock prevents a table
 ownership or schema change from racing a checked document transaction.
-Organization bindings require matching Solution, durable deployment and signed
-execution scopes. An explicit request for another table scope fails. The offline
-recipe compiler also requires every workflow to share the table's organization;
+Organization bindings require the signed execution's exact organization and
+the installation's organization when the installation is scoped. An explicit
+request for another organization fails. The offline recipe compiler requires
+every workflow to be Global or in the table's organization;
 live checks verify the installation and current table metadata.
+
+An alias can carry bounded `additional_scopes` with independently reviewed
+UUIDs, metadata hashes and access grants. Default lookup follows own organization
+then Global; explicit Global lookup excludes organization variants. Every grant
+is checked during staging and activation; runtime selects only a grant available
+to the durable execution. Existing single-table bindings retain their canonical
+bytes. See [reviewed workflow revisions](../dev/reviewed-workflow-revisions.md#aliases-with-more-than-one-reviewed-scope)
+for the contract and required runtime proof.
 
 Bindings preserve Root ownership, table UUIDs and documents. They allow Meraki
 and existing Root callers to share their current tables without broad outbound
@@ -170,6 +179,19 @@ repository name and immutable repository/owner IDs, organization UUID, delivery
 workflow path, CI workflow path and ID, and installed Solution UUIDs mapped to
 reviewed recipes under `config/solution-delivery/`. Configure this policy only
 after reviewing the producer and rehearsing its deployment path.
+
+An existing policy keeps its required `organization_id` as the scope for every
+allowlisted install. To mix Global and organization installs, configure the
+optional `solution_organization_ids` map with exactly the same UUID keys as
+`solutions`. Each value is the install's exact organization UUID, or explicit
+`null` for a Global install. Missing, extra and malformed entries are rejected;
+an unknown install never resolves to Global. The scope applies to the initial
+Solution check, every immutable deployment read, delivery evidence update and
+independent pointer readback. A Global deployment uses an `IS NULL` predicate,
+not a tenant wildcard. The saved delivery proof records this resolved scope.
+This configuration grants no runtime table or file access and changes no
+registration scope. Add actual installs only after their handoff and trusted
+producer rehearsal pass.
 
 This endpoint accepts a commit SHA, CI run ID and attempt, and artifact digest.
 It accepts no uploaded source. The bearer token is a GitHub OIDC token whose

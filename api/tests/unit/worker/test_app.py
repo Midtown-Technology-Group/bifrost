@@ -48,6 +48,8 @@ def settings() -> SimpleNamespace:
         service_heartbeat_interval_seconds=5,
         service_lease_ttl_seconds=30,
         service_token_lifetime_seconds=30,
+        service_claim_enabled=True,
+        worker_workflow_queue_scope="canary",
     )
 
 
@@ -220,6 +222,34 @@ def test_workflow_only_consumer_requires_isolated_queue(
 
     with pytest.raises(ValueError, match="isolated -canary"):
         worker_app.consumer_factories()["workflow"]()
+
+
+def test_workflow_only_production_requires_exact_queue_and_explicit_scope(monkeypatch, settings):
+    settings.worker_workflow_queue_scope = "production"
+    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
+    monkeypatch.setenv("BIFROST_WORKER_CONSUMERS", "workflow")
+    monkeypatch.setenv("BIFROST_WORKFLOW_QUEUE_NAME", "workflow-executions")
+    expected = Mock()
+    monkeypatch.setattr(worker_app, "WorkflowExecutionConsumer", expected)
+    worker_app.consumer_factories()["workflow"]()
+    expected.assert_called_once_with()
+    monkeypatch.setenv("BIFROST_WORKFLOW_QUEUE_NAME", "arbitrary-queue")
+    with pytest.raises(ValueError, match="explicitly enabled"):
+        worker_app.consumer_factories()["workflow"]()
+
+
+@pytest.mark.asyncio
+async def test_service_claim_can_be_disabled_without_disabling_workflow_intake(monkeypatch, settings):
+    settings.service_claim_enabled = False
+    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
+    monkeypatch.setenv("BIFROST_WORKER_CONSUMERS", "workflow")
+    monkeypatch.setenv("BIFROST_WORKFLOW_QUEUE_NAME", "workflow-executions-canary")
+    consumer = FakeConsumer()
+    monkeypatch.setattr(worker_app, "WorkflowExecutionConsumer", lambda **kwargs: consumer)
+    worker = worker_app.Worker()
+    await worker._start_consumers()
+    assert consumer.started == 1
+    assert worker._service_claim_loop is None
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,30 @@ description: Prepare and publish a Bifrost development, release-candidate, or st
 
 # Bifrost Release
 
+## MTG fork entry point
+
+Check the Git remote before choosing a release path. On
+`Midtown-Technology-Group/bifrost`, follow `docs/VERSIONING.md`: Thomas selected
+**automatic release PR, publish on merge**. `Release PR` maintains one signed
+`automation/release` PR containing the complete source interval, three plugin
+versions and retained notes. Review the bump, verified security fixes and upgrade
+steps, obtain human maintainer approval of the exact head, then use the normal
+administrator-authorized merge queue. After exact main CI passes, `Release tag`
+validates provenance, tags that commit and explicitly dispatches tag packaging.
+
+A changed server/CLI contract imposes a major floor. No automated issue closure,
+manual plugin-bump ceremony or upstream documentation/blog cadence is required
+for this fork. Recovery must read back the tag and existing CI before retrying;
+never move tags, rebuild published versions or replace immutable release assets.
+Publishing packages does not authorize production deployment. Follow the
+protected infrastructure image promotion, preview, drain and runtime readback
+lane for a separately authorized deployment.
+
+The remainder of this skill describes upstream/manual release paths and does
+not override the MTG fork policy. Manual fork pre-releases require their own
+reviewed source/version and explicit authorization; do not use upstream hosts,
+registry names or Kubernetes rollout instructions for MTG production.
+
 ## Release cadence (the three rungs, and who they're for)
 
 Bifrost ships on a deliberate three-rung ladder. Know which audience each rung serves before you cut it:

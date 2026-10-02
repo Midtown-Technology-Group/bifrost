@@ -219,8 +219,12 @@ async def _persist_execution_pin(
     from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
     from src.services.solutions.deployment_runtime import pin_workflow_runtime
     from src.services.workspace_release_runtime import pin_workspace_runtime
+    from src.services.workspace_release_projection import acquire_runtime_admission_lock
 
     async with get_db_context() as db:
+        # A selected old deployment must be visible as accepted work before
+        # aggregate accounting can declare all old consumers drained.
+        await acquire_runtime_admission_lock(db)
         event_delivery = None
         event_delivery_id = (dispatch_metadata or {}).get("event_delivery_id")
         if event_delivery_id is not None:

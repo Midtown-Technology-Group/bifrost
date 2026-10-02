@@ -1,7 +1,9 @@
 """Static checks for repo and dev-surface hardening invariants."""
 
 from pathlib import Path
+import os
 import re
+import subprocess
 from typing import Any
 
 import yaml
@@ -38,7 +40,9 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
     ci = _load_yaml(".github/workflows/ci.yml")
     jobs = ci["jobs"]
 
-    assert jobs["test-client-e2e"]["name"] == "Client E2E Tests"
+    assert jobs["test-client-e2e"]["name"] == (
+        "Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})"
+    )
     assert set(jobs["test-e2e-gate"]["needs"]) == {
         "affected-test-plan",
         "test-e2e",
@@ -216,6 +220,44 @@ def test_debug_env_loader_does_not_source_env_files() -> None:
     assert 'source "$SCRIPT_DIR/.env"' not in debug_script
     assert 'source "$SCRIPT_DIR/.env.debug"' not in debug_script
     assert 'source "$HOME/.config/bifrost/debug.env"' not in debug_script
+
+
+def test_debug_storage_credential_is_private_stable_and_respects_override(
+    tmp_path: Path,
+) -> None:
+    text = _read("debug.sh")
+    function = re.search(r"^configure_debug_storage\(\) \{\n.*?^\}", text, re.M | re.S)
+    assert function is not None
+    env = {key: value for key, value in os.environ.items() if key != "SEAWEEDFS_SECRET_KEY"}
+    env.update(XDG_STATE_HOME=str(tmp_path), COMPOSE_PROJECT_NAME="debug-storage-test")
+    subprocess.run(
+        [
+            "bash",
+            "-euc",
+            function.group() + "\n" + """
+configure_debug_storage
+test -n "$SEAWEEDFS_SECRET_KEY"
+task_first_key="$SEAWEEDFS_SECRET_KEY"
+unset SEAWEEDFS_SECRET_KEY
+configure_debug_storage
+test "$SEAWEEDFS_SECRET_KEY" = "$task_first_key"
+export COMPOSE_PROJECT_NAME=debug-explicit-storage-test
+export SEAWEEDFS_SECRET_KEY=explicit-local-test-credential
+configure_debug_storage
+test "$SEAWEEDFS_SECRET_KEY" = explicit-local-test-credential
+""",
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    directory = tmp_path / "bifrost/debug/debug-storage-test"
+    secret = directory / "storage-secret"
+    assert re.fullmatch(r"[0-9a-f]{64}\n", secret.read_text())
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert secret.stat().st_mode & 0o777 == 0o600
+    assert not (tmp_path / "bifrost/debug/debug-explicit-storage-test").exists()
 
 
 def test_claude_hook_shell_quotes_exported_env_values() -> None:

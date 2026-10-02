@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
+from bifrost.solution_delivery_review import ReviewedWorkflowRecipe, require_shared_table_bindings
 from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -129,8 +129,7 @@ class WorkspaceLiveHandoffPreflightRequest(BaseModel):
         require_root_file_bindings(self.root_file_bindings)
         if len(self.workflow_ids) != len(set(self.workflow_ids)):
             raise ValueError("workflow IDs must be unique")
-        if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
-            raise ValueError("shared table IDs must be unique")
+        require_shared_table_bindings(self.shared_tables)
         return self
 
 

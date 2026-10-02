@@ -27,7 +27,7 @@ def fixture():
     return recipe, {"run.py": code}, {"rates.json": b"{}"}
 
 
-def test_org_root_binding_requires_all_recipe_workflows_in_its_scope():
+def test_org_root_binding_requires_all_recipe_workflows_global_or_in_its_scope():
     from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
 
     value, _files, _resources = fixture()
@@ -38,10 +38,11 @@ def test_org_root_binding_requires_all_recipe_workflows_in_its_scope():
         "organization_id": org_id, "access": "read-write",
     }}
     assert ReviewedWorkflowRecipe.model_validate(value).shared_tables["ticket_matches"].organization_id is not None
-    for wrong_org in (None, str(uuid4())):
-        value["workflows"][0]["organization_id"] = wrong_org
-        with pytest.raises(ValueError, match="every workflow"):
-            ReviewedWorkflowRecipe.model_validate(value)
+    value["workflows"][0]["organization_id"] = None
+    assert ReviewedWorkflowRecipe.model_validate(value).shared_tables["ticket_matches"].organization_id is not None
+    value["workflows"][0]["organization_id"] = str(uuid4())
+    with pytest.raises(ValueError, match="every workflow"):
+        ReviewedWorkflowRecipe.model_validate(value)
 
 
 def test_review_allows_defaults_optional_args_and_resource_updates_without_live_claims():
@@ -51,6 +52,17 @@ def test_review_allows_defaults_optional_args_and_resource_updates_without_live_
         previous_recipe_value=old, previous_files=files, previous_resources=resources)
     assert result["previous_recipe_checked"] is True
     assert result["live_state_verified"] is False and result["runtime_verified"] is False
+
+
+def test_review_allows_nullable_parameter_without_rejecting_existing_string_callers():
+    recipe, old_files, resources = fixture()
+    nullable = {"run.py": old_files["run.py"].replace(b'user: str = "root"', b'user: str | None = None')}
+    reviewed = review_solution_recipe(recipe, nullable, resources,
+        previous_recipe_value=recipe, previous_files=old_files, previous_resources=resources)
+    assert reviewed["previous_recipe_checked"] is True
+    with pytest.raises(WorkflowRecipeError, match="caller reconciliation"):
+        review_solution_recipe(recipe, old_files, resources,
+            previous_recipe_value=recipe, previous_files=nullable, previous_resources=resources)
 
 
 @pytest.mark.parametrize("damage", ["rename", "break_type", "required", "remove", "expose", "missing_resource", "extra_source"])

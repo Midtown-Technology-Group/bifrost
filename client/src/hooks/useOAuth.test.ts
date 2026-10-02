@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiClient } from "@/lib/api-client";
 import { handleOAuthCallback } from "./useOAuth";
+
+const { post } = vi.hoisted(() => ({ post: vi.fn() }));
 
 vi.mock("@/lib/api-client", () => ({
 	$api: {},
-	apiClient: { POST: vi.fn() },
+	apiClient: { POST: post },
 }));
 
 describe("handleOAuthCallback", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(apiClient.POST).mockResolvedValue({
+		post.mockResolvedValue({
 			data: {},
 			error: undefined,
-		} as never);
+		});
 	});
 
 	it("forwards callback_url_params so entity_id can be captured", async () => {
@@ -25,7 +26,7 @@ describe("handleOAuthCallback", () => {
 			{ realmId: "9130350000000000" },
 		);
 
-		expect(apiClient.POST).toHaveBeenCalledWith(
+		expect(post).toHaveBeenCalledWith(
 			"/api/oauth/callback/{connection_name}",
 			{
 				params: { path: { connection_name: "integration-1" } },
@@ -43,7 +44,7 @@ describe("handleOAuthCallback", () => {
 	it("sends null params when none are supplied", async () => {
 		await handleOAuthCallback("integration-1", "code-1");
 
-		expect(apiClient.POST).toHaveBeenCalledWith(
+		expect(post).toHaveBeenCalledWith(
 			"/api/oauth/callback/{connection_name}",
 			{
 				params: { path: { connection_name: "integration-1" } },

@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# Superseded PR snapshots can release their runners; other events must finish.
+concurrency:
+  group: doc-renderer-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-smoke:
     name: Build and smoke test
