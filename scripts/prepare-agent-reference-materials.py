@@ -17,10 +17,19 @@ import sys
 import time
 from contextlib import ExitStack
 from pathlib import Path
+from types import ModuleType
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY_ROOT / "api"))
-from scripts import agent_reference_contract as wire
+
+
+def _shared_codec() -> ModuleType:
+    sys.path.insert(0, str(REPOSITORY_ROOT / "api"))
+    from scripts import agent_reference_contract
+
+    return agent_reference_contract
+
+
+wire = _shared_codec()
 
 OPENSSL = Path("/usr/bin/openssl")
 STAGE_SECONDS = 10
