@@ -105,6 +105,20 @@ resource charges and existing expectations. Independent source review and a
 new changed-candidate supported run are required. No all32-query or nominal
 acceptance follows from the failed run.
 
+The physical-column correction has different source review SHA256
+`9a04e34e8f5f1808f7b5f12abcac09e2e71b3c2b99faf69fd7928b1bee860773`.
+It verifies the exact one-substring change and audits all32 fixed query groups
+against current ORM physical mappings and Alembic source; no additional mismatch
+was found. Source inspection is not proof of runtime migration state.
+Corrected reader SHA256
+`fa4a492810367654145fa930547f71438c9da201f394128ef12cb1b7ee1874f9`
+is committed/pushed as `d35451eebfbaee4c5b0246356955a1f0302147d5`, tree
+`1bdc0314b09ad582b5242b1a96e53135f5e7778c`. Unit and PostgreSQL test bytes
+remain unchanged. A single corrected-candidate supported
+[run37001683085](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37001683085)
+with unchanged pre-PR requested is pending. This is a changed-source verification,
+not a rerun of failed5d5, a schema change or acceptance waiver.
+
 Disposition: root freezes the independently reviewed MATERIAL-ONLY interface
 below. Builder package **C1-R-MATERIAL-S** may implement only
 `api/tests/e2e/platform/agent_reference_lineage.py` and

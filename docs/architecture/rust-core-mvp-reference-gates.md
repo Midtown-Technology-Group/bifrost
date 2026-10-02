@@ -842,3 +842,13 @@ Alembic column global_repo_access. A narrow SELECT alias correction is under
 independent review; no schema or policy change, test waiver or all32 acceptance. Fixed actual-record positives are
 projection mechanics, not stored full lineage, postclosure freshness or nominal
 acceptance. Host SOURCE STOP and exhausted #1017 repair disposition remain.
+
+
+The narrow physical Solution alias repair has independent source review9a04e34e,
+including the remaining32-group physical-column mapping audit. Exact corrected
+readerfa4a4928 is pushed as d35451eebfbaee4c5b0246356955a1f0302147d5,
+with unit/PG tests unchanged. New changed-candidate supported run37001683085,
+including the unchanged pre-PR gate requested once, is pending. Prior failed
+5d5 stays blocking historical evidence; no all32-runtime, nominal, authority or
+full-MVP acceptance is claimed. Temporary Sol review capacity failures did not
+waive independent review; a different Sol reviewer completed the source gate.
