@@ -305,7 +305,10 @@ checked out that exact SHA, confirmed independently in the unit checkout log.
 Unit job `110662651986` passed all **249** selected codec cases with no selected
 skips or failures; its broader summary was 11,987 passed, three existing skips
 and 35 deselected. Quality job `110662521501` passed Ruff and Pyright with zero
-type errors. The full run's E2E lanes were still pending at this evidence read.
+type errors. The full ordinary run completed successfully, including its existing E2E lanes.
+Those are ordinary repository tests, not the missing named nominal reference
+case. This pass does not clear #1017's separately stopped candidate or establish
+its literal pre-PR gate.
 
 Retained unit-log SHA256 is
 `f4eb338d5f43eb2fe360d2a778eaef509bab80f84b765c9d1ec53a2d0487388c`.
