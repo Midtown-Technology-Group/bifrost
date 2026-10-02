@@ -8,15 +8,15 @@ tests, never evidence of public authorization or a live registration.
 import asyncio
 import base64
 import json
-import sys
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import jwt
 import pytest
+from asyncpg.exceptions import CheckViolationError
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import delete, event, text, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 from starlette.requests import Request
@@ -204,26 +204,33 @@ def test_expired_renewable_engine_reserved_purpose_denies():
     )
 
 
-def test_deep_unreserved_hint_preserves_existing_ordinary_decoder_failure():
-    original_limit = sys.getrecursionlimit()
-    try:
-        sys.setrecursionlimit(750)
-        payload = ('{"synthetic":' + "[" * 900 + "0" + "]" * 900 + "}").encode()
-        settings = get_settings()
-        token = jwt.api_jws.PyJWS().encode(
-            payload, settings.secret_key, algorithm=settings.algorithm
+def _deep_unreserved_token():
+    """Signed synthetic nesting without issuer/audience/type/profile authority."""
+    payload = ('{"synthetic":' + "[" * 900 + "0" + "]" * 900 + "}").encode()
+    settings = get_settings()
+    token = jwt.api_jws.PyJWS().encode(
+        payload, settings.secret_key, algorithm=settings.algorithm
+    )
+    _require(len(token) < 4096, "Synthetic deep hint exceeds inspector bound")
+    return token
+
+
+def test_deep_unreserved_token_preserves_ordinary_invalid_result():
+    token = _deep_unreserved_token()
+    # Locked PyJWT 2.15.1 translates payload RecursionError into DecodeError,
+    # which the unchanged ordinary decoder rejects. No parser depth or global
+    # recursion-limit assumption establishes authority for this fixture.
+    _require(
+        decode_token(token, expected_type="access") is None,
+        "Deep invalid token gained ordinary authority",
+    )
+    _require(
+        ingress.classify_sdk_ingress(
+            _request(token=token), selected_token=token, selected_location="bearer"
         )
-        _require(len(token) < 4096, "Synthetic deep hint exceeds inspector bound")
-        with pytest.raises(RecursionError):
-            decode_token(token, expected_type="access")
-        # This pre-existing parser failure remains a legacy 500 boundary;
-        # uninspectable unsigned bytes grant no dedicated authority.
-        with pytest.raises(RecursionError):
-            ingress.classify_sdk_ingress(
-                _request(token=token), selected_token=token, selected_location="bearer"
-            )
-    finally:
-        sys.setrecursionlimit(original_limit)
+        == "legacy",
+        "Deep unreserved token changed ordinary routing",
+    )
 
 
 @pytest.mark.parametrize(
@@ -645,7 +652,6 @@ async def test_admission_denies_real_committed_current_caller_and_fence_drift(
         (119, "invalid", True),
         (1, "0", False),
         (-1, "120", False),
-        (None, "120", False),
     ],
 )
 async def test_real_committed_lease_bounds(
@@ -659,7 +665,7 @@ async def test_real_committed_lease_bounds(
     monkeypatch.setattr(
         grants, "_now", lambda value: now if value is None else original_now(value)
     )
-    anchor = now - timedelta(seconds=age) if age is not None else None
+    anchor = now - timedelta(seconds=age)
     async with work.cohort.factory() as db, db.begin():
         await db.execute(
             update(WorkflowExecutionAttempt)
@@ -675,6 +681,114 @@ async def test_real_committed_lease_bounds(
             assert (
                 authority.snapshot.workflow_attempt_id == work.start.workflow_attempt_id
             )
+        else:
+            with pytest.raises(RuntimeSDKDenied):
+                await helper(work.cohort.factory, token=bundle.access_token)
+
+
+async def test_active_attempt_missing_both_anchors_is_rejected_by_real_storage(
+    make_work,
+):
+    """Missing both anchors cannot be committed in a valid active attempt.
+
+    This proves the migrated storage guard and preservation of admitted state;
+    it does not claim runtime coverage of the defensive missing-anchor branch.
+    """
+    work = await make_work(timeout=0)
+    reference, bundle = await _bundle(work)
+    fields = (
+        "status",
+        "phase",
+        "completed_at",
+        "published_at",
+        "claimed_at",
+        "started_at",
+        "heartbeat_at",
+    )
+    async with work.cohort.factory() as db:
+        attempt = await db.get(WorkflowExecutionAttempt, work.start.workflow_attempt_id)
+        _require(attempt is not None, "Owned committed attempt missing")
+        original = tuple(getattr(attempt, name) for name in fields)
+
+    async with work.cohort.factory() as db:
+        try:
+            with pytest.raises(IntegrityError) as error:
+                await db.execute(
+                    update(WorkflowExecutionAttempt)
+                    .where(
+                        WorkflowExecutionAttempt.id == work.start.workflow_attempt_id
+                    )
+                    .values(heartbeat_at=None, claimed_at=None)
+                )
+            diagnostic = error.value.orig.__cause__
+            _require(
+                isinstance(diagnostic, CheckViolationError),
+                "Storage denial lacked original asyncpg check diagnostic",
+            )
+            _require(
+                diagnostic.constraint_name
+                == "ck_workflow_execution_attempt_state_shape",
+                "Storage denial came from a different constraint",
+            )
+        finally:
+            await db.rollback()
+
+    # Both the failed write transaction and its session have ended before the
+    # independent readback and the two actual admission helpers.
+    async with work.cohort.factory() as db:
+        attempt = await db.get(WorkflowExecutionAttempt, work.start.workflow_attempt_id)
+        _require(attempt is not None, "Owned attempt disappeared after rollback")
+        _require(
+            tuple(getattr(attempt, name) for name in fields) == original,
+            "Rejected missing-anchor write changed committed attempt state",
+        )
+    for helper in (
+        grants.load_runtime_sdk_ingress_authority,
+        grants.admit_runtime_sdk_renewal,
+    ):
+        authority = await helper(work.cohort.factory, token=bundle.access_token)
+        assert authority.snapshot.id == reference.grant_id
+
+
+@pytest.mark.parametrize(
+    "age,grace,eligible",
+    [
+        (0, "120", True),
+        (119, "120", True),
+        (120, "120", False),
+        (29, "30", True),
+        (30, "30", False),
+        (120, "999", False),
+        (119, "invalid", True),
+        (1, "0", False),
+        (-1, "120", False),
+    ],
+)
+async def test_real_missing_heartbeat_uses_valid_claimed_anchor_bounds(
+    make_work, monkeypatch, age, grace, eligible
+):
+    work = await make_work(timeout=0)
+    reference, bundle = await _bundle(work)
+    now = datetime.now(UTC)
+    monkeypatch.setenv("BIFROST_WORKFLOW_RESTART_ORPHAN_GRACE_SECONDS", grace)
+    original_now = grants._now
+    monkeypatch.setattr(
+        grants, "_now", lambda value: now if value is None else original_now(value)
+    )
+    claimed_at = now - timedelta(seconds=age)
+    async with work.cohort.factory() as db, db.begin():
+        await db.execute(
+            update(WorkflowExecutionAttempt)
+            .where(WorkflowExecutionAttempt.id == work.start.workflow_attempt_id)
+            .values(heartbeat_at=None, claimed_at=claimed_at)
+        )
+    for helper in (
+        grants.load_runtime_sdk_ingress_authority,
+        grants.admit_runtime_sdk_renewal,
+    ):
+        if eligible:
+            authority = await helper(work.cohort.factory, token=bundle.access_token)
+            assert authority.snapshot.id == reference.grant_id
         else:
             with pytest.raises(RuntimeSDKDenied):
                 await helper(work.cohort.factory, token=bundle.access_token)

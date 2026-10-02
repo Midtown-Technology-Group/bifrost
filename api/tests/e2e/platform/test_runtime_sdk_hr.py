@@ -65,7 +65,7 @@ from src.repositories.integrations import IntegrationsRepository
 from src.routers import cli
 from src.services import runtime_sdk_grants as grants
 from src.services.audit_context import current_actor
-from tests.unit.core.test_runtime_sdk_ingress import _require
+from tests.unit.core.test_runtime_sdk_ingress import _deep_unreserved_token, _require
 from tests.unit.services import test_runtime_sdk_grants as foundation
 
 credential_cohort = foundation.credential_cohort
@@ -765,6 +765,24 @@ async def test_actual_http_signed_oversized_reserved_denial_and_large_ordinary_p
                         "Oversized marker denial leaked details",
                     )
                     assert len(records) == before
+
+                # The genuinely signed deep fixture lacks ordinary profile
+                # authority. Locked decoder rejection retains the legacy H
+                # envelope regardless of the JSON parser's nesting threshold.
+                token = _deep_unreserved_token()
+                before = len(records)
+                denied = await client.post(
+                    "/api/sdk/integrations/get",
+                    json=body,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert denied.status_code == 401
+                assert denied.headers["www-authenticate"] == "Bearer"
+                _require(
+                    denied.json() == {"detail": "Not authenticated"},
+                    "Deep invalid token changed the legacy denial envelope",
+                )
+                assert len(records) == before
 
 
 async def test_actual_http_dedicated_signature_header_claims_and_locations_deny(
