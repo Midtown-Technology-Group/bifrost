@@ -1,7 +1,7 @@
 """Pure, test-only C1-R private wire codec; validation is never live proof.
 
-The architect-owned agent observation wire document freezes these eleven
-families. This module performs no authentication, I/O, clock/random calls,
+The architect-owned observation wire and additive model-oracle contract freeze
+these families. This module performs no authentication, I/O, clock/random calls,
 sequence-history checks, or lifecycle/association certification.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 
@@ -32,6 +33,9 @@ MAX_STATUS_BYTES = 2048
 MAX_CONTROL_BYTES = 4096
 MAX_READBACK_BYTES = 65536
 MAX_HOST_STATUS_BYTES = 4096
+MAX_MODEL_INPUT_BYTES = 2048
+MAX_MODEL_READBACK_BYTES = 16384
+MAX_TOOL_CONTENT_BYTES = 2048
 READBACK_PAGE_SIZE = 4
 OBSERVER_CLOSE_SECONDS = 2
 MAX_PRIVATE_TRANSPORT_STAGE_SECONDS = 1
@@ -132,6 +136,8 @@ FAMILY_BYTE_CAPS = MappingProxyType(
         "finish_request": MAX_HOST_STATUS_BYTES,
         "host_status": MAX_HOST_STATUS_BYTES,
         "error": MAX_ACK_BYTES,
+        "model_input": MAX_MODEL_INPUT_BYTES,
+        "model_readback": MAX_MODEL_READBACK_BYTES,
     }
 )
 
@@ -240,6 +246,8 @@ def _schema(family: str) -> Validator:
             "finish_request": "finish-request",
             "host_status": "host-status",
             "error": "private-error",
+            "model_input": "model-oracle-input",
+            "model_readback": "model-oracle-readback",
         }[family]
         + "/v1"
     )
@@ -809,6 +817,157 @@ def _error(value: Any) -> None:
     _object(value, {"schema": _schema("error"), "error": _choice(*PRIVATE_ERROR_CODES)})
 
 
+def _model_input(value: Any) -> None:
+    v = _object(
+        value,
+        {
+            "schema": _schema("model_input"),
+            "lane_id": _hex32,
+            "case_id": _hex32,
+            "model_key": _hex64,
+            "password": _hex64,
+            "visa": _hex64,
+            "partner_name": _choice("C1R Synthetic Partner"),
+            "username": _choice("c1r-reference@example.invalid"),
+        },
+    )
+    _require(len({v["model_key"], v["password"], v["visa"]}) == 3)
+
+
+def _tool_content(value: Any) -> None:
+    _require(type(value) is str)
+    _require(value.isascii() and len(value) <= MAX_TOOL_CONTENT_BYTES)
+    parsed = False
+    result = None
+    try:
+        result = json.loads(
+            value,
+            object_pairs_hook=_unique_object,
+            parse_float=_reject_number,
+            parse_constant=_reject_number,
+        )
+        parsed = True
+    except (ValueError, RecursionError):
+        pass
+    _require(parsed)
+
+    def empty_object(item: Any) -> None:
+        _require(type(item) is dict and not item)
+
+    def empty_array(item: Any) -> None:
+        _require(type(item) is list and not item)
+
+    def timestamp(item: Any) -> None:
+        _pattern(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{6})?\+00:00"
+        )(item)
+        valid = False
+        try:
+            datetime.fromisoformat(item)
+            valid = True
+        except ValueError:
+            pass
+        _require(valid)
+
+    def capacity(item: Any) -> None:
+        _object(
+            item,
+            {
+                "success": _true,
+                "read_only": _true,
+                "agent_count": _integer(0),
+                "restore_row_count": _integer(0),
+                "active_restore_count": _integer(0),
+                "active_restore_count_by_agent": empty_object,
+                "agents": empty_array,
+                "active_restores": empty_array,
+                "recent_restores": empty_array,
+            },
+        )
+
+    _object(result, {"success": _true, "observed_at": timestamp, "capacity": capacity})
+
+
+def _model_record(value: Any) -> None:
+    v = _object(
+        value,
+        {
+            "index": _integer(MAX_REQUESTS_PER_CASE - 1),
+            "kind": _choice(
+                "responses_probe",
+                "chat_probe",
+                "agent_first",
+                "cove_login",
+                "cove_agents",
+                "cove_dashboard",
+                "agent_final",
+                "summary",
+                "unexpected",
+            ),
+            "settled": _boolean,
+            "matched": _nullable(_boolean),
+            "status": _nullable(_integer(599, 100)),
+            "write_complete": _boolean,
+            "tool_content": _nullable(_tool_content),
+        },
+    )
+    if not v["settled"]:
+        _require(v["matched"] is None and v["status"] is None)
+        _require(not v["write_complete"] and v["tool_content"] is None)
+    else:
+        _require(v["matched"] is not None)
+        _require((v["status"] is not None) == v["write_complete"])
+        _require(
+            (v["tool_content"] is not None)
+            == (v["kind"] == "agent_final" and v["matched"])
+        )
+        _require(v["kind"] != "unexpected" or not v["matched"])
+
+
+def _model_readback(value: Any) -> None:
+    v = _object(
+        value,
+        {
+            "schema": _schema("model_readback"),
+            "lane_id": _hex32,
+            "case_id": _hex32,
+            "run_id": _nullable(_uuid),
+            "finish_id": _nullable(_hex32),
+            "state": _choice("armed", "bound", "closing", "closed"),
+            "first_failure": _nullable(_code),
+            "attempt_count": _integer(MAX_REQUESTS_PER_CASE + 1),
+            "offset": _integer(MAX_REQUESTS_PER_CASE),
+            "total": _integer(MAX_REQUESTS_PER_CASE),
+            "next_offset": _nullable(_integer(MAX_REQUESTS_PER_CASE)),
+            "records": lambda r: _array(r, _model_record, READBACK_PAGE_SIZE),
+        },
+    )
+    _require(v["total"] <= v["attempt_count"])
+    if v["first_failure"] is None:
+        _require(v["attempt_count"] - v["total"] <= MAX_SDK_RECEIPTS_PER_CASE)
+    _require(v["offset"] <= v["total"])
+    _require(len(v["records"]) == min(READBACK_PAGE_SIZE, v["total"] - v["offset"]))
+    end = v["offset"] + len(v["records"])
+    _require(v["next_offset"] == (end if end < v["total"] else None))
+    _require(all(r["index"] == v["offset"] + n for n, r in enumerate(v["records"])))
+    if v["state"] == "armed":
+        _require(v["run_id"] is None and v["finish_id"] is None)
+    elif v["state"] == "bound":
+        _require(v["run_id"] is not None and v["finish_id"] is None)
+    else:
+        _require(v["finish_id"] is not None)
+        _require(v["run_id"] is not None or v["first_failure"] is not None)
+    if v["attempt_count"] > MAX_REQUESTS_PER_CASE:
+        _require(v["first_failure"] is not None)
+    if any(
+        r["settled"] and (not r["matched"] or not r["write_complete"])
+        for r in v["records"]
+    ):
+        _require(v["first_failure"] is not None)
+    if v["state"] == "closed" and v["first_failure"] is None:
+        _require(all(r["settled"] for r in v["records"]))
+
+
 _VALIDATORS = MappingProxyType(
     {
         "receipt": _receipt,
@@ -822,6 +981,8 @@ _VALIDATORS = MappingProxyType(
         "finish_request": _finish_request,
         "host_status": _host_status,
         "error": _error,
+        "model_input": _model_input,
+        "model_readback": _model_readback,
     }
 )
 

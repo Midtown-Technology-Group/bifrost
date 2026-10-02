@@ -29,6 +29,7 @@ PROJECT = (
 )
 LOG = Path("/tmp") / f"bifrost-{PROJECT}"
 SOURCE = "a" * 40
+LANE_ID = "b" * 32
 CONTEXT = Path("/owned/private-context")
 RUNNER_ID = "f" * 64
 RUNNER_PATH = (
@@ -86,7 +87,7 @@ def base():
 
 
 def rendered(base):
-    return lane.render(base, ROOT, PROJECT, LOG, SOURCE, CONTEXT)
+    return lane.render(base, ROOT, PROJECT, LOG, SOURCE, CONTEXT, LANE_ID)
 
 
 def test_renderer_closes_services_network_consumers_and_assets(base):
@@ -132,9 +133,18 @@ def test_renderer_closes_services_network_consumers_and_assets(base):
         mount = next(
             m
             for m in config["services"][name]["volumes"]
-            if m["target"] == "/app/reference-observer-status"
+            if m["target"]
+            == (
+                "/app/reference-observer-status"
+                if name == "test-runner"
+                else f"/app/reference-observer-status/{name}"
+            )
         )
         assert mount["read_only"] is (name == "test-runner")
+        assert mount["volume"]["nocopy"] is True
+        assert mount["volume"].get("subpath") == (
+            None if name == "test-runner" else name
+        )
 
 
 @pytest.mark.parametrize(
@@ -249,7 +259,26 @@ def inspections(config, pins):
                 else f"/{name}",
                 "Image": pins[name]["id"],
                 "State": {"Running": True, "Status": "running", "ExitCode": 0},
-                "HostConfig": {},
+                "HostConfig": {
+                    "Mounts": [
+                        {
+                            "Type": "volume",
+                            "Source": config["volumes"][m["source"]]["name"],
+                            "Target": m["target"],
+                            "ReadOnly": m.get("read_only", False),
+                            "VolumeOptions": {
+                                "NoCopy": m["volume"]["nocopy"],
+                                **(
+                                    {"Subpath": m["volume"]["subpath"]}
+                                    if "subpath" in m["volume"]
+                                    else {}
+                                ),
+                            },
+                        }
+                        for m in planned["volumes"]
+                        if m.get("source") == "observer-status"
+                    ]
+                },
                 "Mounts": mounts,
                 "NetworkSettings": {"Networks": {f"{PROJECT}_default": {}}},
             }
@@ -534,11 +563,15 @@ def test_actual_runner_post_exit_requires_exact_release_and_wait_code(base, muta
         )["startup_commands_verified"]
 
 
+@pytest.mark.parametrize("invocation", ["nominal", "units"])
 def test_runner_execs_closed_argv_only_after_exact_host_receipt(
-    base, tmp_path, monkeypatch
+    base, tmp_path, monkeypatch, invocation
 ):
     pins = lane.pin_images(rendered(base), image_witnesses(rendered(base)))
     bound = binding(pins)
+    if invocation == "units":
+        assert runner.UNITS == lane.UNITS
+        bound["argv"] = ["pytest", *lane.UNITS, "-v", *runner.SUFFIX]
     (tmp_path / "binding.json").write_text(json.dumps(bound))
     (tmp_path / "release.json").write_text(
         json.dumps({**bound, "container_id": RUNNER_ID})
@@ -554,6 +587,28 @@ def test_runner_execs_closed_argv_only_after_exact_host_receipt(
     )
     runner.main()
     assert executed == [("pytest", bound["argv"])]
+
+
+@pytest.mark.parametrize(
+    "mutation", ["legacy", "extra", "reordered", "missing", "duplicate"]
+)
+def test_unit_phase_accepts_only_same_complete_closed_selector(mutation):
+    bound = binding({"test-runner": {"id": "sha256:" + "1" * 64}})
+    assert runner.UNITS == lane.UNITS
+    selected = list(lane.UNITS)
+    if mutation == "legacy":
+        selected = selected[:2]
+    elif mutation == "extra":
+        selected.append("tests/unit/other.py")
+    elif mutation == "reordered":
+        selected.reverse()
+    elif mutation == "missing":
+        selected.pop()
+    else:
+        selected.append(selected[0])
+    bound["argv"] = ["pytest", *selected, "-v", *runner.SUFFIX]
+    with pytest.raises(ValueError, match="invalid binding"):
+        runner.validate_binding(bound)
 
 
 @pytest.mark.parametrize(
@@ -822,3 +877,144 @@ exit {original_status}
     result = subprocess.run(["bash", "-c", script], capture_output=True, check=False)
     assert result.returncode == expected_status
     assert context.exists()  # failed custody is retained, never called a pass
+
+
+@pytest.mark.parametrize("lane_id", ["", "b" * 31, "b" * 33, "B" * 32, "g" * 32])
+def test_renderer_rejects_invalid_lane_identity(base, lane_id):
+    with pytest.raises(ValueError, match="invalid lane identity"):
+        lane.render(base, ROOT, PROJECT, LOG, SOURCE, CONTEXT, lane_id)
+
+
+def test_lane_identity_and_role_are_closed_per_service(base):
+    services = rendered(base)["services"]
+    for name, service in services.items():
+        env = service["environment"]
+        if name in {"api", "api-replica", "scheduler-fixtures", "test-runner"}:
+            assert env["BIFROST_AGENT_REFERENCE_LANE_ID"] == LANE_ID
+        else:
+            assert "BIFROST_AGENT_REFERENCE_LANE_ID" not in env
+        if name in {"api", "api-replica"}:
+            assert env["BIFROST_AGENT_REFERENCE_ROLE"] == name
+        else:
+            assert "BIFROST_AGENT_REFERENCE_ROLE" not in env
+
+
+def test_renderer_caps_private_mounts_and_preserves_service_identity(base):
+    config = rendered(base)
+    for name, service in config["services"].items():
+        mounts = service["volumes"]
+        private = {
+            m["target"]: m
+            for m in mounts
+            if m["target"].startswith("/run/agent-reference/")
+        }
+        filenames = set()
+        if name in {"api", "api-replica", "scheduler-fixtures"}:
+            filenames.add("observer-ingest-key")
+        if name in {"scheduler-fixtures", "test-runner"}:
+            filenames.add("observer-control-key")
+        if name in {"api", "api-replica", "scheduler-fixtures", "test-runner"}:
+            filenames.add("observer-ca.pem")
+        if name == "scheduler-fixtures":
+            filenames.update({"observer-server.pem", "observer-server-key.pem"})
+        assert set(private) == {f"/run/agent-reference/{f}" for f in filenames}
+        for target, mount in private.items():
+            assert mount["source"] == str(CONTEXT / target.rsplit("/", 1)[1])
+            assert mount["read_only"] is True
+            assert mount["bind"] == {"create_host_path": False}
+        model_input = [
+            m for m in mounts if m["target"] == "/app/reference-model-oracle/input.json"
+        ]
+        assert len(model_input) == (
+            1 if name in {"scheduler-fixtures", "test-runner"} else 0
+        )
+        if model_input:
+            assert model_input[0] == {
+                "type": "bind",
+                "source": str(CONTEXT / "model-oracle-input.json"),
+                "target": "/app/reference-model-oracle/input.json",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+        if name in {"api", "api-replica"}:
+            assert service["command"] == lane.API_COMMAND
+            assert "user" not in service and "entrypoint" not in service
+            for target in ("/app/scripts", "/app/tests"):
+                assert (
+                    next(m for m in mounts if m["target"] == target)["read_only"]
+                    is True
+                )
+        if name == "scheduler-fixtures":
+            assert service["command"] == lane.FIXTURE_COMMAND
+            assert "user" not in service and "entrypoint" not in service
+
+
+def test_renderer_retains_actual_configured_users_and_entrypoints(base):
+    for name in ("api", "api-replica", "scheduler-fixtures"):
+        base["services"][name].update(user="root", entrypoint=["/entrypoint.sh"])
+    config = rendered(base)
+    for name in ("api", "api-replica", "scheduler-fixtures"):
+        assert config["services"][name]["user"] == "root"
+        assert config["services"][name]["entrypoint"] == ["/entrypoint.sh"]
+
+
+@pytest.mark.parametrize(
+    "service,slot",
+    [
+        ("worker", "BIFROST_AGENT_REFERENCE_LANE_ID"),
+        ("scheduler", "BIFROST_AGENT_REFERENCE_ROLE"),
+        ("scheduler-fixtures", "BIFROST_AGENT_REFERENCE_ROLE"),
+        ("test-runner", "BIFROST_AGENT_REFERENCE_ROLE"),
+    ],
+)
+def test_actual_excluded_service_cannot_gain_a_runtime_construction_slot(
+    base, service, slot
+):
+    config = rendered(base)
+    pins = lane.pin_images(config, image_witnesses(config))
+    containers, networks, volumes = inspections(config, pins)
+    selected = next(
+        c
+        for c in containers
+        if c["Config"]["Labels"]["com.docker.compose.service"] == service
+    )
+    selected["Config"]["Env"].append(f"{slot}=")
+    with pytest.raises(
+        ValueError, match="unexpected runtime construction identity slot"
+    ):
+        lane.verify(
+            config,
+            containers,
+            networks,
+            volumes,
+            PROJECT,
+            pins,
+            binding(pins),
+            RUNNER_ID,
+            source=SOURCE,
+        )
+
+
+@pytest.mark.parametrize("subpath", ["", "api-replica", "../api", "/api"])
+def test_observer_actual_mount_subpath_drift_is_rejected(base, subpath):
+    config = rendered(base)
+    pins = lane.pin_images(config, image_witnesses(config))
+    containers, networks, volumes = inspections(config, pins)
+    api = next(
+        c
+        for c in containers
+        if c["Config"]["Labels"]["com.docker.compose.service"] == "api"
+    )
+    api["HostConfig"]["Mounts"][0]["VolumeOptions"]["Subpath"] = subpath
+    with pytest.raises(ValueError, match="observer volume subpath differs"):
+        lane.verify(
+            config,
+            containers,
+            networks,
+            volumes,
+            PROJECT,
+            pins,
+            binding(pins),
+            RUNNER_ID,
+            source=SOURCE,
+        )

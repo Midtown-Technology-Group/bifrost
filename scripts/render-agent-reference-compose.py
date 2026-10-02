@@ -35,10 +35,26 @@ PROCESSES = ("init", "api", "api-replica", "worker", "scheduler", "test-runner")
 CONSUMERS = "workflow,agent-run,summarize"
 PROJECT_PREFIX = "bifrost-agent-reference"
 RUNNER_COMMAND = ["python", "/app/scripts/agent_reference_runner.py"]
+API_COMMAND = [
+    "coverage",
+    "run",
+    "--parallel-mode",
+    "-m",
+    "tests.e2e.platform.agent_reference_server",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8000",
+]
+FIXTURE_COMMAND = ["python", "-m", "scripts.agent_reference_fixture"]
 CASE = "tests/e2e/platform/agent_reference_cases.py"
 UNITS = (
     "tests/unit/test_agent_reference_fixture.py",
     "tests/unit/test_agent_reference_lane.py",
+    "tests/unit/test_agent_reference_contract.py",
+    "tests/unit/test_agent_reference_model_contract.py",
+    "tests/unit/test_agent_reference_observer.py",
+    "tests/unit/test_agent_reference_server.py",
 )
 OPTIONAL = {
     "GITHUB_TEST_PAT",
@@ -208,7 +224,13 @@ def project_name(root: Path) -> str:
 
 
 def render(
-    base: dict, root: Path, project: str, log: Path, source: str, context: Path
+    base: dict,
+    root: Path,
+    project: str,
+    log: Path,
+    source: str,
+    context: Path,
+    lane_id: str,
 ) -> dict:
     require(
         root.is_absolute() and project == project_name(root),
@@ -219,6 +241,7 @@ def render(
         "unexpected ownership paths",
     )
     require(re.fullmatch(r"[a-f0-9]{40}", source) is not None, "invalid source commit")
+    require(re.fullmatch(r"[a-f0-9]{32}", lane_id) is not None, "invalid lane identity")
     require(
         set(base) <= {"name", "services", "networks", "volumes"},
         "unexpected Compose root field",
@@ -313,6 +336,10 @@ def render(
             )
         if name == "test-runner":
             env["BIFROST_AGENT_REFERENCE_ASSETS_DIR"] = "/app/reference-assets"
+        if name in {"api", "api-replica", "scheduler-fixtures", "test-runner"}:
+            env["BIFROST_AGENT_REFERENCE_LANE_ID"] = lane_id
+        if name in {"api", "api-replica"}:
+            env["BIFROST_AGENT_REFERENCE_ROLE"] = name
         service["environment"] = env
         mounts = []
         for mount in service.get("volumes", []):
@@ -374,15 +401,70 @@ def render(
                     "read_only": True,
                 }
             )
+        if name in {"api", "api-replica"}:
+            for target in ("/app/scripts", "/app/tests"):
+                if not any(m["target"] == target for m in mounts):
+                    mounts.append(
+                        {
+                            "type": "bind",
+                            "source": str(root / BIND_PATHS[target]),
+                            "target": target,
+                            "read_only": True,
+                            "bind": {"create_host_path": False},
+                        }
+                    )
+            service["command"] = API_COMMAND.copy()
+        if name == "scheduler-fixtures":
+            service["command"] = FIXTURE_COMMAND.copy()
         if name in {"api", "api-replica", "test-runner"}:
-            # Root's observer factory/protocol is pending. This is custody only,
-            # never a claim that the observer is present or healthy.
+            status = {
+                "type": "volume",
+                "source": "observer-status",
+                "target": "/app/reference-observer-status",
+                "read_only": name == "test-runner",
+                "volume": {"nocopy": True},
+            }
+            if name != "test-runner":
+                status["target"] += f"/{name}"
+                status["volume"]["subpath"] = name
+            mounts.append(status)
+        if name == "test-runner":
             mounts.append(
                 {
-                    "type": "volume",
-                    "source": "observer-status",
-                    "target": "/app/reference-observer-status",
-                    "read_only": name == "test-runner",
+                    "type": "bind",
+                    "source": str(context / "host-status"),
+                    "target": "/app/reference-host-status",
+                    "read_only": True,
+                    "bind": {"create_host_path": False},
+                }
+            )
+        private_files = []
+        if name in {"api", "api-replica", "scheduler-fixtures"}:
+            private_files.append("observer-ingest-key")
+        if name in {"scheduler-fixtures", "test-runner"}:
+            private_files.append("observer-control-key")
+        if name in {"api", "api-replica", "scheduler-fixtures", "test-runner"}:
+            private_files.append("observer-ca.pem")
+        if name == "scheduler-fixtures":
+            private_files.extend(["observer-server.pem", "observer-server-key.pem"])
+        if name in {"scheduler-fixtures", "test-runner"}:
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": str(context / "model-oracle-input.json"),
+                    "target": "/app/reference-model-oracle/input.json",
+                    "read_only": True,
+                    "bind": {"create_host_path": False},
+                }
+            )
+        for filename in private_files:
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": str(context / filename),
+                    "target": f"/run/agent-reference/{filename}",
+                    "read_only": True,
+                    "bind": {"create_host_path": False},
                 }
             )
         service["volumes"] = mounts
@@ -780,6 +862,16 @@ def verify(
         )
         expected = config["services"][service]["environment"]
         require(
+            all(
+                (slot in env) == (slot in expected)
+                for slot in (
+                    "BIFROST_AGENT_REFERENCE_LANE_ID",
+                    "BIFROST_AGENT_REFERENCE_ROLE",
+                )
+            ),
+            "unexpected runtime construction identity slot",
+        )
+        require(
             container["Config"]["Image"] == config["services"][service]["image"],
             "effective image tag differs",
         )
@@ -837,6 +929,30 @@ def verify(
                     and mount["RW"] is not planned.get("read_only", False),
                     "effective named volume mount differs",
                 )
+        if service in {"api", "api-replica", "test-runner"}:
+            # Effective volume name/RW alone cannot prove role-subpath isolation.
+            target = "/app/reference-observer-status"
+            if service != "test-runner":
+                target += f"/{service}"
+            actual_specs = [
+                m
+                for m in container["HostConfig"].get("Mounts", [])
+                if m.get("Target") == target
+            ]
+            require(
+                len(actual_specs) == 1, "missing observer volume mount specification"
+            )
+            actual = actual_specs[0]
+            options = actual.get("VolumeOptions") or {}
+            require(
+                actual.get("Type") == "volume"
+                and actual.get("Source") == config["volumes"]["observer-status"]["name"]
+                and actual.get("ReadOnly") is (service == "test-runner")
+                and options.get("NoCopy") is True
+                and options.get("Subpath", "")
+                == ("" if service == "test-runner" else service),
+                "observer volume subpath differs",
+            )
         if service in PROCESSES:
             require(service not in observed, "duplicate process service")
             observed[service] = {
@@ -865,7 +981,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     render_args = commands.add_parser("render")
-    for flag in ("root", "project", "log", "source", "context", "input", "output"):
+    for flag in (
+        "root",
+        "project",
+        "log",
+        "source",
+        "context",
+        "lane-id",
+        "input",
+        "output",
+    ):
         render_args.add_argument(f"--{flag}", required=True)
     inner = commands.add_parser("check-inner")
     inner.add_argument("--context", type=Path, required=True)
@@ -913,6 +1038,7 @@ def main() -> None:
                 Path(args.log),
                 args.source,
                 Path(args.context),
+                args.lane_id,
             )
             Path(args.output).write_text(
                 json.dumps(value, indent=2, sort_keys=True) + "\n"

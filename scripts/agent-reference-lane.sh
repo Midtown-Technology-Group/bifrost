@@ -92,12 +92,18 @@ export BIFROST_PROJECT_PREFIX=bifrost-agent-reference
 export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 lane_source="$(git rev-parse HEAD)"
+# Nonsecret invocation identity; never derived from capabilities or a hostname.
+lane_id="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
 if [ -n "$(git status --porcelain)" ]; then
     echo "ERROR: agent-reference requires a clean committed source candidate." >&2
     exit 1
 fi
 for lane_input in api/tests/e2e/platform/agent_reference_cases.py \
     api/tests/unit/test_agent_reference_fixture.py api/tests/unit/test_agent_reference_lane.py \
+    api/tests/unit/test_agent_reference_contract.py api/tests/unit/test_agent_reference_model_contract.py \
+    api/tests/unit/test_agent_reference_observer.py api/tests/unit/test_agent_reference_server.py \
+    api/tests/e2e/platform/agent_reference_observer.py api/tests/e2e/platform/agent_reference_server.py \
+    api/scripts/agent_reference_fixture.py \
     api/scripts/agent_reference_runner.py \
     test-fixtures/agent-reference/provenance.json; do
     if [ ! -f "$lane_input" ] || [ -L "$lane_input" ]; then
@@ -137,12 +143,12 @@ if [ -e "$LOG_DIR" ] || [ -L "$LOG_DIR" ] || [ -e "$lane_evidence_dir" ] || [ -L
 fi
 mkdir -p "$LOG_DIR/solution-repo-fixtures"
 mkdir -m 700 "$lane_evidence_dir"
-python3 - "$lane_context" "$lane_root" "$COMPOSE_PROJECT_NAME" "$lane_source" <<'PY'
+python3 - "$lane_context" "$lane_root" "$COMPOSE_PROJECT_NAME" "$lane_source" "$lane_id" <<'PY'
 import json
 import sys
 from pathlib import Path
-context, root, project, source = sys.argv[1:]
-Path(context, "owner.json").write_text(json.dumps({"root": root, "project": project, "source": source}) + "\n")
+context, root, project, source, lane_id = sys.argv[1:]
+Path(context, "owner.json").write_text(json.dumps({"root": root, "project": project, "source": source, "lane_id": lane_id}) + "\n")
 PY
 
 lane_started=0
@@ -189,7 +195,7 @@ trap 'exit 143' TERM
 docker compose --env-file /dev/null -f "$lane_root/docker-compose.test.yml" \
     --profile e2e --profile test config --format json > "$lane_context/base.json"
 python3 "$lane_renderer" render --root "$lane_root" --project "$COMPOSE_PROJECT_NAME" \
-    --log "$LOG_DIR" --source "$lane_source" --context "$lane_context" \
+    --log "$LOG_DIR" --source "$lane_source" --context "$lane_context" --lane-id "$lane_id" \
     --input "$lane_context/base.json" --output "$COMPOSE_FILE"
 # Build/pull may need network; complete them before creating the internal network.
 docker compose -f "$COMPOSE_FILE" build api
@@ -220,5 +226,7 @@ lane_require_empty
 printf 'Agent reference source: %s\nProject: %s\n' "$lane_source" "$COMPOSE_PROJECT_NAME"
 lane_started=1
 "$lane_root/test.sh" stack up
-"$lane_root/test.sh" tests/unit/test_agent_reference_fixture.py tests/unit/test_agent_reference_lane.py -v
+"$lane_root/test.sh" tests/unit/test_agent_reference_fixture.py tests/unit/test_agent_reference_lane.py \
+    tests/unit/test_agent_reference_contract.py tests/unit/test_agent_reference_model_contract.py \
+    tests/unit/test_agent_reference_observer.py tests/unit/test_agent_reference_server.py -v
 "$lane_root/test.sh" tests/e2e/platform/agent_reference_cases.py -v

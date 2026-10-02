@@ -15,6 +15,10 @@ CASE = "tests/e2e/platform/agent_reference_cases.py"
 UNITS = (
     "tests/unit/test_agent_reference_fixture.py",
     "tests/unit/test_agent_reference_lane.py",
+    "tests/unit/test_agent_reference_contract.py",
+    "tests/unit/test_agent_reference_model_contract.py",
+    "tests/unit/test_agent_reference_observer.py",
+    "tests/unit/test_agent_reference_server.py",
 )
 SUFFIX = ["--durations=25", "--junitxml=/tmp/bifrost/test-results.xml"]
 BINDING_FIELDS = {

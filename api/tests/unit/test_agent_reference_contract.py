@@ -301,7 +301,13 @@ def _set_path(value, path, replacement):
 
 
 def test_frozen_family_caps_and_literal_canonical_bytes():
-    assert dict(contract.FAMILY_BYTE_CAPS) == FAMILY_CAPS
+    assert {
+        name: contract.FAMILY_BYTE_CAPS[name] for name in FAMILY_CAPS
+    } == FAMILY_CAPS
+    assert set(contract.FAMILY_BYTE_CAPS) - FAMILY_CAPS.keys() == {
+        "model_input",
+        "model_readback",
+    }
     expected = (
         b'{"error":"invalid_json","schema":"bifrost.agent-reference.private-error/v1"}'
     )
