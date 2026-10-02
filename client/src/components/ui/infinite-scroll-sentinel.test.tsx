@@ -21,20 +21,24 @@ let observers: Observer[] = [];
 class MockIntersectionObserver implements IntersectionObserver {
 	root: Element | Document | null = null;
 	rootMargin = "";
+	scrollMargin = "";
 	thresholds: ReadonlyArray<number> = [];
 	private _observer: Observer;
 
 	// Mirror the real DOM IntersectionObserver constructor signature
 	// (`(callback, options?)`) so static analyzers don't think production code
 	// passing options is calling a single-arg function. The options bag is
-	// captured for parity (rootMargin/thresholds) even though the mock does not
-	// itself act on it.
+	// captured for parity (rootMargin/scrollMargin/thresholds) even though
+	// the mock does not itself act on it.
 	constructor(
 		callback: IntersectionObserverCallback,
 		options?: IntersectionObserverInit,
 	) {
 		if (options?.rootMargin !== undefined) {
 			this.rootMargin = options.rootMargin;
+		}
+		if (options?.scrollMargin !== undefined) {
+			this.scrollMargin = options.scrollMargin;
 		}
 		if (options?.threshold !== undefined) {
 			this.thresholds = Array.isArray(options.threshold)
