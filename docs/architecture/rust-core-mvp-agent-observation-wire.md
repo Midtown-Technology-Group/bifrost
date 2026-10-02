@@ -14,6 +14,13 @@ signature verification, actual UID/mount construction, application/server
 lifecycle and host coordination remain integration responsibilities and gates.
 Structural validation alone is never evidence of any of those properties.
 
+The separately reviewed [model/Cove oracle](rust-core-mvp-agent-model-oracle.md)
+adds only `model_input` and `model_readback` for its construction/evidence gap.
+Its source implementation is architect-owned and its consumer release requires
+independent shared-codec review. The eleven families below keep their exact
+tags, limits and semantics; no new model field is inserted into them. Existing
+249-case CI evidence covers the original codec bytes, not the new candidate.
+
 Current documentation base includes platform main
 `e58db4955ddd30177bd613f1d85b7e203ad7832a` (#1027); the source proposal and
 local reference foundation below retain their explicit older `f770094e` pin.
