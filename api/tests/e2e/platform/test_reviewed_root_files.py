@@ -96,6 +96,15 @@ async def test_large_signed_download_streams_bound_and_denies_raw_read(
     f = await fixture(db_session, platform_admin, monkeypatch, None, PROVIDER_ORG_ID,
                       package_bound=bound)
     observed = []
+    retained = []
+    import src.services.solutions.root_file_bindings as root_file_bindings
+    original_read = root_file_bindings.read_reviewed_root_bytes
+
+    async def read_root(*args, **kwargs):
+        retained.append(kwargs.get("retain_bytes"))
+        return await original_read(*args, **kwargs)
+
+    monkeypatch.setattr(root_file_bindings, "read_reviewed_root_bytes", read_root)
     size = bound
 
     async def chunks(storage, key, *, chunk_size):
@@ -113,6 +122,7 @@ async def test_large_signed_download_streams_bound_and_denies_raw_read(
         request = {"path": f.package, "location": "uploads", "method": "GET"}
         signed = await f.client.post("/api/files/signed-url", json=request)
         assert signed.status_code == 200, signed.text
+        assert retained == [False]
         assert signed.json()["path"] == f.package_key
         assert signed.json()["expires_in"] == 600
         reads_before_denial = len(observed)
@@ -121,10 +131,12 @@ async def test_large_signed_download_streams_bound_and_denies_raw_read(
         assert denied_read.status_code == 404  # Ordinary Solution tier cannot see this Root object.
         assert "content" not in denied_read.json()
         assert len(observed) == reads_before_denial
+        assert retained == [False]
         size = bound + 1
         overflow = await f.client.post("/api/files/signed-url", json=request)
         assert overflow.status_code == 422
         assert "url" not in overflow.json()
+        assert retained == [False, False]
         assert max(observed) <= 64 * 1024
 
 
