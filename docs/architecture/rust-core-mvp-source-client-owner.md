@@ -187,6 +187,16 @@ Source candidate `701aaccd7956b1a3224fc561e4edc72368e88ace`, tree
 `2bcf168cae405a0c4b8052585348d50d76f5fa12`, includes main01cadfe and is clean/pushed.
 Supported ordinary CI plus unchanged pre-PR was requested once as
 [run37007142830](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37007142830)
-and is pending. No nominal agent-reference invocation, host helper or #1017
-repair was requested. Full transport release remains blocked by the actual
+and completed SUCCESS. All5 selected bootstrap branch cases and191 reader units
+pass;12,781 backend units pass with3 unrelated skips/35 deselections. All6 actual
+PostgreSQL reader cases pass (API shard2:581 passes), without skips. Quality,
+pre-PR, API/client E2E and MCP lanes pass. Artifact11226357435 binds exact source,
+tree/main01cadfe and exit0/cleanup0 with actual EMPTY containers/volumes/networks.
+Its SHA256 is85af0f35e9e753da50aa711e3c81e26a3cf21323b7393e8df55f6c06d3aac45b;
+API image registry digest is70833acce6d5ebfcd71112f184281a542b394258f0bca859066ae439975e958f.
+Unit log SHA256:d1ad704017f0ac849cf934909851c4d79a3c5ec5253fb865382b7c550264897e.
+Direct shard2 log SHA256:544e0434c4f07b32a752fa127c5d3875e40988ef53b67587cd172408fe241cc9.
+An earlier gh-view shard log was empty; it supplied no evidence. Direct job API
+retrieval supplied the actual581/6 results without rerunning tests.
+No nominal agent-reference invocation, host helper or #1017 repair was requested. Full transport release remains blocked by the actual
 nominal owner call site and acquisition/profile/installed-source custody.

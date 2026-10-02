@@ -913,3 +913,54 @@ Source/Ruff checks pass; new supported ordinary CI37007142830 including unchange
 pre-PR is pending. No unfinished nominal scenario or #1017 retry was run.
 Effective pytest configuration/plugins, actual owner call site and installed
 SDK/client/disposal evidence remain gates; no T or C2/C3 release follows.
+
+
+## Runtime dependency-profile decision remains open
+
+The [concrete dependency proposal](rust-core-mvp-dependency-profile.md)
+retains unchanged readiness A and complete agent/child/answer/summary B. Different
+review accepts the source proposal with the applied API404 correction: worker
+no-install control flow is not evidence of absent storage. A digest-bound prepared
+existing image with no mutable global installation is proposed for the selected
+profile only. Nonempty or ambiguously absent global requirements stops it.
+Explicit profile-scope approval, installed artifact/source/interpreter custody,
+actual invocation, SDK issuer and mechanical writer exclusion remain gates.
+No dependency adapter, installer rewrite, workspace change or C2/C3 is released.
+
+Host authority investigation40b96ebc confirms the custom helper does not isolate
+an already trusted Docker administrator. Its missing contribution is real host-FD
+publication/disposal evidence, which existing lane/init/teardown operations do not
+supply under the frozen constraints. Keep host SOURCE STOP; no new cap-fitting
+construction or changed privilege/mount policy is released. This fixture-specific
+result is not global Rust falsification or production runtime isolation proof.
+
+The prescribed Keeper procedure was rechecked read-only on pve-t340: no Keeper
+CLI, configured REST URL/record, or listed PowerCommander/custom Keeper module is
+available. PowerShell itself is present. No alternative credential path, SSO
+session, target change or live mutation was attempted. Worker/scheduler deployed
+settings remain unknown; checked-in configuration cannot substitute.
+
+
+## Bootstrap supported-runtime checkpoint
+
+Source701aacc completed [CI37007142830](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37007142830)
+SUCCESS:5 selected branch cases,191 reader units,12,781 total backend units
+(3 unrelated skips/35 deselections), all6 actual PG reader cases and all required
+quality/API/client/MCP lanes. Artifact11226357435 verifies exact source/tree/main,
+exit0/cleanup0 and actual EMPTY resources. Detailed artifact/log/image identities
+are in the [owner checkpoint](rust-core-mvp-source-client-owner.md#separately-reviewed-nominal-bootstrap-source-checkpoint).
+These characterize a fake-pytest branch and reader mechanics. Actual nominal
+startup/plugin custody, owner SDK/storage/close and complete agent/source/event/
+process/host closure remain unproved. No reference-host helper or #1017 retry ran.
+
+
+## Latest workspace reconciliation
+
+Fresh workspace main7fa1c2e045c103b5a118cf1d44c95e749eb184b6 includes #1112;
+platform main remains01cadfe. The6bb→7fa thirteen-file change adds bounded reviewed
+installation matrices, registry-only CI and stale queue repair. Public delivery
+requests retain NoRedirect and durable one-write intent; no selected A/B authored
+input or boundary-checker byte changes. Current stdlib AST audit passes2,115
+boundary files/1,992 standard authored, zero forbidden imports, empty allowlist.
+No workspace accommodation or authored rewrite occurred. Earlier tests/proposals
+retain their exact6bb/e860/83c source pins rather than being relabeled current.
