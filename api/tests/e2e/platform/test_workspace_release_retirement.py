@@ -573,3 +573,47 @@ async def test_workspace_release_retirement_emits_audit_event(
         assert entry["details"]["retirement_evidence_id"] == retired.evidence_id
     finally:
         await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("path_style", ["canonical", "backslash", "leading_slash"])
+@pytest.mark.parametrize("active", [True, False])
+async def test_uncaptured_runtime_equivalent_row_blocks_retirement(
+    platform_admin, db_session, path_style, active,
+) -> None:
+    """Retirement must not turn an uncaptured mismatch into mutable execution."""
+    from src.services.workspace_release_runtime import (
+        inspect_workspace_release_registration_bindings,
+    )
+
+    source_path = f"features/retirement_{uuid4().hex}/workflow.py"
+    workflow_id = uuid4()  # Deliberately absent from effective registration IDs.
+    release_row_id = job_id = None
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session, source_path=source_path, function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        path = (source_path.replace("/", "\\") if path_style == "backslash"
+                else "/" + source_path if path_style == "leading_slash" else source_path)
+        db_session.add(Workflow(id=workflow_id, name="Uncaptured leftover",
+            function_name="run", path=path, organization_id=PROVIDER_ORG_ID,
+            is_active=active))
+        await db_session.commit()
+        descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
+        bindings = await inspect_workspace_release_registration_bindings(db_session, descriptor)
+        assert [item.workflow_id for item in bindings] == ([workflow_id] if active else [])
+        if active:
+            assert bindings[0].status == "mismatch"
+            assert "workflow_id" in bindings[0].mismatch_fields
+        with pytest.raises(WorkspaceReleaseRetirementError, match="loose workflow registrations"):
+            await _retire(db_session, artifact, release, user_id=platform_admin.user_id,
+                          reason="Uncaptured row has no reviewed retirement disposition")
+        await db_session.refresh(release)
+        assert release.activation_state == "live"
+    finally:
+        await db_session.rollback()
+        await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
