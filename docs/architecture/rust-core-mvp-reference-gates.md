@@ -576,3 +576,63 @@ in test-runner and keep exactly one identical mount in the named lane. Missing
 assets must fail rather than skip, embed substitutes or alter authored code.
 The two-file recipe builder does not own Compose/renderer changes and cannot
 certify this unimplemented mount gate through source-only unit construction.
+
+
+## Repaired collector supported acceptance
+
+[Run36967563219](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36967563219)
+completed SUCCESS against exact
+`6a96f206337216d43e60bf921b770f0d162d0fa3`, tree
+`588f0efd78e3a15c859cdb5e4965bc99b22c1639`, platform main01cadfe.
+Quality, units, literal pre-PR and API/browser E2E passed. Actual unit
+job110714647059 records12,486 passed,3 unrelated skipped,35 deselected;
+all815 selected construction/evidence cases passed with zero selected skips:
+fixture180, observer65, materials46, shared contract249, model contract61,
+server36, lane88 and events90. Actual unit-log SHA256
+`19c034dd566f9d7898fad19ef0bc180e914414393058b9db5c51934f98b19b8e`.
+
+Root read pre-PR artifact11209974788: workflow/head/tree/main matched;
+exit0, cleanup_status0 and actual containers/volumes/networks all empty.
+API image ID is
+`sha256:d47d3993d624783ffbac6da68c76ee91dd06e485ee1842c3b4bb6022811fd181`,
+reported digest
+`ghcr.io/midtown-technology-group/bifrost-ci-api-dev@sha256:91986f5895c07d9b5dbde7f263de8125f4999e30ab99123a3c89778312689f8b`.
+This accepts the bounded collector/construction source only; actual Redis,
+public nominal, process custody, committed lineage and closure remain gates.
+It does not accept later uncommitted recipe/mount changes.
+
+The same artifact reports Docker server28.0.4 and Compose2.38.2. Independent
+primary-source review confirms server28.0.4's source default API1.48, so the
+held privileged packet's fixed API1.51 is not a supported-platform assumption.
+Live daemon maximum was not read. The selected fixed CLI archive simplification
+avoids that custom API parser. Compose2.38.2 source supports the selected
+normal-init flags; installed CLI/config/init/runtime proof remains required.
+No host Docker/runtime command was executed to obtain these hosted artifacts.
+
+
+## Reviewed lineage and public recipe candidates
+
+The [lineage contract](rust-core-mvp-agent-lineage.md) freezes source-correct
+Q0–Q7 predicates after independent review closed a wrong workflow-attempt field
+name and a missing generic known-ID exclusion query. Q4c binds actual UUID R/E
+to execution_attempts.logical_job_id, requires PA only across all types, and
+rejects a second row before unbounded loading. No fake parent/child FK, NULL
+transport token or atomic cross-request authority proof is introduced.
+
+Separately, root reviewed and committed test-only asset integration e9aa290ea
+and public-SDK recipe helper/unit candidate
+`a9020248ef370a914eec3ab4271628450e32f44b`. Independent mount review SHA256
+`d89be149db62304f99f2a550c4614d5123c65dd421be206a4eecec3ad3867df0`;
+independent recipe review SHA256
+`47b947317ade461147089f73201a832a4efecd756a16cfbc75467c4fabc70afe`.
+Module SHA256
+`dc0c99869005f19a2a1c71ba7a868cd39c3beebd97bffa47f15a25d9cd872f98`;
+unit SHA256
+`fa42d02c80e40abf92688707e21dbaad5da8d766418169aeb95bcb092f4b6656`.
+AST and locked Ruff0.15.12 check/format pass. Actual supported [run36968919042](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36968919042)
+compiler/closure, quality, units and literal pre-PR remain pending for this new candidate; prior
+6a96 acceptance does not transfer. Public models preserve their existing
+shallow frozen semantics: future consumers must verify actual submitted recipe
+bytes, not treat mutable nested containers as deep immutable authority.
+No authored import/registration, product API change, host helper release or
+nominal C1/Rust acceptance is included.
