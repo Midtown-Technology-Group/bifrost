@@ -9,11 +9,12 @@ deployment is authorized.
 
 Current reconciliation (2026-10-02): platform main
 `01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
-`9cfd2a6adb87f2bfc4d627feefdde7199373330b`. Both prerequisites remain
-ancestors. Workspace's latest five-file Ninja Solution/cursor/test/proof delta changes no
-selected Cove input or boundary checker. A fresh stdlib AST audit applying the
-repository's exact authored/boundary roots and exclusions passes2,111 boundary
-files (1,988 standard authored), zero forbidden imports and empty allowlist.
+`b3cf568378e43359e1149e88a65bea139b4b01c9`. Both prerequisites remain
+ancestors. Workspace's latest fourteen-file onboarding/Cisco Solution, release
+and test/CI/doc delta changes no selected Cove fixture source or boundary
+checker. A fresh stdlib AST audit applying the repository's exact authored/boundary
+roots and exclusions passes2,112 boundary files (1,989 standard authored), zero
+forbidden imports and empty allowlist.
 Historical source/test/deployed-image evidence below keeps its original pins.
 
 On 2026-10-01, fresh fetches returned platform main
@@ -821,3 +822,18 @@ and retained ancestry comparisons need freezing before source authoring.
 Neither conditional design nor the187 injected reader cases establishes full
 nominal source/process/closure/authority. Narrow real PostgreSQL reader/schema
 characterization may proceed independently; no domain acceptance follows.
+
+
+## Real PostgreSQL reader prerequisite
+
+[The narrow native-driver amendment](rust-core-mvp-agent-material-reader.md#native-driver-correction-and-actual-postgresql-characterization)
+records actual locked asyncpg's distinct native UUID class. The test reader now
+admits only the exact two native classes by identity, retains original objects
+and rejects hostile class-equality subclasses; no public reference/auth/schema
+behavior changes. Different review1a0ede47 accepts exact source5d5dac9f7,
+including a225-line read-only PostgreSQL characterization file and corrected
+native primary-key-only bind arguments for all32 fixed material queries.
+Its new supported CI/pre-PR verification is pending; prior e3bed injected-unit
+success does not prove these new bytes. Fixed actual-record positives are
+projection mechanics, not stored full lineage, postclosure freshness or nominal
+acceptance. Host SOURCE STOP and exhausted #1017 repair disposition remain.

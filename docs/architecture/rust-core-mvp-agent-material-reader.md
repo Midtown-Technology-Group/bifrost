@@ -18,7 +18,7 @@ AST catalog/SQL/native-alias admission and locked Ruff0.15.12 checks passed.
 No tests/DB/runtime/CI ran for those bytes. The acquisition implementation
 supplement requires its own different review and supported verification.
 
-Current two-file source candidate is reference commit
+Last supported two-file source candidate is reference commit
 `e3bed7f8cc2fbfa95eda61a7d93635e8a4fe2e3a`: reader SHA256
 `078aaabd5cbbb41e7cd9bfb7d3b73a80875af08c0c744a0bc5e01682466eaeba`,
 units `62908bce4bc3e6a6f0bf046ad1fd8545bf0c77f7ae3acdcc60116150561cff77`.
@@ -44,6 +44,46 @@ source tree4b65904f, main01cadfe, exit0 and actual empty owned resource inventor
 This is changed-candidate validation, not a rerun of failed6a154.
 No actual PostgreSQL observation, source custody or nominal acceptance follows
 from injected connection units. Prior release/source pins below are historical.
+
+## Native-driver correction and actual PostgreSQL characterization
+
+Source inspection of locked asyncpg0.31.0 found its optimized UUID decoder
+returns the distinct `asyncpg.pgproto.pgproto.UUID` class. The earlier exact
+stdlib-only return-value guard rejects that genuine native result; injected
+connection units did not exercise the actual decoder. This is a test-reader
+implementation defect, not approval to change the Python public reference.
+
+The narrow correction accepts ONLY exact stdlib UUID or exact driver UUID
+classes, using class identity comparisons and retaining the original object.
+Foreign subclasses, equality-spoofing metaclasses and serialized surrogates
+remain rejected. Input/public IDs, SQL casts, all other native types, isolation,
+resource bounds, discovery and uncertainty semantics remain unchanged.
+Reader SHA256 `403c3a163c529e9e7dc848550b9ff1a126522035766fe99ed3b02b7f9ad96deb`;
+unit SHA256 `9561e9a15c55bb6c3debea31a03230529456154fe1a4eb6b188aa170360a5bc7`.
+
+New sole characterization path
+`api/tests/e2e/platform/test_agent_reference_lineage_postgres.py`, SHA256
+`9f43dc898cf5bc2ab94c8d9ab40db34fa2b98f07c194e89ad2f73bad9e82aeb2`,
+is225 lines below the frozen250-line limit. It uses the existing supported lane's
+PostgreSQL16 connection, actual read-only transactions and actual asyncpg Records.
+It covers snapshot isolation/acquisition/COMMIT, caller transaction preservation,
+metadata drift negatives and all32 fixed material SELECTs with only each native
+primary key plus remaining budget. Integer/text keys are not treated as UUIDs;
+metadata selectors are not extra material bind arguments. Fixed SELECT positives
+exercise real native UUID metadata and material-object retention; these are
+projection mechanics, not persisted organization or nominal lineage evidence.
+
+Different implementation review SHA256
+`1a0ede47737aefec44cfd4fb44948325ade5aee051e0fcc59cf5394affae9129`
+accepts the exact three-file source candidate. Review caught equality-based class
+membership in an earlier guard; direct identity and the hostile-metaclass
+negative close that gap without widening the frozen interface. AST, exact
+Ruff0.15.12 and whitespace checks pass. The clean candidate is pushed as
+`5d5dac9f790f522b7eee5a3ad00f58db6d04dba0`, tree
+`b750bdf82154a7ad6204f4985cb2bb7ae3e14526`, containing current main01cadfe.
+A single supported changed-candidate CI request includes the unchanged pre-PR
+gate; runtime verification is pending. No actual PostgreSQL or new unit execution
+is yet claimed.
 
 Disposition: root freezes the independently reviewed MATERIAL-ONLY interface
 below. Builder package **C1-R-MATERIAL-S** may implement only
