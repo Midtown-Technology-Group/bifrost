@@ -339,11 +339,38 @@ async def create_event_source(
                     callback_url = _build_callback_url(source.id)
 
                     if adapter:
+                        # Resolve org-scoped integration auth when the adapter
+                        # requires it (mirrors the REST create path in
+                        # api/src/routers/events.py). Adapters without a
+                        # required integration intentionally subscribe with
+                        # integration=None.
+                        integration = None
+                        if adapter.requires_integration:
+                            if not integration_id:
+                                return error_result(
+                                    f"Adapter '{adapter_name}' requires integration"
+                                )
+                            try:
+                                from src.services.webhooks.auth import (
+                                    build_webhook_integration_credentials,
+                                    resolve_webhook_integration_auth,
+                                )
+
+                                credentials = await build_webhook_integration_credentials(
+                                    db,
+                                    UUID(integration_id),
+                                    org_uuid,
+                                )
+                                integration = await resolve_webhook_integration_auth(
+                                    credentials
+                                )
+                            except ValueError as e:
+                                return error_result(str(e))
                         try:
                             result = await adapter.subscribe(
                                 callback_url=callback_url,
                                 config=webhook_config or {},
-                                integration=None,  # TODO: load integration if needed
+                                integration=integration,
                             )
                             webhook_source.external_id = result.external_id
                             webhook_source.state = result.state
