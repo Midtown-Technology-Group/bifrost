@@ -51,8 +51,11 @@ def history(tmp_path, monkeypatch):
     base = release.git("rev-parse", "HEAD")
     prs = []
 
-    def commit(title="fix: compatible", *, branch="feature", labels=()):
-        Path("feature.txt").write_text(title)
+    def commit(
+        title="fix: compatible", *, branch="feature", labels=(), write_feature=True
+    ):
+        if write_feature:
+            Path("feature.txt").write_text(title)
         release.git("add", ".")
         release.git("commit", "--allow-empty", "-qm", title)
         sha = release.git("rev-parse", "HEAD")
@@ -141,7 +144,7 @@ def test_concurrent_merge_invalidates_candidate(history):
 def test_revert_is_included_and_does_not_erase_prior_bump(history):
     original = history["commit"]("feat: new command")
     release.git("revert", "--no-commit", original)
-    source = history["commit"]("revert: new command")
+    source = history["commit"]("revert: new command", write_feature=False)
     candidate = release.calculate(source, history["prs"])
     assert candidate["version"] == "v1.1.0"
     assert len(candidate["pull_requests"]) == 2
@@ -249,11 +252,26 @@ def test_changed_classification_requires_new_review(history):
         release.validate_candidate(source, history["prs"])
 
 
-def test_pending_release_does_not_recursively_prepare(history):
+def test_pending_release_does_not_recursively_prepare(history, monkeypatch):
     source, _, _ = history["candidate"]()
     history["commit"]("fix: arrived during packaging")
     assert release.prepare(release.git("rev-parse", "HEAD"), history["prs"]) is None
     release.git("tag", "v1.1.0", source)
+    monkeypatch.setattr(
+        release,
+        "api",
+        lambda *args, **kwargs: [
+            [{"tag_name": "v1.1.0", "draft": True, "immutable": False}]
+        ],
+    )
+    assert release.prepare(release.git("rev-parse", "HEAD"), history["prs"]) is None
+    monkeypatch.setattr(
+        release,
+        "api",
+        lambda *args, **kwargs: [
+            [{"tag_name": "v1.1.0", "draft": False, "immutable": True}]
+        ],
+    )
     assert (
         release.prepare(release.git("rev-parse", "HEAD"), history["prs"])["version"]
         == "v1.1.1"

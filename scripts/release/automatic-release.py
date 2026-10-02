@@ -272,6 +272,16 @@ def pending_release(source: str, prs: list[dict]) -> bool:
         raise ReleaseError(
             f"existing {tag} points outside its merged release candidate"
         )
+    releases = array_pages("releases?per_page=100")
+    if not any(
+        item.get("tag_name") == tag and not item.get("draft") and item.get("immutable")
+        for item in releases
+    ):
+        print(
+            f"Release {tag} is still packaging; preserve its candidate until immutable publication.",
+            file=sys.stderr,
+        )
+        return True
     return False
 
 
