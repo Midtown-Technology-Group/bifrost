@@ -1,12 +1,14 @@
 # Mechanical writer exclusion: investigation and preflight
 
-Status: independently reviewed source investigation; no schema, role,
-provisioning, runtime or authority-builder release. This is a prerequisite to
-C2/C3, not proof of mixed-writer safety and not a global Rust STOP.
+Status: independently reviewed source investigation and completed isolated-CI
+identity collection. Observed test-runner superuser/table-owner authority does
+not establish writer security. No schema, role, provisioning or authority-builder
+release. C2/C3 and mixed-writer acceptance remain gated; this is not a global
+Rust STOP.
 
-Source reviewed: platform reference
+Historical investigation source: platform reference
 `701aaccd7956b1a3224fc561e4edc72368e88ace`, incorporating main
-`01cadfe09710d293a40da14d6cf4056165289e31`. Fresh workspace main is
+`01cadfe09710d293a40da14d6cf4056165289e31`. Workspace source at that investigation checkpoint was
 `7fa1c2e045c103b5a118cf1d44c95e749eb184b6`; selected authored inputs and
 public-boundary checks remain unchanged. Full A readiness and B
 Agent → capacity workflow → answer → summary remain required.
@@ -80,9 +82,12 @@ including legitimate incurred-usage and terminal-race behavior.
 
 ## Stage 0: existing identity and ownership receipt
 
-This is the next bounded diagnostic package, to be source-frozen and reviewed
-before execution in a supported isolated CI or dedicated VM lane. No current
-receipt or new test implementation is claimed.
+The investigation originally specified this bounded diagnostic before source
+freeze and supported execution. It has since been implemented and collected;
+the [retained-receipt checkpoint](#retained-receipt-collection-passed-writer-safety-not-established)
+below records exact source/run/artifact evidence and unsafe observed authority.
+The original scope and interpretation rules follow; they are not a claim that
+collection is still pending.
 
 Inspect existing connection paths only: pool/frontend/backend identities,
 session_user/current_user across repeated transactions, role flags/membership,
