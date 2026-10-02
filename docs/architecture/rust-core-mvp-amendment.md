@@ -18,15 +18,16 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
-As of the latest fetch, platform main is `01cadfe09710d293a40da14d6cf4056165289e31`
-and workspace main is `be6f914bb2f7d063a2f18bb832e2df4e565e069e`. Its latest
-advance from `7fa1c2e04` stages reviewed Cove Provider/Global onboarding Source
-recipes, documentation and recipe tests: four files,579 insertions/3 deletions.
-No selected Cove input, readiness workflow or boundary-checker byte changes.
-This is source evidence, not delivery/deployment proof. The current workspace audit passes
-2,115 boundary files (1,992 standard authored
-files), zero forbidden imports and an empty allowlist. Earlier source/test
-evidence below retains its actual provenance.
+As of the latest fetch, platform main is `bf81a30b594a7d28d1282f60d41e14d32dc44722`
+and workspace main is `4fbb35b27691b993917affc9cdf8d0af44f3cef8`.
+Platform #1029 changes client compiler/types/tests only. Workspace advances
+be6→4fbb via #1144's exact NinjaOne device/alert reset and #1141's reviewed Halo
+Source-delivery configuration: five files,208 insertions/43 deletions. No selected
+Cove input, readiness workflow or boundary-checker byte changes. This is source
+evidence, not delivery/deployment proof. The current workspace AST audit passes
+2,116 boundary files (1,993 standard authored files), zero forbidden imports and
+an empty allowlist. Both prerequisite merges remain ancestors. Earlier
+source/test evidence below retains its actual provenance.
 
 The lifecycle/authority audit used `e77947fab5762e49dd5fdc390bd65ca84bc22c3c`.
 The initial pre-PR refresh advanced main through #1010; that seven-file
