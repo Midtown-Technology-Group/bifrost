@@ -50,5 +50,12 @@ assert sql("fixture_python", f"SELECT status,output->>'ready',answered FROM owne
 identity = sql("fixture_rust", "SELECT session_user,current_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")
 assert identity == "fixture_rust|fixture_rust|f|f", identity
 assert sql("fixture_rust", "SELECT count(*) FROM pg_class c JOIN pg_roles r ON r.oid=c.relowner WHERE c.relnamespace='ownership'::regnamespace AND r.rolname IN ('fixture_python','fixture_rust','fixture_summary')") == "0"
+parent = "55555555-5555-4555-8555-555555555555"
+attempt = "66666666-6666-4666-8666-666666666666"
+sql("fixture_rust", f"INSERT INTO ownership.agent_runs(id,control_owner,status) VALUES ('{parent}','rust','completed')")
+sql("fixture_rust", f"INSERT INTO ownership.execution_attempts(id,logical_job_type,logical_job_id,status) VALUES ('{attempt}','agent_run','{parent}','succeeded')")
+sql("fixture_python", f"DELETE FROM ownership.agent_runs WHERE id='{parent}'", True)
+sql("fixture_rust", f"DELETE FROM ownership.agent_runs WHERE id='{parent}'")
+assert sql("fixture_rust", f"SELECT count(*) FROM ownership.execution_attempts WHERE id='{attempt}'") == "0"
 json.dump({"status": "candidate-fixture-only", "checks": checks}, sys.stdout, indent=2)
 print()
