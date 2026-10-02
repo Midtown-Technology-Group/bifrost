@@ -147,6 +147,67 @@ class TestIntegrationOAuthPKCEWorkflow:
             )
 
     @pytest.mark.asyncio
+    async def test_mapping_callback_replay_rejected_over_http(
+        self, e2e_client, platform_admin, pkce_provider, org1, db_session
+    ):
+        """Per-mapping signed state is single-use: replay gets 400, stores nothing.
+
+        The first callback consumes the mapping nonce and the PKCE verifier
+        (its exchange cannot reach a provider, which is incidental). The
+        replayed state must be rejected by the early nonce check — before
+        any exchange or token storage — leaving zero token rows behind.
+        """
+        from sqlalchemy import func, select
+
+        from src.models.orm import OAuthToken
+
+        integration_id = pkce_provider["integration"]["id"]
+        mapping_resp = e2e_client.post(
+            f"/api/integrations/{integration_id}/mappings",
+            headers=platform_admin.headers,
+            json={
+                "organization_id": str(org1["id"]),
+                "entity_id": "pkce-replay-123",
+                "entity_name": "PKCE Replay",
+            },
+        )
+        assert mapping_resp.status_code == 201, f"Create mapping failed: {mapping_resp.text}"
+        mapping_id = mapping_resp.json()["id"]
+
+        try:
+            auth_resp = e2e_client.post(
+                f"/api/integrations/{integration_id}/mappings/{mapping_id}/oauth/authorize",
+                headers=platform_admin.headers,
+                json={"redirect_uri": REDIRECT_URI},
+            )
+            assert auth_resp.status_code == 200, f"Authorize failed: {auth_resp.text}"
+            state = self._assert_pkce_authorize_url(auth_resp.json()["authorization_url"])
+            # Signed per-mapping state (not an opaque integration-level state).
+            assert "." in state
+
+            first = self._callback(
+                e2e_client, platform_admin, pkce_provider, state=state, code="code-first"
+            )
+            assert first.status_code == 200, f"First callback failed: {first.text}"
+
+            replay = self._callback(
+                e2e_client, platform_admin, pkce_provider, state=state, code="code-replay"
+            )
+            assert replay.status_code == 400, f"Replay was not rejected: {replay.text}"
+
+            token_count = await db_session.scalar(
+                select(func.count())
+                .select_from(OAuthToken)
+                .where(OAuthToken.provider_id == pkce_provider["provider"].id)
+            )
+            assert token_count == 0, "Replay or failed exchange stored a token"
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration_id}/mappings/{mapping_id}",
+                headers=platform_admin.headers,
+            )
+
+    @pytest.mark.asyncio
     async def test_callback_replay_rejected_over_http(
         self, e2e_client, platform_admin, pkce_provider
     ):
