@@ -65,8 +65,7 @@ which upstream tag or commit range the MTG release incorporated.
 7. Close the open `Release vX.Y.Z` issue as completed. The **Release tag**
    workflow tags `main` at that version (guarded by green main checks and a
    version-drift check). The current token-created tag does not trigger downstream
-   push CI;
-   packaging must be explicitly dispatched on the checked tag. Tag CI builds
+   push CI; packaging must be explicitly dispatched on the checked tag. Tag CI builds
    signed images and publishes the GitHub Release after asset upload.
 8. Release notes must include a **Fixed vulnerabilities** section (OpenSSF
    Passing requirement) and an upstream baseline note when relevant.
