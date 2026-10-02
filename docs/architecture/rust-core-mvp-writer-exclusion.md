@@ -269,25 +269,25 @@ above. It does not accept writer security or globally passing CI.
 A bounded independently reviewed inventory against main
 `4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` extends the Stage1 prerequisite:
 
-- `api/models/orm/executions.py:286` omits ExecutionLog FK ondelete, while
+- `api/src/models/orm/executions.py:286` omits ExecutionLog FK ondelete, while
   `api/alembic/versions/20241128_000000_initial_schema.py:194` declares CASCADE.
   This is a source declaration difference, not observed catalog behavior.
   Read the migration chain and installed constraint before freezing guards.
-- `api/models/orm/ai_usage.py:80–89,133` allows several simultaneous non-null
+- `api/src/models/orm/ai_usage.py:80–89,133` allows several simultaneous non-null
   execution/conversation/run parents. Every OLD/NEW parent and every ancestor
   cascade/detachment path matters, including conversation deletion of usage
   also associated with a protected execution/run. No exactly-one-parent guess.
-- `api/models/orm/agent_runs.py:101` self-parent CASCADE extends descendant closure;
-  `api/models/orm/events.py:414` reverse run-to-delivery SET NULL also mutates
+- `api/src/models/orm/agent_runs.py:101` self-parent CASCADE extends descendant closure;
+  `api/src/models/orm/events.py:414` reverse run-to-delivery SET NULL also mutates
   evidence. Plain event delivery execution_id has no FK. Solution, agent,
   conversation, user and source-pin ancestors cannot be ignored.
-- `api/routers/agent_runs.py:873–895` flag GET is a committed writer. The tuning
+- `api/src/routers/agent_runs.py:873–895` flag GET is a committed writer. The tuning
   helper locks an existing flag conversation but cannot lock a nonexistent row;
   unique/create conflict and retained annotation behavior require testing.
-- `api/jobs/dlq_cli.py:289–317` PostgreSQL discard recovers interrupted work,
+- `api/src/jobs/dlq_cli.py:289–317` PostgreSQL discard recovers interrupted work,
   requires completed domain disposition, audits and commits; it retains the
   delivery. Do not infer transport DELETE authority from the operation name.
-- `api/services/work_delivery_store.py:50–61` ownership checks lock a delivery
+- `api/src/services/work_delivery_store.py:50–61` ownership checks lock a delivery
   only when current_delivery supplies an active lease. Helper-derived
   domain→delivery lock order is conditional; explicit recovery locks are
   separate. Source orders do not prove implicit FK/cascade deadlock freedom.
