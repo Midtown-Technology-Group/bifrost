@@ -1127,3 +1127,19 @@ Checker SHA256 remains
 #1112 remains an ancestor. Platform main remains4abdf1a1. This is current source
 evidence; earlier executions retain their actual pins and no new runtime or
 credential authority follows from the workspace CI change.
+
+
+## Latest workspace source reconciliation: a175d7f4
+
+Freshly fetched workspace main `a175d7f4624e8765c05219eed5768bf72d67bc8f`
+(#1146) adds guarded Cisco Secure Client Solution delivery source and adjusts
+its SDK lock/CI documentation: five files, +235/-13 from bd3739ff. Selected
+A/Cove inputs and the public-boundary checker remain byte-identical. The clean,
+detached source-audit worktree yields 2,116 boundary files, 1,993 standard authored
+files, zero forbidden imports and an empty allowlist using stdlib AST inspection;
+no authored code or checker module was imported or executed. Checker SHA256
+remains `b3e71f317b8d72d85ab17f7a28a32c631e3b72546872e67c00dd8eccdc8bf2e4`.
+#1112 remains an ancestor; freshly fetched platform main remains
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6`, containing #1001. Original user
+checkout remains untouched. This source checkpoint does not relabel earlier
+runtime pins or establish installation, deployment or new authority.

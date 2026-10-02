@@ -368,3 +368,52 @@ Accept limited raw collection only; full associated custody/required checks
 remain blocked. R1 adds exact same-job read-only resource verification and must
 receive independent source review and supported execution on its new candidate.
 Reconciliation/security readiness, Stage1 and C2/C3 remain STOP.
+
+
+### Corrected83d custody and exact bounded FK reconciliation
+
+[WEX-CAT0 #1035](https://github.com/Midtown-Technology-Group/bifrost/pull/1035)
+at83d2a8eeb passed exact-head CI37041198158 and literal pre-PR. Its named catalog
+PASS and same-E2E-job EMPTY inventory received independent associated-evidence
+acceptance; [catalog package](rust-core-mvp-writer-catalog-receipt.md) records
+source/image/artifact hashes and limits. Earlier2da remains globally failed.
+
+Distinct stdlib AST/git source reconciliation against main4ab resolves203 FK
+source declarations globally:195 simple (194 literal plus one constant-target)
+and eight composite. Of162 installed scoped constraints,160 match one
+unambiguous exact ordered ORM declaration; two legacy schedules edges have
+migration explanations. No source-only incident declaration or explicitly
+specified DELETE/UPDATE action disagreement was found. All145 explicitly
+specified DELETE actions and24 UPDATE actions match. Explicitly named constraints
+match; all installed scoped FKs are validated, local, immediate/nondeferrable,
+MATCH SIMPLE. This does not assert equality of uncollected semantic properties.
+
+Two ORM-omitted DELETE actions are installed CASCADE and migration-explained:
+execution_logs.execution_id→executions.id (initial migration) and
+integration_mappings.organization_id→organizations.id
+(`api/alembic/versions/20251221_000000_add_integrations_tables.py:57`, versus ORM `integrations.py:149`).
+The latter is another ancestor-side collateral consequence; it is not an
+approved ORM repair or automatic Rust write scope expansion. Four composite
+parent/base/dependency/active Solution pins match ordered columns and RESTRICT/
+NO ACTION; the separate constant-target own-deployment FK retains multiplicity.
+Legacy schedules organization NO ACTION and creator user SET NULL agree with
+the20241203/20260331 migrations. No retained table deletion is authorized.
+
+Structural reconciliation report SHA256:
+`c127184a6c28a474ce7755c559a45837f0a4eda00cd5132e57b39315c5e841c5`;
+per-constraint JSON SHA256:
+`87bdc403f12f47587a573475fc514e1cc98f062e75f99c0a0a06b167ac1e75cb`.
+Independent83d retained review
+`a84e6db340354b02d2b5f83b8a66fb93fed384fa0686850eeaf8abd65d65597f`
+confirms exact structural query equality from2da to83d, including OIDs, actions,
+names, ordered composites and multiplicity, so this bounded comparison carries
+forward without normalized structural differences.
+
+This is partial structural reconciliation. It excludes43 source declarations
+outside the fixed incident scope, deeper boundary collateral, arbitrary ORM
+metaprogramming, full migration operational replay, CHECK/policy/trigger/function
+semantics, row/default/nullability/index equivalence, source lock ordering and
+denied-commit external effects. Current test role remains superuser/BYPASSRLS.
+Actual deployed API/worker/scheduler identities, least-authority admission,
+mechanical mixed-writer exclusion and rollback remain unproved. No Stage1,
+role/schema/guard change or C2/C3 release follows from collection PASS.

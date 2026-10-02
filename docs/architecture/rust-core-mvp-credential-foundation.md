@@ -293,15 +293,28 @@ The reference observed these compatibility differences:
   identity. These reads emitted no owned-resource AuditLog event. That absence
   is not proof of actor attribution or a durable recovery audit event.
 
-These are executed observations, not approved dedicated-purpose policy. The
-engine token records `delegated_is_external`, but the selected data filter reads
-primary principal/user-row external status. H/R must explicitly settle external
-admission, the mapping response profile, route-local actor attribution,
-mixed-credential/default-deny ingress and maintenance disposition before public
-wiring. Neither copying engine external disclosure nor switching to direct-human
-restrictions is silently authorized. The narrow credential mechanism approval
-remains unchanged. Public H/R, real caller/session/source/supervisor custody and
-all C2/C3 gates remain uncompleted; source permissions remain empty.
+These observations create design and evidence obligations for dedicated-purpose
+credentials. The user-approved proposal at `eaded7ca5517f56f8d07f6e675f88173181668e7`
+expressly preserves allowed SDK handlers' Engine transport projection and response
+behavior behind closed, attempt/session-bound authorization. Preserving that
+bounded profile is already authorized; REF findings do not require renewed scope
+approval. Transport superuser claims must never confer grant authority: trusted
+original-caller entitlement, organization, accepted source, committed attempt,
+session and fence checks precede projection. Dedicated ingress, exact selectors,
+actor/context restoration, nonupgrading renewal and negative tests must be frozen
+and independently reviewed before implementation. No new external/global or
+foreign-organization entitlement may be inferred from legacy Engine behavior.
+Substituting direct-human response/actor semantics, expanding authority or
+changing broader legacy authentication remains a material scope change.
+
+Independent source-only approval reconciliation SHA256:
+`6a3ae86a70f2ad92a60c4895ba3d171fdab4856444b2743cce3e7812564ec70c`.
+The audit verified the original approved document and pinned #1024/#1026 source;
+it did not release public wiring or run authorization tests. A concrete H/R design
+packet can advance under existing approval. Public H/R, real caller/session/source/
+supervisor custody and all C2/C3 gates remain uncompleted; source permissions
+remain empty. Shared vendor OAuth redirect behavior is a separate impact/design
+gate, not permission to rewrite legacy callers or waive transport confinement.
 
 ## Legacy SDK reference characterization packet
 

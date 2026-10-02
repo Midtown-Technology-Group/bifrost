@@ -3,7 +3,8 @@
 Architect disposition: **released for bounded test-only implementation** after
 independent source review. This release covers the four owned diagnostic/test/CI
 paths below. It does not release Stage1 role, schema, guard or authority changes,
-or C2/C3. No runtime evidence has yet been collected for this package.
+or C2/C3. The corrected candidate's bounded collection/custody evidence is
+accepted below; security readiness remains unestablished.
 
 Frozen reviewed design SHA256:
 `a687ab1cc2d24509eb3341776d274fdd290fce0139476d6198113e4da9f71d43`.
@@ -12,8 +13,9 @@ Independent package review SHA256:
 The source-design record below retains its original proposal status; this
 architect disposition is the test-only implementation release. Subsequent
 implementation must receive distinct source review and supported verification.
-Actual installed graph, source reconciliation and security readiness remain
-unproved. The receipt observes two test-runner sessions, not deployed API,
+The scoped installed test graph now has bounded collection and partial
+structural reconciliation; complete source semantics and security readiness
+remain unproved. The receipt observes two test-runner sessions, not deployed API,
 worker/scheduler principals or mechanical mixed-writer exclusion.
 
 
@@ -21,8 +23,8 @@ worker/scheduler principals or mechanical mixed-writer exclusion.
 
 The four-file source implementation received distinct independent source review:
 `b5179ee1d5c274202b3f2effaee8b164c2abd15782408643ce7329fcff861011`.
-This accepts source for supported verification; no unit, quality, catalog or
-custody test has run for it yet.
+This was the initial source acceptance for supported verification. The current
+executed corrected candidate is recorded in the associated-evidence section below.
 
 Current main `4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` has no hosted job
 that invokes the required literal clean-candidate `./test.sh pre-pr`. Ordinary
@@ -129,6 +131,59 @@ exact insertion review before one supported run of the new fixed candidate.
 Retain the failed run; never rerun the unchanged candidate until green. Actual
 catalog receipt/JUnit/source/image association and that E2E job's cleanup
 receipt remain mandatory. No role/schema/guard, Stage1 or C2/C3 release.
+
+## Corrected candidate: associated diagnostic evidence accepted
+
+[WEX-CAT0 PR #1035](https://github.com/Midtown-Technology-Group/bifrost/pull/1035)
+is ready for review at `83d2a8eeb8641f2483e11d6f88a92dd78b91380c`, tree
+`002afe48d36bde41983afe45e1fdf9984a65b2cb`, based on main
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6`. Its four-path scope includes only
+the collector, pure contract helper, units and explicitly reviewed verification
+amendments. R1 exact-source/insertion review SHA256:
+`1f66ca2b952c6efdd7dd72b8d26a1f916561b3a1cef09e4acb70a16f9444cf7c`.
+
+[Exact-head CI37041198158](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37041198158)
+completed SUCCESS: API quality, all runtime/browser lanes and the literal clean
+`./test.sh pre-pr` passed. The unit job records87 catalog cases and11,721 total
+backend passes, three unrelated existing skips and35 deselections. Deployment
+jobs intentionally remain skipped under the fork's normal guards. No benchmark
+threshold or test expectation was changed. Initial2da remains historically failed.
+
+Pre-PR job110951681932/artifact11242298488 binds exact candidate/tree/main,
+exit0, cleanup0 and actual EMPTY owned resources. Its completed plan stages are
+repository/generated/quality/client; runtime results belong to their separate
+CI jobs, not this stage receipt. ZIP SHA256:
+`891f0729bfb5c93375f69e88b1a39554b04eae93cadc55c97ca273c331e32f21`.
+
+E2E shard4/job110951682111/artifact11242930745 retains exactly one nonskipped
+PASS `tests.e2e.platform.test_writer_catalog_receipt::test_collect_existing_writer_catalog_receipt`
+(0.341s), its519962-byte readback-matching receipt, and **that same E2E job's**
+actual resource inventory: successful teardown, EMPTY containers/volumes/networks
+for project `bifrost-test-0b7397c6`. No other job's cleanup was borrowed.
+ZIP SHA256 `be475a9ffd4a220a569ad3541b65aface031ded50df1ce3ab1e1afbe0d81858c`;
+receipt SHA256 `b64b0a7e6a33767a8fcd218f16eab854dce62c60f830ee853937fec808120270`.
+GitHub artifact metadata binds exact branch/head/run. Actual E2E API-image pull
+digest is `sha256:3b1906e2e96667a8e9efd7add1a62d59a2efcd0454d60af0d6ff72a6c1d6380c`;
+no manual job's local image ID is relabeled as E2E or deployment evidence.
+
+Distinct independent retained-evidence review SHA256:
+`a84e6db340354b02d2b5f83b8a66fb93fed384fa0686850eeaf8abd65d65597f`.
+It verifies native/schema/source/query/contract association, named PASS and
+same-job custody, and accepts **bounded diagnostic collection only**. Current
+Q0/Q2–Q8 values, including OIDs/actions/owners/ordered composites, exactly match
+2da without structural normalization. Only Q1 backend PID/postmaster start are
+cross-run differences; within-run direct/pool identity rules remain strict.
+Both samples retain12 roots/A28/D13/V28/B69/S97/FK162 and Q0–Q8 counts
+12/1/15/97/162/168/771/0/1. Partial source FK reconciliation is recorded in
+[writer exclusion](rust-core-mvp-writer-exclusion.md).
+
+The receipt's pending reconciliation/security labels remain truthful. The
+observed principal is superuser/BYPASSRLS; policies are absent and some nonempty
+native-array codecs remain unobserved. The0777 results directory is supported
+observational custody, not an immutable credential namespace. No semantic
+CHECK/policy/trigger/function proof, full collateral graph, deployed principal,
+writer exclusion, role/schema/guard authority, Stage1, C2/C3 or MVP acceptance
+follows. PR publication does not authorize merge or deployment.
 
 ## Architect test-seam and supported-directory clarifications
 
