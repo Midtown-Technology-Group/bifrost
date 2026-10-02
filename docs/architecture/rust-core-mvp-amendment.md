@@ -18,10 +18,10 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
-As of the latest fetch, platform main is `e58db4955ddd30177bd613f1d85b7e203ad7832a`
-and workspace main is `c1856d2fbc7530c65c67adfd28e4896ec402ccbf`. Its advance
-from retained `e8605dc8` changes one iDRAC PowerShell script only; selected
-Python inputs and boundary checker bytes are unchanged. The
+As of the latest fetch, platform main is `01cadfe09710d293a40da14d6cf4056165289e31`
+and workspace main is `9941427941587d253540942b714c5e2b7abfc410`. Workspace advances
+from retained `e8605dc8` include the iDRAC script and Ninja alert reconciliation;
+selected Cove inputs and boundary checker bytes are unchanged. The
 current workspace audit passes 2,107 boundary files (1,984 standard authored
 files), zero forbidden imports and an empty allowlist. Earlier source/test
 evidence below retains its actual provenance.
@@ -35,8 +35,12 @@ All four PRs are open and unmerged. #1009's complete Rust and ordinary CI passed
 apart from CodSpeed analysis. #1008's latest reference run `36829787888` passed
 at its exact head; earlier `36827831696` established 90/90 reference/mutant cases.
 Review threads in #1005/#1008 are resolved; #1006/#1009 have no inline findings.
-Known cross-environment analysis repair [#1003](https://github.com/Midtown-Technology-Group/bifrost/issues/1003)
-remains open. Do not rerun benchmarks until green or change thresholds.
+The W0 CodSpeed failures above are historical. Maintainer-directed
+[#1028](https://github.com/Midtown-Technology-Group/bifrost/pull/1028) retired the
+integration and closed [#1003](https://github.com/Midtown-Technology-Group/bifrost/issues/1003)
+as not planned. This does not repair those measurements or establish comparable
+performance; new evidence follows the controlled load-lab methodology. Do not
+rerun historical benchmarks until green or change thresholds.
 Normal local pre-PR API type gates previously failed (W0-A 3,944 errors; W0-B
 3,954; 89 warnings each). Hosted passes do not waive those gates or prove their
 cause. Fresh default-profile Docker readback on `pve-t340` failed a Python

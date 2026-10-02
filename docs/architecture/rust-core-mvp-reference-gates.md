@@ -318,6 +318,29 @@ source review into model/tool/summary or mixed-writer acceptance.
 
 ## Current workspace reconciliation and reference integration
 
-Current fetched platform main remains `e58db4955ddd30177bd613f1d85b7e203ad7832a`; workspace main advanced to `9941427941587d253540942b714c5e2b7abfc410` (#1129). Its two-file delta from c185 changes Ninja alert reconciliation and its unit tests. Selected Cove sources and the static boundary checker are unchanged. The exact detached 9941427 checkout passes the workspace-owned AST audit: 2,107 boundary files, 1,984 standard authored files, zero forbidden imports and an empty allowlist. Workspace #1112 remains an ancestor; no authored code was imported or executed. The earlier c185 snapshot above remains historical evidence.
+The preceding reconciliation used platform main `e58db4955ddd30177bd613f1d85b7e203ad7832a`; workspace main advanced to `9941427941587d253540942b714c5e2b7abfc410` (#1129). Its two-file delta from c185 changes Ninja alert reconciliation and its unit tests. Selected Cove sources and the static boundary checker are unchanged. The exact detached 9941427 checkout passes the workspace-owned AST audit: 2,107 boundary files, 1,984 standard authored files, zero forbidden imports and an empty allowlist. Workspace #1112 remains an ancestor; no authored code was imported or executed. The earlier c185 snapshot above remains historical evidence.
 
 The [reference integration specification](rust-core-mvp-agent-reference-integration.md) now records private observer TLS, verified-reader mode0600 capability ownership, role-isolated status mounts, the dedicated host-status directory, named-only staged reset bypass and retained transient init custody. These are bounded reference-lane construction decisions, not public authorization changes, C2/C3 acceptance or a new #1017 repair cycle. No actual nominal model/tool/summary run, live vendor call, merge or deployment follows from this source review.
+
+## Latest main and oracle source reconciliation
+
+The next literal documentation pre-PR refresh advanced platform main to
+`01cadfe09710d293a40da14d6cf4056165289e31` (#1028). The stale docs candidate
+correctly failed before checks; root inspected the six-file delta, then merged
+current main locally. #1028 retires the CodSpeed workflow/dependency by maintainer
+direction, updates its workflow test and performance methodology, and changes
+only a comment in Compose. Selected product, SDK, agent, auth and schema behavior
+is unchanged. #1003 is closed as not planned; historical cross-environment
+measurements remain unsuitable decision evidence, not a current required CI
+check. No Rust comparison is inferred and no threshold was weakened here.
+Workspace main remains the exact audited9941427 above.
+
+The [model oracle](rust-core-mvp-agent-model-oracle.md) closes the selected full
+model/Cove transcript and adds only bounded private construction/readback
+families. Its shared codec and meaningful negatives passed independent SOURCE
+review; fixture/observer loader and retained-witness defects were repaired in
+uncommitted source. Actual tests, installed image/custody, real public worker
+trigger, DB/event/usage/result/summary joins and closure remain required.
+#1017 stays STOPPED after its one extra cycle; neither new docs nor source
+review transfers its385 passes into a healthy ordinary CI gate. No merge,
+deployment, vendor use, H/R or C2/C3 acceptance is authorized by these updates.
