@@ -981,7 +981,8 @@ mixed writers. Full A+B and one-database active-owner rollback remain required.
 The [Stage 0 checkpoint](rust-core-mvp-writer-exclusion.md#stage-0-source-candidate-and-execution-checkpoint)
 records independently reviewed one-test candidate827f44, the corrected
 package-specific footprint provenance and missing schema-owner completion.
-Supported CI37015218198 is pending; source acceptance is not an actual DB/pool
+At that source checkpoint, CI37015218198 was pending; subsequent execution
+and capture findings follow below. Source acceptance is not an actual DB/pool
 receipt or writer-exclusion proof. No DDL/roles/permissions/public hooks changed.
 Only diagnostic SELECTs are read-only; standard isolated harness setup/reset
 remains effectful. Existing actual artifact/JUnit/identity/cleanup verification
@@ -997,3 +998,20 @@ run finished, independently reviewed candidatef3c008 adds one narrow existing
 E2E retention step. New CI37017334293 is pending, with exact matching receipt,
 named passing JUnit, source/image/plan and cleanup readback still required.
 No root assertion, detached file or unrelated passing shard supplies this gate.
+
+## Current workspace source reconciliation: be6f914bb
+
+Fresh fetch pins platform main01cadfe09710d293a40da14d6cf4056165289e31 and
+workspace mainbe6f914bb2f7d063a2f18bb832e2df4e565e069e (#1143). Both #1001/#1112
+remain ancestors. The7fa→be6 four-file delta stages reviewed Source recipes and
+related documentation/tests; it changes no selected A readiness, four Cove
+Python inputs or boundary-checker byte. The dedicated clean source worktree was
+advanced; the original user checkout remains untouched.
+
+Fresh stdlib AST audit mirrors the exact current checker roots/exclusions:
+2,115 boundary files/1,992 standard authored, zero forbidden src/SQLAlchemy
+imports and explicit empty allowlist. Checker SHA256
+`b3e71f317b8d72d85ab17f7a28a32c631e3b72546872e67c00dd8eccdc8bf2e4`.
+Prior7fa audit and installation/runtime evidence retain their actual pins;
+current source is not relabeled as an installed Solution or nominal execution.
+No workspace accommodation, authored rewrite, role mutation or C2/C3 release.

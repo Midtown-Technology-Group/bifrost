@@ -19,11 +19,11 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
 As of the latest fetch, platform main is `01cadfe09710d293a40da14d6cf4056165289e31`
-and workspace main is `7fa1c2e045c103b5a118cf1d44c95e749eb184b6`. Its latest
-advance from `6bb2399a4` changes thirteen reviewed Source-delivery, registry CI,
-merge-queue, documentation and test files (491 insertions/37 deletions). Delivery
-still uses the public API and disables redirects; the four selected Cove inputs,
-readiness workflow and boundary checker bytes are unchanged. The current workspace audit passes
+and workspace main is `be6f914bb2f7d063a2f18bb832e2df4e565e069e`. Its latest
+advance from `7fa1c2e04` stages reviewed Cove Provider/Global onboarding Source
+recipes, documentation and recipe tests: four files,579 insertions/3 deletions.
+No selected Cove input, readiness workflow or boundary-checker byte changes.
+This is source evidence, not delivery/deployment proof. The current workspace audit passes
 2,115 boundary files (1,992 standard authored
 files), zero forbidden imports and an empty allowlist. Earlier source/test
 evidence below retains its actual provenance.
