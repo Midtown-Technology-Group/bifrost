@@ -4,13 +4,13 @@ Decision remains **CONTINUE SPIKE**. This audit preserves the complete requested
 end state; passing the independent prototype does not close the active goal.
 
 Current executable evidence is hosted CI
-[36959239986](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36959239986),
-exact source `430ab81f94db3dd1cbedad560a945fb62da13eb9`, SDK **0.0.0-spike.2**.
+[36962353236](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36962353236),
+exact source `8dbb5169bc3e90dd6d9f32d8c62d7fc350ca4ace`, SDK **0.0.0-spike.2**.
 The compiled workflow is 9,920,235 bytes with SHA256
 `160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
 Source/binary closure and ephemeral descriptor signature have been read back
 without physical-host workload execution. Downloaded evidence is retained at
-`/home/thomas/src/bifrost-go-spike-artifacts/430ab81f94db3dd1cbedad560a945fb62da13eb9/`.
+`/home/thomas/src/bifrost-go-spike-artifacts/8dbb5169bc3e90dd6d9f32d8c62d7fc350ca4ace/`.
 
 ## Requested end-to-end requirements
 
@@ -43,7 +43,7 @@ when main reports ready. A main-based helper cannot provide pre-Start isolation;
 the trusted adapter must not link tenant packages and must delay launching them
 until validated Start and actual bound provision.
 
-The ownership candidate passes 33 direct PostgreSQL checks plus 16 pooled checks
+The ownership candidate passes 41 direct PostgreSQL checks plus 15 pooled checks
 with actual **PgBouncer1.22.0** transaction pooling. Distinct backend identities,
 non-owner/non-superuser/non-BYPASSRLS flags, foreign-write denial, exact summary
 fields, a live mixed-owner write race and rollback are exercised. Forced-user
@@ -52,6 +52,15 @@ denies Rust-owned mutation. The task pool is stopped/reaped. This remains a
 reduced agent/attempt fixture: actual workflow tables, migrations, configured
 BiFrost pool, incumbent writer paths, cascade/source/event/summary custody and
 in-flight mixed-owner drain are unproved.
+
+The owner-authorized cascade regression failed in run36962051890 at47d2572ec:
+the attempt trigger looked up a parent that had already disappeared. Corrected
+source8dbb5169 binds an immutable attempt owner through a composite parent FK,
+checks the bound owner during cascade, rejects forged/mismatched attempt owners,
+and removes the trigger's extra parent lock and table privileges. The earlier
+parent-first-lock comment was incorrect and has been removed. Green evidence
+above proves this correction in the fixture, not a reviewed migration or the
+shared program's complete transaction/lock order.
 
 ## Current external frontier
 
@@ -93,10 +102,10 @@ Go lifecycle/fixture result store would bypass the requested architecture.
 
 ## Developer experience and independence
 
-Latest run: cold compile with pre-resolved modules16.552s; independent cold16.623s;
-edited warm compile388.83ms; edit-to-artifact586.95ms; median local execution5.026ms
-and p955.509ms; first SDK request median4.411ms; cancellation0.500ms (one sample).
-Module resolution/verification79.97ms. Full CI preparation/testing/scanning is
+Latest run: cold compile with pre-resolved modules16.448s; independent cold16.167s;
+edited warm compile371.50ms; edit-to-artifact561.58ms; median local execution4.710ms
+and p955.113ms; first SDK request median4.141ms; cancellation0.445ms (one sample).
+Module resolution/verification98.05ms. Full CI preparation/testing/scanning is
 excluded from the edit-loop number. Full adapter/Rust execution overhead and a
 fair current Python performance baseline remain unmeasured.
 

@@ -9,6 +9,9 @@ executable initialization canary, actual pooled identity/race tests and an obser
 warm-edit output change pass in run36959239986 at430ab81f. See the
 [full completion audit](completion-audit.md) for all18 requirements, exact current
 source frontier, artifacts/timings and remaining protocol/security/authority gates.
+The subsequent cascade regression failed as intended in36962051890; the immutable
+composite-owner FK correction passes all jobs in36962353236 at8dbb5169, including
+41 direct/15 pooled checks. The audit now points to that final executable candidate.
 
 ## Continuation: shared contract and writer-exclusion code
 
