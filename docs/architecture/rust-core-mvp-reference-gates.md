@@ -629,10 +629,53 @@ Module SHA256
 `dc0c99869005f19a2a1c71ba7a868cd39c3beebd97bffa47f15a25d9cd872f98`;
 unit SHA256
 `fa42d02c80e40abf92688707e21dbaad5da8d766418169aeb95bcb092f4b6656`.
-AST and locked Ruff0.15.12 check/format pass. Actual supported [run36968919042](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36968919042)
-compiler/closure, quality, units and literal pre-PR remain pending for this new candidate; prior
-6a96 acceptance does not transfer. Public models preserve their existing
+AST and locked Ruff0.15.12 check/format pass. Supported
+[run36968919042](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36968919042)
+finished FAILURE: quality and units passed (12,584 passed, 3 unrelated skips,
+35 deselected; all 93 recipe and 93 lane cases passed), but literal pre-PR
+failed because ordinary `/app/reference-assets` exposed intentionally imported
+bootstrap fixture source to backend Ruff. Artifact11210927112 records failure,
+cleanup_status0 and actual empty containers/volumes/networks; cleanup does not
+turn failure into acceptance. Prior 6a96 acceptance does not transfer. Public models preserve their existing
 shallow frozen semantics: future consumers must verify actual submitted recipe
 bytes, not treat mutable nested containers as deep immutable authority.
 No authored import/registration, product API change, host helper release or
 nominal C1/Rust acceptance is included.
+
+
+## Asset-layout repair and dedicated host source release
+
+Root-reviewed candidate `a01437e68948ec08d96c070229e93144f40cde43`
+changes only Compose/renderer and their lane/recipe units. Ordinary assets are
+read-only at `/repo/reference-assets`, outside backend Ruff's `/app` root,
+with the explicit private asset-dir environment. The strictly validated named
+renderer remaps exactly one asset bind and that environment to the existing
+`/app/reference-assets`. No fixture source, helper behavior, lint rule,
+exclusion, suppression or SDK/product bytes were changed. Wrong/missing env,
+wrong role and extra/writable mounts fail closed. Independent repair review
+SHA256 `231e1823c24b0cb3b985db26be6b371250fd09d733bd64c07fc1a9d6911162b0`.
+
+Supported [run36969881943](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36969881943)
+finished SUCCESS at that exact head: quality, literal pre-PR, all API E2E
+shards, MCP conformance and client suites passed. Units: 12,587 passed,
+3 unrelated skips, 35 deselected, including all 93 recipe and 96 lane cases.
+Actual unit-log SHA256
+`2a440c520f696329ffda3fbd14408cfbf3655d0fb0566bce80032a43d1a5f57b`.
+Manual pre-PR artifact11211766041 records matching workflow/head a014,
+tree `3a40b3d60589355f0e4dffd47210812e377e42a0`, main
+`01cadfe09710d293a40da14d6cf4056165289e31`, exit0, cleanup_status0 and actual
+empty containers/volumes/networks. This is foundation/compiler/closure proof,
+not nominal agent execution, installed privilege custody or Rust parity.
+
+The [dedicated host interface](rust-core-mvp-agent-host-interface.md) now
+releases only C1-R-HOST-S's two source files after final independent proposal
+review. It supersedes generic-renderer elevation and pathname chown; fixed
+isolated bootstrap, protected sources and descriptor operations remain required.
+Actual helper bytes/record/bootstrap require independent source review and
+supported tests before runtime. No privileged command was run on pve-t340.
+
+The public setup contract also corrects the observation split: immutable
+registration metadata lives in manifest/resolution, while actual Workflow
+columns provide the persisted projection. No invented columns/schema change.
+The material-reader contract, its independent oracle/credential/storage
+adapters and nominal consumer remain gated; green units do not satisfy C1.
