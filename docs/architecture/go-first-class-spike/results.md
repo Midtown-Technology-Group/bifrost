@@ -4,6 +4,12 @@ Decision: **CONTINUE SPIKE**. G1/G2 authoring, build and local execution are pro
 Rust admission and durable finalization remain blocked on the existing shared
 runtime frontier. This is runnable evidence, not first-class acceptance.
 
+Latest continuation: SDK0.0.0-spike.2 now provides typed `bifrost.Workflow(Run)`;
+executable initialization canary, actual pooled identity/race tests and an observed
+warm-edit output change pass in run36959239986 at430ab81f. See the
+[full completion audit](completion-audit.md) for all18 requirements, exact current
+source frontier, artifacts/timings and remaining protocol/security/authority gates.
+
 ## Continuation: shared contract and writer-exclusion code
 
 The spike continued beyond the original G1/G2 checkpoint below. Exact additional

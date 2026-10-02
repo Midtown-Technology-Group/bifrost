@@ -1,9 +1,9 @@
 # Native execution contract revision for shared runtime review
 
 This is a concrete shared-contract proposal, not a runtime release or authority
-grant. Platform main is `e58db4955ddd30177bd613f1d85b7e203ad7832a`; workspace main
+grant. Reconciled platform main is `01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
 is `9941427941587d253540942b714c5e2b7abfc410`. Reconciled #1011 architecture head
-is `59baf40f15103d1d4f579c1f5337eb5405df4882`; the implemented C1-P0 reference
+is `930b610e8037683fbc1f8daa1e5c3d90095ce510`; the implemented C1-P0 reference
 is #1015 `9f35278f90ba3757318ac9f07895bda9957330de`. Neither is merged or full
 runtime acceptance. Private grant #1024 remains unwired and has no source grant.
 
@@ -16,8 +16,10 @@ coordinator implementation. The workflow is the existing structured integration
 readiness check, with loops, errors, a consumer-owned interface and context.
 
 The ordinary handler API stays `Run(context.Context, Input) (Output, error)`.
-The proposed authoring entrypoint is `bifrost.Workflow(Run)` with generic type
-inference. Tests call Run directly. Explicit schemas and manifests remain the
+SDK `0.0.0-spike.2` now implements the local authoring entrypoint
+`bifrost.Workflow(Run)` with generic type inference. Tests call the domain handler
+directly with its consumer-owned interface fake. Explicit schemas and manifests
+remain the
 initial deployment mechanism; the constrained AST extractor is optional and
 fails on unsupported shapes. Supported Go language features are not limited by
 that optional extractor: authors can supply explicit schemas for richer types.
@@ -47,7 +49,7 @@ modifying or widening the frozen P0 control-profile codec:
   "executable_sha256": "<64 lowercase hex>",
   "build_evidence_sha256": "<64 lowercase hex>",
   "platform": {"os": "linux", "architecture": "amd64"},
-  "sdk": {"distribution": "bifrost-go", "version": "0.0.0-spike.1"},
+  "sdk": {"distribution": "bifrost-go", "version": "0.0.0-spike.2"},
   "runtime_protocol": "bifrost.runtime/v1"
 }
 ```
