@@ -1101,7 +1101,7 @@ counterexample to the closing-layer hypothesis. #1034 remains unresolved.
 The accepted package is **STOPPED** after this one candidate: no duration tuning,
 retry loop, expectation waiver or causal fix follows from green CI.
 Different independent retained-evidence review SHA256
-`304c54692ca152b22a7cc1577237716992f03533ff03e6862b2e02c03cb0454a`
+`d73b9ca8e3a7374f0e3b7aa91e93d7f150b9b8bae696228ed64ba1fc8f4be373`
 accepts collection/provenance and this limited disposition.
 
 Manual pre-PR job110905349539 artifact11235737542 ZIP SHA256
