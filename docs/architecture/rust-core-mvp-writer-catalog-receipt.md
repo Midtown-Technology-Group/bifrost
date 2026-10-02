@@ -452,3 +452,332 @@ Fixed SQL provenance: hash UTF-8 fenced SQL body plus one trailing LF; Q3–Q7 e
 - Q6 body SHA256 `04463f4e7c609a0eef277e155d35364db8dc50e235e1939585275d9cbbf80066`; execution SHA256 `ce2dbc1d5163f3d56b0121bc90a226e93f99ade802cd41f62b72bd25e99ae6d7`.
 - Q7 body SHA256 `7e1c847b3acd0613184410ddbb442ec88aae2fd9bd2576281eab9f6b5374b3f4`; execution SHA256 `3e7af6b4443809d53a86a1766979eadd6ceeabf947468e69cab459603eee8b10`.
 - Q8 body SHA256 `bed514154f5e69c22a4de9ce881886324defe829d3124680b520113da4e722d6`; execution SHA256 `bed514154f5e69c22a4de9ce881886324defe829d3124680b520113da4e722d6`.
+
+
+## R2 architect release: descriptor cleanup and private artifact transfer
+
+Current #1035 PR checks at83d are terminal: runtime/browser/quality lanes passed,
+but CodeQL blocks descriptor ownership and permissive file modes. The earlier
+exact-head run's bounded collection acceptance remains historical evidence, not
+current required-check acceptance. Independent source diagnosis proves actual
+BaseException cleanup gaps in both receipt writing and source hashing; ordinary
+Exception tests did not cover them. No alert is dismissed or suppressed.
+
+The architect releases the exact bounded source-design amendment below for
+implementation in the existing four-path package. It changes internal receipt
+custody from0644 to0600, introduces explicit same-E2E-job host-owned0600 transfer,
+preserves original control-flow exceptions after all close attempts, and replaces
+the real unit0777 fixture with private real readback plus pure metadata coverage.
+Actual supported E2E0777 custody remains required. The exporter copies bytes and
+file facts; catalog contract validation stays in the collector. Public metadata
+capture is not an immutable secret/capability channel or production authority.
+
+Frozen R2 amendment SHA256:
+`1abc620b4e1d8819e5bc0cb305150fb5fb35e4e72cd7f63a6eac1a25fee92ee2`.
+Distinct final design-review SHA256:
+`d8a201d4f6356b75438470bff77ae29495411405b1d613a6bd2cc869c5cddec3`.
+Exact inline capture-body SHA256 (UTF8, without fences/trailing newline):
+`acf52b40c1fb4f9b6814397dd3863d4d6d6c13b30fd81e2ea5c69571ff46efea`.
+Review corrected nonblocking source-file admission so FIFO substitution fails
+before a blocking read. Anonymous read-only fetch proved exact current public
+origin/main4ab without credentials; manual checkout persistence is disabled,
+with no token wrapper/injection. Existing explicit pre-PR token remains unchanged.
+
+Only the frozen collector/unit/workflow changes are released. Helper executable
+contracts, SQL/native/query/revision, caps, deadlines, existing gates and public
+behavior remain unchanged. Distinct implementation/source review and supported
+quality/unit/native E2E, transfer/JUnit/cleanup association, literal pre-PR and
+scanner results are mandatory before acceptance. No further dispatch of83d,
+threshold/expectation waiver, role/schema/guard, owner lifecycle, Stage1, C2/C3,
+merge or deployment follows. Source-only packet status below is retained for
+provenance; this paragraph supplies the bounded implementation release.
+
+# WEX-CAT0 R2 exact narrow transfer/lifecycle amendment
+
+SOURCE/DESIGN ONLY. Supersedes the rejected envelope-revalidator draft completely. Distinct independent review and accountable root doc/release required before code; no repository edits/runtime/CI/implementation release. Sole written output this report. Parent reports #1035 terminal: runtime lanes PASS, CodeQL alone FAIL; author did not query live CI. Preserve failed source83d2a8eeb8641f2483e11d6f88a92dd78b91380c and historical receipts. No owner-lifecycle/C2/C3/schema/role release.
+Controlling diagnosis /tmp/bifrost-writer-catalog-r2-diagnosis-proposal.md SHA256c6eff2e51e156b72a0c1833f7d7bc1a15e03b988577e249249dee38e3114d32a; engineering-flow2026-09-30.1/source-design, AGENTS/project/verification. Exact receipt worktree83d clean when inspected.
+
+## Scope and trust boundary
+Only existing four paths: api/tests/e2e/platform/test_writer_catalog_receipt.py; api/tests/unit/test_writer_catalog_receipt_contract.py; .github/workflows/ci.yml; api/tests/helpers/writer_catalog_receipt.py. Helper executable bytes/SQL/matrices/hash/revision unchanged; optional closed pin annotation only, preferably no edit. No new helper relocation, test.sh/Compose/product/runtime/DDL/role/permissions/action pin/job/selection change.
+
+Copier is finite transport/custody for reviewed synthetic isolated CI collector output under trusted candidate/test-coordinator authority. It does NOT validate query/sample/native/business/privacy matrices or a schema-source baseline, and does not make customer payloads safe for upload. Original reviewed collector, actual named PASS and independent artifact review own those admissions. Neither receipt nor export proves immutable namespace/secret authority. No general privileged file utility, user target, DSN or network input.
+
+Source support: test.sh:59-65 uses scripts/lib/test_helpers.sh compute_project_name; helper:15-24 produces bifrost-test-<8hex worktree-path hash>; fixed LOG_DIR=/tmp/bifrost-$project. test.sh:364-370 intentionally makes host-owned result mount0777 for containerUID1000; Compose:449-454 binds same LOG_DIR at /bifrost-results. Different host uploader UID cannot generally read source600. Privileged transfer is narrow hosted-Ubuntu Docker-admin coordinator use, not new role provisioning. Noninteractive sudo availability/actualUID must be proved on supported CI; no fallback/chmod source/ACL/user creation if absent.
+
+## Collector exact mode and cleanup amendment
+Change ONLY receipt new open mode, newly-created fd fchmod, _file_facts expected mode and reported mode_octal from0644 to0600. Preserve exclusive openat, flags, regular/euid/nlink1 checks, source bytes, readback/size/path/hash and absolute deadlines. Do not chmod any existing file/parent.
+
+For each successful directory/file/source open, begin descriptor ownership try/finally immediately. Preserve original control-flow BaseException after ALL acquired descriptor close attempts; ordinary Exception body/close failures yield existing literal static CatalogCollectionError only after all finally blocks, outside except context. Close failure cannot mask original cancellation/KeyboardInterrupt/SystemExit. If body has no control-flow failure, preserve first control-flow close failure after other close attempts. Late close still cannot PASS. No retry close on possibly recycled fd. This corrects the previous catch-all-static draft to match diagnosis.
+
+Exact structure for receipt (retain entire existing body/checks at the three marked locations; no hidden helper):
+```python
+failed = False
+control = None
+result = None
+try:
+    directory_fd = os.open(...)  # existing fixed parent/flags
+    try:
+        ...  # existing directory checks
+        file_fd = os.open(...)  # existing exclusive openat, mode0600
+        try:
+            ...  # existing body/checks, fchmod0600 and actual E2E777 witness
+        except BaseException as error:
+            if isinstance(error, Exception):
+                failed = True
+            else:
+                control = error
+        finally:
+            try:
+                os.close(file_fd)
+            except BaseException as error:
+                failed = True
+                if not isinstance(error, Exception) and control is None:
+                    control = error
+            if monotonic() >= deadline:
+                failed = True
+    except BaseException as error:
+        if isinstance(error, Exception):
+            failed = True
+        elif control is None:
+            control = error
+    finally:
+        try:
+            os.close(directory_fd)
+        except BaseException as error:
+            failed = True
+            if not isinstance(error, Exception) and control is None:
+                control = error
+        if monotonic() >= deadline:
+            failed = True
+except BaseException as error:
+    if isinstance(error, Exception):
+        failed = True
+    elif control is None:
+        control = error
+if control is not None:
+    raise control
+if failed:
+    raise CatalogCollectionError("writer-catalog:receipt-custody")
+_check_deadline(deadline)
+return result
+```
+_source_hashes uses same immediately-after-open per-source try/finally; body/close record first original control failure, then outside exception context raise it or literal writer-catalog:source-bytes. Keep two fixed source paths/flags/caps/hash admissions. Native open/ownership signal gap and process death are not recoverable Python proof. Entire readable final functions require review; ellipses preserve current code, not new functionality.
+
+## Unit777 seam and real E2E witness
+Unit actual positive readback uses owned explicit0700 parent and verifies exact0600 file/bytes/hash; remove real unit chmod777. Separate pure _directory_facts stat-result case retains777 metadata admission (device/inode/owner/mode only), labeled metadata-only. Preserve real private fd/symlink/collision/drift/red tests.
+
+Proposed one fixed seam flag: _write_receipt(receipt, deadline, *, require_supported_parent=False). Only actual E2E collector calls with True; immediately after acquired parent facts require mode_octal=="0777" and euid==1000 before file creation. Final parent identity/readback still required. This adds no configurable path or admission relaxation. Actual E2E named PASS therefore positively witnesses777; fake-stat unit never substitutes for runtime parent proof. Reject actual777/euid drift, retain parent authority="not_established".
+
+## Exact workflow insertion
+One always/matrix.total!=0 capture step immediately BEFORE existing e2e-cleanup; failure does not prevent always cleanup. Fixed outputs only RUNNER_TEMP/writer-catalog-e2e-capture/{writer-catalog-receipt.log,writer-catalog-transfer.json}; newly created directory0700 and files0600 owned by validated host runner. No chmod/chown source or existing target, no glob source/other shard/project. Target collision fails; leave partial evidence, never overwrite/unlink.
+```yaml
+      - name: Capture private writer catalog receipt
+        if: always() && matrix.total != 0
+        run: |
+          set -euo pipefail
+          test "${BIFROST_PROJECT_PREFIX:-bifrost-test}" = "bifrost-test"
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          sudo -n python3 - "$project" "$RUNNER_TEMP" "$(id -u)" "$(id -g)" <<'PY_CAPTURE'
+          # Replace this line with the exact inline body below, retaining YAML indentation.
+          PY_CAPTURE
+```
+The four arguments come only from supported coordinator helper/runner environment/id, not workflow inputs. Privileged code checks actual SUDO_UID/GID and root boundary. RUNNER_TEMP must be existing nonsymlink real absolute directory, host-owned and not group/world writable; if supported runner facts differ STOP/report, no generic override. Capture source is regular UID1000/mode600/nlink1<=8MiB, nofollow, read-only/NONBLOCK/CLOEXEC before immediate regular-file fstat; FIFO must reject without blocking before the deadline check; regular-file semantics unchanged; source file before/after stable stat+path identity, exact bytecount/hash; directories compare identity/owner/mode only (not size/time changed by legitimate entries). Bounded60-second elapsed checks cover all I/O and close, not kernel preemption.
+
+## Exact inline capture body (syntax checked only; not executed)
+```python
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+import time
+from contextlib import ExitStack
+from pathlib import Path
+
+CAP = 8 * 1024 * 1024
+deadline = time.monotonic() + 60
+failed = False
+control = None
+fds = ExitStack()
+
+def require(ok):
+    if not ok:
+        raise ValueError("transfer-contract")
+
+def budget():
+    require(time.monotonic() < deadline)
+
+def record(error):
+    global failed, control
+    failed = True
+    if not isinstance(error, Exception) and control is None:
+        control = error
+
+def close(fd):
+    try:
+        os.close(fd)
+        budget()
+    except BaseException as error:
+        record(error)
+
+def opened(path, flags, *, parent=None):
+    budget()
+    fd = os.open(path, flags, 0o600, dir_fd=parent)
+    fds.callback(close, fd)
+    budget()
+    return fd
+
+def directory(fd):
+    info = os.fstat(fd)
+    budget()
+    require(stat.S_ISDIR(info.st_mode))
+    return (info.st_dev, info.st_ino, info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
+
+def file_facts(info):
+    budget()
+    return (info.st_dev, info.st_ino, info.st_uid, info.st_gid,
+            stat.S_IMODE(info.st_mode), info.st_nlink, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns)
+
+def read(fd, limit):
+    data = bytearray()
+    while True:
+        chunk = os.read(fd, min(65536, limit + 1 - len(data)))
+        budget()
+        if not chunk:
+            return bytes(data)
+        data.extend(chunk)
+        require(len(data) <= limit)
+
+def exported(name, data, parent, uid, gid):
+    fd = opened(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                parent=parent)
+    os.fchmod(fd, 0o600)
+    budget()
+    os.fchown(fd, uid, gid)
+    budget()
+    before = file_facts(os.fstat(fd))
+    require(stat.S_ISREG(os.fstat(fd).st_mode) and before[2:6] == (uid, gid, 0o600, 1))
+    offset = 0
+    while offset < len(data):
+        count = os.write(fd, data[offset:])
+        budget()
+        require(type(count) is int and 0 < count <= len(data) - offset)
+        offset += count
+    os.fsync(fd)
+    budget()
+    os.lseek(fd, 0, os.SEEK_SET)
+    budget()
+    require(read(fd, len(data)) == data)
+    after = file_facts(os.fstat(fd))
+    require(after[:6] == before[:6] and after[6] == len(data)
+            and after == file_facts(os.stat(name, dir_fd=parent, follow_symlinks=False)))
+    budget()
+    return after
+
+try:
+    require(len(sys.argv) == 5 and os.geteuid() == 0)
+    project, temp, uid_text, gid_text = sys.argv[1:]
+    require(re.fullmatch(r"bifrost-test-[0-9a-f]{8}", project) is not None)
+    require(uid_text.isdecimal() and gid_text.isdecimal())
+    uid, gid = int(uid_text), int(gid_text)
+    require(uid > 0 and uid_text == os.environ.get("SUDO_UID")
+            and gid_text == os.environ.get("SUDO_GID"))
+    require(Path(temp).is_absolute() and str(Path(temp).resolve()) == temp)
+    dflags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    temp_fd = opened(temp, dflags)
+    temp_before = directory(temp_fd)
+    require(temp_before[2] == uid and temp_before[4] & 0o022 == 0)
+    require(file_facts(os.stat(temp, follow_symlinks=False))[:5] == temp_before)
+    os.mkdir("writer-catalog-e2e-capture", 0o700, dir_fd=temp_fd)
+    budget()
+    out_fd = opened("writer-catalog-e2e-capture", dflags, parent=temp_fd)
+    os.fchmod(out_fd, 0o700)
+    budget()
+    os.fchown(out_fd, uid, gid)
+    budget()
+    out_before = directory(out_fd)
+    require(out_before[2:] == (uid, gid, 0o700))
+    source = "/tmp/bifrost-" + project
+    source_fd = parent_fd = None
+    source_directory = source_file = exported_file = data = None
+    try:
+        parent_fd = opened(source, dflags)
+        source_directory = directory(parent_fd)
+        require(source_directory[4] == 0o777)
+        source_fd = opened("writer-catalog-receipt.log",
+                           os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC, parent=parent_fd)
+    except FileNotFoundError:
+        pass
+    if source_fd is not None:
+        info = os.fstat(source_fd)
+        source_file = file_facts(info)
+        require(stat.S_ISREG(info.st_mode) and source_file[2] == 1000
+                and source_file[4:6] == (0o600, 1) and 0 < info.st_size <= CAP)
+        data = read(source_fd, CAP)
+        require(len(data) == source_file[6] and source_file == file_facts(os.fstat(source_fd))
+                == file_facts(os.stat("writer-catalog-receipt.log", dir_fd=parent_fd,
+                                      follow_symlinks=False)))
+        require(source_directory == directory(parent_fd)
+                == file_facts(os.stat(source, follow_symlinks=False))[:5])
+        exported_file = exported("writer-catalog-receipt.log", data, out_fd, uid, gid)
+    witness = dict(schema="bifrost.writer-catalog-transfer/v1",
+                   status="copied" if data is not None else "absent", project=project,
+                   source_path=source + "/writer-catalog-receipt.log",
+                   destination_path=temp + "/writer-catalog-e2e-capture/writer-catalog-receipt.log",
+                   source_directory=source_directory, source_file=source_file,
+                   destination_directory=out_before, destination_file=exported_file,
+                   byte_count=len(data) if data is not None else None,
+                   sha256=hashlib.sha256(data).hexdigest() if data is not None else None,
+                   host_uid=uid, host_gid=gid,
+                   privilege_boundary="same-e2e-job-sudo-coordinator",
+                   verification="requires_named_testcase_pass_and_external_candidate_binding")
+    encoded = json.dumps(witness, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    require(len(encoded) <= 16384)
+    exported("writer-catalog-transfer.json", encoded, out_fd, uid, gid)
+    require(out_before == directory(out_fd)
+            == file_facts(os.stat("writer-catalog-e2e-capture", dir_fd=temp_fd,
+                                  follow_symlinks=False))[:5])
+    require(temp_before == directory(temp_fd)
+            == file_facts(os.stat(temp, follow_symlinks=False))[:5])
+    if source_fd is not None:
+        require(source_file == file_facts(os.fstat(source_fd))
+                == file_facts(os.stat("writer-catalog-receipt.log", dir_fd=parent_fd,
+                                      follow_symlinks=False)))
+        require(source_directory == directory(parent_fd)
+                == file_facts(os.stat(source, follow_symlinks=False))[:5])
+    budget()
+except BaseException as error:
+    record(error)
+finally:
+    try:
+        fds.close()
+    except BaseException as error:
+        record(error)
+if control is not None:
+    raise control
+if failed:
+    raise RuntimeError("writer-catalog:transfer")
+```
+Exact witness closed fields above; directory arrays order device,inode,uid,gid,mode; file arrays add nlink,size,mtime_ns,ctime_ns. These native stat observations are export facts, not permission normalization or original receipt custody. Witness <=16KiB; source/copy<=8MiB. Original receipt bytes remain unchanged/no JSON parsing/relabeling. Absent source only ENOENT yields neutral witness on nonselected shard; all other wrongfacts/errors fail. Capture source flags are explicit readonly/NONBLOCK/NOFOLLOW/CLOEXEC; NONBLOCK prevents a FIFO in the world-writable source parent from hanging at open before regular-file fstat, while regular-file semantics remain unchanged; no general flags/target interface exposed. Each acquired fd is immediately registered in ExitStack; independent close callback preserves original control failure and records ordinary failures. This is a fixed-inline ownership idiom, not a relocated custody framework.
+
+## Uploader / checkout / revision exact deltas
+Only replace source receipt wildcard with two fixed captured paths; retain JUnit and same-job cleanup evidence:
+```yaml
+            ${{ runner.temp }}/writer-catalog-e2e-capture/writer-catalog-receipt.log
+            ${{ runner.temp }}/writer-catalog-e2e-capture/writer-catalog-transfer.json
+            /tmp/bifrost-bifrost-test-*/test-results.xml
+            ${{ runner.temp }}/writer-catalog-e2e-cleanup/project-resources.txt
+```
+Uploader actionSHA043fb46d1a93c77aae656e7c1c64a875d1fc6a0a, shardname, retention14, ignore-missing, permissions unchanged. Existing failure diagnostics unchanged; no successful-all-logs publication or continue-on-error. Always teardown and actual resource inventory still run if capture fails.
+Manual pre-PR checkout persist-credentials:false; comment "Public Midtown/bifrost origin/main fetch is intentionally anonymous; private visibility needs reviewed handling, not automatic credential injection." Root verified PUBLIC/plainHTTPS and anonymous actualmain4ab with helpers/extraheaders disabled. No wrapper/token injection. Literal test.sh git fetch --quiet origin main and ./test.sh pre-pr unchanged; existing explicit GITHUB_TOKEN remains for API checks, no token-free/sandbox claim. Private future repo visibility fails gate/report, never auto-upgrade auth.
+Keep MIGRATION_REVISION=20261001_solution_src_account and all helper executable bytes/query/Q8 admissions. Optional closed comment only: intentional reference4ab one-head pin; changed schema requires reviewed reconciliation. No mutable/observed head acceptance, Alembic execution or new error codes.
+
+## Required red and acceptance evidence, after separate release
+Real FD red: BaseException after parent/file acquisition and body fstat/write/read/source-read; original body control failure preserved despite first-close Exception/BaseException; second close always attempted. First control close failure preserved when body has none. Real EBADF only when injected close really closed; mock raising-before-close proves attempt, not successful close. Ordinary secret-bearing body/close errors static/outside except; late closes/expiry cannot PASS. Source-hash both inputs receive analogous coverage.
+Private real unit0700/readback/file600 plus labeled pure777 metadata; actual E2E777/euid1000 positive witness and mismatch red. Preserve collision/symlink/drift/cap tests. No source readonly or matrix admission weakening.
+Supported transfer red: hostunreadableUID1000 source600 copied to validatedhost600, exact bytes/hash+witness/readback; absent unrelated shard neutral; symlink/FIFO-nonblocking-rejection/wronguid/mode/link/type/oversize/source drift/target collision/copy readback mismatch/expiry and close errors fail; original control failure preserved. No arbitrary customer/driver payload exports claimed safe. Source cannot prove sudo/host facts alone.
+Acceptance: actual named collector JUnit PASS in same run/shard, independent original receipt contract/privacy/native/source review, copy sha/bytecount matching witness and original internal600 custody, exact candidate/tree/image/run binding, current transfer host readback, cleanup resource inventories and literal pre-PR. Missing receipt/witness/named PASS or actual capture failure remains architecture STOP regardless uploader success. Capture-only successful transport never establishes collection/security readiness.
+Supported quality/unit/native E2E/scanner actual results and final independent immutable-source review required. No scanner dismissal/suppression or broader scope amendment. Root must freeze exact reviewed final source and release separately; this report executes none of these gates.
