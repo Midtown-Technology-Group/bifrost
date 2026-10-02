@@ -1,9 +1,13 @@
 """Synthetic contract/red seams; no SQL, product imports or real connections."""
 
 import asyncio
+import errno
+import hashlib
 import copy
 import json
 import os
+import stat
+from pathlib import Path
 from datetime import datetime, timezone
 from time import monotonic
 from types import SimpleNamespace
@@ -612,7 +616,9 @@ async def test_expired_budget_never_connects_and_cleanup_terminates(
 
 @pytest.fixture
 def receipt_path(tmp_path, monkeypatch):
-    path = tmp_path / "writer-catalog-receipt.log"
+    parent = tmp_path / "private-results"
+    parent.mkdir(mode=0o700)
+    path = parent / "writer-catalog-receipt.log"
     monkeypatch.setattr(collector, "RECEIPT_PATH", str(path))
     return path
 
@@ -652,15 +658,15 @@ def os_proxy(monkeypatch, **overrides):
     return proxy
 
 
-def test_owned_receipt_readback_and_supported_world_writable_parent(receipt_path):
-    os.chmod(receipt_path.parent, 0o777)
+def test_owned_receipt_readback_under_private_parent(receipt_path):
+    assert receipt_path.parent.stat().st_mode & 0o777 == 0o700
     result = collector._write_receipt(receipt_payload(), monotonic() + 60)
     data = receipt_path.read_bytes()
     receipt = json.loads(data)
     assert result["byte_count"] == len(data)
-    assert receipt["custody"]["directory"]["mode_octal"] == "0777"
+    assert receipt["custody"]["directory"]["mode_octal"] == "0700"
     assert receipt["custody"]["directory_authority"] == "not_established"
-    assert receipt_path.stat().st_mode & 0o777 == 0o644
+    assert receipt_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_collision_preserves_existing_file(receipt_path, monkeypatch):
@@ -823,3 +829,415 @@ async def test_hanging_transaction_enter_is_in_absolute_budget(
         await collector._snapshot(collector._admit_url(), "pool", monotonic() + 0.01)
     assert "fake-secret" not in str(caught.value)
     assert connection.terminated
+
+
+class InjectedControl(BaseException):
+    """Owned control-flow seam, never a real process interrupt."""
+
+
+def test_supported_parent_777_metadata_only():
+    info = os.stat_result((stat.S_IFDIR | 0o777, 123, 456, 2, 789, 789, 0, 0, 0, 0))
+    assert collector._directory_facts(info) == {
+        "device": 456,
+        "inode": 123,
+        "owner_uid": 789,
+        "mode_octal": "0777",
+    }
+
+
+@pytest.fixture
+def owned_fds():
+    """Dispose still-owned real descriptors even when the candidate/test goes red."""
+    live = {}
+
+    def opened(*args, **kwargs):
+        descriptor = os.open(*args, **kwargs)
+        try:
+            info = os.fstat(descriptor)
+        except BaseException:
+            try:
+                os.close(descriptor)
+            except BaseException:
+                pass
+            raise
+        live[descriptor] = (info.st_dev, info.st_ino)
+        return descriptor
+
+    def closed(descriptor):
+        os.close(descriptor)
+        live.pop(descriptor, None)
+
+    try:
+        yield SimpleNamespace(open=opened, close=closed)
+    finally:
+        for descriptor, identity in tuple(live.items()):
+            try:
+                info = os.fstat(descriptor)
+                if (info.st_dev, info.st_ino) == identity:
+                    os.close(descriptor)
+            except BaseException:
+                # Attempt every remaining owner without masking the original red signal.
+                pass
+            finally:
+                live.pop(descriptor, None)
+
+
+def assert_closed(descriptors):
+    for descriptor in descriptors:
+        with pytest.raises(OSError) as caught:
+            os.fstat(descriptor)
+        assert caught.value.errno == errno.EBADF
+
+
+@pytest.mark.parametrize("stage", ["directory", "file", "write", "read"])
+@pytest.mark.parametrize("close_control", [False, True])
+def test_original_control_survives_all_fd_close_attempts(
+    receipt_path, monkeypatch, owned_fds, stage, close_control
+):
+    acquired, closed = [], []
+    original = InjectedControl("owned body control")
+
+    def tracked_open(*args, **kwargs):
+        descriptor = owned_fds.open(*args, **kwargs)
+        acquired.append(descriptor)
+        return descriptor
+
+    def injected_fstat(descriptor):
+        if (stage == "directory" and len(acquired) == 1) or (
+            stage == "file" and len(acquired) == 2
+        ):
+            raise original
+        return os.fstat(descriptor)
+
+    def injected_write(descriptor, data):
+        if stage == "write":
+            raise original
+        return os.write(descriptor, data)
+
+    def injected_read(descriptor, count):
+        if stage == "read":
+            raise original
+        return os.read(descriptor, count)
+
+    def injected_close(descriptor):
+        owned_fds.close(descriptor)
+        closed.append(descriptor)
+        if len(closed) == 1:
+            if close_control:
+                raise InjectedControl("owned close control")
+            raise OSError("fake-secret-close")
+
+    os_proxy(
+        monkeypatch,
+        open=tracked_open,
+        fstat=injected_fstat,
+        write=injected_write,
+        read=injected_read,
+        close=injected_close,
+    )
+    with pytest.raises(InjectedControl) as caught:
+        collector._write_receipt(receipt_payload(), monotonic() + 60)
+    assert caught.value is original
+    assert set(closed) == set(acquired)
+    assert_closed(acquired)
+
+
+def test_first_close_control_is_preserved_after_second_close(
+    receipt_path, monkeypatch, owned_fds
+):
+    acquired, closed = [], []
+    original = InjectedControl("owned close control")
+
+    def tracked_open(*args, **kwargs):
+        descriptor = owned_fds.open(*args, **kwargs)
+        acquired.append(descriptor)
+        return descriptor
+
+    def injected_close(descriptor):
+        owned_fds.close(descriptor)
+        closed.append(descriptor)
+        if len(closed) == 1:
+            raise original
+
+    os_proxy(monkeypatch, open=tracked_open, close=injected_close)
+    with pytest.raises(InjectedControl) as caught:
+        collector._write_receipt(receipt_payload(), monotonic() + 60)
+    assert caught.value is original
+    assert len(closed) == 2
+    assert_closed(acquired)
+
+
+@pytest.mark.parametrize("failure", ["read", "fstat", "second-open", "close"])
+def test_source_hash_control_cleanup(monkeypatch, owned_fds, failure):
+    acquired, closed = [], []
+    original = InjectedControl("owned source control")
+
+    def tracked_open(*args, **kwargs):
+        if failure == "second-open" and acquired:
+            raise original
+        descriptor = owned_fds.open(*args, **kwargs)
+        acquired.append(descriptor)
+        return descriptor
+
+    def injected_read(descriptor, count):
+        if failure == "read":
+            raise original
+        return os.read(descriptor, count)
+
+    def injected_fstat(descriptor):
+        if failure == "fstat":
+            raise original
+        return os.fstat(descriptor)
+
+    def injected_close(descriptor):
+        owned_fds.close(descriptor)
+        closed.append(descriptor)
+        if failure == "close":
+            raise original
+
+    os_proxy(
+        monkeypatch,
+        open=tracked_open,
+        read=injected_read,
+        fstat=injected_fstat,
+        close=injected_close,
+    )
+    with pytest.raises(InjectedControl) as caught:
+        collector._source_hashes(monotonic() + 60)
+    assert caught.value is original
+    assert set(acquired) == set(closed)
+    assert_closed(acquired)
+
+
+def test_late_close_rejects_receipt_success(receipt_path, monkeypatch, owned_fds):
+    clock = {"expired": False}
+    now = monotonic()
+    closed = []
+
+    def late_close(descriptor):
+        owned_fds.close(descriptor)
+        closed.append(descriptor)
+        clock["expired"] = True
+
+    os_proxy(monkeypatch, open=owned_fds.open, close=late_close)
+    monkeypatch.setattr(
+        collector, "monotonic", lambda: now + 100 if clock["expired"] else now
+    )
+    with pytest.raises(collector.CatalogCollectionError):
+        collector._write_receipt(receipt_payload(), now + 60)
+    assert len(closed) == 2
+    assert_closed(closed)
+
+
+def test_actual_supported_parent_flag_denies_private_parent(
+    receipt_path, monkeypatch, owned_fds
+):
+    os_proxy(monkeypatch, open=owned_fds.open, close=owned_fds.close)
+    with pytest.raises(collector.CatalogCollectionError):
+        collector._write_receipt(
+            receipt_payload(), monotonic() + 60, require_supported_parent=True
+        )
+    assert not receipt_path.exists()
+
+
+def frozen_capture_source():
+    source = Path(__file__).resolve()
+    assert source.name == "test_writer_catalog_receipt_contract.py"
+    if source.parent == Path("/app/tests/unit"):
+        workflow = Path("/app/.github/workflows/ci.yml")
+    else:
+        assert tuple(parent.name for parent in source.parents[:3]) == (
+            "unit",
+            "tests",
+            "api",
+        )
+        workflow = source.parents[3] / ".github" / "workflows" / "ci.yml"
+    text = workflow.read_text()
+    section = text.split("      - name: Capture private writer catalog receipt\n", 1)[1]
+    lines = section.split("<<'PY_CAPTURE'\n", 1)[1].split("          PY_CAPTURE\n", 1)[
+        0
+    ]
+    code = "\n".join(line[10:] if line else "" for line in lines.splitlines())
+    assert hashlib.sha256(code.encode()).hexdigest() == (
+        "acf52b40c1fb4f9b6814397dd3863d4d6d6c13b30fd81e2ea5c69571ff46efea"
+    )
+    return code
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        None,
+        "absent",
+        "fifo",
+        "mode",
+        "collision",
+        "readback",
+        "close",
+        "cap",
+        "source-drift",
+        "symlink",
+        "body-control",
+    ],
+)
+def test_fixed_capture_transport_with_owned_os_seams(tmp_path, owned_fds, failure):
+    # All privilege/uid metadata is fake: this proves transport logic, not sudo or UID crossing.
+    source = tmp_path / "source"
+    source.mkdir(mode=0o700)
+    temp = tmp_path / "runner-temp"
+    temp.mkdir(mode=0o700)
+    payload = b'{"synthetic":"reviewed collector bytes remain unparsed"}\n'
+    receipt = source / "writer-catalog-receipt.log"
+    if failure == "fifo":
+        os.mkfifo(receipt, mode=0o600)
+    elif failure == "symlink":
+        target = source / "owned-symlink-target"
+        target.write_bytes(payload)
+        receipt.symlink_to(target)
+    elif failure != "absent":
+        receipt.write_bytes(payload)
+        receipt.chmod(0o600)
+    if failure == "collision":
+        (temp / "writer-catalog-e2e-capture").mkdir(mode=0o700)
+    paths, acquired, closed, flags = {}, [], [], []
+    control = InjectedControl("owned transfer close")
+    project = "bifrost-test-12345678"
+
+    def mapped(path):
+        text = str(path)
+        prefix = "/tmp/bifrost-" + project
+        return str(source) + text[len(prefix) :] if text.startswith(prefix) else path
+
+    def observed(info, path):
+        values = {
+            name: getattr(info, name)
+            for name in (
+                "st_dev",
+                "st_ino",
+                "st_uid",
+                "st_gid",
+                "st_mode",
+                "st_nlink",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        }
+        values["st_uid"] = 1000 if path == str(receipt) else 2001
+        values["st_gid"] = 2001
+        if path == str(source):
+            values["st_mode"] = stat.S_IFDIR | 0o777
+        if path == str(receipt) and failure == "fifo":
+            values["st_mode"] = stat.S_IFIFO | 0o600
+        if path == str(receipt) and failure == "mode":
+            values["st_mode"] = stat.S_IFREG | 0o644
+        if path == str(receipt) and failure == "cap":
+            values["st_size"] = 8 * 1024 * 1024 + 1
+        return SimpleNamespace(**values)
+
+    def opened(path, open_flags, mode=0o600, *, dir_fd=None):
+        target = mapped(path)
+        absolute = (
+            str(Path(paths[dir_fd]) / str(target))
+            if dir_fd is not None
+            else str(target)
+        )
+        flags.append((absolute, open_flags))
+        if failure == "fifo" and absolute == str(receipt):
+            assert (
+                open_flags & os.O_NONBLOCK
+            )  # fail red before any potentially blocking open
+        descriptor = owned_fds.open(target, open_flags, mode, dir_fd=dir_fd)
+        paths[descriptor] = absolute
+        acquired.append(descriptor)
+        return descriptor
+
+    def fstat(descriptor):
+        return observed(os.fstat(descriptor), paths[descriptor])
+
+    def path_stat(path, *, dir_fd=None, follow_symlinks=True):
+        target = mapped(path)
+        absolute = (
+            str(Path(paths[dir_fd]) / str(target))
+            if dir_fd is not None
+            else str(target)
+        )
+        value = observed(
+            os.stat(target, dir_fd=dir_fd, follow_symlinks=follow_symlinks), absolute
+        )
+        if failure == "source-drift" and absolute == str(receipt):
+            value.st_ino += 1
+        return value
+
+    def read(descriptor, count):
+        if failure == "body-control" and paths[descriptor] == str(receipt):
+            raise control
+        data = os.read(descriptor, count)
+        if failure == "readback" and paths[descriptor].startswith(str(temp)) and data:
+            return b"!" + data[1:]
+        return data
+
+    def close(descriptor):
+        owned_fds.close(descriptor)
+        closed.append(descriptor)
+        if failure == "close" and len(closed) == 1:
+            raise control
+        if failure == "body-control" and len(closed) == 1:
+            raise InjectedControl("second close control must not mask body")
+
+    proxy = SimpleNamespace(**{name: getattr(os, name) for name in dir(os)})
+    proxy.open, proxy.fstat, proxy.stat, proxy.read, proxy.close = (
+        opened,
+        fstat,
+        path_stat,
+        read,
+        close,
+    )
+    proxy.geteuid = lambda: 0
+    proxy.fchown = lambda *_args: None
+    proxy.environ = {"SUDO_UID": "2001", "SUDO_GID": "2001"}
+    fake_sys = SimpleNamespace(argv=["-", project, str(temp), "2001", "2001"])
+    original_import = __import__
+
+    def imported(name, *args, **kwargs):
+        if name == "os":
+            return proxy
+        if name == "sys":
+            return fake_sys
+        return original_import(name, *args, **kwargs)
+
+    namespace = {
+        "__builtins__": dict(vars(__import__("builtins")), __import__=imported)
+    }
+    code = frozen_capture_source()
+    if failure in {None, "absent"}:
+        exec(compile(code, "<owned fixed capture>", "exec"), namespace)
+        witness = json.loads(
+            (
+                temp / "writer-catalog-e2e-capture" / "writer-catalog-transfer.json"
+            ).read_bytes()
+        )
+        assert witness["status"] == ("absent" if failure == "absent" else "copied")
+        if failure is None:
+            assert (
+                temp / "writer-catalog-e2e-capture" / "writer-catalog-receipt.log"
+            ).read_bytes() == payload
+            assert witness["sha256"] == hashlib.sha256(payload).hexdigest()
+    else:
+        expected = (
+            InjectedControl if failure in {"close", "body-control"} else RuntimeError
+        )
+        with pytest.raises(expected) as caught:
+            exec(compile(code, "<owned fixed capture>", "exec"), namespace)
+        if failure in {"close", "body-control"}:
+            assert caught.value is control
+        else:
+            assert str(caught.value) == "writer-catalog:transfer"
+            assert caught.value.__context__ is None
+    assert set(closed) == set(acquired)
+    assert_closed(acquired)
+    for path, open_flags in flags:
+        if path == str(receipt):
+            assert open_flags & os.O_NONBLOCK
+            assert open_flags & os.O_NOFOLLOW
+            assert open_flags & os.O_CLOEXEC

@@ -418,14 +418,14 @@ def _file_facts(info):
         stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "receipt-file-type"
     )
     contract.require(
-        info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o644,
+        info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o600,
         "receipt-file-owner-mode",
     )
     return {
         "device": info.st_dev,
         "inode": info.st_ino,
         "owner_uid": info.st_uid,
-        "mode_octal": "0644",
+        "mode_octal": "0600",
         "links": info.st_nlink,
     }
 
@@ -440,10 +440,9 @@ def _check_directory(directory_fd, directory_path, expected, deadline):
     )
 
 
-def _write_receipt(receipt, deadline):
-    directory_fd = None
-    file_fd = None
+def _write_receipt(receipt, deadline, *, require_supported_parent=False):
     failed = False
+    control = None
     result = None
     path = Path(RECEIPT_PATH)
     try:
@@ -451,82 +450,117 @@ def _write_receipt(receipt, deadline):
         directory_fd = os.open(
             path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
         )
-        _check_deadline(deadline)
-        directory = _directory_facts(os.fstat(directory_fd))
-        _check_deadline(deadline)
-        _check_directory(directory_fd, path.parent, directory, deadline)
-        file_fd = os.open(
-            path.name,
-            os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-            0o644,
-            dir_fd=directory_fd,
-        )
-        _check_deadline(deadline)
-        # Only the newly exclusive-created descriptor; never chmod existing work.
-        os.fchmod(file_fd, 0o644)
-        _check_deadline(deadline)
-        file = _file_facts(os.fstat(file_fd))
-        _check_deadline(deadline)
-        receipt["custody"] = {
-            "path": RECEIPT_PATH,
-            "directory": directory,
-            "file": file,
-            "directory_authority": "not_established",
-            "verification": "requires_named_testcase_pass",
-        }
-        data = contract.encode_bounded(receipt, contract.RECEIPT_BYTES)
-        _check_deadline(deadline)
-        offset = 0
-        while offset < len(data):
-            written = os.write(file_fd, data[offset:])
+        try:
             _check_deadline(deadline)
-            contract.require(
-                type(written) is int and 0 < written <= len(data) - offset,
-                "receipt-write-progress",
-            )
-            offset += written
-        os.fsync(file_fd)
-        _check_deadline(deadline)
-        os.lseek(file_fd, 0, os.SEEK_SET)
-        _check_deadline(deadline)
-        readback = bytearray()
-        while True:
-            chunk = os.read(
-                file_fd, min(65536, contract.RECEIPT_BYTES + 1 - len(readback))
-            )
+            directory = _directory_facts(os.fstat(directory_fd))
             _check_deadline(deadline)
-            if not chunk:
-                break
-            readback.extend(chunk)
-            contract.require(
-                len(readback) <= contract.RECEIPT_BYTES, "receipt-readback-byte-cap"
+            _check_directory(directory_fd, path.parent, directory, deadline)
+            if require_supported_parent:
+                contract.require(
+                    directory["mode_octal"] == "0777" and os.geteuid() == 1000,
+                    "supported-results-parent",
+                )
+            file_fd = os.open(
+                path.name,
+                os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=directory_fd,
             )
-        contract.require(bytes(readback) == data, "receipt-readback-mismatch")
-        final = os.fstat(file_fd)
-        _check_deadline(deadline)
-        by_path = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
-        _check_deadline(deadline)
-        contract.require(
-            _file_facts(final) == file == _file_facts(by_path),
-            "receipt-file-identity-drift",
-        )
-        contract.require(
-            final.st_size == by_path.st_size == len(data), "receipt-file-size-mismatch"
-        )
-        _check_directory(directory_fd, path.parent, directory, deadline)
-        result = {"byte_count": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-    except Exception:
-        failed = True
-    # Synchronous descriptor close is mandatory even after expiry; kernel I/O
-    # is not preemptible. A late close still prevents successful collection.
-    for descriptor in (file_fd, directory_fd):
-        if descriptor is not None:
             try:
-                os.close(descriptor)
-            except Exception:
+                _check_deadline(deadline)
+                # Only the newly exclusive-created descriptor; never chmod existing work.
+                os.fchmod(file_fd, 0o600)
+                _check_deadline(deadline)
+                file = _file_facts(os.fstat(file_fd))
+                _check_deadline(deadline)
+                receipt["custody"] = {
+                    "path": RECEIPT_PATH,
+                    "directory": directory,
+                    "file": file,
+                    "directory_authority": "not_established",
+                    "verification": "requires_named_testcase_pass",
+                }
+                data = contract.encode_bounded(receipt, contract.RECEIPT_BYTES)
+                _check_deadline(deadline)
+                offset = 0
+                while offset < len(data):
+                    written = os.write(file_fd, data[offset:])
+                    _check_deadline(deadline)
+                    contract.require(
+                        type(written) is int and 0 < written <= len(data) - offset,
+                        "receipt-write-progress",
+                    )
+                    offset += written
+                os.fsync(file_fd)
+                _check_deadline(deadline)
+                os.lseek(file_fd, 0, os.SEEK_SET)
+                _check_deadline(deadline)
+                readback = bytearray()
+                while True:
+                    chunk = os.read(
+                        file_fd, min(65536, contract.RECEIPT_BYTES + 1 - len(readback))
+                    )
+                    _check_deadline(deadline)
+                    if not chunk:
+                        break
+                    readback.extend(chunk)
+                    contract.require(
+                        len(readback) <= contract.RECEIPT_BYTES,
+                        "receipt-readback-byte-cap",
+                    )
+                contract.require(bytes(readback) == data, "receipt-readback-mismatch")
+                final = os.fstat(file_fd)
+                _check_deadline(deadline)
+                by_path = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+                _check_deadline(deadline)
+                contract.require(
+                    _file_facts(final) == file == _file_facts(by_path),
+                    "receipt-file-identity-drift",
+                )
+                contract.require(
+                    final.st_size == by_path.st_size == len(data),
+                    "receipt-file-size-mismatch",
+                )
+                _check_directory(directory_fd, path.parent, directory, deadline)
+                result = {
+                    "byte_count": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                }
+            except BaseException as error:
+                if isinstance(error, Exception):
+                    failed = True
+                else:
+                    control = error
+            finally:
+                try:
+                    os.close(file_fd)
+                except BaseException as error:
+                    failed = True
+                    if not isinstance(error, Exception) and control is None:
+                        control = error
+                if monotonic() >= deadline:
+                    failed = True
+        except BaseException as error:
+            if isinstance(error, Exception):
                 failed = True
+            elif control is None:
+                control = error
+        finally:
+            try:
+                os.close(directory_fd)
+            except BaseException as error:
+                failed = True
+                if not isinstance(error, Exception) and control is None:
+                    control = error
             if monotonic() >= deadline:
                 failed = True
+    except BaseException as error:
+        if isinstance(error, Exception):
+            failed = True
+        elif control is None:
+            control = error
+    if control is not None:
+        raise control
     if failed:
         raise CatalogCollectionError("writer-catalog:receipt-custody")
     _check_deadline(deadline)
@@ -547,42 +581,57 @@ def _source_hashes(deadline):
         ("test_writer_catalog_receipt.py", test_path),
         ("writer_catalog_receipt.py", helper_path),
     ):
-        fd = None
         failed = False
+        control = None
         try:
             _check_deadline(deadline)
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-            _check_deadline(deadline)
-            before = os.fstat(fd)
-            _check_deadline(deadline)
-            contract.require(
-                stat.S_ISREG(before.st_mode) and 0 < before.st_size <= SOURCE_BYTES,
-                "source-file-type-size",
-            )
-            content = bytearray()
-            while True:
-                chunk = os.read(fd, min(65536, SOURCE_BYTES + 1 - len(content)))
-                _check_deadline(deadline)
-                if not chunk:
-                    break
-                content.extend(chunk)
-                contract.require(len(content) <= SOURCE_BYTES, "source-byte-cap")
-            after = os.fstat(fd)
-            _check_deadline(deadline)
-            contract.require(
-                (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
-                == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-                and len(content) == after.st_size,
-                "source-file-drift",
-            )
-            hashes[label] = hashlib.sha256(content).hexdigest()
-        except Exception:
-            failed = True
-        if fd is not None:
             try:
-                os.close(fd)
-            except Exception:
+                _check_deadline(deadline)
+                before = os.fstat(fd)
+                _check_deadline(deadline)
+                contract.require(
+                    stat.S_ISREG(before.st_mode) and 0 < before.st_size <= SOURCE_BYTES,
+                    "source-file-type-size",
+                )
+                content = bytearray()
+                while True:
+                    chunk = os.read(fd, min(65536, SOURCE_BYTES + 1 - len(content)))
+                    _check_deadline(deadline)
+                    if not chunk:
+                        break
+                    content.extend(chunk)
+                    contract.require(len(content) <= SOURCE_BYTES, "source-byte-cap")
+                after = os.fstat(fd)
+                _check_deadline(deadline)
+                contract.require(
+                    (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+                    == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                    and len(content) == after.st_size,
+                    "source-file-drift",
+                )
+                hashes[label] = hashlib.sha256(content).hexdigest()
+            except BaseException as error:
+                if isinstance(error, Exception):
+                    failed = True
+                else:
+                    control = error
+            finally:
+                try:
+                    os.close(fd)
+                except BaseException as error:
+                    failed = True
+                    if not isinstance(error, Exception) and control is None:
+                        control = error
+                if monotonic() >= deadline:
+                    failed = True
+        except BaseException as error:
+            if isinstance(error, Exception):
                 failed = True
+            elif control is None:
+                control = error
+        if control is not None:
+            raise control
         if failed:
             raise CatalogCollectionError("writer-catalog:source-bytes")
         _check_deadline(deadline)
@@ -634,7 +683,7 @@ async def test_collect_existing_writer_catalog_receipt():
                 ],
                 "samples": [direct, pool],
             }
-            _write_receipt(receipt, deadline)
+            _write_receipt(receipt, deadline, require_supported_parent=True)
     except (Exception, asyncio.CancelledError):
         failed = True
     if failed:

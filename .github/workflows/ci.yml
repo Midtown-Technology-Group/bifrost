@@ -360,9 +360,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-          # The unchanged gate fetches origin/main; checkout cleans this
-          # read-only credential after the job.
-          persist-credentials: true
+          # Public Midtown/bifrost origin/main fetch is intentionally anonymous.
+          # Private visibility needs reviewed handling, never automatic credential injection.
+          persist-credentials: false
 
       - name: Set up repository-check Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -884,6 +884,190 @@ jobs:
             ./test.sh "${shard_files[@]}" -v --durations=50
           fi
 
+      - name: Capture private writer catalog receipt
+        if: always() && matrix.total != 0
+        run: |
+          set -euo pipefail
+          test "${BIFROST_PROJECT_PREFIX:-bifrost-test}" = "bifrost-test"
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          sudo -n python3 - "$project" "$RUNNER_TEMP" "$(id -u)" "$(id -g)" <<'PY_CAPTURE'
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          import sys
+          import time
+          from contextlib import ExitStack
+          from pathlib import Path
+
+          CAP = 8 * 1024 * 1024
+          deadline = time.monotonic() + 60
+          failed = False
+          control = None
+          fds = ExitStack()
+
+          def require(ok):
+              if not ok:
+                  raise ValueError("transfer-contract")
+
+          def budget():
+              require(time.monotonic() < deadline)
+
+          def record(error):
+              global failed, control
+              failed = True
+              if not isinstance(error, Exception) and control is None:
+                  control = error
+
+          def close(fd):
+              try:
+                  os.close(fd)
+                  budget()
+              except BaseException as error:
+                  record(error)
+
+          def opened(path, flags, *, parent=None):
+              budget()
+              fd = os.open(path, flags, 0o600, dir_fd=parent)
+              fds.callback(close, fd)
+              budget()
+              return fd
+
+          def directory(fd):
+              info = os.fstat(fd)
+              budget()
+              require(stat.S_ISDIR(info.st_mode))
+              return (info.st_dev, info.st_ino, info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
+
+          def file_facts(info):
+              budget()
+              return (info.st_dev, info.st_ino, info.st_uid, info.st_gid,
+                      stat.S_IMODE(info.st_mode), info.st_nlink, info.st_size,
+                      info.st_mtime_ns, info.st_ctime_ns)
+
+          def read(fd, limit):
+              data = bytearray()
+              while True:
+                  chunk = os.read(fd, min(65536, limit + 1 - len(data)))
+                  budget()
+                  if not chunk:
+                      return bytes(data)
+                  data.extend(chunk)
+                  require(len(data) <= limit)
+
+          def exported(name, data, parent, uid, gid):
+              fd = opened(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                          parent=parent)
+              os.fchmod(fd, 0o600)
+              budget()
+              os.fchown(fd, uid, gid)
+              budget()
+              before = file_facts(os.fstat(fd))
+              require(stat.S_ISREG(os.fstat(fd).st_mode) and before[2:6] == (uid, gid, 0o600, 1))
+              offset = 0
+              while offset < len(data):
+                  count = os.write(fd, data[offset:])
+                  budget()
+                  require(type(count) is int and 0 < count <= len(data) - offset)
+                  offset += count
+              os.fsync(fd)
+              budget()
+              os.lseek(fd, 0, os.SEEK_SET)
+              budget()
+              require(read(fd, len(data)) == data)
+              after = file_facts(os.fstat(fd))
+              require(after[:6] == before[:6] and after[6] == len(data)
+                      and after == file_facts(os.stat(name, dir_fd=parent, follow_symlinks=False)))
+              budget()
+              return after
+
+          try:
+              require(len(sys.argv) == 5 and os.geteuid() == 0)
+              project, temp, uid_text, gid_text = sys.argv[1:]
+              require(re.fullmatch(r"bifrost-test-[0-9a-f]{8}", project) is not None)
+              require(uid_text.isdecimal() and gid_text.isdecimal())
+              uid, gid = int(uid_text), int(gid_text)
+              require(uid > 0 and uid_text == os.environ.get("SUDO_UID")
+                      and gid_text == os.environ.get("SUDO_GID"))
+              require(Path(temp).is_absolute() and str(Path(temp).resolve()) == temp)
+              dflags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+              temp_fd = opened(temp, dflags)
+              temp_before = directory(temp_fd)
+              require(temp_before[2] == uid and temp_before[4] & 0o022 == 0)
+              require(file_facts(os.stat(temp, follow_symlinks=False))[:5] == temp_before)
+              os.mkdir("writer-catalog-e2e-capture", 0o700, dir_fd=temp_fd)
+              budget()
+              out_fd = opened("writer-catalog-e2e-capture", dflags, parent=temp_fd)
+              os.fchmod(out_fd, 0o700)
+              budget()
+              os.fchown(out_fd, uid, gid)
+              budget()
+              out_before = directory(out_fd)
+              require(out_before[2:] == (uid, gid, 0o700))
+              source = "/tmp/bifrost-" + project
+              source_fd = parent_fd = None
+              source_directory = source_file = exported_file = data = None
+              try:
+                  parent_fd = opened(source, dflags)
+                  source_directory = directory(parent_fd)
+                  require(source_directory[4] == 0o777)
+                  source_fd = opened("writer-catalog-receipt.log",
+                                     os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC, parent=parent_fd)
+              except FileNotFoundError:
+                  pass
+              if source_fd is not None:
+                  info = os.fstat(source_fd)
+                  source_file = file_facts(info)
+                  require(stat.S_ISREG(info.st_mode) and source_file[2] == 1000
+                          and source_file[4:6] == (0o600, 1) and 0 < info.st_size <= CAP)
+                  data = read(source_fd, CAP)
+                  require(len(data) == source_file[6] and source_file == file_facts(os.fstat(source_fd))
+                          == file_facts(os.stat("writer-catalog-receipt.log", dir_fd=parent_fd,
+                                                follow_symlinks=False)))
+                  require(source_directory == directory(parent_fd)
+                          == file_facts(os.stat(source, follow_symlinks=False))[:5])
+                  exported_file = exported("writer-catalog-receipt.log", data, out_fd, uid, gid)
+              witness = dict(schema="bifrost.writer-catalog-transfer/v1",
+                             status="copied" if data is not None else "absent", project=project,
+                             source_path=source + "/writer-catalog-receipt.log",
+                             destination_path=temp + "/writer-catalog-e2e-capture/writer-catalog-receipt.log",
+                             source_directory=source_directory, source_file=source_file,
+                             destination_directory=out_before, destination_file=exported_file,
+                             byte_count=len(data) if data is not None else None,
+                             sha256=hashlib.sha256(data).hexdigest() if data is not None else None,
+                             host_uid=uid, host_gid=gid,
+                             privilege_boundary="same-e2e-job-sudo-coordinator",
+                             verification="requires_named_testcase_pass_and_external_candidate_binding")
+              encoded = json.dumps(witness, separators=(",", ":"), allow_nan=False).encode("utf-8")
+              require(len(encoded) <= 16384)
+              exported("writer-catalog-transfer.json", encoded, out_fd, uid, gid)
+              require(out_before == directory(out_fd)
+                      == file_facts(os.stat("writer-catalog-e2e-capture", dir_fd=temp_fd,
+                                            follow_symlinks=False))[:5])
+              require(temp_before == directory(temp_fd)
+                      == file_facts(os.stat(temp, follow_symlinks=False))[:5])
+              if source_fd is not None:
+                  require(source_file == file_facts(os.fstat(source_fd))
+                          == file_facts(os.stat("writer-catalog-receipt.log", dir_fd=parent_fd,
+                                                follow_symlinks=False)))
+                  require(source_directory == directory(parent_fd)
+                          == file_facts(os.stat(source, follow_symlinks=False))[:5])
+              budget()
+          except BaseException as error:
+              record(error)
+          finally:
+              try:
+                  fds.close()
+              except BaseException as error:
+                  record(error)
+          if control is not None:
+              raise control
+          if failed:
+              raise RuntimeError("writer-catalog:transfer")
+          PY_CAPTURE
+
       - name: Export E2E service logs and stop stack
         id: e2e-cleanup
         if: always() && matrix.total != 0
@@ -916,7 +1100,8 @@ jobs:
         with:
           name: writer-catalog-receipt-shard-${{ matrix.shard }}-of-${{ matrix.total }}
           path: |
-            /tmp/bifrost-bifrost-test-*/writer-catalog-receipt.log
+            ${{ runner.temp }}/writer-catalog-e2e-capture/writer-catalog-receipt.log
+            ${{ runner.temp }}/writer-catalog-e2e-capture/writer-catalog-transfer.json
             /tmp/bifrost-bifrost-test-*/test-results.xml
             ${{ runner.temp }}/writer-catalog-e2e-cleanup/project-resources.txt
           if-no-files-found: ignore
