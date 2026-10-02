@@ -9,8 +9,8 @@ deployment is authorized.
 
 Current reconciliation (2026-10-02): platform main
 `01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
-`611edddc5aa621f43dfd8a21ef73e1b23ea62e5e`. Both prerequisites remain
-ancestors. Workspace's latest four-file Meraki recipe/proof delta changes no
+`9cfd2a6adb87f2bfc4d627feefdde7199373330b`. Both prerequisites remain
+ancestors. Workspace's latest five-file Ninja Solution/cursor/test/proof delta changes no
 selected Cove input or boundary checker. A fresh stdlib AST audit applying the
 repository's exact authored/boundary roots and exclusions passes2,111 boundary
 files (1,988 standard authored), zero forbidden imports and empty allowlist.
@@ -765,8 +765,13 @@ Secret/TLS/role/source/actual-reader/closure gates are unchanged; volume cleanup
 never repairs failed evidence into acceptance. Alternative B fails actual
 entrypoint/RO-material/preexisting-subpath/host-disposition prerequisites.
 
-Different independent review of original material readerf3258a03 and unit0ea55bca
-found no concrete source blocker (reporta9b42579); AST/locked Ruff passed only.
+The [material-reader checkpoint](rust-core-mvp-agent-material-reader.md) retains
+exact current source hashes, independent review and supported failure/repair
+provenance. Acquisition reader078aaabd is committed unchanged in e3bed7f8;
+units62908 fix three characterized fixture/assertion errors, preserving type
+negatives and all pre-Step4 child exclusions. Run36978794042 FAILED11 units,
+although quality/pre-PR/other lanes passed. New changed-candidate run36980564135
+is PENDING. No reader runtime/nominal acceptance is inferred.
 The separately reviewed [read-acquisition supplement](rust-core-mvp-agent-read-acquisition.md)
 releases only the SAME two source paths. It adds actual PostgreSQL16 own virtual
 transaction identity before/after each readonly read and reader-internal real

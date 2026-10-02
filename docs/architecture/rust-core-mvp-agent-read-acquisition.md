@@ -72,7 +72,7 @@ Require exactly one row with EXACT six aliases and strict scalar types;
 virtual_transaction==own_virtual_xid, mode exactly ExclusiveLock, granted is
 exactly True. Before/after identities must be equal within this transaction.
 Zero/malformed/native/format/inconsistent/changing within-call identity maps
-to existing MATERIAL_INVALID; unexpected aliases map to SCHEMA_MISMATCH;
+to existing MATERIAL_INVALID; missing or extra aliases map to SCHEMA_MISMATCH;
 multiple rows map to CARDINALITY_EXCESS. These are FAILED, never CHANGED,
 and carry neither snapshot nor acquisition. Across calls this stateless reader
 faithfully exposes even equal identities; it does not certify freshness or

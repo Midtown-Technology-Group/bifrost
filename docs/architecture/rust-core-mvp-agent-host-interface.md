@@ -44,8 +44,8 @@ Only THREE independently reviewed constant installed-stdlib literals are propose
 | Operation | Fixed effects | Closed actual inputs |
 | --- | --- | --- |
 | Provision | FD-based ownership transfer of exactly six existing0600 materials; exclusive api/api-replica0700 directories in fresh saved status volume; exclusive runner-owned0700 C/host-status | Independently verified C/parent and volume/Mountpoint identities, expected installed readers, original material identities |
-| Publish | Fixed exclusive0600 temporary file, expected owner before visibility, atomic replacement/fsync, actual final FD identity and bounded reread | Saved C/directory/readers, actual prior-final identity/digest or fixed first-absence sentinel, one prevalidated body<=4096 |
-| Host-status disposal | Admitted fixed regular final/temp files only, then empty directory removal through pinned descriptors | Actual saved directory/file identities after verified reader removal/unmount |
+| Publish | Fixed exclusive0600 temporary file, expected owner before final replacement visibility, atomic replacement/fsync, actual final FD identity and bounded reread | Saved C/directory/readers, actual prior-final identity/digest or fixed first-absence sentinel, one prevalidated body<=4096 |
+| Host-status disposal | Admitted fixed regular final only; temporary must be absent; then empty directory removal through pinned descriptors | Actual saved directory/file identities after verified reader removal/unmount |
 
 Fixed sudo/system-Python `-I -S -B -c` invocation executes the frozen literal bytes,
 never a mutable source pathname, codec, renderer, fixture or product module.
@@ -87,8 +87,21 @@ not an anticipated inode or another pathname. Coordinator bounds/parses this
 internal frame, validates actual body through the unchanged pure codec, compares
 to the admitted body, and retains actual tuple plus SHA256(body). Next publication
 uses this observed prior identity; missing/uncertain/changed continuity fails.
-No body/receipt/capability in logs, argv or environment. This is not a shared wire
+No raw body, whole receipt or capability in logs, argv or environment. The fixed
+continuity argument may contain only the prior actual native device/inode tuple
+and SHA256 of its actual receipt body. This is not a shared wire
 family, observer ACK, actual exit truth, filesystem-erasure or closure proof.
+
+Before publication, the directory entry set must be empty for initial absence,
+or exactly the fixed final for a prior actual receipt; the fixed temporary and
+all unknown entries must be absent. After publication, require exactly the fixed
+final and recheck its name/FD/directory identity. Never prune foreign entries.
+The exclusive temporary initially belongs to root with mode0600; fchown and
+owner/mode checks precede FINAL replacement visibility, not temporary creation.
+Provision directory ownership is checked before consumer creation or mounting.
+Caught input/Python/syscall failures emit fixed static diagnostics only. Signals,
+SIGKILL and uncertain termination can leave empty/partial pipes; those outcomes
+fail and retain an owner. Never infer rollback, synthesize a receipt or resume.
 
 The ordinary trusted coordinator validates unchanged host_status BEFORE publish
 and AFTER actual returned-byte readback. The privileged operation only writes

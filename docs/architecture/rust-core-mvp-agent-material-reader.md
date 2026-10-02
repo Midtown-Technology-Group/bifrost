@@ -18,6 +18,29 @@ AST catalog/SQL/native-alias admission and locked Ruff0.15.12 checks passed.
 No tests/DB/runtime/CI ran for those bytes. The acquisition implementation
 supplement requires its own different review and supported verification.
 
+Current two-file source candidate is reference commit
+`e3bed7f8cc2fbfa95eda61a7d93635e8a4fe2e3a`: reader SHA256
+`078aaabd5cbbb41e7cd9bfb7d3b73a80875af08c0c744a0bc5e01682466eaeba`,
+units `62908bce4bc3e6a6f0bf046ad1fd8545bf0c77f7ae3acdcc60116150561cff77`.
+Different implementation review `edf284c87f11d39332ab046968e65cf90e1b9f5361221b3b7a1599ab17bad1a8`
+accepted the acquisition implementation. Hosted [run36978794042](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36978794042)
+at preceding6a154 FAILED units:11 failed/12,763 passed/3 unrelated skipped/35
+deselected. Quality, literal pre-PR and other required runtime lanes passed;
+none overrides the unit failure. Pre-PR artifact11214139147 records exact
+head/tree/main/image, exit0 and actual empty owned resource inventory.
+
+The e3bed unit-only correction repairs the name-column fixture collision,
+injects malformed native values after otherwise-valid SQL charge aliases, and
+allows exactly two independent metadata row fetches while forbidding all five
+child groups before actual committed Step4 discovery. Reader behavior is unchanged.
+Independent repair review SHA256
+`6ba9f29a4a59247042c7ef8dda1386fcee85a52fca314c0d3fd4afd034fc9a45`
+accepted exact62908 after catching a confounded negative vector. AST and locked
+Ruff pass. New supported [run36980564135](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36980564135)
+is PENDING; this is a changed-candidate validation, not a rerun of failed6a154.
+No actual PostgreSQL observation, source custody or nominal acceptance follows
+from injected connection units. Prior release/source pins below are historical.
+
 Disposition: root freezes the independently reviewed MATERIAL-ONLY interface
 below. Builder package **C1-R-MATERIAL-S** may implement only
 `api/tests/e2e/platform/agent_reference_lineage.py` and

@@ -19,8 +19,8 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
 As of the latest fetch, platform main is `01cadfe09710d293a40da14d6cf4056165289e31`
-and workspace main is `611edddc5aa621f43dfd8a21ef73e1b23ea62e5e`. Its latest
-advance from `e1d3ba388` changes four reviewed Meraki delivery/proof files;
+and workspace main is `9cfd2a6adb87f2bfc4d627feefdde7199373330b`. Its latest
+advance from `611edddc5` changes five Ninja Solution/cursor/test/proof files;
 selected Cove inputs and boundary checker bytes are unchanged. The
 current workspace audit passes 2,111 boundary files (1,988 standard authored
 files), zero forbidden imports and an empty allowlist. Earlier source/test
