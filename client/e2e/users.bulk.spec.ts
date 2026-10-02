@@ -10,6 +10,7 @@
  */
 
 import { test, expect } from "./fixtures/api-fixture";
+import type { Request } from "@playwright/test";
 import type { AuthedApi } from "./fixtures/api-fixture";
 
 const SUFFIX = crypto.randomUUID().slice(0, 8);
@@ -147,17 +148,113 @@ test.describe("Bulk user actions", () => {
 			),
 		).toBeVisible();
 
-		// Pick the destination org from the OrganizationSelect.
-		await dialog.getByRole("combobox").click();
-		await page.getByRole("option", { name: DEST_ORG_NAME }).click();
+		// Observe the immediate picker-to-footer interaction without changing it.
+		const submit = dialog.getByRole("button", { name: /move users/i });
+		const observation = await submit.evaluateHandle((footer) => {
+			const started = performance.now();
+			const events: {
+				type: string;
+				phase: "capture" | "bubble";
+				footerTarget: boolean;
+				closedPickerMounted: boolean;
+				defaultPreventedAtPhase: boolean;
+				elapsedMs: number;
+			}[] = [];
+			let saturated = false;
+			const listeners: (() => void)[] = [];
+			for (const capture of [true, false]) {
+				for (const type of ["pointerdown", "pointerup", "click"]) {
+					const listener = (event: Event) => {
+						const target = event.target;
+						if (!(target instanceof Element)) return;
+						const footerTarget = footer === target || footer.contains(target);
+						if (
+							!footerTarget &&
+							!target.closest('[data-slot="popover-content"]')
+						) return;
+						if (events.length >= 24) {
+							saturated = true;
+							return;
+						}
+						events.push({
+							type,
+							phase: capture ? "capture" : "bubble",
+							footerTarget,
+							closedPickerMounted:
+								document.querySelector(
+									'[data-slot="popover-content"][data-state="closed"]',
+								) !== null,
+							defaultPreventedAtPhase: event.defaultPrevented,
+							elapsedMs: performance.now() - started,
+						});
+					};
+					document.addEventListener(type, listener, capture);
+					listeners.push(() =>
+						document.removeEventListener(type, listener, capture),
+					);
+				}
+			}
+			return {
+				readAndDispose() {
+					for (const remove of listeners) remove();
+					return { events, saturated };
+				},
+			};
+		});
+		let bulkRequests = 0;
+		let requestCounterSaturated = false;
+		const countBulkRequest = (request: Request) => {
+			if (
+				request.method() !== "PATCH" ||
+				new URL(request.url()).pathname !== "/api/users/bulk"
+			) return;
+			if (bulkRequests >= 4) requestCounterSaturated = true;
+			else bulkRequests++;
+		};
+		page.on("request", countBulkRequest);
+		let originalFailure = false;
+		try {
+			// Pick the destination org from the OrganizationSelect.
+			await dialog.getByRole("combobox").click();
+			await page.getByRole("option", { name: DEST_ORG_NAME }).click();
 
-		// Submit and watch for the success toast.
-		await dialog.getByRole("button", { name: /move users/i }).click();
-		await expect(
-			page.getByText(
-				new RegExp(`move to org \\(${SELECTED_USER_COUNT}\\)`, "i"),
-			),
-		).toBeVisible({ timeout: 10000 });
+			// Submit and watch for the success toast.
+			await dialog.getByRole("button", { name: /move users/i }).click();
+			await expect(
+				page.getByText(
+					new RegExp(`move to org \\(${SELECTED_USER_COUNT}\\)`, "i"),
+				),
+			).toBeVisible({ timeout: 10000 });
+		} catch (error) {
+			originalFailure = true;
+			throw error;
+		} finally {
+			let observationFailed = false;
+			try {
+				const captured = await observation.evaluate((owner) => owner.readAndDispose());
+				await test.info().attach("bulk-user-interaction-observation", {
+					body: Buffer.from(JSON.stringify({
+						schema: "bifrost.user01-observation/v1",
+						...captured,
+						bulkRequests,
+						requestCounterSaturated,
+					})),
+					contentType: "application/json",
+				});
+			} catch {
+				observationFailed = true;
+			} finally {
+				page.off("request", countBulkRequest);
+				try {
+					await observation.dispose();
+				} catch {
+					observationFailed = true;
+				}
+			}
+			if (observationFailed && !originalFailure) {
+				throw new Error("Bulk-user interaction observation unavailable");
+			}
+		}
 
 		await page.reload();
 		await page
