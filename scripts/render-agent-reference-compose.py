@@ -128,7 +128,7 @@ BIND_PATHS = {
     "/app/tests": "api/tests",
     "/app/scripts": "api/scripts",
     "/repo/scripts": "scripts",
-    "/app/reference-assets": "test-fixtures/agent-reference",
+    "/repo/reference-assets": "test-fixtures/agent-reference",
     "/app/alembic": "api/alembic",
     "/app/alembic.ini": "api/alembic.ini",
     "/app/.coveragerc": "api/.coveragerc",
@@ -297,12 +297,15 @@ def render(
         )
         env = service.get("environment", {})
         require(isinstance(env, dict), "unresolved service environment")
-        require(
-            set(env) <= COMMON_ENV | OPTIONAL
-            if name in PROCESSES
-            else set(env) <= INFRA_ENV[name],
-            "unexpected environment slot",
-        )
+        allowed_env = COMMON_ENV | OPTIONAL if name in PROCESSES else INFRA_ENV[name]
+        if name == "test-runner":
+            allowed_env = allowed_env | {"BIFROST_AGENT_REFERENCE_ASSETS_DIR"}
+            require(
+                env.get("BIFROST_AGENT_REFERENCE_ASSETS_DIR")
+                == "/repo/reference-assets",
+                "unexpected reference assets location",
+            )
+        require(set(env) <= allowed_env, "unexpected environment slot")
         require(
             all(v is not None and "${" not in str(v) for v in env.values()),
             "unresolved environment value",
@@ -348,7 +351,7 @@ def render(
             require(isinstance(mount, dict), "unresolved mount")
             target, kind = mount.get("target"), mount.get("type")
             if kind == "bind":
-                if target == "/app/reference-assets":
+                if target == "/repo/reference-assets":
                     require(
                         name == "test-runner" and mount.get("read_only") is True,
                         "unexpected reference asset authority",
@@ -362,6 +365,8 @@ def render(
                     if target in STRIP_BINDS:
                         continue
                     mount["read_only"] = True
+                    if target == "/repo/reference-assets":
+                        mount["target"] = "/app/reference-assets"
                 else:
                     expected_source = (
                         log / "solution-repo-fixtures"

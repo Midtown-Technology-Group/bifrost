@@ -374,6 +374,7 @@ services:
       TEST_API_URL: http://api:8000
       TEST_API_REPLICA_URL: http://api-replica:8000
       PYTHONPATH: /app
+      BIFROST_AGENT_REFERENCE_ASSETS_DIR: /repo/reference-assets
       # The hardened uid-1000 runner cannot write a root-owned named volume.
       # Keep coverage data beside the already-permissioned per-worktree results.
       COVERAGE_FILE: /tmp/bifrost/.coverage
@@ -407,7 +408,7 @@ services:
       - ./api/tests:/app/tests:ro
       - ./docs/architecture/execution-operations.md:/app/docs/architecture/execution-operations.md:ro
       - ./scripts:/repo/scripts:ro
-      - ./test-fixtures/agent-reference:/app/reference-assets:ro
+      - ./test-fixtures/agent-reference:/repo/reference-assets:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/.coveragerc:/app/.coveragerc:ro

@@ -61,11 +61,14 @@ def base():
                 "context": str(ROOT),
                 "dockerfile": "api/Dockerfile.dev",
             }
+    services["test-runner"]["environment"]["BIFROST_AGENT_REFERENCE_ASSETS_DIR"] = (
+        "/repo/reference-assets"
+    )
     services["test-runner"]["volumes"] = [
         {
             "type": "bind",
             "source": str(ROOT / "test-fixtures/agent-reference"),
-            "target": "/app/reference-assets",
+            "target": "/repo/reference-assets",
             "read_only": True,
         },
         {
@@ -132,6 +135,11 @@ def test_renderer_closes_services_network_consumers_and_assets(base):
     assert len(assets) == 1
     assert assets[0]["read_only"] is True
     assert assets[0]["source"] == str(ROOT / "test-fixtures/agent-reference")
+    assert (
+        runner["environment"]["BIFROST_AGENT_REFERENCE_ASSETS_DIR"]
+        == "/app/reference-assets"
+    )
+    assert not any(m["target"] == "/repo/reference-assets" for m in runner["volumes"])
     assert not any(m["target"] == "/app/.env.debug" for m in runner["volumes"])
     for name in ("api", "api-replica", "test-runner"):
         mount = next(
@@ -156,7 +164,7 @@ def test_renderer_closes_services_network_consumers_and_assets(base):
 )
 def test_reference_assets_are_exactly_once_readonly_runner_only(base, mutation):
     mounts = base["services"]["test-runner"]["volumes"]
-    assets = next(m for m in mounts if m["target"] == "/app/reference-assets")
+    assets = next(m for m in mounts if m["target"] == "/repo/reference-assets")
     if mutation == "missing":
         mounts.remove(assets)
     elif mutation == "duplicate":
@@ -167,6 +175,19 @@ def test_reference_assets_are_exactly_once_readonly_runner_only(base, mutation):
         assets["source"] = "/unapproved/source"
     else:
         base["services"]["api"]["volumes"].append(assets.copy())
+    with pytest.raises(ValueError):
+        rendered(base)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "wrong-location", "other-reader"])
+def test_reference_asset_environment_is_closed_and_explicit(base, mutation):
+    slot = "BIFROST_AGENT_REFERENCE_ASSETS_DIR"
+    if mutation == "missing":
+        del base["services"]["test-runner"]["environment"][slot]
+    elif mutation == "wrong-location":
+        base["services"]["test-runner"]["environment"][slot] = "/unapproved/source"
+    else:
+        base["services"]["api"]["environment"][slot] = "/repo/reference-assets"
     with pytest.raises(ValueError):
         rendered(base)
 

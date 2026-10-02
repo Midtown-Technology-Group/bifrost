@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import importlib.abc
+import os
 import sys
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
@@ -63,11 +64,11 @@ MARKER = "synthetic-source-must-not-be-disclosed"
 
 @pytest.fixture
 def sources() -> dict[str, bytes]:
-    # Supported /app units require the canonical RO mount, with no skip or
+    # Supported /app units require the explicitly configured RO mount, with no skip or
     # embedded source. Outside containers this is the identical full checkout.
     unit_path = Path(__file__).resolve()
     assets = (
-        Path("/app/reference-assets")
+        Path(os.environ["BIFROST_AGENT_REFERENCE_ASSETS_DIR"])
         if unit_path.is_relative_to("/app")
         else unit_path.parents[3] / "test-fixtures/agent-reference"
     )
