@@ -27,15 +27,18 @@ jobs:
         with:
           persist-credentials: false
       - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client pgbouncer
       - name: Create disposable candidate fixture and test actual login roles
         run: |
           psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d ownership_fixture -f spikes/go-native/ownership/fixture.sql
           python3 spikes/go-native/ownership/check.py > "$RUNNER_TEMP/ownership-evidence.json"
+          python3 spikes/go-native/ownership/pool.py > "$RUNNER_TEMP/ownership-pool-evidence.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ownership-candidate-${{ github.sha }}
-          path: ${{ runner.temp }}/ownership-evidence.json
+          path: |
+            ${{ runner.temp }}/ownership-evidence.json
+            ${{ runner.temp }}/ownership-pool-evidence.json
           if-no-files-found: error
           retention-days: 14
   proof:
