@@ -18,12 +18,12 @@ prove absence of SDK token/configuration/network lookups. All acquisition,
 reads and actual close awaits share one deadline. An uncertain close produces
 no usable object set and retains the actual owner.
 
-The next prerequisite is the actual post-exec bootstrap and call site in the
-already dedicated nominal runner. No second observer process or IPC framework
-is required by this design. The existing runner's pre-exec logging state cannot
-supply this evidence. The nominal case file does not exist at the pinned reader
-head. This checkpoint does not authorize adding a speculative consumer or
-changing shared API, worker or collector logging.
+The original proposal below left the bootstrap and owner call site unresolved.
+The subsequent bounded bootstrap checkpoint at the end of this document selects
+same-interpreter pytest startup, avoiding exec in the nominal branch. It remains
+independent of the missing nominal owner call site. No second observer process
+or IPC framework is required. This checkpoint does not authorize adding a
+speculative consumer or changing shared API, worker or collector logging.
 
 Root must freeze that bootstrap, sanitized SDK/profile inputs, import order,
 actual client ownership and disposal before releasing the two proposed transport
@@ -149,3 +149,44 @@ Root may freeze this exact packet as an accepted bounded supplement to dce310 un
 The design does not intrinsically require a second observer process. An already dedicated nominal pytest-runner interpreter could own the observer if a separately approved narrow bootstrap in that actual post-exec interpreter disables logging before T/SDK/HTTPX/product imports and provides the retained owner call/disposition. The present runner has no such bootstrap; its nominal argv alone is not a producer or import-order proof. No new process/IPC layer is necessary as a design prerequisite.
 
 The smallest next decision is therefore **name and source-freeze that concrete post-exec bootstrap/call site in the dedicated nominal runner, or explicitly retain STOP-to-builder**. After that decision, any narrowly scoped T source authoring still needs root authorization and independent implementation review. Supported SDK zero-send, HTTP/Range compatibility, cancellation/actual-close, source/secret sentinel and nominal MVP gates remain unrun. No #1017 retry, host SOURCE STOP change, Rust/C2/C3 acceptance, merge, deployment or runtime acceptance follows from this review.
+
+
+## Separately reviewed nominal bootstrap source checkpoint
+
+Root proposal `f93fc3fb775f96cb46b15d28c18c6c3dd876a40c33ed00b61cc24f87d348adfe`
+and different design review
+`8fca267b428d9512711e6fae0abc1e22fba456e837208ca512675b5ce7676658`
+freeze only the existing runner and lane-unit paths. After actual successful
+release validation, the exact nominal logical argv selects stdlib logging
+suppression before importing pytest, followed by `SystemExit(pytest.main(argv[1:]))`
+in the same dedicated interpreter. No exec follows. Unit argv retains exec.
+Binding fields, approved arguments, hostname, wait, receipts and service logging
+remain unchanged. This supersedes the proposed need for a post-exec bootstrap,
+without claiming an actual nominal consumer or owner.
+
+Public pytest.main is a supported programmable API; it does not duplicate
+console_main's broken-pipe handling. Logical argv does not prove effective ini,
+PYTEST_ADDOPTS, PYTEST_PLUGINS, installed entry-point or conftest custody.
+Actual supported source/image/interpreter/plugin/environment readback and
+secret/logging sentinels remain gates. caplog can lower logging suppression;
+the future closed case must not use it or re-enable logging. Timeout diagnostics
+can bypass normal teardown; they cannot establish disposal. No new plugin or
+environment policy is implemented merely to obtain a pass.
+
+Different implementation review
+`e47a051b33cf494c95c3109f8c776501fa5fb0a07e153facbbe1f470cf07271f`
+accepts exact runner `7fe29af975566fd710ab00d4feda6be69d3492d4ddb31ee83fdcc15f43c83a20`
+and lane units `4041026ee62b63dceacb41e7bb2dfb15e3afd33f4085e18d330f32df8897f20b`.
+Only those two paths changed, 68 insertions/8 deletions. Tests characterize
+import order, native integer exit propagation, no nominal exec, unchanged unit
+exec, failed-custody no-import/no-exec and logging restoration. Fake pytest is
+branch characterization, not installed startup or SDK custody proof.
+AST, exact Ruff0.15.12 check/format-check and whitespace checks pass.
+
+Source candidate `701aaccd7956b1a3224fc561e4edc72368e88ace`, tree
+`2bcf168cae405a0c4b8052585348d50d76f5fa12`, includes main01cadfe and is clean/pushed.
+Supported ordinary CI plus unchanged pre-PR was requested once as
+[run37007142830](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37007142830)
+and is pending. No nominal agent-reference invocation, host helper or #1017
+repair was requested. Full transport release remains blocked by the actual
+nominal owner call site and acquisition/profile/installed-source custody.

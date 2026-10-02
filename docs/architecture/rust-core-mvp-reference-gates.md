@@ -900,3 +900,16 @@ No transport source builder, nominal acceptance, host retry, #1017 repair,
 credential-policy expansion or C2/C3 implementation is released by this design.
 Both main heads remain platform01cadfe/workspace6bb2399; #1011 at213d had passing
 current checks and all4 review threads resolved before this documentation update.
+
+
+## Bounded nominal bootstrap source candidate
+
+The [source-client checkpoint](rust-core-mvp-source-client-owner.md#separately-reviewed-nominal-bootstrap-source-checkpoint)
+now records independently reviewed two-file bootstrap candidate701aaccd.
+Nominal startup stays in the dedicated runner interpreter, disables logging
+before importing pytest and propagates public pytest.main's return; unit startup
+retains exec. Release validation and logical receipt contracts are unchanged.
+Source/Ruff checks pass; new supported ordinary CI37007142830 including unchanged
+pre-PR is pending. No unfinished nominal scenario or #1017 retry was run.
+Effective pytest configuration/plugins, actual owner call site and installed
+SDK/client/disposal evidence remain gates; no T or C2/C3 release follows.
