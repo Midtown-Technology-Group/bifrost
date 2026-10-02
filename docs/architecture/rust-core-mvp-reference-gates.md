@@ -486,3 +486,45 @@ committed domain result. Exact lineage predicates, real subscription transport,
 privileged host custody and nominal consumer remain separate integration gates.
 No generic Redis/WebSocket port, #1017 restart, vendor call, public CRED authority
 or C2/C3/Rust acceptance is authorized.
+
+## Event evidence implementation candidate
+
+Two-file test-only candidate `da9dac5c9` implements the selected bounded
+collector plus characterization units. Independent review found and closed
+three source findings before supported execution: parser failure raised outside
+exception scope to avoid retaining decoder payload exceptions, a type-compatible
+frozen-record mutation test, and decisive original raw-byte preservation rather
+than merely parsed-payload equality. Exact module SHA256
+`16302c29b324a3ebd2524888e14c4d230dc1a278aa644d80d24254a0986ca537`;
+unit SHA256 `5ab934b6158e29f4fec9518703c549dd7eb1f4bb66d8c37769f63be305fb8bfb`.
+AST and locked Ruff0.15.12 check/format pass. Supported run
+[36966147194](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36966147194)
+against exact `da9dac5c9d4cf8b26401bd01ea20d5f9914a9a75` completed FAILURE.
+Unit job110710414527 passed12,486 tests with3 unrelated skips and35 deselections,
+including all90 new event collector cases; API and browser E2E jobs passed.
+Pyright in both quality and literal pre-PR rejected the JSON traversal at
+`agent_reference_events.py:80:60` (Never is not iterable). This is a blocking
+new-source typing defect, with a bounded typing-only repair under review;
+no suppressions, narrowed JSON behavior, or test expectation waiver is allowed.
+It adds no Redis connection/adapter or nominal run and does not transfer the
+prior bb3d supported success into new-source acceptance.
+
+The [public case setup packet](rust-core-mvp-agent-case-setup.md) records the
+selected reviewed recipe metadata and corrected public-state/SECRET/collector
+readbacks. Full consumer release still requires exact lineage and host-custody
+interfaces and actual supported construction/closure proof. Current source
+derivation distinguishes parent generic attempts from child workflow attempts,
+and retains baseline NULL parent transport-token linkage. No fabricated
+parent/child foreign key, same-request authority observer or fresh SDK lease
+validation is permitted merely to make a test pass.
+
+
+The root-reviewed repair `6a96f206337216d43e60bf921b770f0d162d0fa3`
+adds only `list[tuple[Any, int]]` to the heterogeneous JSON traversal worklist.
+Annotation-normalized executable AST is unchanged; all90 event test bodies and
+unit-file digest remain unchanged. Locked Ruff0.15.12 check/format pass.
+Repaired module SHA256
+`d6cebce252dfea114d5976db8162291ced1c915b69d110d2d8b0e70b56a0bbde`.
+New supported [run36967563219](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36967563219)
+is pending; the prior run's unit success does not certify repaired-source
+quality or literal pre-PR. No #1017 rerun or repair is included.
