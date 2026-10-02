@@ -295,6 +295,8 @@ def markdown(value: str) -> str:
 
 
 def prepare(source: str, prs: list[dict]) -> dict | None:
+    if git("rev-parse", "HEAD") != source or git("status", "--porcelain"):
+        raise ReleaseError("prepare requires a clean checkout of its exact source")
     if pending_release(source, prs):
         return None
     candidate = calculate(source, prs)

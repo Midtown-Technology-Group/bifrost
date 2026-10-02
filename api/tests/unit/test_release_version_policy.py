@@ -107,6 +107,16 @@ def test_empty_git_interval_does_not_release(history):
     assert release.calculate(history["base"], []) is None
 
 
+def test_preparation_cannot_mix_another_ref_or_dirty_work(history):
+    source = history["commit"]()
+    with pytest.raises(release.ReleaseError, match="clean checkout"):
+        release.prepare(history["base"], history["prs"])
+    Path("unrelated.txt").write_text("preserve this work")
+    with pytest.raises(release.ReleaseError, match="clean checkout"):
+        release.prepare(source, history["prs"])
+    assert Path("unrelated.txt").read_text() == "preserve this work"
+
+
 def test_git_interval_ignores_same_day_pr_before_tag(history):
     source = history["commit"]()
     prior = {
