@@ -25,6 +25,7 @@ func TestTypedHandlerBoundary(t *testing.T) {
 		{"normal", `{"name":"Go"}`, []string{"--local"}, true},
 		{"unknown-field", `{"name":"Go","scope":"other-org"}`, []string{"--local"}, false},
 		{"trailing-input", `{"name":"Go"} {}`, []string{"--local"}, false},
+		{"oversized-input", `{"name":"Go"}` + strings.Repeat(" ", 65536) + `{}`, []string{"--local"}, false},
 		{"nonlocal", `{"name":"Go"}`, nil, false},
 		{"unexpected-argument", `{"name":"Go"}`, []string{"--local", "execute"}, false},
 	} {

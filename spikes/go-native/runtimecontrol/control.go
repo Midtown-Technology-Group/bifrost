@@ -323,13 +323,17 @@ func Write(w io.Writer, f Frame) error {
 	for _, data := range [][]byte{prefix, raw} {
 		for len(data) > 0 {
 			n, e := w.Write(data)
-			if errors.Is(e, syscall.EINTR) && n == 0 {
+			if n < 0 || n > len(data) {
+				return IO
+			}
+			if errors.Is(e, syscall.EINTR) {
+				data = data[n:]
 				continue
 			}
 			if e != nil {
 				return IO
 			}
-			if n <= 0 || n > len(data) {
+			if n == 0 {
 				return IO
 			}
 			data = data[n:]
@@ -343,8 +347,11 @@ type interruptReader struct{ io.Reader }
 func (r interruptReader) Read(p []byte) (int, error) {
 	for {
 		n, err := r.Reader.Read(p)
-		if errors.Is(err, syscall.EINTR) && n == 0 {
-			continue
+		if errors.Is(err, syscall.EINTR) {
+			if n == 0 {
+				continue
+			}
+			return n, nil
 		}
 		return n, err
 	}

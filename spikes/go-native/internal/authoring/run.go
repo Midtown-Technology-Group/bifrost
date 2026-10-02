@@ -3,6 +3,7 @@
 package authoring
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,13 +20,21 @@ func Run[Input, Output any](ctx context.Context, args []string, input io.Reader,
 	if flags.Parse(args) != nil || !*local || flags.NArg() != 0 {
 		return errors.New("only explicit local spike execution is supported")
 	}
-	ctx, cleanup, err := setup(ctx, io.LimitReader(provision, 65536))
+	provisionBytes, err := bounded(provision)
+	if err != nil {
+		return err
+	}
+	ctx, cleanup, err := setup(ctx, bytes.NewReader(provisionBytes))
 	if err != nil {
 		return err
 	}
 	defer cleanup()
+	inputBytes, err := bounded(input)
+	if err != nil {
+		return err
+	}
 	var in Input
-	decoder := json.NewDecoder(io.LimitReader(input, 65536))
+	decoder := json.NewDecoder(bytes.NewReader(inputBytes))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&in) != nil {
 		return errors.New("invalid workflow input")
@@ -39,4 +48,12 @@ func Run[Input, Output any](ctx context.Context, args []string, input io.Reader,
 		return err
 	}
 	return json.NewEncoder(output).Encode(out)
+}
+
+func bounded(reader io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, 65537))
+	if err != nil || len(data) > 65536 {
+		return nil, errors.New("invalid or oversized authoring input")
+	}
+	return data, nil
 }
