@@ -405,8 +405,8 @@ has passing lint/type checks and literal pre-PR job110702387902. Root inspected
 artifact11209062488: exact bb3d3fd tree
 `5de2091717211c0ad6c38e363b612125561bc0e2`, current main01cadfe, exit0 and
 empty owned container/volume/network queries after teardown. Unit job110702387913 subsequently passed12,396 cases/3 skipped/35
-deselected in331.96 seconds on CPython3.14.7; the overall E2E run remains
-pending. The prior failed runs retain their actual dispositions.
+deselected in331.96 seconds on CPython3.14.7; the overall supported run, including broader E2E, subsequently completed
+SUCCESS. The prior failed runs retain their actual dispositions.
 
 The nominal public case, verified reader/image/interpreter custody, privileged
 host closure interfaces and complete DB/event/usage/result/summary joins remain
@@ -459,7 +459,30 @@ unit TLS certificate/redirect negatives and the mandatory materials-tool
 exercise. Root read actual completed job110702387913 logs; SHA256
 `acc376537171c1403b1e465277a0052a0792e75b09d195e29590e572d75efae8`.
 This closes the previously recorded17 unit failures without expectation waivers.
-Supported quality and literal pre-PR also pass against this candidate; broader
-E2E jobs remain pending at this disposition. Unit construction evidence does
+Supported quality and literal pre-PR also pass against this candidate; the complete
+supported run subsequently finished SUCCESS. Unit construction evidence does
 not execute the public nominal worker case, prove installed process custody,
 or satisfy DB/event/result/summary/closure joins, Rust parity or C2/C3.
+
+## Current main and bounded collector advancement
+
+Platform main remains01cadfe09710d293a40da14d6cf4056165289e31; workspace
+main advanced to `e33f2b30c5318a9a6b21220c7c351202cb5b0cbd` (#1130). The
+12-file delta adds reviewed production Source-delivery inputs/dependency review
+and advances the workspace SDK lock to platform e58/image digest c5924a79.
+Selected Cove authored sources remain unchanged. The exact detached e33 checkout
+passes the workspace-owned AST audit:2,109 boundary files,1,986 standard authored
+files, zero forbidden imports and empty allowlist. #1112 remains an ancestor;
+platform #1001 remains an ancestor of current main. This is source-boundary
+proof, not deployed SDK or authored-runtime execution proof. Historical retained
+Cove fixture provenance and supported API image identities remain their actual
+pins; neither is silently relabeled as the current workspace SDK installation.
+
+The [bounded event collector interface](rust-core-mvp-agent-event-collector.md)
+releases only a two-file test evidence package. Genuine selected publications,
+channel fanout duplicates, ACK gating and prebind/postbind budget are explicit.
+It cannot itself certify a real Redis subscription, public nominal run or
+committed domain result. Exact lineage predicates, real subscription transport,
+privileged host custody and nominal consumer remain separate integration gates.
+No generic Redis/WebSocket port, #1017 restart, vendor call, public CRED authority
+or C2/C3/Rust acceptance is authorized.
