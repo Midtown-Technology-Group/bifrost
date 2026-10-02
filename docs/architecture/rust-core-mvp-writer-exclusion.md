@@ -264,10 +264,11 @@ Different retained-evidence review SHA256
 accepts the complete receipt and named passing test, with the custody limits
 above. It does not accept writer security or globally passing CI.
 
-## Current-main graph audit: source acceptance, catalog still required
+## Current-main graph audit and partial catalog reconciliation
 
 A bounded independently reviewed inventory against main
-`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` extends the Stage1 prerequisite:
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` extends the Stage1 prerequisite.
+This source checkpoint preceded the catalog collection recorded below:
 
 - `api/src/models/orm/executions.py:286` omits ExecutionLog FK ondelete, while
   `api/alembic/versions/20241128_000000_initial_schema.py:194` declares CASCADE.
@@ -295,7 +296,8 @@ A bounded independently reviewed inventory against main
   before the outer caller commits; its own-session branch commits first.
   SQL denial/rollback alone cannot prove no external effect or lost buffer.
 
-Next prerequisite is a finite capped read-only isolated catalog receipt:
+At that source checkpoint, the next prerequisite was a finite capped read-only
+isolated catalog receipt, subsequently collected below:
 actual FK actions/composite ordering/self/ancestor closure, relation identity,
 constraints, enabled internal/external triggers and function authority, migration
 revision and direct/pool principal provenance. Unexpected edges stop for review;
@@ -310,3 +312,59 @@ is independently reviewed and released only for test implementation and its
 narrow receipt/JUnit capture. It freezes exact SQL, native schemas, bounded
 metadata-only discovery, custody and failure rules. Raw collection can pass
 with reconciliation pending; Stage1/security acceptance remains separately gated.
+
+
+### Catalog raw collection: 2da candidate remains globally failed
+
+[CI37038040861](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37038040861)
+at `2da92d2474916a542062b78dd56793845071290f` completed FAILURE solely on
+supported Pyright and literal pre-PR: helper line257 did not narrow a row's type
+through the custom validation call. All runtime/browser lanes passed, including
+82 catalog-contract unit cases and11,716 total backend units (3 unrelated skips,
+35 deselections). The separately reviewed R1 correction preserves exact dict
+admission and errors; no unchanged-candidate rerun or expectation waiver follows.
+
+API E2E shard4/job110941176988 artifact11241930614 retains exactly one nonskipped
+PASS `tests.e2e.platform.test_writer_catalog_receipt::test_collect_existing_writer_catalog_receipt`
+(0.347s), with the519961-byte receipt. ZIP SHA256:
+`73a1d6fa493fbe55b043ed28e98411f0f778fb90271358f8014b555d1aa2bee2`;
+receipt SHA256:
+`1e4896886e0fcc69fbeb1b5b2516a2556f33e27383f1779a24f908e1a64620ea`.
+Receipt test/helper source hashes match that exact candidate. Independent
+retained-evidence review SHA256:
+`ef846b05556346c2e088aa506448d1b20c520ba2599cc3c8cad789235355e467`.
+
+Direct and pooled PG160015/read-only/repeatable-read snapshots agree except
+backend PID, with Q0–Q8 row counts12/1/15/97/162/168/771/0/1. Both recomputed
+graphs have12 roots,28 ancestors,13 dependents,28 relevant relations and69
+one-hop boundary relations:97 total,162 FK constraints/158 distinct relation
+pairs. This is the frozen directional closure, not a full undirected component.
+The actual execution-log FK is DELETE CASCADE/UPDATE NO ACTION, settling that
+isolated installed action versus the ORM omission and initial migration.
+
+The earlier primitive audit omitted three qualified `sa.ForeignKey` calls:
+`agent_prompt_history.py:18,25` and `agent_run_flag_conversations.py:27`.
+Its191 calls/189 pairs and95-relation/150-incident-pair projection must not be
+read as all source edges. Including qualified calls gives194 literal calls/192
+pairs,96 scoped relations and153 incident pairs. The remaining installed-only
+relation is legacy `schedules`, with organization/user FKs explained by the
+20241203 creation and20260331 user-FK migrations. Remaining pair differences
+include composite parent/base/active deployment pins and a constant-target FK.
+No literal simple source incident pair is missing from the receipt. This is
+partial structural reconciliation; it does not approve deletion of retained
+legacy tables or automatic expansion of Rust writer ownership.
+
+Observed bifrost authority remains superuser/BYPASSRLS. Policies are absent;
+nonempty policy-role, trigger-column and function-argument array codecs were
+not observed. CHECK/policy/trigger bodies, arguments and configuration values
+remain intentionally uncollected. No complete semantic/action reconciliation,
+API/worker/scheduler identity or deployed schema equivalence is established.
+
+The E2E job corroborates API-image pull digest
+`sha256:de40e360a55c88e03634f4cf3496898893614d1b3df4036c86b523e680c826d1`.
+It ran teardown but captured no actual remaining-resource inventory. The other
+manual job's EMPTY receipt cannot supply that missing E2E cleanup evidence.
+Accept limited raw collection only; full associated custody/required checks
+remain blocked. R1 adds exact same-job read-only resource verification and must
+receive independent source review and supported execution on its new candidate.
+Reconciliation/security readiness, Stage1 and C2/C3 remain STOP.
