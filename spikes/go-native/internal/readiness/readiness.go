@@ -11,7 +11,7 @@ import (
 
 type Input struct {
 	IntegrationName string   `json:"integration_name"`
-	RequiredKeys    []string `json:"required_keys"`
+	RequiredKeys    []string `json:"required_keys,omitempty"`
 }
 type Output struct {
 	Ready       bool     `json:"ready"`

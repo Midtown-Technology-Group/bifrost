@@ -141,6 +141,9 @@ func (s *IntegrationService) Get(ctx context.Context, name string, opts *GetInte
 	}
 	b, err = io.ReadAll(io.LimitReader(res.Body, maxResponse+1))
 	if err != nil || len(b) > maxResponse {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, errors.New("SDK response unavailable or too large")
 	}
 	var result *Integration

@@ -11,6 +11,7 @@ chmod 755 "$scratch"
 cleanup() { chmod -R u+w "$scratch"; rm -rf "$scratch"; }
 trap cleanup EXIT
 mkdir -p "$scratch/modules" "$scratch/compiler" "$scratch/tests" "$scratch/out" "$scratch/results" "$scratch/warm-source"
+mkdir -p "$scratch/independent-compiler"
 cp -a "$spike_root/." "$scratch/warm-source/"
 task_uid=$(id -u)
 task_gid=$(id -g)
@@ -26,7 +27,7 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
   HOME=/tmp GOTOOLCHAIN=local GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   GOMODCACHE=/modules GOCACHE=/tmp/cache GOPROXY=https://proxy.golang.org \
   GOSUMDB=sum.golang.org GONOPROXY=none GONOSUMDB=none \
-  sh -c 'start=$(date +%s%N); go mod download; end=$(date +%s%N); echo "module_download_ns=$((end-start))"' \
+  sh -c 'start=$(date +%s%N); go mod download; go mod verify; end=$(date +%s%N); echo "module_download_ns=$((end-start))"' \
   > "$evidence_dir/module-download.txt"
 
 # Tenant tests cannot see final output, signing identity, Git credentials or the
@@ -45,21 +46,23 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
 
 build() {
   local source_dir=$1 label=$2
+  local compiler_dir=${3:-$scratch/compiler}
   docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
     --user "$task_uid:$task_gid" --pids-limit 256 --memory 3g --cpus 2 \
     --tmpfs /tmp:rw,nosuid,nodev,size=1g \
     --mount "type=bind,src=$source_dir,dst=/src,readonly" \
     --mount "type=bind,src=$scratch/modules,dst=/modules,readonly" \
-    --mount "type=bind,src=$scratch/compiler,dst=/compiler" \
+    --mount "type=bind,src=$compiler_dir,dst=/compiler" \
     --mount "type=bind,src=$scratch/out,dst=/out" \
     --workdir /src "$toolchain_image" env -i PATH=/usr/local/go/bin:/usr/bin:/bin \
     HOME=/tmp GOTOOLCHAIN=local GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     GOMODCACHE=/modules GOCACHE=/compiler GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
-    sh -c 'start=$(date +%s%N); go build -trimpath -buildvcs=false -o /out/workflow ./cmd/workflow; end=$(date +%s%N); echo "compile_ns=$((end-start))"; go version -m /out/workflow; go list -m -json all; go version' \
+    sh -c 'start=$(date +%s%N); go build -trimpath -buildvcs=false -o /out/workflow ./cmd/workflow; end=$(date +%s%N); echo "compile_ns=$((end-start))"; go version -m /out/workflow; go list -m -json all; go mod graph > /out/module-graph.txt; go version' \
     > "$evidence_dir/$label.txt"
 }
 build "$spike_root" cold
 cp "$scratch/out/workflow" "$evidence_dir/workflow"
+cp "$scratch/out/module-graph.txt" "$evidence_dir/module-graph.txt"
 sha256sum "$evidence_dir/workflow" > "$evidence_dir/artifact.sha256"
 
 # A real source edit changes executable behavior/output ordering, not comments.
@@ -73,9 +76,17 @@ PY
 build "$scratch/warm-source" warm-edit
 edit_end_ns=$(date +%s%N)
 echo "edit_to_artifact_ns=$((edit_end_ns-edit_start_ns))" > "$evidence_dir/edit-loop.txt"
+python3 - "$scratch/warm-source" "$evidence_dir/warm-source.json" <<'PY'
+import hashlib,json,pathlib,sys
+root=pathlib.Path(sys.argv[1])
+files=[{"path":str(p.relative_to(root)),"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]
+pathlib.Path(sys.argv[2]).write_text(json.dumps(files,sort_keys=True,separators=(',',':'))+'\n')
+PY
 cp "$scratch/out/workflow" "$evidence_dir/workflow-warm-edit"
 sha256sum "$scratch/out/workflow" > "$evidence_dir/warm-artifact.sha256"
 build "$spike_root" restored-warm
+cmp "$scratch/out/workflow" "$evidence_dir/workflow"
+build "$spike_root" independent-cold "$scratch/independent-compiler"
 cmp "$scratch/out/workflow" "$evidence_dir/workflow"
 
 # Prepare the measurement harness separately; it never compiles a workflow at run.
@@ -89,7 +100,8 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --workdir /src "$toolchain_image" env -i PATH=/usr/local/go/bin:/usr/bin:/bin \
   HOME=/tmp GOTOOLCHAIN=local GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   GOMODCACHE=/modules GOCACHE=/compiler GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
-  go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe
+  sh -c 'go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
+cp "$scratch/out/generated-input.json" "$scratch/out/generated-output.json" "$evidence_dir/"
 
 # Empty root with only the two immutable binaries mounted: no compiler, shell,
 # secrets, module cache or external network. /out is only fixture measurement data.
@@ -124,3 +136,14 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
   /opt/tools/govulncheck -json ./... > "$evidence_dir/govulncheck.jsonl"
 
 python3 "$spike_root/scripts/describe.py" "$spike_root" "$evidence_dir" "$toolchain_image"
+
+# Experimental attestation keys exist only in this trusted verifier's temporary
+# directory, created after all source/test/runtime containers have exited. They
+# are never mounted into a builder or workload and never authorize production.
+openssl genpkey -algorithm ED25519 -out "$scratch/attestation.key" 2>/dev/null
+openssl pkey -in "$scratch/attestation.key" -pubout -out "$evidence_dir/attestation-public.pem"
+openssl pkeyutl -sign -rawin -inkey "$scratch/attestation.key" \
+  -in "$evidence_dir/descriptor.json" -out "$evidence_dir/descriptor.sig"
+openssl pkeyutl -verify -rawin -pubin -inkey "$evidence_dir/attestation-public.pem" \
+  -in "$evidence_dir/descriptor.json" -sigfile "$evidence_dir/descriptor.sig" \
+  > "$evidence_dir/attestation-verification.txt"

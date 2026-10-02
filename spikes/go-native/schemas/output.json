@@ -5,6 +5,6 @@
   "required": ["ready", "missing_keys"],
   "properties": {
     "ready": { "type": "boolean" },
-    "missing_keys": { "type": "array", "items": { "type": "string" } }
+    "missing_keys": { "type": ["array", "null"], "items": { "type": "string" } }
   }
 }

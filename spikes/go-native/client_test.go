@@ -101,6 +101,27 @@ func TestGetCancellation(t *testing.T) {
 		t.Fatal("context cancellation lost")
 	}
 }
+
+func TestCancellationWhileReadingBody(t *testing.T) {
+	entered := make(chan struct{})
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		close(entered)
+		<-r.Context().Done()
+	}))
+	defer s.Close()
+	c := testClient(t, s)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := c.Integrations.Get(ctx, "Fixture", nil); done <- err }()
+	<-entered
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatal("body read lost context cancellation")
+	}
+}
 func TestProvisionValidation(t *testing.T) {
 	for _, endpoint := range []string{"http://localhost", "https://user:pass@example.com", "https://example.com/path", "https://example.com?token=bad"} {
 		if _, err := NewClient(Provision{Endpoint: endpoint, Bearer: "synthetic"}, nil); err == nil {
