@@ -7,6 +7,37 @@ on:
 permissions:
   contents: read
 jobs:
+  ownership:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6@sha256:b86568d3e0fe1dfaeff52714f9da36f206a30e4c49131b82bf96982d78627409
+        env:
+          POSTGRES_DB: ownership_fixture
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Create disposable candidate fixture and test actual login roles
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d ownership_fixture -f spikes/go-native/ownership/fixture.sql
+          python3 spikes/go-native/ownership/check.py > "$RUNNER_TEMP/ownership-evidence.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ownership-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/ownership-evidence.json
+          if-no-files-found: error
+          retention-days: 14
   proof:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
