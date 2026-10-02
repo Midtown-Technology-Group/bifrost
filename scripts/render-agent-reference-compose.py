@@ -201,6 +201,7 @@ SERVICE_FIELDS = {
     "depends_on",
     "healthcheck",
     "command",
+    "entrypoint",
     "user",
     "security_opt",
     "cap_drop",

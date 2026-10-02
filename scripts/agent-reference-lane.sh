@@ -145,10 +145,14 @@ mkdir -p "$LOG_DIR/solution-repo-fixtures"
 mkdir -m 700 "$lane_evidence_dir"
 python3 - "$lane_context" "$lane_root" "$COMPOSE_PROJECT_NAME" "$lane_source" "$lane_id" <<'PY'
 import json
+import os
 import sys
 from pathlib import Path
 context, root, project, source, lane_id = sys.argv[1:]
-Path(context, "owner.json").write_text(json.dumps({"root": root, "project": project, "source": source, "lane_id": lane_id}) + "\n")
+owner_path = Path(context, "owner.json")
+owner_fd = os.open(owner_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(owner_fd, "w") as owner_file:
+    owner_file.write(json.dumps({"root": root, "project": project, "source": source, "lane_id": lane_id}) + "\n")
 PY
 
 lane_started=0

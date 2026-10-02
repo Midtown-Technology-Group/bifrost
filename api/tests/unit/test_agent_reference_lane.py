@@ -687,6 +687,9 @@ def test_preexisting_project_or_failed_query_never_mutates(tmp_path, kind):
         *(f"api/{p}" for p in lane.UNITS),
         "test-fixtures/agent-reference/provenance.json",
         "api/scripts/agent_reference_runner.py",
+        "api/scripts/agent_reference_fixture.py",
+        "api/tests/e2e/platform/agent_reference_observer.py",
+        "api/tests/e2e/platform/agent_reference_server.py",
     ):
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -719,6 +722,7 @@ if kind == 'volume' and sys.argv[1:3] == ['volume', 'ls']: print('owned-volume')
         check=False,
     )
     assert result.returncode != 0
+    assert b"required agent-reference input missing" not in result.stderr
     assert calls.exists()
     for call in calls.read_text().splitlines():
         arguments = json.loads(call)
