@@ -60,6 +60,76 @@ collection. Actual named nonskipped catalog JUnit, receipt readback hash and
 candidate/tree/run/job/shard/image/artifact association remain mandatory.
 Cleanup evidence applies only to its own job. Stage1 and C2/C3 remain stopped.
 
+## R1: observed type-check failure and E2E cleanup custody
+
+Hosted run [37038040861](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37038040861)
+uses candidate `2da92d2474916a542062b78dd56793845071290f`, tree
+`9669a1949f25b1b7fd3d68c5331a4c6686952d24`, against main `4abdf1a1`.
+Supported Pyright and literal pre-PR both reject helper line257: the custom
+`require(type(row) is dict ...)` does not propagate static narrowing before
+`row[name]`. This is a candidate defect, not a waived reference failure.
+Pre-PR artifact11240818410 binds that exact candidate/tree/main, exit1 and
+cleanup0 with empty actual resources. ZIP SHA256:
+`aba1cbdbd36b0e9dbadbe7e18fe85be2561c742491310fb63440e3ff20bbce01`.
+Its image ID is `94de98d47599714059dea366436bd260fb3317cb478b4567f512f78a428d01e2`,
+registry digest `de40e360a55c88e03634f4cf3496898893614d1b3df4036c86b523e680c826d1`.
+These image/cleanup observations belong only to that pre-PR job. Other runtime
+lanes are still pending at this checkpoint; no catalog acceptance is claimed.
+
+The architect releases this bounded correction after the current run becomes
+terminal: replace the combined row check with an explicit `type(row) is not dict`
+branch raising the same `CatalogContractError("ordered-row-schema")`, then the
+unchanged ordered-column check. Add focused rejection coverage for nonmapping
+rows and dict subclasses. No cast, suppression, wider admission, coercion,
+changed error code, SQL, native matrix, graph or deadline contract is released.
+
+A separate verification gap requires an explicit workflow exception. Existing
+`test.sh stack down` exports logs and runs Compose teardown but does not inspect
+remaining resources. Give the existing E2E teardown step `id: e2e-cleanup`,
+leaving its command and condition unchanged. Insert the independently reviewed
+21-line read-only resource inventory after it, frozen at SHA256
+`c075eb540ace5425ffafc9b8a1b12b1230c56883d7645096ca07bde7b66dcaea`.
+It derives the same supported Compose project, captures teardown outcome and
+actual project-scoped containers/volumes/networks, and fails on inspection
+errors, unsuccessful teardown or nonempty resources. Add only
+`${{ runner.temp }}/writer-catalog-e2e-cleanup/project-resources.txt` to the
+existing per-shard catalog/JUnit uploader. Do not retry teardown or delete more
+resources; no new job/input/permission/action or test selection change.
+
+Frozen inserted step (including the final separating blank line):
+
+```yaml
+      - name: Verify E2E project cleanup
+        if: always() && matrix.total != 0
+        env:
+          CLEANUP_OUTCOME: ${{ steps.e2e-cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          evidence_dir="$RUNNER_TEMP/writer-catalog-e2e-cleanup"
+          mkdir -p "$evidence_dir"
+          containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+          networks="$(docker network ls -q --filter "label=com.docker.compose.project=$project")"
+          printf 'project=%s\ncleanup_outcome=%s\ncontainers=%s\nvolumes=%s\nnetworks=%s\n' \
+            "$project" "$CLEANUP_OUTCOME" "$containers" "$volumes" "$networks" \
+            > "$evidence_dir/project-resources.txt"
+          test "$CLEANUP_OUTCOME" = "success"
+          test -z "$containers"
+          test -z "$volumes"
+          test -z "$networks"
+
+```
+
+Independent R1 design review SHA256:
+`7ab5cf2395591840332c89eb4edb222307a0f45f8cfd18d6a47a553e8e9969ce`.
+The four owned paths remain unchanged. Require distinct corrected-source and
+exact insertion review before one supported run of the new fixed candidate.
+Retain the failed run; never rerun the unchanged candidate until green. Actual
+catalog receipt/JUnit/source/image association and that E2E job's cleanup
+receipt remain mandatory. No role/schema/guard, Stage1 or C2/C3 release.
+
 ## Architect test-seam and supported-directory clarifications
 
 The pure helper retains matrix/graph/serialization responsibility and no
