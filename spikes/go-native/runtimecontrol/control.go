@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 )
 
@@ -281,6 +282,7 @@ func Decode(raw []byte) (Frame, error) {
 	return Frame(f), nil
 }
 func Read(r io.Reader) (Frame, error) {
+	r = interruptReader{r}
 	var prefix [4]byte
 	n, e := io.ReadFull(r, prefix[:])
 	if errors.Is(e, io.EOF) && n == 0 {
@@ -293,6 +295,9 @@ func Read(r io.Reader) (Frame, error) {
 		return nil, IO
 	}
 	size := binary.BigEndian.Uint32(prefix[:])
+	if size == 0 {
+		return nil, InvalidFrame
+	}
 	if size > MaxFrameBytes {
 		return nil, FrameTooLarge
 	}
@@ -318,6 +323,9 @@ func Write(w io.Writer, f Frame) error {
 	for _, data := range [][]byte{prefix, raw} {
 		for len(data) > 0 {
 			n, e := w.Write(data)
+			if errors.Is(e, syscall.EINTR) && n == 0 {
+				continue
+			}
 			if e != nil {
 				return IO
 			}
@@ -328,4 +336,16 @@ func Write(w io.Writer, f Frame) error {
 		}
 	}
 	return nil
+}
+
+type interruptReader struct{ io.Reader }
+
+func (r interruptReader) Read(p []byte) (int, error) {
+	for {
+		n, err := r.Reader.Read(p)
+		if errors.Is(err, syscall.EINTR) && n == 0 {
+			continue
+		}
+		return n, err
+	}
 }
