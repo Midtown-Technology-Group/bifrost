@@ -404,8 +404,9 @@ Locked Ruff0.15.12 and format checks pass. Its own
 has passing lint/type checks and literal pre-PR job110702387902. Root inspected
 artifact11209062488: exact bb3d3fd tree
 `5de2091717211c0ad6c38e363b612125561bc0e2`, current main01cadfe, exit0 and
-empty owned container/volume/network queries after teardown. Unit tests and
-the overall run remain pending; these gates do not predict their results.
+empty owned container/volume/network queries after teardown. Unit job110702387913 subsequently passed12,396 cases/3 skipped/35
+deselected in331.96 seconds on CPython3.14.7; the overall E2E run remains
+pending. The prior failed runs retain their actual dispositions.
 
 The nominal public case, verified reader/image/interpreter custody, privileged
 host closure interfaces and complete DB/event/usage/result/summary joins remain
@@ -448,3 +449,17 @@ caller context and child/source/attempt/delivery/summary joins, recipe bounds,
 privileged host interfaces and nominal closure remain open release gates.
 These source-backed corrections do not change product authorization or approve
 public CRED H/R, C2/C3, Rust parity, merge or deployment.
+
+## Repaired construction unit evidence
+
+Run36963527229 at exact bb3d3fd passes all725 selected construction units,
+with zero failures/skips in these files: fixture180, observer65, materials46,
+shared contract249, model contract61, server36, lane88. These include real
+unit TLS certificate/redirect negatives and the mandatory materials-tool
+exercise. Root read actual completed job110702387913 logs; SHA256
+`acc376537171c1403b1e465277a0052a0792e75b09d195e29590e572d75efae8`.
+This closes the previously recorded17 unit failures without expectation waivers.
+Supported quality and literal pre-PR also pass against this candidate; broader
+E2E jobs remain pending at this disposition. Unit construction evidence does
+not execute the public nominal worker case, prove installed process custody,
+or satisfy DB/event/result/summary/closure joins, Rust parity or C2/C3.
