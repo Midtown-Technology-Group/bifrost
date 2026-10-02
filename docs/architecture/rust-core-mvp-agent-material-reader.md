@@ -31,6 +31,20 @@ Real PostgreSQL committed/isolation/public-setup evidence and the full named
 agent reference remain later gates; injected connection units cannot prove them.
 No C1 nominal, C2/C3 authority, Rust parity, merge or deployment follows.
 
+## Explicit registration membership representation
+
+Root resolved a typed representation gap raised during source construction:
+SetupSnapshot has explicit `solution_workflow_rows: tuple[WorkflowRow,...]`
+alongside `workflow_rows`. The first retains independently observed complete
+by-Solution membership; the latter retains independently observed selected-ID
+membership. Both use their fixed N+1 query, admitted actual IDs and identity
+rechecks. Never synthesize one membership from expected IDs or the other query.
+Within the same observation transaction an identical actual admitted row may
+be reused, but both actual membership tuples remain separate. RunSnapshot's
+fresh setup_material includes both. This minimal field addition supersedes only
+the packet's one-field representation; query/semantic/cardinality/byte/authority
+rules remain unchanged. The future oracle must check both sets.
+
 ---
 
 # C1-R committed lineage reader — source interface candidate
