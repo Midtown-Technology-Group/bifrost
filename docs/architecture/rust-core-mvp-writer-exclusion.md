@@ -174,3 +174,36 @@ at this checkpoint. No observed role/ownership receipt or runtime success is
 claimed. No new workflow, conftest, role, permission, migration, public credential
 or lifecycle behavior changed. Full A+B, host construction STOP, dependency
 approval, #1017 STOP and C2/C3 gates remain independent.
+
+### Completed execution and actual capture correction
+
+CI37015218198 at827f44 is SUCCESS. Completed shard4 job110864605033 logs the
+selected diagnostic PASSED with482 shard tests; unit job110864604959 reports
+12,781 passed/3 unrelated skips/35 deselections. This is supported execution
+evidence, not a retained complete privilege receipt or named JUnit readback.
+
+Root inspected manual-prePR artifact11229254011: exact head/tree/main, exit0,
+cleanup0 and actual EMPTY resources. Its actual comprehensive plan defers E2E,
+so it has neither writer receipt nor JUnit. Ordinary successful E2E diagnostics
+were also not uploaded. The initial capture design cannot meet acceptance on
+this branch; passing CI is not substituted for missing evidence. Artifact ZIP
+SHA256 `48467d2fc0134e1238200001bade019d0730f050cea05f202cf5c276609c21b3`.
+
+After that run completed, root published `f3c008f2e33f07adb6b0070f47a88163ab7180c3`,
+tree `76af702d2af28ed9943d275498b8a6c9342e9865`. Its sole delta is one11-line
+existing-E2E upload step retaining the fixed sanitized receipt and existing
+JUnit, with per-shard names and14-day retention. No test, input, permission,
+job definition, gate, successful service-log capture or old failure diagnostics
+changed. Different final source review SHA256
+`7de0986a4e9ca7c70677fe8fc0774eaf071e8fcede867fc610b4b4078a81d055`
+accepts workflow SHA256
+`c18a0da1e5d789a5ec56bce32a02f3ead7efa85beb678a9b159d45556f4deffe`.
+Exact inverse of the insertion restores prior workflow bytes;20 jobs remain.
+
+[New-candidate CI37017334293](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37017334293)
+was requested once and is pending. It verifies new evidence-retention behavior;
+it is not a retry of unchanged827 or a green-result substitute. Artifacts with
+only unrelated JUnit cannot satisfy collection. Require the actual passing
+named testcase and complete safe receipt in the same shard/project artifact,
+actual candidate/image/plan provenance, and verified cleanup. No privilege
+values, two-role separation, deployed posture or writer safety are accepted yet.

@@ -986,3 +986,14 @@ receipt or writer-exclusion proof. No DDL/roles/permissions/public hooks changed
 Only diagnostic SELECTs are read-only; standard isolated harness setup/reset
 remains effectful. Existing actual artifact/JUnit/identity/cleanup verification
 is required before interpreting collected privileges.
+
+### Identity diagnostic execution passed; receipt acceptance still pending
+
+The [actual capture correction](rust-core-mvp-writer-exclusion.md#completed-execution-and-actual-capture-correction)
+records827 CI37015218198 SUCCESS and its selected diagnostic execution. Actual
+manual-prePR artifact11229254011 defers E2E and lacks both receipt and JUnit;
+no observed privileges or mixed-writer proof follows from green CI. After that
+run finished, independently reviewed candidatef3c008 adds one narrow existing
+E2E retention step. New CI37017334293 is pending, with exact matching receipt,
+named passing JUnit, source/image/plan and cleanup readback still required.
+No root assertion, detached file or unrelated passing shard supplies this gate.
