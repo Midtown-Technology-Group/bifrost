@@ -7,6 +7,7 @@ eligibility. Deactivation during an existing run and general original/effective
 caller parity need separate admission decisions before runtime integration.
 """
 
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
@@ -42,6 +43,8 @@ from src.core.runtime_sdk_credentials import (
     utc_from_us,
 )
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+from src.models.orm.organizations import Organization
+from src.models.orm.users import Role, User, UserRole
 from src.models.orm.runtime_sdk_grants import (
     WorkflowRuntimeSDKGrant,
     WorkflowRuntimeSDKGrantOperation,
@@ -540,3 +543,169 @@ async def revoke_workflow_runtime_sdk_grant(
         return True
     except (SQLAlchemyError, ValueError):
         raise RuntimeSDKDenied("runtime SDK revocation denied") from None
+
+
+async def _validate_ingress_snapshot(
+    db: AsyncSession, claims: RuntimeSDKTokenClaims, *, renewal: bool
+) -> ValidatedRuntimeSDKAuthority:
+    """Collect only registered authority and current eligibility in one snapshot."""
+    authority = await _load(
+        db, GrantReference(grant_id=UUID(claims.sub), grant_digest=claims.grant_digest)
+    )
+    snapshot = authority.snapshot
+    user = await db.get(User, snapshot.caller_user_id)
+    organization_ids = {
+        value
+        for value in (
+            snapshot.caller_organization_id,
+            snapshot.effective_organization_id,
+        )
+        if value is not None
+    }
+    organizations = (
+        {
+            row.id: row
+            for row in (
+                await db.scalars(
+                    select(Organization).where(Organization.id.in_(organization_ids))
+                )
+            ).all()
+        }
+        if organization_ids
+        else {}
+    )
+    role_names = list(
+        (
+            await db.scalars(
+                select(Role.name)
+                .join(UserRole, UserRole.role_id == Role.id)
+                .where(UserRole.user_id == snapshot.caller_user_id)
+                .order_by(Role.id)
+                .limit(257)
+            )
+        ).all()
+    )
+    attempt = await db.get(WorkflowExecutionAttempt, snapshot.workflow_attempt_id)
+    admitted_at = _now(None)
+
+    _check_token_window(snapshot, claims)
+    if user is None or not user.is_active:
+        raise RuntimeSDKDenied("runtime SDK caller is unavailable")
+    if user.organization_id != snapshot.caller_organization_id:
+        raise RuntimeSDKDenied("runtime SDK caller organization changed")
+    if any(
+        value not in organizations or not organizations[value].is_active
+        for value in organization_ids
+    ):
+        raise RuntimeSDKDenied("runtime SDK organization is unavailable")
+    original_org = (
+        organizations.get(snapshot.caller_organization_id)
+        if snapshot.caller_organization_id is not None
+        else None
+    )
+    provider = bool(original_org is not None and original_org.is_provider)
+    external = bool(
+        user.is_external
+        and not user.is_superuser
+        and user.organization_id is not None
+        and not provider
+    )
+    if len(role_names) > 256:
+        raise RuntimeSDKDenied("runtime SDK caller roles exceed the bound")
+    caller = AuthorizedCallerSnapshot(
+        caller_user_id=user.id,
+        caller_organization_id=user.organization_id,
+        effective_organization_id=snapshot.effective_organization_id,
+        caller_email=snapshot.caller_email,
+        caller_name=snapshot.caller_name,
+        caller_admin=user.is_superuser,
+        caller_provider=provider,
+        caller_external=external,
+        roles=tuple(sorted(set(role_names))),
+    )
+    if (
+        int(caller.caller_admin) != snapshot.caller_admin
+        or int(provider) != snapshot.caller_provider
+        or int(external) != snapshot.caller_external
+        or caller_digest(caller) != snapshot.caller_snapshot_digest
+    ):
+        raise RuntimeSDKDenied("runtime SDK caller authority changed")
+    _check_policy(authority.policy, caller, _source(snapshot))
+    if attempt is None:
+        raise RuntimeSDKDenied("runtime SDK attempt is unavailable")
+    anchor = attempt.heartbeat_at or attempt.claimed_at
+    if anchor is None:
+        raise RuntimeSDKDenied("runtime SDK attempt lease is unavailable")
+    epoch_us(anchor)
+    try:
+        grace = max(
+            1,
+            int(os.environ.get("BIFROST_WORKFLOW_RESTART_ORPHAN_GRACE_SECONDS", "120")),
+        )
+    except ValueError:
+        grace = 120
+    age = (admitted_at - anchor).total_seconds()
+    if not 0 <= age < min(120, grace):
+        raise RuntimeSDKDenied("runtime SDK attempt lease is unavailable")
+    if renewal and snapshot.timeout_seconds != 0:
+        raise RuntimeSDKDenied("finite credentials cannot renew")
+    return authority
+
+
+async def _admit_runtime_sdk_ingress(
+    session_factory: async_sessionmaker[AsyncSession], *, token: str, renewal: bool
+) -> ValidatedRuntimeSDKAuthority:
+    claims = decode_runtime_sdk_access(token, allow_expired_for_renewal=renewal)
+    db = session_factory()
+    authority = None
+    failed = False
+    control = None
+    try:
+        if db.in_transaction():
+            raise RuntimeSDKDenied("runtime SDK admission session is not fresh")
+        await db.connection(
+            execution_options={
+                "isolation_level": "SERIALIZABLE",
+                "postgresql_readonly": True,
+                "postgresql_deferrable": False,
+            }
+        )
+        authority = await _validate_ingress_snapshot(db, claims, renewal=renewal)
+    except BaseException as error:
+        if isinstance(error, Exception):
+            failed = True
+        else:
+            control = error
+    finally:
+        try:
+            await db.rollback()
+        except BaseException as error:
+            failed = True
+            if not isinstance(error, Exception) and control is None:
+                control = error
+        finally:
+            try:
+                await db.close()
+            except BaseException as error:
+                failed = True
+                if not isinstance(error, Exception) and control is None:
+                    control = error
+    if control is not None:
+        raise control
+    if failed or authority is None:
+        raise RuntimeSDKDenied("runtime SDK ingress admission denied")
+    return authority
+
+
+async def load_runtime_sdk_ingress_authority(
+    session_factory: async_sessionmaker[AsyncSession], *, token: str
+) -> ValidatedRuntimeSDKAuthority:
+    """Admit a dedicated request; owner lifecycle acceptance remains separate."""
+    return await _admit_runtime_sdk_ingress(session_factory, token=token, renewal=False)
+
+
+async def admit_runtime_sdk_renewal(
+    session_factory: async_sessionmaker[AsyncSession], *, token: str
+) -> ValidatedRuntimeSDKAuthority:
+    """Return closed same-grant admission only; never sign or perform remote effects."""
+    return await _admit_runtime_sdk_ingress(session_factory, token=token, renewal=True)
