@@ -104,9 +104,10 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --workdir /src "$toolchain_image" env -i PATH=/usr/local/go/bin:/usr/bin:/bin \
   HOME=/tmp GOTOOLCHAIN=local GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   GOMODCACHE=/modules GOCACHE=/compiler GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
-  sh -c 'go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
+  sh -c 'go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/controlcheck ./cmd/controlcheck; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
 cp "$scratch/out/generated-input.json" "$scratch/out/generated-output.json" "$evidence_dir/"
 cp "$scratch/out/probe" "$evidence_dir/probe"
+cp "$scratch/out/controlcheck" "$evidence_dir/controlcheck"
 
 # Empty root with only the two immutable binaries mounted: no compiler, shell,
 # secrets, module cache or external network. /out is only fixture measurement data.

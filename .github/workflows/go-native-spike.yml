@@ -47,6 +47,14 @@ jobs:
           persist-credentials: false
       - name: Isolated tests, build, local execution and measurements
         run: bash spikes/go-native/scripts/measure.sh "$RUNNER_TEMP/go-spike-evidence"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Midtown-Technology-Group/bifrost
+          ref: 9f35278f90ba3757318ac9f07895bda9957330de
+          path: .control-reference
+          persist-credentials: false
+      - name: Independent Go, Python and Rust control encoding interchange
+        run: bash spikes/go-native/scripts/control-interchange.sh .control-reference "$RUNNER_TEMP/go-spike-evidence"
       - name: Retain exact evidence, including failure diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
