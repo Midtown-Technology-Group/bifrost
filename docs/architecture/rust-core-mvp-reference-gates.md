@@ -56,7 +56,7 @@ deployment helper. This candidate includes that main. CRED-P1 uses the new
 migration parent and still excludes workspace-release grants. Earlier evidence
 retains its recorded source pins.
 
-Current documentation reconciliation fetched platform main
+An earlier documentation reconciliation fetched platform main
 `f770094eb28d8315a414fe8cb306f510da752d89` (#1025, CI capacity guards)
 and unchanged workspace main `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`.
 This documentation candidate includes that main. Its delta from the prior
@@ -287,8 +287,11 @@ and normal local/live proof gates retain their own dispositions.
 
 ## Latest unchanged-input reconciliation
 
-A fresh fetch on 2026-10-01 retains platform main
-`f770094eb28d8315a414fe8cb306f510da752d89` and advances workspace main to
+The latest documentation pre-PR fetch advanced platform main to
+`e58db4955ddd30177bd613f1d85b7e203ad7832a` (#1027) after initially fetching
+`f770094e`; the gate correctly rejected that now-stale candidate. Source review
+of the nine-file handoff delta and a clean branch refresh preceded the final
+passing docs gate. Workspace main remains
 `c1856d2fbc7530c65c67adfd28e4896ec402ccbf`. The latter changes only
 `features/ninjaone/scripts/Dell.Idrac.EnterpriseLicenseMonitor.ps1`. Selected
 Cove authored bytes and the boundary checker remain identical to retained
@@ -297,4 +300,9 @@ files (1,984 standard authored), zero forbidden imports and an empty allowlist;
 #1112 remains an ancestor. No authored source was imported or executed.
 The [C1-R packet](rust-core-mvp-agent-reference.md) distinguishes current main,
 retained source blobs and the approved unmerged AUTH reference overlay.
+Current #1027 handoff verification separates historical byte custody from
+active/dependency contracts and repeats omission proof under release/Solution
+locks; it does not establish runtime/session or Source-obligation drain.
+C1-R foundation `7b24f9d` still names its retained `f770094e` base and approved
+unmerged AUTH overlay; no old runtime pass is transferred to newer main.
 This reconciliation does not restart the exhausted #1017 repair cycle.

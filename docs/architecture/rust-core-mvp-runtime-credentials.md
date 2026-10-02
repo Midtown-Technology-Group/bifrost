@@ -62,7 +62,7 @@ Proposed private binding (the wire/SQL representation still needs review):
 | Original caller ID/org/flags and effective org | Separate identities; AUTH-P1/current recheck rules preserved |
 | Workflow/install/deployment or release/source manifest | Exact accepted immutable evidence, with original global-source permission |
 | Operation values | Explicit admitted integration, scope, selectors and source namespace |
-| Expiry and renewal | Finite signed expiry; same grant/attempt/session only |
+| Expiry and renewal | Tokens have finite signed expiry. Finite `credential_deadline` grants cannot renew, and token expiry cannot exceed that deadline. Timeout-zero grants require `credential_deadline = NULL` and renew only in a bounded `now + 600 seconds` window after fresh committed active-attempt, exact-fence and revocation validation; the grant/attempt/session remain unchanged. |
 
 Prefer a signed grant reference rather than exposing the raw workflow claim
 secret to the runtime. The trusted server resolves it to the actual stored fence.
@@ -125,9 +125,11 @@ application audience. Reusing it after merely accepting the new audience could
 **downgrade a restricted credential into general authority**. New-purpose renewal
 must retain audience, purpose, grant and all bound identities, deny stale/revoked or
 wrong sessions/attempts, and never fall through to ordinary-user refresh, account
-login or broader engine issuance. Freeze finite/no-timeout lifetime policy against
-actual source before implementing issuance; do not invent a universal revocation
-policy. Legacy renewal remains unchanged.
+login or broader engine issuance. Apply the frozen CRED-P1-S finite/no-timeout
+lifetime policy stated above. A hard lifetime for timeout-zero work is a separate
+authorization decision; do not invent a universal revocation policy. Public
+renewal ingress and real session liveness remain gated. Legacy renewal remains
+unchanged.
 
 Credentialed remote HTTP requires HTTPS and disabled automatic redirects. Actual
 301/302/303/307/308 target non-delivery tests cover SDK/source/renewal/provider

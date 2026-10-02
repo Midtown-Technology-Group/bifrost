@@ -90,7 +90,50 @@ For a readback snapshot, require `offset <= total`, record count exactly
 is below total, otherwise null. A live null cursor denotes only the current
 snapshot tail. Only final readback after both real closed ACKs may claim an
 immutable tail; consumers prove that separately. Filtered case offsets do not
-replace each record's original global ledger index.
+replace each record's original global ledger index. In every case snapshot,
+`sdk_receipt_count <= request_count`: the request count includes all SDK-kind
+records plus model/Cove attempts, including invalid attempts. This local bound
+also applies to bounded failure diagnostics; it is not a substitute for the
+independent observed-count join.
+
+Saturation exemptions are per equation: only R/Q/E saturation may exempt
+`R=Q+E`; only Q/A/F saturation may exempt `Q=A+F+P+T`; only S/D/I saturation
+may exempt `S=D+I`, each with enclosing non-null failure. Saturating another
+counter cannot hide unrelated inconsistency. Always enforce `N=min(R,128)`,
+`C<=E` and `last_ack_seq<=N`, even on saturated diagnostics.
+
+The global `entry.index` is the zero-based admitted-ledger ordinal; rejected
+admissions create no row. Lane readback is unfiltered, so every record index
+must equal `offset+position`. Case readback retains possibly noncontiguous
+global indices; its filtered offset must not be substituted for those indices.
+
+Local lane snapshots require non-null `active_case_id` to imply `case_count>=1`
+and `roles_closed` to be a subset of `roles_ready`. These relationships do not
+certify actual collector readiness, nonce history or permission for more cases.
+
+SDK failure lists must agree with their retained safe projections: the six
+auth-reason categories contain exactly `verification.reason`, or none when that
+reason is null; for the selected SDK path the three body-reason categories
+contain exactly `request.reason`, or none when null. Multiple raw input defects
+are represented by the single recorded verification/body cause, not additional
+unwitnessed cause assertions. This private reporting rule changes no application
+authentication, request handling or error precedence. The following categories
+are present **if and only if** the corresponding retained fact holds:
+
+| Category | Retained fact |
+| --- | --- |
+| `method_unexpected` | method differs from POST |
+| `query_present` | query_present is true |
+| `app_exception` | response.app_exception is non-null |
+| `disconnect_seen` | response.disconnect_seen is true |
+| `response_incomplete` | response.complete is false |
+| `response_oversized` | response.bytes exceeds 65536 |
+| `unexpected_sdk_path` | receipt kind is unexpected_sdk_path |
+
+Unknown-path receipts have no body witness; absence of that field cannot be
+used to invent a body-cause exclusion. Other internal/stateful categories remain
+consumer obligations. This validator certifies projection consistency only;
+the independent ASGI/source/collector tests must prove facts were observed.
 
 ---
 

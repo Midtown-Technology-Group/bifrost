@@ -17,8 +17,12 @@ ownership uses the new parent; workspace-release grants remain excluded.
 The initial source implementation used platform main
 `fcfbedfe189e8efab0546890828806c91cec358d`. The tested private candidate includes
 `658283e8c8707ceecf9e2c0b56b779d074b7bdaf` after #1023. Current authoritative main
-is `f770094eb28d8315a414fe8cb306f510da752d89`; the subsequent delta changes CI
-capacity/concurrency only. Do not relabel candidate checks as checks of a later
+is `e58db4955ddd30177bd613f1d85b7e203ad7832a`. The intermediate `f770094e`
+changed CI capacity; #1027 then added certified Live-to-Solution handoff
+readback and repeated omission checks under release/Solution locks. Historical
+byte proof is separate from active/dependency resource contracts; handoff does
+not retire retained source files or close runtime/session drain obligations.
+These changes do not modify the selected SDK/auth/minter source. Do not relabel candidate checks as checks of a later
 main merge. #1023 adds Solution source-accounting
 completion evidence and a shared runtime-admission fence before pin persistence.
 It changes no selected SDK/auth/minter/deployment-pin helper. Preserve that
@@ -40,7 +44,8 @@ The original-caller prerequisite remains unmerged
 candidate `d82219f5aada66d879f2da71b386f50675c66d4d`. Actual agent/SDK integration
 must name that dependency; this packet does not change agent admission or infer
 missing caller authority. Workspace main is
-`e8605dc8edb6df8a997c171b534b324ac7ebd8ec`; authored source/SDK stays unchanged.
+`c1856d2fbc7530c65c67adfd28e4896ec402ccbf`; retained selected authored
+inputs at `e8605dc8` remain byte-identical and SDK stays unchanged.
 
 Owned paths: new `api/src/core/runtime_sdk_credentials.py`,
 `api/src/models/orm/runtime_sdk_grants.py`,

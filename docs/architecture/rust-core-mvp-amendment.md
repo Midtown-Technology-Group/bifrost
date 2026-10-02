@@ -18,7 +18,7 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
-As of the latest fetch, platform main is `f770094eb28d8315a414fe8cb306f510da752d89`
+As of the latest fetch, platform main is `e58db4955ddd30177bd613f1d85b7e203ad7832a`
 and workspace main is `c1856d2fbc7530c65c67adfd28e4896ec402ccbf`. Its advance
 from retained `e8605dc8` changes one iDRAC PowerShell script only; selected
 Python inputs and boundary checker bytes are unchanged. The
@@ -27,8 +27,10 @@ files), zero forbidden imports and an empty allowlist. Earlier source/test
 evidence below retains its actual provenance.
 
 The lifecycle/authority audit used `e77947fab5762e49dd5fdc390bd65ca84bc22c3c`.
-The pre-PR refresh advanced main through #1010 to the head above; its seven-file
-build/test-cache delta was inspected and changes no lifecycle/authority source.
+The initial pre-PR refresh advanced main through #1010; that seven-file
+build/test-cache delta was inspected and changed no lifecycle/authority source.
+Later source advancements, including #1023 and #1027, retain separate
+reconciliation and evidence pins in the reference gates.
 All four PRs are open and unmerged. #1009's complete Rust and ordinary CI passed
 apart from CodSpeed analysis. #1008's latest reference run `36829787888` passed
 at its exact head; earlier `36827831696` established 90/90 reference/mutant cases.
@@ -166,6 +168,10 @@ Python routing are selected before Rust accepts the run. Discovering unsupported
 behavior after possible Start cannot trigger automatic redispatch or rollback.
 
 ## 5. Runtime protocol design gate
+
+The [current freeze audit](rust-core-mvp-runtime-freeze-audit.md) names the
+remaining source/authority decisions and root dispositions against main #1027.
+The private observation codec is a separate test seam, not this runtime protocol.
 
 Implement a language-neutral `bifrost.runtime/v1` contract before orchestration.
 It must carry logical kind/ID, the **typed** domain attempt and number, runtime
