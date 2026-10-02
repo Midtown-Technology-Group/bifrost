@@ -58,7 +58,7 @@ fi
 # shellcheck source=scripts/lib/test_helpers.sh
 source "$SCRIPT_DIR/scripts/lib/test_helpers.sh"
 
-COMPOSE_FILE="docker-compose.test.yml"
+export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 

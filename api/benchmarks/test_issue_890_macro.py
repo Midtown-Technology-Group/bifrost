@@ -1,4 +1,4 @@
-"""Bounded execution-response serialization shapes for CodSpeed walltime/memory."""
+"""Bounded execution-response serialization fixtures retained for local profiling."""
 
 import json
 

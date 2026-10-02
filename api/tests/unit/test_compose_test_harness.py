@@ -264,7 +264,7 @@ def test_pre_pr_preserves_full_browser_gate_and_explicit_ci_deferral():
     script = _find_repo_file("test.sh").read_text()
     gate = script.split("cmd_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
     workflow = _find_repo_file(".github/workflows/ci.yml").read_text()
-    assert './test.sh client e2e\n' in workflow
+    assert '--shard="$SHARD_ID/$SHARD_TOTAL"' in workflow
     full_dispatch = gate.split('if [ "$full_run" = "1" ]; then')[-1].split("\n    else", 1)[0]
     assert "run_full_pre_pr" in full_dispatch
     full = script.split("run_full_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
