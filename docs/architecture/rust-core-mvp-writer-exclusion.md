@@ -201,9 +201,60 @@ accepts workflow SHA256
 Exact inverse of the insertion restores prior workflow bytes;20 jobs remain.
 
 [New-candidate CI37017334293](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37017334293)
-was requested once and is pending. It verifies new evidence-retention behavior;
+was requested once; its completed evidence is recorded below. It verifies new evidence-retention behavior;
 it is not a retry of unchanged827 or a green-result substitute. Artifacts with
 only unrelated JUnit cannot satisfy collection. Require the actual passing
 named testcase and complete safe receipt in the same shard/project artifact,
-actual candidate/image/plan provenance, and verified cleanup. No privilege
-values, two-role separation, deployed posture or writer safety are accepted yet.
+actual candidate/image/plan provenance, and verified cleanup. At that capture checkpoint no privilege values were accepted. Two-role
+separation, deployed posture and writer safety remain unestablished.
+
+### Retained receipt: collection passed, writer safety not established
+
+CI37017334293 at exactf3c008 completed **FAILURE**. API E2E shard4
+job110871702234 succeeded (482 passed/6 unrelated skips); all four API shards,
+unit, lint/type and manual-prePR succeeded. Client E2E shard2/job110871702233
+failed USER-01 at `client/e2e/users.bulk.spec.ts:160`: the expected two-selected
+user move control was absent after10s (87 passed/1 failed). The client source
+and test have no candidate diff against main01cadfe. Root cause is unknown;
+[blocking repair #1034](https://github.com/Midtown-Technology-Group/bifrost/issues/1034)
+is owned by the architect workstream. No rerun, timeout increase, skip or waiver
+follows. This reference candidate cannot be treated as globally green.
+
+Artifact11232653080 (`api-e2e-writer-identity-evidence-4`) retains the complete
+receipt and exactly one passing, nonskipped
+`tests.e2e.platform.test_writer_identity_preflight::test_collect_existing_writer_identity_receipt`
+JUnit case (0.154s) under the same project directory. ZIP SHA256
+`fdaad24a694ce29af1c583c3d21d156567f9edbf7b327f195373a54d60112167`;
+receipt72797 bytes, SHA256
+`d77b84624a2e76c8d1a6f490c82dceec067898f47a93bff014f3f42dbe0f7512`.
+One direct and two sequential pooled samples contain all Q1–Q6, respectively
+1/15/12/211/72/0 rows, within fixed limits. Each reports read-only repeatable
+read, PostgreSQL160015, database bifrost_test, session_user=current_user=bifrost.
+The two pooled client samples share backend PID498: new client connections do
+not demonstrate distinct server identities. Direct backend PID3017 differs.
+
+Actual observed bifrost role is superuser, BYPASSRLS, CREATEROLE/CREATEDB and
+has effective membership/usage across the reported roles. It owns all12
+selected tables; public schema owner is pg_database_owner. All selected table
+RLS/FORCE RLS flags are false; table and column privileges are all true, with
+schema USAGE/CREATE true. Attached-trigger query returns72 rows; policy query
+returns none. **Collection succeeds; security_readiness remains not_established.**
+This test-runner authority cannot prove mechanical separation between incumbent
+and Rust writers. It identifies an isolated-lane prerequisite, not a whole
+architecture falsification and not permission to provision roles or DDL.
+
+Run/job/artifact association is external GitHub provenance, not embedded in the
+receipt. API shard4 logs independently report the candidate-tag image pull
+with digest `sha256:7580bdb0d02493ab761aea5ddb32ec5fe522ac284d15caabfeaf307b1dc19ab5`.
+Manual-prePR artifact11232495268 separately binds exactf3/tree76af/main01,
+exit0/cleanup0 and actual empty containers/volumes/networks. That EMPTY receipt
+proves its own pre-PR job only; it does not certify another shard's teardown.
+Its image ID is `sha256:d47d3993d624783ffbac6da68c76ee91dd06e485ee1842c3b4bb6022811fd181`
+and registry digest matches the API-shard pull. No actual API/worker/scheduler
+session, deployment identity, full SET/ADMIN graph, arbitrary callable function
+inventory, mixed-writer isolation or Stage1 approval is implied.
+
+Different retained-evidence review SHA256
+`4daa54eed51849b8d3e980b06349c436324949f8ecb9b129ead314ab0a61e795`
+accepts the complete receipt and named passing test, with the custody limits
+above. It does not accept writer security or globally passing CI.

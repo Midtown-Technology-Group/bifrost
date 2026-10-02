@@ -988,16 +988,24 @@ Only diagnostic SELECTs are read-only; standard isolated harness setup/reset
 remains effectful. Existing actual artifact/JUnit/identity/cleanup verification
 is required before interpreting collected privileges.
 
-### Identity diagnostic execution passed; receipt acceptance still pending
+### Identity diagnostic receipt retained; writer isolation and CI remain blocked
 
 The [actual capture correction](rust-core-mvp-writer-exclusion.md#completed-execution-and-actual-capture-correction)
 records827 CI37015218198 SUCCESS and its selected diagnostic execution. Actual
 manual-prePR artifact11229254011 defers E2E and lacks both receipt and JUnit;
 no observed privileges or mixed-writer proof follows from green CI. After that
 run finished, independently reviewed candidatef3c008 adds one narrow existing
-E2E retention step. New CI37017334293 is pending, with exact matching receipt,
-named passing JUnit, source/image/plan and cleanup readback still required.
-No root assertion, detached file or unrelated passing shard supplies this gate.
+E2E retention step. CI37017334293 has now completed FAILURE because of client
+E2E USER-01; [#1034](https://github.com/Midtown-Technology-Group/bifrost/issues/1034)
+is the blocking repair disposition, not a flake waiver or retry authorization.
+All API shards and manual-prePR succeeded. Artifact11232653080 retains the
+complete72797-byte identity receipt and named nonskipped passing JUnit in the
+same shard/project. Actual direct and two pooled samples all authenticate as
+superuser/BYPASSRLS bifrost, owning all12 selected tables with RLS off. This
+supports collection only; safe incumbent/core writer separation is unproved.
+The [retained-receipt checkpoint](rust-core-mvp-writer-exclusion.md#retained-receipt-collection-passed-writer-safety-not-established)
+records exact hashes, queries, image association and separate pre-PR cleanup
+scope. No deployment/app-session proof or Stage1 DDL/role authority follows.
 
 ## Current workspace source reconciliation: be6f914bb
 
