@@ -69,6 +69,15 @@ configured hash. They check the candidate's bindings, permitting a reviewed
 workflow revision to repair old grants. Dynamic uploads and backup prefixes are
 not enumerated during delivery.
 
+Raw byte reads remain capped at 128 MiB. A grant containing `signed_get` and
+optionally `exists`, with no other operations, may set an explicit bound up to
+256 MiB for existing installer packages. Signing streams current bytes in
+64 KiB chunks without retaining the object in API memory, checks the reviewed
+bound and any configured hash, and applies the same signed attempt, scope,
+Root policy and 600-second URL checks. This does not grant raw reads, uploads,
+overwrite, broader paths or larger repair backups. Older SDK builds reject
+larger grants; deploy the matching SDK/server before authoring such a grant.
+
 Use existing file APIs for `exists`, bounded reads and GET signing. Check the
 actual bytes before returning a read; a separate stat cannot prove its size or
 hash. Download signing also checks current bytes and any configured hash.

@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 BACKUP_PREFIX = ".artifacts/ninjaone-webhook-config-repairs"
+MAX_ROOT_READ_BYTES = 128 * 1024 * 1024
+MAX_ROOT_DOWNLOAD_BYTES = 256 * 1024 * 1024
 RootFileOperation = Literal["exists", "read", "signed_get", "create"]
 
 
@@ -31,7 +33,7 @@ class RootFileBinding(BaseModel):
     path: str
     directory_prefix: bool = False
     operations: tuple[RootFileOperation, ...] = Field(min_length=1, max_length=4)
-    max_bytes: int = Field(gt=0, le=128 * 1024 * 1024)
+    max_bytes: int = Field(gt=0, le=MAX_ROOT_DOWNLOAD_BYTES)
     max_url_ttl_seconds: int = Field(default=600, gt=0, le=600)
     expected_read_sha256: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
 
@@ -47,6 +49,11 @@ class RootFileBinding(BaseModel):
         root_data_path(self.path)
         if len(set(self.operations)) != len(self.operations):
             raise ValueError("Root file operations must be unique")
+        if self.max_bytes > MAX_ROOT_READ_BYTES and (
+            "signed_get" not in self.operations
+            or not set(self.operations) <= {"exists", "signed_get"}
+        ):
+            raise ValueError("Large Root objects require a bounded download-only grant")
         if any(part.startswith(".") for part in self.path.split("/")):
             if self.path != BACKUP_PREFIX or self.operations != ("create",):
                 raise ValueError("Hidden Root paths are unavailable")
