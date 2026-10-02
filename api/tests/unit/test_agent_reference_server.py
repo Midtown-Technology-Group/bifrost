@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 import uvicorn
@@ -173,7 +174,7 @@ async def test_task_loop_force_exit_and_lifespan_mismatch_fail_closed(
         await harness.start()
         # Let real upstream shutdown finish first; no modified ACK semantics.
         await uvicorn.Server.shutdown(harness.server)
-        original_task = harness.owner.lifespan_task
+        original_task = cast(asyncio.Task, harness.owner.lifespan_task)
         if defect == "missing-task":
             harness.owner.lifespan_task = None
         elif defect == "done-task":
@@ -308,7 +309,7 @@ async def test_closure_grant_is_single_use(monkeypatch):
         harness.owner.grant_closure(deadline)
         with pytest.raises(obs.ObservationClosureError):
             harness.owner.grant_closure(deadline + 1)
-        await harness.owner.lifespan_task
+        await cast(asyncio.Task, harness.owner.lifespan_task)
         assert not harness.owner.closed
         assert harness.owner.first_failure == "shutdown_incomplete"
         assert harness.server.lifespan.error_occurred is True

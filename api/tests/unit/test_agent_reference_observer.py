@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import socket
 import ssl
-import sys
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
+import anyio
 import httpx
 import pytest
 
@@ -40,7 +40,7 @@ class MemoryStore:
     def __init__(self):
         self.raw = None
         self.closed = False
-        self.block = None
+        self.block: asyncio.Event | None = None
         self.fail = False
         self.corrupt = False
 
@@ -62,7 +62,7 @@ class MemoryStore:
 class Sender:
     def __init__(self):
         self.receipts = []
-        self.block = None
+        self.block: asyncio.Event | None = None
         self.mutate = lambda value: value
         self.deadlines = []
 
@@ -393,7 +393,7 @@ async def test_status_writer_coalesces_and_latches_io_failure():
     owner.publish()
     await writer
     assert owner.first_failure == "status_io_failure" and owner._status_failed
-    assert owner._written_generation < owner.generation
+    assert cast(int, owner._written_generation) < owner.generation
 
 
 def test_factory_rejects_missing_inputs_before_product_import(monkeypatch):
@@ -576,16 +576,17 @@ async def local_tls_exchange(tmp_path, monkeypatch, *, defect=None, redirect=Non
 
     server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=server_context)
     port = server.sockets[0].getsockname()[1]
-    original = socket.getaddrinfo
-    resolutions = []
+    original = anyio.connect_tcp
+    connect_attempts = []
 
-    def resolve(host, requested_port, *args, **kwargs):
-        host = host.decode() if isinstance(host, bytes) else host
-        resolutions.append((host, requested_port))
-        assert host == "scheduler-fixtures" and int(requested_port) == 8443
-        return original("127.0.0.1", port, *args, **kwargs)
+    async def connect(*, remote_host, remote_port, **kwargs):
+        # AnyIO keeps remote_port rather than the port returned by getaddrinfo.
+        # Map only TCP here: the real HTTP origin and subsequent TLS SNI stay fixed.
+        connect_attempts.append((remote_host, remote_port))
+        assert remote_host == "scheduler-fixtures" and remote_port == 8443
+        return await original(remote_host="127.0.0.1", remote_port=port, **kwargs)
 
-    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    monkeypatch.setattr(anyio, "connect_tcp", connect)
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
         monkeypatch.setenv(name, "http://ambient.invalid:1")
     monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "does-not-exist"))
@@ -607,12 +608,12 @@ async def local_tls_exchange(tmp_path, monkeypatch, *, defect=None, redirect=Non
             with pytest.raises(obs.ObservationClosureError):
                 await sender.send(receipt, None)
             assert seen == [{"selected_path": True, "key_seen": True}]
-            assert len(resolutions) == 1  # No redirected TLS or plaintext request.
+            assert len(connect_attempts) == 1  # No redirected TLS or plaintext request.
         else:
             ack = await sender.send(receipt, None)
             assert ack["seq"] == 1
             assert seen == [{"selected_path": True, "key_seen": True}]
-        assert all(host == "scheduler-fixtures" for host, _ in resolutions)
+        assert all(host == "scheduler-fixtures" for host, _ in connect_attempts)
     finally:
         server.close()
         await server.wait_closed()
@@ -842,7 +843,7 @@ async def test_original_startup_failure_ack_is_forwarded_without_ready_or_succes
         )
 
 
-async def assert_recursive_body_preserves_failed_sdk_witness(body):
+async def assert_invalid_body_preserves_signed_sdk_witness(body):
     assert len(body) <= wire.MAX_SDK_BODY_BYTES
     message = {"type": "http.request", "body": body, "more_body": False}
     start = {"type": "http.response.start", "status": 200}
@@ -904,21 +905,41 @@ async def assert_recursive_body_preserves_failed_sdk_witness(body):
     assert b"original-response" not in wire.encode_private("receipt", result)
 
 
-async def test_actual_bounded_deep_json_retains_signed_sdk_witness_after_recursion():
+async def test_actual_bounded_deep_json_retains_signed_invalid_body_witness():
     depth = wire.MAX_SDK_BODY_BYTES // 2 - 1
     body = b"[" * depth + b"0" + b"]" * depth
-    original_limit = sys.getrecursionlimit()
-    try:
-        # Unit-only bounded parser instrument; restore even if the old wrapper drops the witness.
-        sys.setrecursionlimit(500)
-        with pytest.raises(RecursionError):
-            json.loads(body.decode("utf-8"))
-        await assert_recursive_body_preserves_failed_sdk_witness(body)
-    finally:
-        sys.setrecursionlimit(original_limit)
+    # Actual decoder is untouched: it may parse the list or reject recursion.
+    # Either outcome must retain the signed, safely null invalid-body witness.
+    await assert_invalid_body_preserves_signed_sdk_witness(body)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        True,
+        0,
+        [],
+        "private-value",
+        {"name": "Cove Data Protection", "scope": "global"},
+        {"name": "private-value", "scope": "global", "solution": UUID},
+        {"name": "Cove Data Protection", "scope": "private-value", "solution": UUID},
+        {"name": "Cove Data Protection", "scope": "global", "solution": "invalid"},
+        {"name": "Cove Data Protection", "scope": "global", "solution": True},
+        {
+            "name": "Cove Data Protection",
+            "scope": "global",
+            "solution": UUID,
+            "extra": "private-value",
+        },
+    ],
+)
+async def test_parsed_invalid_body_shape_retains_signed_null_witness(value):
+    await assert_invalid_body_preserves_signed_sdk_witness(json.dumps(value).encode())
 
 
 async def test_injected_decoder_recursion_retains_signed_sdk_witness(monkeypatch):
+    """Instrumentation only; this does not prove the C decoder reaches recursion."""
     original = json.loads
 
     def recursive_selected_body(value, *args, **kwargs):
@@ -928,4 +949,4 @@ async def test_injected_decoder_recursion_retains_signed_sdk_witness(monkeypatch
         return original(value, *args, **kwargs)
 
     monkeypatch.setattr(obs.json, "loads", recursive_selected_body)
-    await assert_recursive_body_preserves_failed_sdk_witness(BODY)
+    await assert_invalid_body_preserves_signed_sdk_witness(BODY)
