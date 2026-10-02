@@ -395,3 +395,62 @@ real HTTP/SDK authorization gate; that still needs narrow handler/renewal/ingres
 integration and unchanged positives with the same restricted provision. Runtime
 DB/Redis/environment confinement, source custody, provider slots, mechanical
 writer exclusion and C2/C3 remain separately unproved.
+
+
+## Immutable session registration and staged mechanism proof
+
+Current source reconciliation uses main
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6`, private foundation
+`6419069da195b053c885ab349f431ff4fae62098` and the existing approved
+Engine-preserving scope. Independent source direction review SHA256
+`3d66b702652f14ba4390e9f17949981d52e2139ece38fa519b4eb4edba0bd4e5`
+and lifecycle review SHA256
+`e49e8fe6945e9001d95b8b20e53a592d4f648efac58a5848bb530ed6b15cb2fd`
+identify the following representation and staging choices. They prove source
+mechanics, not actual owner/runtime acceptance.
+
+The private grant can register one immutable supervisor/session per typed
+workflow attempt. Its attempt/session uniqueness, claim digest, worker
+incarnation, committed StartedAt, original caller, source, closed operations and
+predeclared expiry remain bound. Identical recovery is conditional on current
+eligibility and original expiry; a changed session on that attempt denies.
+Committed revocation cannot be undone. No second permanent registry or
+physical-process-alive oracle is inherently required. Trusted creation, delivery,
+closure and loss handling still need real owner integration. Missing callsites
+do not prevent specifying new owned implementation paths.
+
+Selected ordering is committed typed Start, fresh independently committed grant
+registration, validated issuance, exact private-session credential delivery, then
+tenant execution-barrier release. Prepare carries no bearer or tenant effects.
+Lost delivery acknowledgement must reconcile the old session or fence it; it
+cannot create a replacement session or replay possible effects. Close stops new
+admission, establishes a committed grant/terminal fence, accounts for admitted
+effects and trusted child stop/reap, then resolves authoritative terminal custody.
+Failed close/commit or unresolved external effect withholds successor execution.
+Exact normal/cancel/loss adapters and effect-custody rules remain to be frozen;
+this does not authorize a new global cancellation/retry rule.
+
+Actual main heartbeat defaults to10 seconds, orphan grace to120 seconds, and
+cleanup runs every five minutes. Scheduler/DB outage or lock delay makes none
+of those a maximum stale-authority bound. Private `_load` checks current
+attempt/claim/incarnation/Start/source and revocation but not heartbeat age or
+physical session liveness; it does not freshly rehydrate current caller roles.
+Public ingress must establish its required current-caller and selected session
+eligibility rather than infer them from a stored digest. A bounded selected
+freshness policy and in-flight authorization/close semantics still require an
+explicit reviewed choice. Running-to-CANCELLING currently preserves intermediate
+attempt eligibility; do not silently impose instant legacy revocation.
+
+The approved credential mechanism may be implemented and tested in a narrow
+unmerged stack containing the reviewed private foundation and current main.
+Real HTTP/SDK and independently committed database tests can prove classification,
+closed operations, caller/tenant restrictions, projection and non-upgrading
+renewal separately from full C2 owner acceptance. Use the real trusted platform
+loader and stored registration; no default always-live callback, runtime-supplied
+factory/DSN or mock owner may certify authority. Routine branch integration does
+not require repeated scope approval and does not merge/install the foundation
+in main or production. Actual tenant-hook/channel/issuer lifecycle, restricted
+writer authorities, selected HTTPS/redirect safety, source/dependency custody
+and full workflow/agent parity remain C2/C3 gates. Mechanism-test acceptance
+cannot substitute for any of them. No public mint, schema/role execution, merge
+or deployment is released by this source decision.
