@@ -360,9 +360,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-          # The unchanged gate fetches origin/main; checkout cleans this
-          # read-only credential after the job.
-          persist-credentials: true
+          # origin/main is public; the literal gate does not need checkout credentials.
+          persist-credentials: false
 
       - name: Set up repository-check Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -393,6 +392,8 @@ jobs:
         run: |
           set -euo pipefail
           bash api/scripts/ci/prepare-test-images.sh api
+          # Later gate stages use the prepared local image or public registries.
+          docker logout "$REGISTRY"
           mkdir -p "$RUNNER_TEMP/bifrost-pre-pr"
           docker image inspect bifrost-test-api-dev:latest \
             --format '{{.Id}} {{json .RepoDigests}}' \
@@ -402,7 +403,6 @@ jobs:
         id: gate
         env:
           BIFROST_SKIP_BUILD: "1"
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bifrost-pre-pr"
