@@ -309,8 +309,8 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         "from bifrost import workflow\n"
         f"from modules.initial_http_{token} import read_resource\n"
         "@workflow(name='Initial HTTP reviewed task', effects=[])\n"
-        "async def run(user: str = 'system'):\n"
-        "    return await read_resource()\n"
+        "async def run(user: str = 'system', job_id: str = 'legacy'):\n"
+        "    return {'resource': await read_resource(), 'job_id': job_id}\n"
     )
     solution_id = None
     created_solution = False
@@ -401,7 +401,9 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
             e2e_client, headers, str(workflow_id), request_sync=True, max_wait=60,
         )
         assert execution_result["status"] == "Success", execution_result
-        assert execution_result["result"] == "initial:" + resource_bytes.decode("utf-8")
+        assert execution_result["result"] == {
+            "resource": "initial:" + resource_bytes.decode("utf-8"), "job_id": "legacy",
+        }
         execution = await db_session.get(Execution, UUID(execution_result["execution_id"]))
         assert execution is not None
         assert execution.solution_deployment_id == deployment_id
@@ -423,7 +425,9 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         # manifest, complete source/resource closure and compatible controls.
         revision_base = f"/api/solutions/{solution_id}/deployments/{revision_id}/workflow-revision"
         revised_resource = b'{"records":[{"rate":8}]}'
-        revised_source = source + "\n# Reviewed source revision\n"
+        # An optional string becoming nullable preserves existing callers.
+        # Exercise that change through candidate, CAS activation and real workers.
+        revised_source = source.replace("job_id: str = 'legacy'", "job_id: str | None = None")
         revised_helper = helper_source.replace("'initial:'", "'reviewed:'")
         revision_inspect = {
             "expected_active_deployment_id": str(deployment_id),
@@ -490,7 +494,9 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
             e2e_client, headers, str(workflow_id), request_sync=True, max_wait=60,
         )
         assert revised_result["status"] == "Success", revised_result
-        assert revised_result["result"] == "reviewed:" + revised_resource.decode("utf-8")
+        assert revised_result["result"] == {
+            "resource": "reviewed:" + revised_resource.decode("utf-8"), "job_id": None,
+        }
         revised_execution = await db_session.get(Execution, UUID(revised_result["execution_id"]))
         assert revised_execution is not None
         assert revised_execution.solution_deployment_id == revision_id
@@ -504,6 +510,18 @@ async def test_initial_install_then_reviewed_revision_over_http_uses_real_runtim
         assert revised_attempt is not None and revised_attempt.status == "succeeded"
         assert revised_attempt.worker_id
         assert revised_attempt.runtime_evidence_hash == revised_execution.runtime_evidence_hash
+
+        existing_caller = execute_workflow_sync(
+            e2e_client, headers, str(workflow_id), input_data={"job_id": "existing-caller"},
+            request_sync=True, max_wait=60,
+        )
+        assert existing_caller["status"] == "Success", existing_caller
+        assert existing_caller["result"] == {
+            "resource": "reviewed:" + revised_resource.decode("utf-8"), "job_id": "existing-caller",
+        }
+        existing_execution = await db_session.get(Execution, UUID(existing_caller["execution_id"]))
+        assert existing_execution is not None
+        assert existing_execution.solution_deployment_id == revision_id
     finally:
         if created_solution and solution_id is not None:
             # Immutable deployment history intentionally prevents public
