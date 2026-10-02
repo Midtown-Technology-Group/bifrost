@@ -239,9 +239,16 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
     # the global Live fence, then all installs in stable UUID order, then source
     # rows. No one-install transaction may acquire this aggregate lock set.
     await acquire_workspace_release_lock(db, None)
-    release = await global_active_workspace_release_descriptor(db)
     solutions = list((await db.scalars(select(Solution).where(Solution.status == "active")
         .order_by(Solution.id).with_for_update().execution_options(populate_existing=True))).all())
+    # An unsupported install makes aggregate completion impossible regardless
+    # of the other installs' bytes. Detect it under the same admission fence
+    # before reading immutable bundles; UUID order must not decide how much
+    # storage work a known-incomplete accounting sweep performs.
+    if any(solution.execution_runtime_mode != "deployment-v1"
+            or solution.active_deployment_id is None for solution in solutions):
+        raise UnprovenSourceConsumers("Mutable Solution consumer remains")
+    release = await global_active_workspace_release_descriptor(db)
     repository = SolutionDeploymentRepository(db)
     consumers: dict[UUID, SourceConsumer] = {}
     visiting: set[UUID] = set()
@@ -331,8 +338,6 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
         visiting.remove(deployment_id)
 
     for solution in solutions:
-        if solution.execution_runtime_mode != "deployment-v1" or solution.active_deployment_id is None:
-            raise UnprovenSourceConsumers("Mutable Solution consumer remains")
         await visit(solution.active_deployment_id, admission=True, expected_solution=solution.id,
             expected_scope=solution.organization_id)
     # Superseded dependency/accepted pins remain real consumers until drained.

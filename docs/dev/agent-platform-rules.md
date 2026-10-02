@@ -143,6 +143,12 @@ The default mode allocates a free local port for the client (deterministic per w
 
 Stack contains: API (port 8000 internal), Client (port 80 internal), Scheduler, Worker, Postgres, RabbitMQ, Redis, SeaweedFS. All Bifrost services build from `api/Dockerfile.dev` / `client/Dockerfile.dev` (source build, not public images).
 
+If `SEAWEEDFS_SECRET_KEY` is unset or empty, `debug.sh up` generates a private
+worktree credential under `${XDG_STATE_HOME:-~/.local/state}/bifrost/debug/<project>/storage-secret`.
+SeaweedFS and its API/worker/scheduler clients receive the same credential;
+later boots reuse it. An explicit nonempty credential takes precedence. Preserve
+these user credential files when cleaning up disposable stacks.
+
 ### Hot Reload is Automatic
 
 All services have hot reload - **DO NOT restart containers for code changes**:
