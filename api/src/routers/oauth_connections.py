@@ -696,6 +696,16 @@ async def oauth_callback(
             # decoding is expected to fail. Fall through to global-token storage.
             logger.warning(f"OAuth state decode failed (treating as legacy flow): {e}")
 
+    # Single-use enforcement up front: a replayed per-mapping state is
+    # rejected before any token exchange or storage can happen. (PKCE
+    # verifiers get the same treatment below via atomic GETDEL.)
+    if mapping_id_from_state is not None and nonce_from_state:
+        if not await consume_nonce(nonce_from_state):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth state already used (replay rejected)",
+            )
+
     repo = OAuthProviderRepository(ctx.db, org_id=org_id, is_superuser=True)
     provider = await repo.get_by_connection_name(connection_name)
 
@@ -863,25 +873,20 @@ async def oauth_callback(
             logger.warning(f"Failed to emit integration.connected: {e}", exc_info=True)
 
     # Per-mapping flow: link the freshly-stored (org-scoped) token to the mapping
-    # and capture entity_id from the provider's configured source. State + org_id
-    # were already decoded at the top of this handler — see mapping_id_from_state.
+    # and capture entity_id from the provider's configured source. The state
+    # nonce was already consumed (single-use) at the top of this handler, so
+    # reaching here proves first use — no replay can store a token.
     if mapping_id_from_state is not None:
-        # Single-use enforcement: reject replays of valid-signature state.
-        if nonce_from_state and not await consume_nonce(nonce_from_state):
-            logger.warning(
-                "OAuth state nonce already consumed — possible replay, skipping mapping link"
+        stored = await repo.get_token(connection_name)
+        if stored:
+            captured_value = await _apply_callback_to_mapping(
+                db=ctx.db,
+                mapping_id=mapping_id_from_state,
+                token=stored,
+                provider=provider,
+                callback_url_params=request.callback_url_params or {},
+                token_response=result,
             )
-        else:
-            stored = await repo.get_token(connection_name)
-            if stored:
-                captured_value = await _apply_callback_to_mapping(
-                    db=ctx.db,
-                    mapping_id=mapping_id_from_state,
-                    token=stored,
-                    provider=provider,
-                    callback_url_params=request.callback_url_params or {},
-                    token_response=result,
-                )
 
     # Invalidate cache (token was stored)
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:

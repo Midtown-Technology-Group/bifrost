@@ -20,6 +20,7 @@ Behavioral contract under test:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -124,19 +125,24 @@ def test_provider_metadata_accepts_use_pkce_flag():
 
 
 class _FakeRedis:
+    """Test double exposing only the atomic operations the implementation uses.
+
+    There is deliberately no separate ``get``/``delete``: if
+    ``consume_pkce_verifier`` ever regresses to GET-then-DELETE, every test
+    using this double fails loudly instead of silently passing.
+    """
+
     def __init__(self):
         self.values: dict[str, str] = {}
-        self.deleted: list[str] = []
+        self.calls: list[str] = []
 
     async def setex(self, key, ttl, value):
+        self.calls.append("setex")
         self.values[key] = value
 
-    async def get(self, key):
-        return self.values.get(key)
-
-    async def delete(self, key):
-        self.deleted.append(key)
-        self.values.pop(key, None)
+    async def getdel(self, key):
+        self.calls.append("getdel")
+        return self.values.pop(key, None)
 
 
 @pytest.mark.asyncio
@@ -160,6 +166,33 @@ async def test_store_consume_round_trip_is_single_use():
         assert await oauth_pkce.consume_pkce_verifier("state-1") is None
         # Unknown states also read as absent.
         assert await oauth_pkce.consume_pkce_verifier("never-stored") is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_consume_has_exactly_one_winner():
+    """Concurrent racers for one state resolve to a single payload holder.
+
+    The double's ``getdel`` is one indivisible step, mirroring Redis
+    GETDEL: whatever interleaving the event loop chooses, exactly one
+    caller observes the payload. (True server-side atomicity is proven by
+    the e2e concurrent-callback test against stack Redis.)
+    """
+    redis = _FakeRedis()
+    with patch.object(oauth_pkce, "get_shared_redis", new=AsyncMock(return_value=redis)):
+        await oauth_pkce.store_pkce_verifier(
+            state="state-race",
+            code_verifier="verifier-race",
+            redirect_uri=REDIRECT_URI,
+            provider_id=PROVIDER_ID,
+        )
+        results = await asyncio.gather(
+            *(oauth_pkce.consume_pkce_verifier("state-race") for _ in range(8))
+        )
+
+    winners = [result for result in results if result is not None]
+    assert len(winners) == 1
+    assert winners[0]["code_verifier"] == "verifier-race"
+    assert redis.calls.count("getdel") == 8
 
 
 # =============================================================================
@@ -675,6 +708,60 @@ async def test_callback_per_mapping_pkce_links_token_to_mapping():
     assert mock_exchange.await_args.kwargs["code_verifier"] == "verifier-abc"
     # The freshly-stored token was linked to the mapping from the state.
     assert mapping_row.oauth_token_id == stored_token.id
+
+
+@pytest.mark.asyncio
+async def test_callback_mapping_nonce_replay_rejected_before_storage():
+    """A replayed per-mapping state is rejected before exchange or storage."""
+    provider = _connection_provider()
+    mapping_row = SimpleNamespace(id=MAPPING_ID, organization_id=None)
+
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=mapping_row)
+
+    with (
+        patch(
+            "src.repositories.oauth.OAuthProviderRepository.get_by_connection_name",
+            new=AsyncMock(return_value=provider),
+        ),
+        patch(
+            "src.repositories.oauth.OAuthProviderRepository.store_token",
+            new=AsyncMock(),
+        ) as mock_store,
+        patch(
+            "src.routers.oauth_connections.decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": str(MAPPING_ID),
+                "nonce": "nonce-1",
+            },
+        ),
+        # The nonce was already consumed by the first use.
+        patch(
+            "src.routers.oauth_connections.consume_nonce",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as mock_exchange,
+        patch(
+            "src.routers.oauth_connections.consume_pkce_verifier",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(state="signed-state"),
+                ctx=ctx,
+                user=MagicMock(),
+            )
+
+    assert exc_info.value.status_code == 400
+    mock_exchange.assert_not_awaited()
+    mock_store.assert_not_awaited()
 
 
 # =============================================================================

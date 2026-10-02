@@ -20,7 +20,7 @@ and ``code_verifier`` (valid OAuth 2.0).
 
 Verifier storage follows the ``oauth_sso`` lane pattern: the verifier never
 leaves the server. The authorize endpoint stores it in Redis keyed by the
-``state`` value and the callback consumes it exactly once (get-and-delete),
+``state`` value and the callback consumes it exactly once (atomic ``GETDEL``),
 so a replayed state finds nothing and is rejected.
 """
 
@@ -139,7 +139,12 @@ def validate_pkce_binding(
 
 
 async def consume_pkce_verifier(state: str) -> dict[str, Any] | None:
-    """Fetch and delete the PKCE payload stored for ``state`` (single-use).
+    """Atomically fetch-and-delete the PKCE payload stored for ``state``.
+
+    Single-use is enforced by Redis ``GETDEL``: concurrent callbacks for
+    the same state resolve to exactly one winner holding the payload while
+    every other caller observes ``None``. A separate GET-then-DELETE would
+    let two racers both read the verifier before either delete runs.
 
     Returns the stored payload dict, or ``None`` when no verifier was
     stored, it expired, or it was already consumed (replay). Callers must
@@ -147,12 +152,9 @@ async def consume_pkce_verifier(state: str) -> dict[str, Any] | None:
     ignore any payload on a provider that does not use PKCE.
     """
     redis_client = await get_shared_redis()
-    key = integration_oauth_pkce_key(state)
-    raw = await redis_client.get(key)
+    raw = await redis_client.getdel(integration_oauth_pkce_key(state))
     if raw is None:
         return None
-    # Single-use: delete immediately so a replayed state finds nothing.
-    await redis_client.delete(key)
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
