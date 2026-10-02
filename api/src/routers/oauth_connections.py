@@ -46,6 +46,14 @@ from src.services.oauth_provider import (
     refresh_oauth_token_http,
     resolve_url_template,
 )
+from src.services.oauth_pkce import (
+    build_pkce_authorize_params,
+    consume_pkce_verifier,
+    generate_code_verifier,
+    provider_uses_pkce,
+    store_pkce_verifier,
+    validate_pkce_binding,
+)
 from src.repositories.oauth import OAuthProviderRepository
 from src.services.oauth_state import consume_nonce, decode_state, OAuthStateError
 
@@ -343,6 +351,22 @@ async def authorize_connection(
     scopes_str = compute_authorization_request_scopes(provider)
     if scopes_str:
         params["scope"] = scopes_str
+
+    if provider_uses_pkce(provider):
+        code_verifier = generate_code_verifier()
+        params.update(build_pkce_authorize_params(code_verifier))
+        try:
+            await store_pkce_verifier(
+                state=state,
+                code_verifier=code_verifier,
+                redirect_uri=redirect_uri,
+                provider_id=provider.id,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not initiate PKCE flow (verifier storage unavailable)",
+            ) from e
 
     authorization_url = append_query_params(resolved_authorization_url, params)
 
@@ -703,6 +727,41 @@ async def oauth_callback(
         )
     redirect_uri = request.redirect_uri
 
+    # PKCE: consume the stored verifier exactly once, before the exchange.
+    # Consuming up front means a replayed state fails here instead of
+    # reaching the provider. Non-PKCE providers ignore any stray payload.
+    # A storage failure reads as "no verifier": non-PKCE flows proceed
+    # unaffected while PKCE flows fail closed below.
+    pkce_payload = None
+    if request.state:
+        try:
+            pkce_payload = await consume_pkce_verifier(request.state)
+        except Exception as e:
+            logger.warning(f"PKCE verifier lookup failed, treating as absent: {e}")
+    code_verifier: str | None = None
+    if provider_uses_pkce(provider):
+        if not pkce_payload:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Invalid or expired OAuth state for this PKCE flow "
+                    "(the authorize step was not completed, expired, or "
+                    "this state was already used)"
+                ),
+            )
+        try:
+            validate_pkce_binding(
+                pkce_payload,
+                provider_id=provider.id,
+                redirect_uri=redirect_uri,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+        code_verifier = pkce_payload["code_verifier"]
+
     # Resolve URL template placeholders (e.g., {entity_id} -> actual tenant ID)
     defaults = await get_url_resolution_defaults(ctx.db, provider)
     resolved_token_url = resolve_url_template(
@@ -720,6 +779,7 @@ async def oauth_callback(
         redirect_uri=redirect_uri,
         scopes=compute_token_exchange_scopes(provider),
         audience=provider.audience,
+        code_verifier=code_verifier,
     )
 
     if not success:

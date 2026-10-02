@@ -53,6 +53,12 @@ from src.services.oauth_provider import (
     get_url_resolution_defaults,
     resolve_url_template,
 )
+from src.services.oauth_pkce import (
+    build_pkce_authorize_params,
+    generate_code_verifier,
+    provider_uses_pkce,
+    store_pkce_verifier,
+)
 from src.services.oauth_state import encode_state, remember_nonce
 from shared.logo_processing import (
     LogoProcessingError,
@@ -1606,6 +1612,23 @@ async def authorize_mapping(
     if scopes_str:
         params["scope"] = scopes_str
 
+    if provider_uses_pkce(provider):
+        code_verifier = generate_code_verifier()
+        params.update(build_pkce_authorize_params(code_verifier))
+        try:
+            await store_pkce_verifier(
+                state=state,
+                code_verifier=code_verifier,
+                redirect_uri=request.redirect_uri,
+                provider_id=provider.id,
+                mapping_id=mapping_id,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not initiate PKCE flow (verifier storage unavailable)",
+            ) from e
+
     logger.info(
         f"Generated per-mapping OAuth authorization URL for mapping {log_safe(mapping_id)}, "
         f"integration {log_safe(integration_id)}"
@@ -1917,6 +1940,22 @@ async def get_oauth_authorization_url(
     scopes_str = compute_authorization_request_scopes(oauth_provider)
     if scopes_str:
         params["scope"] = scopes_str
+
+    if provider_uses_pkce(oauth_provider):
+        code_verifier = generate_code_verifier()
+        params.update(build_pkce_authorize_params(code_verifier))
+        try:
+            await store_pkce_verifier(
+                state=state,
+                code_verifier=code_verifier,
+                redirect_uri=redirect_uri,
+                provider_id=oauth_provider.id,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not initiate PKCE flow (verifier storage unavailable)",
+            ) from e
 
     authorization_url = append_query_params(oauth_provider.authorization_url, params)
 
