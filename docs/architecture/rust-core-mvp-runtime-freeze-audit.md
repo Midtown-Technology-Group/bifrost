@@ -6,6 +6,10 @@ it with a codec-only experiment. See the [amendment](rust-core-mvp-amendment.md)
 [C1-R reference](rust-core-mvp-agent-reference.md). Guidance package is
 2026-10-01.5. No C2/C3 builder is released by this packet.
 
+The next [authority-sequence candidate](rust-core-mvp-runtime-authority-sequence.md)
+records concrete Start/provision/close and child-adoption admission points for
+independent review; it is not an accepted schema or C2/C3 release.
+
 Root decisions from the audit:
 
 - Role facts use bounded literal strings, preserving actual source values rather

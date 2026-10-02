@@ -306,3 +306,12 @@ locks; it does not establish runtime/session or Source-obligation drain.
 C1-R foundation `7b24f9d` still names its retained `f770094e` base and approved
 unmerged AUTH overlay; no old runtime pass is transferred to newer main.
 This reconciliation does not restart the exhausted #1017 repair cycle.
+
+
+The subsequent C1-R codec candidate `ef752000299b299d804e8f945195e5eb9e20168d`
+contains e58 and passed 249 selected codec unit cases plus ordinary API quality
+in its own [supported CI](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36950604053).
+The [C1-R evidence packet](rust-core-mvp-agent-reference.md#pure-codec-supported-execution-evidence)
+records exact checkout, job IDs, broader suite skips and remaining nominal gates.
+This is new-candidate codec proof, not transfer of the historical foundation's
+source review into model/tool/summary or mixed-writer acceptance.

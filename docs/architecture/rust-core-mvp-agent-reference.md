@@ -9,9 +9,10 @@ Architect review uses MTG guidance package 2026-10-01.5 and Sol builders.
 ## Exact source and unchanged inputs
 
 Current platform main is `e58db4955ddd30177bd613f1d85b7e203ad7832a`.
-The retained C1-R foundation remains pinned to
-`f770094eb28d8315a414fe8cb306f510da752d89`; it has not been rebased or
-runtime-tested against the newer main.
+The historical C1-R foundation used
+`f770094eb28d8315a414fe8cb306f510da752d89`. The current source candidate
+`ef752000299b299d804e8f945195e5eb9e20168d` includes e58 and its own supported
+codec/unit evidence below; the complete nominal reference remains unexecuted.
 Latest workspace main is `c1856d2fbc7530c65c67adfd28e4896ec402ccbf`; retained
 inputs come from `e8605dc8edb6df8a997c171b534b324ac7ebd8ec`. The intervening
 change affects one Ninja iDRAC PowerShell script only; selected Python and
@@ -247,7 +248,8 @@ Current proof: byte-exact inputs and AUTH source composition, independent source
 reviews and static lane checks only. Independent lane review found shared
 ordinary-project identity, post-effect custody checking, missing prebuild image
 binding and unchecked actual argv. The six-file correction is committed locally
-as `7b24f9d21d0849188bcc2c94d75b67d63a6e75a1`, with no push or PR. Independent
+as historical `7b24f9d21d0849188bcc2c94d75b67d63a6e75a1`. The newer ef752
+candidate is pushed for ordinary hosted CI, with no C1-R PR yet. Independent
 source re-review verifies the dedicated project, actual-runner pre-effect
 release, all-service saved image IDs and commands/entrypoints/users/working
 directories, and finite evidence publication from an unmounted host directory.
@@ -256,8 +258,9 @@ container-supplied filenames from becoming trusted artifacts. Bash syntax,
 AST parsing, scoped Ruff/format and whitespace checks passed. These checks
 did not execute the authored negative tests, Docker or pytest. Source defects
 are corrected; supported runtime proof is still required. Public installation, model/Cove wire,
-effective image/environment, SDK custody, actual events/commits, ordinary and
-named CI remain unexecuted for this packet. Dedicated-runtime public policy,
+effective image/environment, SDK custody, actual events/commits and named
+reference CI remain unexecuted for this packet. Ordinary unit/quality evidence
+for the new candidate is recorded separately below. Dedicated-runtime public policy,
 runtime extraction, source custody, mixed Rust writers and rollback remain
 separate CRED/C2/C3 gates. No Rust CONTINUE decision follows from this foundation.
 
@@ -291,3 +294,29 @@ cannot fabricate authority or actual child identity. Separate ingestion and
 runner control capabilities prevent the case client from manufacturing producer
 receipts. Exact file ownership/mount custody, including UID-1000 runner access,
 remain required construction/runtime gates rather than assumed readability.
+
+## Pure codec: supported execution evidence
+
+The independently reviewed stdlib codec and synthetic rejection tests were
+committed as `2a3b268c9`; the current-main merge produced exact candidate
+`ef752000299b299d804e8f945195e5eb9e20168d`. Hosted ordinary
+[CI 36950604053](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36950604053)
+checked out that exact SHA, confirmed independently in the unit checkout log.
+Unit job `110662651986` passed all **249** selected codec cases with no selected
+skips or failures; its broader summary was 11,987 passed, three existing skips
+and 35 deselected. Quality job `110662521501` passed Ruff and Pyright with zero
+type errors. The full run's E2E lanes were still pending at this evidence read.
+
+Retained unit-log SHA256 is
+`f4eb338d5f43eb2fe360d2a778eaef509bab80f84b765c9d1ec53a2d0487388c`.
+The module SHA256 is
+`023cd12547181548ca5c09b3a4aeff540b1649b75ec79d3e207f1626907a0ea0`;
+test SHA256 is
+`e06a1d4db0b64a2132071f849cdeeb8c79f0870c5165c6edf715fd26214b1bb7`.
+
+Root accepts this evidence for the pure codec package only. It does not prove
+stateful observer/signature/sequence custody, API capabilities/UID/mounts, real
+SDK calls, nominal model/tool/summary/event joins, process closure, runtime
+credentials, writer exclusion or Rust control-plane parity. Publication-stack
+and literal pre-PR gates remain before opening its PR; no runtime consumer is
+released solely by these unit passes. No physical-host runtime was executed.
