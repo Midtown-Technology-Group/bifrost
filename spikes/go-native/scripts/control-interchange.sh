@@ -26,9 +26,11 @@ rust() {
     --mount "type=bind,src=$scratch/target,dst=/target" \
     --mount "type=bind,src=$evidence_dir,dst=/evidence" \
     --workdir /src "$image" env -i PATH=/usr/local/cargo/bin:/usr/bin:/bin \
-    HOME=/tmp RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/cargo CARGO_TARGET_DIR=/target "$@"
+    HOME=/tmp RUSTUP_HOME=/usr/local/rustup RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
+    CARGO_HOME=/cargo CARGO_TARGET_DIR=/target "$@"
 }
 # First-party crate dependencies only. No Go application or authority credentials.
+rust none rustc --version > "$evidence_dir/rust-toolchain.txt"
 rust bridge cargo fetch --locked > "$evidence_dir/rust-fetch.txt" 2>&1
 rust none cargo test --offline --locked -p bifrost-contracts > "$evidence_dir/rust-contract-tests.txt" 2>&1
 rust none cargo run --offline --locked -p bifrost-contracts --example runtime_control_vectors -- emit > "$evidence_dir/rust-control-exchange.json" 2> "$evidence_dir/rust-exchange-build.txt"
