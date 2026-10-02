@@ -198,9 +198,9 @@ def material_record(
     return result
 
 
-def source_row(name: str, **changes: Any) -> dict[str, Any]:
+def source_row(group_name: str, **changes: Any) -> dict[str, Any]:
     """Only a unit data constructor; no assertions derive expected source semantics."""
-    group = reader._GROUPS[name]
+    group = reader._GROUPS[group_name]
     result: dict[str, Any] = {}
     for cell in group.cells:
         if cell.nullable:
@@ -410,7 +410,24 @@ async def test_capacity_execution_metadata_before_step4_never_discovers_e() -> N
     assert snapshot.setup_material.solution_execution_metadata[0].id == E
     assert snapshot.discovered_execution_id is None
     assert snapshot.deferred_child_groups == tuple(reader.DeferredChildGroup)
-    assert not any(E in call[1] or str(E) in call[1] for call in connection.calls)
+    # Independent metadata reads may fetch this row by its actual primary key.
+    # It must never supply child attribution before committed Step4 discovery.
+    execution_bound_calls = [
+        call for call in connection.calls if E in call[1] or str(E) in call[1]
+    ]
+    assert len(execution_bound_calls) == 2
+    assert {call[0].split(" */", 1)[0] for call in execution_bound_calls} == {
+        "/* agent-reference:solution_executions:material",
+        "/* agent-reference:selected_executions:material",
+    }
+    for child_group in (
+        "execution",
+        "workflow_attempts",
+        "workflow_delivery",
+        "generic_known",
+        "usage_known",
+    ):
+        assert not any(f":{child_group}:" in call[0] for call in connection.calls)
 
 
 @pytest.mark.asyncio
@@ -653,9 +670,15 @@ def test_actual_native_column_types_are_not_coerced(
     name: str, field: str, bad: object
 ) -> None:
     group = reader._GROUPS[name]
-    row = source_row(name, **{field: bad})
+    row = source_row(name)
+    cell = next(cell for cell in group.cells if cell.name == field)
+    if cell.variable:
+        row[field] = "fixture"
     record = material_record(group, row, reader.MAX_SNAPSHOT_BYTES)
-    identity = tuple(row[k] for k in group.keys)
+    # Corrupt the actual driver value after constructing valid SQL charge aliases,
+    # so this negative vector reaches the reader rather than failing in the fixture.
+    record[field] = bad
+    identity = tuple(record[k] for k in group.keys)
     with pytest.raises(reader._Fault) as failure:
         reader._material(group, [record], identity, reader.MAX_SNAPSHOT_BYTES)
     assert failure.value.code is reader.ReaderCode.MATERIAL_INVALID
