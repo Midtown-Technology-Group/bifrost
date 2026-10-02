@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const SDKVersion = "0.0.0-spike.1"
+const SDKVersion = "0.0.0-spike.2"
 const maxResponse = 1 << 20
 
 // Provision must come from the trusted supervisor, never workflow input.

@@ -1,15 +1,36 @@
-# Native Go authoring/build experiment (0.0.0-spike.1)
+# Native Go authoring/build experiment (0.0.0-spike.2)
 
 Temporary Lane 4 spike. This module demonstrates an ordinary Go handler, a small
 public-HTTP capability client and an isolated native build/developer loop. It is
 not registered or deployed, does not issue runtime credentials, and does not
-implement Rust admission or `bifrost.runtime/v1`.
+implement Rust admission or the complete `bifrost.runtime/v1` execution profile.
+The independent [control codec](runtimecontrol/README.md) implements the published
+partial wire/session profile and exchanges encodings with Rust and Python.
 
 Authoring starts in `internal/readiness`: normal functions, structs, errors,
 context, interfaces and fakes. `go test ./...` is ordinary Go testing. The test
 dependency go-cmp demonstrates conventional third-party modules; the production
 binary uses the standard library only. Source tests in the supported lane run
 without network, credentials or artifact/cache write access.
+
+The application entrypoint is ordinary typed Go:
+
+```go
+func Run(ctx context.Context, in readiness.Input) (readiness.Output, error) {
+    client, err := bifrost.ClientFromContext(ctx)
+    if err != nil {
+        return readiness.Output{}, err
+    }
+    return readiness.Run(ctx, in, client.Integrations)
+}
+
+func main() { bifrost.Workflow(Run) }
+```
+
+The helper infers generic types and supplies context cancellation, bounded typed
+IO and capabilities without defining a workflow DSL. This entrypoint currently
+requires `--local`; it does not pretend to be the unfrozen full runtime adapter.
+Ordinary unit tests call the underlying handler with an interface fake.
 
 The SDK makes the existing integration-get HTTP request with supervisor-supplied
 scope and selector. HTTPS and redirect rejection are mandatory. Unit tests and
@@ -41,6 +62,14 @@ Schemas are explicit and checked against a constrained build-time AST extractor
 for single-file struct types containing strings, booleans and slices. Unsupported
 types, generics, serialization hooks and cross-file ambiguity fail explicitly.
 Business constraints such as a nonempty name remain explicit schema/handler rules.
+The extractor's supported profile limits metadata inference, not the Go language;
+the current proof does not yet supply a general build command for arbitrary types.
+
+An isolated executable canary uses both a package-variable initializer and
+`init()`, then blocks in main without receiving any Start input. Both effects
+occur before the main gate. The trusted adapter must therefore delay application
+process launch until validated Start and actual bound provision; moving checks
+into this helper cannot provide that authority boundary.
 
 Measurements, source digests, dependency graph, binary build info, scanner/image
 identity and an experimental ephemeral Ed25519 descriptor signature are written

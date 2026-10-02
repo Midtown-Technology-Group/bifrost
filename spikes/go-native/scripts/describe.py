@@ -58,7 +58,7 @@ def main() -> None:
         "manifest_sha256": digest(root / "manifest.json"),
         "input_schema_sha256": digest(root / "schemas/input.json"),
         "output_schema_sha256": digest(root / "schemas/output.json"),
-        "sdk_version": "0.0.0-spike.1", "recipe_version": "go-native-spike/v1",
+        "sdk_version": runtime["sdk_version"], "recipe_version": "go-native-spike/v1",
         "build_recipe_sha256": digest(root / "scripts/measure.sh"),
         "builder_image": image, "scanner_image": (out / "scanner-image.txt").read_text().strip(),
         "scanner_configuration": scanner["config"],
