@@ -1,21 +1,25 @@
-# First-class Go: bounded spike G0 decision
+# First-class Go: bounded spike decision and G0 design
 
 Decision: **CONTINUE SPIKE**. Date: 2026-10-01 (America/Indiana/Indianapolis).
-This packet completes source reconciliation and proposes a bounded authoring/build
-experiment. It does not establish first-class acceptance or an executable SDK.
+The initial G0 design below is retained for its decisions and exact historical
+source pins. [Runnable G1/G2 results](results.md) now record actual artifacts, tests,
+SDK execution, cancellation and cold/warm timings. First-class acceptance and
+Rust-owned durable E2E remain unproved.
 No production deployment, vendor operation, C2/C3 acceptance or merge is included.
 Procedure: mtg-engineering-flow 2026-09-30.1; MTG skills package 2026-10-01.5;
-planning helper: mtg-grill-with-docs. Prototype/package version: no executable
-package produced. The separately inspected Rust W0 foundation declares 0.1.0.
+planning helper: mtg-grill-with-docs. Prototype/package version: **0.0.0-spike.1**, with executable Go workflow and
+local supervisor artifacts; see results for their exact tested source identity. The separately inspected Rust W0 foundation declares 0.1.0.
 
-## Current source and evidence
+## Initial G0 source and evidence
 
-Both named repository mains were fetched before design. Existing checkouts were
+Both named repository mains were fetched before design and rechecked at runtime
+integration handoff; [latest gate readback](rust-gate-readback.json) retains the
+advanced #1011/workspace pins independently of this initial snapshot. Existing checkouts were
 clean and remain unchanged. Documentation lives on `spike/go-first-class-g0` in
 `/home/thomas/src/bifrost-go-first-class-spike`, created from platform main.
 Inspection host: `pve-t340`; no physical-host runtime tests or containers started.
 
-| Repository / reference | Exact observed SHA | Disposition |
+| Repository / reference | Initial G0 observed SHA | Disposition at that observation |
 | --- | --- | --- |
 | Midtown-Technology-Group/bifrost main | `e58db4955ddd30177bd613f1d85b7e203ad7832a` | Source baseline |
 | MTG-Thomas/bifrost-workspace main | `c1856d2fbc7530c65c67adfd28e4896ec402ccbf` | Source baseline |
@@ -351,7 +355,7 @@ recording VM/worktree/Compose identities, toolchain/image/scanner pins, CPU/memo
 kernel/isolation mode, sample count and exact source/artifact digests. Do not use
 physical-host measurements as runtime acceptance or restart VM101 APIs.
 
-| Required metric | Method | Actual result in this packet |
+| Required metric | Method | Initial G0 result (current proof in results.md) |
 | --- | --- | --- |
 | Fully cold build | Empty module/compiler/artifact caches, include module fetch and validation phases | Not measured |
 | Compiler-cold with warm modules | Verified module cache, empty compiler/artifact caches | Not measured |
@@ -402,19 +406,19 @@ launch gate.
 ## Executed scope, blockers and next package
 
 G0 executed: live main fetches, exact PR/source reconciliation, authoritative source
-audit, representative workflow selection, authoring/build/manifest/schema/local-loop
-proposal, and concrete common-protocol findings. G1-G5 implementation and all
-19 E2E proof steps remain unexecuted. There is no ordinary Go test pass, immutable
-binary, isolated-builder acceptance, attestation, SDK HTTP success, measured loop,
-Rust admission, durable run, cancellation or existing-API observation to report.
-Documentation/static validation cannot substitute for those proofs.
+ audit, representative workflow selection and authoring/build/local-loop design.
+ G1/G2 now implement the small SDK, ordinary-Go handler/tests, static schema profile,
+ isolated builds/security scan/experimental attestation, native local SDK execution,
+ cancellation and cold/warm measurements. See [results](results.md) for exact proof.
+ Rust admission, common runtime protocol participation, actual restricted credential
+ ingress and durable lifecycle projection remain unexecuted; no local fixture or
+ measurement file is relabeled as those proofs.
 
-Packet validation: all 14 inspected file digests were recomputed from their pinned
-Git objects; all nine PR heads and both main pins agree with the evidence snapshot;
-`git diff --check` passes. These two new documentation files are local and
-uncommitted. No PR was opened, no `pre-pr`/backend/runtime suite was run, and no
-debug/test resources were created. Existing platform/workspace checkouts remain
-clean. Broader implementation verification awaits an executable candidate.
+ Static checks and supported hosted CI passed for the spike source; the first CI
+ harness noexec failure was corrected in a new signed candidate, without security
+ profile bypasses or rerun-until-green. The branch is published and committed, but
+ no PR/pre-PR gate, merge, deployment or full platform suite is claimed. Primary
+ checkouts are preserved and no debug/test VM stack was created.
 
 Exact blocking prerequisites for G3-G5:
 
@@ -428,17 +432,17 @@ Exact blocking prerequisites for G3-G5:
 4. Mechanical owner-aware writer exclusion, actual separate DB identities through
    PgBouncer, incumbent hidden-writer denials, recovery/mixed-writer/in-flight rollback
    acceptance, and implemented Rust workflow admission/finalization under them.
-5. Reviewed native artifact/registration custody, isolated builder and measured
-   normal-Go developer loop in the supported lane. Container threat model, actual
-   toolchain/image pins, static schema tool and latency acceptance remain unvalidated.
+5. Reviewed native artifact/registration custody and production builder acceptance.
+   Prototype toolchain/image pins, schema profile and developer-loop timings are now
+   verified in hosted CI; hostile multi-tenant isolation, production attestation
+   trust, interactive run/deploy ergonomics and reviewed deployment remain unaccepted.
 
-G1/G2 can proceed independently once their concrete builder/test packet is frozen;
-they need no lifecycle authority. Do not make G4 a Go-specific substitute for
+G1/G2 now have independent runnable evidence and need no lifecycle authority. Do not make G4 a Go-specific substitute for
 unaccepted C3. The smallest next step is a shared launch/artifact decision packet
 for #1011/C1-P describing the trusted adapter, initialization-negative fixture,
-source/artifact binding and compatibility vectors. Then G1 SDK/handler and G2
-isolated builds can produce reviewable executable and timing evidence while
-public credential/writer-exclusion work proceeds through its own gates.
+source/artifact binding and compatibility vectors. The existing G1 SDK/handler and G2 isolated artifacts can then connect through
+the accepted generic adapter while public credential/writer-exclusion work
+proceeds through its own gates.
 
 **Did Go fit naturally beneath the same Rust-owned execution model as Python?**
 Architecturally plausible, operationally unproved. Capability calls and computation
@@ -448,9 +452,10 @@ are concrete shared-boundary work; no Go-specific lifecycle code was added.
 **Does the authoring experience feel like Go applications running on BiFrost or
 a BiFrost DSL using Go syntax?** The proposed design is unequivocally Go applications
 running on BiFrost: ordinary functions, explicit types, interfaces/fakes, errors,
-context and control flow. There is no step graph or language redefinition. This is
-a design assessment, not developer usability or E2E acceptance evidence.
+context and control flow. There is no step graph or language redefinition. The prototype and normal tests support that authoring assessment; production
+usability and Rust E2E acceptance are still unproved.
 
 Final decision: **CONTINUE SPIKE**, with the exact blockers above. No demonstrated
 language limitation currently warrants rejection; no measured/end-to-end evidence
-currently warrants first-class adoption.
+currently warrants first-class adoption. Runnable computation and build evidence
+now exist; shared Rust lifecycle acceptance remains the decisive blocker.

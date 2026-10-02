@@ -1,0 +1,49 @@
+{
+  "observed_at_utc": "2026-10-02T01:54:35.368589+00:00",
+  "platform_main": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+  "workspace_main": "9941427941587d253540942b714c5e2b7abfc410",
+  "architecture_pr": {
+    "headRefOid": "951c47f17f2d3c412044b4fb87beb70b64a1a251",
+    "number": 1011,
+    "state": "OPEN",
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1011"
+  },
+  "protocol_pr_head": "9f35278f90ba3757318ac9f07895bda9957330de",
+  "inspected_files": [
+    {
+      "sha": "951c47f17f2d3c412044b4fb87beb70b64a1a251",
+      "path": "docs/architecture/rust-core-mvp-amendment.md",
+      "sha256": "2f91e6399ecba927de2e3007851698a151411bf2090fc7f66c38ca0f3b36f68b"
+    },
+    {
+      "sha": "951c47f17f2d3c412044b4fb87beb70b64a1a251",
+      "path": "docs/architecture/rust-core-mvp-runtime-freeze-audit.md",
+      "sha256": "c610e17f8b82085f06721094e4dcebb417d71273cb760bf526e2a996919fd20c"
+    },
+    {
+      "sha": "951c47f17f2d3c412044b4fb87beb70b64a1a251",
+      "path": "docs/architecture/rust-core-mvp-runtime-authority-sequence.md",
+      "sha256": "0be50b12a706c0b8dea5b414d545a9de9fb09ae8e35e36201cbd30ce35338c26"
+    },
+    {
+      "sha": "9f35278f90ba3757318ac9f07895bda9957330de",
+      "path": "core-rs/crates/bifrost-contracts/src/runtime/control.rs",
+      "sha256": "33ee2987bdb5ff507afbd4a1a0b95681cd9b322be965a530145f68b788497243"
+    },
+    {
+      "sha": "9f35278f90ba3757318ac9f07895bda9957330de",
+      "path": "core-rs/crates/bifrost-domain/src/lib.rs",
+      "sha256": "a8f2bb5816acc971acad3e7d79c1ff6a57a6b473b465b0db9605ae98e50baa77"
+    }
+  ],
+  "disposition": "No C2/C3 release; result/report contract and Rust-owned durable workflow implementation remain gated",
+  "workspace_delta": {
+    "from": "c1856d2fbc7530c65c67adfd28e4896ec402ccbf",
+    "to": "9941427941587d253540942b714c5e2b7abfc410",
+    "paths": [
+      "features/ninjaone/workflows/handle_alert.py",
+      "tests/unit/test_ninjaone_handle_alert_helpers.py"
+    ],
+    "selected_readiness_source_changed": false
+  }
+}
