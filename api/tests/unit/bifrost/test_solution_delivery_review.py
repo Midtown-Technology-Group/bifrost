@@ -54,6 +54,17 @@ def test_review_allows_defaults_optional_args_and_resource_updates_without_live_
     assert result["live_state_verified"] is False and result["runtime_verified"] is False
 
 
+def test_review_allows_nullable_parameter_without_rejecting_existing_string_callers():
+    recipe, old_files, resources = fixture()
+    nullable = {"run.py": old_files["run.py"].replace(b'user: str = "root"', b'user: str | None = None')}
+    reviewed = review_solution_recipe(recipe, nullable, resources,
+        previous_recipe_value=recipe, previous_files=old_files, previous_resources=resources)
+    assert reviewed["previous_recipe_checked"] is True
+    with pytest.raises(WorkflowRecipeError, match="caller reconciliation"):
+        review_solution_recipe(recipe, old_files, resources,
+            previous_recipe_value=recipe, previous_files=nullable, previous_resources=resources)
+
+
 @pytest.mark.parametrize("damage", ["rename", "break_type", "required", "remove", "expose", "missing_resource", "extra_source"])
 def test_known_unsupported_transitions_fail_before_merge(damage):
     old, files, resources = fixture()
