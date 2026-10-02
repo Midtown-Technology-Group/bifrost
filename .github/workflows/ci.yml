@@ -885,8 +885,30 @@ jobs:
           fi
 
       - name: Export E2E service logs and stop stack
+        id: e2e-cleanup
         if: always() && matrix.total != 0
         run: ./test.sh stack down
+
+      - name: Verify E2E project cleanup
+        if: always() && matrix.total != 0
+        env:
+          CLEANUP_OUTCOME: ${{ steps.e2e-cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          evidence_dir="$RUNNER_TEMP/writer-catalog-e2e-cleanup"
+          mkdir -p "$evidence_dir"
+          containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+          networks="$(docker network ls -q --filter "label=com.docker.compose.project=$project")"
+          printf 'project=%s\ncleanup_outcome=%s\ncontainers=%s\nvolumes=%s\nnetworks=%s\n' \
+            "$project" "$CLEANUP_OUTCOME" "$containers" "$volumes" "$networks" \
+            > "$evidence_dir/project-resources.txt"
+          test "$CLEANUP_OUTCOME" = "success"
+          test -z "$containers"
+          test -z "$volumes"
+          test -z "$networks"
 
       - name: Preserve writer catalog receipt and JUnit
         if: always() && matrix.total != 0
@@ -896,6 +918,7 @@ jobs:
           path: |
             /tmp/bifrost-bifrost-test-*/writer-catalog-receipt.log
             /tmp/bifrost-bifrost-test-*/test-results.xml
+            ${{ runner.temp }}/writer-catalog-e2e-cleanup/project-resources.txt
           if-no-files-found: ignore
           retention-days: 14
 

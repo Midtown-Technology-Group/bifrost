@@ -330,6 +330,21 @@ def test_legal_empty_nullable_and_public_role_arrays():
     contract.validate_value([1] * 128, "AK+")
 
 
+@pytest.mark.parametrize("nonmapping", [None, [], 42, "nonmapping"])
+def test_q8_nonmapping_rows_are_rejected(nonmapping):
+    with pytest.raises(contract.CatalogContractError, match="^ordered-row-schema$"):
+        contract.validate_rows(8, [nonmapping])
+
+
+def test_q8_dict_subclasses_are_rejected():
+    class DictionarySubclass(dict):
+        pass
+
+    row = DictionarySubclass(version_num=contract.MIGRATION_REVISION)
+    with pytest.raises(contract.CatalogContractError, match="^ordered-row-schema$"):
+        contract.validate_rows(8, [row])
+
+
 def test_native_subclasses_are_not_admitted():
     class IntegerSubclass(int):
         pass

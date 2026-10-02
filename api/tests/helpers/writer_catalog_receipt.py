@@ -252,7 +252,9 @@ def validate_rows(query_index, rows):
     schema = SCHEMAS[query_index]
     columns = tuple(name for name, _rule in schema)
     for row in rows:
-        require(type(row) is dict and tuple(row) == columns, "ordered-row-schema")
+        if type(row) is not dict:
+            raise CatalogContractError("ordered-row-schema")
+        require(tuple(row) == columns, "ordered-row-schema")
         for name, rule in schema:
             validate_value(row[name], rule)
 
