@@ -17,5 +17,6 @@ def test_release_version_decision_seams(script: str) -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

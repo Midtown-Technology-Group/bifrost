@@ -63,7 +63,7 @@ def _parse_iso(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.fromisoformat(value)
     except ValueError:
         return None
 
@@ -95,7 +95,10 @@ def contract_bump(base_ref: str) -> str | None:
 
     def read_contract(ref: str, path: str) -> int:
         result = subprocess.run(
-            ["git", "show", f"{ref}:{path}"], capture_output=True, text=True
+            ["git", "show", f"{ref}:{path}"],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode:
             raise ValueError(f"cannot read release contract at {ref}:{path}")
