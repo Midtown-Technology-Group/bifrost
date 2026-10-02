@@ -493,6 +493,7 @@ class TestWorkflowToolIdResolution:
             caller_org_id = uuid4()
             mock_conversation.user.organization_id = caller_org_id
             mock_conversation.user.is_superuser = False
+            mock_conversation.user.is_external = False
 
             mock_agent = MagicMock()
             mock_agent.organization_id = None
@@ -1383,3 +1384,188 @@ class TestKnowledgeSearch:
 
         assert result.result is None
         assert "embedding offline" in result.error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("admin", "provider", "external"),
+    [(False, True, False), (False, False, False), (True, False, False), (False, False, True)],
+)
+async def test_chat_workflow_preserves_canonical_caller_authority(
+    executor, mock_session, admin, provider, external,
+):
+    from types import SimpleNamespace
+
+    workflow_id, user_id, caller_org, agent_org = uuid4(), uuid4(), uuid4(), uuid4()
+    executor._tool_workflow_id_map["tool"] = workflow_id
+    user = SimpleNamespace(id=user_id, is_superuser=admin)
+    workflow = SimpleNamespace(id=workflow_id, name="Tool")
+    mock_session.get.side_effect = [user, workflow]
+    agent = SimpleNamespace(id=uuid4(), organization_id=agent_org, system_tools=[], knowledge_sources=[])
+    with (
+        patch("src.services.agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.caller_can_access_workflow_tool", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=MagicMock(
+            status=MagicMock(value="Success"), result={"ok": True},
+        ))) as execute,
+    ):
+        await executor._execute_tool(
+            ToolCallRequest(id="call", name="tool", arguments={}), agent=agent,
+            caller_user_id=user_id, caller={
+                "user_id": str(user_id), "email": "caller@example.test", "name": "Caller",
+                "organization_id": str(caller_org), "is_platform_admin": admin,
+                "is_provider_org": provider, "is_external": external,
+            },
+        )
+    caller = execute.await_args.kwargs["caller"]
+    assert caller.user_id == str(user_id)
+    assert caller.organization_id == str(caller_org)
+    assert caller.is_platform_admin is admin
+    assert caller.is_provider_org is provider
+    assert caller.is_external is external
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("admin", "provider"),
+    [(False, False), (False, True), (True, False), (True, True)],
+)
+async def test_chat_workflow_rejects_missing_authenticated_caller(
+    executor, mock_session, admin, provider,
+):
+    from types import SimpleNamespace
+
+    from src.models.orm.users import User
+
+    workflow_id, user_id, org_id = uuid4(), uuid4(), uuid4()
+    executor._tool_workflow_id_map["tool"] = workflow_id
+    mock_session.get.side_effect = [
+        None,
+        SimpleNamespace(id=workflow_id, name="Tool", organization_id=org_id),
+    ]
+    agent = SimpleNamespace(
+        id=uuid4(), organization_id=org_id, system_tools=[], knowledge_sources=[],
+    )
+    with (
+        patch("src.services.agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=MagicMock(
+            status=MagicMock(value="Success"), result={"ok": True},
+        ))) as execute,
+    ):
+        result = await executor._execute_tool(
+            ToolCallRequest(id="missing-caller", name="tool", arguments={}),
+            agent=agent, caller_user_id=user_id, caller={
+                "user_id": str(user_id), "organization_id": str(org_id),
+                "is_platform_admin": admin, "is_provider_org": provider,
+            },
+        )
+
+    execute.assert_not_awaited()
+    mock_session.get.assert_awaited_once_with(User, user_id)
+    assert result.tool_call_id == "missing-caller"
+    assert result.tool_name == "tool"
+    assert result.result is None
+    assert result.error == "Tool 'tool' not found"
+
+
+@pytest.mark.asyncio
+async def test_chat_workflow_preserves_callerless_scope_without_authority(
+    executor, mock_session,
+):
+    from types import SimpleNamespace
+
+    workflow_id, org_id = uuid4(), uuid4()
+    executor._tool_workflow_id_map["tool"] = workflow_id
+    mock_session.get.return_value = SimpleNamespace(
+        id=workflow_id, name="Tool", organization_id=org_id,
+    )
+    agent = SimpleNamespace(
+        id=uuid4(), organization_id=org_id, system_tools=[], knowledge_sources=[],
+    )
+    with (
+        patch("src.services.agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=MagicMock(
+            status=MagicMock(value="Success"), result={"ok": True},
+        ))) as execute,
+    ):
+        result = await executor._execute_tool(
+            ToolCallRequest(id="callerless", name="tool", arguments={}), agent=agent,
+        )
+
+    assert result.error is None
+    assert result.result == {"ok": True}
+    execute.assert_awaited_once()
+    caller = execute.await_args.kwargs["caller"]
+    assert caller.user_id == "system"
+    assert caller.organization_id == org_id
+    assert caller.is_platform_admin is False
+    assert caller.is_provider_org is False
+    assert caller.is_external is False
+
+
+@pytest.mark.asyncio
+async def test_chat_workflow_admin_revocation_overrides_snapshot(executor, mock_session):
+    from types import SimpleNamespace
+
+    workflow_id, user_id = uuid4(), uuid4()
+    executor._tool_workflow_id_map["tool"] = workflow_id
+    mock_session.get.side_effect = [
+        SimpleNamespace(id=user_id, is_superuser=False),
+        SimpleNamespace(id=workflow_id, name="Tool"),
+    ]
+    agent = SimpleNamespace(id=uuid4(), organization_id=uuid4(), system_tools=[], knowledge_sources=[])
+    with (
+        patch("src.services.agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.caller_can_access_workflow_tool", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=MagicMock(
+            status=MagicMock(value="Success"), result={},
+        ))) as execute,
+    ):
+        await executor._execute_tool(
+            ToolCallRequest(id="call", name="tool", arguments={}), agent=agent,
+            caller_user_id=user_id, caller={
+                "user_id": str(user_id), "is_platform_admin": True,
+                "organization_id": str(agent.organization_id),
+            },
+        )
+    assert execute.await_args.kwargs["caller"].is_platform_admin is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("provider", "external"), [(True, False), (False, True), (False, False)])
+@pytest.mark.parametrize("id_only", [False, True])
+async def test_legacy_chat_workflow_resolves_original_user_claims(
+    executor, mock_session, provider, external, id_only,
+):
+    from types import SimpleNamespace
+
+    workflow_id, user_id, org_id = uuid4(), uuid4(), uuid4()
+    executor._tool_workflow_id_map["tool"] = workflow_id
+    user = SimpleNamespace(
+        id=user_id, organization_id=org_id, email="legacy@example.test",
+        name="Legacy", is_superuser=False, is_external=external,
+    )
+    mock_session.get.side_effect = [user, SimpleNamespace(id=workflow_id, name="Tool")]
+    agent = SimpleNamespace(id=uuid4(), organization_id=uuid4(), system_tools=[], knowledge_sources=[])
+    conversation = SimpleNamespace(id=uuid4(), user=user)
+    with (
+        patch("src.services.agent_executor.resolve_provider_org_claim", new=AsyncMock(return_value=provider)) as resolve_provider,
+        patch("src.services.agent_executor.resolve_external_claim", new=AsyncMock(return_value=external)) as resolve_external,
+        patch("src.services.agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.caller_can_access_workflow_tool", new=AsyncMock(return_value=True)),
+        patch("src.services.agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=MagicMock(
+            status=MagicMock(value="Success"), result={},
+        ))) as execute,
+    ):
+        await executor._execute_tool(
+            ToolCallRequest(id="call", name="tool", arguments={}), agent=agent,
+            caller_user_id=user_id, conversation=conversation,
+            caller={"user_id": str(user_id)} if id_only else None,
+        )
+    resolve_provider.assert_awaited_once_with(mock_session, user)
+    resolve_external.assert_awaited_once_with(mock_session, user)
+    caller = execute.await_args.kwargs["caller"]
+    assert caller.organization_id == (agent.organization_id if id_only else org_id)
+    assert caller.is_provider_org is provider
+    assert caller.is_external is external
+    assert caller.is_platform_admin is False

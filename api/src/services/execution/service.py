@@ -655,6 +655,8 @@ async def execute_tool(
     execution_id: str | None = None,
     artifact_workspace_id: str | None = None,
     sync: bool = True,
+    is_provider_org: bool = False,
+    is_external: bool = False,
 ) -> WorkflowExecutionResponse:
     """
     Execute a workflow as a tool (for AI agent tool calls).
@@ -671,7 +673,9 @@ async def execute_tool(
         user_name: User display name
         org_id: Organization ID (optional)
         org_name: Organization name (optional)
-        is_platform_admin: Whether user is platform admin
+        is_platform_admin: Whether the original caller is platform admin
+        is_provider_org: Original caller provider-org claim
+        is_external: Original caller external restriction claim
         execution_id: Optional pre-generated execution ID (for streaming)
         sync: Whether to wait for the result instead of returning Pending
 
@@ -708,6 +712,8 @@ async def execute_tool(
         scope=org_id or "GLOBAL",
         organization=org,
         is_platform_admin=is_platform_admin,
+        is_provider_org=is_provider_org,
+        is_external=is_external,
         is_function_key=False,
         is_agent=is_agent,
         execution_id=execution_id,

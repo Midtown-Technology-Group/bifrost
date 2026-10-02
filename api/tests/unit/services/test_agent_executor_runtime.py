@@ -390,10 +390,23 @@ async def test_unknown_capabilities_still_offer_agent_tools(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("caller_kind", ["legacy", "provider", "tenant", "admin", "external"])
 async def test_chat_maps_pydantic_tool_events_to_existing_bifrost_contract(
     executor: AgentExecutor,
     conversation,
+    caller_kind: str,
 ) -> None:
+    from src.jobs.consumers.agent_run import _caller_to_principal
+
+    caller = None if caller_kind == "legacy" else _caller_to_principal({
+        "user_id": str(conversation.user_id),
+        "email": "caller@example.test", "name": "Caller",
+        "organization_id": str(uuid4()),
+        "is_superuser": caller_kind == "admin",
+        "is_provider_org": caller_kind == "provider",
+        "is_external": caller_kind == "external",
+        "roles": ["Explicit Role"],
+    })
     agent = MagicMock()
     agent.id = uuid4()
     agent.name = "Ticket Agent"
@@ -456,6 +469,7 @@ async def test_chat_maps_pydantic_tool_events_to_existing_bifrost_contract(
                 "Check the ticket",
                 stream=True,
                 enable_routing=False,
+                user=caller,
             )
         ]
 
@@ -466,6 +480,18 @@ async def test_chat_maps_pydantic_tool_events_to_existing_bifrost_contract(
     ]
     assert next(chunk for chunk in chunks if chunk.type == "done").content == "Ticket checked"
     executor._execute_tool.assert_awaited_once()
+
+    projected = executor._execute_tool.await_args.kwargs["caller"]
+    if caller_kind == "legacy":
+        assert projected == {"user_id": str(conversation.user_id)}
+    else:
+        assert caller is not None
+        assert projected["user_id"] == str(caller.user_id)
+        assert projected["organization_id"] == str(caller.organization_id)
+        assert projected["is_platform_admin"] is (caller_kind == "admin")
+        assert projected["is_provider_org"] is (caller_kind == "provider")
+        assert projected["is_external"] is (caller_kind == "external")
+        assert projected["roles"] == ["Explicit Role"]
 
 
 @pytest.mark.asyncio
