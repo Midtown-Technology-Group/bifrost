@@ -127,6 +127,26 @@ configure_debug_admin() {
     fi
 }
 
+# Object storage must use the same nonempty credential in SeaweedFS and its
+# clients. Retain a generated worktree credential across disposable stack boots.
+configure_debug_storage() {
+    if [ -n "${SEAWEEDFS_SECRET_KEY:-}" ]; then
+        return 0
+    fi
+
+    local credential_dir secret_file
+    credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
+    secret_file="$credential_dir/storage-secret"
+    mkdir -p "$credential_dir"
+    chmod 700 "$credential_dir"
+    if [ ! -s "$secret_file" ]; then
+        (umask 077; openssl rand -hex 32 > "$secret_file")
+    fi
+    chmod 600 "$secret_file"
+    SEAWEEDFS_SECRET_KEY="$(<"$secret_file")"
+    export SEAWEEDFS_SECRET_KEY
+}
+
 # =============================================================================
 # Mode detection + helpers
 # =============================================================================
@@ -391,6 +411,8 @@ cmd_up() {
         cmd_status
         return 0
     fi
+
+    configure_debug_storage
 
     # Ensure node_modules dirs exist for Docker anonymous volume mountpoints.
     mkdir -p api/src/services/app_compiler/node_modules
