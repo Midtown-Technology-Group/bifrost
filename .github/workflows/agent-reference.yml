@@ -1,0 +1,73 @@
+name: Isolated Agent Reference
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - test.sh
+      - scripts/agent-reference-lane.sh
+      - scripts/render-agent-reference-compose.py
+      - api/scripts/agent_reference_runner.py
+      - api/scripts/agent_reference_contract.py
+      - api/scripts/agent_reference_fixture.py
+      - api/scripts/scheduler_fixture_server.py
+      - api/tests/unit/test_agent_reference_lane.py
+      - api/tests/unit/test_agent_reference_fixture.py
+      - api/tests/unit/test_agent_reference_observer.py
+      - api/tests/unit/test_agent_reference_contract.py
+      - api/tests/e2e/platform/agent_reference_cases.py
+      - api/tests/e2e/platform/agent_reference_observer.py
+      - api/tests/e2e/platform/agent_reference_server.py
+      - test-fixtures/agent-reference/README.md
+      - test-fixtures/agent-reference/declaration.yaml
+      - test-fixtures/agent-reference/provenance.json
+      - test-fixtures/agent-reference/features/cove/__init__.py
+      - test-fixtures/agent-reference/features/cove/workflows/recovery_steward.py
+      - test-fixtures/agent-reference/features/cove/workflows/recovery_testing.py
+      - test-fixtures/agent-reference/modules/cove.py
+      - test-fixtures/agent-reference/reference/bootstrap.py
+      - .github/workflows/agent-reference.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-reference-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  agent-reference:
+    name: C1-R isolated PostgreSQL lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run explicit private reference case
+        run: ./test.sh agent-reference
+      - name: Validate finite host custody receipts
+        if: always()
+        id: receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          export BIFROST_PROJECT_PREFIX=bifrost-agent-reference
+          project="$(compute_project_name .)"
+          destination="/tmp/bifrost-agent-reference-evidence-${project}"
+          python3 scripts/render-agent-reference-compose.py check-evidence \
+            --destination "$destination" --project "$project" --source "$GITHUB_SHA"
+          printf 'destination=%s\n' "$destination" >> "$GITHUB_OUTPUT"
+      - name: Publish sanitized source custody and teardown receipts
+        if: always() && steps.receipts.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-reference-custody-${{ github.sha }}
+          path: |
+            ${{ steps.receipts.outputs.destination }}/agent-reference-source.json
+            ${{ steps.receipts.outputs.destination }}/agent-reference-custody.json
+            ${{ steps.receipts.outputs.destination }}/agent-reference-cleanup.json
+          if-no-files-found: error
+          retention-days: 7

@@ -49,6 +49,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# This isolated lane must dispatch before optional host/sibling secrets are read.
+if [ "${1:-}" = "agent-reference" ]; then
+    shift
+    exec "$SCRIPT_DIR/scripts/agent-reference-lane.sh" "$@"
+fi
+if [ -n "${BIFROST_AGENT_REFERENCE_INNER:-}" ]; then
+    python3 "$SCRIPT_DIR/scripts/render-agent-reference-compose.py" check-inner \
+        --context "$BIFROST_AGENT_REFERENCE_INNER" --root "$SCRIPT_DIR" -- "$@"
+fi
+
 # Kubernetes uses an isolated kubeconfig and local fixtures, never Compose secrets.
 if [ "${1:-}" = "kubernetes" ]; then
     shift
@@ -68,8 +78,10 @@ mkdir -p "$LOG_DIR"
 # e2e tests stage file:// git repos here). Creating it host-side first means Docker
 # binds an existing host-owned dir instead of auto-creating a root-owned mountpoint.
 mkdir -p "$LOG_DIR/solution-repo-fixtures"
-mkdir -p "$SCRIPT_DIR/client/playwright-results"
-chmod 777 "$SCRIPT_DIR/client/playwright-results" 2>/dev/null || true
+if [ -z "${BIFROST_AGENT_REFERENCE_INNER:-}" ]; then
+    mkdir -p "$SCRIPT_DIR/client/playwright-results"
+    chmod 777 "$SCRIPT_DIR/client/playwright-results" 2>/dev/null || true
+fi
 export LOG_DIR
 
 # Host command locks must not live in the container-writable results directory.
@@ -95,7 +107,7 @@ if [ ! -f "$BIFROST_TEST_ENV_FILE" ]; then
         fi
     fi
 fi
-if [ -f "$BIFROST_TEST_ENV_FILE" ]; then
+if [ -z "${BIFROST_AGENT_REFERENCE_INNER:-}" ] && [ -f "$BIFROST_TEST_ENV_FILE" ]; then
     set -a
     # shellcheck disable=SC1091
     source "$BIFROST_TEST_ENV_FILE"
@@ -374,6 +386,42 @@ run_pytest() {
         echo "BIFROST_SKIP_BUILD=1 — using pre-built test-runner image from local docker."
     fi
 
+    if [ -n "${BIFROST_AGENT_REFERENCE_INNER:-}" ]; then
+        local reference_runner_id reference_log_status=0 reference_custody_status=0
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        python3 "$SCRIPT_DIR/scripts/render-agent-reference-compose.py" bind-run \
+            --context "$BIFROST_AGENT_REFERENCE_INNER" --root "$SCRIPT_DIR" -- "$@"
+        # This actual runner cannot exec pytest until host custody inspection
+        # writes the receipt. Keep the same container for post-exit inspection.
+        reference_runner_id="$(docker compose -f "$COMPOSE_FILE" --profile test run -d --no-deps \
+            --name "$runner_name" test-runner)"
+        if [[ ! "$reference_runner_id" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "ERROR: agent-reference runner identity is unverifiable." >&2
+            return 1
+        fi
+        "$SCRIPT_DIR/scripts/agent-reference-lane.sh" --release-inner "$reference_runner_id"
+        docker logs -f "$runner_name" 2>&1 | tee "$LOG_DIR/test-runner.log" || reference_log_status=$?
+        runner_status="$(docker wait "$runner_name")"
+        if [[ ! "$runner_status" =~ ^[0-9]+$ ]] || [ "$runner_status" -gt 255 ]; then
+            echo "ERROR: agent-reference runner exit status is unverifiable." >&2
+            return 1
+        fi
+        "$SCRIPT_DIR/scripts/agent-reference-lane.sh" --inspect-inner "$reference_runner_id" "$runner_status" || reference_custody_status=1
+        if [ "$reference_custody_status" = 0 ]; then
+            docker rm "$runner_name" > /dev/null || reference_custody_status=1
+        fi
+        if [ "$reference_custody_status" = 0 ]; then
+            rm "$BIFROST_AGENT_REFERENCE_INNER/custody/binding.json" \
+                "$BIFROST_AGENT_REFERENCE_INNER/custody/release.json" || reference_custody_status=1
+        fi
+        trap - INT TERM
+        exec {runner_lock_fd}>&-
+        if [ "$runner_status" = 0 ] && { [ "$reference_log_status" != 0 ] || [ "$reference_custody_status" != 0 ]; }; then
+            return 1
+        fi
+        return "$runner_status"
+    fi
     docker compose -f "$COMPOSE_FILE" --profile test run "${build_args[@]}" --rm test-runner \
         pytest "$@" --durations=25 --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
     runner_status="${PIPESTATUS[0]}"
