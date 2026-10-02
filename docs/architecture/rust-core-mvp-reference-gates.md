@@ -1066,7 +1066,8 @@ registrations rather than infer a new identity from the normalized spelling.
 
 Public RootFileBinding max_bytes now permits up to256MiB only when signed_get
 is present and operations are a subset of exists/signed_get. Raw read remains
-bounded at128MiB; oversized raw/mixed/readless grants are rejected. Related
+bounded at128MiB; oversized grants without signed_get or permitting operations
+outside exists/signed_get are rejected. Related
 unit/E2E tests assert normalized inventory and large signed-download behavior.
 This does not broaden the selected C1 finite source reads or authorize runtime
 credential grants, C2 dependency preparation, new installer authority or a new
