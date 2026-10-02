@@ -263,3 +263,44 @@ Different retained-evidence review SHA256
 `4daa54eed51849b8d3e980b06349c436324949f8ecb9b129ead314ab0a61e795`
 accepts the complete receipt and named passing test, with the custody limits
 above. It does not accept writer security or globally passing CI.
+
+## Current-main graph audit: source acceptance, catalog still required
+
+A bounded independently reviewed inventory against main
+`4abdf1a163986b6bd86aa7bafe6fa56b963acbb6` extends the Stage1 prerequisite:
+
+- `models/orm/executions.py:286` omits ExecutionLog FK ondelete, while
+  `alembic/versions/20241128_000000_initial_schema.py:194` declares CASCADE.
+  This is a source declaration difference, not observed catalog behavior.
+  Read the migration chain and installed constraint before freezing guards.
+- `models/orm/ai_usage.py:80–89,133` allows several simultaneous non-null
+  execution/conversation/run parents. Every OLD/NEW parent and every ancestor
+  cascade/detachment path matters, including conversation deletion of usage
+  also associated with a protected execution/run. No exactly-one-parent guess.
+- `models/orm/agent_runs.py:101` self-parent CASCADE extends descendant closure;
+  `models/orm/events.py:414` reverse run-to-delivery SET NULL also mutates
+  evidence. Plain event delivery execution_id has no FK. Solution, agent,
+  conversation, user and source-pin ancestors cannot be ignored.
+- `routers/agent_runs.py:873–895` flag GET is a committed writer. The tuning
+  helper locks an existing flag conversation but cannot lock a nonexistent row;
+  unique/create conflict and retained annotation behavior require testing.
+- `jobs/dlq_cli.py:289–317` PostgreSQL discard recovers interrupted work,
+  requires completed domain disposition, audits and commits; it retains the
+  delivery. Do not infer transport DELETE authority from the operation name.
+- `services/work_delivery_store.py:50–61` ownership checks lock a delivery
+  only when current_delivery supplies an active lease. Helper-derived
+  domain→delivery lock order is conditional; explicit recovery locks are
+  separate. Source orders do not prove implicit FK/cascade deadlock freedom.
+- `bifrost/_sync.py:63–80` supplied-session flush deletes the Redis buffer
+  before the outer caller commits; its own-session branch commits first.
+  SQL denial/rollback alone cannot prove no external effect or lost buffer.
+
+Next prerequisite is a finite capped read-only isolated catalog receipt:
+actual FK actions/composite ordering/self/ancestor closure, relation identity,
+constraints, enabled internal/external triggers and function authority, migration
+revision and direct/pool principal provenance. Unexpected edges stop for review;
+no automatic expansion of writer-mutation scope. Existing Stage0 identity data
+neither contains this graph nor proves safe principals. Subsequent permissions,
+roles/DDL, OLD/NEW concurrency and denied-commit external-effect experiments
+remain separately gated. No current-main public issuer, Stage1/C2/C3 acceptance,
+new schema ownership or deployment follows from this source audit.
