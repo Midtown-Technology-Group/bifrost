@@ -3,7 +3,7 @@
 This is a concrete shared-contract proposal, not a runtime release or authority
 grant. Reconciled platform main is `01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
 is `9941427941587d253540942b714c5e2b7abfc410`. Reconciled #1011 architecture head
-is `930b610e8037683fbc1f8daa1e5c3d90095ce510`; the implemented C1-P0 reference
+is `17fc6d510add8bddb7a7f29bd33c0d4dab3208a9`; the implemented C1-P0 reference
 is #1015 `9f35278f90ba3757318ac9f07895bda9957330de`. Neither is merged or full
 runtime acceptance. Private grant #1024 remains unwired and has no source grant.
 
