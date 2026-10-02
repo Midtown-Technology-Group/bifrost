@@ -1,0 +1,11 @@
+{
+  "status": "spike-design-only-not-registration",
+  "runtime": "go-native/v1",
+  "name": "Integration readiness (Go spike)",
+  "build_entrypoint": "./cmd/workflow",
+  "artifact_entrypoint": "workflow",
+  "input_schema": "schemas/input.json",
+  "output_schema": "schemas/output.json",
+  "timeout_seconds": 30,
+  "capability": { "operation": "integration-get", "name": "Fixture", "scope": "trusted-caller-default" }
+}

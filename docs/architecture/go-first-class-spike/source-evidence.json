@@ -1,0 +1,658 @@
+{
+  "observed_at_utc": "2026-10-02T01:20:57.889986+00:00",
+  "host": "pve-t340",
+  "worktree": "/home/thomas/src/bifrost-go-first-class-spike",
+  "branch": "spike/go-first-class-g0",
+  "mtg_package_version": "2026-10-01.5",
+  "engineering_flow_version": "2026-09-30.1",
+  "repositories": {
+    "platform": {
+      "remote": "https://github.com/Midtown-Technology-Group/bifrost.git",
+      "main_sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "initial_status": ""
+    },
+    "workspace": {
+      "remote": "https://github.com/MTG-Thomas/bifrost-workspace.git",
+      "main_sha": "c1856d2fbc7530c65c67adfd28e4896ec402ccbf",
+      "initial_status": ""
+    }
+  },
+  "pull_requests": [
+    {
+      "baseRefName": "main",
+      "headRefName": "architecture/rust-backend-migration",
+      "headRefOid": "2a70092eb773750d6bd082659c2a46b428748654",
+      "mergeCommit": null,
+      "mergeable": "UNKNOWN",
+      "number": 1005,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "docs: RFC for staged Rust control-plane migration",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1005",
+      "check_summary": {
+        "SKIPPED": 9,
+        "SUCCESS": 22,
+        "FAILURE": 1
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "Docs-only CI notice",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 0/0)",
+        "Client E2E Tests",
+        "E2E Tests",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [
+        {
+          "name": "CodSpeed Performance Analysis",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://app.codspeed.io/Midtown-Technology-Group/bifrost/branches/architecture%2Frust-backend-migration"
+        }
+      ],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "rust/mvp-architecture",
+      "headRefOid": "05bbb1db5426e1b531ed38c37f0aa82dfa71d3f0",
+      "mergeCommit": null,
+      "mergeable": "UNKNOWN",
+      "number": 1006,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "docs(architecture): stop device Rust MVP on spawn ambiguity prerequisite",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1006",
+      "check_summary": {
+        "SKIPPED": 9,
+        "SUCCESS": 22,
+        "FAILURE": 1
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "Docs-only CI notice",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 0/0)",
+        "Client E2E Tests",
+        "E2E Tests",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [
+        {
+          "name": "CodSpeed Performance Analysis",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://app.codspeed.io/Midtown-Technology-Group/bifrost/branches/rust%2Fmvp-architecture"
+        }
+      ],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "rust/w0-parity",
+      "headRefOid": "09539559961dd22ed3fd3f9179de84bc8f3bd772",
+      "mergeCommit": null,
+      "mergeable": "UNKNOWN",
+      "number": 1008,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "test(device): establish W0 differential parity foundation",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1008",
+      "check_summary": {
+        "SKIPPED": 9,
+        "SUCCESS": 27,
+        "FAILURE": 1
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "Python reference and parity drift detection",
+        "Docs-only CI notice",
+        "Real-service delivery failure matrix",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 1/4)",
+        "E2E Tests (shard 2/4)",
+        "E2E Tests (shard 3/4)",
+        "E2E Tests (shard 4/4)",
+        "Client E2E Tests",
+        "E2E Tests",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [
+        {
+          "name": "CodSpeed Performance Analysis",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://app.codspeed.io/Midtown-Technology-Group/bifrost/branches/rust%2Fw0-parity"
+        }
+      ],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "rust/w0-bootstrap",
+      "headRefOid": "5ad5010400bf1ade5d1a96cda22684a3f4d6cf35",
+      "mergeCommit": null,
+      "mergeable": "UNKNOWN",
+      "number": 1009,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "feat(rust): establish W0 control-plane service foundation",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1009",
+      "check_summary": {
+        "SKIPPED": 9,
+        "SUCCESS": 30,
+        "FAILURE": 1
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "Docs-only CI notice",
+        "Real-service delivery failure matrix",
+        "MTG Queue Authorization",
+        "Rust migrated schema and PgBouncer",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Rust formatting, lint and tests",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Rust security and license policy",
+        "Rust cold production image",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 1/4)",
+        "E2E Tests (shard 2/4)",
+        "E2E Tests (shard 3/4)",
+        "E2E Tests (shard 4/4)",
+        "Client E2E Tests",
+        "E2E Tests",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [
+        {
+          "name": "CodSpeed Performance Analysis",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://app.codspeed.io/Midtown-Technology-Group/bifrost/branches/rust%2Fw0-bootstrap"
+        }
+      ],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "rust/core-mvp-architecture",
+      "headRefOid": "9e6b7dcb1d03cbc5ca64e10bcf9de02a8312604f",
+      "mergeCommit": null,
+      "mergeable": "MERGEABLE",
+      "number": 1011,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "docs: refocus Rust MVP on workflow and agent control-plane proof",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1011",
+      "check_summary": {
+        "SKIPPED": 10,
+        "SUCCESS": 23
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "Docs-only CI notice",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 0/0)",
+        "Client E2E Tests (shard 0/0)",
+        "E2E Tests",
+        "CodSpeed Performance Analysis",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release",
+        "[code]smith"
+      ]
+    },
+    {
+      "baseRefName": "rust/core-parity-lane",
+      "headRefName": "rust/runtime-contract",
+      "headRefOid": "9f35278f90ba3757318ac9f07895bda9957330de",
+      "mergeCommit": null,
+      "mergeable": "MERGEABLE",
+      "number": 1015,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "C1-P0: add partial Python Rust runtime control protocol",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1015",
+      "check_summary": {
+        "SKIPPED": 10,
+        "SUCCESS": 29,
+        "FAILURE": 1
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "PostgreSQL reference environment and retained device characterization",
+        "Python reference and parity drift detection",
+        "Build and smoke test",
+        "Real-service delivery failure matrix",
+        "Supported Python Rust control codec interchange",
+        "Rust migrated schema and PgBouncer",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Rust formatting, lint and tests",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Rust security and license policy",
+        "Rust cold production image",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 1/4)",
+        "E2E Tests (shard 2/4)",
+        "E2E Tests (shard 3/4)",
+        "E2E Tests (shard 4/4)",
+        "Client E2E Tests",
+        "E2E Tests",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [
+        {
+          "name": "CodSpeed Performance Analysis",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://app.codspeed.io/Midtown-Technology-Group/bifrost/branches/rust%2Fruntime-contract"
+        }
+      ],
+      "skipped_check_names": [
+        "auto-merge",
+        "Publish image",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "fix/agent-original-caller-authority",
+      "headRefOid": "d82219f5aada66d879f2da71b386f50675c66d4d",
+      "mergeCommit": null,
+      "mergeable": "MERGEABLE",
+      "number": 1018,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "fix: preserve original agent caller authority in workflow tools",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1018",
+      "check_summary": {
+        "SKIPPED": 10,
+        "SUCCESS": 27
+      },
+      "successful_check_names": [
+        "Build and smoke test ARM64 worker",
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "Real-service delivery failure matrix",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 1/4)",
+        "E2E Tests (shard 2/4)",
+        "E2E Tests (shard 3/4)",
+        "E2E Tests (shard 4/4)",
+        "Client E2E Tests",
+        "E2E Tests",
+        "CodSpeed Performance Analysis",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release",
+        "[code]smith"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "fix/runtime-sdk-purpose",
+      "headRefOid": "6419069da195b053c885ab349f431ff4fae62098",
+      "mergeCommit": null,
+      "mergeable": "MERGEABLE",
+      "number": 1024,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "Establish private attempt-bound runtime SDK credential foundation",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1024",
+      "check_summary": {
+        "SKIPPED": 11,
+        "SUCCESS": 26
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 1/4)",
+        "E2E Tests (shard 2/4)",
+        "E2E Tests (shard 3/4)",
+        "E2E Tests (shard 4/4)",
+        "Client E2E Tests (shard 1/2)",
+        "Client E2E Tests (shard 2/2)",
+        "E2E Tests",
+        "CodSpeed Performance Analysis",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Manual Pre-PR Gate",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release",
+        "[code]smith"
+      ]
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "test/runtime-sdk-legacy-reference",
+      "headRefOid": "e1f4c358efa08cbe8c1562dd8e409002aec9ee31",
+      "mergeCommit": null,
+      "mergeable": "MERGEABLE",
+      "number": 1026,
+      "reviewDecision": "",
+      "state": "OPEN",
+      "title": "Characterize legacy runtime SDK authority before credential cutover",
+      "url": "https://github.com/Midtown-Technology-Group/bifrost/pull/1026",
+      "check_summary": {
+        "SKIPPED": 11,
+        "SUCCESS": 26
+      },
+      "successful_check_names": [
+        "Plan Affected Tests",
+        "Run benchmarks",
+        "Analyze (python)",
+        "MTG Queue Authorization",
+        "Analyze (javascript-typescript)",
+        "Build candidate api image",
+        "Run execution serialization benchmarks",
+        "Build candidate worker image",
+        "Build candidate client image",
+        "Publish CI Test Images",
+        "Lint & Type Check",
+        "Client Unit Tests",
+        "Candidate Images",
+        "Unit Tests",
+        "MCP Conformance",
+        "E2E Tests (shard 1/4)",
+        "E2E Tests (shard 2/4)",
+        "E2E Tests (shard 3/4)",
+        "E2E Tests (shard 4/4)",
+        "Client E2E Tests (shard 1/2)",
+        "Client E2E Tests (shard 2/2)",
+        "E2E Tests",
+        "CodSpeed Performance Analysis",
+        "CodeQL",
+        "CodeRabbit",
+        "SonarCloud Code Analysis"
+      ],
+      "non_success_checks": [],
+      "skipped_check_names": [
+        "auto-merge",
+        "Build Dev Images",
+        "Deploy Dry Run",
+        "Manual Pre-PR Gate",
+        "Deploy Dev to DigitalOcean",
+        "Verify Release Manifest",
+        "Build API Image",
+        "Build Client Image",
+        "Build Worker Image",
+        "Create Release",
+        "[code]smith"
+      ]
+    }
+  ],
+  "source_files": [
+    {
+      "repo": "platform",
+      "sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "path": "api/src/services/workflow_registration.py",
+      "sha256": "06f16291bc0f1175c01d9e01f36ca1e65fb4f84bd900ceaf8290f67ec0795a47"
+    },
+    {
+      "repo": "platform",
+      "sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "path": "api/src/services/solutions/deployment_runtime.py",
+      "sha256": "5282fb57793eab13861193590e3f47bcfca6901c52b38fb9b12dfc14c73cc331"
+    },
+    {
+      "repo": "platform",
+      "sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "path": "api/src/services/solutions/deployment_manifest.py",
+      "sha256": "6cd37d90cc52e4b379e2ffbb724a28a3617bf42a870323491c7cf053ded2dd85"
+    },
+    {
+      "repo": "platform",
+      "sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "path": "api/src/services/oauth_provider.py",
+      "sha256": "6a8db7c1316645f172aa520f53b96b7e2ccc1b8118f5f95fe7dbdb5886f65267"
+    },
+    {
+      "repo": "platform",
+      "sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "path": "api/src/routers/cli.py",
+      "sha256": "ef1e7c238452249f10c925879689a162f2bd73078d721162feaaa6d2d45e721a"
+    },
+    {
+      "repo": "platform",
+      "sha": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
+      "path": "api/bifrost/integrations.py",
+      "sha256": "15e6677985d6caad85f97966ed7c1bbbc4abd0b5a99e06d8c4d1021df82689ef"
+    },
+    {
+      "repo": "platform",
+      "sha": "9e6b7dcb1d03cbc5ca64e10bcf9de02a8312604f",
+      "path": "docs/architecture/rust-core-mvp-amendment.md",
+      "sha256": "a2a5a7e974050c16178222982ae14e14e6091f354011ef5dba48607835e7340c"
+    },
+    {
+      "repo": "platform",
+      "sha": "9e6b7dcb1d03cbc5ca64e10bcf9de02a8312604f",
+      "path": "docs/architecture/rust-core-mvp-runtime-extraction-gates.md",
+      "sha256": "751cbc9578fdf34906a809fd3263e9df258fadcfe5d8dd30b34e7e017ac887a8"
+    },
+    {
+      "repo": "platform",
+      "sha": "9e6b7dcb1d03cbc5ca64e10bcf9de02a8312604f",
+      "path": "docs/architecture/rust-core-mvp-runtime-credentials.md",
+      "sha256": "744bdc979d1d2d40ed0738da44fd63ae4ea8e1e901eb3d8fffcf7c56bdb352dc"
+    },
+    {
+      "repo": "platform",
+      "sha": "9e6b7dcb1d03cbc5ca64e10bcf9de02a8312604f",
+      "path": "docs/architecture/rust-core-mvp-credential-foundation.md",
+      "sha256": "5f6190d66e41d357e7a7af5cef9a8a5664e9ff9efc065cdfb8ec64cf9d26d80f"
+    },
+    {
+      "repo": "platform",
+      "sha": "9f35278f90ba3757318ac9f07895bda9957330de",
+      "path": "contracts/runtime/v1/control.schema.json",
+      "sha256": "13bfd84bf96fdd1f996c29a7e127a1f0fd6bdfa558c301375cf3696b64c3ec97"
+    },
+    {
+      "repo": "platform",
+      "sha": "9f35278f90ba3757318ac9f07895bda9957330de",
+      "path": "api/src/runtime_protocol/control.py",
+      "sha256": "77a54873539c5116a8645e6db0f74ed403529626b842b1654ef52bc13b5f2a30"
+    },
+    {
+      "repo": "platform",
+      "sha": "9f35278f90ba3757318ac9f07895bda9957330de",
+      "path": "api/src/runtime_protocol/session.py",
+      "sha256": "a3f116706976d88c65a334377bf11f388c766b607108787bdb9a37191eeb7885"
+    },
+    {
+      "repo": "workspace",
+      "sha": "c1856d2fbc7530c65c67adfd28e4896ec402ccbf",
+      "path": "features/utilities/workflows/check_integration_readiness.py",
+      "sha256": "f49b1b935ef2467f66eccf3c4b2750773f664d1f0e41f8ff6b08e3f11035a1de"
+    }
+  ],
+  "scope": "G0 source reconciliation and design only; no execution or adoption acceptance"
+}
