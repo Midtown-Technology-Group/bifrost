@@ -212,7 +212,7 @@ test.describe("Bulk user actions", () => {
 			else bulkRequests++;
 		};
 		page.on("request", countBulkRequest);
-		let originalFailure = false;
+		let observationFailed = false;
 		try {
 			// Pick the destination org from the OrganizationSelect.
 			await dialog.getByRole("combobox").click();
@@ -225,11 +225,7 @@ test.describe("Bulk user actions", () => {
 					new RegExp(`move to org \\(${SELECTED_USER_COUNT}\\)`, "i"),
 				),
 			).toBeVisible({ timeout: 10000 });
-		} catch (error) {
-			originalFailure = true;
-			throw error;
 		} finally {
-			let observationFailed = false;
 			try {
 				const captured = await observation.evaluate((owner) => owner.readAndDispose());
 				await test.info().attach("bulk-user-interaction-observation", {
@@ -251,9 +247,10 @@ test.describe("Bulk user actions", () => {
 					observationFailed = true;
 				}
 			}
-			if (observationFailed && !originalFailure) {
-				throw new Error("Bulk-user interaction observation unavailable");
-			}
+		}
+		// An interaction failure propagates before this point and is never masked.
+		if (observationFailed) {
+			throw new Error("Bulk-user interaction observation unavailable");
 		}
 
 		await page.reload();
