@@ -57,7 +57,8 @@ async def test_active_registration_cohort_excludes_inactive_and_solution_rows_by
     sql = str(captured.statement.compile(compile_kwargs={"literal_binds": True}))
 
     assert rows == []
-    assert "workflows.path IN ('features/shared.py')" in sql
+    assert "ltrim(replace(workflows.path," in sql
+    assert ") IN ('features/shared.py')" in sql
     assert "workflows.solution_id IS NULL" in sql
     assert "workflows.is_active IS true" in sql
     assert "FOR UPDATE" in sql
