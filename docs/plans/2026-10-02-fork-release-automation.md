@@ -1,6 +1,7 @@
 # Automatic fork releases
 
-Status: implementation plan; no release or production deployment performed.
+Status: implementation in the reviewed automation branch; no stable release has
+been tagged or published by this work. Production deployment is separately authorized.
 
 ## Evidence and intended outcome
 
@@ -67,6 +68,8 @@ lane. This plan does not authorize publishing the current accumulated release.
   dispatch a workflow execution. Actual deployments keep drain, CAS and runtime
   readback checks.
 
-The final review should approve the concrete automation and its cadence. The
-current proposal batches changes in a release PR rather than publishing on every
-ordinary main merge; Thomas's cadence choice is pending.
+Thomas selected automatic release PR preparation and publication on merge. The
+combined automation change still requires human review and current-head CI.
+The release PR itself must receive an exact-head human maintainer approval and
+normal administrator queue admission; choosing this cadence does not publish
+the current accumulated release. Recovery is documented in `docs/VERSIONING.md`.

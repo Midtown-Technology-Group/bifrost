@@ -89,7 +89,7 @@ def bump_for(entry: dict) -> str | None:
     return None
 
 
-def contract_bump(base_ref: str) -> str | None:
+def contract_bump(base_ref: str, current_ref: str = "HEAD") -> str | None:
     """An exact CLI contract mismatch requires a major release, regardless of labels."""
     paths = ("api/shared/contract_version.py", "api/bifrost/contract_version.py")
 
@@ -125,7 +125,7 @@ def contract_bump(base_ref: str) -> str | None:
         return values[0]
 
     previous = [read_contract(base_ref, path) for path in paths]
-    current = [read_contract("HEAD", path) for path in paths]
+    current = [read_contract(current_ref, path) for path in paths]
     if previous[0] != previous[1] or current[0] != current[1]:
         raise ValueError("server and CLI release contracts disagree")
     return "major" if previous != current else None
