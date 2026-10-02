@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import ssl
@@ -2030,7 +2031,8 @@ def test_passive_header_derivation_rejects_unknown_facts_without_async_guess(
     from httpx import _client as ordinary
     from httpx2 import _client as model
     from openai import _base_client as sdk
-    from openai import _client as sdk_client
+
+    sdk_client = importlib.import_module("openai._client")
 
     facts = UNIT_FACTS.copy()
     if defect is not None and defect != "package":
