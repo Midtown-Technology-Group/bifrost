@@ -375,3 +375,36 @@ actual installed-image/capability custody, public worker trigger, independent
 DB/event/result/usage/summary joins and consumer closure are still incomplete.
 No nominal agent reference, Rust parity, mixed-writer safety or MVP acceptance
 follows from these checks. #1017's exhausted cycle remains STOPPED.
+
+## Reviewed fixture repairs and second execution disposition
+
+The independently reviewed materials generator and full model/Cove fixture are
+now committed on the bounded C1-R reference branch. Candidate
+`ba4f6a758a0d010b8a690a80142422494b37f50e` includes current platform main01cadfe;
+its [supported run36962193811](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36962193811)
+passed lint/type checking and the literal clean-candidate `./test.sh pre-pr`.
+Root inspected artifact11207854885: candidate tree
+`ca3b4116ee5fa214d1f9f277bdf89e8d686eeb6e`, main01cadfe, exit0 and actual empty
+owned container/volume/network queries after teardown. The supported image
+identity is `sha256:d47d3993d624783ffbac6da68c76ee91dd06e485ee1842c3b4bb6022811fd181`.
+This pre-PR planner does not substitute for backend unit or nominal-case proof.
+
+The same run is **FAILED** overall: unit tests report12,379 passed/17 failed/
+3 skipped/35 deselected. Eight failures patch OpenAI's nullable public `_client`
+singleton instead of its implementation module; nine reach actual TLS but reject
+the unit fixture's ambiguous same-subject CA/leaf chain. Reviewed candidate
+`bb3d3fd6720e897badcc6e3f703bea1b3af28422` changes only those two unit fixtures:
+explicit module import; distinct CA/leaf subjects and proper certificate
+extensions. AST comparison retains all header vectors and assertions, and all
+observer code outside certificate construction is unchanged. Actual TLS/HTTP,
+certificate and hostname verification, fixed SNI, absent-trust/SAN/expiry
+negatives, redirect rejection and ambient-environment attacks remain mandatory.
+Locked Ruff0.15.12 and format checks pass. Its own
+[supported run36963527229](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36963527229)
+is pending; source review does not predict its result.
+
+The nominal public case, verified reader/image/interpreter custody, privileged
+host closure interfaces and complete DB/event/usage/result/summary joins remain
+unimplemented or unexecuted gates. No Rust parity, mixed-writer acceptance,
+merge, deployment, vendor use or C2/C3 acceptance follows. These C1-R repairs
+are independent of #1017; its exhausted extra cycle remains STOPPED.
