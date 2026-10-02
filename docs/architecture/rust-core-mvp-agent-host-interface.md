@@ -1,6 +1,6 @@
 # C1-R host provisioning and disposition
 
-Status: **minimal design accepted; replacement source interface not yet frozen**.
+Status: **minimal design and literal interface frozen for bounded source authoring**.
 2026-10-02. Root and independent Sol review select alternative A within the
 existing trusted CI host/Docker-admin boundary. This is source architecture,
 not privileged/runtime execution, nominal acceptance, merge or deployment.
@@ -52,9 +52,10 @@ never a mutable source pathname, codec, renderer, fixture or product module.
 No shell interpolation, generic operation/command/path selector, elevated Docker
 client/TAR/schema parser, root registry, helper service, new dependency or sudoers
 change. Installed executable/stdlib protection remains an actual runtime gate.
-Exact argv/data grammar, allowed ancestry, complete short-read/write/EOF behavior,
-literal bytes/hashes and partial-failure disposition need a separate source freeze.
-This document releases no replacement implementation by implication.
+Exact argv/data grammar, ancestry, short-read/write/EOF and partial-failure
+semantics are frozen in the [bounded source work package](rust-core-mvp-agent-host-literals.md).
+Only its two source files may be authored. Literal bytes/hashes, measured
+footprint, different implementation review and actual execution remain gated.
 
 Ordinary host may lack access to protected DockerRootDir/Mountpoint inodes.
 The first provision therefore captures their actual nofollow FD identities,
@@ -63,7 +64,8 @@ volume inspect/name/path and empty/no-consumer proof. It returns bounded fixed
 ordered private directory-identity metadata, including created role/host-status
 directories, for later continuity checks. No fabricated ordinary pre-stat,
 additional root probe, existing-volume adoption or registry is permitted.
-Exact receipt/argument framing remains part of the unreleased literal interface.
+Exact receipt/argument framing is frozen in the source work package; actual
+receipt/custody remains unproved.
 
 Six transferred basenames are fixed: observer-ingest-key, observer-control-key,
 model-oracle-input.json, observer-server-key.pem, observer-ca.pem,

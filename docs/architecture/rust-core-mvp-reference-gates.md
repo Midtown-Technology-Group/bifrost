@@ -758,8 +758,11 @@ accepts the explicit removal of root-local framework/state, unchanged-codec
 validation outside elevation, and stock deletion of the saved owned status
 volume only after verified consumers/references are gone. Its discovered
 prior-inode gap is closed by actual final FD identity/body in a bounded private
-publisher receipt. Exact literal/argument source and footprint remain unfrozen;
-no replacement implementation/runtime release. The failed862-line draft84937
+publisher receipt. [Literal source interface](rust-core-mvp-agent-host-literals.md)
+is frozen after different revision2 review3f8ee97d for only two-file source
+work package C1-R-HOST-LITERAL-S. Actual emitted code/footprint and different
+implementation review remain gated; >=200 total executable lines is STOP.
+No privilege/runtime release. The failed862-line draft84937
 is preserved outside Git at the recorded mode0600 path, not executed or restored.
 Secret/TLS/role/source/actual-reader/closure gates are unchanged; volume cleanup
 never repairs failed evidence into acceptance. Alternative B fails actual
@@ -771,7 +774,10 @@ provenance. Acquisition reader078aaabd is committed unchanged in e3bed7f8;
 units62908 fix three characterized fixture/assertion errors, preserving type
 negatives and all pre-Step4 child exclusions. Run36978794042 FAILED11 units,
 although quality/pre-PR/other lanes passed. New changed-candidate run36980564135
-is PENDING. No reader runtime/nominal acceptance is inferred.
+is SUCCESS:187 selected reader cases/12,774 total backend units pass, with
+3 unrelated skips/35 deselections; quality/pre-PR/other required lanes pass.
+Artifact11215402516 preserves exactsource/exit0/actualEMPTY. No actual PostgreSQL
+observation or nominal acceptance is inferred.
 The separately reviewed [read-acquisition supplement](rust-core-mvp-agent-read-acquisition.md)
 releases only the SAME two source paths. It adds actual PostgreSQL16 own virtual
 transaction identity before/after each readonly read and reader-internal real

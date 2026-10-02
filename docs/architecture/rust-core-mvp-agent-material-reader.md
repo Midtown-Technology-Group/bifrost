@@ -37,7 +37,11 @@ Independent repair review SHA256
 `6ba9f29a4a59247042c7ef8dda1386fcee85a52fca314c0d3fd4afd034fc9a45`
 accepted exact62908 after catching a confounded negative vector. AST and locked
 Ruff pass. New supported [run36980564135](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36980564135)
-is PENDING; this is a changed-candidate validation, not a rerun of failed6a154.
+is SUCCESS at exacte3bed:187 selected reader cases passed without skips;
+12,774 backend units passed, with3 unrelated skips/35 deselections. All required
+quality/pre-PR/API/client/MCP lanes passed. Pre-PR artifact11215402516 records
+source tree4b65904f, main01cadfe, exit0 and actual empty owned resource inventory.
+This is changed-candidate validation, not a rerun of failed6a154.
 No actual PostgreSQL observation, source custody or nominal acceptance follows
 from injected connection units. Prior release/source pins below are historical.
 
