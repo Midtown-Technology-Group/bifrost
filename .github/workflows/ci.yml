@@ -224,6 +224,24 @@ jobs:
           cosign sign --yes "${IMAGE}@${IMAGE_DIGEST}"
 
       - name: Attest candidate build provenance
+        id: attest
+        continue-on-error: true
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # The attestation storage-record write can hit transient GitHub API rate
+      # limits during merge-group bursts after build, sign, and push already
+      # succeeded. Back off once and retry before failing the gate; a second
+      # failure still blocks the merge.
+      - name: Back off before attestation retry
+        if: steps.attest.outcome == 'failure'
+        run: sleep 180
+
+      - name: Retry candidate build provenance attestation
+        if: steps.attest.outcome == 'failure'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/${{ matrix.image }}
