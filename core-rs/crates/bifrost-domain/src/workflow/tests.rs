@@ -91,10 +91,7 @@ fn expected_result(
 }
 
 fn expected_cancelled_result() -> FencedResultPlan {
-    let mut plan = expected_result(
-        LogicalExecutionStatus::Cancelled,
-        AttemptStatus::Cancelled,
-    );
+    let mut plan = expected_result(LogicalExecutionStatus::Cancelled, AttemptStatus::Cancelled);
     plan.attempt.failure_code = Some(FailureCode::Cancelled);
     plan.attempt.failure_phase = Some(FailurePhase::Cancellation);
     plan.execution.result = ProjectionPermission::Keep;
@@ -111,13 +108,16 @@ fn running_covers_all_current_attempt_states_and_exact_columns() {
         let view = attempt(state);
         let actual = plan_attempt_running(Some(&view), &id(1), &token(3), false);
         if matches!(state, AttemptStatus::Claimed | AttemptStatus::Running) {
-            assert_eq!(actual, Ok(AttemptRunningPlan {
-                status: AttemptStatus::Running,
-                phase: AttemptPhase::Execution,
-                started_at: TimeWrite::Now,
-                heartbeat_at: TimeWrite::Now,
-                process_id: InputWrite::Keep,
-            }));
+            assert_eq!(
+                actual,
+                Ok(AttemptRunningPlan {
+                    status: AttemptStatus::Running,
+                    phase: AttemptPhase::Execution,
+                    started_at: TimeWrite::Now,
+                    heartbeat_at: TimeWrite::Now,
+                    process_id: InputWrite::Keep,
+                })
+            );
         } else {
             assert_eq!(actual, Err(DecisionError::InvalidAttemptState));
         }
@@ -135,9 +135,17 @@ fn running_preserves_first_start_and_non_none_process_including_empty() {
                 Ok(AttemptRunningPlan {
                     status: AttemptStatus::Running,
                     phase: AttemptPhase::Execution,
-                    started_at: if started { TimeWrite::Keep } else { TimeWrite::Now },
+                    started_at: if started {
+                        TimeWrite::Keep
+                    } else {
+                        TimeWrite::Now
+                    },
                     heartbeat_at: TimeWrite::Now,
-                    process_id: if process.is_some() { InputWrite::SetSupplied } else { InputWrite::Keep },
+                    process_id: if process.is_some() {
+                        InputWrite::SetSupplied
+                    } else {
+                        InputWrite::Keep
+                    },
                 }),
             );
         }
@@ -146,12 +154,10 @@ fn running_preserves_first_start_and_non_none_process_including_empty() {
 
 #[test]
 fn running_rejects_absence_foreign_missing_wrong_and_completed_fences() {
-    assert_eq!(plan_attempt_running(
-        None,
-        &id(1),
-        &token(3),
-        true,
-    ), Err(DecisionError::MissingAttempt));
+    assert_eq!(
+        plan_attempt_running(None, &id(1), &token(3), true,),
+        Err(DecisionError::MissingAttempt)
+    );
     let mut foreign = attempt(AttemptStatus::Claimed);
     foreign.execution_id = id(9);
     let mut missing = attempt(AttemptStatus::Claimed);
@@ -161,12 +167,10 @@ fn running_rejects_absence_foreign_missing_wrong_and_completed_fences() {
     let mut completed = attempt(AttemptStatus::Claimed);
     completed.completed_at_present = true;
     for view in [foreign, missing, wrong, completed] {
-        assert_eq!(plan_attempt_running(
-            Some(&view),
-            &id(1),
-            &token(3),
-            true,
-        ), Err(DecisionError::InvalidAttemptFence));
+        assert_eq!(
+            plan_attempt_running(Some(&view), &id(1), &token(3), true,),
+            Err(DecisionError::InvalidAttemptFence)
+        );
     }
 }
 
@@ -219,33 +223,44 @@ fn tracked_result_checks_every_logical_state_before_attempt_and_outcome() {
             false,
         );
         match state {
-            LogicalExecutionStatus::Running => assert_eq!(actual, Ok(expected_result(
-                LogicalExecutionStatus::Success,
-                AttemptStatus::Succeeded,
-            ))),
-            LogicalExecutionStatus::Cancelling => assert_eq!(actual, Ok(expected_cancelled_result())),
+            LogicalExecutionStatus::Running => assert_eq!(
+                actual,
+                Ok(expected_result(
+                    LogicalExecutionStatus::Success,
+                    AttemptStatus::Succeeded,
+                ))
+            ),
+            LogicalExecutionStatus::Cancelling => {
+                assert_eq!(actual, Ok(expected_cancelled_result()))
+            }
             _ => assert_eq!(actual, Err(DecisionError::InvalidLogicalState)),
         }
     }
     let row = execution(LogicalExecutionStatus::Running);
-    assert_eq!(plan_fenced_result(
-        None,
-        Some(&view),
-        &id(1),
-        Some(&token(3)),
-        AttemptHistory::Recorded,
-        WorkflowOutcome::CoordinatorLoss,
-        false,
-    ), Err(DecisionError::MissingExecution));
-    assert_eq!(plan_fenced_result(
-        Some(&row),
-        Some(&view),
-        &id(9),
-        Some(&token(3)),
-        AttemptHistory::Recorded,
-        WorkflowOutcome::CoordinatorLoss,
-        false,
-    ), Err(DecisionError::MissingExecution));
+    assert_eq!(
+        plan_fenced_result(
+            None,
+            Some(&view),
+            &id(1),
+            Some(&token(3)),
+            AttemptHistory::Recorded,
+            WorkflowOutcome::CoordinatorLoss,
+            false,
+        ),
+        Err(DecisionError::MissingExecution)
+    );
+    assert_eq!(
+        plan_fenced_result(
+            Some(&row),
+            Some(&view),
+            &id(9),
+            Some(&token(3)),
+            AttemptHistory::Recorded,
+            WorkflowOutcome::CoordinatorLoss,
+            false,
+        ),
+        Err(DecisionError::MissingExecution)
+    );
 }
 
 #[test]
@@ -293,7 +308,10 @@ fn result_has_no_new_attempt_status_or_phase_start_guard() {
                 WorkflowOutcome::Success(LogicalExecutionStatus::Success),
                 false,
             ),
-            Ok(expected_result(LogicalExecutionStatus::Success, AttemptStatus::Succeeded)),
+            Ok(expected_result(
+                LogicalExecutionStatus::Success,
+                AttemptStatus::Succeeded
+            )),
         );
     }
 }
@@ -301,15 +319,18 @@ fn result_has_no_new_attempt_status_or_phase_start_guard() {
 #[test]
 fn result_rejects_exact_stale_fences_before_coordinator_policy() {
     let row = execution(LogicalExecutionStatus::Running);
-    assert_eq!(plan_fenced_result(
-        Some(&row),
-        None,
-        &id(1),
-        Some(&token(3)),
-        AttemptHistory::Recorded,
-        WorkflowOutcome::CoordinatorLoss,
-        false,
-    ), Err(DecisionError::MissingAttempt));
+    assert_eq!(
+        plan_fenced_result(
+            Some(&row),
+            None,
+            &id(1),
+            Some(&token(3)),
+            AttemptHistory::Recorded,
+            WorkflowOutcome::CoordinatorLoss,
+            false,
+        ),
+        Err(DecisionError::MissingAttempt)
+    );
     let mut foreign = attempt(AttemptStatus::Running);
     foreign.execution_id = id(9);
     let mut missing = attempt(AttemptStatus::Running);
@@ -319,15 +340,18 @@ fn result_rejects_exact_stale_fences_before_coordinator_policy() {
     let mut completed = attempt(AttemptStatus::Running);
     completed.completed_at_present = true;
     for view in [foreign, missing, wrong, completed] {
-        assert_eq!(plan_fenced_result(
-            Some(&row),
-            Some(&view),
-            &id(1),
-            Some(&token(3)),
-            AttemptHistory::Recorded,
-            WorkflowOutcome::CoordinatorLoss,
-            false,
-        ), Err(DecisionError::InvalidAttemptFence));
+        assert_eq!(
+            plan_fenced_result(
+                Some(&row),
+                Some(&view),
+                &id(1),
+                Some(&token(3)),
+                AttemptHistory::Recorded,
+                WorkflowOutcome::CoordinatorLoss,
+                false,
+            ),
+            Err(DecisionError::InvalidAttemptFence)
+        );
     }
 }
 
@@ -336,24 +360,51 @@ fn four_failure_mappings_assign_nullable_attempt_inputs_without_payload_clearing
     let row = execution(LogicalExecutionStatus::Running);
     let view = attempt(AttemptStatus::Claimed);
     let cases = [
-        (RuntimeFailureKind::Timeout, LogicalExecutionStatus::Timeout, AttemptStatus::TimedOut, FailureCode::ExecutionTimeout, FailurePhase::Execution),
-        (RuntimeFailureKind::Cancelled, LogicalExecutionStatus::Cancelled, AttemptStatus::Cancelled, FailureCode::Cancelled, FailurePhase::Cancellation),
-        (RuntimeFailureKind::ResultPersistence, LogicalExecutionStatus::Failed, AttemptStatus::Failed, FailureCode::ResultPersistFailed, FailurePhase::Result),
-        (RuntimeFailureKind::TenantCode, LogicalExecutionStatus::Failed, AttemptStatus::Failed, FailureCode::TenantCodeError, FailurePhase::Execution),
+        (
+            RuntimeFailureKind::Timeout,
+            LogicalExecutionStatus::Timeout,
+            AttemptStatus::TimedOut,
+            FailureCode::ExecutionTimeout,
+            FailurePhase::Execution,
+        ),
+        (
+            RuntimeFailureKind::Cancelled,
+            LogicalExecutionStatus::Cancelled,
+            AttemptStatus::Cancelled,
+            FailureCode::Cancelled,
+            FailurePhase::Cancellation,
+        ),
+        (
+            RuntimeFailureKind::ResultPersistence,
+            LogicalExecutionStatus::Failed,
+            AttemptStatus::Failed,
+            FailureCode::ResultPersistFailed,
+            FailurePhase::Result,
+        ),
+        (
+            RuntimeFailureKind::TenantCode,
+            LogicalExecutionStatus::Failed,
+            AttemptStatus::Failed,
+            FailureCode::TenantCodeError,
+            FailurePhase::Execution,
+        ),
     ];
     for (kind, status, attempt_status, code, phase) in cases {
         let mut expected = expected_result(status, attempt_status);
         expected.attempt.failure_code = Some(code);
         expected.attempt.failure_phase = Some(phase);
-        assert_eq!(plan_fenced_result(
-            Some(&row),
-            Some(&view),
-            &id(1),
-            Some(&token(3)),
-            AttemptHistory::Recorded,
-            WorkflowOutcome::Failure(kind),
-            false,
-        ), Ok(expected));
+        assert_eq!(
+            plan_fenced_result(
+                Some(&row),
+                Some(&view),
+                &id(1),
+                Some(&token(3)),
+                AttemptHistory::Recorded,
+                WorkflowOutcome::Failure(kind),
+                false,
+            ),
+            Ok(expected)
+        );
     }
 }
 
@@ -361,17 +412,23 @@ fn four_failure_mappings_assign_nullable_attempt_inputs_without_payload_clearing
 fn coordinator_defers_running_but_cancelling_overrides_every_outcome() {
     let view = attempt(AttemptStatus::Claimed);
     let running = execution(LogicalExecutionStatus::Running);
-    assert_eq!(plan_fenced_result(
-        Some(&running),
-        Some(&view),
-        &id(1),
-        Some(&token(3)),
-        AttemptHistory::Recorded,
-        WorkflowOutcome::CoordinatorLoss,
-        false,
-    ), Err(DecisionError::RequiresCoordinatorPolicy));
+    assert_eq!(
+        plan_fenced_result(
+            Some(&running),
+            Some(&view),
+            &id(1),
+            Some(&token(3)),
+            AttemptHistory::Recorded,
+            WorkflowOutcome::CoordinatorLoss,
+            false,
+        ),
+        Err(DecisionError::RequiresCoordinatorPolicy)
+    );
     let cancelling = execution(LogicalExecutionStatus::Cancelling);
-    let mut outcomes: Vec<WorkflowOutcome> = LOGICAL_STATES.into_iter().map(WorkflowOutcome::Success).collect();
+    let mut outcomes: Vec<WorkflowOutcome> = LOGICAL_STATES
+        .into_iter()
+        .map(WorkflowOutcome::Success)
+        .collect();
     outcomes.extend([
         WorkflowOutcome::Failure(RuntimeFailureKind::Timeout),
         WorkflowOutcome::Failure(RuntimeFailureKind::Cancelled),
@@ -386,22 +443,28 @@ fn coordinator_defers_running_but_cancelling_overrides_every_outcome() {
                 expected.execution.duration_ms = InputWrite::SetSupplied;
                 expected.execution.completed_at = TimeWrite::Now;
             }
-            assert_eq!(plan_fenced_result(
-                Some(&cancelling),
-                Some(&view),
-                &id(1),
-                Some(&token(3)),
-                AttemptHistory::Recorded,
-                outcome,
-                duration.is_some(),
-            ), Ok(expected));
+            assert_eq!(
+                plan_fenced_result(
+                    Some(&cancelling),
+                    Some(&view),
+                    &id(1),
+                    Some(&token(3)),
+                    AttemptHistory::Recorded,
+                    outcome,
+                    duration.is_some(),
+                ),
+                Ok(expected)
+            );
         }
     }
 }
 
 #[test]
 fn queued_cancel_has_exact_optional_active_attempt_plan() {
-    for status in [LogicalExecutionStatus::Scheduled, LogicalExecutionStatus::Pending] {
+    for status in [
+        LogicalExecutionStatus::Scheduled,
+        LogicalExecutionStatus::Pending,
+    ] {
         let row = execution(status);
         let view = attempt(AttemptStatus::Published);
         let expected = CancelPlan {
@@ -416,21 +479,29 @@ fn queued_cancel_has_exact_optional_active_attempt_plan() {
                 heartbeat_at: TimeWrite::Now,
             }),
         };
-        assert_eq!(plan_cancel_state(Some(&row), Some(&view), &id(1)), Ok(expected));
+        assert_eq!(
+            plan_cancel_state(Some(&row), Some(&view), &id(1)),
+            Ok(expected)
+        );
         let mut without_attempt = expected;
         without_attempt.attempt = None;
-        assert_eq!(plan_cancel_state(Some(&row), None, &id(1)), Ok(without_attempt));
+        assert_eq!(
+            plan_cancel_state(Some(&row), None, &id(1)),
+            Ok(without_attempt)
+        );
         let mut completed = view.clone();
         completed.completed_at_present = true;
         completed.execution_id = id(9);
-        assert_eq!(plan_cancel_state(Some(&row), Some(&completed), &id(1)), Ok(without_attempt));
+        assert_eq!(
+            plan_cancel_state(Some(&row), Some(&completed), &id(1)),
+            Ok(without_attempt)
+        );
         let mut foreign = view;
         foreign.execution_id = id(9);
-        assert_eq!(plan_cancel_state(
-            Some(&row),
-            Some(&foreign),
-            &id(1),
-        ), Err(DecisionError::InconsistentRows));
+        assert_eq!(
+            plan_cancel_state(Some(&row), Some(&foreign), &id(1),),
+            Err(DecisionError::InconsistentRows)
+        );
     }
 }
 
@@ -445,36 +516,44 @@ fn running_cancel_ignores_foreign_and_completed_attempts() {
     let mut view = attempt(AttemptStatus::Running);
     view.execution_id = id(9);
     assert_eq!(plan_cancel_state(Some(&row), None, &id(1)), Ok(expected));
-    assert_eq!(plan_cancel_state(Some(&row), Some(&view), &id(1)), Ok(expected));
+    assert_eq!(
+        plan_cancel_state(Some(&row), Some(&view), &id(1)),
+        Ok(expected)
+    );
     view.completed_at_present = true;
-    assert_eq!(plan_cancel_state(Some(&row), Some(&view), &id(1)), Ok(expected));
+    assert_eq!(
+        plan_cancel_state(Some(&row), Some(&view), &id(1)),
+        Ok(expected)
+    );
 }
 
 #[test]
 fn cancel_checks_logical_identity_and_rejects_other_states_before_attempt() {
     let mut foreign = attempt(AttemptStatus::Claimed);
     foreign.execution_id = id(9);
-    assert_eq!(plan_cancel_state(
-        None,
-        Some(&foreign),
-        &id(1),
-    ), Err(DecisionError::MissingExecution));
+    assert_eq!(
+        plan_cancel_state(None, Some(&foreign), &id(1),),
+        Err(DecisionError::MissingExecution)
+    );
     let row = execution(LogicalExecutionStatus::Pending);
-    assert_eq!(plan_cancel_state(
-        Some(&row),
-        Some(&foreign),
-        &id(9),
-    ), Err(DecisionError::MissingExecution));
+    assert_eq!(
+        plan_cancel_state(Some(&row), Some(&foreign), &id(9),),
+        Err(DecisionError::MissingExecution)
+    );
     for status in LOGICAL_STATES {
-        if matches!(status, LogicalExecutionStatus::Scheduled | LogicalExecutionStatus::Pending | LogicalExecutionStatus::Running) {
+        if matches!(
+            status,
+            LogicalExecutionStatus::Scheduled
+                | LogicalExecutionStatus::Pending
+                | LogicalExecutionStatus::Running
+        ) {
             continue;
         }
         let row = execution(status);
-        assert_eq!(plan_cancel_state(
-            Some(&row),
-            Some(&foreign),
-            &id(1),
-        ), Err(DecisionError::InvalidLogicalState));
+        assert_eq!(
+            plan_cancel_state(Some(&row), Some(&foreign), &id(1),),
+            Err(DecisionError::InvalidLogicalState)
+        );
     }
 }
 

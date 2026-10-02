@@ -240,7 +240,10 @@ pub fn plan_attempt_running(
     process_id_supplied: bool,
 ) -> Result<AttemptRunningPlan, DecisionError> {
     let attempt = matched_attempt(attempt, execution_id, token)?;
-    if !matches!(attempt.status, AttemptStatus::Claimed | AttemptStatus::Running) {
+    if !matches!(
+        attempt.status,
+        AttemptStatus::Claimed | AttemptStatus::Running
+    ) {
         return Err(DecisionError::InvalidAttemptState);
     }
     Ok(AttemptRunningPlan {
