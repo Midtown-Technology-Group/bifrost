@@ -1,0 +1,1143 @@
+[
+  {
+    "step": "pending-heartbeat",
+    "status": 200,
+    "body": {
+      "server_time": "clock:0",
+      "last_seen_at": "clock:0",
+      "poll_interval_seconds": 5,
+      "cancel_requested": false
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:0",
+          "created_at": "seed-time",
+          "updated_at": "clock:1",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "pending",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": null,
+          "claimed_at": null,
+          "agent_session_id": null,
+          "last_agent_activity_at": null,
+          "started_at": null,
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 0,
+          "created_at": "seed-time",
+          "updated_at": "seed-time"
+        }
+      ],
+      "logs": []
+    },
+    "events": []
+  },
+  {
+    "step": "claim",
+    "status": 200,
+    "body": {
+      "job_id": "identity:job",
+      "script_name": "parity-probe",
+      "script_content": "Write-Output parity",
+      "params": {
+        "probe": true
+      },
+      "timeout_seconds": 60,
+      "max_output_bytes": 1024,
+      "claim_token": "claim:0",
+      "claimed_at": "clock:4",
+      "claim_lease_seconds": 60
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:2",
+          "created_at": "seed-time",
+          "updated_at": "clock:3",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "claimed",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:session",
+          "last_agent_activity_at": "clock:4",
+          "started_at": null,
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 0,
+          "created_at": "seed-time",
+          "updated_at": "clock:5"
+        }
+      ],
+      "logs": []
+    },
+    "events": []
+  },
+  {
+    "step": "claim-idle",
+    "status": 204,
+    "body": null,
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:6",
+          "created_at": "seed-time",
+          "updated_at": "clock:7",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "claimed",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:session",
+          "last_agent_activity_at": "clock:4",
+          "started_at": null,
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 0,
+          "created_at": "seed-time",
+          "updated_at": "clock:5"
+        }
+      ],
+      "logs": []
+    },
+    "events": []
+  },
+  {
+    "step": "running-changes-session",
+    "status": 200,
+    "body": {
+      "job_id": "identity:job",
+      "status": "running"
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:8",
+          "created_at": "seed-time",
+          "updated_at": "clock:9",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "running",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:10",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 0,
+          "created_at": "seed-time",
+          "updated_at": "clock:11"
+        }
+      ],
+      "logs": []
+    },
+    "events": []
+  },
+  {
+    "step": "running-replay-keeps-session",
+    "status": 200,
+    "body": {
+      "job_id": "identity:job",
+      "status": "running"
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:12",
+          "created_at": "seed-time",
+          "updated_at": "clock:13",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "running",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:14",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 0,
+          "created_at": "seed-time",
+          "updated_at": "clock:15"
+        }
+      ],
+      "logs": []
+    },
+    "events": []
+  },
+  {
+    "step": "heartbeat-wrong-session",
+    "status": 200,
+    "body": {
+      "server_time": "clock:16",
+      "last_seen_at": "clock:16",
+      "poll_interval_seconds": 10,
+      "cancel_requested": false
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:16",
+          "created_at": "seed-time",
+          "updated_at": "clock:17",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "running",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:14",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 0,
+          "created_at": "seed-time",
+          "updated_at": "clock:15"
+        }
+      ],
+      "logs": []
+    },
+    "events": []
+  },
+  {
+    "step": "logs-sort-and-gap",
+    "status": 204,
+    "body": null,
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:18",
+          "created_at": "seed-time",
+          "updated_at": "clock:19",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "running",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:20",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 3,
+          "created_at": "seed-time",
+          "updated_at": "clock:23"
+        }
+      ],
+      "logs": [
+        {
+          "job_id": "identity:job",
+          "seq": 1,
+          "stream": "stdout",
+          "text": "first",
+          "ts": null,
+          "received_at": "clock:21"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 3,
+          "stream": "stderr",
+          "text": "third",
+          "ts": "2020-02-01T00:00:00+00:00",
+          "received_at": "clock:22"
+        }
+      ]
+    },
+    "events": [
+      {
+        "channel": "bifrost:device_job:identity:job",
+        "payload": {
+          "type": "device_job_logs",
+          "job_id": "identity:job",
+          "entries": [
+            {
+              "seq": 1,
+              "stream": "stdout",
+              "text": "first",
+              "ts": null
+            },
+            {
+              "seq": 3,
+              "stream": "stderr",
+              "text": "third",
+              "ts": "2020-02-01T00:00:00+00:00"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "step": "log-replay-ignores-ts",
+    "status": 204,
+    "body": null,
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:24",
+          "created_at": "seed-time",
+          "updated_at": "clock:25",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "running",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:26",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 3,
+          "created_at": "seed-time",
+          "updated_at": "clock:27"
+        }
+      ],
+      "logs": [
+        {
+          "job_id": "identity:job",
+          "seq": 1,
+          "stream": "stdout",
+          "text": "first",
+          "ts": null,
+          "received_at": "clock:21"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 3,
+          "stream": "stderr",
+          "text": "third",
+          "ts": "2020-02-01T00:00:00+00:00",
+          "received_at": "clock:22"
+        }
+      ]
+    },
+    "events": []
+  },
+  {
+    "step": "log-conflict-partial-persistence",
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "log_seq_conflict",
+        "message": "seq 3 was already accepted with different content",
+        "retryable": false
+      }
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:28",
+          "created_at": "seed-time",
+          "updated_at": "clock:29",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "running",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:26",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": null,
+          "result": null,
+          "error": null,
+          "log_sequence": 3,
+          "created_at": "seed-time",
+          "updated_at": "clock:27"
+        }
+      ],
+      "logs": [
+        {
+          "job_id": "identity:job",
+          "seq": 1,
+          "stream": "stdout",
+          "text": "first",
+          "ts": null,
+          "received_at": "clock:21"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 2,
+          "stream": "stdout",
+          "text": "staged-before-conflict",
+          "ts": null,
+          "received_at": "clock:30"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 3,
+          "stream": "stderr",
+          "text": "third",
+          "ts": "2020-02-01T00:00:00+00:00",
+          "received_at": "clock:22"
+        }
+      ]
+    },
+    "events": []
+  },
+  {
+    "step": "result",
+    "status": 200,
+    "body": {
+      "job_id": "identity:job",
+      "status": "succeeded"
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:31",
+          "created_at": "seed-time",
+          "updated_at": "clock:32",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "succeeded",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:33",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": 0,
+          "result": "complete",
+          "error": null,
+          "log_sequence": 3,
+          "created_at": "seed-time",
+          "updated_at": "clock:34"
+        }
+      ],
+      "logs": [
+        {
+          "job_id": "identity:job",
+          "seq": 1,
+          "stream": "stdout",
+          "text": "first",
+          "ts": null,
+          "received_at": "clock:21"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 2,
+          "stream": "stdout",
+          "text": "staged-before-conflict",
+          "ts": null,
+          "received_at": "clock:30"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 3,
+          "stream": "stderr",
+          "text": "third",
+          "ts": "2020-02-01T00:00:00+00:00",
+          "received_at": "clock:22"
+        }
+      ]
+    },
+    "events": []
+  },
+  {
+    "step": "result-replay-terminal",
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "job_terminal",
+        "message": "job is already terminal",
+        "retryable": false
+      }
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:35",
+          "created_at": "seed-time",
+          "updated_at": "clock:36",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "succeeded",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:33",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": 0,
+          "result": "complete",
+          "error": null,
+          "log_sequence": 3,
+          "created_at": "seed-time",
+          "updated_at": "clock:34"
+        }
+      ],
+      "logs": [
+        {
+          "job_id": "identity:job",
+          "seq": 1,
+          "stream": "stdout",
+          "text": "first",
+          "ts": null,
+          "received_at": "clock:21"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 2,
+          "stream": "stdout",
+          "text": "staged-before-conflict",
+          "ts": null,
+          "received_at": "clock:30"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 3,
+          "stream": "stderr",
+          "text": "third",
+          "ts": "2020-02-01T00:00:00+00:00",
+          "received_at": "clock:22"
+        }
+      ]
+    },
+    "events": []
+  },
+  {
+    "step": "terminal-stale-fence-precedence",
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "fence_violation",
+        "message": "claim_token does not match the current claim",
+        "retryable": false
+      }
+    },
+    "database": {
+      "devices": [
+        {
+          "id": "identity:device",
+          "organization_id": "identity:org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": "v1",
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": "clock:37",
+          "created_at": "seed-time",
+          "updated_at": "clock:38",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        },
+        {
+          "id": "identity:foreign_device",
+          "organization_id": "identity:foreign_org",
+          "display_name": "synthetic-parity",
+          "external_ref": null,
+          "status": "active",
+          "agent_version": null,
+          "os": null,
+          "hostname": null,
+          "api_key_enabled": true,
+          "enrollment_expires_at": null,
+          "last_seen_at": null,
+          "created_at": "seed-time",
+          "updated_at": "seed-time",
+          "api_key_hash_present": true,
+          "api_key_hash_unchanged": true,
+          "enrollment_token_hash_present": false
+        }
+      ],
+      "jobs": [
+        {
+          "id": "identity:job",
+          "organization_id": "identity:org",
+          "device_id": "identity:device",
+          "status": "succeeded",
+          "script_name": "parity-probe",
+          "script_content": "Write-Output parity",
+          "params": {
+            "probe": true
+          },
+          "timeout_seconds": 60,
+          "max_output_bytes": 1024,
+          "requested_by_user_id": null,
+          "requested_by_api_key_id": null,
+          "requested_by_workflow_id": null,
+          "requested_by_execution_id": null,
+          "claim_token": "claim:0",
+          "claimed_at": "clock:4",
+          "agent_session_id": "identity:other_session",
+          "last_agent_activity_at": "clock:33",
+          "started_at": "clock:10",
+          "cancel_requested_at": null,
+          "exit_code": 0,
+          "result": "complete",
+          "error": null,
+          "log_sequence": 3,
+          "created_at": "seed-time",
+          "updated_at": "clock:34"
+        }
+      ],
+      "logs": [
+        {
+          "job_id": "identity:job",
+          "seq": 1,
+          "stream": "stdout",
+          "text": "first",
+          "ts": null,
+          "received_at": "clock:21"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 2,
+          "stream": "stdout",
+          "text": "staged-before-conflict",
+          "ts": null,
+          "received_at": "clock:30"
+        },
+        {
+          "job_id": "identity:job",
+          "seq": 3,
+          "stream": "stderr",
+          "text": "third",
+          "ts": "2020-02-01T00:00:00+00:00",
+          "received_at": "clock:22"
+        }
+      ]
+    },
+    "events": []
+  }
+]

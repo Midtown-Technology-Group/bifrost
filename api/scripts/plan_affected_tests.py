@@ -29,7 +29,8 @@ from pathlib import Path, PurePosixPath
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PYTHON_SOURCE_PREFIXES = ("api/src/", "api/shared/", "api/bifrost/", "api/scripts/")
-PYTHON_TEST_PREFIXES = ("api/tests/unit/", "api/tests/e2e/")
+PYTHON_TEST_PREFIXES = ("api/tests/unit/", "api/tests/e2e/", "api/tests/parity/")
+PYTHON_HTTP_TEST_PREFIXES = ("api/tests/e2e/", "api/tests/parity/")
 CLIENT_SOURCE_PREFIX = "client/src/"
 CLIENT_UNIT_SUFFIXES = (".test.ts", ".test.tsx")
 CLIENT_E2E_PREFIX = "client/e2e/"
@@ -567,7 +568,7 @@ def _plan_python(
         path: parsed[path].routes for path in source_files if parsed[path].routes
     }
     for test in test_files:
-        if not test.startswith("api/tests/e2e/"):
+        if not test.startswith(PYTHON_HTTP_TEST_PREFIXES):
             continue
         for router, routes in routers.items():
             if (
@@ -606,7 +607,7 @@ def _plan_python(
         sorted(
             _relative_test(path)
             for path in selected
-            if path.startswith("api/tests/e2e/")
+            if path.startswith(PYTHON_HTTP_TEST_PREFIXES)
         )
     )
 

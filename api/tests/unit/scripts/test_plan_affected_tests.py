@@ -19,6 +19,20 @@ def graph_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
+def test_changed_parity_scenario_runs_in_http_lane(graph_repo: Path) -> None:
+    _write(
+        graph_repo,
+        "api/tests/parity/test_device_reference.py",
+        "def test_reference(client):\n    assert client.post('/api/device/heartbeat')\n",
+    )
+    plan = affected.plan_changes(
+        [affected.GitChange("A", "api/tests/parity/test_device_reference.py")]
+    )
+    assert plan.scope == "affected"
+    assert plan.python.unit_tests == ()
+    assert plan.python.e2e_tests == ("tests/parity/test_device_reference.py",)
+
+
 def test_backend_helper_selects_reverse_importers_and_route_e2e(
     graph_repo: Path,
 ) -> None:
