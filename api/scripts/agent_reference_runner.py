@@ -1,4 +1,4 @@
-"""Test-only startup gate: exec closed pytest argv after host custody release."""
+"""Test-only startup gate: run closed pytest argv after host custody release."""
 
 from __future__ import annotations
 
@@ -85,6 +85,13 @@ def main() -> None:
         argv = await_release(CUSTODY, os.uname().nodename)
     except (ValueError, KeyError, TypeError, OSError):
         sys.exit("Agent reference custody release failed; pytest did not start.")
+    if argv == ["pytest", CASE, "-v", *SUFFIX]:
+        import logging
+
+        logging.disable(logging.CRITICAL)
+        import pytest
+
+        raise SystemExit(pytest.main(argv[1:]))
     os.execvp(argv[0], argv)
 
 

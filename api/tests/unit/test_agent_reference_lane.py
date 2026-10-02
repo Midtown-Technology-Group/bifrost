@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import builtins
 import configparser
 import fnmatch
 import hashlib
 import importlib.util
 import json
+import logging
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -612,9 +615,12 @@ def test_actual_runner_post_exit_requires_exact_release_and_wait_code(base, muta
         )["startup_commands_verified"]
 
 
-@pytest.mark.parametrize("invocation", ["nominal", "units"])
-def test_runner_execs_closed_argv_only_after_exact_host_receipt(
-    base, tmp_path, monkeypatch, invocation
+@pytest.mark.parametrize(
+    "invocation,status",
+    [("units", 0), ("nominal", 0), ("nominal", 1), ("nominal", 4), ("nominal", 7)],
+)
+def test_runner_runs_closed_argv_only_after_exact_host_receipt(
+    base, tmp_path, monkeypatch, invocation, status
 ):
     pins = lane.pin_images(rendered(base), image_witnesses(rendered(base)))
     bound = binding(pins)
@@ -634,8 +640,43 @@ def test_runner_execs_closed_argv_only_after_exact_host_receipt(
     monkeypatch.setattr(
         runner.os, "execvp", lambda program, args: executed.append((program, args))
     )
-    runner.main()
-    assert executed == [("pytest", bound["argv"])]
+    imported = []
+    called = []
+    original_import = builtins.__import__
+
+    def fake_main(args):
+        called.append(args)
+        assert logging.root.manager.disable == logging.CRITICAL
+        return status
+
+    def observe_import(name, *args, **kwargs):
+        if name == "logging":
+            imported.append(name)
+        if name == "pytest":
+            imported.append(name)
+            assert imported == ["logging", "pytest"]
+            assert logging.root.manager.disable == logging.CRITICAL
+            return SimpleNamespace(main=fake_main)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", observe_import)
+    previous_disable = logging.root.manager.disable
+    try:
+        if invocation == "nominal":
+            with pytest.raises(SystemExit) as outcome:
+                runner.main()
+            assert type(outcome.value.code) is int
+            assert outcome.value.code == status
+            assert called == [bound["argv"][1:]]
+            assert imported == ["logging", "pytest"]
+            assert executed == []
+        else:
+            runner.main()
+            assert executed == [("pytest", bound["argv"])]
+            assert imported == [] and called == []
+            assert logging.root.manager.disable == previous_disable
+    finally:
+        logging.disable(previous_disable)
 
 
 @pytest.mark.parametrize(
@@ -672,7 +713,7 @@ def test_unit_phase_accepts_only_same_complete_closed_selector(mutation):
         "extra-argv",
     ],
 )
-def test_runner_never_execs_on_missing_or_unbound_release(
+def test_runner_never_imports_pytest_or_execs_on_missing_or_unbound_release(
     base, tmp_path, monkeypatch, mutation
 ):
     pins = lane.pin_images(rendered(base), image_witnesses(rendered(base)))
@@ -712,9 +753,21 @@ def test_runner_never_execs_on_missing_or_unbound_release(
     )
     executed = []
     monkeypatch.setattr(runner.os, "execvp", lambda *args: executed.append(args))
+    imported = []
+    original_import = builtins.__import__
+
+    def observe_import(name, *args, **kwargs):
+        if name == "pytest":
+            imported.append(name)
+            raise AssertionError("pytest imported before custody release")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", observe_import)
+    previous_disable = logging.root.manager.disable
     with pytest.raises(SystemExit, match="pytest did not start"):
         runner.main()
-    assert executed == []
+    assert executed == [] and imported == []
+    assert logging.root.manager.disable == previous_disable
 
 
 @pytest.mark.parametrize(
