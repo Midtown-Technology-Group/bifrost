@@ -7,6 +7,9 @@ on:
       - 'core-rs/**'
       - 'api/tests/parity/test_workflow_sql.py'
       - 'scripts/ci/workflow-sql-source.sh'
+      - 'scripts/ci/tests/test_workflow_sql_credential.py'
+      - 'api/scripts/check_github_action_pins.py'
+      - 'api/tests/unit/test_github_action_pins.py'
       - '.github/workflows/workflow-sql-source.yml'
   workflow_dispatch:
     inputs:
@@ -29,11 +32,27 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Characterize synthetic credential custody
+        run: python3 scripts/ci/tests/test_workflow_sql_credential.py
+      - name: Materialize private action resolver credential
+        id: action-credential
+        if: github.event_name == 'push' || inputs.mode == 'verify'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-materialize
       - name: Supported isolated source gate
         env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.action-credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.action-credential.outputs.identity }}
           # Exact push candidate is now verified after the reviewed formatter patch.
           SQL_SOURCE_MODE: ${{ github.event_name == 'push' && 'verify' || inputs.mode }}
         run: bash scripts/ci/workflow-sql-source.sh "$SQL_SOURCE_MODE"
+      - name: Verify private credential disposal
+        if: always() && steps.action-credential.outputs.path != ''
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.action-credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.action-credential.outputs.identity }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-cleanup
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

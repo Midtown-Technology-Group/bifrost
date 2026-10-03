@@ -7,17 +7,93 @@ import argparse
 import json
 import os
 import re
+import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import BinaryIO, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 
 WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 VERSION_COMMENT_RE = re.compile(r"#\s*(?P<version>v[0-9][^\s#]*)\s*$")
+ACTION_PIN_TOKEN_FILE_ENV = "BIFROST_ACTION_PIN_TOKEN_FILE"
+MAX_TOKEN_FILE_BYTES = 4096
+
+
+def _github_action_token() -> str | None:
+    token = os.environ.get("GITHUB_TOKEN")
+    path = os.environ.get(ACTION_PIN_TOKEN_FILE_ENV)
+    if token and path:
+        raise RuntimeError("Conflicting GitHub action credential inputs")
+    if path is None:
+        return token or None
+    if not path:
+        raise RuntimeError("Invalid GitHub action credential file")
+
+    descriptor: int | None = None
+    pending: BaseException | None = None
+    try:
+        # Nonblocking open lets fstat reject a FIFO without waiting for a writer.
+        descriptor = os.open(
+            path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
+        )
+        facts = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(facts.st_mode)
+            or facts.st_uid != os.geteuid()
+            or stat.S_IMODE(facts.st_mode) != 0o600
+            or facts.st_nlink != 1
+            or not 0 < facts.st_size <= MAX_TOKEN_FILE_BYTES
+        ):
+            raise ValueError("unsafe credential file")
+        data = bytearray()
+        while len(data) <= MAX_TOKEN_FILE_BYTES:
+            chunk = os.read(descriptor, MAX_TOKEN_FILE_BYTES + 1 - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if not 0 < len(data) <= MAX_TOKEN_FILE_BYTES or any(
+            byte < 33 or byte > 126 for byte in data
+        ):
+            raise ValueError("invalid credential bytes")
+        return data.decode("ascii")
+    except (OSError, ValueError):
+        # File paths, underlying errors and credential contents are not diagnostics.
+        pending = RuntimeError("Invalid GitHub action credential file")
+        raise pending from None
+    except BaseException as exc:
+        pending = exc
+        raise
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                if pending is None:
+                    raise RuntimeError(
+                        "Cannot close GitHub action credential file"
+                    ) from None
+            except BaseException:
+                # Always attempt cleanup, but preserve the original control/error.
+                if pending is None:
+                    raise
+
+
+class _RejectAuthenticatedRedirects(HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: Request,
+        fp: BinaryIO,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> Request | None:
+        fp.close()
+        raise RuntimeError("Authenticated GitHub metadata redirect refused")
 
 
 @dataclass(frozen=True)
@@ -70,7 +146,9 @@ def _is_local_or_non_github_action(action: str) -> bool:
 def find_unpinned_actions(paths: list[Path]) -> list[Violation]:
     violations: list[Violation] = []
     for path in _iter_workflow_files(paths):
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
             raw_action = _parse_uses_value(line)
             if raw_action is None:
                 continue
@@ -80,7 +158,11 @@ def find_unpinned_actions(paths: list[Path]) -> list[Violation]:
                 continue
 
             if "@" not in action:
-                violations.append(Violation(path, line_number, action, "external action is not pinned"))
+                violations.append(
+                    Violation(
+                        path, line_number, action, "external action is not pinned"
+                    )
+                )
                 continue
 
             ref = action.rsplit("@", 1)[1]
@@ -180,12 +262,30 @@ def resolve_github_action_version(repository: str, version: str) -> str:
         "User-Agent": "bifrost-action-pin-check",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    token = os.environ.get("GITHUB_TOKEN")
+    token = _github_action_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    with urlopen(Request(url, headers=headers), timeout=15) as response:  # noqa: S310
-        payload = json.load(response)
+    try:
+        request = Request(url, headers=headers)
+        if token:
+            # Local opener only: other urllib users keep their existing behavior.
+            opener = build_opener(_RejectAuthenticatedRedirects())
+            with opener.open(request, timeout=15) as response:
+                payload = json.load(response)
+        else:
+            with urlopen(request, timeout=15) as response:  # noqa: S310
+                payload = json.load(response)
+    except HTTPError as exc:
+        if token:
+            raise RuntimeError(
+                f"Authenticated GitHub metadata HTTP error ({exc.code})"
+            ) from None
+        raise
+    except (URLError, OSError, ValueError):
+        if token:
+            raise RuntimeError("Authenticated GitHub metadata request failed") from None
+        raise
     sha = payload.get("sha")
     if not isinstance(sha, str) or not _is_full_sha(sha):
         raise ValueError("GitHub returned no full commit SHA")
@@ -235,7 +335,9 @@ def main(argv: list[str] | None = None) -> int:
     if not violations:
         return 0
 
-    print("Found GitHub Actions that are not pinned to full commit SHAs:", file=sys.stderr)
+    print(
+        "Found GitHub Actions that are not pinned to full commit SHAs:", file=sys.stderr
+    )
     for violation in violations:
         print(f"  {violation.format()}", file=sys.stderr)
     print(
