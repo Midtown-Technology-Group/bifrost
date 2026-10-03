@@ -246,6 +246,69 @@ def _parameter_default(default: ast.expr, tree: ast.Module,
     return value
 
 
+def _entrypoint_parameters(source: bytes, tree: ast.Module,
+                          node: ast.FunctionDef | ast.AsyncFunctionDef,
+                          indexer: WorkflowParameterCompiler, path: str) -> dict[str, Any]:
+    if node.args.posonlyargs or node.args.vararg:
+        raise WorkflowRecipeError("Positional-only and variadic positional entrypoints are unsupported")
+    positional_defaults = [None] * (len(node.args.args) - len(node.args.defaults)) + list(node.args.defaults)
+    defaults = {arg.arg: _parameter_default(default, tree, node)
+        for arg, default in [*zip(node.args.args, positional_defaults),
+                             *zip(node.args.kwonlyargs, node.args.kw_defaults)] if default is not None}
+    parameters = indexer.extract_parameters_from_source(source, node.name, path=path)
+    if parameters is None:
+        raise WorkflowRecipeError("Workflow parameter schema cannot be inferred")
+    for parameter_name, value in defaults.items():
+        if parameter_name in parameters["properties"]:
+            parameters["properties"][parameter_name]["default"] = value
+    return parameters
+
+
+def compile_workflow_parameters(source: bytes, function_name: str, *, path: str,
+                                indexer: WorkflowParameterCompiler | None = None) -> dict[str, Any]:
+    """Resolve the same bounded literal defaults for legacy and reviewed source.
+
+    Legacy decorators need not already be literal recipe declarations. Source
+    is parsed only; importing or executing it is never part of this comparison.
+    """
+    try:
+        tree = ast.parse(source.decode("utf-8"), filename=path)
+    except (SyntaxError, UnicodeError) as exc:
+        raise WorkflowRecipeError("Workflow source is missing or invalid UTF-8 Python") from exc
+    matches = [node for node in tree.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+               and node.name == function_name]
+    if len(matches) != 1:
+        raise WorkflowRecipeError("Workflow entrypoint is missing or ambiguous")
+    return _entrypoint_parameters(source, tree, matches[0], indexer or WorkflowParameterCompiler(), path)
+
+
+def require_adoption_parameters(old: dict[str, Any], new: dict[str, Any], *,
+                                attested_legacy_list: bool) -> None:
+    """Preserve every old caller contract; permit reviewed optional additions.
+
+    The legacy list stays sealed in the immutable entity rather than being
+    rewritten in place. Complete modern registry schemas still require exact
+    equality; adoption cannot silently project a different registration row.
+    """
+    def encoded(value: Any) -> str:
+        # Python considers False == 0 and True == 1; parameter defaults must
+        # retain their JSON type as well as their value.
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+    if encoded(old) == encoded(new):
+        return
+    old_properties, new_properties = old.get("properties"), new.get("properties")
+    if (attested_legacy_list and isinstance(old_properties, dict) and isinstance(new_properties, dict)
+            and set(old_properties) < set(new_properties)
+            and encoded({key: value for key, value in old.items() if key != "properties"})
+                == encoded({key: value for key, value in new.items() if key != "properties"})
+            and all(encoded(new_properties[key]) == encoded(value) for key, value in old_properties.items())
+            and all(isinstance(new_properties[key], dict) and "default" in new_properties[key]
+                    for key in set(new_properties) - set(old_properties))):
+        return
+    raise WorkflowRecipeError("adoption cannot change the installed source parameter contract")
+
+
 def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
     bindings: dict[str, str] = {}
     modules: set[str] = set()
@@ -346,12 +409,7 @@ def compile_workflow_registrations(
         if len(matches) != 1:
             raise WorkflowRecipeError("Workflow entrypoint is missing or ambiguous")
         node = matches[0]
-        if node.args.posonlyargs or node.args.vararg:
-            raise WorkflowRecipeError("Positional-only and variadic positional entrypoints are unsupported")
-        positional_defaults = [None] * (len(node.args.args) - len(node.args.defaults)) + list(node.args.defaults)
-        defaults = {arg.arg: _parameter_default(default, tree, node)
-            for arg, default in [*zip(node.args.args, positional_defaults),
-                                 *zip(node.args.kwonlyargs, node.args.kw_defaults)] if default is not None}
+        parameters = _entrypoint_parameters(files[item.path], tree, node, indexer, item.path)
         kind, declarations = _decorator(tree, node)
         if "id" in declarations:
             try:
@@ -383,12 +441,6 @@ def compile_workflow_registrations(
                 for key, limit in asdict(declaration).items():
                     if limit is not None and (key not in bounds or bounds[key] > limit):
                         raise WorkflowRecipeError("Reviewed runtime bounds exceed a source declaration")
-        parameters = indexer.extract_parameters_from_source(files[item.path], item.function_name, path=item.path)
-        if parameters is None:
-            raise WorkflowRecipeError("Workflow parameter schema cannot be inferred")
-        for parameter_name, value in defaults.items():
-            if parameter_name in parameters["properties"]:
-                parameters["properties"][parameter_name]["default"] = value
         controls = item.controls.model_dump(mode="json")
         controls["role_ids"] = sorted(controls["role_ids"])
         controls["allowed_methods"] = sorted(controls["allowed_methods"])
@@ -618,7 +670,8 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
                     raise WorkflowRecipeError("Legacy source entrypoint is ambiguous")
                 result[ref] = (ast.dump(node.args, include_attributes=False),
                     tuple(ast.dump(item, include_attributes=False) for item in node.decorator_list),
-                    isinstance(node, ast.AsyncFunctionDef))
+                    isinstance(node, ast.AsyncFunctionDef),
+                    compile_workflow_parameters(raw, node.name, path=path))
         if not result:
             raise WorkflowRecipeError("Legacy source recipe has no explicit workflow entrypoints")
         # The legacy recipe does not describe its installed table grants.

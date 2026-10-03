@@ -7,6 +7,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+from bifrost.solution_delivery_review import (
+    WorkflowRecipeError, compile_workflow_parameters, require_adoption_parameters,
+)
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import exists, inspect as orm_inspect, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +44,7 @@ from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
-from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+from src.services.solutions.deployment_manifest import sha256_digest
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.live_handoff_source import MAX_ARCHIVE_BYTES
 from src.services.solutions.reviewed_workflow_artifact import (
@@ -172,10 +175,17 @@ class RepoWorkflowAdoptionService:
             row = active[entity.resolved_id]
             if row.organization_id != solution.organization_id:
                 raise SolutionSourceRevisionError("legacy registration scope differs from its install")
-            schema = indexer.extract_parameters_from_source(legacy_files[row.path], row.function_name, path=row.path)
+            try:
+                schema = compile_workflow_parameters(legacy_files[row.path], row.function_name,
+                    path=row.path, indexer=indexer)
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
             definition = dict(entity.definition)
-            if schema is None or json_equal(schema, definition.get("parameters_schema")) is False:
-                raise SolutionSourceRevisionConflict("adoption cannot change the installed source parameter contract")
+            try:
+                require_adoption_parameters(schema, definition["parameters_schema"],
+                    attested_legacy_list=isinstance(row.parameters_schema, list))
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionConflict(str(exc)) from exc
             # Legacy list schemas retain their original DB representation. The
             # current Python signature above supplies the complete runtime schema.
             _require_registration(row, entity)
@@ -273,7 +283,3 @@ class RepoWorkflowAdoptionService:
         await self.repository.transition(deployment_id, inspected.organization_id,
             expected_state="activating", new_state="active", activated_at=datetime.now(UTC))
         return inspected.model_copy(update={"state": "active"})
-
-
-def json_equal(left, right) -> bool:
-    return canonical_json(left) == canonical_json(right)
