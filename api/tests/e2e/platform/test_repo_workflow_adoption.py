@@ -425,6 +425,7 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
 ):
     from copy import deepcopy
     from types import SimpleNamespace
+    from typing import cast
 
     from src.services.solutions import repo_workflow_adoption
 
@@ -462,7 +463,7 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
 
     async def inspect_forged(sid, candidate_id, observed, *args, **kwargs):
         assert observed.id == did
-        return await inspect_artifact(sid, candidate_id, forged, *args, **kwargs)
+        return await inspect_artifact(sid, candidate_id, cast(SolutionDeployment, forged), *args, **kwargs)
 
     monkeypatch.setattr(repo_workflow_adoption, "inspect_reviewed_artifact", inspect_forged)
     artifact_store[(str(did), "manifest")] = manifest.canonical_bytes()
