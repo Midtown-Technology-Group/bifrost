@@ -396,20 +396,38 @@ mod tests {
     }
 }
 
-
 // Result-only transport. The original Running/Cancel error types above are
 // intentionally unchanged, including their static Display and Debug contract.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ResultSqlStage {
-    Advisory, ReadHistory, ReadExecution, ReadAttempt, ReadContext,
-    Decode, Clock, WriteAttempt, WriteExecution,
+    Advisory,
+    ReadHistory,
+    ReadExecution,
+    ReadAttempt,
+    ReadContext,
+    Decode,
+    Clock,
+    WriteAttempt,
+    WriteExecution,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ResultSqlFailureClass { Database, InvalidRow, ClockRange, Cardinality }
+pub enum ResultSqlFailureClass {
+    Database,
+    InvalidRow,
+    ClockRange,
+    Cardinality,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ResultSqlCode { Check, Unique, ForeignKey, NumericRange, StatementTimeout, LockTimeout }
+enum ResultSqlCode {
+    Check,
+    Unique,
+    ForeignKey,
+    NumericRange,
+    StatementTimeout,
+    LockTimeout,
+}
 
 impl ResultSqlCode {
     fn from_code(code: Option<&str>) -> Option<Self> {
@@ -425,8 +443,12 @@ impl ResultSqlCode {
     }
     fn as_str(self) -> &'static str {
         match self {
-            Self::Check => "23514", Self::Unique => "23505", Self::ForeignKey => "23503",
-            Self::NumericRange => "22003", Self::StatementTimeout => "57014", Self::LockTimeout => "55P03",
+            Self::Check => "23514",
+            Self::Unique => "23505",
+            Self::ForeignKey => "23503",
+            Self::NumericRange => "22003",
+            Self::StatementTimeout => "57014",
+            Self::LockTimeout => "55P03",
         }
     }
 }
@@ -446,20 +468,34 @@ pub struct ResultSqlFailure {
 }
 
 impl ResultSqlFailure {
-    pub fn stage(&self) -> ResultSqlStage { self.stage }
-    pub fn class(&self) -> ResultSqlFailureClass { self.class }
-    pub fn code(&self) -> Option<&'static str> { self.code.map(ResultSqlCode::as_str) }
+    pub fn stage(&self) -> ResultSqlStage {
+        self.stage
+    }
+    pub fn class(&self) -> ResultSqlFailureClass {
+        self.class
+    }
+    pub fn code(&self) -> Option<&'static str> {
+        self.code.map(ResultSqlCode::as_str)
+    }
     fn local(stage: ResultSqlStage, class: ResultSqlFailureClass) -> Self {
-        Self { stage, class, code: None }
+        Self {
+            stage,
+            class,
+            code: None,
+        }
     }
     fn database(stage: ResultSqlStage, error: sqlx::Error) -> Self {
-        Self { stage, class: ResultSqlFailureClass::Database,
-            code: ResultSqlCode::from_code(result_sqlstate(&error)) }
+        Self {
+            stage,
+            class: ResultSqlFailureClass::Database,
+            code: ResultSqlCode::from_code(result_sqlstate(&error)),
+        }
     }
     fn shared(error: SqlInfrastructureError) -> Self {
         match (error.stage, error.class) {
-            (SqlStage::Clock, SqlFailureClass::ClockRange) =>
-                Self::local(ResultSqlStage::Clock, ResultSqlFailureClass::ClockRange),
+            (SqlStage::Clock, SqlFailureClass::ClockRange) => {
+                Self::local(ResultSqlStage::Clock, ResultSqlFailureClass::ClockRange)
+            }
             _ => Self::local(ResultSqlStage::Decode, ResultSqlFailureClass::InvalidRow),
         }
     }
@@ -470,15 +506,31 @@ fn result_decode() -> ResultSqlFailure {
 }
 
 /// Presence is not Option: supplied NULL and omitted members have different effects.
-pub enum ResultPresence<T> { Absent, Null, Value(T) }
+pub enum ResultPresence<T> {
+    Absent,
+    Null,
+    Value(T),
+}
 
 impl<T> ResultPresence<T> {
-    fn supplied(&self) -> bool { !matches!(self, Self::Absent) }
-    fn value(&self) -> Option<&T> { if let Self::Value(value) = self { Some(value) } else { None } }
+    fn supplied(&self) -> bool {
+        !matches!(self, Self::Absent)
+    }
+    fn value(&self) -> Option<&T> {
+        if let Self::Value(value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ResultJsonRole { Result, Variables, Context }
+pub enum ResultJsonRole {
+    Result,
+    Variables,
+    Context,
+}
 
 /// Source-prepared JSON custody, never an unchecked classification or grant.
 /// The reference harness separately binds exact sanitizer bytes and preparation.
@@ -496,41 +548,78 @@ fn python_whitespace(value: char) -> bool {
 }
 
 impl PreparedJson {
-    pub fn new(raw: &str, prepared: String, role: ResultJsonRole) -> Result<Self, ResultSqlFailure> {
-        if raw.len() > 65_536 || prepared.len() > 65_536 { return Err(result_decode()); }
-        let original = bifrost_contracts::runtime::decode_ordinary_json(raw.as_bytes()).map_err(|_| result_decode())?;
-        let value = bifrost_contracts::runtime::decode_ordinary_json(prepared.as_bytes()).map_err(|_| result_decode())?;
+    pub fn new(
+        raw: &str,
+        prepared: String,
+        role: ResultJsonRole,
+    ) -> Result<Self, ResultSqlFailure> {
+        if raw.len() > 65_536 || prepared.len() > 65_536 {
+            return Err(result_decode());
+        }
+        let original = bifrost_contracts::runtime::decode_ordinary_json(raw.as_bytes())
+            .map_err(|_| result_decode())?;
+        let value = bifrost_contracts::runtime::decode_ordinary_json(prepared.as_bytes())
+            .map_err(|_| result_decode())?;
         // Inferred ordinary Value views require no serde dependency in this library.
         // They are validation only; the admitted original prepared text is bound unchanged.
         for root in [&original, &value] {
             let mut pending = vec![root];
             while let Some(node) = pending.pop() {
-                if node.is_number() && !node.is_i64() && !node.is_u64() { return Err(result_decode()); }
-                if node.as_str().is_some_and(|text| text.contains('\0')) { return Err(result_decode()); }
+                if node.is_number() && !node.is_i64() && !node.is_u64() {
+                    return Err(result_decode());
+                }
+                if node.as_str().is_some_and(|text| text.contains('\0')) {
+                    return Err(result_decode());
+                }
                 if let Some(map) = node.as_object() {
-                    if map.keys().any(|key| key.contains('\0')) { return Err(result_decode()); }
+                    if map.keys().any(|key| key.contains('\0')) {
+                        return Err(result_decode());
+                    }
                     pending.extend(map.values());
                 }
-                if let Some(array) = node.as_array() { pending.extend(array); }
+                if let Some(array) = node.as_array() {
+                    pending.extend(array);
+                }
             }
         }
         let same_class = original.is_object() == value.is_object()
-            && original.is_array() == value.is_array() && original.is_string() == value.is_string()
-            && original.is_boolean() == value.is_boolean() && original.is_number() == value.is_number();
-        if original.is_null() || value.is_null() || !same_class || (role == ResultJsonRole::Context && !value.is_object()) {
+            && original.is_array() == value.is_array()
+            && original.is_string() == value.is_string()
+            && original.is_boolean() == value.is_boolean()
+            && original.is_number() == value.is_number();
+        if original.is_null()
+            || value.is_null()
+            || !same_class
+            || (role == ResultJsonRole::Context && !value.is_object())
+        {
             return Err(result_decode());
         }
         let result_type = match original.as_str() {
-            Some(text) if text.chars().find(|character| !python_whitespace(*character)) == Some('<') => "html",
-            Some(_) => "text", None => "json",
+            Some(text)
+                if text
+                    .chars()
+                    .find(|character| !python_whitespace(*character))
+                    == Some('<') =>
+            {
+                "html"
+            }
+            Some(_) => "text",
+            None => "json",
         };
-        Ok(Self { text: prepared, role, result_type, nonempty_object: value.as_object().is_some_and(|map| !map.is_empty()) })
+        Ok(Self {
+            text: prepared,
+            role,
+            result_type,
+            nonempty_object: value.as_object().is_some_and(|map| !map.is_empty()),
+        })
     }
 }
 
 pub struct ResultMetrics {
-    pub peak_memory_bytes: ResultPresence<i64>, pub process_rss_bytes: ResultPresence<i64>,
-    pub cpu_user_seconds: ResultPresence<f64>, pub cpu_system_seconds: ResultPresence<f64>,
+    pub peak_memory_bytes: ResultPresence<i64>,
+    pub process_rss_bytes: ResultPresence<i64>,
+    pub cpu_user_seconds: ResultPresence<f64>,
+    pub cpu_system_seconds: ResultPresence<f64>,
     pub cpu_total_seconds: ResultPresence<f64>,
 }
 
@@ -540,60 +629,164 @@ pub struct ResultRoi {
 }
 
 pub struct SuccessResultFields {
-    pub status: ResultPresence<String>, pub result: ResultPresence<PreparedJson>,
-    pub error: ResultPresence<String>, pub error_type: ResultPresence<String>,
-    pub duration_ms: ResultPresence<i32>, pub variables: ResultPresence<PreparedJson>,
-    pub execution_context: ResultPresence<PreparedJson>, pub metrics: ResultPresence<ResultMetrics>,
+    pub status: ResultPresence<String>,
+    pub result: ResultPresence<PreparedJson>,
+    pub error: ResultPresence<String>,
+    pub error_type: ResultPresence<String>,
+    pub duration_ms: ResultPresence<i32>,
+    pub variables: ResultPresence<PreparedJson>,
+    pub execution_context: ResultPresence<PreparedJson>,
+    pub metrics: ResultPresence<ResultMetrics>,
     pub roi: ResultPresence<ResultRoi>,
 }
 
 pub struct FailureResultFields {
-    pub error: ResultPresence<String>, pub error_type: ResultPresence<String>,
-    pub duration_ms: ResultPresence<i32>, pub execution_context: ResultPresence<PreparedJson>,
+    pub error: ResultPresence<String>,
+    pub error_type: ResultPresence<String>,
+    pub duration_ms: ResultPresence<i32>,
+    pub execution_context: ResultPresence<PreparedJson>,
     pub metrics: ResultPresence<ResultMetrics>,
 }
 
-enum ResultFields { Success(SuccessResultFields), Failure(FailureResultFields) }
+enum ResultFields {
+    Success(SuccessResultFields),
+    Failure(FailureResultFields),
+}
 
-pub struct SqlResultInput { execution_id: CanonicalUuid, fence: Option<SqlClaimFence>, fields: ResultFields }
+pub struct SqlResultInput {
+    execution_id: CanonicalUuid,
+    fence: Option<SqlClaimFence>,
+    fields: ResultFields,
+}
+
+/// Fixed synthetic observation for the nondefault parity profile; no raw values escape.
+pub struct FeatureMarkerObservation {
+    pub result: bool,
+    pub variables: bool,
+    pub context: bool,
+}
+
+pub fn observe_feature_marker(input: &SqlResultInput) -> FeatureMarkerObservation {
+    fn observed(field: &ResultPresence<PreparedJson>, role: ResultJsonRole) -> bool {
+        let ResultPresence::Value(prepared) = field else {
+            return false;
+        };
+        if prepared.role != role || prepared.result_type != "json" || !prepared.nonempty_object {
+            return false;
+        }
+        let Ok(value) = bifrost_contracts::runtime::decode_ordinary_json(prepared.text.as_bytes()) else {
+            return false;
+        };
+        let Some(object) = value.as_object() else {
+            return false;
+        };
+        object.len() == 2
+            && object
+                .get("$serde_json::private::RawValue")
+                .and_then(|value| value.as_str())
+                == Some("{\"hidden\":1}")
+            && object
+                .get("visible")
+                .is_some_and(|value| value.is_u64() && value.as_u64() == Some(2))
+    }
+    let ResultFields::Success(fields) = &input.fields else {
+        return FeatureMarkerObservation {
+            result: false,
+            variables: false,
+            context: false,
+        };
+    };
+    FeatureMarkerObservation {
+        result: observed(&fields.result, ResultJsonRole::Result),
+        variables: observed(&fields.variables, ResultJsonRole::Variables),
+        context: observed(&fields.execution_context, ResultJsonRole::Context),
+    }
+}
 
 impl SqlResultInput {
-    pub fn success(execution_id: CanonicalUuid, fence: Option<SqlClaimFence>, fields: SuccessResultFields) -> Result<Self, ResultSqlFailure> {
+    pub fn success(
+        execution_id: CanonicalUuid,
+        fence: Option<SqlClaimFence>,
+        fields: SuccessResultFields,
+    ) -> Result<Self, ResultSqlFailure> {
         Self::checked(execution_id, fence, ResultFields::Success(fields))
     }
-    pub fn failure(execution_id: CanonicalUuid, fence: Option<SqlClaimFence>, fields: FailureResultFields) -> Result<Self, ResultSqlFailure> {
+    pub fn failure(
+        execution_id: CanonicalUuid,
+        fence: Option<SqlClaimFence>,
+        fields: FailureResultFields,
+    ) -> Result<Self, ResultSqlFailure> {
         Self::checked(execution_id, fence, ResultFields::Failure(fields))
     }
-    fn checked(execution_id: CanonicalUuid, fence: Option<SqlClaimFence>, fields: ResultFields) -> Result<Self, ResultSqlFailure> {
+    fn checked(
+        execution_id: CanonicalUuid,
+        fence: Option<SqlClaimFence>,
+        fields: ResultFields,
+    ) -> Result<Self, ResultSqlFailure> {
         let (error, kind, metrics) = match &fields {
             ResultFields::Success(value) => {
-                for (field, role) in [(&value.result, ResultJsonRole::Result), (&value.variables, ResultJsonRole::Variables), (&value.execution_context, ResultJsonRole::Context)] {
-                    if field.value().is_some_and(|json| json.role != role) { return Err(result_decode()); }
+                for (field, role) in [
+                    (&value.result, ResultJsonRole::Result),
+                    (&value.variables, ResultJsonRole::Variables),
+                    (&value.execution_context, ResultJsonRole::Context),
+                ] {
+                    if field.value().is_some_and(|json| json.role != role) {
+                        return Err(result_decode());
+                    }
                 }
-                if value.status.value().is_some_and(|text| text.contains('\0')) { return Err(result_decode()); }
+                if value.status.value().is_some_and(|text| text.contains('\0')) {
+                    return Err(result_decode());
+                }
                 if let Some(roi) = value.roi.value() {
-                    if matches!(roi.value.value(), Some(super::workflow_numeric::NumericInput::Float(number)) if !number.is_finite()) {
+                    if matches!(roi.value.value(), Some(super::workflow_numeric::NumericInput::Float(number)) if !number.is_finite())
+                    {
                         return Err(result_decode());
                     }
                 }
                 (&value.error, &value.error_type, &value.metrics)
             }
             ResultFields::Failure(value) => {
-                if value.execution_context.value().is_some_and(|json| json.role != ResultJsonRole::Context) { return Err(result_decode()); }
+                if value
+                    .execution_context
+                    .value()
+                    .is_some_and(|json| json.role != ResultJsonRole::Context)
+                {
+                    return Err(result_decode());
+                }
                 (&value.error, &value.error_type, &value.metrics)
-            },
+            }
         };
-        if error.value().is_some_and(|text| text.contains('\0')) || kind.value().is_some_and(|text| text.contains('\0')) {
+        if error.value().is_some_and(|text| text.contains('\0'))
+            || kind.value().is_some_and(|text| text.contains('\0'))
+        {
             return Err(result_decode());
         }
-        if matches!(&fields, ResultFields::Failure(_)) && kind.value().is_some_and(|value|
-            matches!(value.as_str(), "ProcessCrashError" | "WorkerShutdownError" | "OrphanedExecution")) { return Err(result_decode()); }
+        if matches!(&fields, ResultFields::Failure(_))
+            && kind.value().is_some_and(|value| {
+                matches!(
+                    value.as_str(),
+                    "ProcessCrashError" | "WorkerShutdownError" | "OrphanedExecution"
+                )
+            })
+        {
+            return Err(result_decode());
+        }
         if let Some(metrics) = metrics.value() {
-            for field in [&metrics.cpu_user_seconds, &metrics.cpu_system_seconds, &metrics.cpu_total_seconds] {
-                if field.value().is_some_and(|number| !number.is_finite()) { return Err(result_decode()); }
+            for field in [
+                &metrics.cpu_user_seconds,
+                &metrics.cpu_system_seconds,
+                &metrics.cpu_total_seconds,
+            ] {
+                if field.value().is_some_and(|number| !number.is_finite()) {
+                    return Err(result_decode());
+                }
             }
         }
-        Ok(Self { execution_id, fence, fields })
+        Ok(Self {
+            execution_id,
+            fence,
+            fields,
+        })
     }
 }
 
@@ -604,273 +797,614 @@ pub struct AppliedResult {
 }
 
 fn result_one(count: u64, stage: ResultSqlStage) -> Result<(), ResultSqlFailure> {
-    if count == 1 { Ok(()) } else { Err(ResultSqlFailure::local(stage, ResultSqlFailureClass::Cardinality)) }
-}
-
-fn result_duration(value: &ResultPresence<i32>) -> Option<i32> {
-    match value { ResultPresence::Absent => Some(0), ResultPresence::Null => None, ResultPresence::Value(value) => Some(*value) }
-}
-
-fn result_status(value: &ResultPresence<String>) -> LogicalExecutionStatus {
-    value.value().and_then(|text| logical_status(text).ok()).unwrap_or(LogicalExecutionStatus::Success)
-}
-
-fn result_outcome(fields: &ResultFields) -> bifrost_domain::workflow::WorkflowOutcome {
-    use bifrost_domain::workflow::{WorkflowOutcome, RuntimeFailureKind};
-    match fields {
-        ResultFields::Success(value) => WorkflowOutcome::Success(result_status(&value.status)),
-        ResultFields::Failure(value) => WorkflowOutcome::Failure(match value.error_type.value().map(String::as_str) {
-            Some("TimeoutError") => RuntimeFailureKind::Timeout,
-            Some("CancelledError") => RuntimeFailureKind::Cancelled,
-            Some("ResultPersistenceError") => RuntimeFailureKind::ResultPersistence,
-            _ => RuntimeFailureKind::TenantCode,
-        }),
+    if count == 1 {
+        Ok(())
+    } else {
+        Err(ResultSqlFailure::local(
+            stage,
+            ResultSqlFailureClass::Cardinality,
+        ))
     }
 }
 
-async fn result_context(tx: &mut Transaction<'_, Postgres>, id: &CanonicalUuid) -> Result<Option<String>, ResultSqlFailure> {
-    let text: Option<String> = sqlx::query_scalar("SELECT execution_context::text FROM public.executions WHERE id = $1::uuid")
-        .persistent(false).bind(id.as_str()).fetch_one(&mut **tx).await
-        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadContext, error))?;
+fn result_duration(value: &ResultPresence<i32>) -> Option<i32> {
+    match value {
+        ResultPresence::Absent => Some(0),
+        ResultPresence::Null => None,
+        ResultPresence::Value(value) => Some(*value),
+    }
+}
+
+fn result_status(value: &ResultPresence<String>) -> LogicalExecutionStatus {
+    value
+        .value()
+        .and_then(|text| logical_status(text).ok())
+        .unwrap_or(LogicalExecutionStatus::Success)
+}
+
+fn result_outcome(fields: &ResultFields) -> bifrost_domain::workflow::WorkflowOutcome {
+    use bifrost_domain::workflow::{RuntimeFailureKind, WorkflowOutcome};
+    match fields {
+        ResultFields::Success(value) => WorkflowOutcome::Success(result_status(&value.status)),
+        ResultFields::Failure(value) => {
+            WorkflowOutcome::Failure(match value.error_type.value().map(String::as_str) {
+                Some("TimeoutError") => RuntimeFailureKind::Timeout,
+                Some("CancelledError") => RuntimeFailureKind::Cancelled,
+                Some("ResultPersistenceError") => RuntimeFailureKind::ResultPersistence,
+                _ => RuntimeFailureKind::TenantCode,
+            })
+        }
+    }
+}
+
+async fn result_context(
+    tx: &mut Transaction<'_, Postgres>,
+    id: &CanonicalUuid,
+) -> Result<Option<String>, ResultSqlFailure> {
+    let text: Option<String> = sqlx::query_scalar(
+        "SELECT execution_context::text FROM public.executions WHERE id = $1::uuid",
+    )
+    .persistent(false)
+    .bind(id.as_str())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadContext, error))?;
     if let Some(text) = text.as_ref() {
-        let value = bifrost_contracts::runtime::decode_ordinary_json(text.as_bytes()).map_err(|_| result_decode())?;
-        if !value.is_null() { PreparedJson::new(text, text.clone(), ResultJsonRole::Context)?; }
+        let value = bifrost_contracts::runtime::decode_ordinary_json(text.as_bytes())
+            .map_err(|_| result_decode())?;
+        if !value.is_null() {
+            PreparedJson::new(text, text.clone(), ResultJsonRole::Context)?;
+        }
     }
     Ok(text.filter(|text| text != "null"))
 }
 
 /// Read-only test facts; construction cannot mutate an owned collector.
 #[derive(Clone, Copy)]
-pub struct ResultClockEvent { pub ordinal: u8, pub utc_us: u64, pub elapsed_ns: u64 }
-#[derive(Clone, Copy)]
-pub struct ResultAttemptClock {
-    pub read_ack: Option<ResultClockEvent>, pub sample: Option<ResultClockEvent>,
-    pub write_dispatch: Option<ResultClockEvent>, pub write_ack: Option<ResultClockEvent>,
+pub struct ResultClockEvent {
+    pub ordinal: u8,
+    pub utc_us: u64,
+    pub elapsed_ns: u64,
 }
 #[derive(Clone, Copy)]
-pub enum ResultClockUpper { ContextReadDispatch, WriteExecutionDispatch }
-#[derive(Clone, Copy)]
-pub struct ResultLogicalClock {
-    pub status_read_ack: Option<ResultClockEvent>, pub sample: Option<ResultClockEvent>,
-    pub upper: Option<ResultClockEvent>, pub upper_kind: ResultClockUpper,
+pub struct ResultAttemptClock {
+    pub read_ack: Option<ResultClockEvent>,
+    pub sample: Option<ResultClockEvent>,
+    pub write_dispatch: Option<ResultClockEvent>,
     pub write_ack: Option<ResultClockEvent>,
 }
 #[derive(Clone, Copy)]
-pub struct ResultCommitClock { pub dispatch: Option<ResultClockEvent>, pub ack: Option<ResultClockEvent> }
+pub enum ResultClockUpper {
+    ContextReadDispatch,
+    WriteExecutionDispatch,
+}
+#[derive(Clone, Copy)]
+pub struct ResultLogicalClock {
+    pub status_read_ack: Option<ResultClockEvent>,
+    pub sample: Option<ResultClockEvent>,
+    pub upper: Option<ResultClockEvent>,
+    pub upper_kind: ResultClockUpper,
+    pub write_ack: Option<ResultClockEvent>,
+}
+#[derive(Clone, Copy)]
+pub struct ResultCommitClock {
+    pub dispatch: Option<ResultClockEvent>,
+    pub ack: Option<ResultClockEvent>,
+}
 
 /// Invocation-local instrumentation, never a settlement or authority grant.
 pub struct ResultClockWitness {
-    origin: std::time::Instant, valid: bool, ordinal: u8,
-    last: Option<ResultClockEvent>, admitted: bool, adapter_done: bool,
-    attempt: Option<ResultAttemptClock>, logical: Option<ResultLogicalClock>,
+    origin: std::time::Instant,
+    valid: bool,
+    ordinal: u8,
+    last: Option<ResultClockEvent>,
+    admitted: bool,
+    adapter_done: bool,
+    attempt: Option<ResultAttemptClock>,
+    logical: Option<ResultLogicalClock>,
     commit: Option<ResultCommitClock>,
 }
 impl ResultClockWitness {
     fn new() -> Self {
-        Self { origin: std::time::Instant::now(), valid: true, ordinal: 0, last: None,
-            admitted: false, adapter_done: false, attempt: None, logical: None, commit: None }
+        Self {
+            origin: std::time::Instant::now(),
+            valid: true,
+            ordinal: 0,
+            last: None,
+            admitted: false,
+            adapter_done: false,
+            attempt: None,
+            logical: None,
+            commit: None,
+        }
     }
     fn record(&mut self, utc: Duration) -> Option<ResultClockEvent> {
         const MAX: u128 = 9_007_199_254_740_991;
-        let utc_us = utc.as_micros(); let elapsed_ns = self.origin.elapsed().as_nanos();
+        let utc_us = utc.as_micros();
+        let elapsed_ns = self.origin.elapsed().as_nanos();
         if !self.valid || self.ordinal >= 10 || utc_us > MAX || elapsed_ns > MAX {
-            self.valid = false; return None;
+            self.valid = false;
+            return None;
         }
-        let (Ok(utc_us), Ok(elapsed_ns)) = (u64::try_from(utc_us), u64::try_from(elapsed_ns)) else {
-            self.valid = false; return None;
+        let (Ok(utc_us), Ok(elapsed_ns)) = (u64::try_from(utc_us), u64::try_from(elapsed_ns))
+        else {
+            self.valid = false;
+            return None;
         };
-        if self.last.is_some_and(|previous| previous.utc_us > utc_us || previous.elapsed_ns > elapsed_ns) {
-            self.valid = false; return None;
+        if self
+            .last
+            .is_some_and(|previous| previous.utc_us > utc_us || previous.elapsed_ns > elapsed_ns)
+        {
+            self.valid = false;
+            return None;
         }
         self.ordinal += 1;
-        let event = ResultClockEvent { ordinal: self.ordinal, utc_us, elapsed_ns };
-        self.last = Some(event); Some(event)
+        let event = ResultClockEvent {
+            ordinal: self.ordinal,
+            utc_us,
+            elapsed_ns,
+        };
+        self.last = Some(event);
+        Some(event)
     }
     fn mark(&mut self) -> Option<ResultClockEvent> {
         match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(utc) => self.record(utc), Err(_) => { self.valid = false; None }
+            Ok(utc) => self.record(utc),
+            Err(_) => {
+                self.valid = false;
+                None
+            }
         }
     }
-    pub fn attempt(&self) -> Option<ResultAttemptClock> { self.attempt }
-    pub fn logical(&self) -> Option<ResultLogicalClock> { self.logical }
-    pub fn commit(&self) -> Option<ResultCommitClock> { self.commit }
+    pub fn attempt(&self) -> Option<ResultAttemptClock> {
+        self.attempt
+    }
+    pub fn logical(&self) -> Option<ResultLogicalClock> {
+        self.logical
+    }
+    pub fn commit(&self) -> Option<ResultCommitClock> {
+        self.commit
+    }
     pub fn complete(&self) -> bool {
-        if !self.valid { return false; }
-        if !self.admitted { return self.attempt.is_none() && self.logical.is_none() && self.commit.is_none(); }
-        if !self.adapter_done { return false; }
+        if !self.valid {
+            return false;
+        }
+        if !self.admitted {
+            return self.attempt.is_none() && self.logical.is_none() && self.commit.is_none();
+        }
+        if !self.adapter_done {
+            return false;
+        }
         result_clock_roles_complete(self.attempt, self.logical, self.commit)
     }
     /// Trusted caller places this immediately before its actual consumed commit.
     pub fn commit_dispatch(&mut self) {
         if !self.admitted || !self.adapter_done || self.commit.is_some() {
-            self.valid = false; return;
+            self.valid = false;
+            return;
         }
         let dispatch = self.mark();
-        self.commit = Some(ResultCommitClock { dispatch, ack: None });
+        self.commit = Some(ResultCommitClock {
+            dispatch,
+            ack: None,
+        });
     }
     /// Trusted caller places this only after that commit actually returns Ok.
     pub fn commit_ack(&mut self) {
-        if !self.admitted || !self.adapter_done || !self.commit.is_some_and(|value| value.dispatch.is_some() && value.ack.is_none()) {
-            self.valid = false; return;
+        if !self.admitted
+            || !self.adapter_done
+            || !self
+                .commit
+                .is_some_and(|value| value.dispatch.is_some() && value.ack.is_none())
+        {
+            self.valid = false;
+            return;
         }
         let ack = self.mark();
-        if let Some(commit) = self.commit.as_mut() { commit.ack = ack; }
+        if let Some(commit) = self.commit.as_mut() {
+            commit.ack = ack;
+        }
     }
 }
 
 /// Closed role admission shared by the owned collector and private driver controls.
 /// Copy views are observations only; this cannot create an owned witness.
-pub fn result_clock_roles_complete(attempt: Option<ResultAttemptClock>, logical: Option<ResultLogicalClock>, commit: Option<ResultCommitClock>) -> bool {
-    let (Some(attempt), Some(commit)) = (attempt, commit) else { return false; };
-    let mut events = vec![attempt.read_ack, attempt.sample, attempt.write_dispatch, attempt.write_ack];
+pub fn result_clock_roles_complete(
+    attempt: Option<ResultAttemptClock>,
+    logical: Option<ResultLogicalClock>,
+    commit: Option<ResultCommitClock>,
+) -> bool {
+    let (Some(attempt), Some(commit)) = (attempt, commit) else {
+        return false;
+    };
+    let mut events = vec![
+        attempt.read_ack,
+        attempt.sample,
+        attempt.write_dispatch,
+        attempt.write_ack,
+    ];
     if let Some(logical) = logical {
-        events.extend([logical.status_read_ack, logical.sample, logical.upper, logical.write_ack]);
+        events.extend([
+            logical.status_read_ack,
+            logical.sample,
+            logical.upper,
+            logical.write_ack,
+        ]);
     }
     events.extend([commit.dispatch, commit.ack]);
     let mut previous: Option<ResultClockEvent> = None;
     for (index, event) in events.into_iter().enumerate() {
-        let Some(event) = event else { return false; };
-        if usize::from(event.ordinal) != index + 1 || event.utc_us > 9_007_199_254_740_991 || event.elapsed_ns > 9_007_199_254_740_991 { return false; }
-        if previous.is_some_and(|value| value.utc_us > event.utc_us || value.elapsed_ns > event.elapsed_ns) { return false; }
+        let Some(event) = event else {
+            return false;
+        };
+        if usize::from(event.ordinal) != index + 1
+            || event.utc_us > 9_007_199_254_740_991
+            || event.elapsed_ns > 9_007_199_254_740_991
+        {
+            return false;
+        }
+        if previous
+            .is_some_and(|value| value.utc_us > event.utc_us || value.elapsed_ns > event.elapsed_ns)
+        {
+            return false;
+        }
         previous = Some(event);
     }
     true
 }
 
-fn result_clock_now(witness: &mut Option<&mut ResultClockWitness>, logical: bool) -> Result<String, ResultSqlFailure> {
-    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH)
-        .map_err(|_| ResultSqlFailure::shared(failure(SqlStage::Clock, SqlFailureClass::ClockRange)))?;
+fn result_clock_now(
+    witness: &mut Option<&mut ResultClockWitness>,
+    logical: bool,
+) -> Result<String, ResultSqlFailure> {
+    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| {
+        ResultSqlFailure::shared(failure(SqlStage::Clock, SqlFailureClass::ClockRange))
+    })?;
     let interval = utc_interval(elapsed).map_err(ResultSqlFailure::shared)?;
     if let Some(witness) = witness.as_deref_mut() {
         let sample = witness.record(elapsed);
-        if logical { if let Some(value) = witness.logical.as_mut() { value.sample = sample; } }
-        else if let Some(value) = witness.attempt.as_mut() { value.sample = sample; }
+        if logical {
+            if let Some(value) = witness.logical.as_mut() {
+                value.sample = sample;
+            }
+        } else if let Some(value) = witness.attempt.as_mut() {
+            value.sample = sample;
+        }
     }
     Ok(interval)
 }
 
-pub async fn apply_result_observed(tx: &mut Transaction<'_, Postgres>, input: &SqlResultInput)
-    -> (Result<SqlDecision<AppliedResult>, ResultSqlFailure>, ResultClockWitness) {
+pub async fn apply_result_observed(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SqlResultInput,
+) -> (
+    Result<SqlDecision<AppliedResult>, ResultSqlFailure>,
+    ResultClockWitness,
+) {
     let mut witness = ResultClockWitness::new();
     let result = apply_result_inner(tx, input, Some(&mut witness)).await;
     (result, witness)
 }
 
 /// Actual selected Result writes only. Caller owns settlement and authority.
-pub async fn apply_result(tx: &mut Transaction<'_, Postgres>, input: &SqlResultInput) -> Result<SqlDecision<AppliedResult>, ResultSqlFailure> {
+pub async fn apply_result(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SqlResultInput,
+) -> Result<SqlDecision<AppliedResult>, ResultSqlFailure> {
     apply_result_inner(tx, input, None).await
 }
 
-async fn apply_result_inner(tx: &mut Transaction<'_, Postgres>, input: &SqlResultInput, mut witness: Option<&mut ResultClockWitness>) -> Result<SqlDecision<AppliedResult>, ResultSqlFailure> {
-    use bifrost_domain::workflow::{AttemptHistory, FailureCode, FailurePhase, RuntimeFailureKind, WorkflowOutcome, plan_fenced_result};
+async fn apply_result_inner(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SqlResultInput,
+    mut witness: Option<&mut ResultClockWitness>,
+) -> Result<SqlDecision<AppliedResult>, ResultSqlFailure> {
+    use bifrost_domain::workflow::{
+        AttemptHistory, FailureCode, FailurePhase, RuntimeFailureKind, WorkflowOutcome,
+        plan_fenced_result,
+    };
     let (duration, metrics) = match &input.fields {
-        ResultFields::Success(value) => (result_duration(&value.duration_ms), value.metrics.value()),
-        ResultFields::Failure(value) => (result_duration(&value.duration_ms), value.metrics.value()),
+        ResultFields::Success(value) => {
+            (result_duration(&value.duration_ms), value.metrics.value())
+        }
+        ResultFields::Failure(value) => {
+            (result_duration(&value.duration_ms), value.metrics.value())
+        }
     };
     let outcome = result_outcome(&input.fields);
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || $1::text))")
-        .persistent(false).bind(input.execution_id.as_str()).execute(&mut **tx).await
-        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::Advisory, error))?;
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || $1::text))",
+    )
+    .persistent(false)
+    .bind(input.execution_id.as_str())
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| ResultSqlFailure::database(ResultSqlStage::Advisory, error))?;
     if input.fence.is_none() {
         let recorded: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM public.workflow_execution_attempts WHERE execution_id = $1::uuid)")
             .persistent(false).bind(input.execution_id.as_str()).fetch_one(&mut **tx).await
             .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadHistory, error))?;
-        return match plan_fenced_result(None, None, &input.execution_id, None, if recorded { AttemptHistory::Recorded } else { AttemptHistory::Unrecorded }, outcome, duration.is_some()) {
-            Err(reason) => Ok(SqlDecision::Rejected(reason)), Ok(_) => Err(result_decode()),
+        return match plan_fenced_result(
+            None,
+            None,
+            &input.execution_id,
+            None,
+            if recorded {
+                AttemptHistory::Recorded
+            } else {
+                AttemptHistory::Unrecorded
+            },
+            outcome,
+            duration.is_some(),
+        ) {
+            Err(reason) => Ok(SqlDecision::Rejected(reason)),
+            Ok(_) => Err(result_decode()),
         };
     }
-    let row = sqlx::query("SELECT id::text, status::text FROM public.executions WHERE id = $1::uuid FOR UPDATE")
-        .persistent(false).bind(input.execution_id.as_str()).fetch_optional(&mut **tx).await
-        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadExecution, error))?;
-    let execution = row.as_ref().map(|row| -> Result<LogicalExecutionView, ResultSqlFailure> {
-        let status: String = row.try_get("status").map_err(|_| result_decode())?;
-        Ok(LogicalExecutionView { id: uuid(row, "id").map_err(ResultSqlFailure::shared)?, status: logical_status(&status).map_err(ResultSqlFailure::shared)? })
-    }).transpose()?;
-    let Some(fence) = input.fence.as_ref() else { return Err(result_decode()); };
+    let row = sqlx::query(
+        "SELECT id::text, status::text FROM public.executions WHERE id = $1::uuid FOR UPDATE",
+    )
+    .persistent(false)
+    .bind(input.execution_id.as_str())
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadExecution, error))?;
+    let execution = row
+        .as_ref()
+        .map(|row| -> Result<LogicalExecutionView, ResultSqlFailure> {
+            let status: String = row.try_get("status").map_err(|_| result_decode())?;
+            Ok(LogicalExecutionView {
+                id: uuid(row, "id").map_err(ResultSqlFailure::shared)?,
+                status: logical_status(&status).map_err(ResultSqlFailure::shared)?,
+            })
+        })
+        .transpose()?;
+    let Some(fence) = input.fence.as_ref() else {
+        return Err(result_decode());
+    };
     let token = ClaimToken::new(fence.0.clone());
-    if execution.as_ref().is_none_or(|value| !matches!(value.status, LogicalExecutionStatus::Running | LogicalExecutionStatus::Cancelling)) {
-        return match plan_fenced_result(execution.as_ref(), None, &input.execution_id, Some(&token), AttemptHistory::Recorded, outcome, duration.is_some()) {
-            Err(reason) => Ok(SqlDecision::Rejected(reason)), Ok(_) => Err(result_decode()),
+    if execution.as_ref().is_none_or(|value| {
+        !matches!(
+            value.status,
+            LogicalExecutionStatus::Running | LogicalExecutionStatus::Cancelling
+        )
+    }) {
+        return match plan_fenced_result(
+            execution.as_ref(),
+            None,
+            &input.execution_id,
+            Some(&token),
+            AttemptHistory::Recorded,
+            outcome,
+            duration.is_some(),
+        ) {
+            Err(reason) => Ok(SqlDecision::Rejected(reason)),
+            Ok(_) => Err(result_decode()),
         };
     }
-    let Some(execution) = execution else { return Err(result_decode()); };
+    let Some(execution) = execution else {
+        return Err(result_decode());
+    };
     let rows = sqlx::query("SELECT id::text, execution_id::text, claim_token::text, status, phase, started_at IS NOT NULL AS started_at_present, completed_at IS NOT NULL AS completed_at_present FROM public.workflow_execution_attempts WHERE execution_id = $1::uuid AND claim_token = $2::uuid AND completed_at IS NULL FOR UPDATE")
         .persistent(false).bind(input.execution_id.as_str()).bind(fence.0.as_str()).fetch_all(&mut **tx).await
         .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadAttempt, error))?;
     let read_ack = witness.as_deref_mut().and_then(ResultClockWitness::mark);
-    if rows.len() > 1 { return Err(ResultSqlFailure::local(ResultSqlStage::ReadAttempt, ResultSqlFailureClass::Cardinality)); }
-    let view = rows.first().map(attempt).transpose().map_err(ResultSqlFailure::shared)?;
-    let plan = match plan_fenced_result(Some(&execution), view.as_ref(), &input.execution_id, Some(&token), AttemptHistory::Recorded, outcome, duration.is_some()) {
-        Ok(plan) => plan, Err(reason) => return Ok(SqlDecision::Rejected(reason)),
+    if rows.len() > 1 {
+        return Err(ResultSqlFailure::local(
+            ResultSqlStage::ReadAttempt,
+            ResultSqlFailureClass::Cardinality,
+        ));
+    }
+    let view = rows
+        .first()
+        .map(attempt)
+        .transpose()
+        .map_err(ResultSqlFailure::shared)?;
+    let plan = match plan_fenced_result(
+        Some(&execution),
+        view.as_ref(),
+        &input.execution_id,
+        Some(&token),
+        AttemptHistory::Recorded,
+        outcome,
+        duration.is_some(),
+    ) {
+        Ok(plan) => plan,
+        Err(reason) => return Ok(SqlDecision::Rejected(reason)),
     };
-    let Some(view) = view else { return Err(result_decode()); };
+    let Some(view) = view else {
+        return Err(result_decode());
+    };
     if let Some(witness) = witness.as_deref_mut() {
         witness.admitted = true;
-        witness.attempt = Some(ResultAttemptClock { read_ack, sample: None, write_dispatch: None, write_ack: None });
+        witness.attempt = Some(ResultAttemptClock {
+            read_ack,
+            sample: None,
+            write_dispatch: None,
+            write_ack: None,
+        });
         if duration.is_some() {
-            witness.logical = Some(ResultLogicalClock { status_read_ack: None, sample: None, upper: None,
-                upper_kind: ResultClockUpper::WriteExecutionDispatch, write_ack: None });
+            witness.logical = Some(ResultLogicalClock {
+                status_read_ack: None,
+                sample: None,
+                upper: None,
+                upper_kind: ResultClockUpper::WriteExecutionDispatch,
+                write_ack: None,
+            });
         }
     }
     let now = result_clock_now(&mut witness, false)?;
-    let attempt_status = match plan.attempt.status { AttemptStatus::Succeeded => "succeeded", AttemptStatus::Failed => "failed", AttemptStatus::TimedOut => "timed_out", AttemptStatus::Cancelled => "cancelled", _ => return Err(result_decode()) };
-    let failure_code = match plan.attempt.failure_code { None => None, Some(FailureCode::ExecutionTimeout) => Some("execution_timeout"), Some(FailureCode::Cancelled) => Some("cancelled"), Some(FailureCode::ResultPersistFailed) => Some("result_persist_failed"), Some(FailureCode::TenantCodeError) => Some("tenant_code_error"), _ => return Err(result_decode()) };
-    let failure_phase = match plan.attempt.failure_phase { None => None, Some(FailurePhase::Execution) => Some("execution"), Some(FailurePhase::Result) => Some("result"), Some(FailurePhase::Cancellation) => Some("cancellation"), _ => return Err(result_decode()) };
+    let attempt_status = match plan.attempt.status {
+        AttemptStatus::Succeeded => "succeeded",
+        AttemptStatus::Failed => "failed",
+        AttemptStatus::TimedOut => "timed_out",
+        AttemptStatus::Cancelled => "cancelled",
+        _ => return Err(result_decode()),
+    };
+    let failure_code = match plan.attempt.failure_code {
+        None => None,
+        Some(FailureCode::ExecutionTimeout) => Some("execution_timeout"),
+        Some(FailureCode::Cancelled) => Some("cancelled"),
+        Some(FailureCode::ResultPersistFailed) => Some("result_persist_failed"),
+        Some(FailureCode::TenantCodeError) => Some("tenant_code_error"),
+        _ => return Err(result_decode()),
+    };
+    let failure_phase = match plan.attempt.failure_phase {
+        None => None,
+        Some(FailurePhase::Execution) => Some("execution"),
+        Some(FailurePhase::Result) => Some("result"),
+        Some(FailurePhase::Cancellation) => Some("cancellation"),
+        _ => return Err(result_decode()),
+    };
     let attempt_query = sqlx::query("UPDATE public.workflow_execution_attempts SET status = $2, phase = 'terminal', failure_phase = $3, failure_code = $4, duration_ms = $5, peak_memory_bytes = $6, cpu_total_seconds = $7, heartbeat_at = timestamptz 'epoch' + $8::interval, completed_at = timestamptz 'epoch' + $8::interval WHERE id = $1::uuid")
         .persistent(false).bind(view.id.as_str()).bind(attempt_status).bind(failure_phase).bind(failure_code)
         .bind(duration).bind(metrics.and_then(|value| value.peak_memory_bytes.value()).copied())
         .bind(metrics.and_then(|value| value.cpu_total_seconds.value()).copied()).bind(&now);
     if let Some(witness) = witness.as_deref_mut() {
         let dispatch = witness.mark();
-        if let Some(value) = witness.attempt.as_mut() { value.write_dispatch = dispatch; }
+        if let Some(value) = witness.attempt.as_mut() {
+            value.write_dispatch = dispatch;
+        }
     }
-    let attempt_result = attempt_query.execute(&mut **tx).await.map_err(|error| ResultSqlFailure::database(ResultSqlStage::WriteAttempt, error))?;
+    let attempt_result = attempt_query
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::WriteAttempt, error))?;
     if let Some(witness) = witness.as_deref_mut() {
         let ack = witness.mark();
-        if let Some(value) = witness.attempt.as_mut() { value.write_ack = ack; }
+        if let Some(value) = witness.attempt.as_mut() {
+            value.write_ack = ack;
+        }
     }
     result_one(attempt_result.rows_affected(), ResultSqlStage::WriteAttempt)?;
     // Persistence failure's truthy context merge precedes the repository lock/read.
-    let supplied_context = match &input.fields { ResultFields::Success(value) => value.execution_context.value(), ResultFields::Failure(value) => value.execution_context.value().filter(|context| context.nonempty_object && matches!(outcome, WorkflowOutcome::Failure(RuntimeFailureKind::ResultPersistence))) };
-    let failure_existing = if matches!(&input.fields, ResultFields::Failure(_)) && supplied_context.is_some() { result_context(tx, &input.execution_id).await? } else { None };
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || $1::text))")
-        .persistent(false).bind(input.execution_id.as_str()).execute(&mut **tx).await
-        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::Advisory, error))?;
-    let current: Option<String> = sqlx::query_scalar("SELECT status::text FROM public.executions WHERE id = $1::uuid")
-        .persistent(false).bind(input.execution_id.as_str()).fetch_optional(&mut **tx).await
-        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadExecution, error))?;
+    let supplied_context = match &input.fields {
+        ResultFields::Success(value) => value.execution_context.value(),
+        ResultFields::Failure(value) => value.execution_context.value().filter(|context| {
+            context.nonempty_object
+                && matches!(
+                    outcome,
+                    WorkflowOutcome::Failure(RuntimeFailureKind::ResultPersistence)
+                )
+        }),
+    };
+    let failure_existing =
+        if matches!(&input.fields, ResultFields::Failure(_)) && supplied_context.is_some() {
+            result_context(tx, &input.execution_id).await?
+        } else {
+            None
+        };
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || $1::text))",
+    )
+    .persistent(false)
+    .bind(input.execution_id.as_str())
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| ResultSqlFailure::database(ResultSqlStage::Advisory, error))?;
+    let current: Option<String> =
+        sqlx::query_scalar("SELECT status::text FROM public.executions WHERE id = $1::uuid")
+            .persistent(false)
+            .bind(input.execution_id.as_str())
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadExecution, error))?;
     if let Some(witness) = witness.as_deref_mut() {
         if witness.logical.is_some() {
             let ack = witness.mark();
-            if let Some(value) = witness.logical.as_mut() { value.status_read_ack = ack; }
+            if let Some(value) = witness.logical.as_mut() {
+                value.status_read_ack = ack;
+            }
         }
     }
     let cancelled = matches!(current.as_deref(), Some("Cancelling" | "Cancelled"));
-    let final_status = if cancelled { LogicalExecutionStatus::Cancelled } else { plan.execution.status };
-    let completed = duration.map(|_| result_clock_now(&mut witness, true)).transpose()?;
+    let final_status = if cancelled {
+        LogicalExecutionStatus::Cancelled
+    } else {
+        plan.execution.status
+    };
+    let completed = duration
+        .map(|_| result_clock_now(&mut witness, true))
+        .transpose()?;
     if supplied_context.is_some() {
         if let Some(witness) = witness.as_deref_mut() {
             if witness.logical.is_some() {
                 let upper = witness.mark();
-                if let Some(value) = witness.logical.as_mut() { value.upper = upper; value.upper_kind = ResultClockUpper::ContextReadDispatch; }
+                if let Some(value) = witness.logical.as_mut() {
+                    value.upper = upper;
+                    value.upper_kind = ResultClockUpper::ContextReadDispatch;
+                }
             }
         }
     }
-    let existing_context = if supplied_context.is_some() { result_context(tx, &input.execution_id).await? } else { None };
+    let existing_context = if supplied_context.is_some() {
+        result_context(tx, &input.execution_id).await?
+    } else {
+        None
+    };
     // Missing and null are never collapsed for metric assignments.
     let (result, variables, error, time_saved, numeric) = match &input.fields {
         ResultFields::Success(value) => {
             let roi = value.roi.value();
-            let time = match roi.map(|value| &value.time_saved) { Some(ResultPresence::Null) => None, Some(ResultPresence::Value(value)) => Some(*value), _ => Some(0) };
-            let number = if cancelled { None } else {
-                let raw = match roi.map(|value| &value.value) { Some(ResultPresence::Null) => None, Some(ResultPresence::Value(value)) => Some(match value { super::workflow_numeric::NumericInput::Signed(value) => super::workflow_numeric::NumericInput::Signed(*value), super::workflow_numeric::NumericInput::Unsigned(value) => super::workflow_numeric::NumericInput::Unsigned(*value), super::workflow_numeric::NumericInput::Float(value) => super::workflow_numeric::NumericInput::Float(*value) }), _ => Some(super::workflow_numeric::NumericInput::Float(0.0)) };
-                raw.map(super::workflow_numeric::exact_numeric_text).transpose().map_err(|_| result_decode())?
+            let time = match roi.map(|value| &value.time_saved) {
+                Some(ResultPresence::Null) => None,
+                Some(ResultPresence::Value(value)) => Some(*value),
+                _ => Some(0),
             };
-            (value.result.value(), value.variables.value(), value.error.value().map(String::as_str), time, number)
+            let number = if cancelled {
+                None
+            } else {
+                let raw = match roi.map(|value| &value.value) {
+                    Some(ResultPresence::Null) => None,
+                    Some(ResultPresence::Value(value)) => Some(match value {
+                        super::workflow_numeric::NumericInput::Signed(value) => {
+                            super::workflow_numeric::NumericInput::Signed(*value)
+                        }
+                        super::workflow_numeric::NumericInput::Unsigned(value) => {
+                            super::workflow_numeric::NumericInput::Unsigned(*value)
+                        }
+                        super::workflow_numeric::NumericInput::Float(value) => {
+                            super::workflow_numeric::NumericInput::Float(*value)
+                        }
+                    }),
+                    _ => Some(super::workflow_numeric::NumericInput::Float(0.0)),
+                };
+                raw.map(super::workflow_numeric::exact_numeric_text)
+                    .transpose()
+                    .map_err(|_| result_decode())?
+            };
+            (
+                value.result.value(),
+                value.variables.value(),
+                value.error.value().map(String::as_str),
+                time,
+                number,
+            )
         }
-        ResultFields::Failure(value) => (None, None, match &value.error { ResultPresence::Absent => Some("Unknown error"), ResultPresence::Null => None, ResultPresence::Value(value) => Some(value.as_str()) }, None, None),
+        ResultFields::Failure(value) => (
+            None,
+            None,
+            match &value.error {
+                ResultPresence::Absent => Some("Unknown error"),
+                ResultPresence::Null => None,
+                ResultPresence::Value(value) => Some(value.as_str()),
+            },
+            None,
+            None,
+        ),
     };
-    let status_text = match final_status { LogicalExecutionStatus::Scheduled => "Scheduled", LogicalExecutionStatus::Pending => "Pending", LogicalExecutionStatus::Running => "Running", LogicalExecutionStatus::Success => "Success", LogicalExecutionStatus::Failed => "Failed", LogicalExecutionStatus::Timeout => "Timeout", LogicalExecutionStatus::Stuck => "Stuck", LogicalExecutionStatus::CompletedWithErrors => "CompletedWithErrors", LogicalExecutionStatus::Cancelling => "Cancelling", LogicalExecutionStatus::Cancelled => "Cancelled" };
+    let status_text = match final_status {
+        LogicalExecutionStatus::Scheduled => "Scheduled",
+        LogicalExecutionStatus::Pending => "Pending",
+        LogicalExecutionStatus::Running => "Running",
+        LogicalExecutionStatus::Success => "Success",
+        LogicalExecutionStatus::Failed => "Failed",
+        LogicalExecutionStatus::Timeout => "Timeout",
+        LogicalExecutionStatus::Stuck => "Stuck",
+        LogicalExecutionStatus::CompletedWithErrors => "CompletedWithErrors",
+        LogicalExecutionStatus::Cancelling => "Cancelling",
+        LogicalExecutionStatus::Cancelled => "Cancelled",
+    };
     let metric_peak = metrics.map(|value| &value.peak_memory_bytes);
     let metric_rss = metrics.map(|value| &value.process_rss_bytes);
     let metric_user = metrics.map(|value| &value.cpu_user_seconds);
@@ -892,22 +1426,37 @@ async fn apply_result_inner(tx: &mut Transaction<'_, Postgres>, input: &SqlResul
         if let Some(witness) = witness.as_deref_mut() {
             if witness.logical.is_some() {
                 let upper = witness.mark();
-                if let Some(value) = witness.logical.as_mut() { value.upper = upper; }
+                if let Some(value) = witness.logical.as_mut() {
+                    value.upper = upper;
+                }
             }
         }
     }
-    let execution_result = execution_query.execute(&mut **tx).await.map_err(|error| ResultSqlFailure::database(ResultSqlStage::WriteExecution, error))?;
+    let execution_result = execution_query
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| ResultSqlFailure::database(ResultSqlStage::WriteExecution, error))?;
     if let Some(witness) = witness.as_deref_mut() {
         if witness.logical.is_some() {
             let ack = witness.mark();
-            if let Some(value) = witness.logical.as_mut() { value.write_ack = ack; }
+            if let Some(value) = witness.logical.as_mut() {
+                value.write_ack = ack;
+            }
         }
     }
-    result_one(execution_result.rows_affected(), ResultSqlStage::WriteExecution)?;
-    if let Some(witness) = witness.as_deref_mut() { witness.adapter_done = true; }
-    Ok(SqlDecision::Applied(AppliedResult { plan, affected_execution_rows: execution_result.rows_affected(), affected_attempt_rows: attempt_result.rows_affected() }))
+    result_one(
+        execution_result.rows_affected(),
+        ResultSqlStage::WriteExecution,
+    )?;
+    if let Some(witness) = witness.as_deref_mut() {
+        witness.adapter_done = true;
+    }
+    Ok(SqlDecision::Applied(AppliedResult {
+        plan,
+        affected_execution_rows: execution_result.rows_affected(),
+        affected_attempt_rows: attempt_result.rows_affected(),
+    }))
 }
-
 
 #[cfg(test)]
 mod result_error_tests {
@@ -921,7 +1470,14 @@ mod result_error_tests {
     }
     #[test]
     fn result_error_allowlist_closed() {
-        for code in [Some("08P01"), Some("08p01"), Some("x22003"), Some("22003x"), Some(""), None] {
+        for code in [
+            Some("08P01"),
+            Some("08p01"),
+            Some("x22003"),
+            Some("22003x"),
+            Some(""),
+            None,
+        ] {
             assert!(ResultSqlCode::from_code(code).is_none());
         }
     }
@@ -937,19 +1493,32 @@ mod result_error_tests {
     fn result_error_decode_mapping() {
         for error in [decode(), database(SqlStage::ReadAttempt)] {
             let failure = ResultSqlFailure::shared(error);
-            assert!(failure.stage() == ResultSqlStage::Decode && failure.class() == ResultSqlFailureClass::InvalidRow && failure.code().is_none());
+            assert!(
+                failure.stage() == ResultSqlStage::Decode
+                    && failure.class() == ResultSqlFailureClass::InvalidRow
+                    && failure.code().is_none()
+            );
         }
     }
     #[test]
     fn result_error_clock_mapping() {
-        let failure = ResultSqlFailure::shared(failure(SqlStage::Clock, SqlFailureClass::ClockRange));
-        assert!(failure.stage() == ResultSqlStage::Clock && failure.class() == ResultSqlFailureClass::ClockRange && failure.code().is_none());
+        let failure =
+            ResultSqlFailure::shared(failure(SqlStage::Clock, SqlFailureClass::ClockRange));
+        assert!(
+            failure.stage() == ResultSqlStage::Clock
+                && failure.class() == ResultSqlFailureClass::ClockRange
+                && failure.code().is_none()
+        );
     }
     #[test]
     fn result_error_cardinality_mapping() {
         for count in [0, 2] {
             match result_one(count, ResultSqlStage::WriteExecution) {
-                Err(error) => assert!(error.stage() == ResultSqlStage::WriteExecution && error.class() == ResultSqlFailureClass::Cardinality && error.code().is_none()),
+                Err(error) => assert!(
+                    error.stage() == ResultSqlStage::WriteExecution
+                        && error.class() == ResultSqlFailureClass::Cardinality
+                        && error.code().is_none()
+                ),
                 Ok(()) => panic!("synthetic cardinality was admitted"),
             }
         }
@@ -957,21 +1526,107 @@ mod result_error_tests {
     }
     #[test]
     fn checked_prepared_json_rejects_class_and_private_profile_drift() {
+        let marker = r#"{"$serde_json::private::RawValue":"{\"hidden\":1}","visible":2}"#;
+        let checked = |role| match PreparedJson::new(marker, marker.to_owned(), role) {
+            Ok(value) => ResultPresence::Value(value),
+            Err(_) => panic!("synthetic marker rejected"),
+        };
+        let fields = SuccessResultFields {
+            status: ResultPresence::Absent,
+            result: checked(ResultJsonRole::Result),
+            error: ResultPresence::Absent,
+            error_type: ResultPresence::Absent,
+            duration_ms: ResultPresence::Absent,
+            variables: checked(ResultJsonRole::Variables),
+            execution_context: checked(ResultJsonRole::Context),
+            metrics: ResultPresence::Absent,
+            roi: ResultPresence::Absent,
+        };
+        let id = match CanonicalUuid::new("00000000-0000-0000-0000-000000000001") {
+            Ok(value) => value,
+            Err(_) => panic!("synthetic UUID rejected"),
+        };
+        let mut input = match SqlResultInput::success(id, None, fields) {
+            Ok(value) => value,
+            Err(_) => panic!("synthetic success rejected"),
+        };
+        let observation = observe_feature_marker(&input);
+        assert!(observation.result && observation.variables && observation.context);
+        for mismatch in 0..4 {
+            if let ResultFields::Success(fields) = &mut input.fields {
+                fields.result = checked(ResultJsonRole::Result);
+                if let ResultPresence::Value(value) = &mut fields.result {
+                    match mismatch {
+                        0 => value.result_type = "text",
+                        1 => value.nonempty_object = false,
+                        2 => value.text = "{".to_owned(),
+                        _ => value.text = "{\"visible\":2}".to_owned(),
+                    }
+                }
+            }
+            let observation = observe_feature_marker(&input);
+            assert!(!observation.result && observation.variables && observation.context);
+        }
+        if let ResultFields::Success(fields) = &mut input.fields {
+            fields.result = ResultPresence::Absent;
+            fields.variables = ResultPresence::Null;
+            if let ResultPresence::Value(context) = &mut fields.execution_context {
+                context.role = ResultJsonRole::Result;
+            }
+        }
+        let observation = observe_feature_marker(&input);
+        assert!(!observation.result && !observation.variables && !observation.context);
+        input.fields = ResultFields::Failure(FailureResultFields {
+            error: ResultPresence::Absent,
+            error_type: ResultPresence::Absent,
+            duration_ms: ResultPresence::Absent,
+            execution_context: checked(ResultJsonRole::Context),
+            metrics: ResultPresence::Absent,
+        });
+        let observation = observe_feature_marker(&input);
+        assert!(!observation.result && !observation.variables && !observation.context);
         assert!(PreparedJson::new("{}", "[]".to_owned(), ResultJsonRole::Result).is_err());
         assert!(PreparedJson::new("null", "null".to_owned(), ResultJsonRole::Result).is_err());
         assert!(PreparedJson::new("1.0", "1".to_owned(), ResultJsonRole::Result).is_err());
-        assert!(PreparedJson::new("{\"a\":1}", "{\"a\":1,\"a\":2}".to_owned(), ResultJsonRole::Context).is_err());
-        assert!(PreparedJson::new("{\"$serde_json::private::RawValue\":\"{\\\"a\\\":1}\"}", "{\"$serde_json::private::RawValue\":\"{\\\"a\\\":1}\"}".to_owned(), ResultJsonRole::Context).is_ok());
+        assert!(
+            PreparedJson::new(
+                "{\"a\":1}",
+                "{\"a\":1,\"a\":2}".to_owned(),
+                ResultJsonRole::Context
+            )
+            .is_err()
+        );
+        assert!(
+            PreparedJson::new(
+                "{\"$serde_json::private::RawValue\":\"{\\\"a\\\":1}\"}",
+                "{\"$serde_json::private::RawValue\":\"{\\\"a\\\":1}\"}".to_owned(),
+                ResultJsonRole::Context
+            )
+            .is_ok()
+        );
     }
     #[test]
     fn html_predicate_matches_python_whitespace_without_changing_storage() {
-        let whitespace = [0x9,0xa,0xb,0xc,0xd,0x1c,0x1d,0x1e,0x1f,0x20,0x85,0xa0,0x1680,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,0x2009,0x200a,0x2028,0x2029,0x202f,0x205f,0x3000];
+        let whitespace = [
+            0x9, 0xa, 0xb, 0xc, 0xd, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x85, 0xa0, 0x1680, 0x2000,
+            0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028,
+            0x2029, 0x202f, 0x205f, 0x3000,
+        ];
         for scalar in whitespace {
-            if let Some(character) = char::from_u32(scalar) { assert!(python_whitespace(character)); }
-            else { panic!("synthetic whitespace scalar invalid"); }
+            if let Some(character) = char::from_u32(scalar) {
+                assert!(python_whitespace(character));
+            } else {
+                panic!("synthetic whitespace scalar invalid");
+            }
         }
-        for character in ['\u{200b}', '\u{feff}', '\u{180e}', '\u{2060}'] { assert!(!python_whitespace(character)); }
-        match PreparedJson::new("\"  <tag>\"", "\"  <tag>\"".to_owned(), ResultJsonRole::Result) {
+        for character in ['\u{200b}', '\u{feff}', '\u{180e}', '\u{2060}'] {
+            assert!(!python_whitespace(character));
+        }
+        match PreparedJson::new(
+            "\"  <tag>\"",
+            "\"  <tag>\"".to_owned(),
+            ResultJsonRole::Result,
+        ) {
             Ok(value) => assert!(value.result_type == "html" && value.text == "\"  <tag>\""),
             Err(_) => panic!("synthetic HTML input rejected"),
         }

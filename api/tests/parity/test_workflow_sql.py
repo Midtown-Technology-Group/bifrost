@@ -1,6 +1,7 @@
 """Real SQL characterization before claiming Rust persistence parity."""
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.models.enums import ExecutionStatus
@@ -8,13 +9,47 @@ from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.repositories.executions import ExecutionRepository
 
 from tests.parity.workflow_domain_harness import WorkflowCohort, load_cases
-from tests.parity.workflow_sql_harness import load_fixture
+from tests.parity.workflow_sql_harness import load_fixture, source_session
 
 pytestmark = pytest.mark.e2e
 
 
-async def test_queued_cancel_emitted_update_order(async_engine, record_property):
+@pytest.fixture(scope="session", autouse=True)
+def result_source_session(setup_test_environment, request):
+    """Install before the genuine non-autouse synchronous engine fixture."""
+    observer = source_session(request.session)
+    original = None
+    try:
+        yield observer
+    except BaseException as error:
+        original = error
+        raise
+    finally:
+        if observer is not None:
+            observer.close(original)
+
+
+@pytest_asyncio.fixture
+async def result_source_function(result_source_session, isolate_global_db_engine, request):
+    """Owned listeners leave before the unchanged source post-close finalizer."""
+    if result_source_session is None:
+        yield None
+        return
+    owner = result_source_session.begin_function(request.node)
+    original = None
+    try:
+        yield owner
+    except BaseException as error:
+        original = error
+        raise
+    finally:
+        owner.finish(original)
+
+
+async def test_queued_cancel_emitted_update_order(async_engine, record_property, result_source_function):
     """Record actual ORM flush order; assignment order is not SQL evidence."""
+    if result_source_function is not None:
+        result_source_function.admit_fixture_engine(async_engine)
     case = next(case for case in load_cases() if case["case_id"] == "cancel-Pending-claimed")
     cohort = WorkflowCohort(async_engine, case)
     cohort.sessions = async_sessionmaker(async_engine, autoflush=False, expire_on_commit=False)
@@ -65,10 +100,10 @@ async def test_queued_cancel_emitted_update_order(async_engine, record_property)
     load_fixture()["cases"],
     ids=lambda case: case["case_id"],
 )
-async def test_result_nonfault_paired(async_engine, request, record_property, result_case):
+async def test_result_nonfault_paired(async_engine, request, record_property, result_case, result_source_function):
     from tests.parity.workflow_sql_harness import lifetime, paired_result
 
-    async with lifetime(request) as owned:
+    async with lifetime(request, result_source_function, async_engine) as owned:
         observation = await paired_result(async_engine, result_case, owned)
         record_property("result_case_id", observation["case_id"])
         record_property("result_reference", observation["reference"])
@@ -86,7 +121,9 @@ async def test_result_nonfault_paired(async_engine, request, record_property, re
     ],
     ids=lambda value: value,
 )
-async def test_result_nonfault_control(async_engine, request, record_property, category, control_id):
+async def test_result_nonfault_control(
+    async_engine, request, record_property, category, control_id, result_source_function
+):
     from tests.parity.workflow_sql_harness import (
         codec_control,
         decode_control,
@@ -97,8 +134,8 @@ async def test_result_nonfault_control(async_engine, request, record_property, c
         source_control,
     )
 
-    async with lifetime(request) as owned:
-        source_admission()
+    async with lifetime(request, result_source_function, async_engine) as owned:
+        source_admission(result_source_function)
         base = next(case for case in load_fixture()["cases"] if case["case_id"] == "s-result-absent")
         if category == "Codec pre-admission negatives":
             await codec_control(async_engine, owned, control_id, base)

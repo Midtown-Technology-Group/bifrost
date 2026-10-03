@@ -109,6 +109,12 @@ fn shared_wire_vectors() -> TestResult {
         let result = decode_json(&bytes);
         if vector.expected == "ok" {
             let frame = result?;
+            if vector.name == "hello" {
+                assert!(matches!(&frame.body, Body::Hello(_)));
+            }
+            if vector.name == "start" {
+                assert!(matches!(&frame.body, Body::Start(_)));
+            }
             let encoded = encode_frame(&frame)?;
             assert_eq!(
                 read_frame(&mut Cursor::new(encoded))?,
@@ -123,6 +129,11 @@ fn shared_wire_vectors() -> TestResult {
             }
         }
     }
+    let later_marker = r###"{"protocol":"bifrost.runtime/v1","type":"Start","session_id":"00000000-0000-0000-0000-000000000001","message_id":"00000000-0000-0000-0000-000000000004","sequence":1,"correlation_id":"00000000-0000-0000-0000-000000000005","body":{"prepare_message_id":"00000000-0000-0000-0000-000000000005","committed_start_id":"00000000-0000-0000-0000-000000000006","parent_duration_seconds":30},"$serde_json::private::RawValue":"{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}"}"###;
+    assert!(matches!(
+        decode_json(later_marker.as_bytes()),
+        Err(Error::InvalidFrame)
+    ));
     Ok(())
 }
 

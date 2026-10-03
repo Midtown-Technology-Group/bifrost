@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -15,12 +16,15 @@ import re
 import signal
 import stat
 import struct
+import sys
+import time
 from contextlib import asynccontextmanager, contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -259,7 +263,7 @@ def prepare_json_inputs(raw_fields: dict, lane: str) -> dict:
     return result
 
 
-def source_admission() -> dict:
+def source_admission(observer=None) -> dict:
     """Read-only external receipt contract; producer is a separately held gate."""
     value = decode(read_file(RECEIPT, 1024 * 1024))
     closed(value, {"schema", "candidate", "sources", "binary", "graphs"})
@@ -323,6 +327,8 @@ def source_admission() -> dict:
             and type(graph["features"]) is list,
             "Result graph metadata",
         )
+    if observer is not None:
+        observer.session.loaded_source_admission(value)
     return value
 
 
@@ -344,6 +350,1313 @@ def driver_dsn(engine) -> str:
         "Result TLS association unsupported",
     )
     return original.set(drivername="postgresql").render_as_string(hide_password=False)
+
+
+# Private source observers are test provenance, not runtime or security authority.
+_OBSERVER_ENV = (
+    "PGHOST",
+    "PGPORT",
+    "PGUSER",
+    "PGPASSWORD",
+    "PGDATABASE",
+    "PGPASSFILE",
+    "PGSERVICE",
+    "PGSERVICEFILE",
+    "PGSSLMODE",
+    "PGSSLNEGOTIATION",
+    "PGSSLROOTCERT",
+    "PGSSLCRL",
+    "PGSSLKEY",
+    "PGSSLCERT",
+    "SSLKEYLOGFILE",
+    "PGSSLMINPROTOCOLVERSION",
+    "PGSSLMAXPROTOCOLVERSION",
+    "PGTARGETSESSIONATTRS",
+    "PGKRBSRVNAME",
+    "PGGSSLIB",
+)
+_OBSERVER_MODULES = {
+    "src.jobs.consumers.workflow_execution": "api/src/jobs/consumers/workflow_execution.py",
+    "src.repositories.executions": "api/src/repositories/executions.py",
+    "src.core.execution_variable_safety": "api/src/core/execution_variable_safety.py",
+    "src.core.database": "api/src/core/database.py",
+    "src.config": "api/src/config.py",
+    "src.models.orm.executions": "api/src/models/orm/executions.py",
+    "src.models.enums": "api/src/models/enums.py",
+    "tests.parity.workflow_domain_harness": "api/tests/parity/workflow_domain_harness.py",
+    "tests.parity.workflow_sql_harness": "api/tests/parity/workflow_sql_harness.py",
+    "src.services.execution.attempts": "api/src/services/execution/attempts.py",
+}
+
+
+def observer_context(value):
+    closed(value, {"schema", "candidate", "invocation_uuid", "parent_uid", "target_remaining_seconds"})
+    check(value["schema"] == "bifrost.private.result-observer-context/v1", "Result observer context schema")
+    observer_candidate(value["candidate"])
+    check(
+        type(value["invocation_uuid"]) is str and str(UUID(value["invocation_uuid"])) == value["invocation_uuid"],
+        "Result observer invocation",
+    )
+    check(type(value["parent_uid"]) is int and 0 <= value["parent_uid"] < 2**31, "Result observer parent UID")
+    budget = value["target_remaining_seconds"]
+    check(type(budget) in {int, float} and 0 < budget <= 900 and math.isfinite(budget), "Result observer launch bound")
+    return value
+
+
+def observer_candidate(value):
+    closed(value, {"head", "tree"})
+    check(
+        all(type(value[key]) is str and re.fullmatch(r"[0-9a-f]{40}", value[key]) for key in ("head", "tree")),
+        "Result observer candidate",
+    )
+
+
+def observer_original(actual, original, origin, expected_origin, actual_digest, mirror_digest, expected_digest):
+    check(actual is original and origin == expected_origin, "Result loaded original identity")
+    check(actual_digest == mirror_digest == expected_digest, "Result loaded source association")
+
+
+def observer_fixture(args, kwargs, original_url, null_pool, engine):
+    check(type(args) is tuple and args == (original_url,), "Result fixture constructor arguments")
+    check(type(kwargs) is dict and set(kwargs) == {"echo", "poolclass"}, "Result fixture constructor keys")
+    check(kwargs["echo"] is False and kwargs["poolclass"] is null_pool, "Result fixture constructor options")
+    check(engine is not None and engine.url == make_url(original_url), "Result fixture returned engine")
+
+
+def observer_phase(phase, engine, actual_engine, factory, actual_factory, cleared_engine=None, cleared_factory=None):
+    check(phase == "awaiting_source_close", "Result source close phase")
+    check(engine is actual_engine and factory is actual_factory, "Result source close identity")
+    check(cleared_engine is None and cleared_factory is None, "Result source close incomplete")
+
+
+def observer_preconnect(cargs, cparams, url):
+    check(type(cargs) is list and not cargs, "Result PRECONNECT positional arguments")
+    check(
+        type(cparams) is dict and set(cparams) == {"host", "port", "user", "password", "database"},
+        "Result PRECONNECT parameter keys",
+    )
+    expected = {
+        "host": url.host,
+        "port": url.port,
+        "user": url.username,
+        "password": url.password,
+        "database": url.database,
+    }
+    check(type(cparams["port"]) is int and 1 <= cparams["port"] <= 65535, "Result PRECONNECT port")
+    check(
+        all(type(cparams[key]) is str and cparams[key] for key in ("host", "user", "password", "database")),
+        "Result PRECONNECT string types",
+    )
+    check(cparams == expected, "Result PRECONNECT original endpoint")
+
+
+def observer_pair(pairs, record, dbapi, *, require=False):
+    matches = [pair for pair in pairs if pair[0] is record and pair[1] is dbapi]
+    check(len(matches) <= 1 and len(pairs) <= 16, "Result physical pair bound")
+    if require:
+        check(len(matches) == 1, "Result physical association absent")
+    elif not matches:
+        check(len(pairs) < 16, "Result physical association bound")
+        pairs.append((record, dbapi, None, None))
+
+
+def observer_actor(pairs, dbapi, connection, actor):
+    matches = [index for index, pair in enumerate(pairs) if pair[1] is dbapi]
+    check(len(matches) == 1, "Result actual actor physical connection")
+    index = matches[0]
+    record, physical, _previous_connection, _previous_actor = pairs[index]
+    pairs[index] = (record, physical, connection, actor)
+
+
+def observer_decisions(have_admit, have_failed):
+    check(
+        type(have_admit) is bool and type(have_failed) is bool and not (have_admit and have_failed),
+        "Result duplicate endpoint decisions",
+    )
+
+
+def observer_decision(value, context, *, rejected=False):
+    keys = {"schema", "invocation_uuid", "candidate", "phase", "decision"}
+    closed(value, keys | ({"reason"} if rejected else set()))
+    check(
+        value["schema"] == "bifrost.private.result-endpoint-decision/v1"
+        and value["invocation_uuid"] == context["invocation_uuid"]
+        and value["candidate"] == context["candidate"]
+        and value["phase"] == "frontend_observed_before_sql",
+        "Result endpoint decision association",
+    )
+    check(value["decision"] == ("reject" if rejected else "admit"), "Result endpoint decision kind")
+    if rejected:
+        check(
+            value["reason"] in {"frontend_unverified", "source_association", "deadline", "cleanup"},
+            "Result endpoint reason",
+        )
+
+
+def observer_request(value, context, source_hash, url):
+    closed(
+        value,
+        {
+            "schema",
+            "invocation_uuid",
+            "candidate",
+            "phase",
+            "fixture_source_sha256",
+            "provider",
+            "construction_index",
+            "hostname",
+            "port",
+            "drivername",
+        },
+    )
+    check(
+        value["schema"] == "bifrost.private.result-endpoint/v1"
+        and value["invocation_uuid"] == context["invocation_uuid"]
+        and value["candidate"] == context["candidate"]
+        and value["phase"] == "fixture_constructed_before_sql",
+        "Result endpoint request association",
+    )
+    check(
+        value["fixture_source_sha256"] == source_hash
+        and value["provider"] == "conftest_NullPool"
+        and type(value["construction_index"]) is int
+        and value["construction_index"] == 1,
+        "Result endpoint fixture provenance",
+    )
+    check(
+        type(value["hostname"]) is str
+        and value["hostname"].isascii()
+        and 1 <= len(value["hostname"]) <= 253
+        and value["hostname"] == url.host
+        and type(value["port"]) is int
+        and 1 <= value["port"] <= 65535
+        and value["port"] == url.port
+        and value["drivername"] == url.drivername == "postgresql+asyncpg",
+        "Result endpoint request fields",
+    )
+
+
+def observer_publication(info, temporary_info, *, uid, limit):
+    observer_file_fact(info, uid=uid, limit=limit, linked=True)
+    observer_file_fact(temporary_info, uid=uid, limit=limit, linked=True)
+    check(
+        (info.st_dev, info.st_ino) == (temporary_info.st_dev, temporary_info.st_ino),
+        "Result publication temporary association",
+    )
+
+
+def observer_file_fact(info, *, uid, limit, linked=False):
+    check(
+        stat.S_ISREG(info.st_mode)
+        and stat.S_IMODE(info.st_mode) == 0o644
+        and info.st_uid == uid
+        and info.st_nlink == (2 if linked else 1)
+        and 0 < info.st_size <= limit,
+        "Result shared metadata inode",
+    )
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode, info.st_uid, info.st_nlink
+
+
+def observer_settle(actions, original=None):
+    """Bounded owned actions share one independent first-object settlement rule."""
+    first = original
+    failed = False
+    for action in actions:
+        try:
+            action()
+        except BaseException as error:
+            failed = True
+            if first is None:
+                first = error
+    return first, failed
+
+
+def observer_independent(actions, original=None):
+    first, _failed = observer_settle(actions, original)
+    if first is not None:
+        raise first
+
+
+_OBSERVER_TESTS = {
+    "test_queued_cancel_emitted_update_order",
+    "test_result_nonfault_paired",
+    "test_result_nonfault_control",
+}
+_OBSERVER_FINAL_KEYS = {
+    "schema",
+    "candidate",
+    "invocation_uuid",
+    "phase",
+    "fixture_constructions",
+    "functions_entered",
+    "functions_completed",
+    "production_lifetimes",
+    "production_closed",
+    "loaded_bindings_verified",
+    "fixture_gate_removed",
+    "session_wrappers_restored",
+    "metadata_absent",
+    "poisoned",
+    "cleanup_failed",
+    "complete",
+    "export_item",
+}
+_OBSERVER_CHECKS = ("loaded_bindings_verified", "fixture_gate_removed", "session_wrappers_restored", "metadata_absent")
+
+
+def observer_junit_identity(nodeid):
+    check(type(nodeid) is str and nodeid.isascii() and 1 <= len(nodeid) <= 256, "Result export nodeid bound")
+    path, bracket, parameters = nodeid.partition("[")
+    names = path.split("::")
+    check(
+        len(names) == 2 and names[0] == "tests/parity/test_workflow_sql.py" and names[1] in _OBSERVER_TESTS,
+        "Result export selected item",
+    )
+    check(not bracket or parameters.endswith("]"), "Result export parameter suffix")
+    # Exact pytest9.0.3 mangle_test_address forward projection; no inverse normalization.
+    return names[0].replace("/", ".")[:-3], names[1] + bracket + parameters
+
+
+def observer_item(item, session, entered, *, require_last=False):
+    check(
+        item.session is session and type(session.items) is list and len(session.items) == 299,
+        "Result export public session",
+    )
+    check(sum(existing is item for existing in session.items) == 1, "Result export Item membership")
+    identities = [observer_junit_identity(existing.nodeid) for existing in session.items]
+    check(len(set(identities)) == 299, "Result export selected collection duplicate")
+    observer_junit_identity(item.nodeid)
+    if require_last:
+        check(
+            entered and entered[-1].test_item_identity is item and session.items[-1] is item,
+            "Result export last actual Item",
+        )
+    else:
+        check(
+            len(entered) < 299 and all(owner.test_item_identity is not item for owner in entered),
+            "Result entered Item duplicate",
+        )
+
+
+def observer_final_record(value, context, nodeid, *, require_complete=False):
+    closed(value, _OBSERVER_FINAL_KEYS)
+    check(
+        value["schema"] == "bifrost.private.result-source-observer-final/v1"
+        and value["candidate"] == context["candidate"]
+        and value["invocation_uuid"] == context["invocation_uuid"]
+        and value["phase"] == "observer_session_finalizer_after_owned_cleanup"
+        and value["export_item"] == nodeid,
+        "Result final export association",
+    )
+    observer_junit_identity(value["export_item"])
+    for name in (
+        "fixture_constructions",
+        "functions_entered",
+        "functions_completed",
+        "production_lifetimes",
+        "production_closed",
+    ):
+        check(
+            type(value[name]) is int and 0 <= value[name] <= (1 if name == "fixture_constructions" else 299),
+            "Result final actual count",
+        )
+    check(
+        value["functions_completed"] <= value["functions_entered"]
+        and value["production_closed"] <= value["production_lifetimes"] <= value["functions_entered"],
+        "Result final count relation",
+    )
+    for name in _OBSERVER_CHECKS:
+        check(value[name] is None or type(value[name]) is bool, "Result final nullable observation")
+    for name in ("poisoned", "cleanup_failed", "complete"):
+        check(type(value[name]) is bool, "Result final outcome type")
+    complete = (
+        value["fixture_constructions"] == 1
+        and value["functions_entered"] > 0
+        and value["functions_completed"] == value["functions_entered"]
+        and value["production_closed"] == value["production_lifetimes"]
+        and all(value[name] is True for name in _OBSERVER_CHECKS)
+        and not value["poisoned"]
+        and not value["cleanup_failed"]
+    )
+    check(value["complete"] is complete, "Result final completion predicate")
+    if require_complete:
+        check(complete and value["functions_entered"] == 299, "Result final complete admission")
+    raw = json.dumps(value, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
+    check(raw.isascii() and len(raw.encode("utf-8")) <= 2048, "Result final export bytes")
+    return raw
+
+
+def observer_append_final(item, raw):
+    check(type(item.user_properties) is list, "Result export property list")
+    check(all(type(pair) is tuple and len(pair) == 2 for pair in item.user_properties), "Result export property shape")
+    check(
+        not any(name == "result_source_observer_final" for name, _value in item.user_properties),
+        "Result final property duplicate",
+    )
+    item.user_properties.append(("result_source_observer_final", raw))
+
+
+class ResultSourceFunction:
+    def __init__(self, session, item):
+        self.session = session
+        self.test_item_identity = item
+        self.phase = "entered"
+        self.constructor = None
+        self.connections = []
+        self.own_listeners = []
+        self.closed = False
+        self.primary = None
+
+    def listen(self, target, name, callback):
+        check(len(self.own_listeners) < 16, "Result own listener bound")
+        # Register ownership before the fallible registration; removal checks actual membership.
+        self.own_listeners.append((target, name, callback))
+        event.listen(target, name, callback)
+
+    def admit_fixture_engine(self, engine):
+        check(self.session.active is self and self.phase == "entered", "Result function owner")
+        check(
+            self.session.fixture["engine"] is engine and self.session.fixture["endpoint_admitted"],
+            "Result fixture gate",
+        )
+
+    def admit_production_engine(self, engine):
+        check(self.constructor is not None and self.constructor["engine"] is engine, "Result production engine owner")
+        check(database._engine is engine, "Result production global engine association")
+        factory = database._async_session_factory
+        if factory is not None:
+            check(
+                factory.kw["bind"] is engine
+                and factory.kw.get("autoflush") is False
+                and factory.kw.get("expire_on_commit") is False,
+                "Result actual source factory association",
+            )
+            previous = self.constructor["factory"]
+            check(previous is None or previous is factory, "Result source factory replacement")
+            self.constructor["factory"] = factory
+
+    def finish(self, original=None):
+        self.primary = original
+        self.phase = "awaiting_source_close"
+        actions = []
+        if database._engine is not None:
+            actions.append(lambda: self.admit_production_engine(database._engine))
+        actions.extend(lambda hook=hook: self.session.remove_hook(hook) for hook in self.own_listeners)
+        try:
+            observer_independent(actions, original)
+        except BaseException as error:
+            self.primary = error
+            self.session.poison_with(error)
+            raise
+
+
+class ResultSourceObserver:
+    def __init__(self, context, pytest_session):
+        self.pytest_session = pytest_session
+        self.entered = []
+        self.context = observer_context(context)
+        self.originals = []
+        self.fixture = {
+            "original_alias": None,
+            "source_module": None,
+            "source_function": None,
+            "original_url": None,
+            "engine": None,
+            "construction_count": 0,
+            "endpoint_published": False,
+            "endpoint_admitted": False,
+        }
+        self.active = None
+        self.completed = []
+        self.poison = None
+        self.owned_files = []
+        self.created_at = time.monotonic()
+        self.modules = {}
+        self.bindings = []
+        self.session_hooks = []
+        self.environment = {key: key in os.environ for key in _OBSERVER_ENV}
+        check(not any(self.environment.values()), "Result inherited connection environment unsupported")
+        self.receipt = source_admission()
+        check(self.receipt["candidate"] == self.context["candidate"], "Result observer receipt candidate")
+        self.capture_loaded_sources()
+        check(
+            isinstance(pytest_session, sys.modules["pytest"].Session) and sys.modules["pytest"].__version__ == "9.0.3",
+            "Result original pytest session",
+        )
+        check(
+            pytest_session.config.getoption("junitprefix", None) in {None, ""}
+            and pytest_session.config.getoption("numprocesses", None) in {None, 0}
+            and pytest_session.config.getoption("reruns", None) in {None, 0},
+            "Result unsupported pytest execution profile",
+        )
+        self.install()
+
+    def poison_with(self, error):
+        if self.poison is None:
+            self.poison = error
+
+    def require_live(self):
+        if self.poison is not None:
+            raise self.poison
+        check(
+            {key: key in os.environ for key in _OBSERVER_ENV} == self.environment, "Result inherited environment drift"
+        )
+
+    @staticmethod
+    def source_path(path):
+        root = Path("/app").resolve(strict=True)
+        check(root == Path("/app"), "Result source root relocation")
+        expected = (root / Path(path).relative_to("api")).resolve(strict=True)
+        check(expected.is_relative_to(root), "Result source namespace escape")
+        return expected
+
+    def find_module(self, path):
+        expected = self.source_path(path)
+        found = []
+        for module in tuple(sys.modules.values()):
+            if not isinstance(module, ModuleType):
+                continue
+            filename = vars(module).get("__file__")
+            if type(filename) is not str or not filename.startswith("/app/"):
+                continue
+            try:
+                resolved = Path(filename).resolve(strict=True)
+            except FileNotFoundError:
+                continue
+            if resolved == expected and all(existing is not module for existing in found):
+                found.append(module)
+        check(len(found) == 1, "Result loaded module absent or ambiguous")
+        return found[0]
+
+    def capture_loaded_sources(self):
+        for name, path in _OBSERVER_MODULES.items():
+            module = sys.modules.get(name)
+            check(module is not None and module is self.find_module(path), "Result normal loaded module")
+            self.modules[path] = module
+        for path in ("api/tests/conftest.py", "api/tests/parity/test_workflow_sql.py"):
+            self.modules[path] = self.find_module(path)
+        for path, module in self.modules.items():
+            check(path in self.receipt["sources"], "Result observer source map incomplete")
+            actual = hashlib.sha256(read_file(Path(module.__file__), 4 * 1024 * 1024)).hexdigest()
+            mirror = hashlib.sha256(read_file(ROOT / path, 4 * 1024 * 1024)).hexdigest()
+            observer_original(
+                module,
+                module,
+                str(Path(module.__file__).resolve(strict=True)),
+                str(self.source_path(path)),
+                actual,
+                mirror,
+                self.receipt["sources"][path],
+            )
+        specs = {
+            "src.jobs.consumers.workflow_execution": [
+                ("WorkflowExecutionConsumer", "_process_success"),
+                ("WorkflowExecutionConsumer", "_process_failure"),
+                (None, "update_execution"),
+            ],
+            "src.repositories.executions": [(None, "update_execution"), (None, "_make_json_safe")],
+            "src.core.execution_variable_safety": [(None, "sanitize_execution_variables")],
+            "src.core.database": [
+                (None, name) for name in ("get_engine", "get_session_factory", "_prepare_asyncpg_url", "close_db")
+            ],
+            "src.config": [(None, "get_settings"), (None, "Settings")],
+            "src.models.orm.executions": [(None, "Execution"), (None, "WorkflowExecutionAttempt")],
+            "src.models.enums": [(None, "ExecutionStatus")],
+            "tests.parity.workflow_domain_harness": [
+                ("WorkflowCohort", name) for name in ("__init__", "seed", "add_attempt", "close")
+            ]
+            + [(None, name) for name in ("get_session_factory", "has_recorded_attempt", "mark_attempt_running")],
+            "tests.parity.workflow_sql_harness": [
+                (None, name)
+                for name in (
+                    "materialize",
+                    "prepare_json_inputs",
+                    "decode",
+                    "read_file",
+                    "python_result",
+                    "paired_result",
+                )
+            ]
+            + [("ResultCohort", name) for name in ("__init__", "seed", "empty_buffers", "snapshot", "close", "token")],
+            "src.services.execution.attempts": [
+                (None, name)
+                for name in (
+                    "has_recorded_attempt",
+                    "mark_attempt_running",
+                    "finalize_attempt",
+                    "failure_attempt_status",
+                )
+            ],
+        }
+        for name, entries in specs.items():
+            module = sys.modules[name]
+            for owner, attribute in entries:
+                target = module if owner is None else vars(module)[owner]
+                original = vars(target)[attribute]
+                defining = sys.modules.get(original.__module__)
+                check(
+                    defining is not None and defining.__file__ in {m.__file__ for m in self.modules.values()},
+                    "Result defining module source",
+                )
+                unwrapped = inspect.unwrap(original)
+                if hasattr(unwrapped, "__code__"):
+                    check(
+                        unwrapped.__code__.co_filename == defining.__file__ and unwrapped.__globals__ is vars(defining),
+                        "Result original code and globals origin",
+                    )
+                self.bindings.append((target, attribute, original))
+        tests = self.modules["api/tests/parity/test_workflow_sql.py"]
+        for name in (
+            "test_queued_cancel_emitted_update_order",
+            "test_result_nonfault_paired",
+            "test_result_nonfault_control",
+        ):
+            original = vars(tests)[name]
+            check(
+                original.__globals__ is vars(tests) and original.__code__.co_filename == tests.__file__,
+                "Result loaded test origin",
+            )
+            self.bindings.append((tests, name, original))
+        domain = sys.modules["tests.parity.workflow_domain_harness"]
+        attempts = sys.modules["src.services.execution.attempts"]
+        repository = sys.modules["src.repositories.executions"]
+        check(consumer_module.update_execution is repository.update_execution, "Result original repository alias")
+        check(
+            _make_json_safe is repository._make_json_safe
+            and sanitize_execution_variables
+            is sys.modules["src.core.execution_variable_safety"].sanitize_execution_variables,
+            "Result original sanitizer alias",
+        )
+        check(
+            domain.get_session_factory is database.get_session_factory
+            and WorkflowCohort is domain.WorkflowCohort
+            and ResultCohort.__bases__ == (domain.WorkflowCohort,),
+            "Result original factory and cohort aliases",
+        )
+        check(
+            domain.has_recorded_attempt is attempts.has_recorded_attempt
+            and domain.mark_attempt_running is attempts.mark_attempt_running,
+            "Result normal attempts aliases",
+        )
+        check(
+            database.get_settings is get_settings
+            and database.Settings is sys.modules["src.config"].Settings
+            and get_settings is sys.modules["src.config"].get_settings
+            and Execution is sys.modules["src.models.orm.executions"].Execution
+            and WorkflowExecutionAttempt is sys.modules["src.models.orm.executions"].WorkflowExecutionAttempt
+            and ExecutionStatus is sys.modules["src.models.enums"].ExecutionStatus,
+            "Result original harness aliases",
+        )
+
+        harness = sys.modules["tests.parity.workflow_sql_harness"]
+        self.aliases = [
+            (harness, name, vars(harness)[name])
+            for name in (
+                "consumer_module",
+                "database",
+                "get_settings",
+                "WorkflowCohort",
+                "Execution",
+                "WorkflowExecutionAttempt",
+                "ExecutionStatus",
+                "_make_json_safe",
+                "sanitize_execution_variables",
+            )
+        ]
+        self.aliases.extend((database, name, vars(database)[name]) for name in ("get_settings", "Settings"))
+        conftest = self.modules["api/tests/conftest.py"]
+        self.aliases.extend((conftest, name, vars(conftest)[name]) for name in ("async_engine", "NullPool"))
+
+    def loaded_source_admission(self, receipt, *, restored=False):
+        if not restored:
+            self.require_live()
+        else:
+            check(
+                {key: key in os.environ for key in _OBSERVER_ENV} == self.environment,
+                "Result final inherited environment drift",
+            )
+        check(
+            receipt["candidate"] == self.context["candidate"] and receipt["sources"] == self.receipt["sources"],
+            "Result observer source receipt drift",
+        )
+        replacements = (
+            {} if restored else {(id(target), name): wrapper for target, name, _original, wrapper in self.originals}
+        )
+        for target, name, original in self.bindings:
+            check(vars(target)[name] is replacements.get((id(target), name), original), "Result original binding drift")
+        for target, name, original in self.aliases:
+            check(vars(target)[name] is original, "Result original alias drift")
+        for path, module in self.modules.items():
+            expected = self.receipt["sources"][path]
+            actual = hashlib.sha256(read_file(Path(module.__file__), 4 * 1024 * 1024)).hexdigest()
+            mirror = hashlib.sha256(read_file(ROOT / path, 4 * 1024 * 1024)).hexdigest()
+            observer_original(
+                module,
+                self.find_module(path),
+                str(Path(module.__file__).resolve(strict=True)),
+                str(self.source_path(path)),
+                actual,
+                mirror,
+                expected,
+            )
+
+    def replace(self, target, name, wrapper):
+        original = vars(target)[name]
+        self.originals.append((target, name, original, wrapper))
+        setattr(target, name, wrapper)
+
+    @staticmethod
+    def remove_hook(hook):
+        target, name, callback = hook
+        if event.contains(target, name, callback):
+            event.remove(target, name, callback)
+        check(not event.contains(target, name, callback), "Result own callback retained")
+
+    def install(self):
+        conftest = self.modules["api/tests/conftest.py"]
+        fixture_function = inspect.unwrap(conftest.async_engine)
+        check(
+            inspect.isgeneratorfunction(fixture_function)
+            and fixture_function.__globals__ is vars(conftest)
+            and fixture_function.__code__.co_filename == conftest.__file__,
+            "Result genuine fixture function",
+        )
+        self.fixture["source_module"] = conftest
+        self.fixture["source_function"] = fixture_function
+        self.fixture["original_alias"] = conftest.create_async_engine
+        self.fixture["original_url"] = conftest.TEST_DATABASE_URL
+        original_fixture = conftest.create_async_engine
+        original_production = database.create_async_engine
+        original_close = database.close_db
+        check(
+            original_fixture is original_production
+            and original_fixture.__module__ == "sqlalchemy.ext.asyncio.engine"
+            and conftest.NullPool is sys.modules["sqlalchemy.pool.impl"].NullPool
+            and original_fixture is sys.modules["sqlalchemy.ext.asyncio.engine"].create_async_engine
+            and sys.modules["sqlalchemy"].__version__ == "2.0.49",
+            "Result original third-party constructor",
+        )
+
+        def fixture_constructor(*args, **kwargs):
+            self.require_live()
+            check(self.fixture["construction_count"] == 0, "Result duplicate fixture construction")
+            # Observe the actual original return before associating it; no constructor replay.
+            engine = original_fixture(*args, **kwargs)
+            self.fixture["engine"] = engine
+            self.fixture["construction_count"] = 1
+            observer_fixture(args, kwargs, self.fixture["original_url"], conftest.NullPool, engine)
+            gate = (engine.sync_engine, "before_cursor_execute", self.fixture_sql_gate)
+            self.session_hooks.append(gate)
+            event.listen(*gate)
+            self.publish_fixture_endpoint(engine.url)
+            return engine
+
+        def production_constructor(*args, **kwargs):
+            self.require_live()
+            owner = self.active
+            check(
+                owner is not None and owner.phase == "entered" and owner.constructor is None,
+                "Result production constructor lifetime",
+            )
+            frame = inspect.currentframe()
+            caller = None
+            try:
+                caller = frame.f_back
+                check(
+                    caller is not None
+                    and caller.f_code is self.original_get_engine.__code__
+                    and caller.f_globals is vars(database)
+                    and caller.f_code.co_filename == database.__file__,
+                    "Result original constructor callsite",
+                )
+                settings = caller.f_locals["settings"]
+                prepared = caller.f_locals["db_url"]
+                options = caller.f_locals["connect_args"]
+                check(
+                    type(settings) is sys.modules["src.config"].Settings
+                    and type(prepared) is str
+                    and type(options) is dict,
+                    "Result actual source constructor local types",
+                )
+            finally:
+                del caller
+                del frame
+            check(
+                args == (prepared,)
+                and type(kwargs) is dict
+                and set(kwargs)
+                == {
+                    "echo",
+                    "pool_size",
+                    "max_overflow",
+                    "pool_pre_ping",
+                    "pool_timeout",
+                    "pool_recycle",
+                    "connect_args",
+                },
+                "Result production source constructor",
+            )
+            check(
+                kwargs["echo"] is settings.debug
+                and kwargs["pool_size"] == settings.database_pool_size
+                and kwargs["max_overflow"] == settings.database_max_overflow
+                and kwargs["pool_pre_ping"] is True
+                and kwargs["pool_timeout"] == 30
+                and kwargs["pool_recycle"] == 1800
+                and kwargs["connect_args"] is options,
+                "Result production source options",
+            )
+            observer_original(
+                database.get_engine,
+                self.original_get_engine,
+                self.original_get_engine.__code__.co_filename,
+                database.__file__,
+                hashlib.sha256(read_file(Path(database.__file__), 4 * 1024 * 1024)).hexdigest(),
+                hashlib.sha256(read_file(ROOT / "api/src/core/database.py", 4 * 1024 * 1024)).hexdigest(),
+                self.receipt["sources"]["api/src/core/database.py"],
+            )
+            original_url = make_url(settings.database_url)
+            check(
+                not options
+                and set(original_url.query) <= {"sslmode"}
+                and original_url.query.get("sslmode") in {None, "disable"},
+                "Result observed TLS profile unsupported",
+            )
+            check(
+                make_url(prepared).host == self.fixture["engine"].url.host
+                and make_url(prepared).port == self.fixture["engine"].url.port
+                and make_url(prepared).drivername == "postgresql+asyncpg",
+                "Result fixture production endpoint association",
+            )
+            engine = original_production(*args, **kwargs)
+            owner.constructor = {
+                "settings": settings,
+                "original_url": original_url,
+                "prepared": prepared,
+                "options": options,
+                "kwargs": kwargs,
+                "engine": engine,
+                "factory": None,
+            }
+            self.install_physical(owner, engine, original_url)
+            return engine
+
+        async def close_observed():
+            owner = self.active
+            actual_engine, actual_factory = database._engine, database._async_session_factory
+            try:
+                await original_close()
+            except BaseException as error:
+                self.poison_with(error)
+                raise
+            if owner is not None:
+                try:
+                    record = owner.constructor
+                    observer_phase(
+                        owner.phase,
+                        record["engine"] if record else None,
+                        actual_engine,
+                        record["factory"] if record else None,
+                        actual_factory,
+                        database._engine,
+                        database._async_session_factory,
+                    )
+                    check(len(self.completed) < 299, "Result completed lifetime bound")
+                    owner.closed = True
+                    owner.phase = "completed"
+                    self.completed.append(owner)
+                    self.active = None
+                except BaseException as error:
+                    self.poison_with(error)
+                    raise
+            else:
+                check(actual_engine is None and actual_factory is None, "Result unrelated source close lifetime")
+
+        self.original_get_engine = database.get_engine
+        try:
+            self.replace(conftest, "create_async_engine", fixture_constructor)
+            self.replace(database, "create_async_engine", production_constructor)
+            self.replace(database, "close_db", close_observed)
+        except BaseException as error:
+            self.close(error)
+
+    def fixture_sql_gate(self, *_args):
+        check(self.fixture["endpoint_admitted"], "Result earliest SQL frontend gate")
+
+    def begin_function(self, item):
+        self.require_live()
+        check(
+            self.active is None and database._engine is None and database._async_session_factory is None,
+            "Result source pre-close lifetime",
+        )
+        self.loaded_source_admission(source_admission())
+        check(isinstance(item, sys.modules["pytest"].Item), "Result genuine public Item")
+        observer_item(item, self.pytest_session, self.entered)
+        owner = ResultSourceFunction(self, item)
+        self.active = owner
+        self.entered.append(owner)
+        return owner
+
+    def install_physical(self, owner, engine, original_url):
+        preconnect = []
+
+        def connecting(dialect, record, cargs, cparams):
+            check(
+                self.active is owner and owner.phase == "entered" and dialect is engine.sync_engine.dialect,
+                "Result PRECONNECT lifetime",
+            )
+            observer_preconnect(cargs, cparams, original_url)
+            if not any(existing is record for existing in preconnect):
+                check(len(preconnect) < 16, "Result PRECONNECT record bound")
+                preconnect.append(record)
+
+        def connected(dbapi, record):
+            check(any(existing is record for existing in preconnect), "Result physical source PRECONNECT association")
+            observer_pair(owner.connections, record, dbapi)
+
+        def checkout(dbapi, record, _proxy):
+            observer_pair(owner.connections, record, dbapi, require=True)
+
+        def executing(connection, *_args):
+            check(self.active is owner and owner.phase == "entered", "Result actual SQL owner")
+            owner.admit_production_engine(engine)
+            physical = connection.connection.dbapi_connection
+            # Actual source may open separate completion-metrics sessions. Record
+            # their physical association without widening or replacing clock roles.
+            observer_actor(owner.connections, physical, connection, _CLOCK_ACTOR.get())
+
+        owner.listen(engine.sync_engine, "do_connect", connecting)
+        owner.listen(engine.sync_engine.pool, "connect", connected)
+        owner.listen(engine.sync_engine.pool, "checkout", checkout)
+        owner.listen(engine.sync_engine, "before_cursor_execute", executing)
+
+    def shared_path(self, suffix):
+        return Path("/bifrost-results") / f".result-endpoint-{self.context['invocation_uuid']}-{suffix}.json"
+
+    def publish_fixture_endpoint(self, url):
+        # Actual constructor handshake origin; never child startup or parent-clock equality.
+        end = time.monotonic() + min(5, self.context["target_remaining_seconds"])
+        check(
+            type(url.host) is str
+            and url.host.isascii()
+            and 1 <= len(url.host) <= 253
+            and type(url.port) is int
+            and 1 <= url.port <= 65535
+            and url.drivername == "postgresql+asyncpg",
+            "Result actual fixture endpoint types",
+        )
+        request = {
+            "schema": "bifrost.private.result-endpoint/v1",
+            "invocation_uuid": self.context["invocation_uuid"],
+            "candidate": self.context["candidate"],
+            "phase": "fixture_constructed_before_sql",
+            "fixture_source_sha256": self.receipt["sources"]["api/tests/conftest.py"],
+            "provider": "conftest_NullPool",
+            "construction_index": 1,
+            "hostname": url.host,
+            "port": url.port,
+            "drivername": url.drivername,
+        }
+        observer_request(request, self.context, self.receipt["sources"]["api/tests/conftest.py"], url)
+        raw = json.dumps(request, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode("ascii")
+        check(len(raw) <= 4096 and os.geteuid() == 1000, "Result endpoint publication bound")
+        directory = os.stat("/bifrost-results", follow_symlinks=False)
+        check(
+            stat.S_ISDIR(directory.st_mode) and stat.S_IMODE(directory.st_mode) == 0o777 and directory.st_uid == 1000,
+            "Result supported shared directory",
+        )
+        final = self.shared_path("request")
+        temporary = self.shared_path("request.part")
+        fd = None
+        original = None
+        try:
+            temporary_index = len(self.owned_files)
+            self.owned_files.append((temporary, None, None))
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
+            info = os.fstat(fd)
+            self.owned_files[temporary_index] = (temporary, info.st_dev, info.st_ino)
+            os.fchmod(fd, 0o644)
+            offset = 0
+            while offset < len(raw):
+                written = os.write(fd, raw[offset:])
+                check(written > 0, "Result metadata write incomplete")
+                offset += written
+            os.fsync(fd)
+            info = os.fstat(fd)
+            observer_file_fact(info, uid=1000, limit=4096)
+            os.close(fd)
+            fd = None
+            final_index = len(self.owned_files)
+            self.owned_files.append((final, None, None))
+            os.link(temporary, final, follow_symlinks=False)
+            self.owned_files[final_index] = (final, info.st_dev, info.st_ino)
+            os.unlink(temporary)
+            check(
+                observer_file_fact(os.stat(final, follow_symlinks=False), uid=1000, limit=4096)
+                == observer_file_fact(info, uid=1000, limit=4096)
+                and not os.path.lexists(temporary),
+                "Result endpoint publication readback",
+            )
+            self.fixture["endpoint_published"] = True
+            self.read_endpoint_decision(end)
+        except BaseException as error:
+            original = error
+            self.poison_with(error)
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except BaseException as error:
+                    if original is None:
+                        original = error
+                        self.poison_with(error)
+        if original is not None:
+            raise original
+
+    def read_shared(self, path, *, limit, uid, end):
+        temporary = path.with_name(path.stem + ".part.json")
+        while True:
+            info = os.stat(path, follow_symlinks=False)
+            if info.st_nlink != 2:
+                break
+            check(time.monotonic() < end, "Result metadata publication deadline")
+            observer_publication(info, os.stat(temporary, follow_symlinks=False), uid=uid, limit=limit)
+            time.sleep(0.01)
+        before = observer_file_fact(info, uid=uid, limit=limit)
+        fd = None
+        original = None
+        data = bytearray()
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+            check(observer_file_fact(os.fstat(fd), uid=uid, limit=limit) == before, "Result opened metadata identity")
+            self.owned_files.append((path, info.st_dev, info.st_ino))
+            while block := os.read(fd, min(1024, limit + 1 - len(data))):
+                data.extend(block)
+                check(len(data) <= limit, "Result metadata read bound")
+            check(
+                observer_file_fact(os.fstat(fd), uid=uid, limit=limit) == before and len(data) == info.st_size,
+                "Result metadata complete stable read",
+            )
+        except BaseException as error:
+            original = error
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except BaseException as error:
+                    if original is None:
+                        original = error
+        if original is not None:
+            raise original
+        after = observer_file_fact(os.stat(path, follow_symlinks=False), uid=uid, limit=limit)
+        check(before == after and not os.path.lexists(temporary), "Result shared metadata stable publication")
+        return decode(bytes(data))
+
+    def read_endpoint_decision(self, end):
+        admit, failed = self.shared_path("admit"), self.shared_path("failed")
+        while True:
+            have_admit, have_failed = os.path.lexists(admit), os.path.lexists(failed)
+            observer_decisions(have_admit, have_failed)
+            if have_admit or have_failed:
+                value = self.read_shared(
+                    failed if have_failed else admit, limit=1024, uid=self.context["parent_uid"], end=end
+                )
+                observer_decision(value, self.context, rejected=have_failed)
+                check(time.monotonic() < end, "Result endpoint admission deadline")
+                check(not have_failed, "Result frontend rejected")
+                check(not os.path.lexists(failed), "Result late duplicate endpoint decision")
+                self.fixture["endpoint_admitted"] = True
+                return
+            check(time.monotonic() < end, "Result endpoint decision deadline")
+            time.sleep(0.01)
+
+    def close(self, original=None):
+        first = original if original is not None else self.poison
+        cleanup_failed = False
+        outcomes = dict.fromkeys(_OBSERVER_CHECKS)
+        actions = []
+        for hook in self.session_hooks:
+            actions.append(lambda hook=hook: self.remove_hook(hook))
+        # Function finalizers already attempted these hooks; independently verify/remove retained own hooks.
+        for owner in self.entered:
+            actions.extend(lambda hook=hook: self.remove_hook(hook) for hook in owner.own_listeners)
+        for target, name, captured, wrapper in reversed(self.originals):
+
+            def restore(target=target, name=name, captured=captured, wrapper=wrapper):
+                check(vars(target)[name] is wrapper, "Result foreign observer alias replacement")
+                setattr(target, name, captured)
+                check(vars(target)[name] is captured, "Result observer alias restoration")
+
+            actions.append(restore)
+        for path, device, inode in self.owned_files:
+
+            def remove(path=path, device=device, inode=inode):
+                try:
+                    info = os.stat(path, follow_symlinks=False)
+                except FileNotFoundError:
+                    return
+                check(
+                    device is not None and inode is not None and (info.st_dev, info.st_ino) == (device, inode),
+                    "Result foreign metadata cleanup",
+                )
+                os.unlink(path)
+                check(not os.path.lexists(path), "Result metadata retained")
+
+            actions.append(remove)
+
+        def lifetime_complete():
+            check(self.active is None, "Result source close not completed")
+            check(
+                {key: key in os.environ for key in _OBSERVER_ENV} == self.environment,
+                "Result final inherited environment drift",
+            )
+
+        actions.append(lifetime_complete)
+        first, cleanup_failed = observer_settle(actions, first)
+
+        def hooks_removed():
+            hooks = self.session_hooks + [hook for owner in self.entered for hook in owner.own_listeners]
+            check(all(not event.contains(*hook) for hook in hooks), "Result observer hook readback")
+
+        def wrappers_restored():
+            check(
+                all(vars(target)[name] is captured for target, name, captured, _wrapper in self.originals),
+                "Result observer wrapper readback",
+            )
+
+        def metadata_absent():
+            check(
+                all(not os.path.lexists(path) for path, _device, _inode in self.owned_files),
+                "Result observer metadata readback",
+            )
+
+        checks = {
+            "loaded_bindings_verified": lambda: self.loaded_source_admission(source_admission(), restored=True),
+            "fixture_gate_removed": hooks_removed,
+            "session_wrappers_restored": wrappers_restored,
+            "metadata_absent": metadata_absent,
+        }
+        for name, action in checks.items():
+            try:
+                action()
+                outcomes[name] = True
+            except BaseException as error:
+                outcomes[name] = False
+                cleanup_failed = True
+                if first is None:
+                    first = error
+        # Protected publication does not claim later unrelated finalizers succeeded.
+        try:
+            check(self.entered, "Result final Item absent")
+            item = self.entered[-1].test_item_identity
+            observer_item(item, self.pytest_session, self.entered, require_last=True)
+            production = [owner for owner in self.entered if owner.constructor is not None]
+            value = {
+                "schema": "bifrost.private.result-source-observer-final/v1",
+                "candidate": self.context["candidate"],
+                "invocation_uuid": self.context["invocation_uuid"],
+                "phase": "observer_session_finalizer_after_owned_cleanup",
+                "fixture_constructions": self.fixture["construction_count"],
+                "functions_entered": len(self.entered),
+                "functions_completed": len(self.completed),
+                "production_lifetimes": len(production),
+                "production_closed": sum(owner.closed for owner in production),
+                **outcomes,
+                "poisoned": self.poison is not None,
+                "cleanup_failed": cleanup_failed,
+                "complete": False,
+                "export_item": item.nodeid,
+            }
+            value["complete"] = (
+                value["fixture_constructions"] == 1
+                and self.fixture["endpoint_admitted"]
+                and value["functions_entered"] > 0
+                and value["functions_completed"] == value["functions_entered"]
+                and value["production_closed"] == value["production_lifetimes"]
+                and all(value[name] is True for name in _OBSERVER_CHECKS)
+                and not value["poisoned"]
+                and not value["cleanup_failed"]
+            )
+            raw = observer_final_record(value, self.context, item.nodeid)
+            observer_append_final(item, raw)
+        except BaseException as error:
+            if first is None:
+                first = error
+        if first is not None:
+            raise first
+
+
+def source_session(pytest_session):
+    raw = os.environ.get("BIFROST_RESULT_OBSERVER_CONTEXT")
+    if raw is None:
+        return None
+    check(raw.isascii() and len(raw.encode("ascii")) <= 4096, "Result observer context bound")
+    return ResultSourceObserver(decode(raw.encode("ascii")), pytest_session)
+
+
+def require_source_observer(case):
+    owner = case.source_observer
+    check(type(owner) is ResultSourceFunction and owner.session.active is owner, "Result observer input absent")
+    owner.session.loaded_source_admission(source_admission())
+    owner.admit_fixture_engine(case.fixture_engine)
+    if database._engine is not None:
+        owner.admit_production_engine(database._engine)
+    return owner
+
+
+def source_observer_controls():
+    """Eight synthetic families exercise these exact runtime validators; no custody claim."""
+
+    def negative(action):
+        try:
+            action()
+        except AssertionError:
+            return
+        raise AssertionError("Result source observer negative control accepted")
+
+    completed = 0
+    original, foreign = object(), object()
+    observer_original(original, original, "/app/a", "/app/a", "d", "d", "d")
+    negative(lambda: observer_original(original, foreign, "/app/a", "/app/a", "d", "d", "d"))
+    negative(lambda: observer_original(original, original, "/app/a", "/app/a", "d", "x", "d"))
+    negative(lambda: observer_original(original, original, "/api/a", "/app/a", "d", "d", "d"))
+    completed += 1
+    url = make_url("postgresql+asyncpg://synthetic:synthetic@localhost:5432/synthetic")
+    engine, null_pool = SimpleNamespace(url=url), object()
+    observer_fixture((url,), {"echo": False, "poolclass": null_pool}, url, null_pool, engine)
+    negative(lambda: observer_fixture((url,), {"echo": False, "poolclass": foreign}, url, null_pool, engine))
+    completed += 1
+    observer_phase("awaiting_source_close", engine, engine, original, original)
+    negative(lambda: observer_phase("entered", engine, engine, original, original))
+    negative(lambda: observer_phase("awaiting_source_close", engine, foreign, original, original))
+    second_engine = object()
+    observer_phase("awaiting_source_close", second_engine, second_engine, None, None)
+    negative(lambda: observer_phase("awaiting_source_close", engine, engine, original, original, engine, None))
+    completed += 1
+    parameters = {
+        "host": "localhost",
+        "port": 5432,
+        "user": "synthetic",
+        "password": "synthetic",
+        "database": "synthetic",
+    }
+    observer_preconnect([], parameters, url)
+    negative(lambda: observer_preconnect([], parameters | {"ssl": False}, url))
+    negative(lambda: observer_preconnect([], parameters | {"port": True}, url))
+    completed += 1
+    pairs = []
+    observer_pair(pairs, original, engine)
+    observer_pair(pairs, original, engine, require=True)
+    observer_actor(pairs, engine, foreign, original)
+    check(pairs[0][2] is foreign and pairs[0][3] is original, "Result actor reference control")
+    negative(lambda: observer_actor(pairs, original, foreign, original))
+    negative(lambda: observer_pair(pairs, foreign, engine, require=True))
+    completed += 1
+    context = {
+        "schema": "bifrost.private.result-observer-context/v1",
+        "candidate": {"head": "a" * 40, "tree": "b" * 40},
+        "invocation_uuid": "00000000-0000-4000-8000-000000000001",
+        "parent_uid": 1001,
+        "target_remaining_seconds": 900,
+    }
+    observer_context(context)
+    decision = {
+        "schema": "bifrost.private.result-endpoint-decision/v1",
+        "candidate": context["candidate"],
+        "invocation_uuid": context["invocation_uuid"],
+        "phase": "frontend_observed_before_sql",
+        "decision": "admit",
+    }
+    request = {
+        "schema": "bifrost.private.result-endpoint/v1",
+        "invocation_uuid": context["invocation_uuid"],
+        "candidate": context["candidate"],
+        "phase": "fixture_constructed_before_sql",
+        "fixture_source_sha256": "c" * 64,
+        "provider": "conftest_NullPool",
+        "construction_index": 1,
+        "hostname": url.host,
+        "port": url.port,
+        "drivername": url.drivername,
+    }
+    observer_request(request, context, "c" * 64, url)
+    negative(lambda: observer_request(request | {"construction_index": True}, context, "c" * 64, url))
+    observer_decisions(True, False)
+    negative(lambda: observer_decisions(True, True))
+    observer_decision(decision, context)
+    negative(lambda: observer_decision(decision | {"decision": "reject"}, context))
+    negative(lambda: observer_context(context | {"parent_uid": True}))
+    completed += 1
+    info = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o644, st_uid=1000, st_nlink=1, st_size=100, st_dev=1, st_ino=2, st_mtime_ns=3
+    )
+    observer_file_fact(info, uid=1000, limit=4096)
+    negative(lambda: observer_file_fact(info, uid=1001, limit=4096))
+    negative(lambda: observer_file_fact(info, uid=1000, limit=99))
+    linked = SimpleNamespace(**(vars(info) | {"st_nlink": 2}))
+    observer_publication(linked, linked, uid=1000, limit=4096)
+    negative(
+        lambda: observer_publication(linked, SimpleNamespace(**(vars(linked) | {"st_ino": 9})), uid=1000, limit=4096)
+    )
+    completed += 1
+    sentinel = KeyboardInterrupt()
+    settled = []
+    try:
+        observer_independent(
+            [lambda: settled.append(1), lambda: (_ for _ in ()).throw(ValueError()), lambda: settled.append(2)],
+            sentinel,
+        )
+    except BaseException as error:
+        check(error is sentinel and settled == [1, 2], "Result first error cleanup identity")
+    else:
+        raise AssertionError("Result first error control swallowed")
+    settled.clear()
+    try:
+        observer_independent([lambda: (_ for _ in ()).throw(sentinel), lambda: settled.append(3)])
+    except BaseException as error:
+        check(error is sentinel and settled == [3], "Result acquired cleanup first-object control")
+    else:
+        raise AssertionError("Result acquired control swallowed")
+    session = SimpleNamespace(items=[])
+    session.items = [
+        SimpleNamespace(
+            session=session,
+            nodeid=f"tests/parity/test_workflow_sql.py::test_result_nonfault_control[p-synthetic-{index}]",
+            user_properties=[],
+        )
+        for index in range(299)
+    ]
+    item = session.items[-1]
+    entered = [SimpleNamespace(test_item_identity=item)]
+    observer_item(item, session, [], require_last=False)
+    observer_item(item, session, entered, require_last=True)
+    negative(lambda: observer_item(session.items[0], session, entered, require_last=True))
+    final = {
+        "schema": "bifrost.private.result-source-observer-final/v1",
+        "candidate": context["candidate"],
+        "invocation_uuid": context["invocation_uuid"],
+        "phase": "observer_session_finalizer_after_owned_cleanup",
+        "fixture_constructions": 1,
+        "functions_entered": 299,
+        "functions_completed": 299,
+        "production_lifetimes": 2,
+        "production_closed": 2,
+        **dict.fromkeys(_OBSERVER_CHECKS, True),
+        "poisoned": False,
+        "cleanup_failed": False,
+        "complete": True,
+        "export_item": item.nodeid,
+    }
+    raw = observer_final_record(final, context, item.nodeid, require_complete=True)
+    negative(
+        lambda: observer_final_record(final | {"metadata_absent": None}, context, item.nodeid, require_complete=True)
+    )
+    negative(lambda: observer_final_record(final | {"functions_completed": True}, context, item.nodeid))
+    observer_append_final(item, raw)
+    negative(lambda: observer_append_final(item, raw))
+    check(item.user_properties == [("result_source_observer_final", raw)], "Result final publication control")
+    completed += 1
+    return completed
 
 
 class CaseLifetime:
@@ -430,8 +1743,12 @@ class CaseLifetime:
 
 
 @asynccontextmanager
-async def lifetime(request):
+async def lifetime(request, observer=None, fixture_engine=None):
+    check(type(observer) is ResultSourceFunction, "Result observer input absent")
     case = CaseLifetime(request)
+    case.source_observer = observer
+    case.fixture_engine = fixture_engine
+    require_source_observer(case)
     original = None
     try:
         async with asyncio.timeout_at(case.work_end):
@@ -449,8 +1766,11 @@ async def lifetime(request):
 
 
 async def invoke(case: CaseLifetime, payload: bytes, mode: str, *, database_url: str | None = None):
-    source_admission()
-    check(mode in {"apply-result", "decode-number"} and len(payload) <= 65537, "Result invocation admission")
+    require_source_observer(case)
+    check(
+        mode in {"apply-result", "decode-number", "observe-feature-marker"} and len(payload) <= 65537,
+        "Result invocation admission",
+    )
     env = {key: os.environ[key] for key in ("PATH", "HOME", "USER", "LANG", "LC_ALL") if key in os.environ}
     if database_url is not None:
         env["BIFROST_RUST_TEST_DATABASE_URL"] = database_url
@@ -526,7 +1846,7 @@ async def invoke(case: CaseLifetime, payload: bytes, mode: str, *, database_url:
     if original is not None:
         raise original
     check(proc is not None and proc.returncode is not None and not stderr, "Result child completion")
-    source_admission()
+    require_source_observer(case)
     return proc.returncode, stdout
 
 
@@ -964,6 +2284,7 @@ def clock_roles_selected(payload):
 
 
 async def python_result(cohort, fields, case, *, source_width=False):
+    require_source_observer(case)
     payload = materialize(fields, cohort.fixture["lane"])
     payload.update(sync=False, execution_id=str(cohort.ids["execution"]))
     token = cohort.token()
@@ -996,6 +2317,7 @@ async def python_result(cohort, fields, case, *, source_width=False):
                         source_code = code
                         check(source_width or code == "22003", "Result unexpected reference SQL failure")
                         reference = "source_width_failure" if source_width else "numeric_range"
+    require_source_observer(case)
     await cohort.empty_buffers()
     events = await cohort.events()
     case.request.node.user_properties.append(("result_source_sqlstate", source_code or "none"))
@@ -1457,8 +2779,9 @@ def compare_rows(left, right, left_before, right_before, left_cohort, right_coho
 
 
 async def paired_result(engine, fixture, case):
+    require_source_observer(case)
     dsn = driver_dsn(engine)
-    source_admission()
+    source_admission(case.source_observer)
     cohorts = []
     for _ in range(2):
         cohort = ResultCohort(engine, fixture)
@@ -1607,6 +2930,66 @@ async def decode_control(case, case_id):
     if case_id == "p-005":
         clock_comparison_controls()
         case.request.node.user_properties.append(("result_clock_controls", 6))
+        completed = source_observer_controls()
+        check(completed == 8, "Result observer control completion")
+        case.request.node.user_properties.append(("result_source_observer_controls", completed))
+        check(
+            case.request.node.nodeid
+            == "tests/parity/test_workflow_sql.py::test_result_nonfault_control[Decode-parity gate-p-005]",
+            "Result feature fixture Item identity",
+        )
+        check(
+            not any(key == "result_feature_fixture" for key, _ in case.request.node.user_properties),
+            "Result feature fixture duplicate property",
+        )
+        source_admission(case.source_observer)
+        fixture_case = next(value for value in load_fixture()["cases"] if value["case_id"] == "s-result-absent")
+        fields = decode(fixture_case["raw_fields_json"].encode())
+        marker = {"$serde_json::private::RawValue": '{"hidden":1}', "visible": 2}
+        for key in ("result", "variables", "execution_context"):
+            fields[key] = {"kind": "value", "value": deepcopy(marker)}
+        prepared = prepare_json_inputs(fields, "success")
+        for key in ("prepared_result", "prepared_variables", "prepared_context"):
+            check(prepared[key]["kind"] == "value", "Result feature Python presence")
+            ordinary = json.loads(json.dumps(prepared[key]["value"], allow_nan=False))
+            check(
+                type(ordinary) is dict
+                and set(ordinary) == {"$serde_json::private::RawValue", "visible"}
+                and ordinary["$serde_json::private::RawValue"] == '{"hidden":1}'
+                and type(ordinary["visible"]) is int
+                and ordinary["visible"] == 2,
+                "Result feature Python ordinary preservation",
+            )
+        marker_request = {
+            "schema": "bifrost.test.workflow-sql/v1",
+            "case_id": "syntheticFeatureMarker",
+            "operation": {"kind": "result", "lane": "success", "raw_fields": fields},
+            "cohort": {"execution_id": "00000000-0000-0000-0000-000000000001", "submitted_token": None},
+            "projection": prepared,
+        }
+        code, raw = await invoke(case, json.dumps(marker_request, allow_nan=False).encode(), "observe-feature-marker")
+        check(code == 0, "Result feature native exit")
+        observed = decode(raw)
+        closed(observed, {"schema", "case_id", "result", "variables", "context"})
+        check(
+            observed["schema"] == "bifrost.test.workflow-result-feature-marker/v1"
+            and observed["case_id"] == "syntheticFeatureMarker",
+            "Result feature native identity",
+        )
+        for key in ("result", "variables", "context"):
+            check(type(observed[key]) is bool and observed[key], "Result feature native preservation")
+        property_value = {
+            "schema": "bifrost.test.workflow-result-feature-fixture/v1",
+            "case_id": "syntheticFeatureMarker",
+            "python_completed": True,
+            "native_completed": True,
+            "result": observed["result"],
+            "variables": observed["variables"],
+            "context": observed["context"],
+        }
+        encoded = json.dumps(property_value, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
+        check(encoded.isascii() and len(encoded.encode("ascii")) <= 512, "Result feature property bound")
+        case.request.node.user_properties.append(("result_feature_fixture", encoded))
     lexeme, role = number_vector(case_id)
     request = {"schema": "bifrost.test.workflow-sql-number/v1", "case_id": case_id, "role": role, "lexeme": lexeme}
     code, raw = await invoke(case, json.dumps(request).encode(), "decode-number")
