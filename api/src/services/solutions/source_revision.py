@@ -61,6 +61,7 @@ from src.services.solutions.shared_table_bindings import (
 
 _SOURCE_REVISION_MARKER = "bifrost.solution-source-revision/v1"
 _HANDOFF_MARKER = "bifrost.workspace-live-handoff/v1"
+_LEGACY_DESCRIPTORS = "bifrost.solution-legacy-descriptors/v1"
 
 
 class SolutionSourceRevisionError(ValueError):
@@ -69,6 +70,15 @@ class SolutionSourceRevisionError(ValueError):
 
 class SolutionSourceRevisionConflict(SolutionSourceRevisionError):
     """The active base or review evidence changed."""
+
+
+def legacy_descriptor_evidence(snapshot: dict) -> dict:
+    """Retain installed display metadata that the source compiler cannot express."""
+    fields = {key: snapshot[key] for key in ("description", "category")}
+    if any(value is not None and not isinstance(value, str) for value in fields.values()):
+        raise SolutionSourceRevisionError("legacy workflow descriptors are invalid")
+    return {"schema_version": _LEGACY_DESCRIPTORS, "fields": fields,
+            "content_hash": canonical_digest(fields)}
 
 
 def _decode_files(request: SolutionSourceRevisionRequest) -> dict[str, bytes]:
@@ -166,6 +176,18 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
     # Older handoff manifests predate a complete registration definition.
     # New workflow revisions must also match every deploy-owned projection.
     snapshot = _workflow_snapshot(workflow)
+    legacy = definition.get("legacy_descriptor_evidence")
+    if legacy is not None:
+        # The compiler's source-derived descriptors remain in the executable
+        # definition. Exact installed legacy descriptors are a separate sealed
+        # observation; no security or identity field may enter this exception.
+        expected_legacy = legacy_descriptor_evidence(snapshot)
+        if legacy != expected_legacy:
+            raise SolutionSourceRevisionError("legacy workflow descriptors differ from immutable evidence")
+        for key in ("description", "category"):
+            if not isinstance(definition.get(key), str):
+                raise SolutionSourceRevisionError("source workflow descriptor must be a string")
+            snapshot[key] = definition[key]
     if isinstance(workflow.parameters_schema, list):
         # Adoption attests the exact legacy representation after checking the
         # source signature. Preserve it in the registry until reviewed delivery
