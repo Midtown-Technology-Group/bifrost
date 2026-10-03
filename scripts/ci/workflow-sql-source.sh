@@ -263,6 +263,9 @@ else
     docker create --name "$formatter" --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" --network none "$image" cargo test --locked --offline -p bifrost-db --features workflow-sql-parity --lib > "$evidence/unit-container.txt"
     docker start -a "$formatter" > "$evidence/sql-unit.log" 2>&1
     test "$(docker inspect "$formatter" --format '{{.State.ExitCode}}')" = 0
+    # Literal pre-PR owns and tears down its stack. Start this job's ordinary
+    # disposable stack again before the actual PostgreSQL characterization.
+    ./test.sh stack up > "$evidence/test-stack.log" 2>&1
     rm -f "$LOG_DIR/test-results.xml"
     targeted_started=1
     ./test.sh tests/unit/test_github_action_pins.py tests/parity/test_workflow_sql.py -v > "$evidence/sql-order.log" 2>&1
