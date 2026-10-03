@@ -25,6 +25,7 @@ from src.models.contracts.platform_jobs import PlatformJobAccepted
 from src.models.contracts.workspace_promotions import (
     SolutionDeployObligationListResponse,
     SolutionDeployObligationResponse,
+    WorkspaceLiveRetirementInventory,
     WorkspaceLiveRetireRequest,
     WorkspaceLiveRetireResponse,
     WorkspaceLiveStatusResponse,
@@ -529,6 +530,20 @@ async def retry_workspace_release_history_lock(
         status=job.status,
         reused=reused,
     )
+
+
+@router.get("/live/retirement-inventory", response_model=WorkspaceLiveRetirementInventory)
+async def inspect_workspace_release_retirement(
+    ctx: Context, db: DbSession, user: CurrentSuperuser,
+) -> WorkspaceLiveRetirementInventory:
+    """Inventory the guard's complete Root cohort, including inactive audit rows."""
+    if ctx.org_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="an organization context is required")
+    try:
+        return await WorkspaceReleaseRetirementService(db, ctx.org_id).inspect()
+    except WorkspaceReleaseRetirementError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/live/retire", response_model=WorkspaceLiveRetireResponse)

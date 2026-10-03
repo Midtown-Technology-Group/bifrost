@@ -34,3 +34,25 @@ main changes and new workflows, before disposing them. Existing accepted
 Workspace execution pins remain valid across Solution ownership changes and
 Live retirement. Retain immutable release objects while accepted work or
 retained evidence references them.
+
+
+## Read-only retirement inventory
+
+`GET /api/workspace-promotions/live/retirement-inventory` is an additive,
+platform-admin-only contract. Use the Live release owner's organization context.
+It reads the same Root registration predicate as mutation-time retirement,
+including inactive rows, uncaptured normalized governed paths and effective
+registration UUIDs whose current path differs. More than 1,000 matching rows
+fails closed rather than claiming a complete truncated census. Obligation counts
+come from the Live owner's journal. Another organization context is rejected for
+retirement and idempotent retirement readback so it cannot hide owner debt.
+
+This GET creates no candidates, locks, audit events, activations or dispositions.
+It is available for inspection without enabling the retirement mutation flag.
+Its response is an observed inventory, not a retirement authorization or proof
+of indirect/external callers, source bytes or accepted work. Refresh all those
+gates and the exact identity CAS before any separately authorized retirement.
+Existing SDK raw HTTP helpers can read the contract; no entity mutation command,
+manifest field or CLI contract version is changed. The existing retirement
+request and response are preserved. Generate client types from the actual CI API
+schema readback, not from a handwritten schema or sibling checkout.

@@ -241,3 +241,18 @@ async def test_retire_idempotent_retry_rejects_wrong_identity(monkeypatch) -> No
 
     with pytest.raises(WorkspaceReleaseRetirementError):
         await service.retire(mismatched, user_id=uuid4())
+
+
+@pytest.mark.asyncio
+async def test_inventory_refuses_truncated_registration_readback(monkeypatch) -> None:
+    release, artifact, descriptor, _request = _rows()
+    db, service, audit = _service(release, artifact, live=(release, artifact),
+                                 retired=None, monkeypatch=monkeypatch)
+    monkeypatch.setattr(retirement_module.WorkspaceReleaseDescriptor, "from_rows",
+                        lambda *_args, **_kwargs: descriptor)
+    db.execute = AsyncMock(return_value=SimpleNamespace(all=lambda:[None] * 1001))
+    with pytest.raises(WorkspaceReleaseRetirementError, match="readback bound"):
+        await service.inspect()
+    db.commit.assert_not_awaited()
+    db.flush.assert_not_awaited()
+    audit.assert_not_awaited()

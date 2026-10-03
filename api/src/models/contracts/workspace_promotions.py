@@ -406,6 +406,35 @@ class WorkspaceReleaseLockRetryRequest(BaseModel):
     failed_job_id: UUID
 
 
+class WorkspaceLiveRetirementRegistration(BaseModel):
+    """One Root row matching the existing retirement guard, including inactive rows."""
+
+    workflow_id: UUID
+    organization_id: UUID | None
+    path: str
+    function_name: str
+    is_active: bool
+    matched_by: list[Literal["governed_path", "effective_registration"]]
+
+
+class WorkspaceLiveRetirementInventory(BaseModel):
+    """A bounded read-only census, never an authorization to retire Live."""
+
+    schema_version: Literal["bifrost.workspace-release-retirement-inventory/v1"] = (
+        "bifrost.workspace-release-retirement-inventory/v1"
+    )
+    read_only: Literal[True] = True
+    observed_at: datetime
+    release_row_id: UUID
+    release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    artifact_id: UUID
+    organization_id: UUID
+    governed_manifest_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    history_locked: bool
+    loose_registrations: list[WorkspaceLiveRetirementRegistration] = Field(max_length=1000)
+    unresolved_source_obligations: dict[str, int]
+
+
 class WorkspaceLiveRetireRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

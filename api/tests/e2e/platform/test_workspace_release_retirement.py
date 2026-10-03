@@ -677,3 +677,89 @@ async def test_retirement_cannot_hide_owner_obligations_with_another_context(
         await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
         await db_session.execute(delete(Organization).where(Organization.id == other_org))
         await db_session.commit()
+
+
+@pytest.mark.e2e
+async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutation(
+    e2e_client, platform_admin, db_session,
+) -> None:
+    import json
+    from pathlib import Path
+
+    from src.models.orm.solutions import Solution
+    from src.services.solutions.repo_workflow_adoption import _digest_row
+
+    source_path = f"features/retirement_inventory_{uuid4().hex}/run.py"
+    release_row_id = job_id = source_record_id = None
+    owner_id = uuid4()
+    workflow_ids = []
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session, source_path=source_path, function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        _, inherited_id = _pinned_evidence(artifact, release, source_path, "run")
+        db_session.add(Solution(id=owner_id, slug=f"retirement-owner-{owner_id.hex}",
+            name="Already owned counterpart", organization_id=PROVIDER_ORG_ID))
+        await db_session.flush()
+        cases = [
+            (inherited_id, "different/source.py", True, None),
+            (uuid4(), source_path.replace("/", "\\"), False, None),
+            (uuid4(), source_path, True, None),
+            (uuid4(), source_path, True, owner_id),
+            (uuid4(), "unrelated/inactive.py", False, None),
+        ]
+        rows = [Workflow(id=wid, path=path, function_name="run",
+            name=f"Inventory {wid}", organization_id=PROVIDER_ORG_ID,
+            is_active=active, solution_id=sid) for wid, path, active, sid in cases]
+        workflow_ids = [row.id for row in rows]
+        db_session.add_all(rows)
+        record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID, source_commit_sha=uuid4().hex + "3" * 8,
+            source_tree_sha="4" * 40, paths={source_path:"a" * 64},
+            declaration_actor="platform_admin", declared_disposition="pending",
+            disposition="deferred", reason="Independent evidence remains unresolved",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(record)
+        await db_session.commit()
+        source_record_id = record.id
+        before = {row.id: _digest_row(row) for row in [release, record, *rows]}
+        route = "/api/workspace-promotions/live/retirement-inventory"
+        denied = e2e_client.get(route)
+        assert denied.status_code == 401, denied.text
+        for _ in range(2):
+            response = e2e_client.get(route, headers=platform_admin.headers)
+            assert response.status_code == 200, response.text
+            census = response.json()
+            assert census["read_only"] is True
+            assert census["release_row_id"] == str(release_row_id)
+            assert census["organization_id"] == str(PROVIDER_ORG_ID)
+            assert census["unresolved_source_obligations"] == {"deferred":1}
+            by_id = {item["workflow_id"]:item for item in census["loose_registrations"]}
+            assert set(by_id) == {str(case[0]) for case in cases[:3]}
+            assert by_id[str(inherited_id)]["matched_by"] == ["effective_registration"]
+            assert by_id[str(cases[1][0])]["is_active"] is False
+            assert by_id[str(cases[1][0])]["path"] == source_path
+            assert by_id[str(cases[1][0])]["matched_by"] == ["governed_path"]
+            assert "retirement_ready" not in census
+        for row in [release, record, *rows]:
+            await db_session.refresh(row)
+            assert _digest_row(row) == before[row.id]
+        # Retain the actual API schema for generator input in the selected CI
+        # Docker lane. This is public schema only: no headers or entity values.
+        schema = e2e_client.get("/openapi.json")
+        assert schema.status_code == 200
+        assert route in schema.json()["paths"]
+        Path("/bifrost-results/openapi-current.json").write_text(json.dumps(schema.json()))
+    finally:
+        await db_session.rollback()
+        if source_record_id is not None:
+            await db_session.execute(delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id))
+        if workflow_ids:
+            await db_session.execute(delete(Workflow).where(Workflow.id.in_(workflow_ids)))
+        await db_session.execute(delete(Solution).where(Solution.id == owner_id))
+        await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
