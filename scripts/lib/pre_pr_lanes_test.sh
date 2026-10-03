@@ -67,3 +67,30 @@ status=$?
 set -e
 [[ "$status" == 91 && "$authority" == http://api:8000 ]]
 echo 'PASS: MCP conformance reconciles backend authority after browser lanes'
+
+# Unchanged action inputs need structural SHA checks locally; changed inputs
+# still resolve readable versions. An unknown comparison fails closed.
+(
+    pin_calls=()
+    pin_diff_status=0
+    pin_python_status=0
+    git() {
+        [[ "$*" == 'diff --quiet origin/main HEAD -- .github/workflows .github/actions api/scripts/check_github_action_pins.py' ]]
+        return "$pin_diff_status"
+    }
+    python3() { pin_calls+=("$*"); return "$pin_python_status"; }
+    candidate_action_pin_checks
+    [[ "${pin_calls[*]}" == api/scripts/check_github_action_pins.py ]]
+    pin_calls=()
+    pin_diff_status=1
+    candidate_action_pin_checks
+    [[ "${pin_calls[*]}" == 'api/scripts/check_github_action_pins.py --verify-versions' ]]
+    pin_calls=()
+    pin_diff_status=128
+    if candidate_action_pin_checks; then exit 1; fi
+    [[ "${#pin_calls[@]}" == 0 ]]
+    pin_diff_status=0
+    pin_python_status=7
+    if candidate_action_pin_checks; then exit 1; fi
+)
+echo 'PASS: Action pin checks retain full SHAs, verify changed versions and fail closed'

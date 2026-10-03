@@ -123,7 +123,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             validate_resource_files(recipe, resources, files)
             desired = compile_workflow_registrations(recipe, files, indexer)
             closure = source_closure(files, {item.path for item in recipe.workflows},
-                has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources),
+                has_table_bindings=bool(recipe.shared_tables) or await self._has_owned_tables(solution_id),
+                has_resource_bindings=bool(recipe.resources),
                 has_root_file_bindings=bool(recipe.root_file_bindings))
         except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc
