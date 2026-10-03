@@ -145,10 +145,14 @@ async def test_real_constructor_restores_owned_callback_after_failure():
     try:
         dormant(pool)
         pool.on_result = owned_callback
-        with pytest.raises(RuntimeError, match="synthetic-constructor-control"):
+
+        async def fail_inside_owned_consumer():
             async with real_consumer() as consumer:
                 check(consumer._pool is pool, "constructor selected a different pool")
                 raise RuntimeError("synthetic-constructor-control")
+
+        with pytest.raises(RuntimeError, match="synthetic-constructor-control"):
+            await fail_inside_owned_consumer()
         check(process_pool._pool is pool, "pre-existing dormant pool was replaced")
         check(
             pool.on_result is owned_callback, "exact previous callback was not restored"
