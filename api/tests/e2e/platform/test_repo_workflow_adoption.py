@@ -1,11 +1,13 @@
 """A populated install changes runtime only with current source/control proof."""
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import select, update
 
+from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.solution_deployments import (
     InitialWorkflowInstallInspectRequest, InitialWorkflowInstallRequest,
 )
@@ -16,6 +18,7 @@ from src.models.orm.solution_config_schema import SolutionConfigSchema
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
+from src.models.orm.workspace_promotions import WorkspaceSourceRelease
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.repo_workflow_adoption import RepoWorkflowAdoptionService, _digest_row
 from src.services.solutions.source_revision import SolutionSourceRevisionConflict, SolutionSourceRevisionError
@@ -120,6 +123,78 @@ async def test_adoption_resolves_unchanged_constant_defaults_without_rewriting_l
     assert result.state == "active"
     assert row.parameters_schema[0]["default_value"] == "root"
     assert before == {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
+
+
+@pytest.mark.asyncio
+async def test_adoption_rejects_changed_constant_default_before_storing_a_candidate(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    solution, did, row, _, _, _, service, request, _, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=True, with_owned_query=True, constant_default=True, stage=False)
+    changed = legacy_store[solution.id][row.path].replace(b"DEFAULT_USER = 'root'", b"DEFAULT_USER = 'other'")
+    body = InitialWorkflowInstallRequest(source_commit_sha="c" * 40, reviewed_recipe=request.reviewed_recipe,
+        files=[{"path": row.path, "content_base64": "AA=="}])
+    with pytest.raises(SolutionSourceRevisionConflict, match="source parameter contract"):
+        await service.stage(solution.id, did, platform_admin.user_id, body, {row.path: changed}, {})
+    assert solution.active_deployment_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("successor", [False, True])
+async def test_native_runtime_anchor_supersedes_old_source_only_with_matching_closure(
+    db_session, platform_admin, artifact_store, legacy_store, successor,
+):
+    from src.models.contracts.solution_deployments import (
+        SolutionSourceRevisionCommitRequest, SolutionSourceRevisionInspectRequest,
+    )
+    from src.models.contracts.workspace_promotions import (
+        WorkspaceSourceSupersessionEvidence, WorkspaceSourceSupersessionPath,
+    )
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.deployment_manifest import sha256_digest
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+    from src.services.workspace_source_releases import WorkspaceSourceReleaseConflict, WorkspaceSourceReleaseService
+
+    solution, did, row, _, _, _, service, request, staged, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store)
+    await service.activate(solution.id, did, request, staged.evidence_id)
+    source = legacy_store[solution.id][row.path]
+    if successor:
+        base = await db_session.get(SolutionDeployment, did)
+        expected = SolutionSourceRevisionInspectRequest(
+            expected_active_deployment_id=did, expected_active_manifest_hash=base.compiled_manifest_hash)
+        did = uuid4()
+        source = source.replace(b"'old'", b"'new'")
+        revision = SolutionWorkflowRevisionService(db_session)
+        inspected = await revision.stage_workflows(solution.id, did, platform_admin.user_id,
+            expected, request.reviewed_recipe, {row.path: source}, "d" * 40)
+        await revision.activate_workflows(solution.id, did, SolutionSourceRevisionCommitRequest(
+            **expected.model_dump(), expected_evidence_id=inspected.evidence_id), request.reviewed_recipe)
+    digest = sha256_digest(source).removeprefix("sha256:")
+    old_path = "features/adoption/workflows/adopt.py"
+    record = WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=uuid4().hex + "a" * 8, source_tree_sha="b" * 40,
+        paths={old_path: "c" * 64}, declaration_actor="platform_admin",
+        disposition="attention_required", declared_disposition="pending", reason="Historical loose source",
+        created_by=platform_admin.user_id, created_at=datetime.now(UTC) - timedelta(days=1))
+    db_session.add(record)
+    await db_session.flush()
+    evidence = WorkspaceSourceSupersessionEvidence(superseding_solution_deployment_ids=[did],
+        reviewed_global_solution_ids=[solution.id], production_readback_id="sha256:" + "d" * 64,
+        verified_at=datetime.now(UTC), paths={old_path: WorkspaceSourceSupersessionPath(
+            current_git_sha256=digest, runtime_owner="solution", runtime_ref=str(did),
+            runtime_path=row.path, runtime_source_sha256="0" * 64)})
+    accounting = WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID)
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="runtime hash is unverified"):
+        await accounting.set_manual_disposition(record.id, disposition="superseded",
+            reason="Reviewed native runtime replaces historical source", supersession_evidence=evidence)
+    assert record.disposition == "attention_required" and record.completion_evidence is None
+    evidence.paths[old_path].runtime_source_sha256 = digest
+    result = await accounting.set_manual_disposition(record.id, disposition="superseded",
+        reason="Reviewed native runtime replaces historical source", supersession_evidence=evidence)
+    assert result.disposition == "superseded"
+    assert result.completion_evidence["review"]["paths"][old_path]["runtime_ref"] == str(did)
 
 
 @pytest.mark.asyncio

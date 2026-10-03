@@ -9,8 +9,8 @@ from src.models.orm.workflows import Workflow
 from src.services.solutions.deployment_manifest import RuntimeEntityDefinition
 from src.services.solutions.source_revision import (
     SolutionSourceRevisionError,
-    _require_registration,
     _entrypoint_signature,
+    _require_registration,
     _workflow_snapshot,
     legacy_descriptor_evidence,
 )

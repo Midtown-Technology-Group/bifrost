@@ -20,6 +20,18 @@ runtime path/hash, or verified removal. Immutable resource paths use the
 closure's separate resource hash map. Removed paths must be absent from Root,
 its index, Live and every active Solution's source and resource maps.
 
+Supported anchors include Live handoff, Source revision, populated legacy
+workflow adoption and reviewed workflow revision deployments. Adoption alone
+does not dispose a historical record: the same complete path evidence, later
+activation, explicit Global review, scope and current-pointer checks apply.
+
+Legacy and reviewed signatures use one static parameter compiler, including
+unambiguous module-level literal scalar defaults. Adoption preserves legacy
+parameter rows and rejects changed defaults. Body-only Source delivery also
+rejects a changed constant default; use the reviewed workflow revision path
+for a supported parameter contract change. Carried code is never imported or
+executed to resolve defaults.
+
 This remains an audited operator attestation, with the review included in the
 immutable completion evidence digest. It does not imply automatic completion
 of a Solution deploy obligation or independently authenticate the operator's

@@ -14,6 +14,7 @@ from uuid import UUID
 
 from bifrost.solution_delivery_review import (
     PROTECTED_REGISTRATION_FIELDS,
+    compile_workflow_parameters,
 )
 from bifrost.solution_delivery_review import (
     require_compatible_parameters as _require_compatible_parameters,
@@ -144,9 +145,11 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             # exposes them as unsupported instead of silently projecting them.
             if any(definition.get(key) != snapshot[key] for key in PROTECTED_REGISTRATION_FIELDS):
                 raise SolutionSourceRevisionError("Rename, scope, type, access, endpoint, mode, cache or retry changes require a reviewed caller/control-plane adapter")
-            old_schema = indexer.extract_parameters_from_source(base_files[snapshot["path"]], row.function_name, path=row.path)
-            if old_schema is None:
-                raise SolutionSourceRevisionError("Installed parameter contract cannot be inferred")
+            try:
+                old_schema = compile_workflow_parameters(base_files[snapshot["path"]], row.function_name,
+                    path=row.path, indexer=indexer)
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
             require_compatible_parameters(old_schema, definition["parameters_schema"])
         # Global UUID lookup is intentional in this deploy writer: a recipe must
         # never claim an existing Root registration or another Solution's UUID.

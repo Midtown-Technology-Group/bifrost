@@ -15,6 +15,7 @@ from zipfile import BadZipFile, ZipFile
 
 from bifrost.solution_delivery_review import (
     WorkflowRecipeError,
+    compile_workflow_parameters,
     require_executable_bindings,
 )
 from bifrost.workspace_release import canonical_digest
@@ -253,6 +254,10 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
             f"workflow function is missing or ambiguous: {workflow.id}"
         )
     node = matches[0]
+    try:
+        parameters = compile_workflow_parameters(files[path], workflow.function_name, path=path)
+    except WorkflowRecipeError as exc:
+        raise SolutionSourceRevisionError(str(exc)) from exc
     return (
         ast.dump(node.args, include_attributes=False)
         + ":"
@@ -260,6 +265,7 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
             ast.dump(item, include_attributes=False) for item in node.decorator_list
         )
         + (":async" if isinstance(node, ast.AsyncFunctionDef) else ":sync")
+        + ":" + canonical_json(parameters).decode("utf-8")
     )
 
 

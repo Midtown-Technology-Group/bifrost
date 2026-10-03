@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+from bifrost.solution_delivery_review import WorkflowRecipeError, compile_workflow_parameters
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import exists, inspect as orm_inspect, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -172,9 +173,13 @@ class RepoWorkflowAdoptionService:
             row = active[entity.resolved_id]
             if row.organization_id != solution.organization_id:
                 raise SolutionSourceRevisionError("legacy registration scope differs from its install")
-            schema = indexer.extract_parameters_from_source(legacy_files[row.path], row.function_name, path=row.path)
+            try:
+                schema = compile_workflow_parameters(legacy_files[row.path], row.function_name,
+                    path=row.path, indexer=indexer)
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
             definition = dict(entity.definition)
-            if schema is None or json_equal(schema, definition.get("parameters_schema")) is False:
+            if json_equal(schema, definition.get("parameters_schema")) is False:
                 raise SolutionSourceRevisionConflict("adoption cannot change the installed source parameter contract")
             # Legacy list schemas retain their original DB representation. The
             # current Python signature above supplies the complete runtime schema.
