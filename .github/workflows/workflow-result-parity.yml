@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   format:
-    if: github.event.head_commit.message == 'ci: format reviewed workflow Result source'
+    if: >-
+      github.event.head_commit.message == 'ci: format reviewed workflow Result source'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
