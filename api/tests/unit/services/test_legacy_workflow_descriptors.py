@@ -87,3 +87,32 @@ def test_descriptor_evidence_does_not_hide_identity_scope_security_or_signature_
     setattr(row, field, value)
     with pytest.raises(SolutionSourceRevisionError):
         _require_registration(row, entity)
+
+
+
+def test_adoption_compiler_preserves_json_lists_before_freezing_descriptor_evidence():
+    from bifrost.workflow_parameters import WorkflowParameterCompiler
+
+    from src.services.solutions.reviewed_workflow_artifact import compile_reviewed_workflows
+    from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+
+    row, _ = _registration()
+    recipe = ReviewedWorkflowRecipe.model_validate({
+        "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(uuid4()),
+        "files": {row.path: "solutions/task.py"}, "workflows": [{
+            "id": str(row.id), "path": row.path, "function_name": "run", "organization_id": None,
+            "controls": {}, "runtime_bounds": {"max_duration_seconds": 60,
+                "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096},
+        }],
+    })
+    files = {row.path: b"from bifrost import workflow\n@workflow(name='Reviewed task', effects=[])\nasync def run():\n    return 1\n"}
+    entities = compile_reviewed_workflows(recipe, files, {}, WorkflowParameterCompiler(),
+        legacy_descriptor_snapshots={row.id: _workflow_snapshot(row)})
+    entity = next(iter(entities.values()))
+    marker = entity.definition["legacy_descriptor_evidence"]
+    assert isinstance(marker, dict)
+    assert marker["fields"] == {"description": None, "category": "General"}
+    dumped = entity.model_dump(mode="json")
+    assert dumped["definition"]["role_ids"] == []
+    assert dumped["definition"]["effects"] == []
+    assert dumped["definition"]["allowed_methods"] == ["POST"]

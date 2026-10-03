@@ -67,13 +67,15 @@ def compile_reviewed_workflows(
         if legacy_descriptor_snapshots is not None:
             if set(legacy_descriptor_snapshots) != {item.resolved_id for item in entities.values()}:
                 raise SolutionSourceRevisionError("legacy descriptor identities differ from reviewed workflows")
-            entities = {ref: RuntimeEntityDefinition.model_validate({
-                **item.model_dump(mode="json"),
-                "definition": {
-                    **item.definition,
-                    "legacy_descriptor_evidence": legacy_descriptor_evidence(legacy_descriptor_snapshots[item.resolved_id]),
-                },
-            }) for ref, item in entities.items()}
+            marked = {}
+            for ref, item in entities.items():
+                # Frozen runtime containers use tuples internally. Revalidate
+                # JSON values, then freeze the augmented definition once.
+                payload = item.model_dump(mode="json")
+                payload["definition"]["legacy_descriptor_evidence"] = legacy_descriptor_evidence(
+                    legacy_descriptor_snapshots[item.resolved_id])
+                marked[ref] = RuntimeEntityDefinition.model_validate(payload)
+            entities = marked
     except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
         raise SolutionSourceRevisionError(str(exc)) from exc
     if set(closure) != set(files):
