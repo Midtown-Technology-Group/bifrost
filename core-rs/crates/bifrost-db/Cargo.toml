@@ -20,3 +20,11 @@ tracing.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+serde_json = { version = "=1.0.151", features = ["raw_value"] }
+
+[[example]]
+name = "workflow_sql_vectors"
+required-features = ["workflow-sql-parity"]

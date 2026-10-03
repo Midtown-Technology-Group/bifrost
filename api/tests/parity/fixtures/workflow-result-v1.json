@@ -1,0 +1,3154 @@
+{
+  "schema": "bifrost.test.workflow-result-fixtures/v1",
+  "synthetic": true,
+  "cases": [
+    {
+      "case_id": "s-status-running-Scheduled",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Scheduled\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Pending",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Pending\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Running",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Running\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Success",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Success\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Failed",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Failed\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Timeout",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Timeout\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Stuck",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Stuck\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-CompletedWithErrors",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"CompletedWithErrors\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Cancelling",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Cancelling\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-Cancelled",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Cancelled\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Scheduled",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Scheduled\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Pending",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Pending\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Running",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Running\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Success",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Success\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Failed",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Failed\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Timeout",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Timeout\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Stuck",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Stuck\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-CompletedWithErrors",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"CompletedWithErrors\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Cancelling",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Cancelling\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-cancelling-Cancelled",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"Cancelled\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"null\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-status-running-unknown",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"value\",\"value\":\"SyntheticUnknown\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "f-kind-running-timeout",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"TimeoutError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-running-cancelled",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"CancelledError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-running-persistence",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-running-execution",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ExecutionError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-cancelling-timeout",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"TimeoutError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-cancelling-cancelled",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"CancelledError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-cancelling-persistence",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-cancelling-execution",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ExecutionError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-running-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-running-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"null\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "f-kind-running-unknown",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"SyntheticTenantError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "r-duration-s-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-s-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"null\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-s-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":0},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-s-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-s-min",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-2147483648},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-s-max",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":2147483647},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-s-positive",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-f-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-f-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"null\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-duration-f-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":-7},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"null\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-false",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":false},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":0},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-empty-string",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-empty-object",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{}},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-empty-list",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":[]},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-string-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"null\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-html",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"  <p>x</p>\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-text",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-dict-nested-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"n\":null}},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-list-nested-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":[null]},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-s-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-s-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"null\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-s-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"value\",\"value\":\"\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-s-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"value\",\"value\":\"synthetic-error\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-f-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-f-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"null\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-f-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-error-f-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-error\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"null\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-empty-object",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"value\",\"value\":{}},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-empty-list",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"value\",\"value\":[]},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-false",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"value\",\"value\":false},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"value\",\"value\":{\"a\":[null,1]}},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-variables-sensitive-key",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"value\",\"value\":{\"password\":\"synthetic-secret\",\"plain\":1}},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"null\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-replace",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-server-present",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "server-present",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"teams_action_completion\":\"worker\",\"new\":1}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-server-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "server-null",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"teams_action_completion\":\"worker\",\"new\":1}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-persist-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-persist-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"null\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-persist-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-persist-truthy",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-persist-server-present",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "server-present",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"teams_action_completion\":\"worker\",\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-persist-server-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "server-null",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"teams_action_completion\":\"worker\",\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-ordinary-ignored",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ExecutionError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metrics-s-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metrics-s-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"null\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metrics-s-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"absent\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metrics-f-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metrics-f-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"null\"}}"
+    },
+    {
+      "case_id": "r-metrics-f-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"absent\"}}}}"
+    },
+    {
+      "case_id": "r-metric-peak_memory_bytes-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-peak_memory_bytes-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"null\"},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-peak_memory_bytes-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":0},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-peak_memory_bytes-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-1},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-peak_memory_bytes-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-process_rss_bytes-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-process_rss_bytes-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"null\"},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-process_rss_bytes-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":0},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-process_rss_bytes-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-1},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-process_rss_bytes-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_user_seconds-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_user_seconds-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"null\"},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_user_seconds-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":0},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_user_seconds-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_user_seconds-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7.25},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_system_seconds-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_system_seconds-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"null\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_system_seconds-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":0},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_system_seconds-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":-1},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_system_seconds-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7.25},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_total_seconds-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"absent\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_total_seconds-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"null\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_total_seconds-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":0}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_total_seconds-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-cpu_total_seconds-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7.25}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-width-peak-min",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":-9223372036854775808},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"absent\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-width-peak-max",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":9223372036854775807},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"absent\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-width-rss-min",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":-9223372036854775808},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"absent\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-metric-width-rss-max",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":9223372036854775807},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"absent\"}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-roi-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-roi-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"null\"}}"
+    },
+    {
+      "case_id": "s-roi-empty",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"absent\"},\"value\":{\"kind\":\"absent\"}}}}"
+    },
+    {
+      "case_id": "s-roi-time-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"absent\"},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-time-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-time-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":0},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-time-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":-7},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-time-min",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":-2147483648},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-time-max",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":2147483647},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-value-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"absent\"}}}}"
+    },
+    {
+      "case_id": "s-roi-value-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "s-roi-value-int-zero",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0}}}}"
+    },
+    {
+      "case_id": "s-roi-value-int-negative",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-1}}}}"
+    },
+    {
+      "case_id": "s-roi-value-exact-cent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-roi-value-int-above53",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":9007199254740993}}}}"
+    },
+    {
+      "case_id": "s-roi-value-int-i64-min",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-9223372036854775808}}}}"
+    },
+    {
+      "case_id": "s-roi-value-int-i64-max",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":9223372036854775807}}}}"
+    },
+    {
+      "case_id": "s-roi-value-int-u64-max",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":18446744073709551615}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-005-below-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.004999999999999999}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-005-below-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.004999999999999999}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-005-at-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.005}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-005-at-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.005}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-005-above-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.005000000000000001}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-005-above-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.005000000000000001}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-015-below-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.014999999999999998}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-015-below-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.014999999999999998}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-015-at-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.015}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-015-at-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.015}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-015-above-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.015000000000000001}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-015-above-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.015000000000000001}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-125-below-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.12499999999999999}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-125-below-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.12499999999999999}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-125-at-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.125}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-125-at-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.125}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-125-above-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.12500000000000003}}}}"
+    },
+    {
+      "case_id": "s-roi-boundary-125-above-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.12500000000000003}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-zero-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":0.0}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-zero-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-0.0}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-min-subnormal-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":5e-324}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-min-subnormal-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-5e-324}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-max-subnormal-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":2.225073858507201e-308}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-max-subnormal-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-2.225073858507201e-308}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-min-normal-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":2.2250738585072014e-308}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-min-normal-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-2.2250738585072014e-308}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-max-finite-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":1.7976931348623157e308}}}}"
+    },
+    {
+      "case_id": "s-roi-extreme-max-finite-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-1.7976931348623157e308}}}}"
+    },
+    {
+      "case_id": "s-roi-range-below-cent-edge-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":99999999.98999998}}}}"
+    },
+    {
+      "case_id": "s-roi-range-below-cent-edge-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-99999999.98999998}}}}"
+    },
+    {
+      "case_id": "s-roi-range-cent-edge-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":99999999.99}}}}"
+    },
+    {
+      "case_id": "s-roi-range-cent-edge-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-99999999.99}}}}"
+    },
+    {
+      "case_id": "s-roi-range-above-cent-edge-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":99999999.99000001}}}}"
+    },
+    {
+      "case_id": "s-roi-range-above-cent-edge-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-99999999.99000001}}}}"
+    },
+    {
+      "case_id": "s-roi-range-below-carry-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":99999999.99499999}}}}"
+    },
+    {
+      "case_id": "s-roi-range-below-carry-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-99999999.99499999}}}}"
+    },
+    {
+      "case_id": "s-roi-range-above-carry-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":99999999.995}}}}"
+    },
+    {
+      "case_id": "s-roi-range-above-carry-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-99999999.995}}}}"
+    },
+    {
+      "case_id": "s-roi-range-one-hundred-million-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":100000000.0}}}}"
+    },
+    {
+      "case_id": "s-roi-range-one-hundred-million-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"value\",\"value\":-100000000.0}}}}"
+    },
+    {
+      "case_id": "r-cancel-payload-s-full",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-cancel-payload-f-persist-full",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"value\",\"value\":\"synthetic-failure\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}}}"
+    },
+    {
+      "case_id": "r-cancel-payload-s-numeric-overflow-suppressed",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1e308}}}}"
+    },
+    {
+      "case_id": "r-cancel-payload-s-time-null",
+      "seed": {
+        "status": "Cancelling",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"null\"},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"null\"},\"value\":{\"kind\":\"null\"}}}}"
+    },
+    {
+      "case_id": "r-fence-s-missing-recorded",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "missing",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-s-wrong",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "wrong",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-s-foreign-correct",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "foreign",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-s-completed",
+      "seed": {
+        "status": "Running",
+        "attempt": "completed",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-s-no-matching-attempt",
+      "seed": {
+        "status": "Running",
+        "attempt": "published",
+        "phase": "execution",
+        "token": "wrong",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-s-missing-recorded-stale",
+      "seed": {
+        "status": "Success",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "missing",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-f-missing-recorded",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "missing",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-f-wrong",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "wrong",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-f-foreign-correct",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "foreign",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-f-completed",
+      "seed": {
+        "status": "Running",
+        "attempt": "completed",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-f-no-matching-attempt",
+      "seed": {
+        "status": "Running",
+        "attempt": "published",
+        "phase": "execution",
+        "token": "wrong",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-fence-f-missing-recorded-stale",
+      "seed": {
+        "status": "Success",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "missing",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-logical-stale-Scheduled",
+      "seed": {
+        "status": "Scheduled",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-Pending",
+      "seed": {
+        "status": "Pending",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-Success",
+      "seed": {
+        "status": "Success",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-Failed",
+      "seed": {
+        "status": "Failed",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-Timeout",
+      "seed": {
+        "status": "Timeout",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-Stuck",
+      "seed": {
+        "status": "Stuck",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-CompletedWithErrors",
+      "seed": {
+        "status": "CompletedWithErrors",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-logical-stale-Cancelled",
+      "seed": {
+        "status": "Cancelled",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "r-attempt-phase-dispatch",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "dispatch",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-phase-queue",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "queue",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-phase-claim",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "claim",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-phase-admission",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "admission",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-phase-execution",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-phase-result",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "result",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-phase-terminal",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "terminal",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-claimed-unstarted",
+      "seed": {
+        "status": "Running",
+        "attempt": "claimed",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-attempt-claimed-started",
+      "seed": {
+        "status": "Running",
+        "attempt": "claimed_started",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-zero-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":0.0}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-zero-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-0.0}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-min-subnormal-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":5e-324}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-min-subnormal-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-5e-324}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-min-normal-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":2.2250738585072014e-308}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-min-normal-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-2.2250738585072014e-308}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-max-finite-pos",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":1.7976931348623157e308}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "r-cpu-extreme-max-finite-neg",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"absent\"},\"process_rss_bytes\":{\"kind\":\"absent\"},\"cpu_user_seconds\":{\"kind\":\"absent\"},\"cpu_system_seconds\":{\"kind\":\"absent\"},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":-1.7976931348623157e308}}},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-error-type-absent",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-error-type-null",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"null\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-error-type-value",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"error\":{\"kind\":\"value\",\"value\":\"synthetic\"},\"error_type\":{\"kind\":\"value\",\"value\":\"TimeoutError\"},\"duration_ms\":{\"kind\":\"value\",\"value\":7},\"variables\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"value\",\"value\":{\"peak_memory_bytes\":{\"kind\":\"value\",\"value\":7},\"process_rss_bytes\":{\"kind\":\"value\",\"value\":7},\"cpu_user_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_system_seconds\":{\"kind\":\"value\",\"value\":7},\"cpu_total_seconds\":{\"kind\":\"value\",\"value\":7}}},\"roi\":{\"kind\":\"value\",\"value\":{\"time_saved\":{\"kind\":\"value\",\"value\":7},\"value\":{\"kind\":\"value\",\"value\":1.25}}}}"
+    },
+    {
+      "case_id": "s-result-html-control-whitespace",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"\\u001c\\u001d\\u001e\\u001f<p>x</p>\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-html-unicode-whitespace",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"\\u0085\\u00a0\\u1680\\u2000\\u2001\\u2002\\u2003\\u2004\\u2005\\u2006\\u2007\\u2008\\u2009\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000<p>x</p>\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-result-text-zero-width",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "old",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"value\",\"value\":\"\\u200b<p>x</p>\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"absent\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-existing-sql-null-replace",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "sql-null",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-existing-json-null-replace",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "json-null",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-existing-empty-replace",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "empty",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-existing-sql-null-merge",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "sql-null",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-existing-json-null-merge",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "json-null",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "f-context-existing-empty-merge",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "empty",
+        "tracking": true
+      },
+      "lane": "failure",
+      "raw_fields_json": "{\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"value\",\"value\":\"ResultPersistenceError\"},\"duration_ms\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"value\",\"value\":{\"new\":1}},\"metrics\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-existing-sql-null-keep",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "sql-null",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"null\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-existing-json-null-keep",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "json-null",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"null\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    },
+    {
+      "case_id": "s-context-existing-empty-keep",
+      "seed": {
+        "status": "Running",
+        "attempt": "running",
+        "phase": "execution",
+        "token": "current",
+        "context": "empty",
+        "tracking": true
+      },
+      "lane": "success",
+      "raw_fields_json": "{\"status\":{\"kind\":\"absent\"},\"result\":{\"kind\":\"absent\"},\"error\":{\"kind\":\"absent\"},\"error_type\":{\"kind\":\"absent\"},\"duration_ms\":{\"kind\":\"absent\"},\"variables\":{\"kind\":\"absent\"},\"execution_context\":{\"kind\":\"null\"},\"metrics\":{\"kind\":\"absent\"},\"roi\":{\"kind\":\"absent\"}}"
+    }
+  ],
+  "held_protocols": [
+    {
+      "case_id": "r-tx-atomicity-distinct-rollback-faults",
+      "schedule": "atomicity-distinct-rollback-faults"
+    },
+    {
+      "case_id": "r-tx-numeric-overflow-rollback",
+      "schedule": "numeric-overflow-rollback"
+    },
+    {
+      "case_id": "r-tx-cancel-first-advisory",
+      "schedule": "cancel-first-advisory"
+    },
+    {
+      "case_id": "r-tx-result-first-advisory",
+      "schedule": "result-first-advisory"
+    },
+    {
+      "case_id": "r-tx-running-first-attempt",
+      "schedule": "running-first-attempt"
+    },
+    {
+      "case_id": "r-tx-result-first-attempt",
+      "schedule": "result-first-attempt"
+    },
+    {
+      "case_id": "r-tx-lock-timeout",
+      "schedule": "lock-timeout"
+    },
+    {
+      "case_id": "r-tx-lost-commit-response",
+      "schedule": "lost-commit-response"
+    }
+  ],
+  "controls": {
+    "Codec pre-admission negatives": [
+      "c-duplicate-envelope",
+      "c-duplicate-nested",
+      "c-unknown-field",
+      "c-missing-required",
+      "c-invalid-tag",
+      "c-tag-extra-value",
+      "c-value-null-loophole",
+      "c-numeric-bool",
+      "c-numeric-string",
+      "c-duration-over-i32",
+      "c-metric-over-i64",
+      "c-roi-over-u64",
+      "c-surrogate",
+      "c-depth65",
+      "c-request65537",
+      "c-trailing-json",
+      "c-float-overflow",
+      "c-wrong-branch-field",
+      "c-projection-class-mismatch",
+      "c-raw-roi-nan",
+      "c-json-data-float",
+      "c-json-data-over-u64",
+      "c-json-data-below-i64",
+      "c-json-string-nul",
+      "c-json-key-nul",
+      "c-cpu-over-u64",
+      "c-cpu-below-i64"
+    ],
+    "Actual schema INSERT": [
+      "q-duplicate-token",
+      "q-two-active",
+      "q-duplicate-attempt-number",
+      "q-running-with-completion",
+      "q-running-without-start",
+      "q-claimed-without-token",
+      "q-dispatching-with-token",
+      "q-unknown-phase",
+      "q-foreign-execution-fk"
+    ],
+    "Source-only/out-of-tracked": [
+      "x-legacy-unfenced",
+      "x-missing-logical-active-metadata",
+      "x-missing-logical-no-metadata",
+      "x-duration-outside-i32-source",
+      "x-metric-outside-i64-source",
+      "x-OrphanedExecution",
+      "x-ProcessCrashError",
+      "x-WorkerShutdownError",
+      "x-unsupported-buffer"
+    ],
+    "Decode-parity gate": [
+      "p-005",
+      "p-015",
+      "p-neg-int-zero",
+      "p-neg-float-zero",
+      "p-exp-zero",
+      "p-exp-one",
+      "p-int-above53",
+      "p-u64-max",
+      "p-long-midpoint-below",
+      "p-long-midpoint-exact",
+      "p-long-midpoint-above",
+      "p-minsubnormal",
+      "p-overflow",
+      "p-underflow",
+      "p-cpu-int-i64-min",
+      "p-cpu-int-i64-max",
+      "p-cpu-int-u64-max",
+      "p-cpu-int-below53",
+      "p-cpu-int-above53",
+      "p-cpu-int-neg-above53"
+    ],
+    "Feature-preservation": [
+      "h-p0-valid-Hello",
+      "h-p0-valid-Start",
+      "h-p0-hidden-Start-first-marker",
+      "h-p0-marker-later-key",
+      "h-p0-nested-first-marker",
+      "h-driver-literal-marker-object",
+      "h-domain-preflight-marker-object",
+      "h-fixture-roundtrip-marker-object"
+    ]
+  }
+}
