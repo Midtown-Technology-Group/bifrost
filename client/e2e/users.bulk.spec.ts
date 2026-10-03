@@ -148,13 +148,14 @@ test.describe("Bulk user actions", () => {
 		).toBeVisible();
 
 		// Pick the destination org from the OrganizationSelect.
-		await dialog.getByRole("combobox").click();
-		const pickerId = await dialog
-			.getByRole("combobox")
-			.getAttribute("aria-controls");
+		const organizationPicker = dialog.getByRole("combobox", {
+			name: "Organization scope",
+		});
+		await organizationPicker.click();
+		const pickerId = await organizationPicker.getAttribute("aria-controls");
 		expect(pickerId).toBeTruthy();
 		await page.getByRole("option", { name: DEST_ORG_NAME }).click();
-		await expect(dialog.getByRole("combobox")).toContainText(DEST_ORG_NAME);
+		await expect(organizationPicker).toContainText(DEST_ORG_NAME);
 		// Closed picker content survives its exit animation. Wait for that exact
 		// overlay to unmount before the single submit, without replaying the move.
 		await expect(page.locator(`[id="${pickerId}"]`)).toHaveCount(0);
