@@ -45,6 +45,12 @@ ALLOWED_REQUIRED_TEST_ACTIONS = (
     "actions/upload-artifact@",
     "./",
 )
+EXPENSIVE_TEST_IF = (
+    "${{ !cancelled() && needs.lint.result == 'success' "
+    "&& (needs.publish-ci-test-images.result == 'success' "
+    "|| needs.publish-ci-test-images.result == 'skipped') "
+    "&& (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
+)
 EXPECTED_PR_CANCELLATION = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
 
 ALLOWED_CODEOWNERS = (
@@ -149,7 +155,10 @@ def check_ci_workflow(path: Path) -> list[str]:
     )
     for job in QUEUE_SKIPPED_ON_MAIN:
         parsed = _job_block(lines, job)
-        if parsed is None or _parse_if_line(parsed[1]) != expected_skip:
+        expected_if = (
+            EXPENSIVE_TEST_IF if job in ACTION_FREE_REQUIRED_TEST_JOBS else expected_skip
+        )
+        if parsed is None or _parse_if_line(parsed[1]) != expected_if:
             return [f"{path}: {job!r} must skip the redundant main-push rerun after queue validation."]
 
     deploy_dry_run = _job_block(lines, "deploy-dry-run")
