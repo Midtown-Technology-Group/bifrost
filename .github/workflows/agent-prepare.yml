@@ -114,7 +114,7 @@ jobs:
         if: always()
         with:
           name: agent-prepare-custody
-          # Closed v2 locations only; raw literal captures/private witnesses never upload.
+          # Closed v3 locations/reasons only; raw literal captures/private witnesses never upload.
           path: |
             ${{ env.AGENT_PREPARE_EVIDENCE }}/receipt.json
             ${{ env.AGENT_PREPARE_EVIDENCE }}/owned-inventory.json

@@ -963,10 +963,174 @@ stage_start = None
 active_operation = None
 
 
-def invalidate_literal_capture():
+class DiagnosticObserver:
+    # Exception identity stays lexical/private, never in JSON-persisted state.
+    def __init__(self):
+        self.failure = None
+        self.completed = False
+
+    def note(self, error, reason):
+        if self.failure is None:
+            self.failure = (error, reason)
+
+
+def diagnostic_reason(label, error):
+    if isinstance(error, (Interrupted, SystemExit, KeyboardInterrupt)) or not isinstance(error, Exception):
+        return "control"
+    if isinstance(error, Failure):
+        if error.category == "timeout":
+            return "deadline"
+        if error.category == "bound":
+            return "bound"
+        categories = {
+            "capture-check": {"acquisition"},
+            "source-check": {"acquisition", "source"},
+            "final-newline": {"schema"},
+            "control-byte": {"schema"},
+        }
+        if error.category in categories.get(label, ()):
+            return {"capture-check": "capture-identity", "source-check": "source-association"}.get(label, label)
+    if label == "capture-open" and isinstance(error, FileNotFoundError):
+        return "missing"
+    if isinstance(error, UnicodeDecodeError) and label in {"raw-decode", "source-decode"}:
+        return "utf8" if label == "raw-decode" else "source-encoding"
+    if isinstance(error, OSError):
+        return {
+            "capture-open": "read-io",
+            "capture-io": "read-io",
+            "capture-check": "capture-identity",
+            "source-io": "source-read",
+            "source-check": "source-association",
+        }.get(label, "internal")
+    return "internal"
+
+
+def diagnostic_operation(observer, label, actual_operation):
+    require(
+        label
+        in {
+            "capture-open",
+            "capture-io",
+            "capture-check",
+            "source-io",
+            "source-check",
+            "raw-decode",
+            "source-decode",
+            "final-newline",
+            "control-byte",
+            "bound-check",
+            "budget-check",
+            "internal",
+        },
+        "schema",
+    )
+    try:
+        return actual_operation()
+    except BaseException as error:
+        if observer is not None:
+            # Recording cannot replace the exact pending original/control object.
+            with suppress(BaseException):
+                observer.note(error, diagnostic_reason(label, error))
+        raise
+
+
+def diagnostic_witness_initial():
+    return {
+        "capture": "not-checked",
+        "stdout": "not-attempted",
+        "stderr": "not-attempted",
+        "projection": "not-attempted",
+        "invalidated_by": None,
+    }
+
+
+def validate_diagnostic_witness(value):
+    require(
+        type(value) is dict and set(value) == {"capture", "stdout", "stderr", "projection", "invalidated_by"}, "schema"
+    )
+    require(
+        type(value["capture"]) is str and value["capture"] in {"not-checked", "incomplete", "complete", "invalidated"},
+        "schema",
+    )
+    for stream in ("stdout", "stderr"):
+        require(
+            type(value[stream]) is str
+            and value[stream]
+            in {
+                "not-attempted",
+                "complete",
+                "missing",
+                "capture-identity",
+                "read-io",
+                "utf8",
+                "final-newline",
+                "control-byte",
+                "source-association",
+                "source-encoding",
+                "source-read",
+                "bound",
+                "deadline",
+                "control",
+                "internal",
+            },
+            "schema",
+        )
+    require(
+        type(value["projection"]) is str and value["projection"] in {"not-attempted", "complete", "bound", "invalid"},
+        "schema",
+    )
+    require(
+        value["invalidated_by"] is None
+        or (
+            type(value["invalidated_by"]) is str
+            and value["invalidated_by"]
+            in {
+                "capture-binding",
+                "capture-bookkeeping",
+                "capture-save",
+                "stream-failure",
+                "projection",
+                "measurement-save",
+                "pre-pr-capture",
+            }
+        ),
+        "schema",
+    )
+
+
+def diagnostic_attach(value):
+    witness = state.get("pre_pr_diagnostic_witness")
+    if type(witness) is dict and type(value) is dict and type(value.get("diagnostic")) is dict:
+        value["diagnostic"]["witness"] = witness.copy()
+
+
+def diagnostic_note_invalidation(ledger, reason):
+    if ledger["invalidated_by"] is None:
+        ledger["invalidated_by"] = reason
+    if ledger["capture"] == "complete":
+        ledger["capture"] = "invalidated"
+
+
+def invalidate_literal_capture(reason):
+    require(
+        reason
+        in {
+            "capture-binding",
+            "capture-bookkeeping",
+            "capture-save",
+            "stream-failure",
+            "projection",
+            "measurement-save",
+            "pre-pr-capture",
+        },
+        "schema",
+    )
     witness = state.get("pre_pr_literal_capture")
     if type(witness) is dict:
         witness["capture_complete"] = False
+    ledger = state.get("pre_pr_diagnostic_witness")
+    if type(ledger) is dict:
+        diagnostic_note_invalidation(ledger, reason)
     measurement = state.get("pre_pr_measurement")
     if (
         type(measurement) is dict
@@ -974,16 +1138,17 @@ def invalidate_literal_capture():
         and measurement["diagnostic"].get("admission") == "observed"
     ):
         measurement["diagnostic"] = {"admission": "invalid", "records": []}
+    diagnostic_attach(measurement)
 
 
-def save():
+def save(*, capture_invalidation_reason="measurement-save"):
     try:
+        diagnostic_attach(state.get("pre_pr_measurement"))
         checked_directory(EVIDENCE, state["root_identity"])
         atomic_json(STATE_PATH, state)
     except BaseException:
-        # A later relevant save failure cannot leave an admissible capture flag.
         with suppress(BaseException):
-            invalidate_literal_capture()
+            invalidate_literal_capture(capture_invalidation_reason)
         raise
 
 
@@ -1405,8 +1570,17 @@ def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
                 literal["capture_complete"] = original is None and cleanup_error is None
                 literal["capture_complete"] = literal_capture_complete(literal, row)
 
-        settle(retain_child)
-        settle(save)
+        def retain_observed_child():
+            try:
+                retain_child()
+            except BaseException:
+                if literal is not None:
+                    with suppress(BaseException):
+                        invalidate_literal_capture("capture-bookkeeping")
+                raise
+
+        settle(retain_observed_child)
+        settle(lambda: save(capture_invalidation_reason="capture-save") if literal is not None else save())
     if original is not None:
         raise original
     if cleanup_error is not None:
@@ -1830,41 +2004,60 @@ PRE_PR_STAGES = {
 }
 
 
-def pre_pr_file(path, limit=65536):
+def pre_pr_file(path, limit=65536, *, diagnostic_observer=None):
+    def call(label, operation):
+        return diagnostic_operation(diagnostic_observer, label, operation)
+
     # O_NONBLOCK prevents an unexpected FIFO from blocking before fstat admission.
     fd = -1
     original = None
     result = bytearray()
     try:
-        remaining()
-        require(path == path.resolve(), "acquisition")
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
-        info = os.fstat(fd)
-        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_size <= limit, "acquisition")
-        while block := os.read(fd, min(65536, limit + 1 - len(result))):
+        call("budget-check", remaining)
+        call("source-check", lambda: require(path == path.resolve(), "acquisition"))
+        fd = call("source-io", lambda: os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC))
+        info = call("source-check", lambda: os.fstat(fd))
+        call(
+            "source-check",
+            lambda: require(
+                stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_size <= limit, "acquisition"
+            ),
+        )
+        while block := call("source-io", lambda: os.read(fd, min(65536, limit + 1 - len(result)))):
             result.extend(block)
-            require(len(result) <= limit, "bound")
-        remaining()
-        after = os.fstat(fd)
-        require(
-            (
-                after.st_dev,
-                after.st_ino,
-                after.st_uid,
-                after.st_mode,
-                after.st_size,
-                after.st_mtime_ns,
-                after.st_ctime_ns,
-            )
-            == (info.st_dev, info.st_ino, info.st_uid, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns),
-            "source",
+            call("bound-check", lambda: require(len(result) <= limit, "bound"))
+        call("budget-check", remaining)
+        after = call("source-check", lambda: os.fstat(fd))
+        call(
+            "source-check",
+            lambda: require(
+                (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_uid,
+                    after.st_mode,
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                )
+                == (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_uid,
+                    info.st_mode,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                ),
+                "source",
+            ),
         )
     except BaseException as error:
         original = error
     finally:
         if fd >= 0:
             try:
-                os.close(fd)
+                call("source-io", lambda: os.close(fd))
             except BaseException as error:
                 if original is None:
                     original = error
@@ -2005,15 +2198,23 @@ def diagnostic_record(tool, severity, path, line, column, location):
     }
 
 
-def diagnostic_records(raw, location):
-    require(type(raw) is bytes and len(raw) <= RAW_LIMIT, "bound")
-    text = raw.decode("utf-8")
-    require(not text or text.endswith("\n"), "schema")
+def diagnostic_records(raw, location, *, diagnostic_observer=None):
+    def call(label, operation):
+        return diagnostic_operation(diagnostic_observer, label, operation)
+
+    call("bound-check", lambda: require(type(raw) is bytes and len(raw) <= RAW_LIMIT, "bound"))
+    text = call("raw-decode", lambda: raw.decode("utf-8"))
+    call("final-newline", lambda: require(not text or text.endswith("\n"), "schema"))
     lines = text.split("\n")
     cleaned = []
     for line in lines:
         line = line[:-1] if line.endswith("\r") else line
-        require(all((ord(char) >= 32 and not 127 <= ord(char) <= 159) or char == "\t" for char in line), "schema")
+        call(
+            "control-byte",
+            lambda line=line: require(
+                all((ord(char) >= 32 and not 127 <= ord(char) <= 159) or char == "\t" for char in line), "schema"
+            ),
+        )
         cleaned.append(line)
     found = {}
     for index, line in enumerate(cleaned):
@@ -2037,7 +2238,7 @@ def diagnostic_records(raw, location):
                     record = diagnostic_record("ruff", severity, path, int(number), int(column), location)
                     if record is not None:
                         found[diagnostic_order(record)] = record
-        require(len(found) <= 32, "bound")
+        call("bound-check", lambda: require(len(found) <= 32, "bound"))
     return list(found.values())
 
 
@@ -2094,36 +2295,42 @@ def validate_diagnostic(value):
     require(bool(keys) == (value["admission"] == "observed"), "schema")
 
 
-def literal_capture_read(witness, stream):
-    checked_directory(RAW_DIRECTORY, state["raw_identity"])
-    require(witness["directory"] == state["raw_identity"], "acquisition")
+def literal_capture_read(witness, stream, *, diagnostic_observer=None):
+    def call(label, operation):
+        return diagnostic_operation(diagnostic_observer, label, operation)
+
+    call("capture-check", lambda: checked_directory(RAW_DIRECTORY, state["raw_identity"]))
+    call("capture-check", lambda: require(witness["directory"] == state["raw_identity"], "acquisition"))
     path = Path(witness["paths"][stream])
     suffix = ".stdout" if stream == "stdout" else ".stderr"
-    require(path == RAW_DIRECTORY / (str(witness["capture_number"]) + suffix), "acquisition")
+    call(
+        "capture-check",
+        lambda: require(path == RAW_DIRECTORY / (str(witness["capture_number"]) + suffix), "acquisition"),
+    )
     finalized = witness["final"][stream]
     fd = -1
     original = None
     raw = bytearray()
     try:
-        remaining()
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-        require(capture_file_final(os.fstat(fd)) == finalized, "acquisition")
-        require(finalized["identity"] == witness["acquired"][stream], "acquisition")
-        require(0 <= finalized["size"] <= RAW_LIMIT, "bound")
-        while block := os.read(fd, min(65536, finalized["size"] + 1 - len(raw))):
+        call("budget-check", remaining)
+        fd = call("capture-open", lambda: os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC))
+        call("capture-check", lambda: require(capture_file_final(os.fstat(fd)) == finalized, "acquisition"))
+        call("capture-check", lambda: require(finalized["identity"] == witness["acquired"][stream], "acquisition"))
+        call("bound-check", lambda: require(0 <= finalized["size"] <= RAW_LIMIT, "bound"))
+        while block := call("capture-io", lambda: os.read(fd, min(65536, finalized["size"] + 1 - len(raw)))):
             raw.extend(block)
-            require(len(raw) <= finalized["size"], "bound")
-            remaining()
-        require(len(raw) == finalized["size"] == witness["bytes"][stream], "acquisition")
-        require(capture_file_final(os.fstat(fd)) == finalized, "acquisition")
-        checked_directory(RAW_DIRECTORY, witness["directory"])
-        remaining()
+            call("bound-check", lambda: require(len(raw) <= finalized["size"], "bound"))
+            call("budget-check", remaining)
+        call("capture-check", lambda: require(len(raw) == finalized["size"] == witness["bytes"][stream], "acquisition"))
+        call("capture-check", lambda: require(capture_file_final(os.fstat(fd)) == finalized, "acquisition"))
+        call("capture-check", lambda: checked_directory(RAW_DIRECTORY, witness["directory"]))
+        call("budget-check", remaining)
     except BaseException as error:
         original = error
     finally:
         if fd >= 0:
             try:
-                os.close(fd)
+                call("capture-io", lambda: os.close(fd))
             except BaseException as error:
                 if original is None:
                     original = error
@@ -2132,25 +2339,183 @@ def literal_capture_read(witness, stream):
     return bytes(raw)
 
 
-def diagnostic_source_lines(path):
+def diagnostic_source_lines(path, *, diagnostic_observer=None):
+    def call(label, operation):
+        return diagnostic_operation(diagnostic_observer, label, operation)
+
     tracked = state.get("pre_pr_diagnostic_git", {}).get(path)
     if not diagnostic_tracked_file(tracked):
         return None
     source = ROOT / path
-    require(source == source.resolve(), "source")
-    raw = pre_pr_file(source, RAW_LIMIT)
+    call("source-check", lambda: require(source == source.resolve(), "source"))
+    raw = call("internal", lambda: pre_pr_file(source, RAW_LIMIT, diagnostic_observer=diagnostic_observer))
     git_blob = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw, usedforsecurity=False).hexdigest()
-    require(git_blob == tracked["oid"], "source")
-    text = raw.decode("utf-8")
+    call("source-check", lambda: require(git_blob == tracked["oid"], "source"))
+    text = call("source-decode", lambda: raw.decode("utf-8"))
     return len(text.split("\n")) - (1 if text.endswith("\n") else 0) if text else 0
+
+
+def diagnostic_finish_stream(observer, actual_remaining):
+    diagnostic_operation(observer, "budget-check", actual_remaining)
+    observer.completed = True
+
+
+def diagnostic_reason_controls():
+    # Declarations execute only in the existing supported pre-PR control scope.
+    # Synthetic failures never supply real child/parser/run observations.
+    def fail(error):
+        raise error
+
+    sentinel = object()
+    observer = DiagnosticObserver()
+    calls = []
+
+    def success():
+        calls.append(True)
+        return sentinel
+
+    require(diagnostic_operation(observer, "internal", success) is sentinel and calls == [True], "source")
+    require(observer.failure is None and observer.completed is False, "source")
+    for label, error, expected in (
+        ("capture-open", FileNotFoundError(), "missing"),
+        ("source-io", FileNotFoundError(), "source-read"),
+        ("capture-io", OSError(), "read-io"),
+        ("capture-check", Failure("acquisition"), "capture-identity"),
+        ("source-check", Failure("source"), "source-association"),
+        ("raw-decode", UnicodeDecodeError("utf-8", b"x", 0, 1, "synthetic"), "utf8"),
+        ("source-decode", UnicodeDecodeError("utf-8", b"x", 0, 1, "synthetic"), "source-encoding"),
+        ("final-newline", Failure("schema"), "final-newline"),
+        ("control-byte", Failure("schema"), "control-byte"),
+        ("internal", RuntimeError(), "internal"),
+        ("bound-check", Failure("bound"), "bound"),
+        ("budget-check", Failure("timeout"), "deadline"),
+        ("internal", Interrupted(17), "control"),
+        ("internal", KeyboardInterrupt(), "control"),
+        ("internal", SystemExit(17), "control"),
+    ):
+        current = DiagnosticObserver()
+        count = []
+
+        def failing(error=error, count=count):
+            count.append(True)
+            raise error
+
+        try:
+            diagnostic_operation(
+                current,
+                "internal",
+                lambda current=current, label=label, failing=failing: diagnostic_operation(current, label, failing),
+            )
+        except BaseException as caught:
+            require(caught is error and count == [True] and current.failure == (error, expected), "source")
+        else:
+            raise Failure("source")
+        close_error = OSError()
+        try:
+            diagnostic_operation(current, "capture-io", lambda close_error=close_error: fail(close_error))
+        except BaseException as caught:
+            require(caught is close_error and current.failure == (error, expected), "source")
+        else:
+            raise Failure("source")
+    # A successful source callback leaves no stale reason for later bound/close.
+    for label, later, expected in (("bound-check", Failure("bound"), "bound"), ("capture-io", OSError(), "read-io")):
+        current = DiagnosticObserver()
+        diagnostic_operation(current, "source-check", lambda: None)
+        try:
+            diagnostic_operation(current, label, lambda later=later: fail(later))
+        except BaseException as caught:
+            require(caught is later and current.failure == (later, expected), "source")
+        else:
+            raise Failure("source")
+    current = DiagnosticObserver()
+    later = Failure("timeout")
+    try:
+        diagnostic_finish_stream(current, lambda later=later: fail(later))
+    except Failure as caught:
+        require(caught is later and current.completed is False and current.failure == (later, "deadline"), "source")
+    else:
+        raise Failure("source")
+    current = DiagnosticObserver()
+    completed = []
+    diagnostic_finish_stream(current, lambda: completed.append(True))
+    require(current.completed is True and current.failure is None and completed == [True], "source")
+
+    class BrokenObserver:
+        def note(self, _error, _reason):
+            raise RuntimeError()
+
+    original = Interrupted(19)
+    try:
+        diagnostic_operation(BrokenObserver(), "internal", lambda: fail(original))
+    except BaseException as caught:
+        require(caught is original, "source")
+    else:
+        raise Failure("source")
+    ordinary = RuntimeError()
+    current = DiagnosticObserver()
+    try:
+        diagnostic_operation(current, "internal", lambda: fail(ordinary))
+    except RuntimeError as caught:
+        require(caught is ordinary, "source")
+    later_control = Interrupted(21)
+    try:
+        diagnostic_operation(current, "capture-io", lambda: fail(later_control))
+    except BaseException as caught:
+        require(caught is later_control and current.failure == (ordinary, "internal"), "source")
+    else:
+        raise Failure("source")
+    independent = []
+    for stream in ("stdout", "stderr"):
+        current = DiagnosticObserver()
+        error = FileNotFoundError()
+        try:
+            diagnostic_operation(current, "capture-open", lambda error=error: fail(error))
+        except FileNotFoundError as caught:
+            require(caught is error and current.failure == (error, "missing"), "source")
+            independent.append(stream)
+    require(independent == ["stdout", "stderr"], "source")
+    count = []
+    try:
+        diagnostic_operation(DiagnosticObserver(), "unknown", lambda: count.append(True))
+    except Failure as caught:
+        require(caught.category == "schema" and not count, "source")
+    else:
+        raise Failure("source")
+    ledger = diagnostic_witness_initial()
+    ledger.update(capture="complete", stdout="complete", projection="complete")
+    diagnostic_note_invalidation(ledger, "capture-save")
+    diagnostic_note_invalidation(ledger, "measurement-save")
+    require(
+        ledger["capture"] == "invalidated"
+        and ledger["invalidated_by"] == "capture-save"
+        and ledger["stdout"] == ledger["projection"] == "complete",
+        "source",
+    )
+    validate_diagnostic_witness(ledger)
+    for key, bad in (("capture", True), ("stdout", "unknown"), ("projection", None), ("invalidated_by", False)):
+        try:
+            validate_diagnostic_witness({**ledger, key: bad})
+        except Failure:
+            pass
+        else:
+            raise Failure("source")
+    for bad in ({key: value for key, value in ledger.items() if key != "stderr"}, {**ledger, "extra": None}):
+        try:
+            validate_diagnostic_witness(bad)
+        except Failure:
+            pass
+        else:
+            raise Failure("source")
 
 
 def pre_pr_diagnostic():
     value = state["pre_pr_measurement"]
+    ledger = state["pre_pr_diagnostic_witness"]
     require(value["admission"] == "admitted", "source")
     quality = next((row for row in value["stages"] if row["stage"] == "quality"), None)
     if quality is None or quality["status"] == "complete":
         value["diagnostic"] = {"admission": "not-needed", "records": []}
+        diagnostic_attach(value)
         validate_pre_pr_measurement(value)
         save()
         return
@@ -2158,30 +2523,61 @@ def pre_pr_diagnostic():
     witness = state.get("pre_pr_literal_capture")
     index = state.get("pre_pr_literal_child_index")
     children = state.get("children", [])
-    require(
-        literal_capture_binding(witness, children, index, state["raw_identity"], state.get("capture_counter"))
-        and type(state.get("raw_bytes")) is int
-        and 0 <= state["raw_bytes"] <= RAW_TOTAL,
-        "acquisition",
-    )
-    statuses = []
-    records = []
+    ledger["capture"] = "incomplete"
+    try:
+        require(
+            literal_capture_binding(witness, children, index, state["raw_identity"], state.get("capture_counter"))
+            and type(state.get("raw_bytes")) is int
+            and 0 <= state["raw_bytes"] <= RAW_TOTAL,
+            "acquisition",
+        )
+    except BaseException:
+        with suppress(BaseException):
+            invalidate_literal_capture("capture-binding")
+        raise
+    ledger["capture"] = "complete"
+    statuses, records = [], []
     original = None
     source_lines = {}
-
-    def location(path):
-        if path not in state.get("pre_pr_diagnostic_git", {}):
-            return None
-        if path not in source_lines:
-            source_lines[path] = diagnostic_source_lines(path)
-        return source_lines[path]
-
     for stream in ("stdout", "stderr"):
+        observer = None
         try:
-            raw = literal_capture_read(witness, stream)
-            records.extend(diagnostic_records(raw, location))
-            remaining()
+            observer = DiagnosticObserver()
+
+            def location(path, observer=observer):
+                if path not in state.get("pre_pr_diagnostic_git", {}):
+                    return None
+                if path not in source_lines:
+                    source_lines[path] = diagnostic_operation(
+                        observer, "internal", lambda: diagnostic_source_lines(path, diagnostic_observer=observer)
+                    )
+                return source_lines[path]
+
+            raw = diagnostic_operation(
+                observer,
+                "internal",
+                lambda stream=stream, observer=observer: literal_capture_read(
+                    witness, stream, diagnostic_observer=observer
+                ),
+            )
+            records.extend(
+                diagnostic_operation(
+                    observer,
+                    "internal",
+                    lambda raw=raw, location=location, observer=observer: diagnostic_records(
+                        raw, location, diagnostic_observer=observer
+                    ),
+                )
+            )
+            diagnostic_finish_stream(observer, remaining)
+            ledger[stream] = "complete"
         except BaseException as error:
+            with suppress(BaseException):
+                ledger[stream] = (
+                    observer.failure[1]
+                    if observer is not None and observer.failure is not None
+                    else diagnostic_reason("internal", error)
+                )
             statuses.append(
                 "bound"
                 if isinstance(error, Failure) and error.category == "bound"
@@ -2191,14 +2587,29 @@ def pre_pr_diagnostic():
             )
             if original is None:
                 original = error
-    value["diagnostic"] = diagnostic_projection(statuses, records)
-    if not diagnostic_fit(value) and original is None:
-        original = Failure("bound")
-    if value["diagnostic"]["admission"] == "bound" and original is None:
-        original = Failure("bound")
-    if original is not None:
-        witness["capture_complete"] = False
-    validate_pre_pr_measurement(value)
+    try:
+        value["diagnostic"] = diagnostic_projection(statuses, records)
+        diagnostic_attach(value)
+        if not diagnostic_fit(value) and original is None:
+            original = Failure("bound")
+        if value["diagnostic"]["admission"] == "bound" and original is None:
+            original = Failure("bound")
+        if value["diagnostic"]["admission"] == "bound":
+            ledger["projection"] = "bound"
+            invalidate_literal_capture("projection")
+        if original is not None:
+            invalidate_literal_capture("stream-failure")
+        diagnostic_attach(value)
+        validate_pre_pr_measurement(value)
+        if ledger["projection"] != "bound":
+            ledger["projection"] = "complete"
+        diagnostic_attach(value)
+    except BaseException as error:
+        with suppress(BaseException):
+            ledger["projection"] = "bound" if isinstance(error, Failure) and error.category == "bound" else "invalid"
+            invalidate_literal_capture("projection")
+        if original is None:
+            original = error
     try:
         save()
     except BaseException as error:
@@ -2224,7 +2635,10 @@ def diagnostic_tracked_file(tracked):
 
 def diagnostic_fit(value):
     if len(canonical(value)) > 16384:
+        witness = value["diagnostic"].get("witness")
         value["diagnostic"] = {"admission": "bound", "records": []}
+        if witness is not None:
+            value["diagnostic"]["witness"] = witness
         return False
     return True
 
@@ -2282,6 +2696,8 @@ def retained_build_witness(measurement, record, initial_ids, stage, project):
 def pre_pr_diagnostic_controls():
     # Pure same-helper controls execute only in the supported pre-PR scope.
     # Their synthetic facts are never substituted for actual child/image custody.
+    diagnostic_reason_controls()
+
     def location(path):
         return 20 if path == "api/src/probe.py" else None
 
@@ -2581,7 +2997,7 @@ def validate_pre_pr_measurement(value):
             "image_witness",
             "diagnostic",
         }
-        and value["schema"] == "bifrost.test.agent-prepare-pre-pr-measurement/v2"
+        and value["schema"] == "bifrost.test.agent-prepare-pre-pr-measurement/v3"
         and value["candidate_sha"] == receipt["candidate"]["checkout_sha"]
         and type(value["candidate_sha"]) is str
         and re.fullmatch(r"[0-9a-f]{40}", value["candidate_sha"])
@@ -2600,7 +3016,11 @@ def validate_pre_pr_measurement(value):
         and value["image_witness"] in {"none", "stack-complete", "quality-complete"},
         "schema",
     )
-    validate_diagnostic(value["diagnostic"])
+    require(
+        type(value["diagnostic"]) is dict and set(value["diagnostic"]) == {"admission", "records", "witness"}, "schema"
+    )
+    validate_diagnostic_witness(value["diagnostic"]["witness"])
+    validate_diagnostic({key: value["diagnostic"][key] for key in ("admission", "records")})
     if value["diagnostic"]["admission"] == "observed":
         require(
             literal_capture_binding(
@@ -2815,8 +3235,9 @@ def pre_pr_image_witness():
 
 
 def pre_pr():
+    state["pre_pr_diagnostic_witness"] = diagnostic_witness_initial()
     state["pre_pr_measurement"] = {
-        "schema": "bifrost.test.agent-prepare-pre-pr-measurement/v2",
+        "schema": "bifrost.test.agent-prepare-pre-pr-measurement/v3",
         "candidate_sha": receipt["candidate"]["checkout_sha"],
         "run_id": os.environ["GITHUB_RUN_ID"],
         "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
@@ -2826,6 +3247,7 @@ def pre_pr():
         "image_witness": "none",
         "diagnostic": {"admission": "invalid", "records": []},
     }
+    diagnostic_attach(state["pre_pr_measurement"])
     begin("pre-pr")
     original = None
     try:
@@ -2873,7 +3295,7 @@ def pre_pr():
             except BaseException as error:
                 if callback in (pre_pr_capture, pre_pr_diagnostic):
                     with suppress(BaseException):
-                        invalidate_literal_capture()
+                        invalidate_literal_capture("pre-pr-capture" if callback is pre_pr_capture else "stream-failure")
                 if original is None:
                     original = error
         try:
