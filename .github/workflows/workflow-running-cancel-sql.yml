@@ -1,0 +1,79 @@
+name: Workflow Running Cancel SQL parity
+on:
+  push:
+    branches: [rust/workflow-running-cancel-sql]
+    paths:
+      - core-rs/**
+      - api/tests/parity/**
+      - api/src/services/execution/attempts.py
+      - api/src/repositories/executions.py
+      - api/src/models/orm/executions.py
+      - scripts/ci/workflow-running-cancel-sql.sh
+      - .github/workflows/workflow-running-cancel-sql.yml
+  pull_request:
+    branches: [main, rust/workflow-domain-row-plans]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  running-cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Start shared custody budget
+        run: |
+          python3 - <<'PY'
+          import json,os,time
+          from pathlib import Path
+          base=Path(os.environ['RUNNER_TEMP'])
+          tag=os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT']
+          evidence=base/('rc-evidence-'+tag)
+          private=base/('rc-private-'+tag)
+          evidence.mkdir(mode=0o700)
+          private.mkdir(mode=0o700)
+          info=private.stat()
+          (evidence/'state.json').write_text(json.dumps({'start':time.monotonic(),'private_identity':{'dev':info.st_dev,'ino':info.st_ino,'uid':info.st_uid}}))
+          with open(os.environ['GITHUB_ENV'],'a') as stream:
+              stream.write('RC_EVIDENCE='+str(evidence)+'\nRC_PRIVATE_LOGS='+str(private)+'\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select exact private format mode
+        id: mode
+        run: |
+          python3 - <<'PY'
+          import os,subprocess
+          subject=subprocess.check_output(['git','show','-s','--format=%B','HEAD'],text=True).splitlines()[0]
+          mode='format' if os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_REF']=='refs/heads/rust/workflow-running-cancel-sql' and subject=='ci: running-cancel format-only' else 'verify'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
+              stream.write('mode='+mode+'\n')
+          PY
+      - name: Materialize private action checker credential
+        id: credential
+        if: steps.mode.outputs.mode == 'verify'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-materialize
+      - name: Supported bounded source and actual DML gate
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.credential.outputs.identity }}
+        run: bash scripts/ci/workflow-running-cancel-sql.sh '${{ steps.mode.outputs.mode }}'
+      - name: Always dispose private credential
+        if: always() && steps.credential.outputs.path != ''
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.credential.outputs.identity }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-cleanup
+      - name: Always inspect own resources
+        if: always()
+        run: bash scripts/ci/workflow-running-cancel-sql.sh cleanup
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: workflow-running-cancel-sql
+          path: ${{ env.RC_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
