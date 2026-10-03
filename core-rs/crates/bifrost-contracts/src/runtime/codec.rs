@@ -98,7 +98,17 @@ struct WireFrame {
     message_id: super::CanonicalUuid,
     sequence: super::Positive,
     correlation_id: Option<super::CanonicalUuid>,
+    #[serde(deserialize_with = "deserialize_ordinary_value")]
     body: Value,
+}
+
+fn deserialize_ordinary_value<'de, D>(deserializer: D) -> Result<Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // Walk the already validated tree without Value::Deserialize's feature-
+    // dependent interpretation of private-looking map keys.
+    StrictJson { depth: 0 }.deserialize(deserializer)
 }
 
 fn fields(value: &Value, expected: &[&str]) -> Result<(), Error> {
@@ -169,7 +179,9 @@ fn body_fields(kind: &str, value: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn decode_json(bytes: &[u8]) -> Result<Frame, Error> {
+/// Parse bounded ordinary JSON without interpreting map keys as serde markers.
+/// This is mechanical parsing only; it does not validate a frame or authority.
+pub fn decode_ordinary_json(bytes: &[u8]) -> Result<Value, Error> {
     if bytes.is_empty() {
         return Err(Error::InvalidJson);
     }
@@ -182,6 +194,11 @@ pub fn decode_json(bytes: &[u8]) -> Result<Frame, Error> {
         .deserialize(&mut deserializer)
         .map_err(|_| Error::InvalidJson)?;
     deserializer.end().map_err(|_| Error::InvalidJson)?;
+    Ok(value)
+}
+
+pub fn decode_json(bytes: &[u8]) -> Result<Frame, Error> {
+    let value = decode_ordinary_json(bytes)?;
     fields(
         &value,
         &[
@@ -194,10 +211,11 @@ pub fn decode_json(bytes: &[u8]) -> Result<Frame, Error> {
             "body",
         ],
     )?;
-    let wire: WireFrame = serde_json::from_value(value).map_err(|_| Error::InvalidFrame)?;
-    if wire.protocol != PROTOCOL {
+    let protocol = value["protocol"].as_str().ok_or(Error::InvalidFrame)?;
+    if protocol != PROTOCOL {
         return Err(Error::UnsupportedProtocol);
     }
+    let wire: WireFrame = serde_json::from_value(value).map_err(|_| Error::InvalidFrame)?;
     if wire.frame_type.is_empty() {
         return Err(Error::InvalidFrame);
     }

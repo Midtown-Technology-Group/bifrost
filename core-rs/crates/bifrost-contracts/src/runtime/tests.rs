@@ -6,6 +6,7 @@ use std::{
 };
 
 use serde::Deserialize;
+use serde_json::{Value, json};
 
 use super::*;
 
@@ -317,5 +318,107 @@ fn over_cap_payload_and_concatenated_frames() -> TestResult {
     assert_eq!(read_frame(&mut stream)?, Some(frame.clone()));
     assert_eq!(read_frame(&mut stream)?, Some(frame));
     assert_eq!(read_frame(&mut stream)?, None);
+    Ok(())
+}
+
+#[test]
+fn ordinary_json_retains_literal_private_looking_keys() -> TestResult {
+    // Synthetic ordinary data, never normalized through Value::Deserialize.
+    let cases = [
+        (
+            r#"{"$serde_json::private::RawValue":"{\"hidden\":1}"}"#,
+            json!({"$serde_json::private::RawValue": "{\"hidden\":1}"}),
+        ),
+        (
+            r#"{"$serde_json::private::RawValue":"{\"hidden\":1}","neighbor":2}"#,
+            json!({"$serde_json::private::RawValue": "{\"hidden\":1}", "neighbor": 2}),
+        ),
+        (
+            r#"{"neighbor":2,"$serde_json::private::RawValue":"{\"hidden\":1}"}"#,
+            json!({"neighbor": 2, "$serde_json::private::RawValue": "{\"hidden\":1}"}),
+        ),
+        (
+            r#"{"outer":[{"$serde_json::private::RawValue":"{\"hidden\":1}"}]}"#,
+            json!({"outer": [{"$serde_json::private::RawValue": "{\"hidden\":1}"}]}),
+        ),
+        (
+            r#"{"$serde_json::private::RawValue":7}"#,
+            json!({"$serde_json::private::RawValue": 7}),
+        ),
+        (
+            r#"{"$serde_json::private::RawValue":true}"#,
+            json!({"$serde_json::private::RawValue": true}),
+        ),
+        (
+            r#"{"$serde_json::private::RawValue":null}"#,
+            json!({"$serde_json::private::RawValue": null}),
+        ),
+        (
+            r#"{"$serde_json::private::RawValue":"{not-json"}"#,
+            json!({"$serde_json::private::RawValue": "{not-json"}),
+        ),
+    ];
+    for (index, (input, expected)) in cases.into_iter().enumerate() {
+        let actual = decode_ordinary_json(input.as_bytes())?;
+        assert!(actual == expected, "synthetic ordinary map case {index}");
+    }
+    Ok(())
+}
+
+#[test]
+fn ordinary_json_keeps_incumbent_structural_limits() {
+    for input in [
+        Vec::new(),
+        vec![0xff],
+        br#"{"x":1,"\u0078":2}"#.to_vec(),
+        b"null true".to_vec(),
+        b"1e309".to_vec(),
+    ] {
+        assert!(matches!(
+            decode_ordinary_json(&input),
+            Err(Error::InvalidJson)
+        ));
+    }
+    let at_depth = format!("{}0{}", "[".repeat(MAX_DEPTH), "]".repeat(MAX_DEPTH));
+    let value = decode_ordinary_json(at_depth.as_bytes());
+    assert!(matches!(value, Ok(Value::Array(_))));
+    let over_depth = format!("[{at_depth}]");
+    assert!(matches!(
+        decode_ordinary_json(over_depth.as_bytes()),
+        Err(Error::InvalidJson)
+    ));
+}
+
+#[test]
+fn protocol_precedence_preserves_size_and_depth_boundaries() -> TestResult {
+    let vectors = fixture()?;
+    let vector = vectors
+        .wire
+        .iter()
+        .find(|vector| vector.name == "e0-unsupported-sequence-zero")
+        .ok_or_else(missing)?;
+    let mut bytes = vector
+        .json
+        .as_ref()
+        .ok_or_else(missing)?
+        .as_bytes()
+        .to_vec();
+    bytes.resize(MAX_FRAME_BYTES, b' ');
+    assert_eq!(decode_json(&bytes), Err(Error::UnsupportedProtocol));
+    bytes.push(b' ');
+    assert_eq!(decode_json(&bytes), Err(Error::FrameTooLarge));
+    for (name, expected) in [
+        ("e0-depth64-protocol-first", Error::UnsupportedProtocol),
+        ("e0-depth65-before-protocol", Error::InvalidJson),
+        ("e0-shape-missing-sequence", Error::InvalidFrame),
+    ] {
+        let vector = vectors
+            .wire
+            .iter()
+            .find(|vector| vector.name == name)
+            .ok_or_else(missing)?;
+        let bytes = vector.json.as_ref().ok_or_else(missing)?.as_bytes();
+        assert_eq!(decode_json(bytes), Err(expected), "{name}");
+    }
     Ok(())
 }

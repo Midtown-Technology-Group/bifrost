@@ -4,7 +4,7 @@
 use std::io::{self, Read, Write};
 use std::process::ExitCode;
 
-use bifrost_contracts::runtime::CanonicalUuid;
+use bifrost_contracts::runtime::{CanonicalUuid, decode_ordinary_json};
 use bifrost_domain::workflow as domain;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -586,8 +586,7 @@ enum DriverError {
 fn validate_json_shapes(bytes: &[u8]) -> Result<(), DriverError> {
     // This finite type check never normalizes bytes or constructs authority.
     // Deserialize the ORIGINAL bytes afterward so duplicates remain errors.
-    let raw: serde_json::Value =
-        serde_json::from_slice(bytes).map_err(|_| DriverError::InvalidRequest)?;
+    let raw = decode_ordinary_json(bytes).map_err(|_| DriverError::InvalidRequest)?;
     if !raw.is_object()
         || !raw["schema"].is_string()
         || !raw["rows"].is_object()
@@ -1111,6 +1110,37 @@ mod tests {
                 }
                 invalid(&request);
             }
+        }
+    }
+
+    #[test]
+    fn marker_wrappers_fail_preflight_and_original_typed_decode() {
+        let original = result(json!({"kind": "success", "status": "Success"}));
+        for pointer in [
+            "/rows",
+            "/rows/execution",
+            "/rows/attempt",
+            "/operation",
+            "/operation/outcome",
+        ] {
+            let mut request = original.clone();
+            if let Some(target) = request.pointer_mut(pointer) {
+                let inner = match serde_json::to_string(&*target) {
+                    Ok(text) => text,
+                    Err(_) => panic!("Synthetic marker source encoding failed"),
+                };
+                *target = json!({"$serde_json::private::RawValue": inner});
+            } else {
+                panic!("Synthetic marker target is missing");
+            }
+            let input = bytes(&request);
+            assert_eq!(
+                validate_json_shapes(&input),
+                Err(DriverError::InvalidRequest)
+            );
+            assert!(serde_json::from_slice::<Request>(&input).is_err());
+            // The genuine driver still deserializes the ORIGINAL request bytes.
+            invalid(&request);
         }
     }
 

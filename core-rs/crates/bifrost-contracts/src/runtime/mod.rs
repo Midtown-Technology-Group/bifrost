@@ -8,7 +8,10 @@ mod session;
 #[cfg(test)]
 mod tests;
 
-pub use codec::{MAX_DEPTH, MAX_FRAME_BYTES, decode_json, encode_frame, read_frame, write_frame};
+pub use codec::{
+    MAX_DEPTH, MAX_FRAME_BYTES, decode_json, decode_ordinary_json, encode_frame, read_frame,
+    write_frame,
+};
 pub use control::*;
 pub use session::*;
 
