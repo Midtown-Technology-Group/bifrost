@@ -180,6 +180,8 @@ The [current freeze audit](rust-core-mvp-runtime-freeze-audit.md) names the
 remaining source/authority decisions and root dispositions against main #1027.
 The private observation codec is a separate test seam, not this runtime protocol.
 
+The [selected agent preparation contract](rust-core-mvp-agent-prepare.md) freezes mechanical facts and measured readbacks. It does not close the separate authority, dependency, process-custody or writer-exclusion gates.
+
 Implement a language-neutral `bifrost.runtime/v1` contract before orchestration.
 It must carry logical kind/ID, the **typed** domain attempt and number, runtime
 session/incarnation, registered workflow/agent identity, entrypoint, existing
