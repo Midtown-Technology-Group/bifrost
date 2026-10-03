@@ -9,7 +9,13 @@ remain private; the emitted properties contain only fixed labels and counts.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import importlib.metadata
 import inspect
+import os
+import platform
+import socket
+import stat
 import json
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
@@ -17,6 +23,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
@@ -64,6 +71,151 @@ def _require(condition: bool, label: str) -> None:
     # Avoid pytest assertion rewriting exporting private row/header values.
     if not condition:
         raise AssertionError(label)
+
+
+_METADATA_MEMBERS = {
+    "fastapi/routing.py": "4fdf951bbf9ca943a5fc26f63ed83e8c424ff5d1debe10e8d1b73732bc8f2c7b",
+    "fastapi/dependencies/utils.py": "5c8a5130beedb71e44866721816cfa47908cb01b9ea71eca1dd9a2dfc17f7bfb",
+    "fastapi/params.py": "d5f34d48ae49ecf339170f85e7ff6e3b2b00d8d802fbad666f72e5ac15a9a893",
+    "fastapi/middleware/asyncexitstack.py": "44a1a54291b383718ba2ca9586bc41cbf34267da894bbcd078d1ede58df1fb4d",
+    "fastapi/dependencies/models.py": "5cf22411aba41da4da173f4ba1e23d7ff4fede8b4e015928382d75dd3a456d62",
+    "starlette/routing.py": "b95e6a47be6cf10a89bcd1a0ace73ba8de8c6ef5b7340fde4b2de2453b2f5844",
+    "starlette/responses.py": "5d52ab008ef7d9ce4c514f13b8ec62e15a1ea78f29a116f0e8cbee6f4eea9112",
+    "starlette/_exception_handler.py": "f159bdd797d661ef712e8ff36b9890e56cab02f141bb690410973b5eb793c8e9",
+    "starlette/middleware/exceptions.py": "ece812522060c074b854c9a9696970db5b8328d0e638cccb559ad60cb0d4a96a",
+    "starlette/middleware/base.py": "abdd13dec1d08e1af9912209c8ce07357262f405acb6548d9a8cea4f6fca51cd",
+    "_pytest/main.py": "7ca2b20cc41fbfc2761bcb231eecb26967d553651035c40000f44d70e174b693",
+    "_pytest/runner.py": "8d784b2b3e23b05f4c4edd3f5263eb11964e86b6e16d2c814c5fcb2125dc4ea4",
+}
+
+
+def _metadata_file(path: Path) -> str:
+    fd: int | None = None
+    original: BaseException | None = None
+    observed: str | None = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        before = os.fstat(fd)
+        _require(stat.S_ISREG(before.st_mode), "metadata_not_regular")
+        _require(0 < before.st_size <= 1048576, "metadata_file_bound")
+        data = bytearray()
+        while len(data) <= before.st_size:
+            block = os.read(fd, min(65536, before.st_size + 1 - len(data)))
+            if not block:
+                break
+            data.extend(block)
+        after = os.fstat(fd)
+        _require(
+            (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+            and len(data) == before.st_size,
+            "metadata_identity_changed",
+        )
+        observed = hashlib.sha256(data).hexdigest()
+    except BaseException as error:
+        original = error
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except BaseException as error:
+                if original is None:
+                    original = error
+    if original is not None:
+        raise original
+    if observed is None:
+        raise AssertionError("metadata_unobserved")
+    return observed
+
+
+def _installed_metadata() -> dict[str, dict[str, object]]:
+    result: dict[str, dict[str, object]] = {}
+    for member, expected in _METADATA_MEMBERS.items():
+        package = "pytest" if member.startswith("_pytest/") else member.split("/")[0]
+        distribution = importlib.metadata.distribution(package)
+        path = Path(distribution.locate_file(member))
+        base = Path(distribution.locate_file(""))
+        observed = _metadata_file(path)
+        result[member] = {
+            "sha256": observed,
+            "distribution_matches": observed == expected,
+            "path_matches": path.resolve() == base.resolve() / member,
+        }
+    return result
+
+
+def _runner_metadata() -> str:
+    test_path = Path(__file__)
+    value = {
+        "schema": "http-cancel-reference-runner/v1",
+        "hostname": socket.gethostname(),
+        "python": platform.python_version(),
+        "pytest": importlib.metadata.version("pytest"),
+        "fastapi": importlib.metadata.version("fastapi"),
+        "starlette": importlib.metadata.version("starlette"),
+        "test_source": {
+            "sha256": _metadata_file(test_path),
+            "path_matches": test_path.resolve()
+            == Path("/app/tests/e2e/api/test_http_cancel_reference.py"),
+        },
+        "installed": _installed_metadata(),
+        "controls": {"completed": _CONTROLS_PASSED, "families": 15, "branches": 19},
+    }
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    _require(len(encoded.encode()) <= 16384, "metadata_output_bound")
+    return encoded
+
+
+def _application_metadata(app: object, case_id: str) -> str:
+    names = (
+        "src.main",
+        "src.routers.executions",
+        "fastapi.routing",
+        "fastapi.dependencies.utils",
+        "fastapi.dependencies.models",
+        "starlette.responses",
+    )
+    modules: dict[str, dict[str, object]] = {}
+    for name in names:
+        module = sys.modules.get(name)
+        if module is None:
+            raise AssertionError("application_metadata_not_loaded")
+        path = Path(getattr(module, "__file__", ""))
+        if name.startswith("src."):
+            expected_path = Path("/app") / (name.replace(".", "/") + ".py")
+        else:
+            member = name.replace(".", "/") + ".py"
+            expected_path = Path(
+                importlib.metadata.distribution(name.split(".")[0]).locate_file(member)
+            )
+        modules[name] = {
+            "sha256": _metadata_file(path),
+            "path_matches": path.resolve() == expected_path.resolve(),
+            "loaded": True,
+        }
+    contexts = [
+        item
+        for item in iter_route_contexts(getattr(app, "routes"))
+        if item.path == _ROUTE_PATH and item.methods == {"POST"}
+    ]
+    _require(len(contexts) == 1, "application_metadata_route_count")
+    route = contexts[0].original_route
+    if not isinstance(route, APIRoute):
+        raise AssertionError("application_metadata_route_type")
+    value = {
+        "schema": "http-cancel-reference-application/v1",
+        "case": case_id,
+        "modules": modules,
+        "shared_route": {
+            "endpoint_module_matches": route.endpoint.__module__
+            == "src.routers.executions",
+            "handle_module_matches": route.handle.__module__ == "fastapi.routing",
+            "source_sha256": modules["src.routers.executions"]["sha256"],
+        },
+    }
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    _require(len(encoded.encode()) <= 16384, "application_metadata_output_bound")
+    return encoded
 
 
 def _matches_observation(
@@ -468,6 +620,7 @@ async def _case_scope(
     case_id: str,
     record_property: Callable[[str, object], None],
     request: pytest.FixtureRequest,
+    record_testsuite_property: Callable[[str, object], None],
 ) -> AsyncIterator[_Case]:
     global _CONTROLS_ATTEMPTED, _CONTROLS_PASSED
     _require(
@@ -488,6 +641,9 @@ async def _case_scope(
                 _CONTROLS_ATTEMPTED = True
                 _source_controls()
                 _CONTROLS_PASSED = True
+                record_testsuite_property(
+                    "http_cancel_reference_runner_identity", _runner_metadata()
+                )
             _require(
                 asyncio.get_running_loop().time() < work_end,
                 "source_controls_exhausted_work_budget",
@@ -708,6 +864,7 @@ async def test_booted_http_cancel_reference(
     platform_admin: E2EUser,
     record_property: Callable[[str, object], None],
     request: pytest.FixtureRequest,
+    record_testsuite_property: Callable[[str, object], None],
     case_id: str,
     prior_status: ExecutionStatus,
     actor_kind: str,
@@ -716,7 +873,9 @@ async def test_booted_http_cancel_reference(
     queued_attempt: bool,
     flag_present: bool,
 ) -> None:
-    async with _case_scope(async_engine, case_id, record_property, request) as case:
+    async with _case_scope(
+        async_engine, case_id, record_property, request, record_testsuite_property
+    ) as case:
         _require(
             non_admin_user.user_id != org1_user.user_id
             and non_admin_user.organization_id == org1_user.organization_id
@@ -763,6 +922,10 @@ class _Observation:
         from src.main import create_app
 
         self.app = create_app()
+        case.record_property(
+            "http_cancel_reference_application_identity",
+            _application_metadata(self.app, case.case_id),
+        )
         self.body_reached = asyncio.Event()
         self.body_release = asyncio.Event()
         self.publisher_reached = asyncio.Event()
@@ -1098,9 +1261,12 @@ async def test_asgi_http_cancel_reference_phases(
     org1_user: E2EUser,
     record_property: Callable[[str, object], None],
     request: pytest.FixtureRequest,
+    record_testsuite_property: Callable[[str, object], None],
     case_id: str,
 ) -> None:
-    async with _case_scope(async_engine, case_id, record_property, request) as case:
+    async with _case_scope(
+        async_engine, case_id, record_property, request, record_testsuite_property
+    ) as case:
         mutation = case_id == "P01"
         prior_status = {
             "P01": ExecutionStatus.PENDING,
