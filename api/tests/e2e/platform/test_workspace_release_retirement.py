@@ -630,7 +630,8 @@ async def test_retirement_cannot_hide_owner_obligations_with_another_context(
     source_path = f"features/retirement_scope_{uuid4().hex}/run.py"
     release_row_id = job_id = source_record_id = None
     try:
-        db_session.add(Organization(id=other_org, name="Retirement scope regression"))
+        db_session.add(Organization(id=other_org, name="Retirement scope regression",
+            created_by=str(platform_admin.user_id)))
         await db_session.commit()
         artifact, release, job = await _seed_live_release(
             db_session, source_path=source_path, function_name="run",
