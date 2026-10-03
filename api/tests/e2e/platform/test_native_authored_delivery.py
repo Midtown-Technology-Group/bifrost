@@ -21,7 +21,6 @@ from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workspace_promotions import SolutionDeployObligation, WorkspaceSourceRelease
 from src.services import operation_receipts
-from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solution_deploy_obligations import solution_source_content_id
 from src.services.solutions import native_authored_source, source_revision
 from src.services.solutions.authored_archive import _git_subtree_sha
@@ -31,9 +30,6 @@ from src.services.solutions.github_delivery_source import (
 )
 from src.services.solutions.github_source_delivery import GitSourceDeliveryService
 from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
-from src.services.solutions.reviewed_workflow_artifact import build_reviewed_artifact, compile_reviewed_workflows
-from src.services.solutions.workflow_revision import project_workflow_registrations
-from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
 
 from tests.e2e.platform.test_solution_source_revision import (
     _seed_adopted_revision,
@@ -85,28 +81,8 @@ async def test_adopted_legacy_name_first_delivery_exact_replay_and_fresh_attempt
     commit = uuid4().hex + "a" * 8
     raw = b"from bifrost import workflow, tables\n@workflow(name='Friendly task', effects=[])\nasync def run():\n    return 1\n"
     f = await _seed_adopted_revision(db, platform_admin, monkeypatch,
-        source_pair=(raw, raw), source_commit_sha=commit)
-    recipe = ReviewedWorkflowRecipe.model_validate({
-        "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(f.solution_id),
-        "files": {f.path: f"solutions/{f.solution.slug}/{f.path}"},
-        "shared_tables": {name: item.model_dump(mode="json") for name, item in f.bindings.items()},
-        "workflows": [{"id": str(f.workflow_id), "path": f.path, "function_name": "run",
-            "organization_id": str(PROVIDER_ORG_ID), "controls": {}, "runtime_bounds": {
-                "max_duration_seconds": 20, "max_external_calls": 10,
-                "max_records_read": 100, "max_output_bytes": 4096}}],
-    })
-    entities = compile_reviewed_workflows(recipe, {f.path: raw}, {}, WorkflowIndexer(db),
-        legacy_registration_names={f.workflow_id: "run"})
-    manifest, resolution = build_reviewed_artifact(f.solution_id, f.base_id, recipe,
-        {f.path: raw}, {}, entities, commit, "bifrost.repo-workflow-adoption/v1")
-    # Install the reviewed adoption fixture with its sealed caller binding.
-    await project_workflow_registrations(db, f.solution_id, entities, {f.workflow_id})
-    await db.execute(update(SolutionDeployment).where(SolutionDeployment.id == f.base_id).values(
-        compiled_manifest=manifest.model_dump(mode="json", exclude_none=True),
-        compiled_manifest_hash=manifest.content_hash(), bundle_hash=manifest.bundle_hash,
-        resolution_map=resolution.model_dump(mode="json", exclude_none=True),
-        resolution_map_hash=manifest.resolution_map_hash, git_commit_sha=commit))
-    await db.commit()
+        source_pair=(raw, raw), source_commit_sha=commit, legacy_registration_name="run")
+    recipe, manifest = f.recipe, f.manifest
     f.objects[(str(f.base_id), f.path)] = raw
     _receipt_sessions(monkeypatch, async_session_factory)
     policy = _policy(f)
