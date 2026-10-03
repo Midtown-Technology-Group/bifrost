@@ -318,6 +318,9 @@ later activation must use `--expect-no-active-release` with the `repo-v1:...`
 base. Retirement does not move source or ownership. Its optional reviewed
 obsolete-registration list closes those rows' execution admission while
 preserving their identities, history and historical runtime pins.
+Execution transport tokens cannot perform retirement, even when their delegated
+caller is an administrator. CLI/MCP retirement uses the operator's own
+administrator authentication and the same guarded REST transaction.
 
 ### Obsolete registrations in the same cutover
 

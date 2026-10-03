@@ -553,6 +553,11 @@ async def retire_workspace_release(
     db: DbSession,
     user: CurrentSuperuser,
 ) -> WorkspaceLiveRetireResponse:
+    if user.is_engine_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Live retirement requires an authenticated administrator, not an execution token",
+        )
     if not get_settings().workspace_release_retirement_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

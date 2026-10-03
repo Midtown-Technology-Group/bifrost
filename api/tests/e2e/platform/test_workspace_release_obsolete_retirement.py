@@ -7,6 +7,8 @@ import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
+from src.core.constants import PROVIDER_ORG_ID
+from src.core.security import mint_engine_token
 from src.models.contracts.workspace_promotions import WorkspaceLiveRetireRequest
 from src.models.enums import ExecutionStatus
 from src.models.orm.execution_attempts import ExecutionAttempt
@@ -34,6 +36,21 @@ from tests.e2e.platform.test_workspace_release_retirement import (
 )
 
 pytestmark = pytest.mark.e2e
+
+
+def test_public_retirement_rejects_engine_superuser_transport(e2e_client, platform_admin):
+    """A signed execution token cannot supply its own external cutover review."""
+    token, _ = mint_engine_token(execution_id=str(uuid4()), attempt_token=str(uuid4()),
+        solution_id=str(uuid4()), organization_id=str(PROVIDER_ORG_ID),
+        delegated_user_id=str(platform_admin.user_id), delegated_is_superuser=True)
+    request = WorkspaceLiveRetireRequest(expected_release_id="sha256:" + "a" * 64,
+        expected_artifact_id=uuid4(), governed_manifest_id="sha256:" + "b" * 64,
+        reason="Execution transport is not cutover authority",
+        acknowledgement="retire-live-workspace-release")
+    response = e2e_client.post("/api/workspace-promotions/live/retire",
+        headers={"Authorization": "Bearer " + token}, json=request.model_dump(mode="json"))
+    assert response.status_code == 403, response.text
+    assert "execution token" in response.json()["detail"]
 
 
 async def _fixture(db_session, platform_admin):
