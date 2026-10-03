@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
 from src.services.repo_storage import RepoStorage
@@ -102,27 +101,24 @@ async def test_export_keeps_complete_sealed_imports_and_assets(
         resources=resolution.resources,
     )
     await storage.write_source_artifact(source_archive(files))
+    await storage.write_resources_artifact(source_archive({"assets/schema.json": asset}))
     await storage.write_compiled_manifest(manifest.canonical_bytes())
     for p, content in files.items():
         await storage.write_runtime_file(p, content)
     await storage.write_runtime_file("_resources/assets/schema.json", asset)
-    db_session.add(
-        SolutionDeployment(
-            id=did,
-            solution_id=sid,
-            organization_id=None,
-            state="active",
-            created_by=platform_admin.user_id,
-            bundle_hash=manifest.bundle_hash,
-            compiled_manifest=manifest.model_dump(mode="json", exclude_none=True),
-            compiled_manifest_hash=manifest.content_hash(),
-            resolution_map=resolution.model_dump(mode="json", exclude_none=True),
-            resolution_map_hash=manifest.resolution_map_hash,
-            source_artifact_key=storage.source_artifact_key,
-            runtime_storage_prefix=storage.runtime_prefix,
-        )
+    from src.models.contracts.solution_deployments import SolutionDeploymentCreate
+    from src.repositories.solution_deployments import SolutionDeploymentRepository
+    from src.services.solutions.deployment_api import SolutionDeploymentAPIService
+
+    # Exercise the real draft/state guards rather than inserting an impossible
+    # active row. Export then reads this independently committed sealed runtime.
+    await SolutionDeploymentAPIService(db_session).create_ready_draft(
+        sid, platform_admin.user_id,
+        SolutionDeploymentCreate(compiled_manifest=manifest, resolution_map=resolution),
     )
-    await db_session.flush()
+    repository = SolutionDeploymentRepository(db_session)
+    for old, new in (("ready", "activating"), ("activating", "active")):
+        await repository.transition(did, None, expected_state=old, new_state=new)
     solution.active_deployment_id = did
     solution.execution_runtime_mode = "deployment-v1"
     await db_session.commit()
