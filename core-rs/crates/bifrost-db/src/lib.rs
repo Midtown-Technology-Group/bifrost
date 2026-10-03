@@ -1,5 +1,8 @@
 //! PostgreSQL primitives. Alembic owns schema creation and migration history.
 
+#[cfg(feature = "workflow-sql-parity")]
+pub mod workflow_parity;
+
 use std::{
     str::FromStr,
     time::{Duration, Instant},

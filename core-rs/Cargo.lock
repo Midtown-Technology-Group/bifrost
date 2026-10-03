@@ -135,6 +135,7 @@ dependencies = [
 name = "bifrost-db"
 version = "0.1.0"
 dependencies = [
+ "bifrost-contracts",
  "bifrost-domain",
  "sqlx",
  "thiserror",
