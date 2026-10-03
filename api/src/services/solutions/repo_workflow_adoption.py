@@ -8,7 +8,8 @@ from decimal import Decimal
 from uuid import UUID
 
 from bifrost.workspace_release import canonical_digest
-from sqlalchemy import exists, inspect as orm_inspect, or_, select, update
+from sqlalchemy import exists, or_, select, update
+from sqlalchemy import inspect as orm_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -22,7 +23,12 @@ from src.models.enums import ExecutionStatus
 from src.models.orm.agents import Agent
 from src.models.orm.applications import Application
 from src.models.orm.custom_claims import CustomClaim
-from src.models.orm.events import EventSource, EventSubscription, ScheduleSource, WebhookSource
+from src.models.orm.events import (
+    EventSource,
+    EventSubscription,
+    ScheduleSource,
+    WebhookSource,
+)
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.executions import Execution
 from src.models.orm.file_metadata import FileMetadata, FilePolicy
@@ -45,13 +51,18 @@ from src.services.solutions.deployment_manifest import canonical_json, sha256_di
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.live_handoff_source import MAX_ARCHIVE_BYTES
 from src.services.solutions.reviewed_workflow_artifact import (
-    build_reviewed_artifact, compile_reviewed_workflows,
-    inspect_reviewed_artifact, write_reviewed_artifact,
+    build_reviewed_artifact,
+    compile_reviewed_workflows,
+    inspect_reviewed_artifact,
+    write_reviewed_artifact,
 )
 from src.services.solutions.root_file_bindings import require_root_workspace_files
 from src.services.solutions.shared_table_bindings import require_shared_tables
 from src.services.solutions.source_revision import (
-    SolutionSourceRevisionConflict, SolutionSourceRevisionError, _require_registration, _workflow_snapshot,
+    SolutionSourceRevisionConflict,
+    SolutionSourceRevisionError,
+    _require_registration,
+    _workflow_snapshot,
 )
 from src.services.solutions.storage import SolutionStorage
 from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
@@ -78,7 +89,12 @@ def _digest_row(row) -> str:
             return item.isoformat()
         return item
     return canonical_digest({attr.key: value(getattr(row, attr.key))
-                             for attr in orm_inspect(type(row)).column_attrs})
+                             for attr in orm_inspect(type(row)).column_attrs
+                             # NULL terminal metadata must preserve prepared
+                             # ordinary workflow digests across this rollout.
+                             if not (isinstance(row, Workflow)
+                                     and attr.key == "retirement_evidence"
+                                     and row.retirement_evidence is None)})
 
 
 class RepoWorkflowAdoptionService:

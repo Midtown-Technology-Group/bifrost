@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from bifrost.workspace_release import canonical_digest
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from src.models.contracts.workspace_promotions import (
+    WorkflowRetirementConsumerInventory,
     WorkspaceLiveRetirementInventory,
     WorkspaceLiveRetirementRegistration,
     WorkspaceLiveRetireRequest,
@@ -23,6 +25,16 @@ from src.models.orm.workspace_promotions import (
     WorkspaceSourceRelease,
 )
 from src.services.audit import emit_audit
+from src.services.workflow_registration_retirement import (
+    WorkflowRetirementEvidenceError,
+    build_workflow_retirement_evidence,
+    validate_workflow_retirement_evidence,
+    workflow_retirement_snapshot_hash,
+)
+from src.services.workflow_retirement_consumers import (
+    WorkflowRetirementInventoryError,
+    inspect_workflow_retirement_consumers,
+)
 from src.services.workspace_release_projection import acquire_workspace_release_lock
 from src.services.workspace_release_runtime import (
     WorkspaceReleaseDescriptor,
@@ -59,18 +71,23 @@ class WorkspaceReleaseRetirementService:
         """Read the exact guard cohort without acquiring an activation lock or writing."""
         target = await self._live_release()
         if target is None:
-            raise WorkspaceReleaseRetirementError("no Live Workspace release to inspect")
+            target = (await self.db.execute(select(WorkspacePromotionRelease, WorkspacePromotionArtifact)
+                .join(WorkspacePromotionArtifact, WorkspacePromotionRelease.artifact_id == WorkspacePromotionArtifact.id)
+                .where(WorkspacePromotionRelease.activation_state == "retired")
+                .order_by(WorkspacePromotionRelease.retired_at.desc(), WorkspacePromotionRelease.id.desc())
+                .limit(1))).first()
+        if target is None:
+            raise WorkspaceReleaseRetirementError("no Live or retired Workspace release to inspect")
         release, artifact = target
         self._require_owner_context(release)
         try:
             descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
         except WorkspaceReleaseRuntimeError as exc:
             raise WorkspaceReleaseRetirementError(str(exc)) from exc
-        rows = (await self.db.execute(select(
-            Workflow.id, Workflow.organization_id, Workflow.path,
-            Workflow.function_name, Workflow.is_active,
-        ).where(self._loose_registration_predicate(descriptor))
-            .order_by(Workflow.id).limit(1001))).all()
+        rows = list((await self.db.scalars(select(Workflow)
+            .where(self._loose_registration_predicate(descriptor))
+            .options(selectinload(Workflow.roles))
+            .order_by(Workflow.id).limit(1001))).all())
         if len(rows) > 1000:
             raise WorkspaceReleaseRetirementError(
                 "retirement registration inventory exceeds its readback bound"
@@ -79,12 +96,22 @@ class WorkspaceReleaseRetirementService:
                for item in descriptor.effective_registrations.values()}
         registrations = []
         for row in rows:
+            retirement_id = None
+            if row.retirement_evidence is not None:
+                try:
+                    retirement_id = validate_workflow_retirement_evidence(row)["evidence_id"]
+                except WorkflowRetirementEvidenceError as exc:
+                    raise WorkspaceReleaseRetirementError(str(exc)) from exc
             path = row.path.replace("\\", "/").lstrip("/")
             registrations.append(WorkspaceLiveRetirementRegistration(
                 workflow_id=row.id, organization_id=row.organization_id,
                 path=path, function_name=row.function_name, is_active=row.is_active,
                 matched_by=(["governed_path"] if path in descriptor.governed_paths else [])
                 + (["effective_registration"] if row.id in ids else []),
+                registration_hash=workflow_retirement_snapshot_hash(row),
+                retirement_evidence_id=retirement_id,
+                consumer_inventory=WorkflowRetirementConsumerInventory.model_validate(
+                    await self._consumer_inventory(row)),
             ))
         obligation_rows = (await self.db.execute(
             select(WorkspaceSourceRelease.disposition, func.count(WorkspaceSourceRelease.id))
@@ -95,6 +122,7 @@ class WorkspaceReleaseRetirementService:
         )).all()
         obligations = {disposition: count for disposition, count in obligation_rows}
         return WorkspaceLiveRetirementInventory(
+            state="retired" if release.activation_state == "retired" else "live",
             observed_at=datetime.now(UTC), release_row_id=release.id,
             release_id=descriptor.release_id, artifact_id=artifact.id,
             organization_id=release.organization_id,
@@ -136,6 +164,8 @@ class WorkspaceReleaseRetirementService:
                     artifact.id != request.expected_artifact_id
                     or evidence.get("governed_manifest_id")
                     != request.governed_manifest_id
+                    or evidence.get("obsolete_registration_reviews_digest", canonical_digest([]))
+                    != canonical_digest([item.model_dump(mode="json") for item in request.obsolete_registrations])
                 ):
                     raise WorkspaceReleaseRetirementError(
                         "retirement identity CAS mismatch"
@@ -161,6 +191,9 @@ class WorkspaceReleaseRetirementService:
             raise WorkspaceReleaseRetirementError(
                 "Live release history is not locked; repair signed history before retirement"
             )
+        retired_registrations = await self._retire_obsolete_registrations(
+            descriptor, request, user_id=user_id,
+        )
         await self._require_no_loose_consumers(descriptor)
         await self._require_resolved_source_obligations()
         now = datetime.now(UTC)
@@ -175,6 +208,10 @@ class WorkspaceReleaseRetirementService:
             "governed_manifest_id": descriptor.governed_manifest_id,
             "governed_path_count": len(descriptor.governed_paths),
             "retired_at": now.isoformat(),
+            "retired_registration_evidence": retired_registrations,
+            "obsolete_registration_reviews_digest": canonical_digest([
+                item.model_dump(mode="json") for item in request.obsolete_registrations
+            ]),
         }
         evidence["evidence_id"] = canonical_digest(evidence)
         release.activation_state = "retired"
@@ -219,14 +256,78 @@ class WorkspaceReleaseRetirementService:
     async def _require_no_loose_consumers(
         self, descriptor: WorkspaceReleaseDescriptor
     ) -> None:
-        rows = (await self.db.execute(
-            select(Workflow.id).where(self._loose_registration_predicate(descriptor)).limit(1)
-        )).first()
-        if rows is not None:
-            raise WorkspaceReleaseRetirementError(
-                "Live release still has loose workflow registrations; "
-                "complete and verify their guarded handoff before retirement"
+        rows = list((await self.db.scalars(select(Workflow)
+            .where(self._loose_registration_predicate(descriptor))
+            .options(selectinload(Workflow.roles)).order_by(Workflow.id)
+            .limit(1001).with_for_update(of=Workflow))).all())
+        if len(rows) > 1000:
+            raise WorkspaceReleaseRetirementError("retirement registration inventory exceeds its bound")
+        for row in rows:
+            try:
+                validate_workflow_retirement_evidence(row)
+            except WorkflowRetirementEvidenceError as exc:
+                raise WorkspaceReleaseRetirementError(
+                    "Live release still has loose workflow registrations without terminal evidence; "
+                    "complete its guarded handoff or exact reviewed retirement"
+                ) from exc
+
+    async def _retire_obsolete_registrations(
+        self, descriptor: WorkspaceReleaseDescriptor, request: WorkspaceLiveRetireRequest,
+        *, user_id: UUID,
+    ) -> list[dict[str, str]]:
+        if not request.obsolete_registrations:
+            return []
+        # The admission fence serializes dispatch. Table locks additionally stop
+        # native callers and role/control writers changing after this census.
+        # External/Source callers remain an explicit reviewed cutover obligation.
+        await self.db.execute(text(
+            "LOCK TABLE forms, form_fields, agent_tools, event_subscriptions, "
+            "service_definitions, applications, workflow_roles, agent_action_approvals IN SHARE MODE"
+        ))
+        ids = [item.workflow_id for item in request.obsolete_registrations]
+        rows = list((await self.db.scalars(select(Workflow)
+            .where(self._loose_registration_predicate(descriptor), Workflow.id.in_(ids))
+            .options(selectinload(Workflow.roles)).order_by(Workflow.id)
+            .with_for_update(of=Workflow).execution_options(populate_existing=True))).all())
+        indexed = {row.id: row for row in rows}
+        if set(indexed) != set(ids):
+            raise WorkspaceReleaseRetirementError("obsolete registration is outside the exact Live guard cohort")
+        evidence = []
+        for review in request.obsolete_registrations:
+            row = indexed[review.workflow_id]
+            if row.retirement_evidence is not None:
+                raise WorkspaceReleaseRetirementError("registration is already retired; inspect its retained evidence")
+            before = workflow_retirement_snapshot_hash(row)
+            consumers = await self._consumer_inventory(row, lock=True)
+            if (before != review.expected_registration_hash
+                    or consumers["inventory_digest"] != review.expected_consumer_inventory_digest):
+                raise WorkspaceReleaseRetirementError("obsolete registration or caller inventory CAS mismatch")
+            if consumers["native_callers"] or consumers["accepted_work"]:
+                raise WorkspaceReleaseRetirementError("obsolete registration still has native callers or accepted work")
+            row.is_active = False
+            row.endpoint_enabled = False
+            row.public_endpoint = False
+            row.api_key_enabled = False
+            marker = build_workflow_retirement_evidence(
+                row, release_id=descriptor.release_id, artifact_id=descriptor.artifact_id,
+                before_registration_hash=before,
+                caller_inventory_digest=consumers["inventory_digest"],
+                review_digest=canonical_digest(review.model_dump(mode="json")),
+                reason=review.reason, retired_by_user_id=user_id, retired_at=datetime.now(UTC),
             )
+            row.retirement_evidence = marker
+            await emit_audit(self.db, "workflow.registration_retired", resource_type="workflow",
+                resource_id=row.id, details={"evidence": marker,
+                    "review": review.model_dump(mode="json")}, strict=True)
+            evidence.append({"workflow_id": str(row.id), "evidence_id": marker["evidence_id"]})
+        await self.db.flush()
+        return evidence
+
+    async def _consumer_inventory(self, row: Workflow, *, lock: bool = False) -> dict:
+        try:
+            return await inspect_workflow_retirement_consumers(self.db, row, lock=lock)
+        except WorkflowRetirementInventoryError as exc:
+            raise WorkspaceReleaseRetirementError(str(exc)) from exc
 
     async def _require_resolved_source_obligations(self) -> None:
         row = (

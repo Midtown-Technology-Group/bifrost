@@ -281,6 +281,7 @@ paths return to the legacy `repo-v1` lane:
 
 ```bash
 bifrost promote status --live
+bifrost promote retirement-inventory
 bifrost promote retire-live \
   --reason "Autotask family migrated to Solutions" \
   --acknowledge retire-live-workspace-release
@@ -315,6 +316,43 @@ release owns Live, the formerly-governed loose paths resolve through the legacy
 `repo-v1` lane again and the governed read/mutation rejections no longer apply; a
 later activation must use `--expect-no-active-release` with the `repo-v1:...`
 base. Retirement itself migrates no entity or source.
+
+### Obsolete registrations in the same cutover
+
+An ordinary inactive registration still blocks retirement. If a reviewed
+registration is obsolete, include it in the existing retirement transaction
+using `--obsolete-registrations-file <reviewed-json-array>`. This option requires
+all three explicit Live identity fields. Each entry carries `workflow_id`,
+`expected_registration_hash`, `expected_consumer_inventory_digest`,
+`reviewed_external_callers_digest`, `review_reference`, and `reason`.
+
+Obtain the current hashes from `bifrost promote retirement-inventory`. The
+inventory includes inactive rows, native stored callers, unfinished accepted
+work, App metadata/pointer digests, and any retained retirement evidence. Its
+native census does **not** prove absence of Python, operational file, App
+Source/dist, or external callers. Review those against actual production bytes,
+routes, pointers and controls, coordinate other owners, and retain their exact
+evidence digest before authorizing this final cutover. Repository evidence or
+an empty native caller list alone cannot authorize retirement.
+
+The server holds the existing admission fence and locks native caller/control
+tables, compares each exact row and inventory, and refuses any native caller,
+accepted work, stale target, unlisted loose registration, unresolved Source
+obligation or unlocked history. In one transaction it closes admission on the
+reviewed obsolete rows, seals their internal terminal evidence, and retires
+Live. A failure rolls back both changes and audits. Original UUIDs, credential
+material, source objects, execution history and historical pins are retained.
+The terminal DB guard rejects reactivation, reownership, repointing, evidence
+rewrites and hard deletion, including writes from older application code.
+
+Read the inventory again after retirement to verify the retained row/evidence
+IDs independently. An uncertain POST outcome requires readback; do not replay
+it with fresh targets. An exact retry returns the original retirement evidence;
+a different obsolete-registration review is rejected. Existing canonical
+survivors remain usable, while an implicit new UUID cannot remint a retired
+identity through a path alias. This internal evidence is never portable
+Solution content. Schema downgrade is refused once any terminal marker exists;
+keep the forward schema when rolling back application images.
 
 The governed destination for migrated families is a sealed Solution on the same
 artifact, release, validation, activation, rollback, and status state machine.
