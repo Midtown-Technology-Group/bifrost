@@ -537,6 +537,166 @@
       "name": "rawvalue-hidden-start-malformed-inner",
       "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"{not-json\"}}",
       "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-unsupported-sequence-zero",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-sequence-bool",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":true,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-sequence-over-safe",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":9007199254740992,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-session-id",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"not-a-uuid\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-message-id",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":null,\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-type-bool",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":false,\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-type-empty",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-type-unknown",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"SyntheticUnknown\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-correlation-id",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"bad\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-correlation-mismatch",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000007\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-body",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":null}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-unsupported-body-fields",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"unexpected\":1}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-empty-protocol-sequence-zero",
+      "json": "{\"protocol\":\"\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-invalid-json-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-duplicate-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-surrogate-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":\"\\ud800\"}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-depth65-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-depth64-protocol-first",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "e0-nonfinite-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":NaN,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-numeric-overflow-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1e309,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-utf8-before-protocol",
+      "hex": "7b2270726f746f636f6c223a2273796e7468657469632e72756e74696d652f7630222c2274797065223a225374617274222c2273657373696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c226d6573736167655f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c2273657175656e6365223a312c22636f7272656c6174696f6e5f6964223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c22626f6479223a22ff227d",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-trailing-json-before-protocol",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}{}",
+      "expected": "InvalidJson"
+    },
+    {
+      "name": "e0-shape-missing-sequence",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-shape-missing-protocol",
+      "json": "{\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-shape-extra-key",
+      "json": "{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30},\"unexpected\":null}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-shape-root-array",
+      "json": "[{\"protocol\":\"synthetic.runtime/v0\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}]",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-protocol-bool",
+      "json": "{\"protocol\":true,\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-protocol-null",
+      "json": "{\"protocol\":null,\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-protocol-object",
+      "json": "{\"protocol\":{},\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-supported-unknown-type-bad-header",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"SyntheticUnknown\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":0,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"prepare_message_id\":\"00000000-0000-0000-0000-000000000005\",\"committed_start_id\":\"00000000-0000-0000-0000-000000000006\",\"parent_duration_seconds\":30}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "e0-supported-unknown-type-bad-body",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"SyntheticUnknown\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":null}",
+      "expected": "UnsupportedFrame"
+    },
+    {
+      "name": "e0-supported-bad-body",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":null}",
+      "expected": "InvalidFrame"
     }
   ],
   "binary": [

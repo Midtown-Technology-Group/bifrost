@@ -211,10 +211,11 @@ pub fn decode_json(bytes: &[u8]) -> Result<Frame, Error> {
             "body",
         ],
     )?;
-    let wire: WireFrame = serde_json::from_value(value).map_err(|_| Error::InvalidFrame)?;
-    if wire.protocol != PROTOCOL {
+    let protocol = value["protocol"].as_str().ok_or(Error::InvalidFrame)?;
+    if protocol != PROTOCOL {
         return Err(Error::UnsupportedProtocol);
     }
+    let wire: WireFrame = serde_json::from_value(value).map_err(|_| Error::InvalidFrame)?;
     if wire.frame_type.is_empty() {
         return Err(Error::InvalidFrame);
     }

@@ -388,3 +388,37 @@ fn ordinary_json_keeps_incumbent_structural_limits() {
         Err(Error::InvalidJson)
     ));
 }
+
+#[test]
+fn protocol_precedence_preserves_size_and_depth_boundaries() -> TestResult {
+    let vectors = fixture()?;
+    let vector = vectors
+        .wire
+        .iter()
+        .find(|vector| vector.name == "e0-unsupported-sequence-zero")
+        .ok_or_else(missing)?;
+    let mut bytes = vector
+        .json
+        .as_ref()
+        .ok_or_else(missing)?
+        .as_bytes()
+        .to_vec();
+    bytes.resize(MAX_FRAME_BYTES, b' ');
+    assert_eq!(decode_json(&bytes), Err(Error::UnsupportedProtocol));
+    bytes.push(b' ');
+    assert_eq!(decode_json(&bytes), Err(Error::FrameTooLarge));
+    for (name, expected) in [
+        ("e0-depth64-protocol-first", Error::UnsupportedProtocol),
+        ("e0-depth65-before-protocol", Error::InvalidJson),
+        ("e0-shape-missing-sequence", Error::InvalidFrame),
+    ] {
+        let vector = vectors
+            .wire
+            .iter()
+            .find(|vector| vector.name == name)
+            .ok_or_else(missing)?;
+        let bytes = vector.json.as_ref().ok_or_else(missing)?.as_bytes();
+        assert_eq!(decode_json(bytes), Err(expected), "{name}");
+    }
+    Ok(())
+}
