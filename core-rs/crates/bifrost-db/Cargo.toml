@@ -18,5 +18,13 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
+[dev-dependencies]
+serde.workspace = true
+serde_json = "=1.0.151"
+
+[[example]]
+name = "workflow_running_cancel_sql"
+required-features = ["workflow-sql-parity"]
+
 [lints]
 workspace = true
