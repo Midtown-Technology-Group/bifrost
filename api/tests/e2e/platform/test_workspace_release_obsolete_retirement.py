@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from src.core.constants import PROVIDER_ORG_ID
 from src.core.security import mint_engine_token
@@ -38,19 +39,34 @@ from tests.e2e.platform.test_workspace_release_retirement import (
 pytestmark = pytest.mark.e2e
 
 
-def test_public_retirement_rejects_engine_superuser_transport(e2e_client, platform_admin):
+@pytest.mark.asyncio
+async def test_public_retirement_rejects_engine_superuser_transport(e2e_client, platform_admin, async_engine):
     """A signed execution token cannot supply its own external cutover review."""
-    token, _ = mint_engine_token(execution_id=str(uuid4()), attempt_token=str(uuid4()),
+    execution_id, claim_token = uuid4(), uuid4()
+    async with AsyncSession(async_engine) as db:
+        db.add(Execution(id=execution_id, workflow_name="Retirement auth fixture",
+            executed_by_name="Synthetic", organization_id=PROVIDER_ORG_ID,
+            status=ExecutionStatus.RUNNING))
+        await db.flush()
+        db.add(WorkflowExecutionAttempt(execution_id=execution_id, attempt_number=1,
+            claim_token=claim_token, status="running", phase="execution"))
+        await db.commit()
+    token, _ = mint_engine_token(execution_id=str(execution_id), attempt_token=str(claim_token),
         solution_id=str(uuid4()), organization_id=str(PROVIDER_ORG_ID),
         delegated_user_id=str(platform_admin.user_id), delegated_is_superuser=True)
     request = WorkspaceLiveRetireRequest(expected_release_id="sha256:" + "a" * 64,
         expected_artifact_id=uuid4(), governed_manifest_id="sha256:" + "b" * 64,
         reason="Execution transport is not cutover authority",
         acknowledgement="retire-live-workspace-release")
-    response = e2e_client.post("/api/workspace-promotions/live/retire",
-        headers={"Authorization": "Bearer " + token}, json=request.model_dump(mode="json"))
-    assert response.status_code == 403, response.text
-    assert "execution token" in response.json()["detail"]
+    try:
+        response = e2e_client.post("/api/workspace-promotions/live/retire",
+            headers={"Authorization": "Bearer " + token}, json=request.model_dump(mode="json"))
+        assert response.status_code == 403, response.text
+        assert "execution token" in response.json()["detail"]
+    finally:
+        async with AsyncSession(async_engine) as db:
+            await db.execute(delete(Execution).where(Execution.id == execution_id))
+            await db.commit()
 
 
 async def _fixture(db_session, platform_admin):
