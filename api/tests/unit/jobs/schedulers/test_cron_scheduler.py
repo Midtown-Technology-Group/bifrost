@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ScheduleOverlapPolicy
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, ScheduleSource
@@ -131,6 +132,18 @@ async def _events_for_source(db_session, source_id) -> list[Event]:
         await db_session.execute(select(Event).where(Event.event_source_id == source_id))
     ).scalars().all()
     return list(rows)
+
+
+@pytest.mark.asyncio
+async def test_committed_schedule_fixture_is_invisible_to_other_sessions(db_session, async_engine):
+    """The live scheduler must not see a unit fixture after an internal commit."""
+    source, schedule, subscription = _make_source_and_subscription()
+    db_session.add_all((source, schedule, subscription))
+    await db_session.commit()
+
+    assert await db_session.get(EventSource, source.id) is source
+    async with AsyncSession(async_engine) as observer:
+        assert await observer.get(EventSource, source.id) is None
 
 
 @pytest.mark.asyncio
