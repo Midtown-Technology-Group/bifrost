@@ -82,6 +82,212 @@ measured_image = None
 measured_container = None
 stages = {"source", "build", "format", "measure", "cleanup", "publication"}
 
+DIAGNOSTIC_KINDS = {
+    "acquisition",
+    "read_bound",
+    "deadline",
+    "wait",
+    "group",
+    "fd",
+    "native_exit",
+    "parse",
+    "association",
+    "fingerprint",
+    "absence",
+    "public_output",
+    "control",
+    "unknown",
+}
+DIAGNOSTIC_LOCATIONS = {
+    "post_measure_milestone",
+    "cleanup_start_milestone",
+    "container",
+    "image",
+    "private",
+    "cleanup_end_milestone",
+    "other_primary",
+}
+CHECKPOINTS = ("record", "inspect", "association", "fingerprint", "remove", "absence", "complete")
+CONTAINER_SECTIONS = ("Id", "Image", "Config", "HostConfig", "Mounts")
+IMAGE_SECTIONS = (
+    "Id",
+    "Config",
+    "RepoTags",
+    "RepoDigests",
+    "Metadata",
+    "RootFS",
+    "GraphDriver",
+    "Size",
+    "other_top_level",
+)
+NATIVE_SLOTS = (
+    "container_inspect",
+    "container_remove",
+    "container_absence",
+    "image_inspect",
+    "image_remove",
+    "image_absence",
+)
+cleanup_diagnostics = {
+    "first_failure": None,
+    "resources": {
+        name: {
+            "last_completed": None,
+            "failed_at": None,
+            "association_equal": None,
+            "fingerprint_equal": None,
+            "changed_sections": None,
+        }
+        for name in ("container", "image")
+    },
+    "native": dict.fromkeys(NATIVE_SLOTS),
+    "backing": {
+        "eligible": None,
+        "container_disposed": None,
+        "image_disposed": None,
+        "children_settled": None,
+        "attempted": None,
+    },
+    "annotation_failed": False,
+}
+annotation_error = None
+native_errors = {}
+image_initial = None
+container_initial = None
+
+
+def annotation_failed(error):
+    global annotation_error
+    cleanup_diagnostics["annotation_failed"] = True
+    if annotation_error is None:
+        annotation_error = error
+
+
+def observed_kind(error, fallback):
+    if not isinstance(error, Exception):
+        return "control"
+    for actual, kind in native_errors.values():
+        if actual is error:
+            return kind
+    return fallback
+
+
+def first_failure(location, error, fallback):
+    try:
+        kind = observed_kind(error, fallback)
+        if location not in DIAGNOSTIC_LOCATIONS or kind not in DIAGNOSTIC_KINDS:
+            raise ValueError("invalid closed diagnostic")
+        if cleanup_diagnostics["first_failure"] is None:
+            cleanup_diagnostics["first_failure"] = {"location": location, "kind": kind}
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def native_begin(slot):
+    if slot is None:
+        return
+    try:
+        if slot not in NATIVE_SLOTS or cleanup_diagnostics["native"][slot] is not None:
+            raise ValueError("invalid native diagnostic slot")
+        cleanup_diagnostics["native"][slot] = {
+            "return_code": None,
+            "stdout_eof": None,
+            "stderr_eof": None,
+            "wait_complete": None,
+            "capture_complete": None,
+            "group_settled": None,
+            "fds_closed": None,
+            "failure_kind": None,
+        }
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def native_fact(slot, field, value):
+    if slot is None:
+        return
+    try:
+        record = cleanup_diagnostics["native"][slot]
+        if field not in record:
+            raise ValueError("invalid native diagnostic field")
+        if field == "return_code":
+            valid = value is None or type(value) is int
+        elif field == "failure_kind":
+            valid = value is None or value in DIAGNOSTIC_KINDS
+        else:
+            valid = value is None or type(value) is bool
+        if not valid:
+            raise ValueError("invalid native diagnostic value")
+        record[field] = value
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def native_failure(slot, error, fallback):
+    if slot is None:
+        return
+    try:
+        kind = "control" if not isinstance(error, Exception) else fallback
+        if slot not in NATIVE_SLOTS or kind not in DIAGNOSTIC_KINDS:
+            raise ValueError("invalid native diagnostic failure")
+        if slot not in native_errors:
+            native_errors[slot] = (error, kind)
+            native_fact(slot, "failure_kind", kind)
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def resource_fact(resource, field, value):
+    try:
+        record = cleanup_diagnostics["resources"][resource]
+        if field not in record:
+            raise ValueError("invalid resource diagnostic field")
+        if field in {"last_completed", "failed_at"}:
+            valid = value is None or value in CHECKPOINTS
+        elif field == "changed_sections":
+            names = CONTAINER_SECTIONS if resource == "container" else IMAGE_SECTIONS
+            valid = value is None or (type(value) is list and value == [x for x in names if x in value])
+        else:
+            valid = value is None or type(value) is bool
+        if not valid:
+            raise ValueError("invalid resource diagnostic value")
+        record[field] = value
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def section_changes(resource, initial, current):
+    # Same original objects as the unchanged full fingerprint. No values/hashes export.
+    try:
+        names = CONTAINER_SECTIONS if resource == "container" else IMAGE_SECTIONS
+        changes = []
+        for name in names:
+            if name == "other_top_level":
+                left = {k: v for k, v in initial.items() if k not in names[:-1]}
+                right = {k: v for k, v in current.items() if k not in names[:-1]}
+                equal = json.dumps(left, sort_keys=True, separators=(",", ":"), allow_nan=False) == json.dumps(
+                    right, sort_keys=True, separators=(",", ":"), allow_nan=False
+                )
+            else:
+                equal = (name in initial) == (name in current) and json.dumps(
+                    initial.get(name), sort_keys=True, separators=(",", ":"), allow_nan=False
+                ) == json.dumps(current.get(name), sort_keys=True, separators=(",", ":"), allow_nan=False)
+            if not equal:
+                changes.append(name)
+        resource_fact(resource, "changed_sections", changes)
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def backing_facts(**values):
+    try:
+        for field, value in values.items():
+            if field not in cleanup_diagnostics["backing"] or (value is not None and type(value) is not bool):
+                raise ValueError("invalid backing diagnostic")
+            cleanup_diagnostics["backing"][field] = value
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
 
 class Failure(Exception):
     def __init__(self, stage, code=1):
@@ -126,12 +332,17 @@ def safe_env():
     }
 
 
-def child(argv, cap, *, end=WORK_END, cwd=ROOT):
+def child(argv, cap, *, end=WORK_END, cwd=ROOT, diagnostic_slot=None):
     """One native command; returned pipes/FDs retained before configuration."""
     global capture_count, capture_total, child_cleanup_failed
     deadline = min(end, time.monotonic() + cap)
     normal_end = deadline - min(4, cap / 4)
-    admission(normal_end, "source")
+    native_begin(diagnostic_slot)
+    try:
+        admission(normal_end, "source")
+    except BaseException as error:
+        native_failure(diagnostic_slot, error, "deadline")
+        raise
     capture_count += 1
     outputs = [bytearray(), bytearray()]
     captures = []
@@ -141,6 +352,8 @@ def child(argv, cap, *, end=WORK_END, cwd=ROOT):
     original = None
     returned = None
     complete = [False, False]
+    failure_kind = "acquisition"
+    fd_failure = False
     try:
         for suffix in ("stdout", "stderr"):
             path = private / (str(capture_count) + "-" + suffix)
@@ -161,38 +374,57 @@ def child(argv, cap, *, end=WORK_END, cwd=ROOT):
         # Both returned handles enter custody before any nonblocking/register call.
         pipes.append(process.stdout)
         pipes.append(process.stderr)
+        failure_kind = "deadline"
         admission(normal_end, "source")
+        failure_kind = "fd"
         for index, pipe in enumerate(pipes):
             require(pipe is not None, "source")
             os.set_blocking(pipe.fileno(), False)
             selector.register(pipe, selectors.EVENT_READ, index)
         while not all(complete) or process.poll() is None:
+            failure_kind = "deadline"
             admission(normal_end, "source")
+            failure_kind = "unknown"
             for key, _ in selector.select(min(0.1, max(0, normal_end - time.monotonic()))):
                 index = key.data
                 data = os.read(key.fileobj.fileno(), 16384)
                 if not data:
                     selector.unregister(key.fileobj)
                     complete[index] = True
+                    native_fact(diagnostic_slot, "stdout_eof" if index == 0 else "stderr_eof", True)
                     continue
+                native_fact(diagnostic_slot, "stdout_eof" if index == 0 else "stderr_eof", False)
+                failure_kind = "read_bound"
                 require(len(outputs[index]) + len(data) <= STREAM_LIMIT, "source")
                 require(capture_total + len(data) <= AGGREGATE_LIMIT, "source")
                 capture_total += len(data)
                 outputs[index].extend(data)
                 remaining = memoryview(data)
                 while remaining:
+                    failure_kind = "deadline"
                     admission(normal_end, "source")
+                    failure_kind = "fd"
                     size = os.write(captures[index], remaining)
                     require(size > 0, "source")
                     remaining = remaining[size:]
+        failure_kind = "wait"
         returned = process.wait(timeout=max(0, normal_end - time.monotonic()))
+        native_fact(diagnostic_slot, "return_code", returned)
+        native_fact(diagnostic_slot, "wait_complete", True)
+        failure_kind = "deadline"
         admission(normal_end, "source")
+        failure_kind = "read_bound"
         require(all(complete), "source")
-        require(all(os.fstat(fd).st_size == len(outputs[i]) for i, fd in enumerate(captures)), "source")
+        failure_kind = "fd"
+        sizes_equal = all(os.fstat(fd).st_size == len(outputs[i]) for i, fd in enumerate(captures))
+        native_fact(diagnostic_slot, "capture_complete", sizes_equal)
+        require(sizes_equal, "source")
         if returned:
+            failure_kind = "native_exit"
             raise Failure("source", returned)
     except BaseException as error:
         original = error
+        native_failure(diagnostic_slot, error, failure_kind)
     finally:
         # Independent teardown: a failed kill/close cannot suppress the others.
         if process is not None:
@@ -200,15 +432,25 @@ def child(argv, cap, *, end=WORK_END, cwd=ROOT):
                 if group_exists(process.pid):
                     os.killpg(process.pid, signal.SIGKILL)
             except BaseException as error:
+                native_failure(diagnostic_slot, error, "group")
                 child_cleanup_failed = True
                 if original is None:
                     original = error
             try:
-                process.wait(timeout=max(0, deadline - time.monotonic()))
+                settlement_kind = "wait"
+                settled_return = process.wait(timeout=max(0, deadline - time.monotonic()))
+                native_fact(diagnostic_slot, "return_code", settled_return)
+                native_fact(diagnostic_slot, "wait_complete", True)
+                settlement_kind = "group"
                 while group_exists(process.pid):
+                    native_fact(diagnostic_slot, "group_settled", False)
+                    settlement_kind = "deadline"
                     admission(deadline, "source")
+                    settlement_kind = "group"
                     time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+                native_fact(diagnostic_slot, "group_settled", True)
             except BaseException as error:
+                native_failure(diagnostic_slot, error, settlement_kind)
                 child_cleanup_failed = True
                 if original is None:
                     original = error
@@ -218,6 +460,8 @@ def child(argv, cap, *, end=WORK_END, cwd=ROOT):
             try:
                 handle.close()
             except BaseException as error:
+                fd_failure = True
+                native_failure(diagnostic_slot, error, "fd")
                 child_cleanup_failed = True
                 if original is None:
                     original = error
@@ -225,6 +469,8 @@ def child(argv, cap, *, end=WORK_END, cwd=ROOT):
             try:
                 selector.close()
             except BaseException as error:
+                fd_failure = True
+                native_failure(diagnostic_slot, error, "fd")
                 child_cleanup_failed = True
                 if original is None:
                     original = error
@@ -232,11 +478,17 @@ def child(argv, cap, *, end=WORK_END, cwd=ROOT):
             try:
                 os.close(fd)
             except BaseException as error:
+                fd_failure = True
+                native_failure(diagnostic_slot, error, "fd")
                 child_cleanup_failed = True
                 if original is None:
                     original = error
-        if time.monotonic() >= deadline and original is None:
+        close_in_time = time.monotonic() < deadline
+        if captures or pipes or selector is not None:
+            native_fact(diagnostic_slot, "fds_closed", not fd_failure)
+        if not close_in_time and original is None:
             original = Failure("source")
+            native_failure(diagnostic_slot, original, "deadline")
     if original is not None:
         raise original
     return bytes(outputs[0]), returned
@@ -254,8 +506,8 @@ def git(*args, cap=15, end=WORK_END, cwd=ROOT):
     return child(["git", *args], cap, end=end, cwd=cwd)[0]
 
 
-def docker(*args, cap=15, end=WORK_END):
-    return child(["docker", *args], cap, end=end)[0]
+def docker(*args, cap=15, end=WORK_END, diagnostic_slot=None):
+    return child(["docker", *args], cap, end=end, diagnostic_slot=diagnostic_slot)[0]
 
 
 def json_one(raw):
@@ -265,12 +517,22 @@ def json_one(raw):
     return value[0]
 
 
-def inspect_image(reference, *, end=WORK_END):
-    return json_one(docker("image", "inspect", reference, end=end))
+def inspect_image(reference, *, end=WORK_END, diagnostic_slot=None):
+    raw = docker("image", "inspect", reference, end=end, diagnostic_slot=diagnostic_slot)
+    try:
+        return json_one(raw)
+    except BaseException as error:
+        native_failure(diagnostic_slot, error, "parse")
+        raise
 
 
-def inspect_container(reference, *, end=WORK_END):
-    return json_one(docker("container", "inspect", reference, end=end))
+def inspect_container(reference, *, end=WORK_END, diagnostic_slot=None):
+    raw = docker("container", "inspect", reference, end=end, diagnostic_slot=diagnostic_slot)
+    try:
+        return json_one(raw)
+    except BaseException as error:
+        native_failure(diagnostic_slot, error, "parse")
+        raise
 
 
 def config_digest(value):
@@ -398,6 +660,7 @@ def source_gate():
 def format_source():
     global image_attempted, container_attempted, image_id, image_config
     global container_id, container_config, fmt_exit, measured_image, measured_container
+    global image_initial, container_initial
     require(not docker("image", "ls", "-q", "--no-trunc", "--filter", "reference=" + image_tag), "build")
     require(not docker("ps", "-aq", "--no-trunc", "--filter", "name=^/" + container_name + "$"), "build")
     image_attempted = True
@@ -422,6 +685,7 @@ def format_source():
     require(labels_match(config) and re.fullmatch(r"sha256:[0-9a-f]{64}", config.get("Id", "")), "build")
     image_id = config["Id"]
     image_config = config_digest(config)
+    image_initial = config
     measured_image = {"id": image_id, "config_sha256": image_config, "labels_match": True}
     milestone("build", "complete")
     milestone("format", "start")
@@ -454,6 +718,7 @@ def format_source():
     require(config.get("Id") == created and container_matches(config), "format")
     container_id = created
     container_config = config_digest({k: config[k] for k in ("Id", "Image", "Config", "HostConfig", "Mounts")})
+    container_initial = config
     measured_container = {"id": created, "image_id": image_id, "network_none": True, "mount_matches": True}
     _, fmt_exit = child(["docker", "start", "--attach", created], 60)
     config = inspect_container(created)
@@ -484,66 +749,155 @@ def cleanup():
     result = {"container": None, "image": None, "copy": False, "captures": False}
     deadline = min(CLEANUP_END, time.monotonic() + 120)
 
-    def independent(action):
+    def independent(action, location):
+        kind = "deadline"
         try:
             admission(deadline, "cleanup")
+            kind = "unknown"
             action()
+            kind = "deadline"
             admission(deadline, "cleanup")
         except BaseException as error:
+            first_failure(location, error, kind)
             cleanup_errors.append(error)
 
     def remove_container():
-        if not container_attempted:
+        checkpoint = "record"
+        kind = "acquisition"
+        try:
+            if not container_attempted:
+                result["container"] = True
+                resource_fact("container", "last_completed", "complete")
+                return
+            require(container_id is not None and container_config is not None, "cleanup")
+            resource_fact("container", "last_completed", "record")
+            checkpoint, kind = "inspect", "unknown"
+            config = inspect_container(container_id, end=deadline, diagnostic_slot="container_inspect")
+            resource_fact("container", "last_completed", "inspect")
+            checkpoint = "association"
+            association = container_matches(config)
+            resource_fact("container", "association_equal", association)
+            kind = "association"
+            require(association, "cleanup")
+            resource_fact("container", "last_completed", "association")
+            checkpoint, kind = "fingerprint", "unknown"
+            equal = (
+                config_digest({k: config[k] for k in ("Id", "Image", "Config", "HostConfig", "Mounts")})
+                == container_config
+            )
+            resource_fact("container", "fingerprint_equal", equal)
+            section_changes("container", container_initial, config)
+            kind = "fingerprint"
+            require(equal, "cleanup")
+            resource_fact("container", "last_completed", "fingerprint")
+            checkpoint, kind = "remove", "unknown"
+            docker("rm", "--force", container_id, end=deadline, diagnostic_slot="container_remove")
+            resource_fact("container", "last_completed", "remove")
+            checkpoint = "absence"
+            remaining = docker(
+                "ps",
+                "-aq",
+                "--no-trunc",
+                "--filter",
+                "id=" + container_id,
+                end=deadline,
+                diagnostic_slot="container_absence",
+            )
+            kind = "absence"
+            require(not remaining, "cleanup")
+            resource_fact("container", "last_completed", "absence")
             result["container"] = True
-            return
-        require(container_id is not None and container_config is not None, "cleanup")
-        config = inspect_container(container_id, end=deadline)
-        require(container_matches(config), "cleanup")
-        require(
-            config_digest({k: config[k] for k in ("Id", "Image", "Config", "HostConfig", "Mounts")})
-            == container_config,
-            "cleanup",
-        )
-        docker("rm", "--force", container_id, end=deadline)
-        require(not docker("ps", "-aq", "--no-trunc", "--filter", "id=" + container_id, end=deadline), "cleanup")
-        result["container"] = True
+            resource_fact("container", "last_completed", "complete")
+        except BaseException as error:
+            resource_fact("container", "failed_at", checkpoint)
+            first_failure("container", error, kind)
+            raise
 
     def remove_image():
-        if not image_attempted:
+        checkpoint = "record"
+        kind = "acquisition"
+        try:
+            if not image_attempted:
+                result["image"] = True
+                resource_fact("image", "last_completed", "complete")
+                return
+            require(image_id is not None and image_config is not None, "cleanup")
+            resource_fact("image", "last_completed", "record")
+            checkpoint, kind = "inspect", "unknown"
+            config = inspect_image(image_id, end=deadline, diagnostic_slot="image_inspect")
+            resource_fact("image", "last_completed", "inspect")
+            checkpoint = "association"
+            association = labels_match(config)
+            resource_fact("image", "association_equal", association)
+            equal = None
+            if association:
+                resource_fact("image", "last_completed", "association")
+                checkpoint = "fingerprint"
+                equal = config_digest(config) == image_config
+                resource_fact("image", "fingerprint_equal", equal)
+                section_changes("image", image_initial, config)
+            kind = "fingerprint" if association else "association"
+            require(association and equal, "cleanup")
+            resource_fact("image", "last_completed", "fingerprint")
+            # Exact immutable ID; a replaced alias never authorizes deleting its new ID.
+            checkpoint, kind = "remove", "unknown"
+            docker("image", "rm", image_id, end=deadline, diagnostic_slot="image_remove")
+            resource_fact("image", "last_completed", "remove")
+            checkpoint = "absence"
+            remaining = docker(
+                "image",
+                "ls",
+                "-q",
+                "--no-trunc",
+                "--filter",
+                "label=" + label + "=" + owner,
+                end=deadline,
+                diagnostic_slot="image_absence",
+            )
+            kind = "absence"
+            require(not remaining, "cleanup")
+            resource_fact("image", "last_completed", "absence")
             result["image"] = True
-            return
-        require(image_id is not None and image_config is not None, "cleanup")
-        config = inspect_image(image_id, end=deadline)
-        require(labels_match(config) and config_digest(config) == image_config, "cleanup")
-        # Exact immutable ID; a replaced alias never authorizes deleting its new ID.
-        docker("image", "rm", image_id, end=deadline)
-        require(
-            not docker("image", "ls", "-q", "--no-trunc", "--filter", "label=" + label + "=" + owner, end=deadline),
-            "cleanup",
-        )
-        result["image"] = True
+            resource_fact("image", "last_completed", "complete")
+        except BaseException as error:
+            resource_fact("image", "failed_at", checkpoint)
+            first_failure("image", error, kind)
+            raise
 
-    independent(remove_container)
-    independent(remove_image)
+    independent(remove_container, "container")
+    independent(remove_image, "image")
     # Do not delete backing paths while an owned child/container may still use them.
-    settled = (
-        not child_cleanup_failed
-        and all(process.poll() is not None and not group_exists(process.pid) for process in processes)
-        and result["container"] is True
-        and result["image"] is True
+    children_settled = not child_cleanup_failed and all(
+        process.poll() is not None and not group_exists(process.pid) for process in processes
+    )
+    settled = children_settled and result["container"] is True and result["image"] is True
+    backing_facts(
+        eligible=settled,
+        container_disposed=result["container"],
+        image_disposed=result["image"],
+        children_settled=children_settled,
+        attempted=False,
     )
     if settled:
 
         def remove_private():
-            require(private is not None and identity(private.lstat()) == private_identity, "cleanup")
-            require(stat.S_IMODE(private.lstat().st_mode) == 0o700, "cleanup")
-            shutil.rmtree(private)
-            require(not os.path.lexists(private), "cleanup")
-            result["copy"] = result["captures"] = True
+            backing_facts(attempted=True)
+            try:
+                require(private is not None and identity(private.lstat()) == private_identity, "cleanup")
+                require(stat.S_IMODE(private.lstat().st_mode) == 0o700, "cleanup")
+                shutil.rmtree(private)
+                require(not os.path.lexists(private), "cleanup")
+                result["copy"] = result["captures"] = True
+            except BaseException as error:
+                first_failure("private", error, "unknown")
+                raise
 
-        independent(remove_private)
+        independent(remove_private, "private")
     else:
-        cleanup_errors.append(Failure("cleanup"))
+        error = Failure("cleanup")
+        cleanup_errors.append(error)
+        first_failure("private", error, "unknown")
+
     return result
 
 
@@ -615,24 +969,34 @@ def main_run():
         format_source()
         milestone("measure", "start")
         measure()
-        milestone("measure", "complete")
+        try:
+            milestone("measure", "complete")
+        except BaseException as error:
+            first_failure("post_measure_milestone", error, "public_output")
+            raise
     except BaseException as error:
         primary = error
+        first_failure("other_primary", error, "unknown")
     finally:
         try:
             milestone("cleanup", "start")
         except BaseException as error:
+            first_failure("cleanup_start_milestone", error, "public_output")
             cleanup_errors.append(error)
         try:
             disposal = cleanup()
         except BaseException as error:
+            first_failure("private", error, "unknown")
             cleanup_errors.append(error)
         try:
             milestone("cleanup", "failed" if cleanup_errors else "complete")
         except BaseException as error:
+            first_failure("cleanup_end_milestone", error, "public_output")
             cleanup_errors.append(error)
         if primary is None and cleanup_errors:
             primary = cleanup_errors[0]
+        if primary is None and annotation_error is not None:
+            primary = annotation_error
     PUBLICATION_END = min(END, time.monotonic() + 60)
     try:
         milestone("publication", "start")
@@ -666,13 +1030,14 @@ def main_run():
         primary_exit = exit_fact(primary)
         cleanup_exit = 1 if cleanup_errors else 0
         report = {
-            "schema": "bifrost.test.workflow-result-format-disposal/v1",
+            "schema": "bifrost.test.workflow-result-format-disposal/v2",
             "owner": owner,
             **disposal,
             "original_source_unchanged": source_unchanged,
             "primary_exit": primary_exit,
             "cleanup_exit": cleanup_exit,
             "complete": all(value is True for value in disposal.values()),
+            "cleanup_diagnostics": cleanup_diagnostics,
         }
         publish_file("format.patch", patch, PATCH_LIMIT)
         publish_file("source-metadata.json", as_json(metadata), 1024 * 1024)
@@ -685,6 +1050,8 @@ def main_run():
             primary = error
     if primary is not None:
         raise primary
+    if annotation_error is not None:
+        raise annotation_error
 
 
 def shutdown(signum, _frame):
