@@ -44,8 +44,12 @@ def test_nullable_descriptors_require_separate_exact_immutable_evidence():
     _require_registration(row, entity)
     assert row.description is None and row.category == "General"
     assert entity.definition["description"] == "Reviewed description"
+    evidence = entity.definition["legacy_descriptor_evidence"]
+    assert isinstance(evidence, dict)
+    fields = evidence["fields"]
+    assert isinstance(fields, dict)
     with pytest.raises(TypeError, match="immutable"):
-        entity.definition["legacy_descriptor_evidence"]["fields"]["description"] = ""
+        fields["description"] = ""
 
 
 @pytest.mark.parametrize("change", ["hash", "schema", "fields", "security_field", "missing_source", "invalid_source"])

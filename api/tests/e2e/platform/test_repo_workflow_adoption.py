@@ -451,3 +451,41 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
     with pytest.raises(SolutionSourceRevisionConflict, match="differs from reviewed recipe"):
         await service.inspect(solution.id, did, request)
     assert solution.active_deployment_id is None
+
+
+@pytest.mark.asyncio
+async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_and_old_pin(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    import base64
+
+    from src.models.contracts.solution_deployments import SolutionSourceRevisionCommitRequest, SolutionSourceRevisionRequest
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.deployment_runtime import pin_workflow_runtime, resolve_pinned_workflow_runtime
+    from src.services.solutions.source_revision import SolutionSourceRevisionService
+
+    solution, did, row, _, _, _, service, request, staged, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
+    await service.activate(solution.id, did, request, staged.evidence_id)
+    base = await db_session.get(SolutionDeployment, did)
+    assert base is not None
+    old_pin = await pin_workflow_runtime(db_session, row.id)
+    assert old_pin is not None
+    source = legacy_store[solution.id][row.path].replace(b"'old'", b"'new'")
+    next_id = uuid4()
+    revision = SolutionSourceRevisionService(db_session)
+    body = SolutionSourceRevisionRequest(expected_active_deployment_id=did,
+        expected_active_manifest_hash=base.compiled_manifest_hash, source_commit_sha="d" * 40,
+        files=[{"path": row.path, "content_base64": base64.b64encode(source).decode()}])
+    staged_revision = await revision.stage(solution.id, next_id, platform_admin.user_id, body)
+    await revision.activate(solution.id, next_id, SolutionSourceRevisionCommitRequest(
+        expected_active_deployment_id=did, expected_active_manifest_hash=base.compiled_manifest_hash,
+        expected_evidence_id=staged_revision.evidence_id))
+    await db_session.refresh(row)
+    assert row.description is None and row.category == "General"
+    successor = await db_session.get(SolutionDeployment, next_id)
+    assert next(iter(successor.resolution_map["workflows"].values()))["definition"] == next(iter(base.resolution_map["workflows"].values()))["definition"]
+    new_pin = await pin_workflow_runtime(db_session, row.id)
+    assert new_pin is not None
+    assert new_pin.deployment_id == next_id and new_pin.source_hash != old_pin.source_hash
+    assert (await resolve_pinned_workflow_runtime(db_session, did, row.id)).queue_evidence() == old_pin.queue_evidence()
