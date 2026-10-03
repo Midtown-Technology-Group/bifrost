@@ -1,0 +1,2001 @@
+{
+  "schema": "bifrost.test.workflow-domain-fixtures/v1",
+  "synthetic": true,
+  "description": "Inputs and legal current-schema arrangements only; no expected decisions, plans or final rows.",
+  "cases": [
+    {
+      "case_id": "success-Scheduled",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Scheduled",
+          "kind": "success",
+          "status": "Scheduled"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Scheduled",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Scheduled",
+          "kind": "success",
+          "status": "Scheduled"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Pending",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Pending",
+          "kind": "success",
+          "status": "Pending"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Pending",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Pending",
+          "kind": "success",
+          "status": "Pending"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Running",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Running",
+          "kind": "success",
+          "status": "Running"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Running",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Running",
+          "kind": "success",
+          "status": "Running"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Success",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Success",
+          "kind": "success",
+          "status": "Success"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Success",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Success",
+          "kind": "success",
+          "status": "Success"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Failed",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Failed",
+          "kind": "success",
+          "status": "Failed"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Failed",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Failed",
+          "kind": "success",
+          "status": "Failed"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Timeout",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Timeout",
+          "kind": "success",
+          "status": "Timeout"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Timeout",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Timeout",
+          "kind": "success",
+          "status": "Timeout"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Stuck",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Stuck",
+          "kind": "success",
+          "status": "Stuck"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Stuck",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Stuck",
+          "kind": "success",
+          "status": "Stuck"
+        }
+      ]
+    },
+    {
+      "case_id": "success-CompletedWithErrors",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-CompletedWithErrors",
+          "kind": "success",
+          "status": "CompletedWithErrors"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-CompletedWithErrors",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-CompletedWithErrors",
+          "kind": "success",
+          "status": "CompletedWithErrors"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Cancelling",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Cancelling",
+          "kind": "success",
+          "status": "Cancelling"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Cancelling",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Cancelling",
+          "kind": "success",
+          "status": "Cancelling"
+        }
+      ]
+    },
+    {
+      "case_id": "success-Cancelled",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-Cancelled",
+          "kind": "success",
+          "status": "Cancelled"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-wins-Cancelled",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-wins-Cancelled",
+          "kind": "success",
+          "status": "Cancelled"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-TimeoutError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-TimeoutError",
+          "kind": "failure",
+          "error_type": "TimeoutError"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-TimeoutError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-TimeoutError",
+          "kind": "failure",
+          "error_type": "TimeoutError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-CancelledError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-CancelledError",
+          "kind": "failure",
+          "error_type": "CancelledError"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-CancelledError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-CancelledError",
+          "kind": "failure",
+          "error_type": "CancelledError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-ResultPersistenceError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-ResultPersistenceError",
+          "kind": "failure",
+          "error_type": "ResultPersistenceError"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-ResultPersistenceError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-ResultPersistenceError",
+          "kind": "failure",
+          "error_type": "ResultPersistenceError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-ExecutionError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-ExecutionError",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-ExecutionError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-ExecutionError",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "coordinator-deferred-WorkerShutdownError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "coordinator-deferred-WorkerShutdownError",
+          "kind": "coordinator_loss",
+          "error_type": "WorkerShutdownError"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-coordinator-WorkerShutdownError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-coordinator-WorkerShutdownError",
+          "kind": "coordinator_loss",
+          "error_type": "WorkerShutdownError"
+        }
+      ]
+    },
+    {
+      "case_id": "coordinator-deferred-ProcessCrashError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "coordinator-deferred-ProcessCrashError",
+          "kind": "coordinator_loss",
+          "error_type": "ProcessCrashError"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-coordinator-ProcessCrashError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-coordinator-ProcessCrashError",
+          "kind": "coordinator_loss",
+          "error_type": "ProcessCrashError"
+        }
+      ]
+    },
+    {
+      "case_id": "running-claimed-null",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "running-claimed-null",
+          "kind": "running",
+          "process_id": null
+        }
+      ]
+    },
+    {
+      "case_id": "running-claimed-empty",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "running-claimed-empty",
+          "kind": "running",
+          "process_id": ""
+        }
+      ]
+    },
+    {
+      "case_id": "running-claimed-value",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "running-claimed-value",
+          "kind": "running",
+          "process_id": "synthetic-process"
+        }
+      ]
+    },
+    {
+      "case_id": "running-claimed_started-null",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed_started"
+      },
+      "steps": [
+        {
+          "case_id": "running-claimed_started-null",
+          "kind": "running",
+          "process_id": null
+        }
+      ]
+    },
+    {
+      "case_id": "running-claimed_started-empty",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed_started"
+      },
+      "steps": [
+        {
+          "case_id": "running-claimed_started-empty",
+          "kind": "running",
+          "process_id": ""
+        }
+      ]
+    },
+    {
+      "case_id": "running-claimed_started-value",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed_started"
+      },
+      "steps": [
+        {
+          "case_id": "running-claimed_started-value",
+          "kind": "running",
+          "process_id": "synthetic-process"
+        }
+      ]
+    },
+    {
+      "case_id": "running-running-null",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "running"
+      },
+      "steps": [
+        {
+          "case_id": "running-running-null",
+          "kind": "running",
+          "process_id": null
+        }
+      ]
+    },
+    {
+      "case_id": "running-running-empty",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "running"
+      },
+      "steps": [
+        {
+          "case_id": "running-running-empty",
+          "kind": "running",
+          "process_id": ""
+        }
+      ]
+    },
+    {
+      "case_id": "running-running-value",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "running"
+      },
+      "steps": [
+        {
+          "case_id": "running-running-value",
+          "kind": "running",
+          "process_id": "synthetic-process"
+        }
+      ]
+    },
+    {
+      "case_id": "running-fence-wrong",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "running-fence-wrong",
+          "kind": "running",
+          "token": "wrong"
+        }
+      ]
+    },
+    {
+      "case_id": "running-fence-foreign",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "running-fence-foreign",
+          "kind": "running",
+          "token": "foreign"
+        }
+      ]
+    },
+    {
+      "case_id": "running-fence-stale",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed",
+        "previous_completed_attempt": "seed"
+      },
+      "steps": [
+        {
+          "case_id": "running-fence-stale",
+          "kind": "running",
+          "token": "stale"
+        }
+      ]
+    },
+    {
+      "case_id": "running-attempt-none",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "none"
+      },
+      "steps": [
+        {
+          "case_id": "running-attempt-none",
+          "kind": "running"
+        }
+      ]
+    },
+    {
+      "case_id": "running-attempt-completed",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "completed"
+      },
+      "steps": [
+        {
+          "case_id": "running-attempt-completed",
+          "kind": "running"
+        }
+      ]
+    },
+    {
+      "case_id": "success-fence-wrong",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-fence-wrong",
+          "kind": "success",
+          "token": "wrong"
+        }
+      ]
+    },
+    {
+      "case_id": "success-fence-foreign",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-fence-foreign",
+          "kind": "success",
+          "token": "foreign"
+        }
+      ]
+    },
+    {
+      "case_id": "success-fence-stale",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed",
+        "previous_completed_attempt": "seed"
+      },
+      "steps": [
+        {
+          "case_id": "success-fence-stale",
+          "kind": "success",
+          "token": "stale"
+        }
+      ]
+    },
+    {
+      "case_id": "success-fence-missing",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "success-fence-missing",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "success-attempt-none",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "none"
+      },
+      "steps": [
+        {
+          "case_id": "success-attempt-none",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "success-attempt-completed",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "completed"
+      },
+      "steps": [
+        {
+          "case_id": "success-attempt-completed",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-fence-wrong",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-fence-wrong",
+          "kind": "failure",
+          "token": "wrong",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-fence-foreign",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-fence-foreign",
+          "kind": "failure",
+          "token": "foreign",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-fence-stale",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed",
+        "previous_completed_attempt": "seed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-fence-stale",
+          "kind": "failure",
+          "token": "stale",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-fence-missing",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-fence-missing",
+          "kind": "failure",
+          "token": "missing",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-attempt-none",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "none"
+      },
+      "steps": [
+        {
+          "case_id": "failure-attempt-none",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-attempt-completed",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "completed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-attempt-completed",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Scheduled",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Scheduled",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Scheduled",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Scheduled",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Pending",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Pending",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Pending",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Pending",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Running",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Running",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Success",
+      "arrangement": {
+        "status": "Success",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Success",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Success",
+      "arrangement": {
+        "status": "Success",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Success",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Failed",
+      "arrangement": {
+        "status": "Failed",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Failed",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Failed",
+      "arrangement": {
+        "status": "Failed",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Failed",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Timeout",
+      "arrangement": {
+        "status": "Timeout",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Timeout",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Timeout",
+      "arrangement": {
+        "status": "Timeout",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Timeout",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Stuck",
+      "arrangement": {
+        "status": "Stuck",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Stuck",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Stuck",
+      "arrangement": {
+        "status": "Stuck",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Stuck",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-CompletedWithErrors",
+      "arrangement": {
+        "status": "CompletedWithErrors",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-CompletedWithErrors",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-CompletedWithErrors",
+      "arrangement": {
+        "status": "CompletedWithErrors",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-CompletedWithErrors",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Cancelling",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Cancelling",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "result-guard-Cancelled",
+      "arrangement": {
+        "status": "Cancelled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-guard-Cancelled",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-fence-before-Cancelled",
+      "arrangement": {
+        "status": "Cancelled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-fence-before-Cancelled",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "duration-omitted",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "duration-omitted",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "duration-null",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "duration-null",
+          "kind": "success",
+          "duration_ms": null
+        }
+      ]
+    },
+    {
+      "case_id": "duration-0",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "duration-0",
+          "kind": "success",
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "case_id": "duration-23",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "duration-23",
+          "kind": "success",
+          "duration_ms": 23
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-0",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-0",
+          "kind": "success",
+          "metrics": null
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-1",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-1",
+          "kind": "success",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-2",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-2",
+          "kind": "success",
+          "metrics": {
+            "peak_memory_bytes": null,
+            "cpu_total_seconds": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-3",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-3",
+          "kind": "success",
+          "metrics": {
+            "peak_memory_bytes": 0,
+            "cpu_total_seconds": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-4",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-4",
+          "kind": "success",
+          "metrics": {
+            "peak_memory_bytes": 8192,
+            "cpu_total_seconds": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-5",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-5",
+          "kind": "success",
+          "metrics": {
+            "peak_memory_bytes": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "metrics-6",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "metrics-6",
+          "kind": "success",
+          "metrics": {
+            "cpu_total_seconds": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "projection-0",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "projection-0",
+          "kind": "success",
+          "result": null,
+          "error": null,
+          "variables": null,
+          "execution_context": null,
+          "roi": null
+        }
+      ]
+    },
+    {
+      "case_id": "projection-1",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "projection-1",
+          "kind": "success",
+          "result": {},
+          "error": null,
+          "variables": null,
+          "execution_context": null,
+          "roi": null
+        }
+      ]
+    },
+    {
+      "case_id": "projection-2",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "projection-2",
+          "kind": "success",
+          "result": "synthetic text",
+          "error": null,
+          "variables": null,
+          "execution_context": null,
+          "roi": null
+        }
+      ]
+    },
+    {
+      "case_id": "projection-3",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "projection-3",
+          "kind": "success",
+          "result": "<p>synthetic html</p>",
+          "error": null,
+          "variables": null,
+          "execution_context": null,
+          "roi": null
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Scheduled-none",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "none"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Scheduled-none",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Scheduled-dispatching",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "dispatching"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Scheduled-dispatching",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Scheduled-published",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "published"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Scheduled-published",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Scheduled-claimed",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Scheduled-claimed",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Scheduled-completed",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "completed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Scheduled-completed",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Pending-none",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "none"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Pending-none",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Pending-dispatching",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "dispatching"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Pending-dispatching",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Pending-published",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "published"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Pending-published",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Pending-claimed",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Pending-claimed",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-Pending-completed",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "completed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-Pending-completed",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Running",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Running",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Success",
+      "arrangement": {
+        "status": "Success",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Success",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Failed",
+      "arrangement": {
+        "status": "Failed",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Failed",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Timeout",
+      "arrangement": {
+        "status": "Timeout",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Timeout",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Stuck",
+      "arrangement": {
+        "status": "Stuck",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Stuck",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-CompletedWithErrors",
+      "arrangement": {
+        "status": "CompletedWithErrors",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-CompletedWithErrors",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Cancelling",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Cancelling",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-state-Cancelled",
+      "arrangement": {
+        "status": "Cancelled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-state-Cancelled",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-running-without-attempt",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "none"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-running-without-attempt",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-running-completed",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "completed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-running-completed",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-missing-execution",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-missing-execution",
+          "kind": "cancel",
+          "execution": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "legacy-unfenced",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "none",
+        "tracking": false
+      },
+      "steps": [
+        {
+          "case_id": "legacy-unfenced",
+          "kind": "success",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-first",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "running"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-first-request",
+          "kind": "cancel"
+        },
+        {
+          "case_id": "cancel-first-result",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "result-first",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "running"
+      },
+      "steps": [
+        {
+          "case_id": "result-first-result",
+          "kind": "success"
+        },
+        {
+          "case_id": "result-first-cancel",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "result-replay",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-replay-first",
+          "kind": "success"
+        },
+        {
+          "case_id": "result-replay-second",
+          "kind": "success"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-first-nonterminal",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-first-nonterminal-request",
+          "kind": "cancel"
+        },
+        {
+          "case_id": "cancel-first-nonterminal-result",
+          "kind": "success",
+          "status": "Pending"
+        }
+      ]
+    },
+    {
+      "case_id": "result-first-nonterminal",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "result-first-nonterminal-result",
+          "kind": "success",
+          "status": "Pending"
+        },
+        {
+          "case_id": "result-first-nonterminal-cancel",
+          "kind": "cancel"
+        }
+      ]
+    },
+    {
+      "case_id": "running-omitted-process",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "running-omitted-process",
+          "kind": "running"
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-projects-metrics",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-projects-metrics",
+          "kind": "success",
+          "duration_ms": null,
+          "metrics": {
+            "peak_memory_bytes": 8192,
+            "cpu_total_seconds": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "failure-null-duration-TimeoutError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-null-duration-TimeoutError",
+          "kind": "failure",
+          "error_type": "TimeoutError",
+          "duration_ms": null,
+          "metrics": {
+            "peak_memory_bytes": null,
+            "cpu_total_seconds": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-metrics-TimeoutError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-metrics-TimeoutError",
+          "kind": "failure",
+          "error_type": "TimeoutError",
+          "metrics": {
+            "peak_memory_bytes": 8192,
+            "cpu_total_seconds": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "failure-null-duration-CancelledError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-null-duration-CancelledError",
+          "kind": "failure",
+          "error_type": "CancelledError",
+          "duration_ms": null,
+          "metrics": {
+            "peak_memory_bytes": null,
+            "cpu_total_seconds": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-metrics-CancelledError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-metrics-CancelledError",
+          "kind": "failure",
+          "error_type": "CancelledError",
+          "metrics": {
+            "peak_memory_bytes": 8192,
+            "cpu_total_seconds": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "failure-null-duration-ResultPersistenceError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-null-duration-ResultPersistenceError",
+          "kind": "failure",
+          "error_type": "ResultPersistenceError",
+          "duration_ms": null,
+          "metrics": {
+            "peak_memory_bytes": null,
+            "cpu_total_seconds": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-metrics-ResultPersistenceError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-metrics-ResultPersistenceError",
+          "kind": "failure",
+          "error_type": "ResultPersistenceError",
+          "metrics": {
+            "peak_memory_bytes": 8192,
+            "cpu_total_seconds": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "failure-null-duration-ExecutionError",
+      "arrangement": {
+        "status": "Running",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-null-duration-ExecutionError",
+          "kind": "failure",
+          "error_type": "ExecutionError",
+          "duration_ms": null,
+          "metrics": {
+            "peak_memory_bytes": null,
+            "cpu_total_seconds": null
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "cancel-failure-metrics-ExecutionError",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "cancel-failure-metrics-ExecutionError",
+          "kind": "failure",
+          "error_type": "ExecutionError",
+          "metrics": {
+            "peak_memory_bytes": 8192,
+            "cpu_total_seconds": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Scheduled",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Scheduled",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Pending",
+      "arrangement": {
+        "status": "Pending",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Pending",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Success",
+      "arrangement": {
+        "status": "Success",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Success",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Failed",
+      "arrangement": {
+        "status": "Failed",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Failed",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Timeout",
+      "arrangement": {
+        "status": "Timeout",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Timeout",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Stuck",
+      "arrangement": {
+        "status": "Stuck",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Stuck",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-CompletedWithErrors",
+      "arrangement": {
+        "status": "CompletedWithErrors",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-CompletedWithErrors",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "failure-guard-Cancelled",
+      "arrangement": {
+        "status": "Cancelled",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "failure-guard-Cancelled",
+          "kind": "failure",
+          "error_type": "ExecutionError"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-failure-fence-before-Success",
+      "arrangement": {
+        "status": "Success",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-failure-fence-before-Success",
+          "kind": "failure",
+          "error_type": "ExecutionError",
+          "token": "missing"
+        }
+      ]
+    },
+    {
+      "case_id": "missing-coordinator-fence-before-Success",
+      "arrangement": {
+        "status": "Success",
+        "attempt": "claimed"
+      },
+      "steps": [
+        {
+          "case_id": "missing-coordinator-fence-before-Success",
+          "kind": "coordinator_loss",
+          "error_type": "WorkerShutdownError",
+          "token": "missing"
+        }
+      ]
+    }
+  ]
+}
