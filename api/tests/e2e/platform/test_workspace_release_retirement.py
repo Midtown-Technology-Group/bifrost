@@ -624,6 +624,7 @@ async def test_retirement_cannot_hide_owner_obligations_with_another_context(
     platform_admin, db_session,
 ) -> None:
     """The global Live row's owner, not a chosen context, owns its journal."""
+    from src.models.orm.audit import AuditLog
     from src.models.orm.organizations import Organization
 
     other_org = uuid4()
@@ -675,6 +676,7 @@ async def test_retirement_cannot_hide_owner_obligations_with_another_context(
                 WorkspaceSourceRelease.id == source_record_id))
             await db_session.commit()
         await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+        await db_session.execute(delete(AuditLog).where(AuditLog.organization_id == other_org))
         await db_session.execute(delete(Organization).where(Organization.id == other_org))
         await db_session.commit()
 
@@ -683,9 +685,6 @@ async def test_retirement_cannot_hide_owner_obligations_with_another_context(
 async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutation(
     e2e_client, platform_admin, db_session,
 ) -> None:
-    import json
-    from pathlib import Path
-
     from src.models.orm.solutions import Solution
     from src.services.solutions.repo_workflow_adoption import _digest_row
 
@@ -720,7 +719,7 @@ async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutat
             source_tree_sha="4" * 40, paths={source_path:"a" * 64},
             declaration_actor="platform_admin", declared_disposition="pending",
             disposition="deferred", reason="Independent evidence remains unresolved",
-            created_by=platform_admin.user_id,
+            resolved_at=datetime.now(UTC), created_by=platform_admin.user_id,
         )
         db_session.add(record)
         await db_session.commit()
@@ -747,12 +746,6 @@ async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutat
         for row in [release, record, *rows]:
             await db_session.refresh(row)
             assert _digest_row(row) == before[row.id]
-        # Retain the actual API schema for generator input in the selected CI
-        # Docker lane. This is public schema only: no headers or entity values.
-        schema = e2e_client.get("/openapi.json")
-        assert schema.status_code == 200
-        assert route in schema.json()["paths"]
-        Path("/bifrost-results/openapi-current.json").write_text(json.dumps(schema.json()))
     finally:
         await db_session.rollback()
         if source_record_id is not None:
