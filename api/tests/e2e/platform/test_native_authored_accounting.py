@@ -127,6 +127,7 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
             ci_run_attempt=1, artifact_digest=digest), GitDeliveryIdentity("2", 1))
     assert delivered.state == "already_active" and delivered.authored_source_state == "verified"
     assert delivered.deployment_id == f.base_id
+    assert f.base.validation_result["github_delivery"]["receipt_id"] == str(receipt.id)
     child = SolutionDeployObligationDeclare(solution_slug=source.solution_slug, repo_subpath=root,
         source_subtree_sha=source.subtree_sha, source_content_id=source.source_content_id,
         source_files=source.file_manifest(), changed_paths={root + "/README.md": hashlib.sha256(source.files["README.md"]).hexdigest()},

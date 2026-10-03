@@ -227,6 +227,10 @@ class GitSourceDeliveryService:
             .returning(SolutionDeployment.id).execution_options(synchronize_session=False))
         if recorded_id is None:
             raise SolutionSourceRevisionConflict("Active deployment changed before delivery evidence")
+        # Bulk SQL bypasses the loaded object's identity-map state. Replay may
+        # use this same Session for a late declaration; retain the actual proof
+        # rather than its pre-delivery validation metadata.
+        await self.db.refresh(base, attribute_names=["validation_result"])
         return authored_state
 
     async def _deliver_authored_readme(self, base: SolutionDeployment, source: VerifiedGitSource,

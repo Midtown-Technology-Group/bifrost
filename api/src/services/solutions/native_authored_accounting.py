@@ -113,6 +113,9 @@ async def _installed_evidence(
         solution.active_deployment_id, solution.organization_id, solution.id)
     if deployment is None or deployment.state != "active":
         raise NativeAuthoredSourceMismatch("Intended installation has no active deployment")
+    # A prior delivery can retain this ORM instance across its SQL checkpoint.
+    # Completion must read durable receipt provenance, never a cached proof.
+    await db.refresh(deployment, attribute_names=["validation_result"])
     manifest, resolution = validate_runtime_closure(deployment.compiled_manifest,
         deployment.resolution_map, deployment.dependencies,
         expected_manifest_hash=deployment.compiled_manifest_hash,
