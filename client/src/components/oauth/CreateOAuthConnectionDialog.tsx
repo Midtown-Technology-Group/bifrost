@@ -77,6 +77,7 @@ export function CreateOAuthConnectionDialog({
 				token_url: existingConnection.token_url,
 				scopes: existingConnection.scopes || "",
 				audience: existingConnection.audience || "",
+				use_pkce: existingConnection.provider_metadata?.use_pkce === true,
 			};
 		}
 		return undefined;
@@ -102,6 +103,18 @@ export function CreateOAuthConnectionDialog({
 	const handleSubmit = async (data: OAuthProviderData) => {
 		setSubmitError(null);
 		try {
+			// Preserve unrelated provider_metadata flags on update; only send
+			// the key when PKCE is (or was) enabled so untouched connections
+			// keep their existing metadata.
+			const existingMetadata =
+				(existingConnection?.provider_metadata ?? {}) as Record<
+					string,
+					unknown
+				>;
+			const providerMetadata =
+				data.use_pkce || "use_pkce" in existingMetadata
+					? { ...existingMetadata, use_pkce: data.use_pkce }
+					: undefined;
 			if (isEditMode) {
 				const updateData: UpdateOAuthConnectionRequest = {
 					oauth_flow_type: data.oauth_flow_type,
@@ -111,6 +124,9 @@ export function CreateOAuthConnectionDialog({
 					token_url: data.token_url,
 					scopes: normalizeScopesForUpdate(data.scopes),
 					audience: data.audience || null,
+					...(providerMetadata !== undefined
+						? { provider_metadata: providerMetadata }
+						: {}),
 				};
 
 				await updateMutation.mutateAsync({
@@ -128,6 +144,9 @@ export function CreateOAuthConnectionDialog({
 					scopes: data.scopes,
 					integration_id: integrationId,
 					audience: data.audience ?? "",
+					...(providerMetadata !== undefined
+						? { provider_metadata: providerMetadata }
+						: {}),
 				};
 
 				await createMutation.mutateAsync({ body: createData });

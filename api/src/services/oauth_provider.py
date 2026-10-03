@@ -174,6 +174,7 @@ class OAuthProviderClient:
         scopes: str | None = None,
         audience: str | None = None,
         resource: str | None = None,
+        code_verifier: str | None = None,
     ) -> tuple[bool, dict]:
         """
         Exchange authorization code for access token (authorization code flow)
@@ -182,8 +183,11 @@ class OAuthProviderClient:
             token_url: OAuth provider's token endpoint
             code: Authorization code from OAuth callback
             client_id: OAuth client ID
-            client_secret: OAuth client secret (optional, omit for PKCE flow)
+            client_secret: OAuth client secret (optional for public clients;
+                confidential clients always send it, including PKCE clients)
             redirect_uri: Redirect URI used in authorization request
+            code_verifier: PKCE code verifier (sent only when the authorize
+                request carried a code_challenge for this flow)
 
         Returns:
             Tuple of (success, result_dict)
@@ -197,12 +201,18 @@ class OAuthProviderClient:
             "redirect_uri": redirect_uri,
         }
 
-        # Only include client_secret if provided (PKCE flow omits this)
+        # Only include client_secret if provided (public clients omit this).
+        # PKCE and client_secret are orthogonal: a confidential PKCE client
+        # sends both.
         if client_secret:
             payload["client_secret"] = client_secret
             logger.info("Exchanging authorization code (confidential client)")
         else:
-            logger.info("Exchanging authorization code (PKCE flow)")
+            logger.info("Exchanging authorization code (no client secret)")
+
+        if code_verifier:
+            payload["code_verifier"] = code_verifier
+            logger.info("Exchanging authorization code (PKCE verifier present)")
 
         if audience:
             payload["audience"] = audience
@@ -232,7 +242,8 @@ class OAuthProviderClient:
             token_url: OAuth provider's token endpoint
             refresh_token: Refresh token
             client_id: OAuth client ID
-            client_secret: OAuth client secret (optional, omit for PKCE flow)
+            client_secret: OAuth client secret (optional; sent when configured,
+                omitted for public clients whose providers reject it)
 
         Returns:
             Tuple of (success, result_dict)
@@ -243,12 +254,13 @@ class OAuthProviderClient:
             "client_id": client_id,
         }
 
-        # Only include client_secret if provided (PKCE flow omits this)
+        # Only include client_secret if provided (public clients omit this;
+        # some providers reject a secret on refresh while others require it).
         if client_secret:
             payload["client_secret"] = client_secret
             logger.info("Refreshing OAuth access token (confidential client)")
         else:
-            logger.info("Refreshing OAuth access token (PKCE flow)")
+            logger.info("Refreshing OAuth access token (no client secret)")
 
         if audience:
             payload["audience"] = audience

@@ -16,6 +16,7 @@ import { Copy, Check, Info } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -39,6 +40,8 @@ export interface OAuthProviderData {
 	token_url: string;
 	scopes: string;
 	audience: string | null;
+	/** Explicit opt-in for OAuth 2.0 with PKCE (stored as provider_metadata.use_pkce) */
+	use_pkce: boolean;
 }
 
 export interface OAuthProviderEditorProps {
@@ -65,6 +68,7 @@ const DEFAULT_VALUES: OAuthProviderData = {
 	token_url: "",
 	scopes: "",
 	audience: "",
+	use_pkce: false,
 };
 
 /**
@@ -236,6 +240,32 @@ export function OAuthProviderEditor({
 				</div>
 			)}
 
+			{isAuthCode && (
+				<div className="flex items-start gap-3 rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/20 px-3 py-3">
+					<Checkbox
+						id="use_pkce"
+						checked={data.use_pkce}
+						onCheckedChange={(checked) =>
+							setData({ ...data, use_pkce: checked === true })
+						}
+						disabled={disabled}
+						className="mt-1"
+					/>
+					<div className="space-y-1">
+						<Label htmlFor="use_pkce">
+							Use PKCE (Proof Key for Code Exchange)
+						</Label>
+						<p className="text-xs leading-5 text-muted-foreground">
+							Enable only when this provider is configured for
+							OAuth 2.0 with PKCE. Bifrost sends a code
+							challenge with the authorization request and the
+							matching verifier to the token endpoint. Works
+							with or without a client secret.
+						</p>
+					</div>
+				</div>
+			)}
+
 			<div className="grid gap-4 md:grid-cols-2">
 				<div className="space-y-2">
 					<Label htmlFor="client_id">Client ID *</Label>
@@ -269,7 +299,9 @@ export function OAuthProviderEditor({
 								? "Leave empty to keep existing..."
 								: data.oauth_flow_type === "client_credentials"
 									? "Required for client credentials flow..."
-									: "Optional for PKCE flow..."
+									: data.use_pkce
+										? "Optional for PKCE flow..."
+										: "Optional unless your provider requires it..."
 						}
 						required={
 							data.oauth_flow_type === "client_credentials" &&
@@ -283,7 +315,9 @@ export function OAuthProviderEditor({
 							? "Leave empty to keep the existing secret, or enter a new one to update"
 							: data.oauth_flow_type === "client_credentials"
 								? "Required: Client credentials flow requires a client secret"
-								: "Optional: Leave empty for PKCE (Proof Key for Code Exchange) flow"}
+								: data.use_pkce
+									? "Optional: Leave empty for PKCE (Proof Key for Code Exchange) flow"
+									: "Optional: only required if your provider issued a client secret"}
 					</p>
 				</div>
 			</div>
