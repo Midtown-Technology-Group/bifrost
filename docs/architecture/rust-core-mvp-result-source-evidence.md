@@ -29,6 +29,16 @@ The corrections preserve short-circuit order, witness marks before mutable logic
 
 The first cycle-3 submission returned HTTP 503; readback showed no admitted run. After reconciliation, the supported workflow admitted the successful run above. No additional formatter diagnostic was run. Previous stopped Agent Prepare, HTTP, and historical formatter attempts remain separate dispositions.
 
+## Schema-observation source compilation
+
+[`920de169806fbab931a420582529c9aca0dde808`](https://github.com/Midtown-Technology-Group/bifrost/commit/920de169806fbab931a420582529c9aca0dde808), tree `8a99900d14fe3003671b31291543274a19beae2b`, adds only the private driver's `observe-schema` mode. Root and distinct reviewers accepted the source and its manual style amendment. Example SHA256: `2798d55970d873bae3fffb35945d04fc0dd63951040e98115cdaa10d56d1b58c`.
+
+[Run 37161936101](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37161936101) passed all four unchanged Rust Core jobs on that exact candidate, on its first attempt. Formatting and all-target/all-feature Clippy passed, including compilation of the changed example. Default tests passed 27 identities; the existing live-db bootstrap suite passed 28. The two TLS executions, dependency policy, cold image and production smoke also passed their existing expectations. The untrusted TLS case retained its expected metrics-shutdown failure. Cleanup actions remain insufficient to claim an independent EMPTY inventory.
+
+The mode uses one read-only, repeatable-read transaction to observe actual version rows, the existing device floor and bounded catalogs of six fixed tables. Its SQL text has **not executed in this run**. Compilation does not prove catalog syntax, query permissions, before/after restoration, private-input association or the selected fifteen Result tests. Those require the independently reviewed parity producer and actual observations.
+
+Independent source review: `4361084c3562a673dd1be477a06d62fcf1b8ef828175bfbb883aad6a80e7da83`; style addendum: `bd914a26b98d41b71fb2a878effc3f9326d5c4aaf0553ee984c3efa552f74f9a`; independent CI evidence review: `39ad60e7b1d2b412f7f2761ce1a7dce775651e84f1024eee1614637bda3fd5ef`. Later documentation commits retain this evidence against `920de1698`, rather than claiming their own heads ran CI.
+
 ## Gates not discharged
 
 This run does not prove the sole 299-case Python Result target, selected fifteen native Result tests, eight feature venues, full Result transition/transaction parity, unknown-COMMIT handling, real Redis-outage event behavior, constructor/frontend admission, restricted or mixed-writer ownership, actual Python Prepare/Start custody, unchanged Cove workflow/answer/summary behavior, or reversible in-flight routing. The literal `./test.sh pre-pr` gate remains pending before PR publication.
