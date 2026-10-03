@@ -55,8 +55,10 @@ def _requested_org_denied(context: Any, organization_id: str | None) -> ToolResu
 
 
 def _build_callback_url(source_id: UUID) -> str:
-    """Build callback URL path from event source ID."""
-    return f"/api/hooks/{source_id}"
+    """Build the externally reachable callback URL sent to webhook providers."""
+    from src.config import get_settings
+
+    return f"{get_settings().public_url.rstrip('/')}/api/hooks/{source_id}"
 
 
 def _source_in_scope(context: Any, source_org_id: UUID | None) -> bool:
@@ -269,6 +271,11 @@ async def create_event_source(
                     )
                 org_uuid = ctx_org
 
+            if workflow_id:
+                service_rejection = await _reject_service_target(db, workflow_id)
+                if service_rejection is not None:
+                    return service_rejection
+
             # Upsert logic: if workflow_id provided, check for existing matching source
             existing_source = None
             if workflow_id:
@@ -305,6 +312,53 @@ async def create_event_source(
                 source = existing_source
                 callback_url = _build_callback_url(source.id) if source_type_enum == EventSourceType.WEBHOOK else None
             else:
+                # Validate the webhook adapter and resolve its integration
+                # auth BEFORE creating any rows. These error paths return
+                # before db.add/db.flush, so an unknown adapter, a missing
+                # integration, or unresolvable auth cannot leave a partial
+                # source behind when the session commits.
+                adapter = None
+                integration = None
+                parsed_integration_id = None
+                if source_type_enum == EventSourceType.WEBHOOK:
+                    registry = get_adapter_registry()
+                    adapter = registry.get(adapter_name)
+                    if adapter_name and not adapter:
+                        return error_result(f"Unknown webhook adapter: {adapter_name}")
+                    if integration_id:
+                        try:
+                            parsed_integration_id = UUID(integration_id)
+                        except ValueError:
+                            return error_result(
+                                f"Invalid integration_id: {integration_id}. Must be a valid UUID."
+                            )
+                    # Resolve org-scoped integration auth when the adapter
+                    # requires it (mirrors the REST create path in
+                    # api/src/routers/events.py). Adapters without a
+                    # required integration intentionally subscribe with
+                    # integration=None.
+                    if adapter and adapter.requires_integration:
+                        if not parsed_integration_id:
+                            return error_result(
+                                f"Adapter '{adapter_name}' requires integration"
+                            )
+                        try:
+                            from src.services.webhooks.auth import (
+                                build_webhook_integration_credentials,
+                                resolve_webhook_integration_auth,
+                            )
+
+                            credentials = await build_webhook_integration_credentials(
+                                db,
+                                parsed_integration_id,
+                                org_uuid,
+                            )
+                            integration = await resolve_webhook_integration_auth(
+                                credentials
+                            )
+                        except ValueError as e:
+                            return error_result(str(e))
+
                 # Create base event source
                 source = EventSource(
                     name=name,
@@ -322,15 +376,10 @@ async def create_event_source(
 
                 # Handle webhook
                 if source_type_enum == EventSourceType.WEBHOOK:
-                    registry = get_adapter_registry()
-                    adapter = registry.get(adapter_name)
-                    if adapter_name and not adapter:
-                        return error_result(f"Unknown webhook adapter: {adapter_name}")
-
                     webhook_source = WebhookSource(
                         event_source_id=source.id,
                         adapter_name=adapter_name,
-                        integration_id=UUID(integration_id) if integration_id else None,
+                        integration_id=parsed_integration_id,
                         config=webhook_config or {},
                         created_at=now,
                         updated_at=now,
@@ -343,7 +392,7 @@ async def create_event_source(
                             result = await adapter.subscribe(
                                 callback_url=callback_url,
                                 config=webhook_config or {},
-                                integration=None,  # TODO: load integration if needed
+                                integration=integration,
                             )
                             webhook_source.external_id = result.external_id
                             webhook_source.state = result.state
@@ -371,9 +420,6 @@ async def create_event_source(
             # Auto-create subscription if workflow_id provided
             subscription_data = None
             if workflow_id:
-                service_rejection = await _reject_service_target(db, workflow_id)
-                if service_rejection is not None:
-                    return service_rejection
                 # Check if subscription already exists
                 existing_sub = await db.execute(
                     select(EventSubscription)
