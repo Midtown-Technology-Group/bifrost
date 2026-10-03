@@ -120,6 +120,81 @@ IMAGE_SECTIONS = (
     "Size",
     "other_top_level",
 )
+# Closed reference vocabulary from observed Moby source0d98/roster1bf0.
+# This does not attest an installed engine version or exempt any fingerprint.
+HOST_CONFIG_FIELDS = (
+    "Annotations",
+    "AutoRemove",
+    "Binds",
+    "BlkioDeviceReadBps",
+    "BlkioDeviceReadIOps",
+    "BlkioDeviceWriteBps",
+    "BlkioDeviceWriteIOps",
+    "BlkioWeight",
+    "BlkioWeightDevice",
+    "CapAdd",
+    "CapDrop",
+    "Cgroup",
+    "CgroupParent",
+    "CgroupnsMode",
+    "ConsoleSize",
+    "ContainerIDFile",
+    "CpuCount",
+    "CpuPercent",
+    "CpuPeriod",
+    "CpuQuota",
+    "CpuRealtimePeriod",
+    "CpuRealtimeRuntime",
+    "CpuShares",
+    "CpusetCpus",
+    "CpusetMems",
+    "DeviceCgroupRules",
+    "DeviceRequests",
+    "Devices",
+    "Dns",
+    "DnsOptions",
+    "DnsSearch",
+    "ExtraHosts",
+    "GroupAdd",
+    "IOMaximumBandwidth",
+    "IOMaximumIOps",
+    "Init",
+    "IpcMode",
+    "Isolation",
+    "KernelMemory",
+    "KernelMemoryTCP",
+    "Links",
+    "LogConfig",
+    "MaskedPaths",
+    "Memory",
+    "MemoryReservation",
+    "MemorySwap",
+    "MemorySwappiness",
+    "Mounts",
+    "NanoCpus",
+    "NetworkMode",
+    "OomKillDisable",
+    "OomScoreAdj",
+    "PidMode",
+    "PidsLimit",
+    "PortBindings",
+    "Privileged",
+    "PublishAllPorts",
+    "ReadonlyPaths",
+    "ReadonlyRootfs",
+    "RestartPolicy",
+    "Runtime",
+    "SecurityOpt",
+    "ShmSize",
+    "StorageOpt",
+    "Sysctls",
+    "Tmpfs",
+    "UTSMode",
+    "Ulimits",
+    "UsernsMode",
+    "VolumeDriver",
+    "VolumesFrom",
+)
 NATIVE_SLOTS = (
     "container_inspect",
     "container_remove",
@@ -137,6 +212,11 @@ cleanup_diagnostics = {
             "association_equal": None,
             "fingerprint_equal": None,
             "changed_sections": None,
+            **(
+                {"host_config_changed_fields": None, "host_config_other_fields_changed": None}
+                if name == "container"
+                else {}
+            ),
         }
         for name in ("container", "image")
     },
@@ -240,7 +320,17 @@ def native_failure(slot, error, fallback):
 def resource_fact(resource, field, value):
     try:
         record = cleanup_diagnostics["resources"][resource]
-        if field not in record:
+        if (
+            field
+            not in (
+                "last_completed",
+                "failed_at",
+                "association_equal",
+                "fingerprint_equal",
+                "changed_sections",
+            )
+            or field not in record
+        ):
             raise ValueError("invalid resource diagnostic field")
         if field in {"last_completed", "failed_at"}:
             valid = value is None or value in CHECKPOINTS
@@ -275,6 +365,45 @@ def section_changes(resource, initial, current):
             if not equal:
                 changes.append(name)
         resource_fact(resource, "changed_sections", changes)
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
+def host_config_changes(initial, current):
+    # Compute and admit the pair privately before one completed record replacement.
+    try:
+        left = initial["HostConfig"]
+        right = current["HostConfig"]
+        if type(left) is not dict or type(right) is not dict:
+            raise ValueError("invalid HostConfig diagnostic shape")
+        changes = []
+        for name in HOST_CONFIG_FIELDS:
+            if (name in left) != (name in right) or (
+                name in left
+                and json.dumps(left[name], sort_keys=True, separators=(",", ":"), allow_nan=False)
+                != json.dumps(right[name], sort_keys=True, separators=(",", ":"), allow_nan=False)
+            ):
+                changes.append(name)
+        left_other = {k: v for k, v in left.items() if k not in HOST_CONFIG_FIELDS}
+        right_other = {k: v for k, v in right.items() if k not in HOST_CONFIG_FIELDS}
+        other_changed = json.dumps(left_other, sort_keys=True, separators=(",", ":"), allow_nan=False) != json.dumps(
+            right_other, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        if (
+            type(changes) is not list
+            or len(changes) > 71
+            or any(type(name) is not str for name in changes)
+            or changes != [name for name in HOST_CONFIG_FIELDS if name in changes]
+            or type(other_changed) is not bool
+        ):
+            raise ValueError("invalid closed HostConfig diagnostic pair")
+        record = cleanup_diagnostics["resources"]["container"]
+        replacement = {
+            **record,
+            "host_config_changed_fields": changes,
+            "host_config_other_fields_changed": other_changed,
+        }
+        cleanup_diagnostics["resources"]["container"] = replacement
     except BaseException as secondary:
         annotation_failed(secondary)
 
@@ -787,6 +916,7 @@ def cleanup():
             )
             resource_fact("container", "fingerprint_equal", equal)
             section_changes("container", container_initial, config)
+            host_config_changes(container_initial, config)
             kind = "fingerprint"
             require(equal, "cleanup")
             resource_fact("container", "last_completed", "fingerprint")
@@ -1030,7 +1160,7 @@ def main_run():
         primary_exit = exit_fact(primary)
         cleanup_exit = 1 if cleanup_errors else 0
         report = {
-            "schema": "bifrost.test.workflow-result-format-disposal/v2",
+            "schema": "bifrost.test.workflow-result-format-disposal/v3",
             "owner": owner,
             **disposal,
             "original_source_unchanged": source_unchanged,
