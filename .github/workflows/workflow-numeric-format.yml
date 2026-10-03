@@ -1,0 +1,32 @@
+name: Workflow native numeric format patch
+
+on:
+  push:
+    branches: [rust/workflow-numeric-parity]
+    paths:
+      - 'core-rs/crates/bifrost-db/src/workflow_numeric.rs'
+      - 'core-rs/crates/bifrost-db/src/lib.rs'
+      - 'scripts/ci/workflow-sql-source.sh'
+      - '.github/workflows/workflow-numeric-format.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Produce mechanical format patch only
+        run: bash scripts/ci/workflow-sql-source.sh format
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: workflow-numeric-format
+          path: ${{ env.WORKFLOW_SQL_SOURCE_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
