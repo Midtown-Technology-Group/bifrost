@@ -68,7 +68,7 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     """Exclusive synthetic consumers inside an outer rollback transaction."""
     from src import config
     from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
-    from src.models.orm.executions import Execution
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
     from src.models.orm.execution_attempts import ExecutionAttempt
     from src.models.orm.operation_receipts import OperationReceipt
     from src.models.orm.solutions import Solution
@@ -85,6 +85,8 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     await db_session.execute(update(Workflow).values(is_active=False))
     await db_session.execute(update(Execution).values(status=ExecutionStatus.SUCCESS))
     await db_session.execute(update(ExecutionAttempt).values(completed_at=datetime.now(UTC)))
+    await db_session.execute(update(WorkflowExecutionAttempt).values(status="succeeded",
+        phase="terminal", completed_at=datetime.now(UTC)))
     commit, tree = "a" * 40, "b" * 40
     f = await _seed_adopted_revision(db_session, platform_admin, monkeypatch, source_commit_sha=commit)
     f.objects[(str(f.base_id), f.path)] = f.old_source
@@ -156,10 +158,10 @@ async def test_late_declaration_replay_settles_from_installed_readback_without_m
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", ["bytes", "mapping", "receipt", "registration", "mutable", "legacy_execution"])
+@pytest.mark.parametrize("fault", ["bytes", "mapping", "receipt", "registration", "mutable", "legacy_execution", "workflow_attempt"])
 async def test_database_consumer_drift_keeps_source_unresolved(db_session, platform_admin, accounting_install, fault):
     from src.models.enums import ExecutionStatus
-    from src.models.orm.executions import Execution
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
     from src.models.orm.solutions import Solution
     from src.models.orm.workflows import Workflow
     from src.services.solution_source_accountability import reconcile_solution_owned_source
@@ -174,6 +176,14 @@ async def test_database_consumer_drift_keeps_source_unresolved(db_session, platf
         await db_session.execute(update(Workflow).where(Workflow.id == f.workflow_id).values(name="stale registration"))
     elif fault == "mutable":
         await db_session.execute(update(Solution).where(Solution.id == f.solution_id).values(execution_runtime_mode="legacy"))
+    elif fault == "workflow_attempt":
+        accepted = Execution(id=uuid4(), workflow_name="Terminal parent with accepted attempt",
+            executed_by_name="fixture", workflow_id=f.workflow_id, status=ExecutionStatus.SUCCESS,
+            completed_at=datetime.now(UTC))
+        db_session.add(accepted)
+        await db_session.flush()
+        db_session.add(WorkflowExecutionAttempt(execution_id=accepted.id,
+            attempt_number=1, status="running", phase="execution"))
     else:
         db_session.add(Execution(id=uuid4(), workflow_name="unproven accepted work", executed_by_name="fixture",
             workflow_id=f.workflow_id, status=ExecutionStatus.PENDING))

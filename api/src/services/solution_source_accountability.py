@@ -24,7 +24,7 @@ from bifrost.workspace_release import canonical_digest
 from src.config import get_settings
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.models.enums import ExecutionStatus
-from src.models.orm.executions import Execution
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.operation_receipts import OperationReceipt
 from src.models.orm.solutions import Solution
@@ -345,7 +345,10 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
         ExecutionAttempt.logical_job_type == "workflow",
         ExecutionAttempt.logical_job_id == Execution.id,
         ExecutionAttempt.completed_at.is_(None)))
-    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt)
+    accepted_workflow_attempt = exists(select(WorkflowExecutionAttempt.id).where(
+        WorkflowExecutionAttempt.execution_id == Execution.id,
+        WorkflowExecutionAttempt.completed_at.is_(None)))
+    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt, accepted_workflow_attempt)
     pins = (await db.scalars(select(Execution.solution_deployment_id).where(
         accepted_execution, Execution.solution_deployment_id.is_not(None)).distinct())).all()
     for identity in pins:
