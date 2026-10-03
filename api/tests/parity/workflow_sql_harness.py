@@ -30,7 +30,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, event, select, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import ArgumentError, DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.sql import visitors
 from src.config import get_settings
@@ -390,8 +390,8 @@ _OBSERVER_MODULES = {
 
 
 def observer_context(value):
-    closed(value, {"schema", "candidate", "invocation_uuid", "parent_uid", "target_remaining_seconds"})
-    check(value["schema"] == "bifrost.private.result-observer-context/v1", "Result observer context schema")
+    closed(value, {"schema", "candidate", "invocation_uuid", "parent_uid", "target_remaining_seconds", "private_input"})
+    check(value["schema"] == "bifrost.private.result-observer-context/v2", "Result observer context schema")
     observer_candidate(value["candidate"])
     check(
         type(value["invocation_uuid"]) is str and str(UUID(value["invocation_uuid"])) == value["invocation_uuid"],
@@ -400,7 +400,134 @@ def observer_context(value):
     check(type(value["parent_uid"]) is int and 0 <= value["parent_uid"] < 2**31, "Result observer parent UID")
     budget = value["target_remaining_seconds"]
     check(type(budget) in {int, float} and 0 < budget <= 900 and math.isfinite(budget), "Result observer launch bound")
+    observer_private_descriptor(value["private_input"], value["parent_uid"])
     return value
+
+
+def observer_private_descriptor(value, parent_uid):
+    closed(value, {"schema", "path", "dev", "ino", "owner_uid", "gid", "mode", "size", "nlink", "user_namespace"})
+    check(
+        value["schema"] == "bifrost.private.result-dsn-input/v1"
+        and value["path"] == "/bifrost-private/result-all-features.env",
+        "Result private input profile",
+    )
+    for name, maximum in (("dev", 2**64 - 1), ("ino", 2**64 - 1), ("owner_uid", 2**31 - 1), ("gid", 2**31 - 1)):
+        check(type(value[name]) is int and 0 <= value[name] <= maximum, "Result private input integer")
+    check(value["ino"] > 0 and value["owner_uid"] == parent_uid, "Result private input owner")
+    check(type(value["mode"]) is int and value["mode"] == 0o640, "Result private input mode")
+    check(type(value["size"]) is int and 1 <= value["size"] <= 4096, "Result private input size")
+    check(type(value["nlink"]) is int and value["nlink"] == 1, "Result private input links")
+    namespace = value["user_namespace"]
+    closed(namespace, {"dev", "ino"})
+    check(
+        type(namespace["dev"]) is int
+        and 0 <= namespace["dev"] < 2**64
+        and type(namespace["ino"]) is int
+        and 0 < namespace["ino"] < 2**64,
+        "Result private input namespace",
+    )
+    return value
+
+
+def observer_private_file_fact(info, descriptor):
+    check(
+        stat.S_ISREG(info.st_mode)
+        and stat.S_IMODE(info.st_mode) == 0o640
+        and (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_nlink, info.st_size)
+        == tuple(descriptor[name] for name in ("dev", "ino", "owner_uid", "gid", "nlink", "size")),
+        "Result private input inode",
+    )
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_uid,
+        info.st_gid,
+        info.st_mode,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+    )
+
+
+def observer_private_target(uid, gid, namespace, descriptor):
+    check(
+        type(uid) is int and uid == 1000 and type(gid) is int and gid == descriptor["gid"],
+        "Result private input target identity",
+    )
+    closed(namespace, {"dev", "ino"})
+    check(
+        type(namespace["dev"]) is int and type(namespace["ino"]) is int and namespace == descriptor["user_namespace"],
+        "Result private input target namespace",
+    )
+
+
+def observer_private_bytes(raw):
+    check(type(raw) is bytes and 1 <= len(raw) <= 4096, "Result private input bytes")
+    try:
+        value = raw.decode("utf-8", errors="strict")
+    except UnicodeError:
+        raise AssertionError("Result private input UTF-8") from None
+    prefix = "BIFROST_RUST_TEST_DATABASE_URL="
+    check(
+        value.startswith(prefix)
+        and value.endswith("\n")
+        and value.count("\n") == 1
+        and not any(character in value for character in ("\ufeff", "\x00", "\r"))
+        and len(value) > len(prefix) + 1,
+        "Result private input grammar",
+    )
+    return value[len(prefix) : -1]
+
+
+def observer_private_url(expected_native, original_url, actual_native=None):
+    check(type(expected_native) is str, "Result private URL type")
+    try:
+        native = make_url(expected_native)
+        check(
+            native.set(drivername=original_url.drivername) == original_url
+            and original_url.set(drivername="postgresql").render_as_string(hide_password=False) == expected_native,
+            "Result private original URL association",
+        )
+    except (ArgumentError, ValueError, UnicodeError):
+        raise AssertionError("Result private URL profile") from None
+    if actual_native is not None:
+        check(type(actual_native) is str and actual_native == expected_native, "Result private native URL association")
+
+
+def observer_private_owner(owner, active):
+    check(owner is active and owner.phase == "entered", "Result private live owner")
+
+
+def observer_dsn_return(owner, active, expected_native, original_url, actual_native):
+    observer_private_owner(owner, active)
+    check(owner.dsn_return is None and not owner.dsn_used, "Result duplicate DSN return")
+    check(type(actual_native) is str, "Result actual DSN return type")
+    observer_private_url(expected_native, original_url, actual_native)
+    owner.dsn_return = actual_native
+
+
+def observer_dsn_use(owner, active, expected_native, actual_native):
+    observer_private_owner(owner, active)
+    check(
+        type(actual_native) is str
+        and owner.dsn_return is not None
+        and actual_native == owner.dsn_return == expected_native
+        and not owner.dsn_used,
+        "Result actual DSN use association",
+    )
+    owner.dsn_used = True
+
+
+def observer_dsn_binding(value):
+    closed(value, {"fixture_match", "production_match", "driver_match", "complete"})
+    for name in ("fixture_match", "production_match", "driver_match"):
+        check(value[name] is None or type(value[name]) is bool, "Result DSN nullable observation")
+    check(type(value["complete"]) is bool, "Result DSN completion type")
+    check(
+        not value["complete"]
+        or all(value[name] is True for name in ("fixture_match", "production_match", "driver_match")),
+        "Result DSN completion observations",
+    )
 
 
 def observer_candidate(value):
@@ -600,6 +727,7 @@ _OBSERVER_FINAL_KEYS = {
     "cleanup_failed",
     "complete",
     "export_item",
+    "dsn_binding",
 }
 _OBSERVER_CHECKS = ("loaded_bindings_verified", "fixture_gate_removed", "session_wrappers_restored", "metadata_absent")
 
@@ -641,7 +769,7 @@ def observer_item(item, session, entered, *, require_last=False):
 def observer_final_record(value, context, nodeid, *, require_complete=False):
     closed(value, _OBSERVER_FINAL_KEYS)
     check(
-        value["schema"] == "bifrost.private.result-source-observer-final/v1"
+        value["schema"] == "bifrost.private.result-source-observer-final/v2"
         and value["candidate"] == context["candidate"]
         and value["invocation_uuid"] == context["invocation_uuid"]
         and value["phase"] == "observer_session_finalizer_after_owned_cleanup"
@@ -669,6 +797,7 @@ def observer_final_record(value, context, nodeid, *, require_complete=False):
         check(value[name] is None or type(value[name]) is bool, "Result final nullable observation")
     for name in ("poisoned", "cleanup_failed", "complete"):
         check(type(value[name]) is bool, "Result final outcome type")
+    observer_dsn_binding(value["dsn_binding"])
     complete = (
         value["fixture_constructions"] == 1
         and value["functions_entered"] > 0
@@ -677,6 +806,7 @@ def observer_final_record(value, context, nodeid, *, require_complete=False):
         and all(value[name] is True for name in _OBSERVER_CHECKS)
         and not value["poisoned"]
         and not value["cleanup_failed"]
+        and value["dsn_binding"]["complete"]
     )
     check(value["complete"] is complete, "Result final completion predicate")
     if require_complete:
@@ -706,6 +836,8 @@ class ResultSourceFunction:
         self.own_listeners = []
         self.closed = False
         self.primary = None
+        self.dsn_return = None
+        self.dsn_used = False
 
     def listen(self, target, name, callback):
         check(len(self.own_listeners) < 16, "Result own listener bound")
@@ -756,6 +888,13 @@ class ResultSourceObserver:
         self.entered = []
         self.context = observer_context(context)
         self.originals = []
+        self.private_fd = None
+        self.private_fact = None
+        self.private_raw = None
+        self.private_value = None
+        self.private_closed = False
+        self.private_verified = False
+        self.dsn_matches = dict.fromkeys(("fixture_match", "production_match", "driver_match"))
         self.fixture = {
             "original_alias": None,
             "source_module": None,
@@ -776,20 +915,35 @@ class ResultSourceObserver:
         self.session_hooks = []
         self.environment = {key: key in os.environ for key in _OBSERVER_ENV}
         check(not any(self.environment.values()), "Result inherited connection environment unsupported")
-        self.receipt = source_admission()
-        check(self.receipt["candidate"] == self.context["candidate"], "Result observer receipt candidate")
-        self.capture_loaded_sources()
-        check(
-            isinstance(pytest_session, sys.modules["pytest"].Session) and sys.modules["pytest"].__version__ == "9.0.3",
-            "Result original pytest session",
-        )
-        check(
-            pytest_session.config.getoption("junitprefix", None) in {None, ""}
-            and pytest_session.config.getoption("numprocesses", None) in {None, 0}
-            and pytest_session.config.getoption("reruns", None) in {None, 0},
-            "Result unsupported pytest execution profile",
-        )
-        self.install()
+        try:
+            self.receipt = source_admission()
+            check(self.receipt["candidate"] == self.context["candidate"], "Result observer receipt candidate")
+            self.capture_loaded_sources()
+            check(
+                isinstance(pytest_session, sys.modules["pytest"].Session)
+                and sys.modules["pytest"].__version__ == "9.0.3",
+                "Result original pytest session",
+            )
+            check(
+                pytest_session.config.getoption("junitprefix", None) in {None, ""}
+                and pytest_session.config.getoption("numprocesses", None) in {None, 0}
+                and pytest_session.config.getoption("reruns", None) in {None, 0},
+                "Result unsupported pytest execution profile",
+            )
+            fixture = load_fixture()
+            prefix = "tests/parity/test_workflow_sql.py::"
+            self.dsn_items = {
+                f"{prefix}test_result_nonfault_paired[{case['case_id']}]" for case in fixture["cases"]
+            } | {
+                f"{prefix}test_result_nonfault_control[Codec pre-admission negatives-{case_id}]"
+                for case_id in fixture["controls"]["Codec pre-admission negatives"]
+            }
+            check(len(self.dsn_items) == 260, "Result DSN source roster")
+            self.acquire_private()
+            self.install()
+        except BaseException as error:
+            # The fixture owns nothing until this constructor actually returns.
+            self.close(error)
 
     def poison_with(self, error):
         if self.poison is None:
@@ -801,6 +955,113 @@ class ResultSourceObserver:
         check(
             {key: key in os.environ for key in _OBSERVER_ENV} == self.environment, "Result inherited environment drift"
         )
+
+    def acquire_private(self):
+        descriptor = self.context["private_input"]
+        namespace = os.stat("/proc/self/ns/user")
+        observer_private_target(
+            os.geteuid(), os.getegid(), {"dev": namespace.st_dev, "ino": namespace.st_ino}, descriptor
+        )
+        self.private_fd = os.open(descriptor["path"], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        # Retain the returned handle before any fallible configuration/read.
+        self.private_fact = observer_private_file_fact(os.fstat(self.private_fd), descriptor)
+        self.private_raw = self.read_private()
+        self.private_value = observer_private_bytes(self.private_raw)
+
+    def private_live(self):
+        check(self.private_fd is not None and not self.private_closed, "Result private input descriptor absent")
+        descriptor = self.context["private_input"]
+        check(
+            observer_private_file_fact(os.fstat(self.private_fd), descriptor) == self.private_fact
+            and observer_private_file_fact(os.stat(descriptor["path"], follow_symlinks=False), descriptor)
+            == self.private_fact,
+            "Result private input identity drift",
+        )
+        check(
+            not any(
+                name in {"system.posix_acl_access", "system.posix_acl_default"}
+                for name in os.listxattr(self.private_fd)
+            ),
+            "Result private input ACL unsupported",
+        )
+
+    def read_private(self):
+        self.private_live()
+        data = bytearray()
+        while block := os.pread(self.private_fd, min(1024, 4097 - len(data)), len(data)):
+            data.extend(block)
+            check(len(data) <= 4096, "Result private input read bound")
+        self.private_live()
+        check(len(data) == self.context["private_input"]["size"], "Result private input complete read")
+        return bytes(data)
+
+    def private_observe(self, kind, action):
+        try:
+            self.require_live()
+            self.private_live()
+            action()
+            if self.dsn_matches[kind] is not False:
+                self.dsn_matches[kind] = True
+        except BaseException as error:
+            self.dsn_matches[kind] = False
+            self.poison_with(error)
+            raise
+
+    def observe_dsn_return(self, owner, actual_native):
+        def observe():
+            check(owner.test_item_identity.nodeid in self.dsn_items, "Result DSN selected Item")
+            check(owner.constructor is not None, "Result DSN original constructor absent")
+            observer_dsn_return(
+                owner, self.active, self.private_value, owner.constructor["original_url"], actual_native
+            )
+
+        self.private_observe("driver_match", observe)
+
+    def observe_dsn_use(self, owner, actual_native):
+        self.private_observe(
+            "driver_match", lambda: observer_dsn_use(owner, self.active, self.private_value, actual_native)
+        )
+
+    def finish_private(self):
+        if self.private_fd is None:
+            check(self.private_closed, "Result private input was not acquired")
+            return
+        first = None
+        try:
+            check(
+                self.private_raw is not None and self.read_private() == self.private_raw,
+                "Result private input final bytes drift",
+            )
+            self.private_verified = True
+        except BaseException as error:
+            first = error
+        finally:
+            try:
+                os.close(self.private_fd)
+                self.private_fd = None
+                self.private_closed = True
+            except BaseException as error:
+                if first is None:
+                    first = error
+        if first is not None:
+            raise first
+
+    def dsn_binding(self):
+        returned = [owner for owner in self.entered if owner.dsn_return is not None]
+        if returned and self.dsn_matches["driver_match"] is not False:
+            self.dsn_matches["driver_match"] = all(owner.dsn_used for owner in returned)
+        items = [owner.test_item_identity.nodeid for owner in returned]
+        value = self.dsn_matches | {
+            "complete": (
+                all(match is True for match in self.dsn_matches.values())
+                and self.private_verified
+                and self.private_closed
+                and len(items) == 260
+                and set(items) == self.dsn_items
+            )
+        }
+        observer_dsn_binding(value)
+        return value
 
     @staticmethod
     def source_path(path):
@@ -875,6 +1136,15 @@ class ResultSourceObserver:
                     "read_file",
                     "python_result",
                     "paired_result",
+                    "observer_private_descriptor",
+                    "observer_private_file_fact",
+                    "observer_private_target",
+                    "observer_private_bytes",
+                    "observer_private_url",
+                    "observer_private_owner",
+                    "observer_dsn_return",
+                    "observer_dsn_use",
+                    "observer_dsn_binding",
                 )
             ]
             + [("ResultCohort", name) for name in ("__init__", "seed", "empty_buffers", "snapshot", "close", "token")],
@@ -1045,6 +1315,10 @@ class ResultSourceObserver:
             self.fixture["engine"] = engine
             self.fixture["construction_count"] = 1
             observer_fixture(args, kwargs, self.fixture["original_url"], conftest.NullPool, engine)
+            self.private_observe(
+                "fixture_match",
+                lambda: observer_private_url(self.private_value, make_url(self.fixture["original_url"])),
+            )
             gate = (engine.sync_engine, "before_cursor_execute", self.fixture_sql_gate)
             self.session_hooks.append(gate)
             event.listen(*gate)
@@ -1128,6 +1402,8 @@ class ResultSourceObserver:
                 and make_url(prepared).drivername == "postgresql+asyncpg",
                 "Result fixture production endpoint association",
             )
+            self.private_observe("production_match", lambda: observer_private_url(self.private_value, original_url))
+            check(make_url(prepared) == self.fixture["engine"].url, "Result full fixture production URL")
             engine = original_production(*args, **kwargs)
             owner.constructor = {
                 "settings": settings,
@@ -1173,12 +1449,9 @@ class ResultSourceObserver:
                 check(actual_engine is None and actual_factory is None, "Result unrelated source close lifetime")
 
         self.original_get_engine = database.get_engine
-        try:
-            self.replace(conftest, "create_async_engine", fixture_constructor)
-            self.replace(database, "create_async_engine", production_constructor)
-            self.replace(database, "close_db", close_observed)
-        except BaseException as error:
-            self.close(error)
+        self.replace(conftest, "create_async_engine", fixture_constructor)
+        self.replace(database, "create_async_engine", production_constructor)
+        self.replace(database, "close_db", close_observed)
 
     def fixture_sql_gate(self, *_args):
         check(self.fixture["endpoint_admitted"], "Result earliest SQL frontend gate")
@@ -1412,6 +1685,8 @@ class ResultSourceObserver:
             )
 
         actions.append(lifetime_complete)
+        # This descriptor belongs to the observer; its mount/path belongs to the parent.
+        actions.append(self.finish_private)
         first, cleanup_failed = observer_settle(actions, first)
 
         def hooks_removed():
@@ -1452,7 +1727,7 @@ class ResultSourceObserver:
             observer_item(item, self.pytest_session, self.entered, require_last=True)
             production = [owner for owner in self.entered if owner.constructor is not None]
             value = {
-                "schema": "bifrost.private.result-source-observer-final/v1",
+                "schema": "bifrost.private.result-source-observer-final/v2",
                 "candidate": self.context["candidate"],
                 "invocation_uuid": self.context["invocation_uuid"],
                 "phase": "observer_session_finalizer_after_owned_cleanup",
@@ -1466,6 +1741,7 @@ class ResultSourceObserver:
                 "cleanup_failed": cleanup_failed,
                 "complete": False,
                 "export_item": item.nodeid,
+                "dsn_binding": self.dsn_binding(),
             }
             value["complete"] = (
                 value["fixture_constructions"] == 1
@@ -1476,6 +1752,7 @@ class ResultSourceObserver:
                 and all(value[name] is True for name in _OBSERVER_CHECKS)
                 and not value["poisoned"]
                 and not value["cleanup_failed"]
+                and value["dsn_binding"]["complete"]
             )
             raw = observer_final_record(value, self.context, item.nodeid)
             observer_append_final(item, raw)
@@ -1525,6 +1802,16 @@ def source_observer_controls():
     engine, null_pool = SimpleNamespace(url=url), object()
     observer_fixture((url,), {"echo": False, "poolclass": null_pool}, url, null_pool, engine)
     negative(lambda: observer_fixture((url,), {"echo": False, "poolclass": foreign}, url, null_pool, engine))
+    native = url.set(drivername="postgresql").render_as_string(hide_password=False)
+    observer_private_url(native, url, native)
+    unicode_url = url.set(database="synthétique")
+    unicode_native = unicode_url.set(drivername="postgresql").render_as_string(hide_password=False)
+    observer_private_url(unicode_native, unicode_url, unicode_native)
+    for changed in (url.set(database="other"), url.set(username="other"), url.set(query={"sslmode": "disable"})):
+        negative(lambda changed=changed: observer_private_url(native, changed))
+    for changed_native in (f'"{native}"', "${RESULT_SYNTHETIC_URL}", native + " "):
+        negative(lambda changed_native=changed_native: observer_private_url(changed_native, url))
+    negative(lambda: observer_private_url(native, url, unicode_native))
     completed += 1
     observer_phase("awaiting_source_close", engine, engine, original, original)
     negative(lambda: observer_phase("entered", engine, engine, original, original))
@@ -1532,6 +1819,12 @@ def source_observer_controls():
     second_engine = object()
     observer_phase("awaiting_source_close", second_engine, second_engine, None, None)
     negative(lambda: observer_phase("awaiting_source_close", engine, engine, original, original, engine, None))
+    private_owner = SimpleNamespace(phase="entered", dsn_return=None, dsn_used=False)
+    observer_private_owner(private_owner, private_owner)
+    negative(lambda: observer_private_owner(private_owner, foreign))
+    private_owner.phase = "completed"
+    negative(lambda: observer_private_owner(private_owner, private_owner))
+    private_owner.phase = "entered"
     completed += 1
     parameters = {
         "host": "localhost",
@@ -1543,6 +1836,7 @@ def source_observer_controls():
     observer_preconnect([], parameters, url)
     negative(lambda: observer_preconnect([], parameters | {"ssl": False}, url))
     negative(lambda: observer_preconnect([], parameters | {"port": True}, url))
+    negative(lambda: observer_private_url(unicode_native, url))
     completed += 1
     pairs = []
     observer_pair(pairs, original, engine)
@@ -1551,13 +1845,34 @@ def source_observer_controls():
     check(pairs[0][2] is foreign and pairs[0][3] is original, "Result actor reference control")
     negative(lambda: observer_actor(pairs, original, foreign, original))
     negative(lambda: observer_pair(pairs, foreign, engine, require=True))
+    observer_dsn_return(private_owner, private_owner, native, url, native)
+    negative(lambda: observer_dsn_return(private_owner, private_owner, native, url, native))
+    negative(lambda: observer_dsn_use(private_owner, foreign, native, native))
+    negative(lambda: observer_dsn_use(private_owner, private_owner, native, unicode_native))
+    unreturned = SimpleNamespace(phase="entered", dsn_return=None, dsn_used=False)
+    negative(lambda: observer_dsn_return(unreturned, unreturned, native, url, None))
+    negative(lambda: observer_dsn_use(unreturned, unreturned, native, native))
+    observer_dsn_use(private_owner, private_owner, native, native)
+    negative(lambda: observer_dsn_use(private_owner, private_owner, native, native))
     completed += 1
     context = {
-        "schema": "bifrost.private.result-observer-context/v1",
+        "schema": "bifrost.private.result-observer-context/v2",
         "candidate": {"head": "a" * 40, "tree": "b" * 40},
         "invocation_uuid": "00000000-0000-4000-8000-000000000001",
         "parent_uid": 1001,
         "target_remaining_seconds": 900,
+        "private_input": {
+            "schema": "bifrost.private.result-dsn-input/v1",
+            "path": "/bifrost-private/result-all-features.env",
+            "dev": 1,
+            "ino": 2,
+            "owner_uid": 1001,
+            "gid": 1000,
+            "mode": 0o640,
+            "size": len(("BIFROST_RUST_TEST_DATABASE_URL=" + native + "\n").encode()),
+            "nlink": 1,
+            "user_namespace": {"dev": 3, "ino": 4},
+        },
     }
     observer_context(context)
     decision = {
@@ -1586,6 +1901,23 @@ def source_observer_controls():
     observer_decision(decision, context)
     negative(lambda: observer_decision(decision | {"decision": "reject"}, context))
     negative(lambda: observer_context(context | {"parent_uid": True}))
+    negative(lambda: observer_context({key: value for key, value in context.items() if key != "private_input"}))
+    negative(lambda: observer_context(context | {"unknown": None}))
+    descriptor = context["private_input"]
+    for changed in (
+        descriptor | {"unknown": None},
+        descriptor | {"dev": True},
+        descriptor | {"ino": 0},
+        descriptor | {"path": "/other"},
+        descriptor | {"owner_uid": 1000},
+        descriptor | {"gid": -1},
+        descriptor | {"mode": 0o644},
+        descriptor | {"mode": True},
+        descriptor | {"size": 4097},
+        descriptor | {"nlink": 2},
+        descriptor | {"user_namespace": {"dev": True, "ino": 4}},
+    ):
+        negative(lambda changed=changed: observer_context(context | {"private_input": changed}))
     completed += 1
     info = SimpleNamespace(
         st_mode=stat.S_IFREG | 0o644, st_uid=1000, st_nlink=1, st_size=100, st_dev=1, st_ino=2, st_mtime_ns=3
@@ -1598,6 +1930,62 @@ def source_observer_controls():
     negative(
         lambda: observer_publication(linked, SimpleNamespace(**(vars(linked) | {"st_ino": 9})), uid=1000, limit=4096)
     )
+    private_info = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o640,
+        st_uid=1001,
+        st_gid=1000,
+        st_nlink=1,
+        st_size=descriptor["size"],
+        st_dev=1,
+        st_ino=2,
+        st_mtime_ns=3,
+    )
+    fact = observer_private_file_fact(private_info, descriptor)
+    observer_private_target(1000, 1000, descriptor["user_namespace"], descriptor)
+    negative(lambda: observer_private_target(1001, 1000, descriptor["user_namespace"], descriptor))
+    negative(lambda: observer_private_target(1000, 1001, descriptor["user_namespace"], descriptor))
+    negative(lambda: observer_private_target(1000, 1000, {"dev": 3, "ino": 5}, descriptor))
+    negative(lambda: observer_private_target(1000, 1000, {"dev": True, "ino": 4}, descriptor))
+    for name, value in (
+        ("st_mode", stat.S_IFIFO | 0o640),
+        ("st_mode", stat.S_IFREG | 0o644),
+        ("st_uid", 1000),
+        ("st_gid", 1001),
+        ("st_nlink", 2),
+        ("st_size", 0),
+        ("st_dev", 2),
+        ("st_ino", 3),
+    ):
+        changed = SimpleNamespace(**(vars(private_info) | {name: value}))
+        negative(lambda changed=changed: observer_private_file_fact(changed, descriptor))
+    changed = SimpleNamespace(**(vars(private_info) | {"st_mtime_ns": 4}))
+    negative(lambda: check(observer_private_file_fact(changed, descriptor) == fact, "Result private fact control"))
+    prefix = b"BIFROST_RUST_TEST_DATABASE_URL="
+    raw_input = prefix + native.encode() + b"\n"
+    check(observer_private_bytes(raw_input) == native, "Result private grammar positive")
+    check(
+        observer_private_bytes(prefix + unicode_native.encode() + b"\n") == unicode_native,
+        "Result private UTF-8 grammar positive",
+    )
+    for bad in (
+        b"",
+        prefix + b"x" * 4096 + b"\n",
+        prefix + b"\xff\n",
+        b"\xef\xbb\xbf" + raw_input,
+        prefix + b"\x00\n",
+        raw_input[:-1] + b"\r\n",
+        raw_input[:-1],
+        raw_input + b"\n",
+        prefix + b"\n",
+        b"OTHER=" + native.encode() + b"\n",
+        prefix[:-1] + b"\n",
+        raw_input + raw_input,
+        b" " + raw_input,
+    ):
+        negative(lambda bad=bad: observer_private_bytes(bad))
+    for text_value in (f'"{native}"', "${RESULT_SYNTHETIC_URL}"):
+        parsed = observer_private_bytes(prefix + text_value.encode() + b"\n")
+        negative(lambda parsed=parsed: observer_private_url(parsed, url))
     completed += 1
     sentinel = KeyboardInterrupt()
     settled = []
@@ -1617,6 +2005,14 @@ def source_observer_controls():
         check(error is sentinel and settled == [3], "Result acquired cleanup first-object control")
     else:
         raise AssertionError("Result acquired control swallowed")
+    settled.clear()
+    close_error = ValueError("synthetic close failure")
+    try:
+        observer_independent([lambda: (_ for _ in ()).throw(close_error), lambda: settled.append(4)], sentinel)
+    except BaseException as error:
+        check(error is sentinel and settled == [4], "Result private close original identity")
+    else:
+        raise AssertionError("Result private close control swallowed")
     session = SimpleNamespace(items=[])
     session.items = [
         SimpleNamespace(
@@ -1632,7 +2028,7 @@ def source_observer_controls():
     observer_item(item, session, entered, require_last=True)
     negative(lambda: observer_item(session.items[0], session, entered, require_last=True))
     final = {
-        "schema": "bifrost.private.result-source-observer-final/v1",
+        "schema": "bifrost.private.result-source-observer-final/v2",
         "candidate": context["candidate"],
         "invocation_uuid": context["invocation_uuid"],
         "phase": "observer_session_finalizer_after_owned_cleanup",
@@ -1646,12 +2042,41 @@ def source_observer_controls():
         "cleanup_failed": False,
         "complete": True,
         "export_item": item.nodeid,
+        "dsn_binding": {"fixture_match": True, "production_match": True, "driver_match": True, "complete": True},
     }
     raw = observer_final_record(final, context, item.nodeid, require_complete=True)
     negative(
         lambda: observer_final_record(final | {"metadata_absent": None}, context, item.nodeid, require_complete=True)
     )
     negative(lambda: observer_final_record(final | {"functions_completed": True}, context, item.nodeid))
+    binding = final["dsn_binding"]
+    negative(
+        lambda: observer_final_record(
+            {key: value for key, value in final.items() if key != "dsn_binding"}, context, item.nodeid
+        )
+    )
+    for bad in (binding | {"unknown": None}, binding | {"fixture_match": 1}, binding | {"driver_match": None}):
+        negative(lambda bad=bad: observer_final_record(final | {"dsn_binding": bad}, context, item.nodeid))
+    for changed_binding in (
+        binding | {"driver_match": False, "complete": False},
+        binding | {"fixture_match": False, "complete": False},
+        binding | {"complete": False},
+    ):
+        negative(
+            lambda changed_binding=changed_binding: observer_final_record(
+                final | {"complete": False, "dsn_binding": changed_binding}, context, item.nodeid, require_complete=True
+            )
+        )
+    partial = final | {
+        "complete": False,
+        "dsn_binding": {
+            "fixture_match": None,
+            "production_match": None,
+            "driver_match": None,
+            "complete": False,
+        },
+    }
+    observer_final_record(partial, context, item.nodeid)
     observer_append_final(item, raw)
     negative(lambda: observer_append_final(item, raw))
     check(item.user_properties == [("result_source_observer_final", raw)], "Result final publication control")
@@ -1766,11 +2191,15 @@ async def lifetime(request, observer=None, fixture_engine=None):
 
 
 async def invoke(case: CaseLifetime, payload: bytes, mode: str, *, database_url: str | None = None):
-    require_source_observer(case)
+    owner = require_source_observer(case)
     check(
         mode in {"apply-result", "decode-number", "observe-feature-marker"} and len(payload) <= 65537,
         "Result invocation admission",
     )
+    if mode == "apply-result":
+        owner.session.observe_dsn_use(owner, database_url)
+    else:
+        check(database_url is None, "Result non-DB mode environment")
     env = {key: os.environ[key] for key in ("PATH", "HOME", "USER", "LANG", "LC_ALL") if key in os.environ}
     if database_url is not None:
         env["BIFROST_RUST_TEST_DATABASE_URL"] = database_url
@@ -2781,6 +3210,7 @@ def compare_rows(left, right, left_before, right_before, left_cohort, right_coho
 async def paired_result(engine, fixture, case):
     require_source_observer(case)
     dsn = driver_dsn(engine)
+    case.source_observer.session.observe_dsn_return(case.source_observer, dsn)
     source_admission(case.source_observer)
     cohorts = []
     for _ in range(2):
@@ -3127,7 +3557,9 @@ async def codec_control(engine, case, case_id, fixture):
     before = await cohort.snapshot()
     good = request_bytes(cohort, fixture["raw_fields_json"])
     bad = mutate_codec(good, case_id)
-    code, raw = await invoke(case, bad, "apply-result", database_url=driver_dsn(engine))
+    dsn = driver_dsn(engine)
+    case.source_observer.session.observe_dsn_return(case.source_observer, dsn)
+    code, raw = await invoke(case, bad, "apply-result", database_url=dsn)
     check(code == 2 and raw == b"", "Result malformed input pre-admission")
     after = await cohort.snapshot()
     check(before == after, "Result malformed input touched owned rows")

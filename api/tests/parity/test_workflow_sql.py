@@ -16,7 +16,7 @@ pytestmark = pytest.mark.e2e
 
 @pytest.fixture(scope="session", autouse=True)
 def result_source_session(setup_test_environment, request):
-    """Install before the genuine non-autouse synchronous engine fixture."""
+    """Install D1 before the genuine engine; failed construction settles before return."""
     observer = source_session(request.session)
     original = None
     try:
