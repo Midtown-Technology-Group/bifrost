@@ -14,6 +14,7 @@ from uuid import UUID
 
 from bifrost.solution_delivery_review import (
     PROTECTED_REGISTRATION_FIELDS,
+    compile_workflow_parameters,
 )
 from bifrost.solution_delivery_review import (
     require_compatible_parameters as _require_compatible_parameters,
@@ -65,6 +66,7 @@ from src.services.solutions.source_revision import (
     SolutionSourceRevisionService,
     _archive_files,
     _workflow_snapshot,
+    retain_legacy_registration_names,
 )
 from src.services.solutions.workflow_revision_recipe import (
     WORKFLOW_REVISION_MARKER,
@@ -92,6 +94,7 @@ async def project_workflow_registrations(
         for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
                     "parameters_schema_contract"):
             definition.pop(key)
+        definition.pop("legacy_registration_name_evidence", None)
         values = {**definition, "is_active": True, "is_orphaned": False,
             "updated_at": datetime.now(UTC)}
         values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
@@ -121,7 +124,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         indexer = WorkflowIndexer(self.db)
         try:
             validate_resource_files(recipe, resources, files)
-            desired = compile_workflow_registrations(recipe, files, indexer)
+            desired = retain_legacy_registration_names(
+                compile_workflow_registrations(recipe, files, indexer), dict(previous.workflows))
             closure = source_closure(files, {item.path for item in recipe.workflows},
                 has_table_bindings=bool(recipe.shared_tables) or await self._has_owned_tables(solution_id),
                 has_resource_bindings=bool(recipe.resources),
@@ -144,9 +148,11 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             # exposes them as unsupported instead of silently projecting them.
             if any(definition.get(key) != snapshot[key] for key in PROTECTED_REGISTRATION_FIELDS):
                 raise SolutionSourceRevisionError("Rename, scope, type, access, endpoint, mode, cache or retry changes require a reviewed caller/control-plane adapter")
-            old_schema = indexer.extract_parameters_from_source(base_files[snapshot["path"]], row.function_name, path=row.path)
-            if old_schema is None:
-                raise SolutionSourceRevisionError("Installed parameter contract cannot be inferred")
+            try:
+                old_schema = compile_workflow_parameters(base_files[snapshot["path"]], row.function_name,
+                    path=row.path, indexer=indexer)
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
             require_compatible_parameters(old_schema, definition["parameters_schema"])
         # Global UUID lookup is intentional in this deploy writer: a recipe must
         # never claim an existing Root registration or another Solution's UUID.
@@ -315,7 +321,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                     raise SolutionSourceRevisionError("Current workflow runtime bytes differ from immutable source")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
         validate_resource_files(recipe, resources, files)
-        desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
+        desired = retain_legacy_registration_names(
+            compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db)), dict(resolution.workflows))
         if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
                 or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionConflict("Current registrations or table bindings differ from reviewed Git")

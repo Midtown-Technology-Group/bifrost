@@ -15,6 +15,7 @@ from zipfile import BadZipFile, ZipFile
 
 from bifrost.solution_delivery_review import (
     WorkflowRecipeError,
+    compile_workflow_parameters,
     require_executable_bindings,
 )
 from bifrost.workspace_release import canonical_digest
@@ -62,6 +63,7 @@ from src.services.solutions.shared_table_bindings import (
 _SOURCE_REVISION_MARKER = "bifrost.solution-source-revision/v1"
 _HANDOFF_MARKER = "bifrost.workspace-live-handoff/v1"
 _LEGACY_DESCRIPTORS = "bifrost.solution-legacy-descriptors/v1"
+_LEGACY_NAMES = "bifrost.solution-legacy-registration-name/v1"
 
 
 class SolutionSourceRevisionError(ValueError):
@@ -79,6 +81,50 @@ def legacy_descriptor_evidence(snapshot: dict) -> dict:
         raise SolutionSourceRevisionError("legacy workflow descriptors are invalid")
     return {"schema_version": _LEGACY_DESCRIPTORS, "fields": fields,
             "content_hash": canonical_digest(fields)}
+
+
+def legacy_registration_name_evidence(installed_name: str, source_name: str) -> dict:
+    """Seal the installed caller identity separately from its source declaration."""
+    if any(not isinstance(value, str) or not value.strip() for value in (installed_name, source_name)):
+        raise SolutionSourceRevisionError("legacy registration names must be nonempty strings")
+    fields = {"installed_name": installed_name, "source_name": source_name}
+    return {"schema_version": _LEGACY_NAMES, "fields": fields, "content_hash": canonical_digest(fields)}
+
+
+def require_legacy_registration_name(definition: dict) -> dict | None:
+    """Validate the complete sealed shape; this never permits a mutable rename."""
+    if "legacy_registration_name_evidence" not in definition:
+        return None
+    evidence = definition["legacy_registration_name_evidence"]
+    fields = evidence.get("fields") if isinstance(evidence, dict) else None
+    if not isinstance(fields, dict) or set(fields) != {"installed_name", "source_name"}:
+        raise SolutionSourceRevisionError("legacy registration name evidence is invalid")
+    expected = legacy_registration_name_evidence(fields["installed_name"], fields["source_name"])
+    if evidence != expected or definition.get("name") != fields["installed_name"]:
+        raise SolutionSourceRevisionError("legacy registration name differs from immutable evidence")
+    return evidence
+
+
+def retain_legacy_registration_names(
+    entities: dict[str, RuntimeEntityDefinition], previous: dict[str, RuntimeEntityDefinition],
+) -> dict[str, RuntimeEntityDefinition]:
+    """Compatible reviewed delivery preserves an already sealed caller binding."""
+    previous_by_id = {item.resolved_id: item for item in previous.values()}
+    result = dict(entities)
+    for ref, item in entities.items():
+        old = previous_by_id.get(item.resolved_id)
+        if old is None:
+            continue
+        evidence = require_legacy_registration_name(json.loads(canonical_json(old.definition)))
+        if evidence is None:
+            continue
+        payload = item.model_dump(mode="json")
+        if payload["definition"]["name"] != evidence["fields"]["source_name"]:
+            raise SolutionSourceRevisionError("source registration name changed from its sealed declaration")
+        payload["definition"]["name"] = evidence["fields"]["installed_name"]
+        payload["definition"]["legacy_registration_name_evidence"] = evidence
+        result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
 
 
 def _decode_files(request: SolutionSourceRevisionRequest) -> dict[str, bytes]:
@@ -148,6 +194,7 @@ def _workflow_snapshot(workflow: Workflow) -> dict:
 
 def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -> None:
     definition = json.loads(canonical_json(entity.definition))
+    require_legacy_registration_name(definition)
     timeout = workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
     bounds = definition.get("runtime_bounds")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
@@ -253,6 +300,10 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
             f"workflow function is missing or ambiguous: {workflow.id}"
         )
     node = matches[0]
+    try:
+        parameters = compile_workflow_parameters(files[path], workflow.function_name, path=path)
+    except WorkflowRecipeError as exc:
+        raise SolutionSourceRevisionError(str(exc)) from exc
     return (
         ast.dump(node.args, include_attributes=False)
         + ":"
@@ -260,6 +311,7 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
             ast.dump(item, include_attributes=False) for item in node.decorator_list
         )
         + (":async" if isinstance(node, ast.AsyncFunctionDef) else ":sync")
+        + ":" + canonical_json(parameters).decode("utf-8")
     )
 
 
