@@ -18,18 +18,16 @@ Nothing here authorizes a broad rewrite, merge or production deployment.
 | Service #1009 | `5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` | Reuse four crates/image/config/DB/tracing/shutdown |
 
 Current source reconciliation is recorded in the [reference gates](rust-core-mvp-reference-gates.md).
-As of the latest fetch, platform main is `4abdf1a163986b6bd86aa7bafe6fa56b963acbb6`
-and workspace main is `4fbb35b27691b993917affc9cdf8d0af44f3cef8`.
-Platform #1029 changes client compiler/types/tests; #1031 then normalizes Root
-registration inventories and permits bounded download-only Root grants up to
-256MiB while retaining the128MiB raw-read cap. Workspace advances
-be6→4fbb via #1144's exact NinjaOne device/alert reset and #1141's reviewed Halo
-Source-delivery configuration: five files,208 insertions/43 deletions. No selected
-Cove input, readiness workflow or boundary-checker byte changes. This is source
-evidence, not delivery/deployment proof. The current workspace AST audit passes
-2,116 boundary files (1,993 standard authored files), zero forbidden imports and
-an empty allowlist. Both prerequisite merges remain ancestors. Earlier
-source/test evidence below retains its actual provenance.
+Current authority is platform main
+`2f5b77a7db3bcc6b9c4c11d624b533f239676e49` and workspace main
+`ab969efa4f48183bd5806d5c8482217256d6b3f7`. Both prerequisite merges remain
+ancestors. The reference-gates source receipt records the complete current-tree
+workspace audit at3248:2,129 boundary Python files, zero forbidden imports and
+empty allowlist. Its two-file evidence/docs-only delta toab969 preserves all
+Python/checker bytes; selected Cove/readiness/noop sources remain unchanged. The inherited
+separate shell path-check finding is recorded without claiming full quality
+acceptance. Earlier source/test evidence below retains its actual provenance.
+Checked-in and isolated-test settings remain distinct from deployed evidence.
 
 The lifecycle/authority audit used `e77947fab5762e49dd5fdc390bd65ca84bc22c3c`.
 The initial pre-PR refresh advanced main through #1010; that seven-file
