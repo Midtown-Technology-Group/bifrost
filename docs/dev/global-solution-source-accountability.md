@@ -34,3 +34,19 @@ main changes and new workflows, before disposing them. Existing accepted
 Workspace execution pins remain valid across Solution ownership changes and
 Live retirement. Retain immutable release objects while accepted work or
 retained evidence references them.
+
+## Immutable source export readback
+
+An immutable Solution export reads the active deployment's complete source and
+resource closure and verifies each content hash against that deployment. Empty
+Python package initializers are valid source members and retain their empty-file
+hash. Transport reads remain bounded by the archive budget. If an object store
+rejects the prefix range with HTTP 416, the reader accepts empty bytes only after
+metadata for the exact same object key proves an integer size of zero. A nonzero
+or unknown size, failed metadata read, other download error or changed hash
+fails closed. The reader never substitutes Root bytes or issues an unbounded
+download to handle the range failure.
+
+Export source verification complements independent matching worker-pin and
+registration readback. A shareable export does not certify customer table data,
+connection secrets, retention copies or full disaster recovery.
