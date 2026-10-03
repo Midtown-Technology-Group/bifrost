@@ -12,9 +12,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bifrost_contracts::runtime::CanonicalUuid;
 use bifrost_domain::workflow::{
-    AttemptPhase, AttemptRunningPlan, AttemptStatus, CancelPlan, ClaimToken,
-    DecisionError, InputWrite, LogicalExecutionStatus, LogicalExecutionView,
-    TimeWrite, WorkflowAttemptView, plan_attempt_running, plan_cancel_state,
+    AttemptPhase, AttemptRunningPlan, AttemptStatus, CancelPlan, ClaimToken, DecisionError,
+    InputWrite, LogicalExecutionStatus, LogicalExecutionView, TimeWrite, WorkflowAttemptView,
+    plan_attempt_running, plan_cancel_state,
 };
 use sqlx::{Postgres, Row, Transaction, postgres::PgRow};
 use thiserror::Error;
@@ -195,15 +195,11 @@ pub async fn apply_running(
     .map_err(|_| database(SqlStage::ReadAttempt))?;
     let view = row.as_ref().map(attempt).transpose()?;
     let token = ClaimToken::new(fence.0.clone());
-    let plan = match plan_attempt_running(
-        view.as_ref(),
-        &execution_id,
-        &token,
-        process_id.is_some(),
-    ) {
-        Ok(plan) => plan,
-        Err(reason) => return Ok(SqlDecision::Rejected(reason)),
-    };
+    let plan =
+        match plan_attempt_running(view.as_ref(), &execution_id, &token, process_id.is_some()) {
+            Ok(plan) => plan,
+            Err(reason) => return Ok(SqlDecision::Rejected(reason)),
+        };
     let now = utc_now()?;
     let result = sqlx::query(
         "UPDATE public.workflow_execution_attempts \
@@ -241,21 +237,24 @@ pub async fn apply_cancel(
     .execute(&mut **tx)
     .await
     .map_err(|_| database(SqlStage::Advisory))?;
-    let row = sqlx::query("SELECT id::text, status::text FROM public.executions WHERE id = $1::uuid")
-        .persistent(false)
-        .bind(execution_id.as_str())
-        .fetch_optional(&mut **tx)
-        .await
-        .map_err(|_| database(SqlStage::ReadExecution))?;
+    let row =
+        sqlx::query("SELECT id::text, status::text FROM public.executions WHERE id = $1::uuid")
+            .persistent(false)
+            .bind(execution_id.as_str())
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|_| database(SqlStage::ReadExecution))?;
     let execution = row
         .as_ref()
-        .map(|row| -> Result<LogicalExecutionView, SqlInfrastructureError> {
-            let status: String = row.try_get("status").map_err(|_| decode())?;
-            Ok(LogicalExecutionView {
-                id: uuid(row, "id")?,
-                status: logical_status(&status)?,
-            })
-        })
+        .map(
+            |row| -> Result<LogicalExecutionView, SqlInfrastructureError> {
+                let status: String = row.try_get("status").map_err(|_| decode())?;
+                Ok(LogicalExecutionView {
+                    id: uuid(row, "id")?,
+                    status: logical_status(&status)?,
+                })
+            },
+        )
         .transpose()?;
     // Reject missing/terminal rows before looking at attempts or sampling time.
     let initial = match plan_cancel_state(execution.as_ref(), None, &execution_id) {
@@ -291,7 +290,8 @@ pub async fn apply_cancel(
         Ok(plan) => plan,
         Err(reason) => return Ok(SqlDecision::Rejected(reason)),
     };
-    if let (Some(attempt_plan), Some(view), Some(now)) = (plan.attempt, view.as_ref(), now.as_ref()) {
+    if let (Some(attempt_plan), Some(view), Some(now)) = (plan.attempt, view.as_ref(), now.as_ref())
+    {
         // Values are the ratified CancelPlan. No payload, metric or start fields.
         if attempt_plan.status != AttemptStatus::Cancelled
             || attempt_plan.phase != AttemptPhase::Terminal

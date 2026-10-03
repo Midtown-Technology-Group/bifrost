@@ -31,9 +31,8 @@ jobs:
           persist-credentials: false
       - name: Supported isolated source gate
         env:
-          # Bootstrap push collects formatting only. Root changes this literal
-          # to verify after reviewing/applying the generated formatting patch.
-          SQL_SOURCE_MODE: ${{ github.event_name == 'push' && 'format' || inputs.mode }}
+          # Exact push candidate is now verified after the reviewed formatter patch.
+          SQL_SOURCE_MODE: ${{ github.event_name == 'push' && 'verify' || inputs.mode }}
         run: bash scripts/ci/workflow-sql-source.sh "$SQL_SOURCE_MODE"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
