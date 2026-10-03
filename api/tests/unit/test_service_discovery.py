@@ -154,6 +154,7 @@ def test_ast_parser_accepts_service_forms():
 
 
 def _mock_db_with_existing(existing):
+    existing.retirement_evidence = None
     mock_db = AsyncMock()
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing
@@ -352,6 +353,7 @@ async def telegram_bridge():
 
 def _service_row(existing_type="service"):
     row = MagicMock()
+    row.retirement_evidence = None
     row.id = uuid4()
     row.is_active = True
     row.endpoint_enabled = False

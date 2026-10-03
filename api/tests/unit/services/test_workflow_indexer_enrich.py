@@ -54,6 +54,7 @@ async def test_indexer_enriches_registered_workflow():
 
     mock_db = AsyncMock()
     existing_wf = MagicMock()
+    existing_wf.retirement_evidence = None
     existing_wf.id = uuid4()
     existing_wf.is_active = True
     existing_wf.endpoint_enabled = False
@@ -93,6 +94,7 @@ async def test_indexer_reactivates_inactive_workflow():
 
     mock_db = AsyncMock()
     existing_wf = MagicMock()
+    existing_wf.retirement_evidence = None
     existing_wf.id = uuid4()
     existing_wf.is_active = False  # Deactivated workflow
     existing_wf.endpoint_enabled = False
