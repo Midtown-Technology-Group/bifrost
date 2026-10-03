@@ -674,7 +674,8 @@ pub fn observe_feature_marker(input: &SqlResultInput) -> FeatureMarkerObservatio
         if prepared.role != role || prepared.result_type != "json" || !prepared.nonempty_object {
             return false;
         }
-        let Ok(value) = bifrost_contracts::runtime::decode_ordinary_json(prepared.text.as_bytes()) else {
+        let Ok(value) = bifrost_contracts::runtime::decode_ordinary_json(prepared.text.as_bytes())
+        else {
             return false;
         };
         let Some(object) = value.as_object() else {
