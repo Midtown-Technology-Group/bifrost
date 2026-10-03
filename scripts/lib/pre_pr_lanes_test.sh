@@ -75,7 +75,7 @@ echo 'PASS: MCP conformance reconciles backend authority after browser lanes'
     pin_diff_status=0
     pin_python_status=0
     git() {
-        [[ "$*" == 'diff --quiet origin/main HEAD -- .github/workflows .github/actions api/scripts/check_github_action_pins.py' ]]
+        [[ "$*" == 'diff --quiet origin/main HEAD -- .github/workflows .github/actions api/scripts/check_github_action_pins.py' ]] || exit 99
         return "$pin_diff_status"
     }
     python3() { pin_calls+=("$*"); return "$pin_python_status"; }
