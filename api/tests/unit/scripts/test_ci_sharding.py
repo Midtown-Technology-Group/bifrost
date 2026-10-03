@@ -165,7 +165,7 @@ def _admitted(
     expression = expression.replace("cancelled()", repr(cancelled))
     expression = expression.replace("&&", " and ").replace("||", " or ")
     expression = re.sub(r"!(?!=)", "not ", expression)
-    return eval(expression, {"__builtins__": {}}, {})
+    return eval(f"({expression})", {"__builtins__": {}}, {})
 
 
 @pytest.mark.parametrize("lint", ["failure", "cancelled", "skipped"])
