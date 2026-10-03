@@ -40,11 +40,39 @@ pool_image_id=
 pg_image_id=
 api_image_id=
 declare -A oneoff_started=([pool]=0 [migrate]=0 [provision]=0 [probe]=0)
+stage=source_custody
+phase=checks
+failure_log=
 cleanup() {
   original=$?
   trap - EXIT
   set +e
+  # Fixed labels and closed facts only; raw private logs are never exported.
+  PRIMER_STAGE="$stage" PRIMER_PHASE="$phase" PRIMER_ORIGINAL="$original" PRIMER_FAILURE_LOG="$failure_log" python - <<'DIAGNOSTIC'
+import json
+import os
+import re
+from pathlib import Path
+
+value = {"schema": "bifrost.test.writer-primer-stage/v1", "stage": os.environ["PRIMER_STAGE"], "phase": os.environ["PRIMER_PHASE"], "original_exit_code": int(os.environ["PRIMER_ORIGINAL"])}
+allowed = {"migrate", "provision", "postgres-up", "pool-up", "probe", "api-build", "pool-pull", "pg-pull", "cleanup"}
+name = os.environ["PRIMER_FAILURE_LOG"]
+if name in allowed:
+    path = Path(os.environ["RUNNER_TEMP"]) / "writer-primer-private" / (name + ".log")
+    try:
+        with path.open("rb") as stream:
+            text = stream.read(65536).decode("ascii", errors="ignore")
+        classes = {"TimeoutError", "ConnectionRefusedError", "ConnectionResetError", "InvalidPasswordError", "InvalidAuthorizationSpecificationError", "InvalidCatalogNameError", "InsufficientPrivilegeError", "UndefinedTableError", "UndefinedFunctionError", "ModuleNotFoundError", "ImportError", "PermissionError", "OperationalError", "ProgrammingError"}
+        value["exception_classes"] = sorted(classes.intersection(re.findall(r"\b[A-Za-z]{1,64}Error\b", text)))
+        value["sqlstates"] = sorted(set(re.findall(r"\b(?:28P01|28000|3D000|42501|42P01|42883|08006|08001|57014)\b", text)))
+    except OSError:
+        value["private_log_read"] = "unavailable"
+with (Path(os.environ["PRIMER_RESULTS"]) / "stage.json").open("x") as output:
+    json.dump(value, output, sort_keys=True)
+DIAGNOSTIC
+  diagnostic_status=$?
   cleanup_status=0
+  test "$diagnostic_status" = 0 || cleanup_status=1
   admission_disposal=not_started
   # timeout may kill Docker's client without killing its standalone container.
   # A private CID plus exact creation name/labels/image identifies only ours.
@@ -127,43 +155,78 @@ cleanup() {
 }
 source_hashes="$(sha256sum "${paths[@]}")"
 trap cleanup EXIT
+stage=step_01; phase=check; failure_log=
 printf '%s\n' "$source_hashes" > "$PRIMER_RESULTS/source-hashes.txt"
+stage=step_02; phase=check; failure_log=
 git rev-parse HEAD HEAD^{tree} > "$PRIMER_RESULTS/source.txt"
 # FIRST: no PG startup/DB/role can precede immutable pool admission.
+stage=step_03; phase=command; failure_log=pool-pull
 timeout 120 docker pull --platform linux/amd64 "$pool_image" > "$private/pool-pull.log" 2>&1
+stage=step_04; phase=command; failure_log=
 docker image inspect "$pool_image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{json .RepoDigests}} {{json .Config.Entrypoint}} {{json .Config.Cmd}} {{.Config.User}}' > "$PRIMER_RESULTS/pool-image.txt"
+stage=step_05; phase=check; failure_log=
 test "$(docker image inspect "$pool_image" --format '{{.Os}}/{{.Architecture}} {{json .Config.Entrypoint}} {{json .Config.Cmd}} {{.Config.User}}')" = 'linux/amd64 ["/entrypoint.sh"] ["/usr/bin/pgbouncer","/etc/pgbouncer/pgbouncer.ini"] postgres'
+stage=step_06; phase=check; failure_log=
 pool_image_id="$(docker image inspect "$pool_image" --format '{{.Id}}')"
+stage=step_07; phase=check; failure_log=
 [[ "$pool_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+stage=step_08; phase=check; failure_log=
 admission_started=1
+stage=step_09; phase=command; failure_log=
 timeout 20 docker run --rm --platform linux/amd64 --name "$admission_name" --cidfile "$admission_cidfile" --network none --label "com.docker.compose.project=$project" --label "bifrost.writer-primer.admission=$GITHUB_SHA" --entrypoint /bin/sh "$pool_image" -c 'test -x /usr/bin/pgbouncer && test -d /etc/pgbouncer && sha256sum /entrypoint.sh && /usr/bin/pgbouncer --version' > "$PRIMER_RESULTS/pool-admission.txt"
+stage=step_10; phase=check; failure_log=
 test "$(head -n 1 "$PRIMER_RESULTS/pool-admission.txt")" = '9d9d23849f0180d7fb25263dca3870955c39e0fcf0211529b10238f280143333  /entrypoint.sh'
+stage=step_11; phase=check; failure_log=
 grep -qx 'PgBouncer 1.26.0' "$PRIMER_RESULTS/pool-admission.txt"
+stage=step_12; phase=check; failure_log=
 oneoff_started[pool]=1
+stage=step_13; phase=command; failure_log=
 timeout 20 "${compose[@]}" run --rm --no-deps --name "$project-pool-oneoff" --entrypoint /bin/sh pool -c 'test -r /etc/pgbouncer/pgbouncer.ini && test -r /etc/pgbouncer/userlist.txt && sha256sum /etc/pgbouncer/pgbouncer.ini /etc/pgbouncer/userlist.txt' > "$PRIMER_RESULTS/pool-config-admission.txt"
+stage=step_14; phase=check; failure_log=
 test "$(sed -n '1s/ .*//p' "$PRIMER_RESULTS/pool-config-admission.txt")" = "$(sha256sum scripts/ci/writer-primer/pgbouncer.ini | cut -d' ' -f1)"
+stage=step_15; phase=check; failure_log=
 test "$(sed -n '2s/ .*//p' "$PRIMER_RESULTS/pool-config-admission.txt")" = "$(sha256sum scripts/ci/writer-primer/userlist.txt | cut -d' ' -f1)"
+stage=step_16; phase=command; failure_log=pg-pull
 timeout 120 docker pull --platform linux/amd64 "$pg_image" > "$private/pg-pull.log" 2>&1
+stage=step_17; phase=command; failure_log=
 docker image inspect "$pg_image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{json .RepoDigests}}' > "$PRIMER_RESULTS/pg-image.txt"
+stage=step_18; phase=check; failure_log=
 test "$(docker image inspect "$pg_image" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+stage=step_19; phase=check; failure_log=
 pg_image_id="$(docker image inspect "$pg_image" --format '{{.Id}}')"
+stage=step_20; phase=check; failure_log=
 [[ "$pg_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
 # API built from this exact clean candidate, never a mutable external shortcut.
+stage=step_21; phase=command; failure_log=api-build
 timeout 1200 "${compose[@]}" build migrate > "$private/api-build.log" 2>&1
+stage=step_22; phase=command; failure_log=
 docker image inspect bifrost-writer-primer-api:local --format '{{.Id}}' > "$PRIMER_RESULTS/api-image-before.txt"
+stage=step_23; phase=check; failure_log=
 api_image_id="$(cat "$PRIMER_RESULTS/api-image-before.txt")"
+stage=step_24; phase=check; failure_log=
 [[ "$api_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+stage=step_25; phase=command; failure_log=postgres-up
 timeout 90 "${compose[@]}" up -d --wait --wait-timeout 60 postgres > "$private/postgres-up.log" 2>&1
+stage=step_26; phase=check; failure_log=
 oneoff_started[migrate]=1
+stage=step_27; phase=command; failure_log=migrate
 timeout 360 "${compose[@]}" run --rm --no-deps --name "$project-migrate-oneoff" migrate > "$private/migrate.log" 2>&1
+stage=step_28; phase=check; failure_log=
 oneoff_started[provision]=1
+stage=step_29; phase=command; failure_log=provision
 timeout 30 "${compose[@]}" run --rm --no-deps --name "$project-provision-oneoff" provision > "$private/provision.log" 2>&1
+stage=step_30; phase=command; failure_log=pool-up
 timeout 90 "${compose[@]}" up -d --wait --wait-timeout 60 pool > "$private/pool-up.log" 2>&1
+stage=step_31; phase=check; failure_log=
 oneoff_started[probe]=1
+stage=step_32; phase=command; failure_log=probe
 timeout 135 "${compose[@]}" run --rm --no-deps --name "$project-probe-oneoff" probe > "$private/probe.log" 2>&1
+stage=step_33; phase=command; failure_log=
 docker image inspect bifrost-writer-primer-api:local --format '{{.Id}}' > "$PRIMER_RESULTS/api-image-after.txt"
+stage=step_34; phase=check; failure_log=
 cmp "$PRIMER_RESULTS/api-image-before.txt" "$PRIMER_RESULTS/api-image-after.txt"
 # Source/candidate and actual collected bytes are associated by a host receipt.
+stage=receipt; phase=write; failure_log=
 python - <<'PY'
 import hashlib
 import json
@@ -202,4 +265,5 @@ receipt = {
 with (root / 'receipt.json').open('x') as output:
     json.dump(receipt, output, sort_keys=True)
 PY
+stage=complete; phase=complete; failure_log=
 printf 'PASS: restricted authenticated principal/pool primer only\n'

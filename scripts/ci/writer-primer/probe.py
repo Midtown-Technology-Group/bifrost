@@ -245,6 +245,7 @@ async def snapshot(connection, role, deadline):
                 native(value)
         require(len({tuple(r) for r in rows}) == len(rows))
         tables.append({"query": name, "columns": columns, "rows": rows})
+    name = None  # Cross-query validation is not attributed to the last fetch.
     identity = validate(tables, role)
     digest = hashlib.sha256()
     used = 0
@@ -495,8 +496,93 @@ async def main():
         require(time.monotonic() < deadline)
 
 
+def write_failure(error):
+    # Inspect only closed source-frame labels, never messages or driver payloads.
+    pending = [error]
+    failures = []
+    while pending and len(failures) < 8:
+        current = pending.pop(0)
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions[:8])
+            continue
+        names = {
+            "PrimerFailure",
+            "TimeoutError",
+            "ConnectionRefusedError",
+            "ConnectionResetError",
+            "OSError",
+            "PermissionError",
+            "InvalidPasswordError",
+            "InvalidAuthorizationSpecificationError",
+            "InvalidCatalogNameError",
+            "InsufficientPrivilegeError",
+            "UndefinedTableError",
+            "UndefinedFunctionError",
+            "PostgresError",
+        }
+        observed = type(current).__name__
+        fact = {"exception_type": observed if observed in names else "unclassified"}
+        state = getattr(current, "sqlstate", None)
+        if state in {
+            "28P01",
+            "28000",
+            "3D000",
+            "42501",
+            "42P01",
+            "42883",
+            "08006",
+            "08001",
+            "57014",
+        }:
+            fact["sqlstate"] = state
+        trace = current.__traceback__
+        caller_line = None
+        while trace is not None:
+            frame = trace.tb_frame
+            if frame.f_code.co_filename == __file__:
+                local = frame.f_locals
+                if frame.f_code.co_name == "require":
+                    fact["assertion_code"] = f"require_call_line_{caller_line}"
+                if frame.f_code.co_name == "snapshot" and local.get("name") in QUERIES:
+                    fact["query"] = local["name"]
+                    fact["task"] = "snapshot"
+                if local.get("host") in {"postgres", "pool"}:
+                    fact["endpoint"] = local["host"]
+                if local.get("role") in ROLES:
+                    fact["role"] = local["role"]
+                if type(local.get("cycle")) is int and 0 <= local["cycle"] < 10:
+                    fact["sample_cycle"] = local["cycle"]
+            caller_line = trace.tb_lineno
+            trace = trace.tb_next
+        failures.append(fact)
+    data = json.dumps(
+        {"schema": "bifrost.test.writer-primer-failure/v1", "failures": failures},
+        sort_keys=True,
+    ).encode()
+    if len(data) > 4096:
+        return
+    fd = os.open(
+        "/results/probe-failure.json",
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o644,
+    )
+    try:
+        view = memoryview(data)
+        while view:
+            count = os.write(fd, view)
+            if count <= 0:
+                return
+            view = view[count:]
+    finally:
+        os.close(fd)
+
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except Exception:
+    except Exception as error:
+        try:
+            write_failure(error)
+        except Exception:
+            pass  # Diagnostic failure never converts the failed probe to success.
         raise SystemExit("writer primer failed; sanitized evidence only") from None
