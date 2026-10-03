@@ -1,6 +1,7 @@
 """The downloaded compiler catches unsupported transitions without executing source."""
 
 import json
+from copy import deepcopy
 import os
 import subprocess
 import sys
@@ -11,9 +12,45 @@ from uuid import uuid4
 import pytest
 
 from bifrost.solution_delivery_review import (
-    WorkflowRecipeError, review_solution_recipe,
+    WorkflowRecipeError, require_adoption_parameters, review_solution_recipe,
 )
 from shared.cli_artifact import build_cli_artifact
+
+
+@pytest.mark.parametrize("damage", [None, "required", "old_default", "default_type", "old_type", "removed",
+                                   "kwargs", "missing_default", "modern_registry"])
+def test_adoption_optional_additions_keep_old_parameters_and_admission_closed(damage):
+    old = {"type": "object", "properties": {"apply": {"type": "boolean", "default": False}},
+        "additionalProperties": False}
+    new = deepcopy(old)
+    new["properties"]["approved_id"] = {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None}
+    if damage == "required":
+        new["required"] = ["approved_id"]
+    elif damage == "old_default":
+        new["properties"]["apply"]["default"] = True
+    elif damage == "default_type":
+        new["properties"]["apply"]["default"] = 0
+    elif damage == "old_type":
+        new["properties"]["apply"]["type"] = "integer"
+    elif damage == "removed":
+        del new["properties"]["apply"]
+    elif damage == "kwargs":
+        new["additionalProperties"] = True
+    elif damage == "missing_default":
+        del new["properties"]["approved_id"]["default"]
+    if damage is not None:
+        with pytest.raises(WorkflowRecipeError, match="source parameter contract"):
+            require_adoption_parameters(old, new, attested_legacy_list=damage != "modern_registry")
+        return
+    require_adoption_parameters(old, new, attested_legacy_list=True)
+
+
+def test_adoption_does_not_coerce_existing_boolean_default_to_integer():
+    old = {"type": "object", "properties": {"apply": {"type": "boolean", "default": False}}}
+    new = deepcopy(old)
+    new["properties"]["apply"]["default"] = 0
+    with pytest.raises(WorkflowRecipeError, match="source parameter contract"):
+        require_adoption_parameters(old, new, attested_legacy_list=True)
 
 
 def test_body_only_source_review_rejects_changed_named_parameter_default():

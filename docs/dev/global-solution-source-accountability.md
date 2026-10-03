@@ -27,7 +27,13 @@ activation, explicit Global review, scope and current-pointer checks apply.
 
 Legacy and reviewed signatures use one static parameter compiler, including
 unambiguous module-level literal scalar defaults. Adoption preserves legacy
-parameter rows and rejects changed defaults. Body-only Source delivery also
+parameter rows and rejects changed defaults, types, required arguments and
+removals. A reviewed adoption recipe may add optional arguments only when the
+legacy list representation is independently sealed and every existing property
+and admission rule is unchanged. Complete modern registry schemas still require
+equality. The new runtime signature is bound into the immutable artifact and pin;
+normal workflow revision can subsequently project the complete registry schema.
+Body-only Source delivery also
 rejects a changed constant default; use the reviewed workflow revision path
 for a supported parameter contract change. Carried code is never imported or
 executed to resolve defaults.

@@ -282,6 +282,33 @@ def compile_workflow_parameters(source: bytes, function_name: str, *, path: str,
     return _entrypoint_parameters(source, tree, matches[0], indexer or WorkflowParameterCompiler(), path)
 
 
+def require_adoption_parameters(old: dict[str, Any], new: dict[str, Any], *,
+                                attested_legacy_list: bool) -> None:
+    """Preserve every old caller contract; permit reviewed optional additions.
+
+    The legacy list stays sealed in the immutable entity rather than being
+    rewritten in place. Complete modern registry schemas still require exact
+    equality; adoption cannot silently project a different registration row.
+    """
+    def encoded(value: Any) -> str:
+        # Python considers False == 0 and True == 1; parameter defaults must
+        # retain their JSON type as well as their value.
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+    if encoded(old) == encoded(new):
+        return
+    old_properties, new_properties = old.get("properties"), new.get("properties")
+    if (attested_legacy_list and isinstance(old_properties, dict) and isinstance(new_properties, dict)
+            and set(old_properties) < set(new_properties)
+            and encoded({key: value for key, value in old.items() if key != "properties"})
+                == encoded({key: value for key, value in new.items() if key != "properties"})
+            and all(encoded(new_properties[key]) == encoded(value) for key, value in old_properties.items())
+            and all(isinstance(new_properties[key], dict) and "default" in new_properties[key]
+                    for key in set(new_properties) - set(old_properties))):
+        return
+    raise WorkflowRecipeError("adoption cannot change the installed source parameter contract")
+
+
 def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
     bindings: dict[str, str] = {}
     modules: set[str] = set()

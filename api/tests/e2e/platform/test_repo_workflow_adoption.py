@@ -141,6 +141,49 @@ async def test_adoption_rejects_changed_constant_default_before_storing_a_candid
 
 
 @pytest.mark.asyncio
+async def test_adoption_adds_optional_parameter_with_original_rows_and_complete_runtime_pin(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    from src.services.solutions.deployment_runtime import pin_workflow_runtime
+    solution, did, row, inactive, table, config, service, request, _, before = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=True, with_owned_query=True, stage=False)
+    source = legacy_store[solution.id][row.path].replace(
+        b"user: str = 'root'", b"user: str = 'root', *, approved_id: int | None = None")
+    body = InitialWorkflowInstallRequest(source_commit_sha="c" * 40, reviewed_recipe=request.reviewed_recipe,
+        files=[{"path": row.path, "content_base64": "AA=="}])
+    staged = await service.stage(solution.id, did, platform_admin.user_id, body, {row.path: source}, {})
+    await service.activate(solution.id, did, request, staged.evidence_id)
+    assert before == {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
+    pin = await pin_workflow_runtime(db_session, row.id)
+    assert pin is not None and pin.parameters_schema is not None
+    assert pin.parameters_schema["properties"]["approved_id"]["default"] is None
+    assert pin.parameters_schema["properties"]["user"]["default"] == "root"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["old_default", "required", "modern_registry"])
+async def test_adoption_rejects_optional_addition_that_changes_existing_admission(
+    db_session, platform_admin, artifact_store, legacy_store, change,
+):
+    from src.models.orm.solution_deployments import SolutionDeployment
+    solution, did, row, _, _, _, service, request, _, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=change != "modern_registry", with_owned_query=True, stage=False)
+    argument = b"approved_id: int" if change == "required" else b"approved_id: int | None = None"
+    source = legacy_store[solution.id][row.path].replace(
+        b"user: str = 'root'", b"user: str = 'root', *, " + argument)
+    if change == "old_default":
+        source = source.replace(b"user: str = 'root'", b"user: str = 'other'")
+    body = InitialWorkflowInstallRequest(source_commit_sha="c" * 40, reviewed_recipe=request.reviewed_recipe,
+        files=[{"path": row.path, "content_base64": "AA=="}])
+    with pytest.raises(SolutionSourceRevisionConflict, match="source parameter contract"):
+        await service.stage(solution.id, did, platform_admin.user_id, body, {row.path: source}, {})
+    assert await db_session.get(SolutionDeployment, did) is None
+    assert solution.active_deployment_id is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("successor", [False, True])
 async def test_native_runtime_anchor_supersedes_old_source_only_with_matching_closure(
     db_session, platform_admin, artifact_store, legacy_store, successor,
