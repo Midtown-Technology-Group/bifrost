@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.constants import PROVIDER_ORG_ID
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
@@ -20,8 +21,9 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("organization_id", [None, PROVIDER_ORG_ID], ids=["global", "provider"])
 async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_table_over_http(
-    e2e_client, platform_admin, async_engine,
+    e2e_client, platform_admin, async_engine, organization_id,
 ):
     headers = platform_admin.headers
     token = uuid4().hex[:12]
@@ -34,14 +36,15 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
         "@workflow(name='Native HTTP task', effects=[{'kind':'bifrost.read'}], "
         "enforced_bounds={'max_duration_seconds':60,'max_external_calls':10,"
         "'max_records_read':100,'max_output_bytes':4096})\n"
-        "async def run(limit: int = DEFAULT_LIMIT):\n"
+        "async def run(limit: int = DEFAULT_LIMIT, payload: dict | None = None):\n"
         f"    rows = await tables.query('{table_name}', limit=limit)\n"
         "    return {'limit':limit,'count':rows.total}\n"
     ).encode()
-    source = legacy.replace(b"limit: int = DEFAULT_LIMIT", b"limit: int = DEFAULT_LIMIT, *, approved_id: int | None = None")
+    source = legacy.replace(b"payload: dict | None = None", b"payload: dict | None = None, *, approved_id: int | None = None")
     source = source.replace(b"'count':rows.total", b"'count':rows.total,'approved_id':approved_id")
     response = e2e_client.post("/api/solutions", headers=headers, json={
-        "slug": slug, "name": "Native HTTP adoption", "organization_id": None,
+        "slug": slug, "name": "Native HTTP adoption",
+        "organization_id": str(organization_id) if organization_id else None,
     })
     assert response.status_code == 201, response.text
     sid = UUID(response.json()["id"])
@@ -56,11 +59,12 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
             solution.setup_complete = True
             solution.allow_outbound_access = False
             solution.git_connected = False
-            row = Workflow(id=wid, solution_id=sid, organization_id=None,
+            row = Workflow(id=wid, solution_id=sid, organization_id=organization_id,
                 name="Native HTTP task", function_name="run", path=path,
-                parameters_schema=[{"name":"limit","type":"integer","required":False,"default_value":7}],
+                parameters_schema=[{"name":"limit","type":"integer","required":False,"default_value":7},
+                    {"name":"payload","type":"json","required":False,"default_value":None}],
                 description=None, category="General")
-            table = Table(id=tid, name=table_name, solution_id=sid, organization_id=None)
+            table = Table(id=tid, name=table_name, solution_id=sid, organization_id=organization_id)
             db.add_all([row, table])
             await db.commit()
             await db.refresh(row)
@@ -69,7 +73,8 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
         await legacy_storage.write(path, legacy)
         recipe = {"schema_version":"bifrost.solution-workflow-delivery/v1", "solution_id":str(sid),
             "files":{path:"solutions/adopt.py"}, "workflows":[{
-                "id":str(wid),"path":path,"function_name":"run","organization_id":None,
+                "id":str(wid),"path":path,"function_name":"run",
+                "organization_id":str(organization_id) if organization_id else None,
                 # Preserve the independently installed ORM defaults, which
                 # differ from a new reviewed install's async/zero-cache defaults.
                 "controls":{"execution_mode":row.execution_mode,"cache_ttl_seconds":row.cache_ttl_seconds},
@@ -101,7 +106,8 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
         # Admission must use the pinned schema, including the new argument,
         # while retaining the original caller's omitted constant default.
         result = execute_workflow_sync(e2e_client, headers, str(wid),
-            input_data={"approved_id":23}, request_sync=True, max_wait=60)
+            input_data={"approved_id":23}, request_sync=True, max_wait=60,
+            org_id=str(organization_id) if organization_id else None)
         assert result["status"] == "Success", result
         assert result["result"] == {"limit":7,"count":0,"approved_id":23}
         async with AsyncSession(async_engine) as db:
@@ -110,6 +116,7 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
             assert execution.runtime_mode == "deployment-v1" and execution.runtime_evidence is not None
             schema = execution.runtime_evidence["workflow_parameters_schema"]
             assert schema["properties"]["limit"]["default"] == 7
+            assert schema["properties"]["payload"]["default"] is None
             assert schema["properties"]["approved_id"]["default"] is None
             attempt = await db.scalar(select(WorkflowExecutionAttempt).where(
                 WorkflowExecutionAttempt.execution_id == execution.id))
