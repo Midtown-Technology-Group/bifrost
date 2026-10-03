@@ -617,3 +617,62 @@ async def test_uncaptured_runtime_equivalent_row_blocks_retirement(
         await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
         await db_session.commit()
         await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
+async def test_retirement_cannot_hide_owner_obligations_with_another_context(
+    platform_admin, db_session,
+) -> None:
+    """The global Live row's owner, not a chosen context, owns its journal."""
+    from src.models.orm.organizations import Organization
+
+    other_org = uuid4()
+    source_path = f"features/retirement_scope_{uuid4().hex}/run.py"
+    release_row_id = job_id = source_record_id = None
+    try:
+        db_session.add(Organization(id=other_org, name="Retirement scope regression"))
+        await db_session.commit()
+        artifact, release, job = await _seed_live_release(
+            db_session, source_path=source_path, function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID,
+            source_commit_sha=uuid4().hex + "3" * 8,
+            source_tree_sha="4" * 40,
+            paths={source_path: "a" * 64}, declaration_actor="platform_admin",
+            declared_disposition="pending", disposition="attention_required",
+            reason="Owner's production evidence is unresolved",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(record)
+        await db_session.commit()
+        source_record_id = record.id
+        request = WorkspaceLiveRetireRequest(
+            expected_release_id=artifact.release_id, expected_artifact_id=artifact.id,
+            governed_manifest_id=artifact.manifest["governed_manifest_id"],
+            reason="An unrelated context must not hide production obligations",
+            acknowledgement="retire-live-workspace-release",
+        )
+        token = set_actor(ActorContext(user_id=platform_admin.user_id,
+            organization_id=other_org, source="http"))
+        try:
+            with pytest.raises(WorkspaceReleaseRetirementError, match="owner context"):
+                await WorkspaceReleaseRetirementService(db_session, other_org).retire(
+                    request, user_id=platform_admin.user_id)
+        finally:
+            clear_actor(token)
+        await db_session.refresh(release)
+        await db_session.refresh(record)
+        assert release.activation_state == "live" and release.retirement_evidence is None
+        assert record.disposition == "attention_required"
+    finally:
+        await db_session.rollback()
+        if source_record_id is not None:
+            await db_session.execute(delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id))
+            await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+        await db_session.execute(delete(Organization).where(Organization.id == other_org))
+        await db_session.commit()
