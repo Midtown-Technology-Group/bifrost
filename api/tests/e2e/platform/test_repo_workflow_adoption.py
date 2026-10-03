@@ -421,9 +421,12 @@ async def test_nullable_legacy_adoption_over_http_preserves_rows_and_executes_se
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["missing", "fields", "source_descriptors"])
 async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_hashes_are_resealed(
-    db_session, platform_admin, artifact_store, legacy_store, change,
+    db_session, platform_admin, artifact_store, legacy_store, monkeypatch, change,
 ):
     from copy import deepcopy
+    from types import SimpleNamespace
+
+    from src.services.solutions import repo_workflow_adoption
 
     from src.models.orm.solution_deployments import SolutionDeployment
     from src.services.solutions.deployment_manifest import CompiledDeploymentManifest, canonical_json, sha256_digest
@@ -444,9 +447,24 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
     manifest_data["workflows"] = resolution["workflows"]
     manifest_data["resolution_map_hash"] = sha256_digest(canonical_json(resolution))
     manifest = CompiledDeploymentManifest.model_validate(manifest_data)
-    await db_session.execute(update(SolutionDeployment).where(SolutionDeployment.id == did).values(
+    # SQL correctly forbids rewriting a ready closure. Inject a forged read at
+    # the artifact-inspection boundary to exercise its independent recompilation
+    # defense; leave the real immutable database row and its trigger intact.
+    forged = SimpleNamespace(
         resolution_map=resolution, resolution_map_hash=manifest.resolution_map_hash,
-        compiled_manifest=manifest.model_dump(mode="json", exclude_none=True), compiled_manifest_hash=sha256_digest(manifest.canonical_bytes())))
+        compiled_manifest=manifest.model_dump(mode="json", exclude_none=True),
+        compiled_manifest_hash=sha256_digest(manifest.canonical_bytes()),
+        dependencies=deployment.dependencies, git_commit_sha=deployment.git_commit_sha,
+        source_artifact_key=deployment.source_artifact_key,
+        runtime_storage_prefix=deployment.runtime_storage_prefix,
+    )
+    inspect_artifact = repo_workflow_adoption.inspect_reviewed_artifact
+
+    async def inspect_forged(sid, candidate_id, observed, *args, **kwargs):
+        assert observed.id == did
+        return await inspect_artifact(sid, candidate_id, forged, *args, **kwargs)
+
+    monkeypatch.setattr(repo_workflow_adoption, "inspect_reviewed_artifact", inspect_forged)
     artifact_store[(str(did), "manifest")] = manifest.canonical_bytes()
     with pytest.raises(SolutionSourceRevisionConflict, match="differs from reviewed recipe"):
         await service.inspect(solution.id, did, request)
