@@ -303,7 +303,7 @@ struct Response {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum ResponseOutcome {
-    Accepted { plan: PlanOutput },
+    Accepted { plan: Box<PlanOutput> },
     Rejected { reason: &'static str },
 }
 
@@ -318,7 +318,7 @@ enum PlanOutput {
         process_id: &'static str,
     },
     Result {
-        execution: ExecutionPlanOutput,
+        execution: Box<ExecutionPlanOutput>,
         attempt: AttemptPlanOutput,
     },
     Cancel {
@@ -541,7 +541,10 @@ fn result_plan(plan: domain::FencedResultPlan) -> PlanOutput {
         peak_memory_bytes: input_write(peak_memory_bytes),
         cpu_total_seconds: input_write(cpu_total_seconds),
     };
-    PlanOutput::Result { execution, attempt }
+    PlanOutput::Result {
+        execution: Box::new(execution),
+        attempt,
+    }
 }
 
 fn cancel_plan(plan: domain::CancelPlan) -> PlanOutput {
@@ -714,7 +717,9 @@ fn execute(bytes: &[u8]) -> Result<Response, DriverError> {
         schema: SCHEMA,
         case_id,
         outcome: match result {
-            Ok(plan) => ResponseOutcome::Accepted { plan },
+            Ok(plan) => ResponseOutcome::Accepted {
+                plan: Box::new(plan),
+            },
             Err(error) => ResponseOutcome::Rejected {
                 reason: decision(error),
             },
