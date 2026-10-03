@@ -103,6 +103,31 @@ configuration. Record actual source, image, connection path and receipt scope.
 If the pool collapses identity, freeze the infrastructure mapping decision
 separately before permission builders; do not substitute SET ROLE.
 
+## Separate disposable principal/pool prerequisite
+
+The architect approves a bounded test-setup exception to the role/pool gate
+below: a new task-owned, isolated CI database may use two synthetic SELECT-only
+logins to test whether transaction pooling preserves their authenticated backend
+identities. Existing `bifrost` administration remains the disposable database's
+Alembic/provisioning authority. Existing application credentials, migration
+history and schema ownership remain unchanged. PostgreSQL's legitimate
+`pg_database_owner` public-schema ownership must be observed, not rewritten.
+
+This is ordinary isolated verification under the MVP goal. It does not release
+material Stage1 authority, owner markers, guards, lifecycle DML grants,
+application DSN changes or production provisioning. The exact seven-path
+Compose/config/provision/probe/conductor/hosted-workflow package requires
+independent source acceptance before execution. Installed image/config admission
+must precede provisioning; fixed direct/pool identity and effective-privilege
+checks, denied authority escapes and own-job resource disposal require actual
+supported observations. No unknown identity, privilege or image mismatch may be
+normalized away or repaired in the test.
+
+Passing establishes only restricted-principal/pool feasibility. It does not
+replace the unsafe Stage0 findings or establish mechanical writer exclusion,
+arbitrary-function safety, lifecycle ownership, full workflow/agent parity or
+rollback. All material Stage1 decisions and acceptance below remain gated.
+
 ## Stage 1 and acceptance remain gated
 
 Before any additive migration or role/pool mutation, approve exact owned paths,
