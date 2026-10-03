@@ -46,6 +46,7 @@ services:
       retries: 5
 
   # RabbitMQ Message Broker
+  # (runs in the default stack; used only when BIFROST_WORK_DELIVERY_BACKEND=rabbitmq)
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: bifrost-rabbitmq
@@ -82,7 +83,7 @@ services:
   # SeaweedFS - S3-compatible Object Storage
   # Used for workspace files (enables horizontal scaling of workers)
   seaweedfs:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.48  # pinned 2026-10-03: digest == former :latest
     container_name: bifrost-seaweedfs
     environment:
       AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:-bifrost}
@@ -120,7 +121,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: api/Dockerfile
-    image: ghcr.io/gobifrost/bifrost-api:latest
+    image: ghcr.io/midtown-technology-group/bifrost-api:latest
     container_name: bifrost-init
     environment:
       # Core (required by Settings during migrations)
@@ -142,7 +143,7 @@ services:
   # All services connect through PgBouncer for centralized connection management
   # Transaction mode: connections returned after each transaction (optimal for short-lived queries)
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.26.0-p0  # pinned 2026-10-03: newest stable (:latest is an unmatchable floating rebuild)
     container_name: bifrost-pgbouncer
     environment:
       # Database connection
@@ -176,12 +177,12 @@ services:
     # build:
     #   context: .
     #   dockerfile: api/Dockerfile
-    image: ghcr.io/gobifrost/bifrost-api:latest
+    image: ghcr.io/midtown-technology-group/bifrost-api:latest
     environment:
       # Core
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
       BIFROST_DEBUG: ${BIFROST_DEBUG:-false}
-      BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
+      BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-postgres}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
       # Database (via PgBouncer for connection pooling)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
@@ -241,7 +242,7 @@ services:
     #   context: ./client
     #   dockerfile: Dockerfile
     #   target: production
-    image: ghcr.io/gobifrost/bifrost-client:latest
+    image: ghcr.io/midtown-technology-group/bifrost-client:latest
     container_name: bifrost-client
     environment:
       API_URL: http://api:8000
@@ -259,11 +260,11 @@ services:
     # build:
     #   context: .
     #   dockerfile: api/Dockerfile
-    image: ghcr.io/gobifrost/bifrost-api:latest
+    image: ghcr.io/midtown-technology-group/bifrost-api:latest
     environment:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
-      BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
+      BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-postgres}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
       # Database (via PgBouncer for connection pooling)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
@@ -306,18 +307,18 @@ services:
     command: >
       python -m src.scheduler.main
 
-  # Worker Service (RabbitMQ Consumers)
+  # Worker Service (durable work consumers; backend via BIFROST_WORK_DELIVERY_BACKEND)
   # Can be scaled horizontally for increased throughput
   # Workers load Python modules from Redis cache (no filesystem sync needed)
   worker:
     # build:
     #   context: .
     #   dockerfile: api/Dockerfile
-    image: ghcr.io/gobifrost/bifrost-api:latest
+    image: ghcr.io/midtown-technology-group/bifrost-api:latest
     environment:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
-      BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
+      BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-postgres}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
       # Database (via PgBouncer for connection pooling)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost

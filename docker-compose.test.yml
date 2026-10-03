@@ -36,7 +36,7 @@ services:
   # PgBouncer - Connection Pooler (Test)
   # All services connect through PgBouncer, matching production architecture
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.26.0-p0  # pinned 2026-10-03: newest stable (:latest is an unmatchable floating rebuild)
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -103,7 +103,7 @@ services:
   # SeaweedFS - S3-compatible object storage (Test)
   # Stores workspace files and runtime outputs
   seaweedfs:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.48  # pinned 2026-10-03: digest == former :latest
     environment:
       AWS_ACCESS_KEY_ID: bifrost
       AWS_SECRET_ACCESS_KEY: bifrost_test_key

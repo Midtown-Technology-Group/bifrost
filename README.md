@@ -17,7 +17,7 @@ An open-source platform for building and running integrations across customers. 
 - **Forms and apps** for collecting inputs and exposing workflows to users.
 - **Multi-tenant execution** with workers, schedules, monitoring, and per-organization access controls.
 
-The web client is in `client/`; the FastAPI service, workers, and shared Python code are in `api/`. PostgreSQL stores application data, Redis supports caching and coordination, and S3-compatible storage holds objects. Work delivery is configurable: MTG production uses PostgreSQL, while the repository's Docker Compose stacks still default to RabbitMQ.
+The web client is in `client/`; the FastAPI service, workers, and shared Python code are in `api/`. PostgreSQL stores application data, Redis supports caching and coordination, and S3-compatible storage holds objects. Work delivery is configurable: the Docker Compose stacks default to PostgreSQL (matching MTG production); set `BIFROST_WORK_DELIVERY_BACKEND=rabbitmq` to use the broker instead.
 
 ## Quick start
 
