@@ -37,6 +37,22 @@ The expiry control has zero business invocations. It reaches the never-completin
 
 Fourteen genuine Python execution-update receipts include subscription acknowledgement, event receipt and committed readback. The Rust publisher is explicitly absent. Every business observation records `event_parity: held` and `gate_scope: sql_projection`; this evidence does not establish Rust event parity.
 
+## Cancellation reference seam
+
+The producer imports `src.repositories.executions.ExecutionRepository` and invokes that helper directly. It does not invoke the public cancellation HTTP route. At platform main `1445706946e0408198ba14c9a2a09109863aa33a`, [the HTTP route](https://github.com/Midtown-Technology-Group/bifrost/blob/1445706946e0408198ba14c9a2a09109863aa33a/api/src/routers/executions.py#L1190) uses a separate repository class defined in the router. The two implementations have different behavior:
+
+| Concern | Tested shared repository helper | Public HTTP route's local repository |
+|---|---|---|
+| Logical execution lock | Advisory transaction lock, then execution read | Advisory transaction lock, then execution `FOR UPDATE` |
+| Already Cancelling/Cancelled | BadRequest | Idempotent success |
+| Execution-update status after commit and refresh | Actual refreshed status | Cached mutation status |
+| Ordinary publication failure | Propagates | Caught separately for execution and history publication |
+| History publication | None in this helper | Execution-history publication before route worker signals |
+
+The HTTP route also performs Redis cancellation signals for a returned Cancelling execution, including an idempotent replay, and has a Redis pending-record path when PostgreSQL has no execution. Neither behavior is established by these SQL-helper tests. Preserving the existing Python API process for publication can retain its process-local Redis-outage fallback, but safe Rust mutation ownership, principal admission, commit settlement and the actual HTTP continuation still need implementation and differential tests.
+
+These differences are compatibility requirements, not permission to unify the Python implementations. The accepted helper projection remains an incremental prerequisite; public HTTP parity and full MVP acceptance remain unproven.
+
 ## Review and limits
 
 The producer and conductor were reviewed by different authors before execution. Independent artifact review rechecked every observation digest, actual actor count, JUnit identity, source hash, causal/time witness, expiry record and cleanup receipt. The accountable architect independently checked the same source/count/custody boundaries and accepted this bounded evidence.
