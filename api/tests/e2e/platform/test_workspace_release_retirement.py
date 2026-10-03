@@ -724,6 +724,10 @@ async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutat
         db_session.add(record)
         await db_session.commit()
         source_record_id = record.id
+        # Compare persisted rows on both sides. ORM defaults such as Workflow.value
+        # start as int 0 but are materialized as Decimal('0.00') by PostgreSQL.
+        for row in [release, record, *rows]:
+            await db_session.refresh(row)
         before = {row.id: _digest_row(row) for row in [release, record, *rows]}
         route = "/api/workspace-promotions/live/retirement-inventory"
         denied = e2e_client.get(route, headers=non_admin_user.headers)
@@ -745,7 +749,7 @@ async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutat
             assert "retirement_ready" not in census
         for row in [release, record, *rows]:
             await db_session.refresh(row)
-            assert _digest_row(row) == before[row.id]
+            assert _digest_row(row) == before[row.id], (type(row).__name__, str(row.id))
     finally:
         await db_session.rollback()
         if source_record_id is not None:
