@@ -29,8 +29,13 @@ for kind in container volume network; do
   test -z "$found"
 done
 test ! -e "$PRIMER_RESULTS"
-mkdir -p "$PRIMER_RESULTS"
-chmod 777 "$PRIMER_RESULTS" # Existing UID1000 test image; trusted synthetic output.
+export PRIMER_UID PRIMER_GID
+PRIMER_UID="$(id -u)"
+PRIMER_GID="$(id -g)"
+[[ "$PRIMER_UID" =~ ^[1-9][0-9]*$ ]]
+[[ "$PRIMER_GID" =~ ^[1-9][0-9]*$ ]]
+mkdir -m 700 -p "$PRIMER_RESULTS"
+test "$(stat -c '%u:%g:%a' "$PRIMER_RESULTS")" = "$PRIMER_UID:$PRIMER_GID:700"
 printf 'WRITER_PRIMER_RESULTS=%s\n' "$PRIMER_RESULTS" >> "${GITHUB_ENV:?hosted artifact path required}"
 private="$RUNNER_TEMP/writer-primer-private"
 mkdir -m 700 "$private"
@@ -73,6 +78,19 @@ DIAGNOSTIC
   diagnostic_status=$?
   cleanup_status=0
   test "$diagnostic_status" = 0 || cleanup_status=1
+  # Retain actual ownership/mode evidence; missing probe output is not success.
+  permissions_status=0
+  directory_facts="$(stat -c '%u:%g:%a' "$PRIMER_RESULTS")" || permissions_status=1
+  test "$directory_facts" = "$PRIMER_UID:$PRIMER_GID:700" || permissions_status=1
+  printf 'results=%s\n' "$directory_facts" > "$PRIMER_RESULTS/private-output-permissions.txt" || permissions_status=1
+  for output_name in probe.json probe-failure.json; do
+    if test -e "$PRIMER_RESULTS/$output_name"; then
+      output_facts="$(stat -c '%u:%g:%a' "$PRIMER_RESULTS/$output_name")" || permissions_status=1
+      test "$output_facts" = "$PRIMER_UID:$PRIMER_GID:600" || permissions_status=1
+      printf '%s=%s\n' "$output_name" "$output_facts" >> "$PRIMER_RESULTS/private-output-permissions.txt" || permissions_status=1
+    fi
+  done
+  test "$permissions_status" = 0 || cleanup_status=1
   admission_disposal=not_started
   # timeout may kill Docker's client without killing its standalone container.
   # A private CID plus exact creation name/labels/image identifies only ours.

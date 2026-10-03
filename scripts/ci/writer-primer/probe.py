@@ -245,7 +245,7 @@ async def snapshot(connection, role, deadline):
                 native(value)
         require(len({tuple(r) for r in rows}) == len(rows))
         tables.append({"query": name, "columns": columns, "rows": rows})
-    name = None  # Cross-query validation is not attributed to the last fetch.
+    del name  # Cross-query validation is not attributed to the last fetch.
     identity = validate(tables, role)
     digest = hashlib.sha256()
     used = 0
@@ -764,11 +764,11 @@ async def collect(deadline):
 
 
 def write_receipt(value, deadline):
-    # Sanitized synthetic catalog artifact must be readable by the host UID.
+    # Private evidence is owned by the same UID as the hosted conductor.
     destination = Path("/results/probe.json")
     remaining(deadline)
     fd = os.open(
-        destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644
+        destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
     )
     try:
         remaining(deadline)
@@ -882,7 +882,7 @@ def write_failure(error):
     fd = os.open(
         "/results/probe-failure.json",
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-        0o644,
+        0o600,
     )
     try:
         view = memoryview(data)

@@ -60,7 +60,7 @@ services:
     labels:
       bifrost.writer-primer.candidate: ${GITHUB_SHA:?hosted exact candidate required}
     image: bifrost-writer-primer-api:local
-    user: "1000:1000"
+    user: "${PRIMER_UID:?runner UID required}:${PRIMER_GID:?runner GID required}"
     entrypoint: [python]
     volumes:
       - ./scripts/ci/writer-primer/probe.py:/primer/probe.py:ro
