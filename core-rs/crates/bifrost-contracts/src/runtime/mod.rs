@@ -1,5 +1,5 @@
-//! Partial v1 control profile: codecs and parent-supplied session validation only.
-//! No work preparation, execution, database authority, or credential transport.
+//! Control codecs/session validation and nondefault mechanical agent facts.
+//! No launch, execution, source/provider admission, or database authority.
 
 mod codec;
 mod control;
@@ -37,3 +37,10 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(feature = "agent-prepare-codec")]
+mod agent_prepare;
+#[cfg(feature = "agent-prepare-codec")]
+pub use agent_prepare::*;
+#[cfg(all(test, feature = "agent-prepare-codec"))]
+mod agent_prepare_tests;
