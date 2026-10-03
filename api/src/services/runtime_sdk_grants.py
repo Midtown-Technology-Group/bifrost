@@ -672,6 +672,8 @@ async def _admit_runtime_sdk_ingress(
         )
         authority = await _validate_ingress_snapshot(db, claims, renewal=renewal)
     except BaseException as error:
+        # Defer control exceptions until rollback and close have been attempted;
+        # re-raise them below rather than turn cancellation into a policy denial.
         if isinstance(error, Exception):
             failed = True
         else:
@@ -680,6 +682,7 @@ async def _admit_runtime_sdk_ingress(
         try:
             await db.rollback()
         except BaseException as error:
+            # A rollback failure must not skip close. Preserve control exceptions.
             failed = True
             if not isinstance(error, Exception) and control is None:
                 control = error
@@ -687,6 +690,7 @@ async def _admit_runtime_sdk_ingress(
             try:
                 await db.close()
             except BaseException as error:
+                # Deny uncertain cleanup; re-raise the first control exception.
                 failed = True
                 if not isinstance(error, Exception) and control is None:
                     control = error

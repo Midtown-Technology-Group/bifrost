@@ -170,6 +170,7 @@ def _optional_uuid(value: str | None) -> UUID | None:
     try:
         result = UUID(value)
     except ValueError:
+        # Keep result unset so malformed selectors reach the denial below.
         pass
     if result is None or str(result) != value:
         raise RuntimeSDKDenied("runtime SDK UUID selector is invalid")
@@ -375,6 +376,7 @@ async def refresh_runtime_sdk_credential(
     try:
         authority = await admit_runtime_sdk_renewal(get_session_factory(), token=token)
     except RuntimeSDKDenied:
+        # Policy denial uses the IP limiter and opaque 401 branch below.
         pass
     if authority is None:
         await auth_limiter.check("refresh", get_client_ip(request))

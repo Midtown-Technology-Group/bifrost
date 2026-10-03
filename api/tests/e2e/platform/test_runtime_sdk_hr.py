@@ -90,6 +90,7 @@ async def _server(app):
     async def started():
         while not server.started:
             if task.done():
+                # Retrieve the task result to propagate a real startup exception.
                 await task
                 raise AssertionError("Synthetic server failed before startup")
             await asyncio.sleep(0.01)
@@ -1085,6 +1086,8 @@ async def test_unchanged_sdk_get_mapping_and_existing_refresh_do_not_deliver_red
                 try:
                     await _sdk(case, origin_url, operation)
                 except AssertionError:
+                    # SDK-call failure is allowed here; the origin and empty
+                    # target assertions below still decide non-delivery proof.
                     pass
                 assert origin_calls[-1:] == [f"/api/sdk/integrations/{operation}"]
                 assert deliveries == []

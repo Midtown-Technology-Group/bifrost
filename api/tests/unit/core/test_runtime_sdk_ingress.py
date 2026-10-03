@@ -1052,6 +1052,116 @@ async def test_uncertain_transaction_cleanup_denies(make_work, failure):
     )
 
 
+def _admission_control_fault_factory(work, faults):
+    """Inject only exceptions; retain actual session operations and DB results."""
+    calls = []
+
+    class ControlFailingSession(AsyncSession):
+        async def connection(self, *args, **kwargs):
+            calls.append("configure")
+            result = await super().connection(*args, **kwargs)
+            if "configure" in faults:
+                raise faults["configure"]
+            return result
+
+        async def scalar(self, *args, **kwargs):
+            result = await super().scalar(*args, **kwargs)
+            if "read" in faults:
+                calls.append("read")
+                raise faults["read"]
+            return result
+
+        async def rollback(self):
+            calls.append("rollback")
+            await super().rollback()
+            if "rollback" in faults:
+                raise faults["rollback"]
+
+        async def close(self):
+            calls.append("close")
+            await super().close()
+            if "close" in faults:
+                raise faults["close"]
+
+    factory = async_sessionmaker(
+        work.cohort.factory.kw["bind"],
+        class_=ControlFailingSession,
+        expire_on_commit=False,
+    )
+    return factory, calls
+
+
+@pytest.mark.parametrize("failure", ["configure", "read", "rollback", "close"])
+@pytest.mark.parametrize(
+    "control_type",
+    [asyncio.CancelledError, SystemExit, KeyboardInterrupt],
+    ids=["cancel", "exit", "interrupt"],
+)
+async def test_admission_control_exception_preserves_identity_and_cleanup(
+    make_work, failure, control_type
+):
+    """Real admission lifetime proof; injected errors are not public auth proof."""
+    work = await make_work()
+    reference, bundle = await _bundle(work)
+    control = control_type("synthetic admission control exception")
+    factory, calls = _admission_control_fault_factory(work, {failure: control})
+
+    # Catch every exception type in this direct await so a wrongly propagated
+    # control exception cannot escape; identity below verifies the exact error.
+    with pytest.raises(BaseException) as raised:
+        await grants.load_runtime_sdk_ingress_authority(
+            factory, token=bundle.access_token
+        )
+    assert raised.value is control
+    assert calls.count("configure") == 1
+    assert calls.count("rollback") == 1
+    assert calls.count("close") == 1
+    assert calls[-2:] == ["rollback", "close"]
+
+    authority = await grants.load_runtime_sdk_ingress_authority(
+        work.cohort.factory, token=bundle.access_token
+    )
+    assert authority.snapshot.id == reference.grant_id
+
+
+@pytest.mark.parametrize("cleanup_stage", ["rollback", "close"])
+@pytest.mark.parametrize("cleanup_kind", ["ordinary", "control"])
+@pytest.mark.parametrize(
+    "control_type",
+    [asyncio.CancelledError, SystemExit, KeyboardInterrupt],
+    ids=["cancel", "exit", "interrupt"],
+)
+async def test_original_admission_control_exception_wins_cleanup_failure(
+    make_work, cleanup_stage, cleanup_kind, control_type
+):
+    """A second cleanup fault cannot replace the original control exception."""
+    work = await make_work()
+    reference, bundle = await _bundle(work)
+    control = control_type("synthetic original control exception")
+    cleanup = (
+        SQLAlchemyError("synthetic cleanup failure")
+        if cleanup_kind == "ordinary"
+        else KeyboardInterrupt("synthetic cleanup control exception")
+    )
+    factory, calls = _admission_control_fault_factory(
+        work, {"read": control, cleanup_stage: cleanup}
+    )
+
+    # Also contain a wrong cleanup control exception if priority regresses.
+    # This await runs in the current coroutine, never a background task.
+    with pytest.raises(BaseException) as raised:
+        await grants.load_runtime_sdk_ingress_authority(
+            factory, token=bundle.access_token
+        )
+    assert raised.value is control
+    assert calls == ["configure", "read", "rollback", "close"]
+
+    authority = await grants.load_runtime_sdk_ingress_authority(
+        work.cohort.factory, token=bundle.access_token
+    )
+    assert authority.snapshot.id == reference.grant_id
+
+
 @pytest.mark.parametrize("outcome", ["success", "error", "cancel"])
 async def test_local_yield_context_restores_all_public_contexts(
     make_work, monkeypatch, outcome
