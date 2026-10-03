@@ -65,6 +65,8 @@ def upgrade() -> None:
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
+    """)
+    op.execute("""
         CREATE TRIGGER trg_workflow_retirement_integrity
             BEFORE INSERT OR UPDATE OR DELETE ON workflows
             FOR EACH ROW EXECUTE FUNCTION enforce_workflow_retirement_integrity();
