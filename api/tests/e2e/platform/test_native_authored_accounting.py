@@ -238,8 +238,12 @@ async def test_solution_membership_fence_preserves_plain_reads_and_blocks_member
     async with async_engine.connect() as first, async_engine.connect() as second:
         a, b = await first.begin(), await second.begin()
         try:
-            await first.execute(text("LOCK TABLE solutions IN EXCLUSIVE MODE"))
+            await first.execute(text("LOCK TABLE solutions IN SHARE MODE"))
             await second.execute(text("SELECT id FROM solutions LIMIT 1"))
+            # Admission/FK reads and install row-lock readers remain available.
+            # The accounting census uses plain reads, so it never waits on these.
+            await second.execute(text("SELECT id FROM solutions LIMIT 1 FOR KEY SHARE"))
+            await second.execute(text("SELECT id FROM solutions LIMIT 1 FOR UPDATE"))
             await second.execute(text("SET LOCAL lock_timeout = '100ms'"))
             with pytest.raises(DBAPIError, match="lock timeout"):
                 await second.execute(text("UPDATE solutions SET status = status WHERE false"))

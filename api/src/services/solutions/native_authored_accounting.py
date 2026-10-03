@@ -32,7 +32,6 @@ from src.services.solutions.native_authored_source import (
     NativeAuthoredSourceMismatch,
     native_authored_install_readback,
 )
-from src.services.workspace_release_projection import acquire_workspace_release_lock
 
 COMPLETION_SCHEMA = "bifrost.native-solution-deploy-completion/v1"
 UNRESOLVED = ("pending", "attention_required")
@@ -140,11 +139,14 @@ async def reconcile_native_solution_deploy_obligations(
 ) -> list[UUID]:
     """Success/replay, late declaration and scheduler share the same verifier.
 
-Lock order remains Live fence -> native installs -> accounting rows. Immutable
-activation and generic deploy both lock each install row before writes; generic
-deploy refuses an active immutable pointer. All ordinary managed-entity write
-routes reject controls/metadata changes outside that deployment path.
-Caller owns commit; no new background job, endpoint or manual cleanup is needed.
+Solution membership and pointer writes wait for a bounded SHARE table lock.
+Install reads stay plain: waiting on a writer's row lock here would deadlock
+with its pending table-write lock. Managed component writers also update their
+Solution pointer atomically. Reviewed shared Root tables retain their existing
+FOR SHARE verification locks. Historical execution pins need no Live fence.
+This entry point commits its accounting checkpoint before the caller's separate
+Root reconciliation; all delivery/declaration hooks enter after durable commit.
+No new background job, endpoint or manual cleanup is needed.
 """
     policy = policy or get_settings().solution_git_delivery_policy
     if policy is None:
@@ -162,15 +164,13 @@ Caller owns commit; no new background job, endpoint or manual cleanup is needed.
     if not selected:
         return []
     packages = {(row.solution_slug, row.repo_subpath) for row in selected}
-    await acquire_workspace_release_lock(db, None)
     # Row locks cannot fence insertion or inactive->active membership changes.
-    # Take this before any install row lock: EXCLUSIVE also waits for existing
-    # SELECT FOR UPDATE holders, avoiding a table-upgrade/row-lock cycle. Plain
-    # reads remain available. All native/generic writers take install row locks.
-    await db.execute(text("LOCK TABLE solutions IN EXCLUSIVE MODE"))
+    # SHARE blocks INSERT/UPDATE/DELETE while allowing admissions and row-lock
+    # readers. Do not acquire install row locks inside this table-write fence.
+    await db.execute(text("LOCK TABLE solutions IN SHARE MODE"))
     installs = list((await db.scalars(select(Solution).where(Solution.status == "active",
         tuple_(Solution.slug, Solution.repo_subpath).in_(packages)).order_by(Solution.id)
-        .with_for_update().execution_options(populate_existing=True))).all())
+        .execution_options(populate_existing=True))).all())
     records = list((await db.scalars(query.where(SolutionDeployObligation.id.in_([r.id for r in selected]))
         .order_by(SolutionDeployObligation.id).with_for_update()
         .execution_options(populate_existing=True))).all())
@@ -215,4 +215,7 @@ Caller owns commit; no new background job, endpoint or manual cleanup is needed.
         record.completion_evidence, record.resolved_at = evidence, now
         completed.append(record.id)
     await db.flush()
+    # Release the membership fence before Root accounting takes its Live fence
+    # and install row locks. Completion remains durable if that later pass fails.
+    await db.commit()
     return completed

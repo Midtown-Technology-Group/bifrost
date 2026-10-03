@@ -37,10 +37,13 @@ Production target membership comes from all protected registry recipes,
 including mappings that mix Root and package files. A missing/inactive Provider
 installation cannot disappear from the target set. Recovery checks the complete
 relevant family in exact scopes, including unexpected active siblings; unrelated
-mutable Solutions are not a prerequisite. The census takes the Live fence,
-then an exclusive Solutions table lock before installation and journal row locks.
-Plain reads continue, while membership/status and installation writes wait for
-this bounded readback transaction.
+mutable Solutions are not a prerequisite. The census takes a shared Solutions
+table lock and reads installations without row locks. Membership/status and
+pointer writes wait for this bounded readback transaction; workflow admissions
+and historical execution pins continue without a Live fence. Reviewed shared
+Root table verification retains its existing shared row locks. Native accounting
+commits its checkpoint and releases the membership fence before the separate
+Root accounting pass starts.
 
 Delivery success/replay, late declaration/replay and the existing overdue sweep
 use the same verifier and the existing child obligation. Native completion uses

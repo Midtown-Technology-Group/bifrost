@@ -60,7 +60,8 @@ class GitSourceDeliveryService:
         # existing distinct delivery contracts.
         authored = None
         installed = await self.db.get(Solution, solution_id, populate_existing=True)
-        if (installed is not None and installed.repo_subpath == f"solutions/{installed.slug}"
+        if (installed is not None and isinstance(installed.repo_subpath, str)
+                and installed.repo_subpath == f"solutions/{installed.slug}"
                 and source.repository_paths
                 and all(path.startswith(installed.repo_subpath + "/") for path in source.repository_paths.values())):
             authored = await self.reader.authored_source(source.commit_sha, installed.repo_subpath,
