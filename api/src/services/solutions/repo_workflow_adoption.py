@@ -198,7 +198,8 @@ class RepoWorkflowAdoptionService:
             WorkflowIndexer(self.db), has_owned_tables=has_owned_tables,
             legacy_parameter_hashes={row.id: canonical_digest(row.parameters_schema)
                                      for row in rows if row.is_active and isinstance(row.parameters_schema, list)},
-            legacy_descriptor_snapshots={row.id: _workflow_snapshot(row) for row in rows if row.is_active})
+            legacy_descriptor_snapshots={row.id: _workflow_snapshot(row) for row in rows if row.is_active},
+            legacy_registration_names={row.id: row.name for row in rows if row.is_active})
         await self._registrations(solution, rows, entities, legacy_files)
         manifest, resolution = build_reviewed_artifact(solution_id, deployment_id, body.reviewed_recipe,
             files, resources, entities, body.source_commit_sha, ADOPTION_MARKER)
@@ -241,7 +242,8 @@ class RepoWorkflowAdoptionService:
             request.reviewed_recipe, WorkflowIndexer(self.db), ADOPTION_MARKER, has_owned_tables=has_owned_tables,
             legacy_parameter_hashes={row.id: canonical_digest(row.parameters_schema)
                                      for row in rows if row.is_active and isinstance(row.parameters_schema, list)},
-            legacy_descriptor_snapshots={row.id: _workflow_snapshot(row) for row in rows if row.is_active})
+            legacy_descriptor_snapshots={row.id: _workflow_snapshot(row) for row in rows if row.is_active},
+            legacy_registration_names={row.id: row.name for row in rows if row.is_active})
         await self._registrations(solution, rows, resolution.workflows, legacy_files)
         await require_shared_tables(self.db, request.reviewed_recipe.shared_tables,
                                    solution_organization_id=solution.organization_id)

@@ -115,6 +115,7 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
             execution = await db.get(Execution, UUID(result["execution_id"]))
             assert execution is not None and execution.solution_deployment_id == did
             assert execution.runtime_mode == "deployment-v1" and execution.runtime_evidence is not None
+            assert execution.runtime_evidence["workflow_name"] == installed_name
             schema = execution.runtime_evidence["workflow_parameters_schema"]
             assert schema["properties"]["limit"]["default"] == 7
             assert schema["properties"]["payload"]["default"] is None

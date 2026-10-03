@@ -469,3 +469,24 @@ async def test_accepted_pin_rejects_workflow_reassigned_to_another_solution(monk
         AsyncMock(return_value=original))
     with pytest.raises(DeploymentRuntimeError, match="does not belong"):
         await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
+
+
+@pytest.mark.parametrize("tampered", [False, True])
+def test_runtime_pin_retains_installed_name_and_validates_its_sealed_binding(tampered):
+    from src.services.solutions.deployment_runtime import _pin_from_deployment
+    from src.services.solutions.source_revision import legacy_registration_name_evidence
+
+    sid, wid, did = uuid4(), uuid4(), uuid4()
+    evidence = legacy_registration_name_evidence("demo", "Friendly task")
+    if tampered:
+        evidence["fields"]["source_name"] = "Forged declaration"
+    deployment = _closure(deployment_id=did, solution_id=sid, workflow_id=wid, source_text="old",
+        definition_extra={"name": "demo", "legacy_registration_name_evidence": evidence})
+    solution = SimpleNamespace(id=sid)
+    if tampered:
+        with pytest.raises(DeploymentRuntimeError, match="name differs from immutable evidence"):
+            _pin_from_deployment(wid, solution, deployment, allow_superseded=False)
+    else:
+        pin = _pin_from_deployment(wid, solution, deployment, allow_superseded=False)
+        assert pin.name == "demo" and pin.function_name == "demo"
+        assert pin.queue_evidence()["workflow_name"] == "demo"
