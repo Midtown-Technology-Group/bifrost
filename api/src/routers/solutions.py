@@ -1317,32 +1317,48 @@ async def export_solution(
         )
         source_path = Path(stored_source_path.name)
         stored_source_path.close()
-        has_stored_source = await artifact.copy_to_path(source_path)
-        if has_stored_source and mode == "shareable":
-            source_path.replace(out_path)
-        else:
-            bundle = await SolutionCaptureService(ctx.db).bundle_for(
-                sol,
-                include_imports=True,
-                include_values=include_values_flag,
-                include_data=include_data,
-                include_files=include_files_flag,
-            )
-            if has_stored_source:
-                await add_live_content_to_workspace_zip_file(
-                    source_path,
-                    bundle,
-                    ctx.db,
-                    out_path,
-                    password=password or "",
-                )
-            else:
-                await build_workspace_zip_for_export(
-                    bundle,
-                    ctx.db,
-                    out_path,
+        if sol.execution_runtime_mode != "repo-v1" or sol.active_deployment_id is not None:
+            from src.services.solutions.immutable_export import write_active_export
+
+            try:
+                await write_active_export(
+                    ctx.db, sol, out_path,
+                    include_values=include_values_flag, include_data=include_data,
+                    include_files=include_files_flag,
                     password=password if wants_backup_payload else None,
                 )
+            except (ValueError, RuntimeError, OSError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Immutable Solution source could not be verified for export",
+                ) from exc
+        else:
+            has_stored_source = await artifact.copy_to_path(source_path)
+            if has_stored_source and mode == "shareable":
+                source_path.replace(out_path)
+            else:
+                bundle = await SolutionCaptureService(ctx.db).bundle_for(
+                    sol,
+                    include_imports=True,
+                    include_values=include_values_flag,
+                    include_data=include_data,
+                    include_files=include_files_flag,
+                )
+                if has_stored_source:
+                    await add_live_content_to_workspace_zip_file(
+                        source_path,
+                        bundle,
+                        ctx.db,
+                        out_path,
+                        password=password or "",
+                    )
+                else:
+                    await build_workspace_zip_for_export(
+                        bundle,
+                        ctx.db,
+                        out_path,
+                        password=password if wants_backup_payload else None,
+                    )
         _cleanup_file(source_path)
         # Commit the SolutionConnectionSchema rows that _connection_entries
         # upserts as a side-effect of a fresh _repo/ scan. Without this the only

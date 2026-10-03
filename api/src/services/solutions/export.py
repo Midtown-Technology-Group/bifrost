@@ -3,7 +3,8 @@ Solution export — serialize Solution workspace zips.
 
 ``POST /api/solutions/{id}/export`` calls
 :func:`build_workspace_zip` on every request so the zip always reflects
-current ownership unless the install has a deploy-time source artifact. In that
+current ownership and verified active deployment bytes for immutable installs.
+Legacy installs use captured workspace source unless they have a deploy-time source artifact. In that
 case shareable export returns the stored artifact, and full export overlays the
 encrypted runtime payload onto that artifact.
 
@@ -73,6 +74,15 @@ def _file_payload_member(sf: Any) -> str:
     identity = f"{sf.location}\0{sf.path}\0{sf.sha256 or ''}"
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return f".bifrost/file-payloads/{digest}.bin.enc"
+
+
+def add_source_resources(path: Path, resources: dict[str, bytes]) -> None:
+    """Carry reviewed immutable assets without replacing manifests or source."""
+    with zipfile.ZipFile(path, "a", zipfile.ZIP_DEFLATED) as archive:
+        if set(resources) & set(archive.namelist()):
+            raise ValueError("Immutable resource conflicts with an exported workspace member")
+        for name, content in sorted(resources.items()):
+            _put_zip_member(archive, name, content)
 
 
 def build_workspace_zip(bundle: "SolutionBundle", *, password: str | None = None) -> bytes:
