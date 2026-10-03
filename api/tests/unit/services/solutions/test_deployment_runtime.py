@@ -482,7 +482,7 @@ def test_runtime_pin_retains_installed_name_and_validates_its_sealed_binding(tam
         evidence["fields"]["source_name"] = "Forged declaration"
     deployment = _closure(deployment_id=did, solution_id=sid, workflow_id=wid, source_text="old",
         definition_extra={"name": "demo", "legacy_registration_name_evidence": evidence})
-    solution = SimpleNamespace(id=sid)
+    solution = SimpleNamespace(id=sid, allow_outbound_access=False)
     if tampered:
         with pytest.raises(DeploymentRuntimeError, match="name differs from immutable evidence"):
             _pin_from_deployment(wid, solution, deployment, allow_superseded=False)
