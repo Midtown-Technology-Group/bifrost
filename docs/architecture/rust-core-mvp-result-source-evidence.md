@@ -33,4 +33,15 @@ The first cycle-3 submission returned HTTP 503; readback showed no admitted run.
 
 This run does not prove the sole 299-case Python Result target, selected fifteen native Result tests, eight feature venues, full Result transition/transaction parity, unknown-COMMIT handling, real Redis-outage event behavior, constructor/frontend admission, restricted or mixed-writer ownership, actual Python Prepare/Start custody, unchanged Cove workflow/answer/summary behavior, or reversible in-flight routing. The literal `./test.sh pre-pr` gate remains pending before PR publication.
 
-The private parity-input transport and authority prerequisites are still design work. Successful builds do not release those gates or imply C2/C3 acceptance. The next step is to finish and review the bounded parity producer and enforceable authority interfaces; then gather their actual runtime evidence. No full-MVP CONTINUE or STOP recommendation follows from this build record alone.
+## Source changes after the tested candidate
+
+The successful run above belongs to `95b6ebc`; it does not attest later Python harness changes.
+
+| Candidate | Reviewed change | Evidence status |
+|---|---|---|
+| [`3031575fae9dedef9ec84bf9f91d0c99a7618b52`](https://github.com/Midtown-Technology-Group/bifrost/commit/3031575fae9dedef9ec84bf9f91d0c99a7618b52) | Private, single-file native DSN input; genuine fixture, production-engine and driver association; explicit descriptor cleanup and first-error preservation | Root and distinct source review accepted; AST, diff and cached Ruff static checks passed. Input materialization, container mount/identity and runtime controls remain unexecuted. |
+| [`6677c9e1c3a8ea13ba65afe3df098cc9160efa39`](https://github.com/Midtown-Technology-Group/bifrost/commit/6677c9e1c3a8ea13ba65afe3df098cc9160efa39) | Source-receipt v2 consumer validates closed graph summaries against the exact admitted Cargo.lock; existing receipt root keys and test identities retained | Root and distinct source review accepted; AST, diff and cached Ruff static checks passed. Graph summaries are not compiled-unit feature outcomes; producer and differential runtime evidence remain pending. |
+
+The source-accepted harness SHA256 is `ffd359a45618bca8112b86c94b7a8d663359e223cfbf88d5b2ef16d3109a481a`. Independent source reviews are `46578fcac42f6e46a8582581c88f84ead5d513250f1295daf5c56f71861807f0` (private input) and `81ed5f31482fa7bba14bec00ace422ebb4c8617263a60120c9a64b50ecfc24d0` (receipt consumer). These are source dispositions, not executed-control evidence.
+
+The private-input producer, actual schema observations, compiler-unit feature/outcome records and runtime integration remain pending. Restricted writer authority is a separate unresolved architecture gate. Successful builds and source reviews do not imply C2/C3 acceptance. No full-MVP CONTINUE or STOP recommendation follows from this record alone.
