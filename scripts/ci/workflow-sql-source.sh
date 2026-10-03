@@ -233,7 +233,7 @@ cleanup() {
 trap cleanup EXIT
 git rev-parse HEAD HEAD^{tree} > "$evidence/source.txt"
 printf '%s\n' "$mode" > "$evidence/mode.txt"
-sha256sum core-rs/crates/bifrost-db/src/workflow_parity.rs core-rs/crates/bifrost-db/src/lib.rs core-rs/crates/bifrost-db/Cargo.toml core-rs/Cargo.lock api/tests/parity/test_workflow_sql.py api/scripts/check_github_action_pins.py api/tests/unit/test_github_action_pins.py scripts/ci/tests/test_workflow_sql_credential.py scripts/ci/workflow-sql-source.sh .github/workflows/workflow-sql-source.yml > "$evidence/source-hashes.txt"
+sha256sum core-rs/crates/bifrost-db/src/workflow_parity.rs core-rs/crates/bifrost-db/src/lib.rs core-rs/crates/bifrost-db/Cargo.toml core-rs/Cargo.lock api/tests/parity/test_workflow_sql.py api/scripts/check_github_action_pins.py api/tests/unit/test_github_action_pins.py scripts/ci/tests/test_workflow_sql_credential.py scripts/ci/workflow-sql-source.sh .github/workflows/workflow-sql-source.yml core-rs/crates/bifrost-db/src/workflow_numeric.rs > "$evidence/source-hashes.txt"
 if test "$mode" = format; then
     docker build --target toolchain -t "$image" -f core-rs/Dockerfile core-rs > "$evidence/toolchain-build.log" 2>&1
     image_id="$(docker image inspect "$image" --format '{{.Id}}')"
