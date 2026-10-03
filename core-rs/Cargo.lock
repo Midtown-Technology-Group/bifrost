@@ -147,6 +147,8 @@ name = "bifrost-domain"
 version = "0.1.0"
 dependencies = [
  "bifrost-contracts",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
