@@ -738,11 +738,10 @@ impl SqlResultInput {
                 if value.status.value().is_some_and(|text| text.contains('\0')) {
                     return Err(result_decode());
                 }
-                if let Some(roi) = value.roi.value() {
-                    if matches!(roi.value.value(), Some(super::workflow_numeric::NumericInput::Float(number)) if !number.is_finite())
-                    {
-                        return Err(result_decode());
-                    }
+                if let Some(roi) = value.roi.value()
+                    && matches!(roi.value.value(), Some(super::workflow_numeric::NumericInput::Float(number)) if !number.is_finite())
+                {
+                    return Err(result_decode());
                 }
                 (&value.error, &value.error_type, &value.metrics)
             }
@@ -1310,12 +1309,12 @@ async fn apply_result_inner(
             .fetch_optional(&mut **tx)
             .await
             .map_err(|error| ResultSqlFailure::database(ResultSqlStage::ReadExecution, error))?;
-    if let Some(witness) = witness.as_deref_mut() {
-        if witness.logical.is_some() {
-            let ack = witness.mark();
-            if let Some(value) = witness.logical.as_mut() {
-                value.status_read_ack = ack;
-            }
+    if let Some(witness) = witness.as_deref_mut()
+        && witness.logical.is_some()
+    {
+        let ack = witness.mark();
+        if let Some(value) = witness.logical.as_mut() {
+            value.status_read_ack = ack;
         }
     }
     let cancelled = matches!(current.as_deref(), Some("Cancelling" | "Cancelled"));
@@ -1327,15 +1326,14 @@ async fn apply_result_inner(
     let completed = duration
         .map(|_| result_clock_now(&mut witness, true))
         .transpose()?;
-    if supplied_context.is_some() {
-        if let Some(witness) = witness.as_deref_mut() {
-            if witness.logical.is_some() {
-                let upper = witness.mark();
-                if let Some(value) = witness.logical.as_mut() {
-                    value.upper = upper;
-                    value.upper_kind = ResultClockUpper::ContextReadDispatch;
-                }
-            }
+    if supplied_context.is_some()
+        && let Some(witness) = witness.as_deref_mut()
+        && witness.logical.is_some()
+    {
+        let upper = witness.mark();
+        if let Some(value) = witness.logical.as_mut() {
+            value.upper = upper;
+            value.upper_kind = ResultClockUpper::ContextReadDispatch;
         }
     }
     let existing_context = if supplied_context.is_some() {
@@ -1423,33 +1421,32 @@ async fn apply_result_inner(
         .bind(metric_system.is_some_and(ResultPresence::supplied)).bind(metric_system.and_then(ResultPresence::value).copied())
         .bind(metric_cpu.is_some_and(ResultPresence::supplied)).bind(metric_cpu.and_then(ResultPresence::value).copied())
         .bind(!cancelled && time_saved.is_some()).bind(time_saved).bind(!cancelled && numeric.is_some()).bind(numeric.as_deref());
-    if supplied_context.is_none() {
-        if let Some(witness) = witness.as_deref_mut() {
-            if witness.logical.is_some() {
-                let upper = witness.mark();
-                if let Some(value) = witness.logical.as_mut() {
-                    value.upper = upper;
-                }
-            }
+    if supplied_context.is_none()
+        && let Some(witness) = witness.as_deref_mut()
+        && witness.logical.is_some()
+    {
+        let upper = witness.mark();
+        if let Some(value) = witness.logical.as_mut() {
+            value.upper = upper;
         }
     }
     let execution_result = execution_query
         .execute(&mut **tx)
         .await
         .map_err(|error| ResultSqlFailure::database(ResultSqlStage::WriteExecution, error))?;
-    if let Some(witness) = witness.as_deref_mut() {
-        if witness.logical.is_some() {
-            let ack = witness.mark();
-            if let Some(value) = witness.logical.as_mut() {
-                value.write_ack = ack;
-            }
+    if let Some(witness) = witness.as_deref_mut()
+        && witness.logical.is_some()
+    {
+        let ack = witness.mark();
+        if let Some(value) = witness.logical.as_mut() {
+            value.write_ack = ack;
         }
     }
     result_one(
         execution_result.rows_affected(),
         ResultSqlStage::WriteExecution,
     )?;
-    if let Some(witness) = witness.as_deref_mut() {
+    if let Some(witness) = witness {
         witness.adapter_done = true;
     }
     Ok(SqlDecision::Applied(AppliedResult {
