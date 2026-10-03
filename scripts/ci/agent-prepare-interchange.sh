@@ -963,9 +963,28 @@ stage_start = None
 active_operation = None
 
 
+def invalidate_literal_capture():
+    witness = state.get("pre_pr_literal_capture")
+    if type(witness) is dict:
+        witness["capture_complete"] = False
+    measurement = state.get("pre_pr_measurement")
+    if (
+        type(measurement) is dict
+        and type(measurement.get("diagnostic")) is dict
+        and measurement["diagnostic"].get("admission") == "observed"
+    ):
+        measurement["diagnostic"] = {"admission": "invalid", "records": []}
+
+
 def save():
-    checked_directory(EVIDENCE, state["root_identity"])
-    atomic_json(STATE_PATH, state)
+    try:
+        checked_directory(EVIDENCE, state["root_identity"])
+        atomic_json(STATE_PATH, state)
+    except BaseException:
+        # A later relevant save failure cannot leave an admissible capture flag.
+        with suppress(BaseException):
+            invalidate_literal_capture()
+        raise
 
 
 def clean_env():
@@ -1097,6 +1116,101 @@ def operation(name):
                 raise
 
 
+def capture_file_identity(info):
+    require(
+        stat.S_ISREG(info.st_mode)
+        and info.st_uid == os.getuid()
+        and stat.S_IMODE(info.st_mode) == 0o600
+        and info.st_nlink == 1,
+        "acquisition",
+    )
+    return {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": 0o600, "nlink": 1}
+
+
+def capture_file_final(info):
+    return {
+        "identity": capture_file_identity(info),
+        "size": info.st_size,
+        "mtime": info.st_mtime_ns,
+        "ctime": info.st_ctime_ns,
+    }
+
+
+def literal_capture_complete(witness, row):
+    # Pure admission predicate used for actual private facts and finite controls.
+    streams = {"stdout", "stderr"}
+    return (
+        type(witness) is dict
+        and witness.get("operation") == "literal-pre-pr"
+        and witness.get("capture_complete") is True
+        and witness.get("native_wait_completed") is True
+        and witness.get("cleanup_failed") is False
+        and type(witness.get("exit")) is int
+        and -255 <= witness["exit"] <= 255
+        and type(row) is dict
+        and set(row) == {"operation", "exit", "bytes", "stdin_bytes", "reaped", "cleanup_failed"}
+        and row["operation"] == "literal-pre-pr"
+        and type(row["exit"]) is int
+        and row["exit"] == witness["exit"]
+        and row["reaped"] is True
+        and row["cleanup_failed"] is False
+        and type(row["stdin_bytes"]) is int
+        and row["stdin_bytes"] == 0
+        and type(witness.get("acquired")) is dict
+        and set(witness["acquired"]) == streams
+        and type(witness.get("final")) is dict
+        and set(witness["final"]) == streams
+        and type(witness.get("eof")) is dict
+        and set(witness["eof"]) == streams
+        and all(witness["eof"][stream] is True for stream in streams)
+        and type(witness.get("closed")) is dict
+        and set(witness["closed"]) == streams
+        and all(witness["closed"][stream] is True for stream in streams)
+        and type(row["bytes"]) is dict
+        and set(row["bytes"]) == streams
+        and witness.get("bytes") == row["bytes"]
+        and all(
+            type(row["bytes"][stream]) is int
+            and 0 <= row["bytes"][stream] <= RAW_LIMIT
+            and witness["final"][stream]["size"] == row["bytes"][stream]
+            and witness["final"][stream]["identity"] == witness["acquired"][stream]
+            for stream in streams
+        )
+        and sum(row["bytes"].values()) <= RAW_LIMIT
+    )
+
+
+def literal_capture_selected(operation_name, index, child_count):
+    return (
+        operation_name == "literal-pre-pr"
+        and type(index) is int
+        and type(child_count) is int
+        and 0 <= index == child_count
+    )
+
+
+def literal_capture_binding(witness, children, index, directory_identity, counter):
+    return (
+        type(index) is int
+        and type(children) is list
+        and 0 <= index < len(children)
+        and literal_capture_complete(witness, children[index])
+        and type(witness.get("child_index")) is int
+        and witness["child_index"] == index
+        and type(directory_identity) is dict
+        and directory_identity.get("mode") == 0o700
+        and witness.get("directory") == directory_identity
+        and type(witness.get("capture_number")) is int
+        and type(counter) is int
+        and 1 <= witness["capture_number"] <= counter
+        and witness.get("paths")
+        == {
+            "stdout": str(RAW_DIRECTORY / (str(witness["capture_number"]) + ".stdout")),
+            "stderr": str(RAW_DIRECTORY / (str(witness["capture_number"]) + ".stderr")),
+        }
+    )
+
+
 def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
     require(input_bytes is None or len(input_bytes) <= EXCHANGE_LIMIT, "bound")
     seconds = min(remaining(), timeout) if timeout is not None else remaining()
@@ -1114,11 +1228,42 @@ def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
     code = None
     sizes = {"stdout": 0, "stderr": 0}
     sent = 0
+    literal = None
     try:
+        if literal_capture_selected(
+            active_operation,
+            state.get("pre_pr_literal_child_index"),
+            len(state.get("children", [])),
+        ):
+            # The later existing Git-status child shares this operation label;
+            # only its fixed first child index owns the literal capture witness.
+            require(state.get("pre_pr_literal_capture") is None, "acquisition")
+            checked_directory(RAW_DIRECTORY, state["raw_identity"])
+            require(state["raw_identity"]["mode"] == 0o700, "acquisition")
+            literal = {
+                "operation": active_operation,
+                "child_index": state["pre_pr_literal_child_index"],
+                "capture_number": number,
+                "directory": state["raw_identity"].copy(),
+                "paths": {"stdout": str(stdout_path), "stderr": str(stderr_path)},
+                "acquired": {},
+                "final": {},
+                "eof": {"stdout": False, "stderr": False},
+                "closed": {"stdout": False, "stderr": False},
+                "native_wait_completed": False,
+                "exit": None,
+                "bytes": {"stdout": 0, "stderr": 0},
+                "cleanup_failed": False,
+                "capture_complete": False,
+            }
+            state["pre_pr_literal_capture"] = literal
         # Each returned handle is retained inside the protected lifetime.
         for path in (stdout_path, stderr_path):
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
             output_fds.append(fd)
+            if literal is not None:
+                stream = "stdout" if path == stdout_path else "stderr"
+                literal["acquired"][stream] = capture_file_identity(os.fstat(fd))
         process = subprocess.Popen(
             argv,
             stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
@@ -1160,6 +1305,8 @@ def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
                 except BlockingIOError:
                     continue
                 if not block:
+                    if literal is not None:
+                        literal["eof"][key.data] = True
                     selector.unregister(key.fileobj)
                     continue
                 channel = key.data
@@ -1177,10 +1324,22 @@ def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
         require(left > 0, "timeout")
         try:
             code = process.wait(timeout=left)
+            if literal is not None:
+                literal["native_wait_completed"] = True
+                literal["exit"] = code
+                for stream, fd in zip(("stdout", "stderr"), output_fds, strict=True):
+                    finalized = capture_file_final(os.fstat(fd))
+                    require(
+                        finalized["identity"] == literal["acquired"][stream] and finalized["size"] == sizes[stream],
+                        "acquisition",
+                    )
+                    literal["final"][stream] = finalized
         except subprocess.TimeoutExpired:
             raise Failure("timeout", 124) from None
     except BaseException as error:
         original = error
+        if literal is not None:
+            literal["capture_complete"] = False
     finally:
 
         def settle(callback):
@@ -1190,13 +1349,22 @@ def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
             except BaseException as error:
                 if cleanup_error is None:
                     cleanup_error = error
+                if literal is not None:
+                    literal["capture_complete"] = False
+                    literal["cleanup_failed"] = True
 
         for pipe in pipes:
             settle(pipe.close)
         if selector is not None:
             settle(selector.close)
-        for fd in output_fds:
-            settle(lambda fd=fd: os.close(fd))
+        for stream, fd in zip(("stdout", "stderr"), output_fds, strict=False):
+
+            def close_output(fd=fd, stream=stream):
+                os.close(fd)
+                if literal is not None:
+                    literal["closed"][stream] = True
+
+            settle(close_output)
         if process is not None:
             running = True
             try:
@@ -1219,17 +1387,25 @@ def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
                 process.wait(timeout=min(2, left))
 
             settle(reap)
-        state["raw_bytes"] = state.get("raw_bytes", 0) + sum(sizes.values())
-        state.setdefault("children", []).append(
-            {
+
+        def retain_child():
+            state["raw_bytes"] = state.get("raw_bytes", 0) + sum(sizes.values())
+            row = {
                 "operation": active_operation,
                 "exit": code,
-                "bytes": sizes,
+                "bytes": sizes.copy(),
                 "stdin_bytes": sent,
                 "reaped": process is not None and process.returncode is not None,
                 "cleanup_failed": cleanup_error is not None,
             }
-        )
+            state.setdefault("children", []).append(row)
+            if literal is not None:
+                literal["bytes"] = sizes.copy()
+                literal["cleanup_failed"] = cleanup_error is not None
+                literal["capture_complete"] = original is None and cleanup_error is None
+                literal["capture_complete"] = literal_capture_complete(literal, row)
+
+        settle(retain_child)
         settle(save)
     if original is not None:
         raise original
@@ -1351,6 +1527,7 @@ def inventory():
 def tracked_paths():
     paths = command(["git", "ls-tree", "-rz", "HEAD"])[0].read_bytes().split(b"\0")
     result = []
+    diagnostic_git = {}
     for row in paths:
         if not row:
             continue
@@ -1363,6 +1540,9 @@ def tracked_paths():
             "source",
         )
         result.append((path, mode, kind))
+        if path.startswith(("api/src/", "api/shared/", "api/bifrost/", "api/tests/")) and path.endswith(".py"):
+            diagnostic_git[path] = {"mode": mode, "kind": kind, "oid": _git_hash}
+    state["pre_pr_diagnostic_git"] = diagnostic_git
     return result
 
 
@@ -1781,6 +1961,611 @@ def pre_pr_snapshot(env_file, ledger, stage="stack"):
     return value
 
 
+DIAGNOSTIC_SHADOWS = (
+    "src/services/app_compiler/node_modules/",
+    "src/services/app_bundler/node_modules/",
+    "src/services/sdk_package/node_modules/",
+    "src/services/sdk_package/sdk_src/",
+)
+
+
+def diagnostic_path(path):
+    if type(path) is not str or not path.isascii() or not 1 <= len(path) <= 256:
+        return None
+    if path.startswith("/app/"):
+        path = path[5:]
+    if (
+        not path.startswith(("src/", "shared/", "bifrost/", "tests/"))
+        or path.startswith(DIAGNOSTIC_SHADOWS)
+        or not path.endswith(".py")
+        or any(part in {"", ".", ".."} for part in path.split("/"))
+        or any(ord(char) < 32 or ord(char) == 127 or char in "\\:" for char in path)
+    ):
+        return None
+    result = "api/" + path
+    return result if len(result) <= 256 else None
+
+
+def diagnostic_record(tool, severity, path, line, column, location):
+    mapped = diagnostic_path(path)
+    if mapped is None:
+        return None
+    if type(line) is not int or type(column) is not int or not 1 <= line <= 1048576 or not 1 <= column <= 1048576:
+        return None
+    lines = location(mapped)
+    if type(lines) is not int or line > lines:
+        return None
+    return {
+        "tool": tool,
+        "code": "unclassified",
+        "severity": severity,
+        "source_path": mapped,
+        "line": line,
+        "column": column,
+    }
+
+
+def diagnostic_records(raw, location):
+    require(type(raw) is bytes and len(raw) <= RAW_LIMIT, "bound")
+    text = raw.decode("utf-8")
+    require(not text or text.endswith("\n"), "schema")
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        line = line[:-1] if line.endswith("\r") else line
+        require(all((ord(char) >= 32 and not 127 <= ord(char) <= 159) or char == "\t" for char in line), "schema")
+        cleaned.append(line)
+    found = {}
+    for index, line in enumerate(cleaned):
+        pyright = re.fullmatch(r"  ([^:\r\n]+):([1-9][0-9]*):([1-9][0-9]*) - (error|warning|information): .*", line)
+        if pyright:
+            # Messages, continuations and any reported rule are never retained.
+            path, number, column, severity = pyright.groups()
+            if len(number) <= 7 and len(column) <= 7:
+                record = diagnostic_record("pyright", severity, path, int(number), int(column), location)
+                if record is not None:
+                    found[diagnostic_order(record)] = record
+        explicit = re.fullmatch(r"(error|warning|info)\[(?:[A-Z]+[0-9]+|invalid-syntax)\](?:\[\*\])?: .+", line)
+        hidden = re.fullmatch(r"(?:[A-Z]+[0-9]+(?: \[\*\])? .+|invalid-syntax: .+)", line)
+        if (explicit or hidden) and index + 1 < len(cleaned):
+            arrow = re.fullmatch(r" {1,2}--> ([^:\r\n]+):([1-9][0-9]*):([1-9][0-9]*)", cleaned[index + 1])
+            if arrow:
+                path, number, column = arrow.groups()
+                severity = explicit[1] if explicit else "unknown"
+                severity = "information" if severity == "info" else severity
+                if len(number) <= 7 and len(column) <= 7:
+                    record = diagnostic_record("ruff", severity, path, int(number), int(column), location)
+                    if record is not None:
+                        found[diagnostic_order(record)] = record
+        require(len(found) <= 32, "bound")
+    return list(found.values())
+
+
+def diagnostic_order(row):
+    return (
+        row["tool"],
+        row["source_path"],
+        row["line"],
+        row["column"] is not None,
+        row["column"] if row["column"] is not None else 0,
+        row["code"],
+        row["severity"],
+    )
+
+
+def diagnostic_projection(statuses, records):
+    for status in ("bound", "invalid", "missing"):
+        if status in statuses:
+            return {"admission": status, "records": []}
+    unique = {diagnostic_order(row): row for row in records}
+    if len(unique) > 32:
+        return {"admission": "bound", "records": []}
+    result = [unique[key] for key in sorted(unique)]
+    return {"admission": "observed" if result else "unrecognized", "records": result}
+
+
+def validate_diagnostic(value):
+    require(
+        type(value) is dict
+        and set(value) == {"admission", "records"}
+        and value["admission"] in {"not-needed", "observed", "missing", "unrecognized", "bound", "invalid"}
+        and type(value["records"]) is list
+        and len(value["records"]) <= 32,
+        "schema",
+    )
+    keys = []
+    for row in value["records"]:
+        require(
+            type(row) is dict
+            and set(row) == {"tool", "code", "severity", "source_path", "line", "column"}
+            and row["tool"] in {"pyright", "ruff"}
+            and row["code"] == "unclassified"
+            and row["severity"] in {"error", "warning", "information", "unknown"}
+            and type(row["source_path"]) is str
+            and row["source_path"].startswith("api/")
+            and diagnostic_path(row["source_path"][4:]) == row["source_path"]
+            and type(row["line"]) is int
+            and 1 <= row["line"] <= 1048576
+            and (row["column"] is None or (type(row["column"]) is int and 1 <= row["column"] <= 1048576)),
+            "schema",
+        )
+        keys.append(diagnostic_order(row))
+    require(keys == sorted(set(keys)), "schema")
+    require(bool(keys) == (value["admission"] == "observed"), "schema")
+
+
+def literal_capture_read(witness, stream):
+    checked_directory(RAW_DIRECTORY, state["raw_identity"])
+    require(witness["directory"] == state["raw_identity"], "acquisition")
+    path = Path(witness["paths"][stream])
+    suffix = ".stdout" if stream == "stdout" else ".stderr"
+    require(path == RAW_DIRECTORY / (str(witness["capture_number"]) + suffix), "acquisition")
+    finalized = witness["final"][stream]
+    fd = -1
+    original = None
+    raw = bytearray()
+    try:
+        remaining()
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        require(capture_file_final(os.fstat(fd)) == finalized, "acquisition")
+        require(finalized["identity"] == witness["acquired"][stream], "acquisition")
+        require(0 <= finalized["size"] <= RAW_LIMIT, "bound")
+        while block := os.read(fd, min(65536, finalized["size"] + 1 - len(raw))):
+            raw.extend(block)
+            require(len(raw) <= finalized["size"], "bound")
+            remaining()
+        require(len(raw) == finalized["size"] == witness["bytes"][stream], "acquisition")
+        require(capture_file_final(os.fstat(fd)) == finalized, "acquisition")
+        checked_directory(RAW_DIRECTORY, witness["directory"])
+        remaining()
+    except BaseException as error:
+        original = error
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except BaseException as error:
+                if original is None:
+                    original = error
+    if original is not None:
+        raise original
+    return bytes(raw)
+
+
+def diagnostic_source_lines(path):
+    tracked = state.get("pre_pr_diagnostic_git", {}).get(path)
+    if not diagnostic_tracked_file(tracked):
+        return None
+    source = ROOT / path
+    require(source == source.resolve(), "source")
+    raw = pre_pr_file(source, RAW_LIMIT)
+    git_blob = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw, usedforsecurity=False).hexdigest()
+    require(git_blob == tracked["oid"], "source")
+    text = raw.decode("utf-8")
+    return len(text.split("\n")) - (1 if text.endswith("\n") else 0) if text else 0
+
+
+def pre_pr_diagnostic():
+    value = state["pre_pr_measurement"]
+    require(value["admission"] == "admitted", "source")
+    quality = next((row for row in value["stages"] if row["stage"] == "quality"), None)
+    if quality is None or quality["status"] == "complete":
+        value["diagnostic"] = {"admission": "not-needed", "records": []}
+        validate_pre_pr_measurement(value)
+        save()
+        return
+    require(quality["status"] == "failed", "source")
+    witness = state.get("pre_pr_literal_capture")
+    index = state.get("pre_pr_literal_child_index")
+    children = state.get("children", [])
+    require(
+        literal_capture_binding(witness, children, index, state["raw_identity"], state.get("capture_counter"))
+        and type(state.get("raw_bytes")) is int
+        and 0 <= state["raw_bytes"] <= RAW_TOTAL,
+        "acquisition",
+    )
+    statuses = []
+    records = []
+    original = None
+    source_lines = {}
+
+    def location(path):
+        if path not in state.get("pre_pr_diagnostic_git", {}):
+            return None
+        if path not in source_lines:
+            source_lines[path] = diagnostic_source_lines(path)
+        return source_lines[path]
+
+    for stream in ("stdout", "stderr"):
+        try:
+            raw = literal_capture_read(witness, stream)
+            records.extend(diagnostic_records(raw, location))
+            remaining()
+        except BaseException as error:
+            statuses.append(
+                "bound"
+                if isinstance(error, Failure) and error.category == "bound"
+                else "missing"
+                if isinstance(error, FileNotFoundError)
+                else "invalid"
+            )
+            if original is None:
+                original = error
+    value["diagnostic"] = diagnostic_projection(statuses, records)
+    if not diagnostic_fit(value) and original is None:
+        original = Failure("bound")
+    if value["diagnostic"]["admission"] == "bound" and original is None:
+        original = Failure("bound")
+    if original is not None:
+        witness["capture_complete"] = False
+    validate_pre_pr_measurement(value)
+    try:
+        save()
+    except BaseException as error:
+        if original is None:
+            original = error
+    if original is not None:
+        raise original
+
+
+def quality_build_allowed(fresh, started, skip):
+    return fresh is True and started is True and type(skip) is str and skip != "1"
+
+
+def diagnostic_tracked_file(tracked):
+    return (
+        type(tracked) is dict
+        and tracked.get("mode") in {"100644", "100755"}
+        and tracked.get("kind") == "blob"
+        and type(tracked.get("oid")) is str
+        and re.fullmatch(r"[0-9a-f]{40}", tracked["oid"]) is not None
+    )
+
+
+def diagnostic_fit(value):
+    if len(canonical(value)) > 16384:
+        value["diagnostic"] = {"admission": "bound", "records": []}
+        return False
+    return True
+
+
+def complete_build_stage(measurement, stage, name):
+    return (
+        type(measurement) is dict
+        and measurement.get("admission") == "admitted"
+        and name in {"stack", "quality"}
+        and type(stage) is dict
+        and stage.get("status") == "complete"
+        and type(stage.get("signature")) is dict
+        and type(stage["signature"].get("compose_images")) is list
+        and any(row["stage"] == name and row["status"] == "complete" for row in measurement["stages"])
+    )
+
+
+def retained_build_witness(measurement, record, initial_ids, stage, project):
+    witness = record.get("witness")
+    provenance = measurement.get("image_witness")
+    name = {"stack-complete": "stack", "quality-complete": "quality"}.get(provenance)
+    if not (
+        name is not None
+        and complete_build_stage(measurement, stage, name)
+        and type(record.get("id")) is str
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", record["id"]) is not None
+        and record["id"] not in initial_ids
+        and record["id"] in stage["signature"]["compose_images"]
+        and type(witness) is dict
+        and witness.get("provenance") == provenance
+        and type(witness.get("image")) is dict
+        and witness["image"].get("Id") == record["id"]
+        and witness.get("project") == project
+        and witness.get("service") in {"init", "api", "worker", "scheduler", "scheduler-fixtures", "test-runner"}
+        and (name != "quality" or witness["service"] == "test-runner")
+        and type(witness["image"].get("Config")) is dict
+        and type(witness["image"]["Config"].get("Labels")) is dict
+    ):
+        return False
+    labels = witness["image"]["Config"]["Labels"]
+    return (
+        labels.get("com.docker.compose.project") == project
+        and labels.get("com.docker.compose.service") == witness["service"]
+        and witness.get("build")
+        == {
+            "project": project,
+            "service": witness["service"],
+            "image": record["tag"],
+            "context": str(ROOT),
+            "dockerfile": "api/Dockerfile.dev",
+        }
+    )
+
+
+def pre_pr_diagnostic_controls():
+    # Pure same-helper controls execute only in the supported pre-PR scope.
+    # Their synthetic facts are never substituted for actual child/image custody.
+    def location(path):
+        return 20 if path == "api/src/probe.py" else None
+
+    envelopes = {
+        "pyright-no-rule": b"  /app/src/probe.py:1:2 - error: discarded\n",
+        "pyright-unknown-rule": b"  src/probe.py:1:2 - error: discarded (arbitraryRule)\n",
+        "pyright-multiline": b"  src/probe.py:1:2 - error: discarded\n  continuation (arbitraryRule)\n",
+        "pyright-warning": b"  src/probe.py:1:2 - warning: discarded\n",
+        "pyright-information": b"  src/probe.py:1:2 - information: discarded\n",
+        "ruff-hidden": b"ZZ999 discarded\n --> src/probe.py:1:2\n",
+        "ruff-fix": b"F401 [*] discarded\n --> src/probe.py:1:2\n",
+        "ruff-syntax": b"invalid-syntax: discarded\n --> src/probe.py:1:2\n",
+        "ruff-explicit-error": b"error[F401]: discarded\n --> src/probe.py:1:2\n",
+        "ruff-explicit-warning": b"warning[F401]: discarded\n --> src/probe.py:1:2\n",
+        "ruff-explicit-info": b"info[F401]: discarded\n --> src/probe.py:1:2\n",
+        "ruff-explicit-fix": b"error[F401][*]: discarded\n --> src/probe.py:1:2\n",
+        "ruff-two-space-arrow": b"F401 discarded\n  --> src/probe.py:1:2\n",
+        "crlf": b"  src/probe.py:1:2 - error: discarded\r\n",
+        "spoof-still-unauthenticated": b"F401 arbitrary fake payload\n --> src/probe.py:1:2\n",
+    }
+    for label, raw in envelopes.items():
+        records = diagnostic_records(raw, location)
+        expected_tool = "pyright" if label.startswith("pyright") or label == "crlf" else "ruff"
+        expected_severity = (
+            "warning"
+            if label.endswith("warning")
+            else "information"
+            if label.endswith(("information", "info"))
+            else "error"
+            if expected_tool == "pyright" or label.startswith("ruff-explicit")
+            else "unknown"
+        )
+        require(
+            len(records) == 1
+            and records[0]
+            == {
+                "tool": expected_tool,
+                "code": "unclassified",
+                "severity": expected_severity,
+                "source_path": "api/src/probe.py",
+                "line": 1,
+                "column": 2,
+            },
+            "source",
+        )
+        validate_diagnostic(diagnostic_projection([], records))
+    unmatched = {
+        "empty": b"",
+        "build-only": b"build failed\n",
+        "ruff-no-arrow": b"F401 discarded\n",
+        "ruff-three-space-arrow": b"F401 discarded\n   --> src/probe.py:1:2\n",
+        "ruff-secondary-arrow": b"F401 discarded\n source excerpt\n --> src/probe.py:1:2\n",
+        "ruff-unsupported-punctuation": b"error F401 discarded\n --> src/probe.py:1:2\n",
+        "pyright-wrong-prefix": b" /app/src/probe.py:1:2 - error: discarded\n",
+        "untracked": b"  src/absent.py:1:2 - error: discarded\n",
+        "traversal": b"  src/../probe.py:1:2 - error: discarded\n",
+        "case-mismatch": b"  src/Probe.py:1:2 - error: discarded\n",
+        "host-path": b"  /home/runner/probe.py:1:2 - error: discarded\n",
+        "renderer-excluded": b"  /app/doc_renderer_service/probe.py:1:2 - error: discarded\n",
+        "source-line-overflow": b"  src/probe.py:21:2 - error: discarded\n",
+        "zero-line": b"  src/probe.py:0:2 - error: discarded\n",
+        "zero-column": b"  src/probe.py:1:0 - error: discarded\n",
+        "leading-zero": b"  src/probe.py:01:2 - error: discarded\n",
+        "coordinate-overflow": b"  src/probe.py:1:1048577 - error: discarded\n",
+    }
+    for raw in unmatched.values():
+        require(not diagnostic_records(raw, location), "source")
+    for prefix in DIAGNOSTIC_SHADOWS:
+        require(diagnostic_path(prefix + "probe.py") is None, "source")
+    for raw in (b"\xff\n", b"NUL\0\n", b"\x1b[31mtext\n", b"a\rb\n", b"no final newline", b"x" * (RAW_LIMIT + 1)):
+        try:
+            diagnostic_records(raw, location)
+        except (Failure, UnicodeError):
+            pass
+        else:
+            raise Failure("source")
+    baseline = diagnostic_records(envelopes["pyright-no-rule"], location)
+    require(diagnostic_projection([], baseline + baseline)["records"] == baseline, "source")
+    for statuses, expected in (
+        (["missing"], "missing"),
+        (["invalid"], "invalid"),
+        (["bound"], "bound"),
+        (["missing", "invalid"], "invalid"),
+        (["missing", "invalid", "bound"], "bound"),
+    ):
+        require(diagnostic_projection(statuses, baseline) == {"admission": expected, "records": []}, "source")
+    overflow = [{**baseline[0], "column": number} for number in range(1, 34)]
+    require(diagnostic_projection([], overflow) == {"admission": "bound", "records": []}, "source")
+    nullable = {**baseline[0], "column": None}
+    ordered = diagnostic_projection([], [*baseline, nullable])
+    require(ordered["records"] == [nullable, baseline[0]], "source")
+    validate_diagnostic(ordered)
+    for field, invalid in (("line", True), ("column", False), ("line", 0), ("column", 1048577)):
+        try:
+            validate_diagnostic({"admission": "observed", "records": [{**baseline[0], field: invalid}]})
+        except Failure:
+            pass
+        else:
+            raise Failure("source")
+    require(diagnostic_record("pyright", "error", "src/probe.py", True, 2, location) is None, "source")
+    require(diagnostic_record("pyright", "error", "src/probe.py", 1, False, location) is None, "source")
+
+    for tracked in (
+        None,
+        {"mode": "120000", "kind": "blob", "oid": "1" * 40},
+        {"mode": "160000", "kind": "commit", "oid": "1" * 40},
+    ):
+        require(not diagnostic_tracked_file(tracked), "source")
+    require(diagnostic_tracked_file({"mode": "100644", "kind": "blob", "oid": "1" * 40}), "source")
+    too_large = {"diagnostic": {"admission": "observed", "records": baseline}, "padding": "x" * 16384}
+    require(
+        not diagnostic_fit(too_large) and too_large["diagnostic"] == {"admission": "bound", "records": []}, "source"
+    )
+    for fresh, started, skip in ((False, True, "0"), (True, False, "0"), (True, True, "1")):
+        require(not quality_build_allowed(fresh, started, skip), "source")
+    require(quality_build_allowed(True, True, "0"), "source")
+
+    require(literal_capture_selected("literal-pre-pr", 0, 0), "source")
+    for operation_name, index, count in (
+        ("literal-pre-pr", 0, 1),
+        ("literal-pre-pr", True, 1),
+        ("source-before", 0, 0),
+        ("literal-pre-pr", -1, -1),
+    ):
+        require(not literal_capture_selected(operation_name, index, count), "source")
+
+    regular = (stat.S_IFREG | 0o600, 1, 1, 1, os.getuid(), 0, 0, 0, 0, 0)
+    require(capture_file_identity(os.stat_result(regular))["mode"] == 0o600, "source")
+    for offset, invalid in ((0, stat.S_IFREG | 0o644), (0, stat.S_IFDIR | 0o600), (3, 2), (4, os.getuid() + 1)):
+        changed = list(regular)
+        changed[offset] = invalid
+        try:
+            capture_file_identity(os.stat_result(changed))
+        except Failure:
+            pass
+        else:
+            raise Failure("source")
+
+    acquired = {"dev": 1, "ino": 1, "uid": 1, "mode": 0o600, "nlink": 1}
+    finalized = {"identity": acquired, "size": 0, "mtime": 0, "ctime": 0}
+    witness = {
+        "operation": "literal-pre-pr",
+        "capture_complete": True,
+        "native_wait_completed": True,
+        "cleanup_failed": False,
+        "exit": 1,
+        "acquired": {stream: acquired for stream in ("stdout", "stderr")},
+        "final": {stream: finalized for stream in ("stdout", "stderr")},
+        "eof": {"stdout": True, "stderr": True},
+        "closed": {"stdout": True, "stderr": True},
+        "bytes": {"stdout": 0, "stderr": 0},
+    }
+    row = {
+        "operation": "literal-pre-pr",
+        "exit": 1,
+        "bytes": {"stdout": 0, "stderr": 0},
+        "stdin_bytes": 0,
+        "reaped": True,
+        "cleanup_failed": False,
+    }
+    for native_exit in (0, 1, -15):
+        require(literal_capture_complete({**witness, "exit": native_exit}, {**row, "exit": native_exit}), "source")
+    branches = [
+        ("no-acquisition", {**witness, "acquired": {}}),
+        ("one-acquisition", {**witness, "acquired": {"stdout": acquired}}),
+        ("fstat-failed", {**witness, "final": {}}),
+        ("popen-failed", {**witness, "native_wait_completed": False}),
+        ("stdout-only-eof", {**witness, "eof": {"stdout": True, "stderr": False}}),
+        ("stderr-only-eof", {**witness, "eof": {"stdout": False, "stderr": True}}),
+        ("timeout-reaped-prefix", {**witness, "capture_complete": False}),
+        ("bound-reaped-prefix", {**witness, "capture_complete": False}),
+        ("partial-write", {**witness, "bytes": {"stdout": 1, "stderr": 0}}),
+        (
+            "identity-replacement",
+            {
+                **witness,
+                "final": {
+                    "stdout": {**finalized, "identity": {**acquired, "ino": 2}},
+                    "stderr": finalized,
+                },
+            },
+        ),
+        (
+            "final-size-mismatch",
+            {
+                **witness,
+                "final": {
+                    "stdout": {**finalized, "size": 1},
+                    "stderr": finalized,
+                },
+            },
+        ),
+        ("stdout-close-failed", {**witness, "closed": {"stdout": False, "stderr": True}}),
+        ("stderr-close-failed", {**witness, "closed": {"stdout": True, "stderr": False}}),
+        ("fallback-reap-only", {**witness, "native_wait_completed": False}),
+        ("bookkeeping-save-failed", {**witness, "capture_complete": False}),
+        ("cleanup-failed", {**witness, "cleanup_failed": True}),
+    ]
+    for _label, incomplete in branches:
+        require(not literal_capture_complete(incomplete, row), "source")
+    for changed in ({**row, "exit": 0}, {**row, "reaped": False}, {**row, "operation": "source-before"}):
+        require(not literal_capture_complete(witness, changed), "source")
+
+    directory_identity = {"dev": 1, "ino": 1, "uid": 1, "mode": 0o700}
+    bound_witness = {
+        **witness,
+        "child_index": 0,
+        "capture_number": 7,
+        "directory": directory_identity,
+        "paths": {"stdout": str(RAW_DIRECTORY / "7.stdout"), "stderr": str(RAW_DIRECTORY / "7.stderr")},
+    }
+    require(literal_capture_binding(bound_witness, [row], 0, directory_identity, 7), "source")
+    for index in (True, -1, 1):
+        require(not literal_capture_binding(bound_witness, [row], index, directory_identity, 7), "source")
+    for field, invalid in (
+        ("child_index", 1),
+        ("capture_number", 8),
+        ("capture_number", True),
+        ("paths", {}),
+        ("directory", {}),
+    ):
+        require(
+            not literal_capture_binding({**bound_witness, field: invalid}, [row], 0, directory_identity, 7), "source"
+        )
+
+    image_id = "sha256:" + "1" * 64
+    project = "synthetic-control"
+    measurement = {
+        "admission": "admitted",
+        "stages": [{"stage": "quality", "status": "complete"}],
+        "image_witness": "quality-complete",
+    }
+    stage = {"status": "complete", "signature": {"compose_images": [image_id]}}
+    record = {
+        "id": image_id,
+        "tag": "synthetic-control:only",
+        "witness": {
+            "provenance": "quality-complete",
+            "project": project,
+            "service": "test-runner",
+            "image": {
+                "Id": image_id,
+                "Config": {
+                    "Labels": {"com.docker.compose.project": project, "com.docker.compose.service": "test-runner"}
+                },
+            },
+            "build": {
+                "project": project,
+                "service": "test-runner",
+                "image": "synthetic-control:only",
+                "context": str(ROOT),
+                "dockerfile": "api/Dockerfile.dev",
+            },
+        },
+    }
+    require(retained_build_witness(measurement, record, [], stage, project), "source")
+    for status in ("failed", "running"):
+        require(not retained_build_witness(measurement, record, [], {**stage, "status": status}, project), "source")
+    require(not retained_build_witness(measurement, record, [], None, project), "source")
+    require(not retained_build_witness(measurement, record, [image_id], stage, project), "source")
+    require(
+        not retained_build_witness(measurement, record, [], {**stage, "signature": {"compose_images": []}}, project),
+        "source",
+    )
+    require(not retained_build_witness(measurement, record, [], stage, "foreign"), "source")
+    require(not retained_build_witness(measurement, {**record, "witness": None}, [], stage, project), "source")
+    require(not retained_build_witness(measurement, {**record, "id": None}, [], stage, project), "source")
+    require(
+        not retained_build_witness(measurement, {**record, "id": "sha256:" + "2" * 64}, [], stage, project), "source"
+    )
+    for field, invalid in (("service", "api"), ("build", {}), ("provenance", "stack-complete")):
+        changed = {**record, "witness": {**record["witness"], field: invalid}}
+        require(not retained_build_witness(measurement, changed, [], stage, project), "source")
+    later_failure = {**measurement, "stages": measurement["stages"] + [{"stage": "generated", "status": "failed"}]}
+    require(retained_build_witness(later_failure, record, [], stage, project), "source")
+    stack_measurement = {
+        "admission": "admitted",
+        "stages": [{"stage": "stack", "status": "complete"}],
+        "image_witness": "stack-complete",
+    }
+    stack_record = {**record, "witness": {**record["witness"], "provenance": "stack-complete"}}
+    require(retained_build_witness(stack_measurement, stack_record, [], stage, project), "source")
+
+
 def validate_pre_pr_measurement(value):
     require(
         type(value) is dict
@@ -1796,7 +2581,7 @@ def validate_pre_pr_measurement(value):
             "image_witness",
             "diagnostic",
         }
-        and value["schema"] == "bifrost.test.agent-prepare-pre-pr-measurement/v1"
+        and value["schema"] == "bifrost.test.agent-prepare-pre-pr-measurement/v2"
         and value["candidate_sha"] == receipt["candidate"]["checkout_sha"]
         and type(value["candidate_sha"]) is str
         and re.fullmatch(r"[0-9a-f]{40}", value["candidate_sha"])
@@ -1812,10 +2597,21 @@ def validate_pre_pr_measurement(value):
         and type(value["stages"]) is list
         and len(value["stages"]) <= 11
         and type(value["image_witness"]) is str
-        and value["image_witness"] in {"none", "stack-complete"}
-        and value["diagnostic"] == "unknown",
+        and value["image_witness"] in {"none", "stack-complete", "quality-complete"},
         "schema",
     )
+    validate_diagnostic(value["diagnostic"])
+    if value["diagnostic"]["admission"] == "observed":
+        require(
+            literal_capture_binding(
+                state.get("pre_pr_literal_capture"),
+                state.get("children", []),
+                state.get("pre_pr_literal_child_index"),
+                state["raw_identity"],
+                state.get("capture_counter"),
+            ),
+            "acquisition",
+        )
     names = []
     for row in value["stages"]:
         require(
@@ -1830,10 +2626,16 @@ def validate_pre_pr_measurement(value):
         )
         names.append(row["stage"])
     require(names == sorted(set(names)), "schema")
+    quality = next((row for row in value["stages"] if row["stage"] == "quality"), None)
+    if value["diagnostic"]["admission"] == "observed":
+        require(value["admission"] == "admitted" and quality is not None and quality["status"] == "failed", "schema")
+    if value["diagnostic"]["admission"] == "not-needed":
+        require(value["admission"] == "admitted" and (quality is None or quality["status"] == "complete"), "schema")
     if value["admission"] != "admitted":
         require(not names and value["image_witness"] == "none", "schema")
-    if value["image_witness"] == "stack-complete":
-        require(any(row["stage"] == "stack" and row["status"] == "complete" for row in value["stages"]), "schema")
+    if value["image_witness"] != "none":
+        name = {"stack-complete": "stack", "quality-complete": "quality"}[value["image_witness"]]
+        require(any(row["stage"] == name and row["status"] == "complete" for row in value["stages"]), "schema")
     require(len(canonical(value)) <= 16384, "bound")
 
 
@@ -1848,6 +2650,16 @@ def pre_pr_capture():
         child_record = children[index]
         require(child_record["operation"] == "literal-pre-pr", "source")
         value["literal_exit"] = child_record["exit"]
+    else:
+        # A later row-retention failure must not erase an already measured wait.
+        witness = state.get("pre_pr_literal_capture")
+        if (
+            type(witness) is dict
+            and witness.get("native_wait_completed") is True
+            and witness.get("child_index") == index
+        ):
+            require(type(witness.get("exit")) is int and -255 <= witness["exit"] <= 255, "source")
+            value["literal_exit"] = witness["exit"]
     ledger = Path(state["pre_pr_ledger"])
     plan = Path(state["pre_pr_plan"])
     if not ledger.exists() or not plan.exists():
@@ -1916,6 +2728,7 @@ def pre_pr_capture():
     # Commit admitted rows only after every private record was validated.
     value.update(admission="admitted", stages=rows)
     state["pre_pr_stack_record"] = observed["stages"].get("stack")
+    state["pre_pr_quality_record"] = observed["stages"].get("quality")
     validate_pre_pr_measurement(value)
     save()
 
@@ -1923,19 +2736,34 @@ def pre_pr_capture():
 def pre_pr_image_witness():
     value = state["pre_pr_measurement"]
     record = state["pre_pr_api_tag"]
-    current = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
-    require(current and current not in state["initial_image_ids"], "acquisition")
     stack = state.get("pre_pr_stack_record")
+    quality = state.get("pre_pr_quality_record")
+    if complete_build_stage(value, stack, "stack"):
+        stage = stack
+        provenance = "stack-complete"
+        allowed = {"init", "api", "worker", "scheduler", "scheduler-fixtures", "test-runner"}
+    else:
+        require(complete_build_stage(value, quality, "quality"), "acquisition")
+        require(
+            quality_build_allowed(
+                state.get("pre_pr_fresh"),
+                state.get("pre_pr_started"),
+                state["pre_pr_environment"]["BIFROST_SKIP_BUILD"],
+            ),
+            "acquisition",
+        )
+        stage = quality
+        provenance = "quality-complete"
+        allowed = {"test-runner"}
+    current = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
+    # Authoritative helper inspects ALL configured tags. Empty membership remains
+    # HOLD even after completed quality; never narrow or synthesize the signature.
     require(
-        value["admission"] == "admitted"
-        and stack is not None
-        and stack["status"] == "complete"
-        and current in stack["signature"]["compose_images"],
+        current and current not in state["initial_image_ids"] and current in stage["signature"]["compose_images"],
         "acquisition",
     )
     facts = inspect("image", current)
     labels = facts["Config"].get("Labels") or {}
-    allowed = {"init", "api", "worker", "scheduler", "scheduler-fixtures", "test-runner"}
     require(
         facts["Id"] == current
         and record["tag"] in facts.get("RepoTags", [])
@@ -1943,8 +2771,7 @@ def pre_pr_image_witness():
         and labels.get("com.docker.compose.service") in allowed,
         "acquisition",
     )
-    # Resolve genuine Compose build association under the effective environment;
-    # private config never reaches the safe artifact.
+    # This completed build association does not establish stack/API readiness.
     config = decode(
         capture(
             [
@@ -1971,17 +2798,25 @@ def pre_pr_image_witness():
         "project": state["project"],
         "service": labels["com.docker.compose.service"],
         "literal_exit": value["literal_exit"],
-        "provenance": "stack-complete",
+        "provenance": provenance,
         "image": facts,
+        "build": {
+            "project": state["project"],
+            "service": labels["com.docker.compose.service"],
+            "image": record["tag"],
+            "context": str(ROOT),
+            "dockerfile": "api/Dockerfile.dev",
+        },
     }
-    value["image_witness"] = "stack-complete"
+    value["image_witness"] = provenance
+    require(retained_build_witness(value, record, state["initial_image_ids"], stage, state["project"]), "acquisition")
     validate_pre_pr_measurement(value)
     save()
 
 
 def pre_pr():
     state["pre_pr_measurement"] = {
-        "schema": "bifrost.test.agent-prepare-pre-pr-measurement/v1",
+        "schema": "bifrost.test.agent-prepare-pre-pr-measurement/v2",
         "candidate_sha": receipt["candidate"]["checkout_sha"],
         "run_id": os.environ["GITHUB_RUN_ID"],
         "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
@@ -1989,11 +2824,12 @@ def pre_pr():
         "literal_exit": None,
         "stages": [],
         "image_witness": "none",
-        "diagnostic": "unknown",
+        "diagnostic": {"admission": "invalid", "records": []},
     }
     begin("pre-pr")
     original = None
     try:
+        pre_pr_diagnostic_controls()
         for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
             require(os.environ.get(key), "credential")
             state[key] = os.environ[key]
@@ -2031,10 +2867,13 @@ def pre_pr():
     finally:
         # Capture, genuine image acquisition and credential disposal are independent;
         # none can replace the first original command/control object.
-        for callback in (pre_pr_capture, pre_pr_image_witness):
+        for callback in (pre_pr_capture, pre_pr_diagnostic, pre_pr_image_witness):
             try:
                 callback()
             except BaseException as error:
+                if callback in (pre_pr_capture, pre_pr_diagnostic):
+                    with suppress(BaseException):
+                        invalidate_literal_capture()
                 if original is None:
                     original = error
         try:
@@ -2755,21 +3594,22 @@ def cleanup():
 
     def remove_image(record, row):
         if record is state.get("pre_pr_api_tag") and state.get("pre_pr_started"):
-            # Absence is not acquisition proof for an actual partial/failed build.
-            # Require the admitted immutable witness before any absence shortcut.
+            # A genuine retained complete-stage witness is required BEFORE absence.
             measurement = state.get("pre_pr_measurement")
-            witness = record.get("witness")
+            provenance = measurement.get("image_witness") if type(measurement) is dict else None
+            name = {"stack-complete": "stack", "quality-complete": "quality"}.get(provenance)
+            stage = state.get("pre_pr_" + name + "_record") if name is not None else None
             require(
                 type(measurement) is dict
-                and measurement.get("admission") == "admitted"
-                and measurement.get("image_witness") == "stack-complete"
-                and type(record.get("id")) is str
-                and re.fullmatch(r"sha256:[0-9a-f]{64}", record["id"])
-                and record["id"] not in state["initial_image_ids"]
-                and type(witness) is dict
-                and witness.get("provenance") == "stack-complete"
-                and type(witness.get("image")) is dict
-                and witness["image"].get("Id") == record["id"],
+                and retained_build_witness(measurement, record, state["initial_image_ids"], stage, state["project"])
+                and (
+                    name != "quality"
+                    or quality_build_allowed(
+                        state.get("pre_pr_fresh"),
+                        state.get("pre_pr_started"),
+                        state["pre_pr_environment"]["BIFROST_SKIP_BUILD"],
+                    )
+                ),
                 "acquisition",
             )
         existing = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
