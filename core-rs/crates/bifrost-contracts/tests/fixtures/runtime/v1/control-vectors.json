@@ -497,6 +497,46 @@
       "name": "large-negative-overflow-sequence",
       "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":-99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"artifact_id\":\"python-runtime-control-fixture\",\"image_digest\":null,\"interpreter\":{\"implementation\":\"cpython\",\"version\":\"3.14.0\"},\"sdk\":{\"distribution\":null,\"version\":null},\"requirements_lock_sha256\":null,\"runtime_protocol\":\"bifrost.runtime/v1\"}}}",
       "expected": "InvalidJson"
+    },
+    {
+      "name": "rawvalue-hidden-start",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"{\\\"prepare_message_id\\\":\\\"00000000-0000-0000-0000-000000000005\\\",\\\"committed_start_id\\\":\\\"00000000-0000-0000-0000-000000000006\\\",\\\"parent_duration_seconds\\\":30}\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "rawvalue-hidden-start-duplicate",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"{\\\"prepare_message_id\\\":\\\"00000000-0000-0000-0000-000000000005\\\",\\\"prepare_message_id\\\":\\\"00000000-0000-0000-0000-000000000005\\\",\\\"committed_start_id\\\":\\\"00000000-0000-0000-0000-000000000006\\\",\\\"parent_duration_seconds\\\":30}\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "rawvalue-hidden-start-depth",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "rawvalue-hidden-hello-artifact",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Hello\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000003\",\"sequence\":1,\"correlation_id\":null,\"body\":{\"runtime_incarnation_id\":\"00000000-0000-0000-0000-000000000002\",\"supported_protocols\":[\"bifrost.runtime/v1\"],\"capabilities\":[\"control_profile/v1\"],\"artifact\":{\"$serde_json::private::RawValue\":\"{\\\"artifact_id\\\":\\\"python-runtime-control-fixture\\\",\\\"image_digest\\\":null,\\\"interpreter\\\":{\\\"implementation\\\":\\\"cpython\\\",\\\"version\\\":\\\"3.14.0\\\"},\\\"sdk\\\":{\\\"distribution\\\":null,\\\"version\\\":null},\\\"requirements_lock_sha256\\\":null,\\\"runtime_protocol\\\":\\\"bifrost.runtime/v1\\\"}\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "rawvalue-hidden-stopped-error",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Stopped\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-00000000000f\",\"sequence\":2,\"correlation_id\":null,\"body\":{\"start_message_id\":null,\"cancel_id\":null,\"reason\":\"prepare_rejected\",\"result_message_id\":null,\"error\":{\"$serde_json::private::RawValue\":\"{\\\"type\\\":\\\"RuntimePreparationError\\\",\\\"message\\\":\\\"synthetic café failure\\\",\\\"traceback\\\":null}\"}}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "rawvalue-hidden-start-unsupported-protocol",
+      "json": "{\"protocol\":\"bifrost.runtime/v999\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"{\\\"prepare_message_id\\\":\\\"00000000-0000-0000-0000-000000000005\\\",\\\"committed_start_id\\\":\\\"00000000-0000-0000-0000-000000000006\\\",\\\"parent_duration_seconds\\\":30}\"}}",
+      "expected": "UnsupportedProtocol"
+    },
+    {
+      "name": "rawvalue-hidden-start-nonstring-protocol",
+      "json": "{\"protocol\":true,\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"{\\\"prepare_message_id\\\":\\\"00000000-0000-0000-0000-000000000005\\\",\\\"committed_start_id\\\":\\\"00000000-0000-0000-0000-000000000006\\\",\\\"parent_duration_seconds\\\":30}\"}}",
+      "expected": "InvalidFrame"
+    },
+    {
+      "name": "rawvalue-hidden-start-malformed-inner",
+      "json": "{\"protocol\":\"bifrost.runtime/v1\",\"type\":\"Start\",\"session_id\":\"00000000-0000-0000-0000-000000000001\",\"message_id\":\"00000000-0000-0000-0000-000000000004\",\"sequence\":1,\"correlation_id\":\"00000000-0000-0000-0000-000000000005\",\"body\":{\"$serde_json::private::RawValue\":\"{not-json\"}}",
+      "expected": "InvalidFrame"
     }
   ],
   "binary": [
