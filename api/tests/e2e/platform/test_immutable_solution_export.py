@@ -5,6 +5,7 @@ import zipfile
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import update
 
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
@@ -134,7 +135,9 @@ async def test_export_keeps_complete_sealed_imports_and_assets(
         exported = {p: archive.read(p) for p in archive.namelist() if p.endswith(".py")}
         assert exported == files
         assert archive.read("assets/schema.json") == asset
-    workflow.is_active = False
+    # Deliberately inject registry drift through the same Core projection seam
+    # used by deployment. Direct ORM edits correctly trip the managed guard.
+    await db_session.execute(update(Workflow).where(Workflow.id == wid).values(is_active=False))
     await db_session.commit()
     response = e2e_client.post(
         f"/api/solutions/{sid}/export?mode=shareable",
