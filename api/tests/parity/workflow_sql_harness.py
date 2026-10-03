@@ -18,6 +18,7 @@ import stat
 import struct
 import sys
 import time
+import tomllib
 from contextlib import asynccontextmanager, contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
@@ -263,11 +264,71 @@ def prepare_json_inputs(raw_fields: dict, lane: str) -> dict:
     return result
 
 
+def source_lock_packages(raw: bytes) -> set[str]:
+    try:
+        lock = tomllib.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+        raise AssertionError("Result source lock syntax") from None
+    check(type(lock.get("version")) is int and lock["version"] == 4, "Result source lock version")
+    packages = lock.get("package")
+    check(type(packages) is list and 1 <= len(packages) <= 232, "Result source lock packages")
+    identities = []
+    for package in packages:
+        check(type(package) is dict, "Result source lock package")
+        name, version = package.get("name"), package.get("version")
+        check(
+            type(name) is str
+            and re.fullmatch(r"[A-Za-z0-9_-]+", name) is not None
+            and type(version) is str
+            and re.fullmatch(r"[A-Za-z0-9.+_-]+", version) is not None,
+            "Result source lock identity",
+        )
+        identity = f"{name}@{version}"
+        check(len(identity) <= 256, "Result source lock identity bound")
+        identities.append(identity)
+    check(len(set(identities)) == len(identities), "Result source lock duplicate")
+    return set(identities)
+
+
+def source_graph_summary(graph, admitted_packages: set[str]):
+    """Workspace crosscheck only; parent owns projection and manifest-domain admission."""
+    closed(graph, {"sha256", "packages", "features"})
+    check(
+        type(graph["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", graph["sha256"]) is not None,
+        "Result graph projection digest",
+    )
+    packages, features = graph["packages"], graph["features"]
+    check(
+        type(packages) is list
+        and 1 <= len(packages) <= 232
+        and all(type(package) is str and package.isascii() and len(package) <= 256 for package in packages),
+        "Result graph packages",
+    )
+    check(packages == sorted(set(packages)) and set(packages) <= admitted_packages, "Result graph package membership")
+    check(
+        type(features) is list
+        and all(type(feature) is str and feature.isascii() and len(feature) <= 512 for feature in features),
+        "Result graph features",
+    )
+    check(features == sorted(set(features)), "Result graph feature order")
+    for feature in features:
+        check(feature.count("/") == 1, "Result graph feature shape")
+        package, name = feature.split("/")
+        check(
+            package in packages and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", name) is not None,
+            "Result graph feature membership",
+        )
+        check(
+            package != "serde_json@1.0.151" or name not in {"float_roundtrip", "arbitrary_precision"},
+            "Result graph forbidden feature",
+        )
+
+
 def source_admission(observer=None) -> dict:
     """Read-only external receipt contract; producer is a separately held gate."""
     value = decode(read_file(RECEIPT, 1024 * 1024))
     closed(value, {"schema", "candidate", "sources", "binary", "graphs"})
-    check(value["schema"] == "bifrost.test.workflow-result-source/v1", "Result source receipt")
+    check(value["schema"] == "bifrost.test.workflow-result-source/v2", "Result source receipt")
     closed(value["candidate"], {"head", "tree"})
     check(
         all(re.fullmatch(r"[0-9a-f]{40}", value["candidate"][k]) for k in ("head", "tree")), "Result candidate metadata"
@@ -293,11 +354,17 @@ def source_admission(observer=None) -> dict:
         }
     )
     check(required <= set(value["sources"]), "Result source receipt incomplete")
+    lock_bytes = None
     for path in required:
+        source_bytes = read_file(ROOT / path, 4 * 1024 * 1024)
         check(
-            hashlib.sha256(read_file(ROOT / path, 4 * 1024 * 1024)).hexdigest() == value["sources"][path],
+            hashlib.sha256(source_bytes).hexdigest() == value["sources"][path],
             "Result source readback",
         )
+        if path == "core-rs/Cargo.lock":
+            lock_bytes = source_bytes
+    check(type(lock_bytes) is bytes, "Result source lock readback")
+    admitted_packages = source_lock_packages(lock_bytes)
     for path, digest in REFERENCE_HASHES.items():
         check(value["sources"][path] == digest, "Result reference drift")
     closed(value["binary"], {"sha256", "source_paths", "build_head", "build_tree"})
@@ -320,13 +387,7 @@ def source_admission(observer=None) -> dict:
         "Result feature evidence absent",
     )
     for graph in value["graphs"].values():
-        closed(graph, {"sha256", "packages", "features"})
-        check(
-            re.fullmatch(r"[0-9a-f]{64}", graph["sha256"]) is not None
-            and type(graph["packages"]) is list
-            and type(graph["features"]) is list,
-            "Result graph metadata",
-        )
+        source_graph_summary(graph, admitted_packages)
     if observer is not None:
         observer.session.loaded_source_admission(value)
     return value
@@ -1797,6 +1858,41 @@ def source_observer_controls():
     negative(lambda: observer_original(original, foreign, "/app/a", "/app/a", "d", "d", "d"))
     negative(lambda: observer_original(original, original, "/app/a", "/app/a", "d", "x", "d"))
     negative(lambda: observer_original(original, original, "/api/a", "/app/a", "d", "d", "d"))
+    synthetic_lock = b'version = 4\n[[package]]\nname = "serde_json"\nversion = "1.0.151"\n'
+    packages = source_lock_packages(synthetic_lock)
+    graph = {
+        "sha256": "a" * 64,
+        "packages": ["serde_json@1.0.151"],
+        "features": ["serde_json@1.0.151/raw_value", "serde_json@1.0.151/std"],
+    }
+    source_graph_summary(graph, packages)
+    source_graph_summary(graph | {"features": []}, packages)
+    for bad_lock in (
+        b"\xff",
+        b"version = [",
+        synthetic_lock.replace(b"version = 4", b"version = 4.0"),
+        synthetic_lock + b'[[package]]\nname = "serde_json"\nversion = "1.0.151"\n',
+        synthetic_lock.replace(b'"serde_json"', b'"serde/json"'),
+    ):
+        negative(lambda bad_lock=bad_lock: source_lock_packages(bad_lock))
+    for bad_graph in (
+        graph | {"unknown": None},
+        graph | {"sha256": True},
+        graph | {"packages": []},
+        graph | {"packages": ["serde_json@1.0.151"] * 2},
+        graph | {"packages": ["foreign@1"]},
+        graph | {"features": True},
+        graph | {"features": [True]},
+        graph | {"features": list(reversed(graph["features"]))},
+        graph | {"features": graph["features"] * 2},
+        graph | {"features": ["foreign@1/std"]},
+        graph | {"features": ["serde_json@1.0.151/std/extra"]},
+        graph | {"features": ["serde_json@1.0.151/é"]},
+        graph | {"features": ["serde_json@1.0.151/" + "x" * 129]},
+        graph | {"features": ["serde_json@1.0.151/float_roundtrip"]},
+        graph | {"features": ["serde_json@1.0.151/arbitrary_precision"]},
+    ):
+        negative(lambda bad_graph=bad_graph: source_graph_summary(bad_graph, packages))
     completed += 1
     url = make_url("postgresql+asyncpg://synthetic:synthetic@localhost:5432/synthetic")
     engine, null_pool = SimpleNamespace(url=url), object()
