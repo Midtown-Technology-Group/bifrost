@@ -31159,6 +31159,12 @@ export interface components {
         /** SolutionGitSourceDeliveryResponse */
         SolutionGitSourceDeliveryResponse: {
             /**
+             * Authored Source State
+             * @default unmapped
+             * @enum {string}
+             */
+            authored_source_state: "unmapped" | "verified" | "attention_required";
+            /**
              * State
              * @enum {string}
              */

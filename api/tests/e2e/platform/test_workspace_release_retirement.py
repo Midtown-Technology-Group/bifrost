@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from bifrost.workspace_release import (
+    canonical_digest,
     workspace_manifest_id,
     workspace_registration_manifest_id,
 )
@@ -518,6 +519,88 @@ async def test_workspace_release_retirement_requires_live_handoff_and_resolved_h
                 )
             )
         await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
+async def test_workspace_release_retirement_preserves_disjoint_source_obligation(
+    platform_admin, db_session,
+) -> None:
+    source_path = f"governed_retirement_disjoint_{uuid4().hex}/workflow.py"
+    obligation_path = f"unrelated_source_obligation_{uuid4().hex}/settings.json"
+    release_row_id = job_id = None
+    source_record_id = None
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session,
+            source_path=source_path,
+            function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID,
+            source_commit_sha="3" * 40,
+            source_tree_sha="4" * 40,
+            paths={obligation_path: "b" * 64},
+            declaration_actor="platform_admin",
+            declared_disposition="attention_required",
+            disposition="attention_required",
+            reason="Independent source evidence remains unresolved",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(record)
+        await db_session.commit()
+        source_record_id = record.id
+        await db_session.refresh(record)
+        before = {
+            "disposition": record.disposition,
+            "paths": dict(record.paths),
+            "reason": record.reason,
+            "completion_evidence": record.completion_evidence,
+            "resolved_at": record.resolved_at,
+            "accounting_checked_at": record.accounting_checked_at,
+        }
+
+        retired = await _retire(
+            db_session,
+            artifact,
+            release,
+            user_id=platform_admin.user_id,
+            reason="Retire Live while preserving unrelated source evidence",
+        )
+
+        await db_session.refresh(record)
+        await db_session.refresh(release)
+        assert retired.release_id == artifact.release_id
+        assert release.activation_state == "retired"
+        assert {
+            "disposition": record.disposition,
+            "paths": dict(record.paths),
+            "reason": record.reason,
+            "completion_evidence": record.completion_evidence,
+            "resolved_at": record.resolved_at,
+            "accounting_checked_at": record.accounting_checked_at,
+        } == before
+        evidence = release.retirement_evidence
+        assert evidence["excluded_source_obligations"] == [{
+            "source_release_id": str(record.id),
+            "path_map_digest": canonical_digest({obligation_path: "b" * 64}),
+        }]
+        assert evidence["source_obligation_boundary_digest"] == canonical_digest({
+            "release_row_id": str(release.id),
+            "artifact_id": str(artifact.id),
+            "release_id": artifact.release_id,
+            "effective_manifest_id": artifact.manifest["effective_manifest_id"],
+            "source_hashes": artifact.manifest["effective_files"],
+        })
+    finally:
+        await db_session.rollback()
+        if source_record_id is not None:
+            await db_session.execute(delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id
+            ))
+            await db_session.commit()
         await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
 
 

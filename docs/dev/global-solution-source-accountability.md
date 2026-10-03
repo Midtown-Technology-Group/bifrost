@@ -53,6 +53,16 @@ Workspace execution pins remain valid across Solution ownership changes and
 Live retirement. Retain immutable release objects while accepted work or
 retained evidence references them.
 
+Retirement checks unresolved obligations against every path in the full Live
+artifact, including its dependency closure. A complete, valid, nonempty path
+map that is disjoint from that artifact does not veto retirement. The retirement
+receipt records its ID, path-map digest and the exact artifact boundary digest;
+the obligation itself remains unresolved and unchanged. Overlapping, malformed,
+empty or deletion-bearing maps still block. The bounded inventory is refreshed
+under a table fence through the retirement commit so concurrent declarations
+cannot escape this check. This exclusion does not prove delivery or grant a
+completion disposition.
+
 
 ## Read-only retirement inventory
 

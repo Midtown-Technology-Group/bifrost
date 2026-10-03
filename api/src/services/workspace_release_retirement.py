@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from uuid import UUID
 
 from bifrost.workspace_release import canonical_digest
@@ -35,6 +37,7 @@ from src.services.workflow_retirement_consumers import (
     WorkflowRetirementInventoryError,
     inspect_workflow_retirement_consumers,
 )
+from src.services.workspace_release_files import normalize_release_path
 from src.services.workspace_release_projection import acquire_workspace_release_lock
 from src.services.workspace_release_runtime import (
     WorkspaceReleaseDescriptor,
@@ -42,6 +45,8 @@ from src.services.workspace_release_runtime import (
 )
 
 RETIREMENT_EVIDENCE_SCHEMA = "bifrost.workspace-release-retirement/v1"
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_MAX_SOURCE_OBLIGATION_ROWS = 1000
 
 
 class WorkspaceReleaseRetirementError(ValueError):
@@ -195,7 +200,9 @@ class WorkspaceReleaseRetirementService:
             descriptor, request, user_id=user_id,
         )
         await self._require_no_loose_consumers(descriptor)
-        await self._require_resolved_source_obligations()
+        excluded_source_obligations = await self._require_resolved_source_obligations(
+            descriptor
+        )
         now = datetime.now(UTC)
         evidence = {
             "schema_version": RETIREMENT_EVIDENCE_SCHEMA,
@@ -209,6 +216,14 @@ class WorkspaceReleaseRetirementService:
             "governed_path_count": len(descriptor.governed_paths),
             "retired_at": now.isoformat(),
             "retired_registration_evidence": retired_registrations,
+            "excluded_source_obligations": excluded_source_obligations,
+            "source_obligation_boundary_digest": canonical_digest({
+                "release_row_id": str(descriptor.release_row_id),
+                "artifact_id": str(descriptor.artifact_id),
+                "release_id": descriptor.release_id,
+                "effective_manifest_id": descriptor.effective_manifest_id,
+                "source_hashes": descriptor.source_hashes,
+            }),
             "obsolete_registration_reviews_digest": canonical_digest([
                 item.model_dump(mode="json") for item in request.obsolete_registrations
             ]),
@@ -329,24 +344,73 @@ class WorkspaceReleaseRetirementService:
         except WorkflowRetirementInventoryError as exc:
             raise WorkspaceReleaseRetirementError(str(exc)) from exc
 
-    async def _require_resolved_source_obligations(self) -> None:
-        row = (
-            await self.db.execute(
-                select(WorkspaceSourceRelease.id)
-                .where(
-                    WorkspaceSourceRelease.organization_id == self.organization_id,
-                    WorkspaceSourceRelease.disposition.in_(
-                        ("pending", "attention_required", "deferred")
-                    ),
-                )
-                .limit(1)
+    @staticmethod
+    def _classify_source_obligation(
+        record: WorkspaceSourceRelease,
+        source_hashes: dict[str, str],
+    ) -> dict[str, str] | None:
+        """Return auditable exclusion evidence only for a complete disjoint map."""
+        paths = record.paths
+        if not isinstance(paths, dict) or not paths:
+            return None
+        normalized: dict[str, str] = {}
+        try:
+            for raw_path, digest in paths.items():
+                if not isinstance(raw_path, str):
+                    return None
+                path = normalize_release_path(raw_path)
+                if (
+                    PurePosixPath(path).as_posix() != path
+                    or path in normalized
+                    or not isinstance(digest, str)
+                    or not _SHA256_RE.fullmatch(digest)
+                ):
+                    return None
+                normalized[path] = digest
+        except (TypeError, ValueError):
+            return None
+        if set(normalized) & set(source_hashes):
+            return None
+        return {
+            "source_release_id": str(record.id),
+            "path_map_digest": canonical_digest(dict(sorted(normalized.items()))),
+        }
+
+    async def _require_resolved_source_obligations(
+        self, descriptor: WorkspaceReleaseDescriptor
+    ) -> list[dict[str, str]]:
+        # Fence inserts and updates until retirement commits. Do not row-lock
+        # these records: source writers may lock a row before needing this table.
+        await self.db.execute(
+            text("LOCK TABLE workspace_source_releases IN SHARE MODE")
+        )
+        result = await self.db.scalars(
+            select(WorkspaceSourceRelease)
+            .where(
+                WorkspaceSourceRelease.organization_id == self.organization_id,
+                WorkspaceSourceRelease.disposition.in_(
+                    ("pending", "attention_required", "deferred")
+                ),
             )
-        ).first()
-        if row is not None:
+            .order_by(WorkspaceSourceRelease.id)
+            .limit(_MAX_SOURCE_OBLIGATION_ROWS + 1)
+            .execution_options(populate_existing=True)
+        )
+        records = list(result.all())
+        if len(records) > _MAX_SOURCE_OBLIGATION_ROWS:
             raise WorkspaceReleaseRetirementError(
-                "unresolved Workspace source-release obligations remain; "
-                "read back and resolve each disposition before retirement"
+                "unresolved Workspace source-release inventory exceeds its bound"
             )
+        excluded: list[dict[str, str]] = []
+        for record in records:
+            evidence = self._classify_source_obligation(record, descriptor.source_hashes)
+            if evidence is None:
+                raise WorkspaceReleaseRetirementError(
+                    "unresolved Workspace source-release obligations remain; "
+                    "read back and resolve each relevant or invalid disposition before retirement"
+                )
+            excluded.append(evidence)
+        return excluded
 
     def _retired_response(
         self,

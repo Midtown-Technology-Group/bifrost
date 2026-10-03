@@ -81,13 +81,59 @@ def _service(release, artifact, *, live, retired, monkeypatch):
     service._live_release = AsyncMock(return_value=live)  # type: ignore[method-assign]
     service._retired_release = AsyncMock(return_value=retired)  # type: ignore[method-assign]
     service._require_no_loose_consumers = AsyncMock()  # type: ignore[method-assign]
-    service._require_resolved_source_obligations = AsyncMock()  # type: ignore[method-assign]
+    service._require_resolved_source_obligations = AsyncMock(return_value=[])  # type: ignore[method-assign]
     monkeypatch.setattr(
         retirement_module, "acquire_workspace_release_lock", AsyncMock()
     )
     audit = AsyncMock()
     monkeypatch.setattr(retirement_module, "emit_audit", audit)
     return db, service, audit
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        {},
+        {"workflows/demo.py": None},
+        {"workflows/demo.py": "A" * 64},
+        {"../workflows/demo.py": "a" * 64},
+        {"workflows//demo.py": "a" * 64},
+        {"workflows/./demo.py": "a" * 64},
+        {"workflows\\demo.py": "a" * 64, "workflows/demo.py": "b" * 64},
+    ],
+)
+def test_source_obligation_exclusion_fails_closed_for_invalid_or_ambiguous_maps(paths):
+    record = SimpleNamespace(id=uuid4(), paths=paths)
+
+    assert WorkspaceReleaseRetirementService._classify_source_obligation(
+        record, {"workflows/demo.py": "a" * 64}
+    ) is None
+
+
+def test_source_obligation_exclusion_requires_full_map_disjoint_from_live():
+    record = SimpleNamespace(
+        id=uuid4(), paths={"unrelated/config.json": "a" * 64}
+    )
+
+    result = WorkspaceReleaseRetirementService._classify_source_obligation(
+        record, {"workflows/demo.py": "b" * 64}
+    )
+
+    assert result == {
+        "source_release_id": str(record.id),
+        "path_map_digest": canonical_digest({"unrelated/config.json": "a" * 64}),
+    }
+
+
+def test_source_obligation_exclusion_blocks_any_full_manifest_overlap():
+    record = SimpleNamespace(
+        id=uuid4(),
+        paths={"unrelated/config.json": "a" * 64, "workflows\\demo.py": "b" * 64},
+    )
+
+    assert WorkspaceReleaseRetirementService._classify_source_obligation(
+        record, {"workflows/demo.py": "b" * 64}
+    ) is None
 
 
 @pytest.mark.asyncio
