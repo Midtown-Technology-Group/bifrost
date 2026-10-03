@@ -58,6 +58,23 @@ changing the legacy list before that successor fails closed. The optional
 `legacy_parameters_schema_hash` field is additive and omitted when absent, so
 existing manifest hashes and historical execution evidence remain unchanged.
 
+Installed legacy descriptions and categories may differ from source-derived
+strings, including an installed `null` description that the compiler cannot
+express. Adoption seals exactly those two installed values and their digest in
+`definition.legacy_descriptor_evidence`. The executable definition retains the
+reviewed source descriptors; adoption never projects them into the registry.
+Fresh preflight recompiles the complete artifact with independently read
+installed descriptors. Descriptor drift, malformed evidence, source drift and
+identity, scope, parameter or security changes still fail closed. A source-only
+successor retains this evidence; a reviewed registration successor compiles its
+normal descriptors and projects them under the existing controls. Historical
+pins continue to reference the original immutable artifact.
+
+Candidates staged by the earlier adoption implementation must be restaged with
+a fresh candidate UUID to obtain the complete descriptor evidence. Existing
+active deployments and their historical hashes are unchanged. No public DTO,
+SDK field, database migration or metadata PATCH is added.
+
 ## Remaining cutover evidence
 
 The 2026-10-03 production inventory read all 45 catalog entries and active

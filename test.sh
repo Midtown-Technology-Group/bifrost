@@ -370,6 +370,9 @@ run_pytest() {
     # the whole session is reported as ERROR even though every test ran. Make the
     # mount dir world-writable so the uid-1000 container can write results into it.
     chmod 777 "$LOG_DIR" 2>/dev/null || true
+    # The runner entrypoint chowns mounted results to uid 1000. Replace the
+    # previous log so a different host uid can open tee on the next invocation.
+    rm -f "$LOG_DIR/test-runner.log"
     local build_args=("--build")
     if [ "${BIFROST_SKIP_BUILD:-0}" = "1" ]; then
         build_args=()
