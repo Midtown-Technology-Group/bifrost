@@ -926,6 +926,619 @@ fn number_request(node: &Node) -> Parse<Value> {
     )
 }
 
+// Fixed six-table software catalog projection; no caller SQL or closure.
+const SCHEMA_IDENTITY_SQL: &str = r#"WITH fixed(table_name) AS (VALUES
+ ('executions'), ('workflow_execution_attempts'), ('execution_logs'),
+ ('devices'), ('device_jobs'), ('device_job_logs')
+), selected AS MATERIALIZED (
+ SELECT n.nspname::text AS schema_name, c.relname::text AS table_name,
+        c.oid AS relation_id, c.*
+ FROM fixed f
+ JOIN pg_catalog.pg_namespace n ON n.nspname = 'public'
+ JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = f.table_name
+)
+SELECT count(*)::bigint AS count,
+       coalesce(bool_and(relkind = 'r'), false) AS ordinary,
+       count(DISTINCT table_name)::bigint AS distinct_names
+FROM selected;"#;
+
+const SCHEMA_RELATIONS_SQL: &str = r#"WITH fixed(table_name) AS (VALUES
+ ('executions'), ('workflow_execution_attempts'), ('execution_logs'),
+ ('devices'), ('device_jobs'), ('device_job_logs')
+), selected AS MATERIALIZED (
+ SELECT n.nspname::text AS schema_name, c.relname::text AS table_name,
+        c.oid AS relation_id, c.*
+ FROM fixed f
+ JOIN pg_catalog.pg_namespace n ON n.nspname = 'public'
+ JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = f.table_name
+)
+, rows AS MATERIALIZED (
+SELECT s.table_name, 0 AS member_number, s.schema_name AS member_schema,
+       s.table_name AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,s.relkind::text,
+         s.relpersistence::text,am.amname::text,ts.spcname::text,
+         s.relnatts,s.relchecks,s.relhasindex,s.relhasrules,s.relhastriggers,
+         s.relhassubclass,s.relrowsecurity,s.relforcerowsecurity,
+         s.relreplident::text,s.relispartition,s.reloptions,
+         pg_get_expr(s.relpartbound,s.relation_id,false))::text AS payload
+FROM selected s
+LEFT JOIN pg_catalog.pg_am am ON am.oid=s.relam
+LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid=s.reltablespace
+ORDER BY s.table_name COLLATE "C" LIMIT 1025
+)
+, limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM rows
+), admitted_rows AS MATERIALIZED (
+ SELECT r.* FROM rows r CROSS JOIN limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM admitted_rows
+)
+SELECT l.row_count,l.document_bytes,
+       CASE WHEN l.row_count<=1024 AND l.document_bytes<=65536
+            THEN encode(sha256(convert_to(d.text,'UTF8')),'hex') ELSE NULL END AS sha256
+FROM limits l CROSS JOIN document d;"#;
+
+const SCHEMA_COLUMNS_SQL: &str = r#"WITH fixed(table_name) AS (VALUES
+ ('executions'), ('workflow_execution_attempts'), ('execution_logs'),
+ ('devices'), ('device_jobs'), ('device_job_logs')
+), selected AS MATERIALIZED (
+ SELECT n.nspname::text AS schema_name, c.relname::text AS table_name,
+        c.oid AS relation_id, c.*
+ FROM fixed f
+ JOIN pg_catalog.pg_namespace n ON n.nspname = 'public'
+ JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = f.table_name
+)
+, rows AS MATERIALIZED (
+SELECT s.table_name,a.attnum::integer AS member_number,
+       s.schema_name AS member_schema,a.attname::text AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,a.attnum,a.attname::text,
+         tn.nspname::text,t.typname::text,a.atttypmod,
+         CASE WHEN a.attisdropped THEN NULL ELSE format_type(a.atttypid,a.atttypmod) END,
+         a.attnotnull,a.atthasdef,a.attidentity::text,a.attgenerated::text,
+         a.attisdropped,a.attndims,a.attlen,a.attbyval,a.attalign::text,
+         a.attstorage::text,a.attcompression::text,a.attislocal,a.attinhcount,
+         a.attstattarget,a.attoptions,a.atthasmissing,a.attmissingval::text,
+         cn.nspname::text,co.collname::text,
+         pg_get_expr(d.adbin,d.adrelid,false))::text AS payload
+FROM selected s
+JOIN pg_catalog.pg_attribute a ON a.attrelid=s.relation_id AND a.attnum>0
+LEFT JOIN pg_catalog.pg_type t ON t.oid=a.atttypid
+LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=t.typnamespace
+LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+LEFT JOIN pg_catalog.pg_collation co ON co.oid=a.attcollation
+LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace
+ORDER BY s.table_name COLLATE "C",a.attnum LIMIT 1025
+)
+, limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM rows
+), admitted_rows AS MATERIALIZED (
+ SELECT r.* FROM rows r CROSS JOIN limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM admitted_rows
+)
+SELECT l.row_count,l.document_bytes,
+       CASE WHEN l.row_count<=1024 AND l.document_bytes<=65536
+            THEN encode(sha256(convert_to(d.text,'UTF8')),'hex') ELSE NULL END AS sha256
+FROM limits l CROSS JOIN document d;"#;
+
+const SCHEMA_CONSTRAINTS_SQL: &str = r#"WITH fixed(table_name) AS (VALUES
+ ('executions'), ('workflow_execution_attempts'), ('execution_logs'),
+ ('devices'), ('device_jobs'), ('device_job_logs')
+), selected AS MATERIALIZED (
+ SELECT n.nspname::text AS schema_name, c.relname::text AS table_name,
+        c.oid AS relation_id, c.*
+ FROM fixed f
+ JOIN pg_catalog.pg_namespace n ON n.nspname = 'public'
+ JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = f.table_name
+)
+, rows AS MATERIALIZED (
+SELECT s.table_name,0 AS member_number,ns.nspname::text AS member_schema,
+       c.conname::text AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,ns.nspname::text,c.conname::text,
+         c.contype::text,c.convalidated,c.condeferrable,c.condeferred,
+         c.conislocal,c.coninhcount,c.connoinherit,c.conkey,c.confkey,
+         c.confupdtype::text,c.confdeltype::text,c.confmatchtype::text,c.confdelsetcols,
+         rn.nspname::text,r.relname::text,
+         ixn.nspname::text,ix.relname::text,
+         pn.nspname::text,pr.relname::text,p.conname::text,
+         pg_get_constraintdef(c.oid,false))::text AS payload
+FROM selected s
+JOIN pg_catalog.pg_constraint c ON c.conrelid=s.relation_id
+JOIN pg_catalog.pg_namespace ns ON ns.oid=c.connamespace
+LEFT JOIN pg_catalog.pg_class r ON r.oid=c.confrelid
+LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid=r.relnamespace
+LEFT JOIN pg_catalog.pg_class ix ON ix.oid=c.conindid
+LEFT JOIN pg_catalog.pg_namespace ixn ON ixn.oid=ix.relnamespace
+LEFT JOIN pg_catalog.pg_constraint p ON p.oid=c.conparentid
+LEFT JOIN pg_catalog.pg_class pr ON pr.oid=p.conrelid
+LEFT JOIN pg_catalog.pg_namespace pn ON pn.oid=pr.relnamespace
+ORDER BY s.table_name COLLATE "C",ns.nspname::text COLLATE "C",c.conname::text COLLATE "C"
+LIMIT 1025
+)
+, limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM rows
+), admitted_rows AS MATERIALIZED (
+ SELECT r.* FROM rows r CROSS JOIN limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM admitted_rows
+)
+SELECT l.row_count,l.document_bytes,
+       CASE WHEN l.row_count<=1024 AND l.document_bytes<=65536
+            THEN encode(sha256(convert_to(d.text,'UTF8')),'hex') ELSE NULL END AS sha256
+FROM limits l CROSS JOIN document d;"#;
+
+const SCHEMA_INDEXES_SQL: &str = r#"WITH fixed(table_name) AS (VALUES
+ ('executions'), ('workflow_execution_attempts'), ('execution_logs'),
+ ('devices'), ('device_jobs'), ('device_job_logs')
+), selected AS MATERIALIZED (
+ SELECT n.nspname::text AS schema_name, c.relname::text AS table_name,
+        c.oid AS relation_id, c.*
+ FROM fixed f
+ JOIN pg_catalog.pg_namespace n ON n.nspname = 'public'
+ JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = f.table_name
+)
+, rows AS MATERIALIZED (
+SELECT s.table_name,0 AS member_number,n.nspname::text AS member_schema,
+       c.relname::text AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,n.nspname::text,c.relname::text,
+         c.relkind::text,am.amname::text,ts.spcname::text,c.reloptions,
+         i.indnatts,i.indnkeyatts,i.indisunique,i.indnullsnotdistinct,
+         i.indisprimary,i.indisexclusion,i.indimmediate,i.indisclustered,
+         i.indisvalid,i.indcheckxmin,i.indisready,i.indislive,i.indisreplident,
+         i.indkey::text,i.indoption::text,
+         pg_get_indexdef(i.indexrelid,0,false),
+         pg_get_expr(i.indexprs,i.indrelid,false),
+         pg_get_expr(i.indpred,i.indrelid,false))::text AS payload
+FROM selected s
+JOIN pg_catalog.pg_index i ON i.indrelid=s.relation_id
+JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+LEFT JOIN pg_catalog.pg_am am ON am.oid=c.relam
+LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid=c.reltablespace
+ORDER BY s.table_name COLLATE "C",n.nspname::text COLLATE "C",c.relname::text COLLATE "C"
+LIMIT 1025
+)
+, limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM rows
+), admitted_rows AS MATERIALIZED (
+ SELECT r.* FROM rows r CROSS JOIN limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM admitted_rows
+)
+SELECT l.row_count,l.document_bytes,
+       CASE WHEN l.row_count<=1024 AND l.document_bytes<=65536
+            THEN encode(sha256(convert_to(d.text,'UTF8')),'hex') ELSE NULL END AS sha256
+FROM limits l CROSS JOIN document d;"#;
+
+const SCHEMA_COMBINED_SQL: &str = r#"WITH fixed(table_name) AS (VALUES
+ ('executions'), ('workflow_execution_attempts'), ('execution_logs'),
+ ('devices'), ('device_jobs'), ('device_job_logs')
+), selected AS MATERIALIZED (
+ SELECT n.nspname::text AS schema_name, c.relname::text AS table_name,
+        c.oid AS relation_id, c.*
+ FROM fixed f
+ JOIN pg_catalog.pg_namespace n ON n.nspname = 'public'
+ JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = f.table_name
+)
+, relations_rows AS MATERIALIZED (
+SELECT s.table_name, 0 AS member_number, s.schema_name AS member_schema,
+       s.table_name AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,s.relkind::text,
+         s.relpersistence::text,am.amname::text,ts.spcname::text,
+         s.relnatts,s.relchecks,s.relhasindex,s.relhasrules,s.relhastriggers,
+         s.relhassubclass,s.relrowsecurity,s.relforcerowsecurity,
+         s.relreplident::text,s.relispartition,s.reloptions,
+         pg_get_expr(s.relpartbound,s.relation_id,false))::text AS payload
+FROM selected s
+LEFT JOIN pg_catalog.pg_am am ON am.oid=s.relam
+LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid=s.reltablespace
+ORDER BY s.table_name COLLATE "C" LIMIT 1025
+)
+, relations_limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM relations_rows
+), relations_admitted AS MATERIALIZED (
+ SELECT r.* FROM relations_rows r CROSS JOIN relations_limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), relations_document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM relations_admitted
+)
+, columns_rows AS MATERIALIZED (
+SELECT s.table_name,a.attnum::integer AS member_number,
+       s.schema_name AS member_schema,a.attname::text AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,a.attnum,a.attname::text,
+         tn.nspname::text,t.typname::text,a.atttypmod,
+         CASE WHEN a.attisdropped THEN NULL ELSE format_type(a.atttypid,a.atttypmod) END,
+         a.attnotnull,a.atthasdef,a.attidentity::text,a.attgenerated::text,
+         a.attisdropped,a.attndims,a.attlen,a.attbyval,a.attalign::text,
+         a.attstorage::text,a.attcompression::text,a.attislocal,a.attinhcount,
+         a.attstattarget,a.attoptions,a.atthasmissing,a.attmissingval::text,
+         cn.nspname::text,co.collname::text,
+         pg_get_expr(d.adbin,d.adrelid,false))::text AS payload
+FROM selected s
+JOIN pg_catalog.pg_attribute a ON a.attrelid=s.relation_id AND a.attnum>0
+LEFT JOIN pg_catalog.pg_type t ON t.oid=a.atttypid
+LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=t.typnamespace
+LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+LEFT JOIN pg_catalog.pg_collation co ON co.oid=a.attcollation
+LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace
+ORDER BY s.table_name COLLATE "C",a.attnum LIMIT 1025
+)
+, columns_limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM columns_rows
+), columns_admitted AS MATERIALIZED (
+ SELECT r.* FROM columns_rows r CROSS JOIN columns_limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), columns_document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM columns_admitted
+)
+, constraints_rows AS MATERIALIZED (
+SELECT s.table_name,0 AS member_number,ns.nspname::text AS member_schema,
+       c.conname::text AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,ns.nspname::text,c.conname::text,
+         c.contype::text,c.convalidated,c.condeferrable,c.condeferred,
+         c.conislocal,c.coninhcount,c.connoinherit,c.conkey,c.confkey,
+         c.confupdtype::text,c.confdeltype::text,c.confmatchtype::text,c.confdelsetcols,
+         rn.nspname::text,r.relname::text,
+         ixn.nspname::text,ix.relname::text,
+         pn.nspname::text,pr.relname::text,p.conname::text,
+         pg_get_constraintdef(c.oid,false))::text AS payload
+FROM selected s
+JOIN pg_catalog.pg_constraint c ON c.conrelid=s.relation_id
+JOIN pg_catalog.pg_namespace ns ON ns.oid=c.connamespace
+LEFT JOIN pg_catalog.pg_class r ON r.oid=c.confrelid
+LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid=r.relnamespace
+LEFT JOIN pg_catalog.pg_class ix ON ix.oid=c.conindid
+LEFT JOIN pg_catalog.pg_namespace ixn ON ixn.oid=ix.relnamespace
+LEFT JOIN pg_catalog.pg_constraint p ON p.oid=c.conparentid
+LEFT JOIN pg_catalog.pg_class pr ON pr.oid=p.conrelid
+LEFT JOIN pg_catalog.pg_namespace pn ON pn.oid=pr.relnamespace
+ORDER BY s.table_name COLLATE "C",ns.nspname::text COLLATE "C",c.conname::text COLLATE "C"
+LIMIT 1025
+)
+, constraints_limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM constraints_rows
+), constraints_admitted AS MATERIALIZED (
+ SELECT r.* FROM constraints_rows r CROSS JOIN constraints_limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), constraints_document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM constraints_admitted
+)
+, indexes_rows AS MATERIALIZED (
+SELECT s.table_name,0 AS member_number,n.nspname::text AS member_schema,
+       c.relname::text AS member_name,
+       jsonb_build_array(s.schema_name,s.table_name,n.nspname::text,c.relname::text,
+         c.relkind::text,am.amname::text,ts.spcname::text,c.reloptions,
+         i.indnatts,i.indnkeyatts,i.indisunique,i.indnullsnotdistinct,
+         i.indisprimary,i.indisexclusion,i.indimmediate,i.indisclustered,
+         i.indisvalid,i.indcheckxmin,i.indisready,i.indislive,i.indisreplident,
+         i.indkey::text,i.indoption::text,
+         pg_get_indexdef(i.indexrelid,0,false),
+         pg_get_expr(i.indexprs,i.indrelid,false),
+         pg_get_expr(i.indpred,i.indrelid,false))::text AS payload
+FROM selected s
+JOIN pg_catalog.pg_index i ON i.indrelid=s.relation_id
+JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+LEFT JOIN pg_catalog.pg_am am ON am.oid=c.relam
+LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid=c.reltablespace
+ORDER BY s.table_name COLLATE "C",n.nspname::text COLLATE "C",c.relname::text COLLATE "C"
+LIMIT 1025
+)
+, indexes_limits AS MATERIALIZED (
+ SELECT count(*)::bigint AS row_count,
+        (2 + coalesce(sum(octet_length(convert_to(payload,'UTF8'))),0)
+           + greatest(count(*)-1,0))::bigint AS document_bytes
+ FROM indexes_rows
+), indexes_admitted AS MATERIALIZED (
+ SELECT r.* FROM indexes_rows r CROSS JOIN indexes_limits l
+ WHERE l.row_count<=1024 AND l.document_bytes<=65536
+), indexes_document AS (
+ SELECT '[' || coalesce(string_agg(payload,',' ORDER BY
+          table_name COLLATE "C",member_number,member_schema COLLATE "C",member_name COLLATE "C"),'')
+        || ']' AS text FROM indexes_admitted
+)
+SELECT encode(sha256(convert_to(
+ '[[' || '"relations",' || r.text || '],["columns",' || c.text
+       || '],["constraints",' || k.text || '],["indexes",' || i.text || ']]',
+ 'UTF8')),'hex') AS combined_sha256
+FROM relations_document r CROSS JOIN columns_document c
+CROSS JOIN constraints_document k CROSS JOIN indexes_document i
+CROSS JOIN relations_limits rl CROSS JOIN columns_limits cl
+CROSS JOIN constraints_limits kl CROSS JOIN indexes_limits il
+WHERE rl.row_count=6 AND cl.row_count<=1024 AND kl.row_count<=1024 AND il.row_count<=1024
+ AND rl.document_bytes<=65536 AND cl.document_bytes<=65536
+ AND kl.document_bytes<=65536 AND il.document_bytes<=65536;"#;
+
+struct SchemaRequest {
+    case_id: &'static str,
+    phase: &'static str,
+}
+
+fn schema_request(node: &Node) -> Parse<SchemaRequest> {
+    node.keys(&["schema", "case_id", "phase"])?;
+    if node.member("schema")?.string()? != "bifrost.test.workflow-schema-observation/v1" {
+        return Err(());
+    }
+    match (
+        node.member("case_id")?.string()?,
+        node.member("phase")?.string()?,
+    ) {
+        ("schemaBefore", "before_target") => Ok(SchemaRequest {
+            case_id: "schemaBefore",
+            phase: "before_target",
+        }),
+        ("schemaAfter", "after_native") => Ok(SchemaRequest {
+            case_id: "schemaAfter",
+            phase: "after_native",
+        }),
+        _ => Err(()),
+    }
+}
+
+// Private error custody only: no Debug, SQL messages, or secondary-error output.
+enum SchemaStage {
+    Acquire,
+    Begin,
+    Setup,
+    Profile,
+    Heads,
+    Floor,
+    ReadPrivilege,
+    Catalog,
+    Commit,
+    Close,
+    Emit,
+}
+struct SchemaFailure {
+    stage: SchemaStage,
+    original: Option<sqlx::Error>,
+}
+impl SchemaFailure {
+    fn database(stage: SchemaStage, original: sqlx::Error) -> Self {
+        Self {
+            stage,
+            original: Some(original),
+        }
+    }
+    fn admission(stage: SchemaStage) -> Self {
+        Self {
+            stage,
+            original: None,
+        }
+    }
+    fn discard(self) {
+        // Consume the original only after independent resource settlement.
+        let Self { stage, original } = self;
+        let _stage = stage;
+        drop(original);
+    }
+}
+
+struct SchemaComponent {
+    count: i64,
+    sha256: String,
+}
+impl SchemaComponent {
+    fn output(&self) -> Value {
+        json!({"count":self.count,"sha256":self.sha256})
+    }
+}
+struct SchemaObservation {
+    server_major: i32,
+    heads: Vec<String>,
+    device_floor: bool,
+    components: [SchemaComponent; 4],
+    combined_sha256: String,
+}
+impl SchemaObservation {
+    fn output(&self, request: &SchemaRequest) -> Value {
+        json!({"schema":"bifrost.test.workflow-schema-observed/v1",
+            "case_id":request.case_id,"phase":request.phase,"server_major":self.server_major,
+            "heads":self.heads,"device_floor":self.device_floor,
+            "catalog":{"relations":self.components[0].output(),"columns":self.components[1].output(),
+                "constraints":self.components[2].output(),"indexes":self.components[3].output(),
+                "combined_sha256":self.combined_sha256},"complete":true})
+    }
+}
+
+fn schema_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+async fn schema_component(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    query: &'static str,
+) -> Result<SchemaComponent, SchemaFailure> {
+    let (count, bytes, digest): (i64, i64, Option<String>) = sqlx::query_as(query)
+        .persistent(false)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|error| SchemaFailure::database(SchemaStage::Catalog, error))?;
+    if !(0..=1024).contains(&count) || !(2..=65_536).contains(&bytes) {
+        return Err(SchemaFailure::admission(SchemaStage::Catalog));
+    }
+    let Some(sha256) = digest.filter(|value| schema_digest(value)) else {
+        return Err(SchemaFailure::admission(SchemaStage::Catalog));
+    };
+    Ok(SchemaComponent { count, sha256 })
+}
+
+async fn schema_collect(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<SchemaObservation, SchemaFailure> {
+    for query in [
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+        "SET LOCAL statement_timeout = '2000ms'",
+        "SET LOCAL lock_timeout = '1000ms'",
+        "SET LOCAL search_path = pg_catalog, public",
+    ] {
+        sqlx::query(query)
+            .persistent(false)
+            .execute(&mut **tx)
+            .await
+            .map_err(|error| SchemaFailure::database(SchemaStage::Setup, error))?;
+    }
+    let (isolation, read_only, server_major): (String, String, i32) = sqlx::query_as(
+        "SELECT current_setting('transaction_isolation'), current_setting('transaction_read_only'), current_setting('server_version_num')::integer / 10000"
+    )
+    .persistent(false)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|error| SchemaFailure::database(SchemaStage::Profile, error))?;
+    if isolation != "repeatable read" || read_only != "on" || server_major != 16 {
+        return Err(SchemaFailure::admission(SchemaStage::Profile));
+    }
+    let heads: Vec<String> = sqlx::query_scalar(
+        "SELECT version_num::text FROM public.alembic_version ORDER BY version_num::text COLLATE \"C\" LIMIT 9"
+    )
+    .persistent(false)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|error| SchemaFailure::database(SchemaStage::Heads, error))?;
+    if heads.is_empty()
+        || heads.len() > 8
+        || !heads.iter().all(|head| {
+            !head.is_empty()
+                && head.len() <= 128
+                && head
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
+        || !heads.windows(2).all(|pair| pair[0] < pair[1])
+    {
+        return Err(SchemaFailure::admission(SchemaStage::Heads));
+    }
+    let device_floor: bool = sqlx::query_scalar(include_str!("../src/schema.sql"))
+        .persistent(false)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|error| SchemaFailure::database(SchemaStage::Floor, error))?;
+    if !device_floor {
+        return Err(SchemaFailure::admission(SchemaStage::Floor));
+    }
+    sqlx::query("SELECT d.id, j.claim_token, l.seq FROM public.devices d CROSS JOIN public.device_jobs j CROSS JOIN public.device_job_logs l WHERE FALSE")
+        .persistent(false)
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| SchemaFailure::database(SchemaStage::ReadPrivilege, error))?;
+    let (count, ordinary, distinct_names): (i64, bool, i64) = sqlx::query_as(SCHEMA_IDENTITY_SQL)
+        .persistent(false)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|error| SchemaFailure::database(SchemaStage::Catalog, error))?;
+    if count != 6 || !ordinary || distinct_names != 6 {
+        return Err(SchemaFailure::admission(SchemaStage::Catalog));
+    }
+    let components = [
+        schema_component(tx, SCHEMA_RELATIONS_SQL).await?,
+        schema_component(tx, SCHEMA_COLUMNS_SQL).await?,
+        schema_component(tx, SCHEMA_CONSTRAINTS_SQL).await?,
+        schema_component(tx, SCHEMA_INDEXES_SQL).await?,
+    ];
+    if components[0].count != 6 {
+        return Err(SchemaFailure::admission(SchemaStage::Catalog));
+    }
+    let combined_sha256: Option<String> = sqlx::query_scalar(SCHEMA_COMBINED_SQL)
+        .persistent(false)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|error| SchemaFailure::database(SchemaStage::Catalog, error))?;
+    let Some(combined_sha256) = combined_sha256.filter(|value| schema_digest(value)) else {
+        return Err(SchemaFailure::admission(SchemaStage::Catalog));
+    };
+    Ok(SchemaObservation {
+        server_major,
+        heads,
+        device_floor,
+        components,
+        combined_sha256,
+    })
+}
+
+async fn schema_transaction(
+    connection: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
+) -> Result<SchemaObservation, SchemaFailure> {
+    let mut tx = connection
+        .begin()
+        .await
+        .map_err(|error| SchemaFailure::database(SchemaStage::Begin, error))?;
+    match schema_collect(&mut tx).await {
+        Ok(observed) => {
+            tx.commit()
+                .await
+                .map_err(|error| SchemaFailure::database(SchemaStage::Commit, error))?;
+            Ok(observed)
+        }
+        Err(original) => {
+            // Explicit rollback is independently attempted; never replace the first error.
+            let _rollback = tx.rollback().await;
+            Err(original)
+        }
+    }
+}
+
+async fn observe_schema(options: PgConnectOptions) -> Result<SchemaObservation, SchemaFailure> {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect_lazy_with(options);
+    let mut observed = match pool.acquire().await {
+        Ok(mut connection) => {
+            let observed = schema_transaction(&mut connection).await;
+            drop(connection);
+            observed
+        }
+        Err(error) => Err(SchemaFailure::database(SchemaStage::Acquire, error)),
+    };
+    pool.close().await;
+    if !pool.is_closed() && observed.is_ok() {
+        observed = Err(SchemaFailure::admission(SchemaStage::Close));
+    }
+    observed
+}
+
 fn read_input() -> Parse<Node> {
     let mut bytes = Vec::new();
     io::stdin()
@@ -966,6 +1579,38 @@ async fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     match command.to_str() {
+        Some("observe-schema") => {
+            let Ok(input) = schema_request(&node) else {
+                return ExitCode::from(2);
+            };
+            let Ok(url) = std::env::var("BIFROST_RUST_TEST_DATABASE_URL") else {
+                return ExitCode::from(2);
+            };
+            if !url.starts_with("postgres://") && !url.starts_with("postgresql://") {
+                return ExitCode::from(2);
+            }
+            let Ok(options) = PgConnectOptions::from_str(&url) else {
+                return ExitCode::from(2);
+            };
+            let options = options
+                .statement_cache_capacity(0)
+                .disable_statement_logging();
+            drop(url);
+            match observe_schema(options).await {
+                Ok(observed) => {
+                    if emit(&observed.output(&input)).is_ok() {
+                        ExitCode::SUCCESS
+                    } else {
+                        SchemaFailure::admission(SchemaStage::Emit).discard();
+                        ExitCode::from(1)
+                    }
+                }
+                Err(original) => {
+                    original.discard();
+                    ExitCode::from(1)
+                }
+            }
+        }
         Some("decode-number") => match number_request(&node) {
             Ok(value) => {
                 if emit(&value).is_ok() {
