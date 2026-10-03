@@ -91,6 +91,81 @@ PROPERTY_KEYS = {
     "http_cancel_reference_cleanup",
     "http_cancel_reference_application_identity",
 }
+FAILURE_LABELS = {
+    "candidate_dirty",
+    "capture_bound",
+    "capture_identity",
+    "capture_size",
+    "capture_write",
+    "child_budget",
+    "child_timeout",
+    "compose_project",
+    "deadline",
+    "file_bound",
+    "github_env",
+    "github_env_identity",
+    "github_env_write",
+    "github_identity",
+    "hosted_checkout_required",
+    "incomplete_capture",
+    "initial_images",
+    "inspect_shape",
+    "inventory_shape",
+    "json_bound",
+    "json_duplicate",
+    "json_invalid",
+    "json_nonfinite",
+    "member_roster",
+    "member_roster_shape",
+    "native_command_failed",
+    "optional_environment_present",
+    "owned_directory",
+    "preexisting_prepr",
+    "preexisting_raw",
+    "preexisting_resources",
+    "preexisting_tag",
+    "private_identity",
+    "private_mode",
+    "private_readback",
+    "private_write",
+    "project_missing",
+    "project_shape",
+    "raw_bound",
+    "raw_changed",
+    "raw_identity",
+    "raw_replaced",
+    "revision_shape",
+    "run_suffix",
+    "runner_temp",
+    "runner_temp_owner",
+    "runner_temp_shape",
+    "source_bytes",
+    "source_mode",
+    "stage_native_missing",
+    "target_native_failure",
+}
+FAILURE_PHASES = {
+    "directory_setup",
+    "schema_controls",
+    "source_guard",
+    "project_inventory",
+    "initial_image_inventory",
+    "initial_image_tags",
+    "ledger_path",
+    "checkout_directory",
+    "compose_config",
+    "build",
+    "pre_pr",
+    "stack",
+    "measure",
+    "target",
+    "work",
+    "cleanup",
+    "private_disposal",
+    "publication",
+}
+NATIVE_FAILURE_LABELS = {"native_command_failed", "target_native_failure"}
+
 STAGES = {
     name: {"exit": None, "admission": "not_started"}
     for name in (
@@ -119,6 +194,7 @@ state = {
     "raw_dir": None,
     "safe_dir": None,
     "primary_exit": 0,
+    "failure": None,
     "cleanup_exit": 0,
     "inspection_exit": None,
     "process_settled": True,
@@ -163,6 +239,153 @@ class Failure(Exception):
 def require(value, label):
     if not value:
         raise Failure(label)
+
+
+def validate_failure_observation(value):
+    closed(value, ("phase", "kind", "label", "native_exit"))
+    require(
+        value["phase"] is None or (type(value["phase"]) is str and value["phase"] in FAILURE_PHASES), "metadata_shape"
+    )
+    require(
+        type(value["kind"]) is str and value["kind"] in {"guard", "native", "control", "internal"}, "metadata_shape"
+    )
+    require(
+        value["label"] is None or (type(value["label"]) is str and value["label"] in FAILURE_LABELS), "metadata_shape"
+    )
+    if value["kind"] == "native":
+        require(value["label"] in NATIVE_FAILURE_LABELS, "metadata_shape")
+        code = value["native_exit"]
+        require(code is None or (type(code) is int and -255 <= code <= 255 and code != 0), "metadata_shape")
+    else:
+        require(value["native_exit"] is None, "metadata_shape")
+    if value["kind"] in {"control", "internal"}:
+        require(value["label"] is None, "metadata_shape")
+
+
+def failure_observation(error, phase):
+    value = {
+        "phase": phase if type(phase) is str and phase in FAILURE_PHASES else None,
+        "kind": "internal",
+        "label": None,
+        "native_exit": None,
+    }
+    if type(error) is Failure:
+        label = error.label
+        value["label"] = label if type(label) is str and label in FAILURE_LABELS else None
+        value["kind"] = "native" if value["label"] in NATIVE_FAILURE_LABELS else "guard"
+        if value["kind"] == "native":
+            code = error.code
+            if type(code) is int and -255 <= code <= 255 and code != 0:
+                value["native_exit"] = code
+    elif isinstance(error, BaseException) and not isinstance(error, Exception):
+        value["kind"] = "control"
+    validate_failure_observation(value)
+    return value
+
+
+def record_failure(target, phase, error):
+    if target["failure"] is None:
+        target["failure"] = failure_observation(error, phase)
+
+
+def observe_failure(target, phase, actual_operation):
+    try:
+        return actual_operation()
+    except BaseException as error:
+        # Annotation can never replace the exact pending primary/control object.
+        with suppress(BaseException):
+            record_failure(target, phase, error)
+        raise
+
+
+def failure_observation_controls():
+    # Synthetic helper controls never supply actual run/capture/source facts.
+    sentinel, calls = object(), []
+    target = {"failure": None}
+
+    def succeeds():
+        calls.append(True)
+        return sentinel
+
+    require(
+        observe_failure(target, "source_guard", succeeds) is sentinel and calls == [True] and target["failure"] is None,
+        "metadata_shape",
+    )
+
+    def fail(error):
+        raise error
+
+    for error, kind, label, code in (
+        (Failure("initial_images"), "guard", "initial_images", None),
+        (Failure("target_results"), "guard", None, None),
+        (Failure("secret-content"), "guard", None, None),
+        (Failure("native_command_failed", -9), "native", "native_command_failed", -9),
+        (Failure("target_native_failure", 1), "native", "target_native_failure", 1),
+        (Failure("native_command_failed", True), "native", "native_command_failed", None),
+        (Failure("native_command_failed", 0), "native", "native_command_failed", None),
+        (Failure("native_command_failed", 256), "native", "native_command_failed", None),
+        (Failure("native_command_failed", 1.5), "native", "native_command_failed", None),
+        (SystemExit("secret-content"), "control", None, None),
+        (KeyboardInterrupt(), "control", None, None),
+        (GeneratorExit(), "control", None, None),
+        (RuntimeError("secret-content"), "internal", None, None),
+    ):
+        target = {"failure": None}
+        invoked = []
+
+        def fails(error=error, invoked=invoked):
+            invoked.append(True)
+            raise error
+
+        try:
+            observe_failure(
+                target, "work", lambda target=target, fails=fails: observe_failure(target, "compose_config", fails)
+            )
+        except BaseException as caught:
+            require(caught is error and invoked == [True], "metadata_shape")
+        else:
+            raise Failure("metadata_shape")
+        first = target["failure"]
+        require(
+            first == {"phase": "compose_config", "kind": kind, "label": label, "native_exit": code}, "metadata_shape"
+        )
+        record_failure(target, "cleanup", Failure("preexisting_raw"))
+        require(target["failure"] is first, "metadata_shape")
+
+    class BrokenTarget(dict):
+        def __setitem__(self, _key, _value):
+            raise RuntimeError("secret-content")
+
+    original = KeyboardInterrupt()
+    try:
+        observe_failure(BrokenTarget(failure=None), "source_guard", lambda: fail(original))
+    except BaseException as caught:
+        require(caught is original, "metadata_shape")
+    else:
+        raise Failure("metadata_shape")
+    require(failure_observation(RuntimeError(), "secret-content")["phase"] is None, "metadata_shape")
+    require(failure_observation(None, "source_guard")["kind"] == "internal", "metadata_shape")
+    valid = failure_observation(Failure("native_command_failed", 1), "source_guard")
+    for bad in (
+        {**valid, "extra": None},
+        {key: value for key, value in valid.items() if key != "phase"},
+        {**valid, "phase": True},
+        {**valid, "phase": "secret-content"},
+        {**valid, "kind": False},
+        {**valid, "kind": "unknown"},
+        {**valid, "label": "secret-content"},
+        {**valid, "label": "target_results"},
+        {**valid, "native_exit": True},
+        {**valid, "native_exit": 0},
+        {**valid, "native_exit": -256},
+        {**valid, "kind": "control"},
+    ):
+        try:
+            validate_failure_observation(bad)
+        except Failure:
+            pass
+        else:
+            raise Failure("metadata_shape")
 
 
 def interrupted(signum, _frame):
@@ -708,6 +931,8 @@ def stage(name, callback):
         STAGES[name]["admission"] = "passed"
     except BaseException as error:
         original = error
+        with suppress(BaseException):
+            record_failure(state, name, error)
         # Keep the actual literal native exit, including zero followed by a
         # failed source/witness admission. Never replace it with a guessed code.
         STAGES[name]["admission"] = "failed"
@@ -1350,10 +1575,14 @@ def source_guard():
     state["candidate"]["project"] = project
     state["resources"]["project"] = project
     require(
-        all(not values for values in resources(WORK_END).values()),
+        all(not values for values in observe_failure(state, "project_inventory", lambda: resources(WORK_END)).values()),
         "preexisting_resources",
     )
-    initial_images = command(["docker", "image", "ls", "-q", "--no-trunc"], 5).decode("ascii").splitlines()
+    initial_images = observe_failure(
+        state,
+        "initial_image_inventory",
+        lambda: command(["docker", "image", "ls", "-q", "--no-trunc"], 5).decode("ascii").splitlines(),
+    )
     require(
         len(initial_images) <= 128 and all(re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in initial_images),
         "initial_images",
@@ -1361,7 +1590,11 @@ def source_guard():
     state["initial_image_ids"] = set(initial_images)
     for tag in ("bifrost-test-api-dev:latest", "bifrost-test-client-check:latest"):
         require(
-            not command(["docker", "image", "ls", "-q", "--no-trunc", tag], 2).strip(),
+            not observe_failure(
+                state,
+                "initial_image_tags",
+                lambda tag=tag: command(["docker", "image", "ls", "-q", "--no-trunc", tag], 2),
+            ).strip(),
             "preexisting_tag",
         )
     log_dir = Path("/tmp") / ("bifrost-" + project)
@@ -1373,13 +1606,25 @@ def source_guard():
         path = log_dir / filename
         require(not path.exists() and not path.is_symlink(), "preexisting_raw")
         state["raw_paths"][name] = {"path": path, "identity": None}
-    lock_dir = Path(git("rev-parse", "--path-format=absolute", "--git-path", "bifrost-test-locks").decode().strip())
+    lock_dir = Path(
+        observe_failure(
+            state,
+            "ledger_path",
+            lambda: git("rev-parse", "--path-format=absolute", "--git-path", "bifrost-test-locks").decode().strip(),
+        )
+    )
     state["ledger"] = lock_dir / "pre-pr-stages.json"
     state["plan"] = lock_dir / "pre-pr-affected-plan.json"
     require(not state["ledger"].exists() and not state["plan"].exists(), "preexisting_prepr")
     # Optional live secret files are not part of this dedicated experiment.
     require(not (ROOT / ".env.test").exists(), "optional_environment_present")
-    common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir").decode().strip())
+    common = Path(
+        observe_failure(
+            state,
+            "checkout_directory",
+            lambda: git("rev-parse", "--path-format=absolute", "--git-common-dir").decode().strip(),
+        )
+    )
     require(common == ROOT / ".git", "hosted_checkout_required")
 
 
@@ -1665,7 +1910,8 @@ def json_bytes(value):
 
 def public_receipt():
     return {
-        "schema": "http-cancel-reference-ci/v1",
+        "schema": "http-cancel-reference-ci/v2",
+        "failure": state["failure"],
         "candidate": state["candidate"],
         "planner": state["planner"],
         "stages": STAGES,
@@ -1828,9 +2074,10 @@ def acquire_directories():
 
 
 def main_work():
-    properties_wrapper_controls()
-    source_guard()
-    config = compose_config()
+    observe_failure(state, "schema_controls", failure_observation_controls)
+    observe_failure(state, "schema_controls", properties_wrapper_controls)
+    observe_failure(state, "source_guard", source_guard)
+    config = observe_failure(state, "compose_config", compose_config)
     state["image_pending"].add("bifrost-test-api-dev:latest")
 
     def build():
@@ -1873,8 +2120,8 @@ def main_work():
 
 original = None
 try:
-    acquire_directories()
-    main_work()
+    observe_failure(state, "directory_setup", acquire_directories)
+    observe_failure(state, "work", main_work)
 except BaseException as error:
     original = error
     native_code = (
@@ -1892,6 +2139,8 @@ finally:
         STAGES["cleanup"].update(exit=1, admission="retained")
     if original is None and cleanup_error is not None:
         original = cleanup_error
+        with suppress(BaseException):
+            record_failure(state, "cleanup", cleanup_error)
         state["primary_exit"] = (
             cleanup_error.code
             if isinstance(cleanup_error, SystemExit) and type(cleanup_error.code) is int
@@ -1907,6 +2156,8 @@ finally:
         STAGES["cleanup"].update(exit=1, admission="retained")
         if original is None:
             original = error
+            with suppress(BaseException):
+                record_failure(state, "private_disposal", error)
             state["primary_exit"] = (
                 error.code
                 if isinstance(error, SystemExit) and type(error.code) is int
@@ -1929,6 +2180,8 @@ finally:
                     state["retained"] = True
         if original is None:
             original = error
+            with suppress(BaseException):
+                record_failure(state, "publication", error)
             state["primary_exit"] = (
                 error.code
                 if isinstance(error, SystemExit) and type(error.code) is int
