@@ -9,6 +9,48 @@ production keeps running older bytes.
 
 ## Contract
 
+### Native Solution authored Source
+
+The reviewed Git delivery path keeps the complete `solutions/<slug>/` authored
+tree separately from its executable closure. A fourteen-file authored package
+may legitimately have a seven-file runtime closure; a green runtime cannot
+credit the other seven files. Protected commit/tree/subtree identities, regular
+Git modes, every file hash and the authored content ID are retained in a
+content-addressed, create-only authored archive alongside the deployment.
+Runtime `source.zip`, queued pins and historical manifests remain unchanged.
+
+The native adapter checks descriptor fields, README text, all owned workflow
+identities and controls, all owned table metadata/policies, and exact immutable
+archive/runtime bytes. Only unused empty Python package initializers may remain
+outside the positive executable dependency closure. Apps, assets and unsupported
+components require their own delivery contract; this adapter cannot credit them
+as workflow source.
+
+README delivery uses the existing installation writer, a pointer/README CAS and
+a SQL savepoint. It commits only when every other authored component reads back.
+A descriptor, control, table, source or dependency mismatch rolls that metadata
+write back. `authored_source_state=verified` is separate from runtime activation;
+`attention_required` preserves partial runtime success without claiming complete
+authored delivery. Neither state asserts a real worker execution.
+
+Production target membership comes from all protected registry recipes,
+including mappings that mix Root and package files. A missing/inactive Provider
+installation cannot disappear from the target set. Recovery checks the complete
+relevant family in exact scopes, including unexpected active siblings; unrelated
+mutable Solutions are not a prerequisite. The census takes the Live fence,
+then an exclusive Solutions table lock before installation and journal row locks.
+Plain reads continue, while membership/status and installation writes wait for
+this bounded readback transaction.
+
+Delivery success/replay, late declaration/replay and the existing overdue sweep
+use the same verifier and the existing child obligation. Native completion uses
+`bifrost.native-solution-deploy-completion/v1`, with per-install actual deployment,
+receipt and fresh readback evidence. It leaves `deploy_job_id` null rather than
+fabricating a legacy job. The forward migration
+`20261003_native_src_account` preserves the legacy completion branch and refuses
+downgrade while native completions depend on it. Missing evidence leaves debt
+open and rotates the bounded sweep; storage/transport failures propagate.
+
 ### Solution delivery of Root source
 
 Protected Git Solution delivery retains repository-to-runtime path mappings,

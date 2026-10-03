@@ -7,7 +7,14 @@ from uuid import UUID
 
 import pytest
 import yaml
+from bifrost.manifest import ManifestTable, ManifestWorkflow
+from bifrost.manifest_codec import Destination
+from bifrost.solution_source_closure import source_archive
+from src.models.orm.tables import Table
+from src.models.orm.users import Role
+from src.models.orm.workflows import Workflow
 from src.services.solution_deploy_obligations import solution_source_content_id
+from src.services.solutions import native_authored_source as native_readback
 from src.services.solutions.github_delivery_source import (
     VerifiedAuthoredSolution,
     VerifiedAuthoredSolutionFile,
@@ -23,6 +30,7 @@ SID = UUID("00000000-0000-0000-0000-000000000010")
 WID = "00000000-0000-0000-0000-000000000011"
 TID = "00000000-0000-0000-0000-000000000012"
 PREFIX = "solutions/fixture"
+RID = UUID("12345678-abcd-4321-abcd-123456789abc")
 
 
 def authored(**changes):
@@ -79,7 +87,8 @@ def test_runtime_success_cannot_credit_unmapped_or_different_python(change):
 
 
 def test_empty_initializer_is_not_ignored_when_it_is_a_dependency():
-    source = authored(**{"functions/probe.py": b"import shared\ndef probe():\n    return shared\n"})
+    source = authored(**{"functions/probe.py": b"import shared\ndef probe():\n    return shared\n",
+        "modules/runtime.py": None})
     with pytest.raises(NativeAuthoredSourceMismatch, match="dependency closure"):
         require_native_python_closure(source, {"functions/probe.py": source.files["functions/probe.py"]},
             {"functions/probe.py"}, has_table_bindings=True)
@@ -142,3 +151,107 @@ async def test_descriptor_drift_does_not_allow_accounting(field, value):
         await native_authored_install_readback(db, SimpleNamespace(**values), source,
             expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
     db.commit.assert_not_awaited()
+
+
+def _installed_readback(monkeypatch, *, roles=(), role_names=None):
+    workflow_fields = {"id": WID, "name": "probe", "path": "functions/probe.py",
+        "function_name": "probe", "roles": list(roles)}
+    if role_names is not None:
+        workflow_fields["role_names"] = role_names
+    # Actual INSTALL stores this unexpanded dictionary after policy validation.
+    policies = [{"name": "read", "actions": ["read"]}]
+    table_fields = {"id": TID, "name": "evidence", "policies": policies}
+    source = authored(**{
+        ".bifrost/workflows.yaml": yaml.safe_dump({"workflows": {WID: workflow_fields}}).encode(),
+        ".bifrost/tables.yaml": yaml.safe_dump({"tables": {TID: table_fields}}).encode(),
+    })
+    metadata = native_authored_metadata(source)
+    solution = SimpleNamespace(**metadata.descriptor.model_dump(exclude={"logo"}),
+        id=SID, organization_id=None, readme=metadata.readme)
+    role_ids = [] if role_names is not None else list(dict.fromkeys(UUID(role) for role in roles))
+    workflow = Workflow(id=UUID(WID), solution_id=SID, organization_id=None,
+        roles=[Role(id=role_id, name="Reader") for role_id in role_ids],
+        **ManifestWorkflow.model_validate(workflow_fields).to_orm_values(Destination.INSTALL).direct)
+    table = Table(id=UUID(TID), solution_id=SID, organization_id=None, access={"policies": policies},
+        **ManifestTable.model_validate(table_fields).to_orm_values(Destination.INSTALL).direct)
+    db = AsyncMock()
+    # Exercise the real owned-ID mapping as well as both metadata comparisons.
+    db.scalars.side_effect = [
+        SimpleNamespace(all=lambda: [workflow]), SimpleNamespace(all=lambda: [workflow.id]),
+        SimpleNamespace(all=lambda: [table]), SimpleNamespace(all=lambda: [table.id]),
+    ]
+    manifest_hash = "sha256:" + "1" * 64
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    deployment = SimpleNamespace(id=SID, compiled_manifest={}, resolution_map={}, dependencies=[],
+        compiled_manifest_hash=manifest_hash, resolution_map_hash="sha256:" + "2" * 64)
+    resolution = SimpleNamespace(sources=runtime, resources={}, shared_tables={}, root_file_bindings={})
+    verify_source = AsyncMock()
+    repository = SimpleNamespace(get_runtime_closure=AsyncMock(return_value=deployment))
+    storage = SimpleNamespace(read_source_artifact=AsyncMock(return_value=source_archive(runtime)),
+        read_runtime_file=AsyncMock(side_effect=lambda path: runtime[path]))
+    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
+        lambda db: SimpleNamespace(verify_current_source=verify_source))
+    monkeypatch.setattr(native_readback, "SolutionDeploymentRepository", lambda db: repository)
+    monkeypatch.setattr(native_readback, "SolutionDeploymentStorage", lambda *args: storage)
+    monkeypatch.setattr(native_readback, "validate_runtime_closure", lambda *args, **kwargs: (None, resolution))
+    monkeypatch.setattr("src.routers.tables._validate_table_policy_claim_refs", AsyncMock())
+    return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
+        manifest_hash=manifest_hash, verify_source=verify_source, storage=storage)
+
+
+async def _read_installed(fixture):
+    return await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
+        expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash)
+
+
+@pytest.mark.asyncio
+async def test_successful_readback_preserves_inline_policy_omissions(monkeypatch):
+    fixture = _installed_readback(monkeypatch)
+    result = await _read_installed(fixture)
+    assert fixture.table.access == {"policies": [{"name": "read", "actions": ["read"]}]}
+    assert result["workflow_ids"] == [WID] and result["table_ids"] == [TID]
+    assert result["runtime_paths"] == ["functions/probe.py", "modules/runtime.py"]
+    assert result["source_content_id"] == fixture.source.source_content_id
+    assert result["evidence_id"].startswith("sha256:")
+    fixture.verify_source.assert_awaited_once()
+    assert fixture.storage.read_runtime_file.await_count == 2
+    fixture.db.commit.assert_not_awaited()
+    fixture.db.flush.assert_not_awaited()
+    fixture.db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("roles", [
+    [str(RID), str(RID)], [str(RID).upper()], ["{" + str(RID) + "}"],
+])
+async def test_successful_readback_uses_install_role_uuid_normalization(monkeypatch, roles):
+    fixture = _installed_readback(monkeypatch, roles=roles)
+    result = await _read_installed(fixture)
+    assert [role.id for role in fixture.workflow.roles] == [RID]
+    assert result["workflow_ids"] == [WID]
+
+
+@pytest.mark.asyncio
+async def test_empty_role_names_override_carried_uuid_grants(monkeypatch):
+    fixture = _installed_readback(monkeypatch, roles=[str(RID)], role_names=[])
+    result = await _read_installed(fixture)
+    assert fixture.workflow.roles == [] and result["workflow_ids"] == [WID]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drift", ["missing_role", "extra_role", "endpoint", "table_policy", "table_schema"])
+async def test_successful_runtime_cannot_credit_installed_control_drift(monkeypatch, drift):
+    fixture = _installed_readback(monkeypatch, roles=[str(RID), str(RID).upper()])
+    if drift == "missing_role":
+        fixture.workflow.roles = []
+    elif drift == "extra_role":
+        fixture.workflow.roles.append(Role(id=UUID(TID), name="Unexpected grant"))
+    elif drift == "endpoint":
+        fixture.workflow.endpoint_enabled = True
+    elif drift == "table_policy":
+        fixture.table.access = {"policies": [{"name": "read", "actions": ["read", "create"]}]}
+    else:
+        fixture.table.schema = {"type": "object"}
+    with pytest.raises(NativeAuthoredSourceMismatch, match="Installed (workflow controls|table metadata or policies)"):
+        await _read_installed(fixture)
+    fixture.db.commit.assert_not_awaited()

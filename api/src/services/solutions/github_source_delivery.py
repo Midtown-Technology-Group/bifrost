@@ -25,7 +25,7 @@ from src.services.operation_receipts import (
 )
 from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solutions.github_delivery_source import (
-    GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader, VerifiedGitSource,
+    GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader, VerifiedAuthoredSolution, VerifiedGitSource,
 )
 from src.services.solutions.source_revision import SolutionSourceRevisionConflict, SolutionSourceRevisionService
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
@@ -55,6 +55,16 @@ class GitSourceDeliveryService:
         # before writing a receipt, artifact or candidate.
         await self.reader.verify_ci(request.source_commit_sha, request.ci_run_id, request.ci_run_attempt)
         source = await self.reader.source(solution_id, request.source_commit_sha, request.artifact_digest)
+        # Native packages retain their complete authored tree separately from
+        # the executable closure. Root-mapped workflows and Apps keep their
+        # existing distinct delivery contracts.
+        authored = None
+        installed = await self.db.get(Solution, solution_id, populate_existing=True)
+        if (installed is not None and installed.repo_subpath == f"solutions/{installed.slug}"
+                and source.repository_paths
+                and all(path.startswith(installed.repo_subpath + "/") for path in source.repository_paths.values())):
+            authored = await self.reader.authored_source(source.commit_sha, installed.repo_subpath,
+                expected_tree_sha=source.tree_sha)
         from src.config import get_settings
         from src.services.github_actions_oidc import workspace_source_release_tracking_organization_id
         tracking_org = workspace_source_release_tracking_organization_id(get_settings())
@@ -67,16 +77,19 @@ class GitSourceDeliveryService:
             if older:
                 source = replace(source, ancestor_commit_shas=await self.reader.verified_ancestors(source.commit_sha, older))
         async with solution_write_lock(solution_id):
-            result = await self._deliver_locked(source, request, producer)
+            result = await self._deliver_locked(source, request, producer, authored)
         # Receipt replays also reach accounting recovery. Release the one-install
         # writer before the aggregate Live -> installs -> source-row fence.
         from src.services.solution_source_accountability import reconcile_solution_owned_source
+        from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+        await reconcile_native_solution_deploy_obligations(self.db, policy=self.policy)
         await reconcile_solution_owned_source(self.db, policy=self.policy)
         await self.db.commit()
         return result
 
     async def _deliver_locked(self, source: VerifiedGitSource, request: SolutionGitSourceDeliveryRequest,
-                              producer: GitDeliveryIdentity) -> SolutionGitSourceDeliveryResponse:
+                              producer: GitDeliveryIdentity,
+                              authored: VerifiedAuthoredSolution | None = None) -> SolutionGitSourceDeliveryResponse:
         organization_id = self.policy.organization_id_for(source.solution_id)
         solution = await self.db.get(Solution, source.solution_id, populate_existing=True)
         if (solution is None or solution.organization_id != organization_id
@@ -127,9 +140,9 @@ class GitSourceDeliveryService:
                 # Fresh protected readback may recover mapping/ancestry evidence
                 # after a delivery-before-declaration race. It never reclaims a
                 # receipt or changes source, registrations or a runtime pointer.
-                await self._record_proof(base, source, organization_id, proof)
+                authored_state = await self._record_proof(base, source, organization_id, proof, authored)
                 await self.db.commit()
-                return self._response(source, base, claim.receipt_id, "already_active")
+                return self._response(source, base, claim.receipt_id, "already_active", authored_state)
             raise SolutionSourceRevisionConflict(
                 f"Delivery receipt {claim.receipt_id} requires readback or a fresh job attempt")
         assert claim.owner_token is not None
@@ -166,8 +179,8 @@ class GitSourceDeliveryService:
             await self.reader.verify_ci(source.commit_sha, request.ci_run_id, request.ci_run_attempt)
         # Deploy-owned evidence uses the deployment write path. The global
         # Solution ORM guard deliberately rejects editing a loaded managed row.
-        await self._record_proof(base, source, organization_id, proof)
-        result = self._response(source, base, claim.receipt_id, state)
+        authored_state = await self._record_proof(base, source, organization_id, proof, authored)
+        result = self._response(source, base, claim.receipt_id, state, authored_state)
         # Only small nonsecret metadata is retained in the replay envelope.
         # Complete receipt and pointer mutation in the same SQL transaction.
         await complete_operation_receipt_success(claim.receipt_id, claim.owner_token,
@@ -194,7 +207,15 @@ class GitSourceDeliveryService:
         return result
 
     async def _record_proof(self, base: SolutionDeployment, source: VerifiedGitSource,
-                            organization_id: UUID | None, proof: dict) -> None:
+                            organization_id: UUID | None, proof: dict,
+                            authored: VerifiedAuthoredSolution | None = None) -> Literal["unmapped", "verified", "attention_required"]:
+        authored_state: Literal["unmapped", "verified", "attention_required"] = "unmapped"
+        if authored is not None:
+            from src.services.solutions.authored_archive import retain_authored_archive
+            from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+            proof["authored_source"] = await retain_authored_archive(
+                SolutionDeploymentStorage(source.solution_id, base.id), authored)
+            authored_state = await self._deliver_authored_readme(base, source, authored)
         recorded_id = await self.db.scalar(update(SolutionDeployment).where(
             SolutionDeployment.id == base.id,
             SolutionDeployment.solution_id == source.solution_id,
@@ -205,11 +226,50 @@ class GitSourceDeliveryService:
             .returning(SolutionDeployment.id).execution_options(synchronize_session=False))
         if recorded_id is None:
             raise SolutionSourceRevisionConflict("Active deployment changed before delivery evidence")
+        return authored_state
+
+    async def _deliver_authored_readme(self, base: SolutionDeployment, source: VerifiedGitSource,
+                                      authored: VerifiedAuthoredSolution) -> Literal["verified", "attention_required"]:
+        from src.services.solutions.native_authored_source import (
+            NativeAuthoredSourceMismatch, native_authored_install_readback, native_authored_metadata,
+        )
+        # This metadata write does not mint a runtime deployment or overwrite
+        # source.zip. The existing install writer and exact pointer/README CAS
+        # serialize it, and all other authored components must read back before
+        # that write can commit. Unsupported component delivery stays explicit.
+        try:
+            metadata = native_authored_metadata(authored)
+            async with self.db.begin_nested():
+                installed = await self.db.scalar(select(Solution).where(Solution.id == source.solution_id,
+                    Solution.active_deployment_id == base.id, Solution.status == "active")
+                    .with_for_update().execution_options(populate_existing=True))
+                if installed is None:
+                    raise SolutionSourceRevisionConflict("Active pointer changed before authored metadata")
+                if installed.readme != metadata.readme:
+                    changed = await self.db.scalar(update(Solution).where(Solution.id == installed.id,
+                        Solution.active_deployment_id == base.id, Solution.readme == installed.readme)
+                        .values(readme=metadata.readme).returning(Solution.id)
+                        .execution_options(synchronize_session=False))
+                    if changed is None:
+                        raise SolutionSourceRevisionConflict("Authored README compare-and-swap failed")
+                    await self.db.refresh(installed, attribute_names=["readme"])
+                await native_authored_install_readback(self.db, installed, authored,
+                    expected_active_deployment_id=base.id, expected_active_manifest_hash=base.compiled_manifest_hash)
+            return "verified"
+        except SolutionSourceRevisionConflict:
+            raise
+        except (NativeAuthoredSourceMismatch, ValueError):
+            # Savepoint rollback preserves runtime success and prior README.
+            # Do not report complete Source or close the ledger from a partial
+            # runtime mapping. Transport/storage failures still propagate.
+            return "attention_required"
 
     @staticmethod
     def _response(source: VerifiedGitSource, deployment: SolutionDeployment, receipt_id: UUID,
-                  state: Literal["active", "already_active"]) -> SolutionGitSourceDeliveryResponse:
+                  state: Literal["active", "already_active"],
+                  authored_state: Literal["unmapped", "verified", "attention_required"] = "unmapped") -> SolutionGitSourceDeliveryResponse:
         return SolutionGitSourceDeliveryResponse(state=state, solution_id=source.solution_id,
             deployment_id=deployment.id, compiled_manifest_hash=deployment.compiled_manifest_hash,
             source_commit_sha=source.commit_sha, source_tree_sha=source.tree_sha,
-            artifact_digest=source.artifact_digest, source_hashes=source.source_hashes, receipt_id=receipt_id)
+            artifact_digest=source.artifact_digest, source_hashes=source.source_hashes, receipt_id=receipt_id,
+            authored_source_state=authored_state)

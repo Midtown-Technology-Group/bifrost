@@ -105,6 +105,10 @@ def _entries(content: bytes | None, key: str, model: type[BaseModel]) -> list[di
             raise NativeAuthoredSourceMismatch("Authored manifest fields or identity are unsupported")
         converted = model.model_validate({**fields, "id": identity}).model_dump(mode="json", by_alias=True)
         _require_no_dropped_fields(fields, converted)
+        if model is ManifestTable:
+            # INSTALL validates policies but persists their authored dictionaries
+            # verbatim, including absent optional fields rather than model defaults.
+            converted["policies"] = fields.get("policies")
         entries.append(converted)
     return entries
 
@@ -205,10 +209,15 @@ async def native_authored_install_readback(
         if codec.role_names:
             raise NativeAuthoredSourceMismatch("Named role mappings require explicit installation evidence")
         expected = codec.to_orm_values(Destination.INSTALL).direct
-        expected_roles = [] if codec.role_names is not None else codec.roles
+        try:
+            # INSTALL parses UUIDs and writes one junction row per distinct role.
+            # An explicit role_names=[] overrides any carried UUID grants.
+            expected_roles = set() if codec.role_names is not None else {UUID(role) for role in codec.roles}
+        except ValueError as exc:
+            raise NativeAuthoredSourceMismatch("Authored workflow role UUID is invalid") from exc
         if (row.organization_id != solution.organization_id
                 or any(getattr(row, key) != value for key, value in expected.items())
-                or sorted(str(role.id) for role in row.roles) != sorted(expected_roles)):
+                or {role.id for role in row.roles} != expected_roles):
             raise NativeAuthoredSourceMismatch("Installed workflow controls differ from authored manifest")
     tables = list((await db.scalars(select(Table).where(Table.solution_id == solution.id)
         .execution_options(populate_existing=True))).all())

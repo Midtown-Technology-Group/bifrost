@@ -57,6 +57,24 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _reviewed_recipe(raw: bytes, solution_id: UUID) -> tuple[dict, ReviewedWorkflowRecipe | None]:
+    try:
+        recipe = json.loads(raw, object_pairs_hook=_unique_json_object)
+        workflow_recipe = None
+        if isinstance(recipe, dict) and recipe.get("schema_version") == WORKFLOW_RECIPE_SCHEMA:
+            workflow_recipe = ReviewedWorkflowRecipe.model_validate(recipe)
+        if (not isinstance(recipe, dict) or recipe.get("schema_version") not in (RECIPE_SCHEMA, WORKFLOW_RECIPE_SCHEMA)
+                or workflow_recipe is None and set(recipe) != {"schema_version", "solution_id", "files"}
+                or recipe.get("solution_id") != str(solution_id)
+                or not isinstance(recipe.get("files"), dict) or not 1 <= len(recipe["files"]) <= 256):
+            raise GitDeliverySourceError("Reviewed installed Solution recipe is invalid")
+        return recipe, workflow_recipe
+    except (ValueError, UnicodeError) as exc:
+        if isinstance(exc, GitDeliverySourceError):
+            raise
+        raise GitDeliverySourceError("Reviewed recipe JSON is invalid") from exc
+
+
 @dataclass(frozen=True)
 class GitDeliveryIdentity:
     run_id: str
@@ -392,22 +410,8 @@ class ProtectedGitReader:
         recipe_path = self.policy.solutions[solution_id]
         if recipe_path not in index:
             raise GitDeliverySourceError("Reviewed installed Solution recipe is absent")
-        try:
-            recipe_bytes = await self.blob(index[recipe_path], limit=128 * 1024)
-            recipe = json.loads(recipe_bytes,
-                                object_pairs_hook=_unique_json_object)
-            workflow_recipe = None
-            if isinstance(recipe, dict) and recipe.get("schema_version") == WORKFLOW_RECIPE_SCHEMA:
-                workflow_recipe = ReviewedWorkflowRecipe.model_validate(recipe)
-            if (not isinstance(recipe, dict) or recipe.get("schema_version") not in (RECIPE_SCHEMA, WORKFLOW_RECIPE_SCHEMA)
-                    or workflow_recipe is None and set(recipe) != {"schema_version", "solution_id", "files"}
-                    or recipe.get("solution_id") != str(solution_id)
-                    or not isinstance(recipe.get("files"), dict) or not 1 <= len(recipe["files"]) <= 256):
-                raise GitDeliverySourceError("Reviewed installed Solution recipe is invalid")
-        except (ValueError, UnicodeError) as exc:
-            if isinstance(exc, GitDeliverySourceError):
-                raise
-            raise GitDeliverySourceError("Reviewed recipe JSON is invalid") from exc
+        recipe_bytes = await self.blob(index[recipe_path], limit=128 * 1024)
+        recipe, workflow_recipe = _reviewed_recipe(recipe_bytes, solution_id)
         files: dict[str, bytes] = {}
         resources: dict[str, bytes] = {}
         slots = asyncio.Semaphore(16)
@@ -476,11 +480,44 @@ class ProtectedGitReader:
                 recipes = [row["recipe"] for row in rows if row["target"] == target]
                 if len(set(recipes)) != len(recipes) or set(recipes) != set(self.policy.solutions.values()):
                     raise ValueError("Registry target differs from configured installations")
+                sizes = [index.get(path, {}).get("size") for path in self.policy.solutions.values()]
+                if (any(type(size) is not int or not 0 <= size <= 128 * 1024 for size in sizes)
+                        or sum(sizes) + len(raw_registry) > MAX_METADATA_BYTES):
+                    raise ValueError("Registry recipes exceed their total metadata bound")
+
+                async def installation(identity: UUID, path: str) -> tuple[str, dict]:
+                    async with slots:
+                        raw = recipe_bytes if path == recipe_path else await self.blob(index[path], limit=128 * 1024)
+                    declared, reviewed = _reviewed_recipe(raw, identity)
+                    resource_paths = reviewed.resources if reviewed is not None else {}
+                    mappings = {**declared["files"], **resource_paths}
+                    roots: set[str | None] = set()
+                    for runtime_path, git_path in mappings.items():
+                        if not isinstance(runtime_path, str) or not isinstance(git_path, str):
+                            raise TypeError("Registry recipe source paths must be strings")
+                        delivery_path(runtime_path)
+                        delivery_path(git_path)
+                        source_entry = index.get(git_path, {})
+                        if (source_entry.get("type") != "blob" or source_entry.get("mode") not in {"100644", "100755"}
+                                or not isinstance(source_entry.get("sha"), str)
+                                or re.fullmatch(r"[0-9a-f]{40}", source_entry["sha"]) is None
+                                or type(source_entry.get("size")) is not int or source_entry["size"] < 0
+                                or runtime_path not in resource_paths
+                                and (not runtime_path.endswith(".py") or not git_path.endswith(".py"))):
+                            raise ValueError("Registry recipe requires existing regular source files")
+                        match = re.match(r"^(solutions/[a-z0-9]+(?:-[a-z0-9]+)*)/", git_path)
+                        roots.add(match.group(1) if match else None)
+                    authored_root = next(iter(roots)) if len(roots) == 1 and None not in roots else None
+                    scope = self.policy.organization_id_for(identity)
+                    return str(identity), {"recipe_path": path,
+                        "organization_id": str(scope) if scope is not None else None,
+                        "repo_subpath": authored_root,
+                        "package_subpaths": sorted(root for root in roots if root is not None)}
+
+                installations = dict(await asyncio.gather(*(installation(identity, path)
+                    for identity, path in self.policy.solutions.items())))
                 registry_proof = {"path": registry_path, "target": target,
-                    "installations": {str(identity): {"recipe_path": path,
-                        "organization_id": str(self.policy.organization_id_for(identity))
-                        if self.policy.organization_id_for(identity) is not None else None}
-                        for identity, path in self.policy.solutions.items()}}
+                    "installations": installations}
                 control_hashes[registry_path] = hashlib.sha256(raw_registry).hexdigest()
             except (ValueError, TypeError, KeyError, UnicodeError) as exc:
                 raise GitDeliverySourceError("Protected installation registry is invalid") from exc

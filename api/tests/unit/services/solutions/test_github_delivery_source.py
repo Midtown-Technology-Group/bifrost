@@ -253,7 +253,123 @@ async def test_protected_registry_is_bound_to_exact_configured_installations(fau
             source = await reader.source(SID, SHA, digest)
             assert source.control_hashes[path] == hashlib.sha256(content).hexdigest()
             assert source.installation_registry["installations"] == {str(SID): {
-                "recipe_path": RECIPE, "organization_id": str(policy().organization_id)}}
+                "recipe_path": RECIPE, "organization_id": str(policy().organization_id),
+                "repo_subpath": "solutions/fixture", "package_subpaths": ["solutions/fixture"]}}
+
+
+def add_git_document(documents, path, content):
+    sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content,
+        usedforsecurity=False).hexdigest()
+    entries = documents["git/trees/" + TREE + "?recursive=1"]["tree"]
+    entries[:] = [row for row in entries if row["path"] != path]
+    entries.append({"path": path, "type": "blob", "mode": "100644", "sha": sha, "size": len(content)})
+    documents["git/blobs/" + sha] = {"sha": sha, "encoding": "base64", "content": base64.b64encode(content).decode()}
+
+
+def family_registry_fixture(*, root_mapped=False, resource_mapping=None):
+    documents, _, digest = fixture()
+    peer_id, root_id = UUID(int=20), UUID(int=30)
+    peer_path, root_path = "config/solution-delivery/peer.json", "config/solution-delivery/root.json"
+    peer_files = {"fixture.py": "solutions/fixture/fixture.py", "helper.py": "solutions/fixture/helper.py"}
+    if root_mapped:
+        peer_files["helper.py"] = "features/helpers/runtime.py"
+        add_git_document(documents, "features/helpers/runtime.py", b"value = 1\n")
+    peer = {"schema_version": RECIPE_SCHEMA, "solution_id": str(peer_id), "files": peer_files}
+    if resource_mapping is not None:
+        peer.update(schema_version="bifrost.solution-workflow-delivery/v1", resources=resource_mapping,
+            workflows=[{"id": str(UUID(int=100)), "path": "fixture.py", "function_name": "fixture",
+                "organization_id": None, "runtime_bounds": {"max_duration_seconds": 30,
+                    "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096}, "controls": {}}])
+        for path in resource_mapping.values():
+            add_git_document(documents, path, b'{"rate":1}')
+    add_git_document(documents, peer_path, json.dumps(peer).encode())
+    add_git_document(documents, root_path, json.dumps({"schema_version": RECIPE_SCHEMA,
+        "solution_id": str(root_id), "files": {"root.py": "features/root.py"}}).encode())
+    add_git_document(documents, "features/root.py", b"value = 1\n")
+    add_git_document(documents, "config/solution-delivery/installations.json", json.dumps({
+        "schema_version": "bifrost.solution-delivery-installations/v1", "installations": [
+            {"target": "production", "recipe": path} for path in (RECIPE, peer_path, root_path)]}).encode())
+    configured = policy().model_copy(update={"solutions": {SID: RECIPE, peer_id: peer_path, root_id: root_path},
+        "solution_organization_ids": {SID: None, peer_id: policy().organization_id, root_id: None}})
+    return documents, digest, configured, peer, peer_id, root_id
+
+
+@pytest.mark.asyncio
+async def test_registry_target_family_is_derived_from_all_protected_recipes_without_database_rows():
+    documents, digest, configured, _, peer_id, root_id = family_registry_fixture()
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
+    targets = source.installation_registry["installations"]
+    assert set(targets) == {str(SID), str(peer_id), str(root_id)}
+    assert targets[str(SID)] == {"recipe_path": RECIPE, "organization_id": None,
+        "repo_subpath": "solutions/fixture", "package_subpaths": ["solutions/fixture"]}
+    assert targets[str(peer_id)]["organization_id"] == str(policy().organization_id)
+    assert targets[str(peer_id)]["repo_subpath"] == "solutions/fixture"
+    assert targets[str(root_id)]["repo_subpath"] is None
+    assert targets[str(root_id)]["package_subpaths"] == []
+    # Reading another recipe proves its association, not its installed controls.
+    assert "config/solution-delivery/peer.json" not in source.control_hashes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("root_mapped,resources,expected,packages", [
+    (True, None, None, ["solutions/fixture"]),
+    (False, {"rates.json": "solutions/fixture/data/rates.json"}, "solutions/fixture", ["solutions/fixture"]),
+    (False, {"rates.json": "data/rates.json"}, None, ["solutions/fixture"]),
+    (False, {"rates.json": "solutions/other/data/rates.json"}, None, ["solutions/fixture", "solutions/other"]),
+])
+async def test_registry_family_retains_every_package_consumed_by_mixed_sources_or_resources(root_mapped, resources, expected, packages):
+    documents, digest, configured, _, peer_id, _ = family_registry_fixture(
+        root_mapped=root_mapped, resource_mapping=resources)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
+    assert source.installation_registry["installations"][str(peer_id)]["repo_subpath"] == expected
+    assert source.installation_registry["installations"][str(peer_id)]["package_subpaths"] == packages
+    fixture_targets = {identity for identity, entry in source.installation_registry["installations"].items()
+        if "solutions/fixture" in entry["package_subpaths"]}
+    # No install rows are consulted: a missing/inactive mixed peer remains
+    # independently declared as a consumer of the fixture package.
+    assert fixture_targets == {str(SID), str(peer_id)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing_recipe", "recipe_symlink", "recipe_blob_drift", "recipe_id",
+    "recipe_schema", "recipe_duplicate", "unsafe_source", "missing_source", "recipe_bytes", "aggregate_bytes"])
+async def test_other_registry_target_recipe_is_verified_and_bounded_before_association(fault, monkeypatch):
+    from src.services.solutions import github_delivery_source
+
+    documents, digest, configured, peer, _, _ = family_registry_fixture()
+    path = "config/solution-delivery/peer.json"
+    entries = documents["git/trees/" + TREE + "?recursive=1"]["tree"]
+    entry = next(row for row in entries if row["path"] == path)
+    if fault == "missing_recipe":
+        entries.remove(entry)
+    elif fault == "recipe_symlink":
+        entry["mode"] = "120000"
+    elif fault == "recipe_blob_drift":
+        documents["git/blobs/" + entry["sha"]]["content"] = base64.b64encode(b"forged").decode()
+    elif fault == "recipe_id":
+        peer["solution_id"] = str(UUID(int=99))
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "recipe_schema":
+        peer["schema_version"] = "unreviewed/v1"
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "recipe_duplicate":
+        raw = json.dumps(peer).encode().replace(b'"files": {', b'"files": {}, "files": {')
+        add_git_document(documents, path, raw)
+    elif fault == "unsafe_source":
+        peer["files"]["helper.py"] = "solutions/fixture/../other.py"
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "missing_source":
+        peer["files"]["helper.py"] = "solutions/fixture/missing.py"
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "recipe_bytes":
+        entry["size"] = 128 * 1024 + 1
+    elif fault == "aggregate_bytes":
+        monkeypatch.setattr(github_delivery_source, "MAX_METADATA_BYTES", 1)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        with pytest.raises(GitDeliverySourceError):
+            await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
 
 
 @pytest.mark.asyncio

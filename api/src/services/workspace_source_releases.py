@@ -270,6 +270,8 @@ class WorkspaceSourceReleaseService:
         if get_settings().solution_git_delivery_policy is None:
             return False
         from src.services.solution_source_accountability import reconcile_solution_owned_source
+        from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+        await reconcile_native_solution_deploy_obligations(self.db, source_release_id=source_release_id)
         await reconcile_solution_owned_source(self.db, source_release_id=source_release_id)
         await self.db.commit()
         return True
@@ -719,6 +721,8 @@ async def sweep_overdue_workspace_releases(
     """Turn missed source and history deadlines into durable attention state."""
     now = now or _utc_now()
     from src.services.solution_source_accountability import reconcile_solution_owned_source
+    from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+    await reconcile_native_solution_deploy_obligations(db)
     await reconcile_solution_owned_source(db)
     # Projection takes the Live release row before source-accountability rows.
     # Keep the scheduler in the same order so the two transactions cannot
