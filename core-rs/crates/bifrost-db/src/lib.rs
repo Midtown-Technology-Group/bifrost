@@ -1,6 +1,9 @@
 //! PostgreSQL primitives. Alembic owns schema creation and migration history.
 
 #[cfg(feature = "workflow-sql-parity")]
+pub mod workflow_numeric;
+
+#[cfg(feature = "workflow-sql-parity")]
 pub mod workflow_parity;
 
 use std::{
