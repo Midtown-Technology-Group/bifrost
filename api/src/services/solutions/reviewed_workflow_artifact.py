@@ -34,6 +34,7 @@ from src.services.solutions.source_revision import (
     SolutionSourceRevisionConflict,
     SolutionSourceRevisionError,
     _archive_files,
+    legacy_descriptor_evidence,
 )
 from src.services.solutions.workflow_revision_recipe import (
     ReviewedWorkflowRecipe,
@@ -47,6 +48,7 @@ def compile_reviewed_workflows(
     resources: dict[str, bytes], indexer: WorkflowParameterCompiler, *,
     has_owned_tables: bool = False,
     legacy_parameter_hashes: dict[UUID, str] | None = None,
+    legacy_descriptor_snapshots: dict[UUID, dict] | None = None,
 ) -> dict[str, RuntimeEntityDefinition]:
     """Require the exact executable closure and declared resource bytes."""
     validate_resource_files(recipe, resources, files)
@@ -61,6 +63,16 @@ def compile_reviewed_workflows(
         if legacy_parameter_hashes:
             entities = {ref: item.model_copy(update={
                 "legacy_parameters_schema_hash": legacy_parameter_hashes.get(item.resolved_id),
+            }) for ref, item in entities.items()}
+        if legacy_descriptor_snapshots is not None:
+            if set(legacy_descriptor_snapshots) != {item.resolved_id for item in entities.values()}:
+                raise SolutionSourceRevisionError("legacy descriptor identities differ from reviewed workflows")
+            entities = {ref: RuntimeEntityDefinition.model_validate({
+                **item.model_dump(mode="json"),
+                "definition": {
+                    **item.definition,
+                    "legacy_descriptor_evidence": legacy_descriptor_evidence(legacy_descriptor_snapshots[item.resolved_id]),
+                },
             }) for ref, item in entities.items()}
     except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
         raise SolutionSourceRevisionError(str(exc)) from exc
@@ -137,6 +149,7 @@ async def inspect_reviewed_artifact(
     recipe: ReviewedWorkflowRecipe, indexer: WorkflowParameterCompiler, marker_schema: str, *,
     has_owned_tables: bool = False,
     legacy_parameter_hashes: dict[UUID, str] | None = None,
+    legacy_descriptor_snapshots: dict[UUID, dict] | None = None,
 ) -> tuple[CompiledDeploymentManifest, DeploymentResolutionMap]:
     """Recompile fresh archive bytes and compare the complete immutable document."""
     try:
@@ -158,6 +171,7 @@ async def inspect_reviewed_artifact(
     entities = compile_reviewed_workflows(
         recipe, files, resources, indexer, has_owned_tables=has_owned_tables,
         legacy_parameter_hashes=legacy_parameter_hashes,
+        legacy_descriptor_snapshots=legacy_descriptor_snapshots,
     )
     expected_manifest, expected_resolution = build_reviewed_artifact(
         solution_id, deployment_id, recipe, files, resources, entities,

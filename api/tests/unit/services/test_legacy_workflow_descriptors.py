@@ -1,0 +1,85 @@
+"""Legacy display metadata cannot broaden immutable registration authorization."""
+
+from copy import deepcopy
+from uuid import uuid4
+
+import pytest
+
+from src.models.orm.workflows import Workflow
+from src.services.solutions.deployment_manifest import RuntimeEntityDefinition
+from src.services.solutions.source_revision import (
+    SolutionSourceRevisionError,
+    _require_registration,
+    _workflow_snapshot,
+    legacy_descriptor_evidence,
+)
+
+
+def _registration():
+    row = Workflow(
+        id=uuid4(), path="workflows/task.py", function_name="run", name="Reviewed task",
+        type="workflow", organization_id=None, is_active=True, roles=[],
+        endpoint_enabled=False, public_endpoint=False, api_key_enabled=False,
+        access_level="role_based", timeout_seconds=60, execution_mode="sync",
+        time_saved=0, value=0, cache_ttl_seconds=0, parameters_schema={},
+        display_name=None, description=None, category="General", tags=[],
+        allowed_methods=["POST"], disable_global_key=True, retry_policy=None,
+        tool_description=None,
+    )
+    definition = _workflow_snapshot(row)
+    definition.update(description="Reviewed description", category="Reviewed category")
+    return row, definition
+
+
+def _entity(row, definition):
+    return RuntimeEntityDefinition(portable_ref="task", resolved_id=row.id, definition=definition)
+
+
+def test_nullable_descriptors_require_separate_exact_immutable_evidence():
+    row, definition = _registration()
+    with pytest.raises(SolutionSourceRevisionError, match="registration differs"):
+        _require_registration(row, _entity(row, definition))
+    definition["legacy_descriptor_evidence"] = legacy_descriptor_evidence(_workflow_snapshot(row))
+    entity = _entity(row, definition)
+    _require_registration(row, entity)
+    assert row.description is None and row.category == "General"
+    assert entity.definition["description"] == "Reviewed description"
+    with pytest.raises(TypeError, match="immutable"):
+        entity.definition["legacy_descriptor_evidence"]["fields"]["description"] = ""
+
+
+@pytest.mark.parametrize("change", ["hash", "schema", "fields", "security_field", "missing_source", "invalid_source"])
+def test_malformed_descriptor_evidence_fails_closed(change):
+    row, definition = _registration()
+    evidence = legacy_descriptor_evidence(_workflow_snapshot(row))
+    if change == "hash":
+        evidence["content_hash"] = "sha256:" + "0" * 64
+    elif change == "schema":
+        evidence["schema_version"] = "other"
+    elif change == "fields":
+        evidence["fields"]["description"] = ""
+    elif change == "security_field":
+        evidence["fields"]["endpoint_enabled"] = True
+    elif change == "missing_source":
+        del definition["category"]
+    elif change == "invalid_source":
+        definition["description"] = None
+    definition["legacy_descriptor_evidence"] = evidence
+    with pytest.raises(SolutionSourceRevisionError):
+        _require_registration(row, _entity(row, definition))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("id", uuid4()), ("organization_id", uuid4()), ("path", "workflows/other.py"),
+    ("function_name", "other"), ("description", ""), ("category", "Changed"),
+    ("endpoint_enabled", True), ("public_endpoint", True), ("access_level", "authenticated"),
+    ("disable_global_key", False), 
+    ("parameters_schema", {"changed": True}),
+])
+def test_descriptor_evidence_does_not_hide_identity_scope_security_or_signature_drift(field, value):
+    row, definition = _registration()
+    definition["legacy_descriptor_evidence"] = legacy_descriptor_evidence(_workflow_snapshot(row))
+    entity = _entity(row, deepcopy(definition))
+    setattr(row, field, value)
+    with pytest.raises(SolutionSourceRevisionError):
+        _require_registration(row, entity)

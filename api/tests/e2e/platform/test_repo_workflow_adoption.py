@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select, update
 
 from src.models.contracts.solution_deployments import (
@@ -45,7 +46,7 @@ def legacy_store(monkeypatch):
 
 
 async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, legacy_schema=False,
-                with_owned_query=False):
+                with_owned_query=False, legacy_descriptors=False, stage=True):
     sid, did, wid = uuid4(), uuid4(), uuid4()
     path = "workflows/adopt.py"
     source = (b"from bifrost import workflow\n"
@@ -57,6 +58,8 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
                   "async def run(user: str = 'root'):\n"
                   f"    rows = await tables.query('adoption-{sid.hex}', limit=1)\n"
                   "    return {'user': user, 'version': 'old', 'count': rows.total}\n").encode()
+    if legacy_descriptors:
+        source = source.replace(b"effects=[]", b"category='Reviewed category', description='Reviewed description', effects=[]")
     solution = Solution(id=sid, slug=f"adopt-{sid.hex[:12]}", name="Adopted install",
         organization_id=None, execution_runtime_mode="repo-v1", setup_complete=True,
         allow_outbound_access=False, git_connected=False)
@@ -79,6 +82,10 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
                    "default_value": "root"}] if with_owned_query else []
         await db_session.execute(update(Workflow).where(Workflow.id == wid).values(parameters_schema=schema))
         await db_session.refresh(row)
+    if legacy_descriptors:
+        await db_session.execute(update(Workflow).where(Workflow.id == wid).values(
+            description=None, category="General"))
+        await db_session.refresh(row)
     inactive = Workflow(id=uuid4(), solution_id=sid, organization_id=None, name="Inactive retained",
         function_name="dormant", path="workflows/dormant.py", is_active=False, is_orphaned=True)
     table = Table(id=uuid4(), name=f"adoption-{sid.hex}", solution_id=sid, organization_id=None)
@@ -95,17 +102,18 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
     for item in (row, inactive, table, config):
         await db_session.refresh(item)
     before = {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
-    staged = await service.stage(sid, did, platform_admin.user_id, body, {path: source}, {})
+    staged = await service.stage(sid, did, platform_admin.user_id, body, {path: source}, {}) if stage else None
     return solution, did, row, inactive, table, config, service, request, staged, before
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("legacy_schema", [False, True])
+@pytest.mark.parametrize("legacy_descriptors", [False, True])
 async def test_adoption_preserves_every_existing_row_and_credentials(
-    db_session, platform_admin, artifact_store, legacy_store, legacy_schema,
+    db_session, platform_admin, artifact_store, legacy_store, legacy_schema, legacy_descriptors,
 ):
     solution, did, row, inactive, table, config, service, request, staged, before = await _seed(
-        db_session, platform_admin, artifact_store, legacy_store, legacy_schema=legacy_schema)
+        db_session, platform_admin, artifact_store, legacy_store, legacy_schema=legacy_schema, legacy_descriptors=legacy_descriptors)
     assert solution.active_deployment_id is None
     assert staged.retained_inactive_workflow_ids == [inactive.id]
     result = await service.activate(solution.id, did, request, staged.evidence_id)
@@ -158,13 +166,17 @@ async def test_unfinished_attempt_blocks_even_when_execution_is_terminal(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["source", "inactive_source", "credential", "inactive", "table", "config"])
+@pytest.mark.parametrize("change", ["source", "inactive_source", "credential", "inactive", "table", "config", "description", "category"])
 async def test_adoption_rejects_stale_mutable_source_or_any_retained_control(
     db_session, platform_admin, artifact_store, legacy_store, change,
 ):
     solution, did, row, inactive, table, config, service, request, staged, _ = await _seed(
-        db_session, platform_admin, artifact_store, legacy_store)
-    if change == "source":
+        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
+    if change == "description":
+        await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(description=""))
+    elif change == "category":
+        await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(category="Changed category"))
+    elif change == "source":
         legacy_store[solution.id][row.path] += b"\n# concurrent edit\n"
     elif change == "inactive_source":
         legacy_store[solution.id][inactive.path] += b"\n# concurrent edit\n"
@@ -208,7 +220,7 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
 
     solution, did, row, inactive, table, config, service, request, staged, before = await _seed(
         db_session, platform_admin, artifact_store, legacy_store,
-        legacy_schema=True, with_owned_query=True)
+        legacy_schema=True, with_owned_query=True, legacy_descriptors=True)
     await service.activate(solution.id, did, request, staged.evidence_id)
     old_pin = await pin_workflow_runtime(db_session, row.id)
     assert old_pin is not None and old_pin.deployment_id == did
@@ -219,6 +231,11 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
         await pin_workflow_runtime(db_session, inactive.id)
     base = await db_session.get(SolutionDeployment, did)
     assert base is not None
+    definition = next(iter(base.resolution_map["workflows"].values()))["definition"]
+    assert definition["description"] == "Reviewed description"
+    assert definition["category"] == "Reviewed category"
+    assert definition["legacy_descriptor_evidence"]["fields"] == {"description": None, "category": "General"}
+    assert row.description is None and row.category == "General"
     expected = SolutionSourceRevisionInspectRequest(
         expected_active_deployment_id=did, expected_active_manifest_hash=base.compiled_manifest_hash)
     new_source = legacy_store[solution.id][row.path].replace(b"'old'", b"'new'")
@@ -239,6 +256,7 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
     accepted = await resolve_pinned_workflow_runtime(db_session, did, row.id)
     assert accepted.queue_evidence() == old_pin.queue_evidence()
     assert isinstance(row.parameters_schema, dict)
+    assert row.description == "Reviewed description" and row.category == "Reviewed category"
     assert row.api_key_hash == "a" * 64 and row.api_key_enabled
     for item in (inactive, table, config):
         await db_session.refresh(item)
@@ -247,6 +265,8 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
         await pin_workflow_runtime(db_session, inactive.id)
     successor = await db_session.get(SolutionDeployment, next_id)
     assert successor is not None
+    successor_definition = next(iter(successor.resolution_map["workflows"].values()))["definition"]
+    assert "legacy_descriptor_evidence" not in successor_definition
     assert successor.compiled_manifest["tables"] == {} and table.solution_id == solution.id
     assert successor.resolution_map["sources"][row.path]["content_hash"] != base.resolution_map["sources"][row.path]["content_hash"]
 
@@ -320,3 +340,114 @@ async def test_adoption_refuses_outbound_root_fallback(
     await db_session.flush()
     with pytest.raises(SolutionSourceRevisionError, match="sealed disconnected"):
         await service.inspect(solution.id, did, request)
+
+
+@pytest_asyncio.fixture
+async def committed_adoption_db(async_session_factory):
+    # Real HTTP and workers use independent sessions; a savepoint fixture would
+    # hide this synthetic populated install even after session.commit().
+    async with async_session_factory() as session:
+        yield session
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_nullable_legacy_adoption_over_http_preserves_rows_and_executes_sealed_bytes(
+    committed_adoption_db, platform_admin, e2e_client,
+):
+    """The populated NULL descriptor failure crosses real HTTP, SQL, S3 and worker boundaries."""
+    import base64
+    from uuid import UUID
+
+    from src.models.orm.executions import WorkflowExecutionAttempt
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.deployment_storage import SolutionDeploymentStorage, deployment_manifest_key
+    from src.services.solutions.storage import SolutionStorage
+    from tests.e2e.conftest import execute_workflow_sync
+
+    db_session = committed_adoption_db
+    legacy_files = {}
+    solution, did, row, inactive, table, config, _, request, _, before = await _seed(
+        db_session, platform_admin, None, legacy_files, legacy_descriptors=True, stage=False)
+    storage = SolutionStorage(solution.id)
+    try:
+        for path, content in legacy_files[solution.id].items():
+            await storage.write(path, content)
+        await db_session.commit()
+        source = legacy_files[solution.id][row.path]
+        base = f"/api/solutions/{solution.id}/deployments/{did}/repo-workflow-adoption"
+        inspect_body = {"reviewed_recipe": request.reviewed_recipe.model_dump(mode="json")}
+        staged = e2e_client.post(f"{base}/candidate", headers=platform_admin.headers, json={
+            **inspect_body, "source_commit_sha": "c" * 40,
+            "files": [{"path": row.path, "content_base64": base64.b64encode(source).decode()}],
+        })
+        assert staged.status_code == 200, staged.text
+        inspected = e2e_client.post(f"{base}/preflight", headers=platform_admin.headers, json=inspect_body)
+        assert inspected.status_code == 200, inspected.text
+        assert inspected.json()["evidence_id"] == staged.json()["evidence_id"]
+        activated = e2e_client.post(f"{base}/activate", headers=platform_admin.headers, json={
+            **inspect_body, "expected_evidence_id": inspected.json()["evidence_id"],
+        })
+        assert activated.status_code == 200, activated.text
+        for item in (solution, row, inactive, table, config):
+            await db_session.refresh(item)
+        assert solution.active_deployment_id == did and solution.execution_runtime_mode == "deployment-v1"
+        assert before == {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
+        deployment = await db_session.get(SolutionDeployment, did)
+        assert deployment is not None
+        definition = next(iter(deployment.resolution_map["workflows"].values()))["definition"]
+        assert definition["legacy_descriptor_evidence"]["fields"] == {"description": None, "category": "General"}
+        assert await SolutionDeploymentStorage(solution.id, did).read_runtime_file(row.path) == source
+        assert await storage.read(row.path) == source
+        result = execute_workflow_sync(e2e_client, platform_admin.headers, str(row.id), request_sync=True, max_wait=60)
+        assert result["status"] == "Success" and result["result"] == "old", result
+        execution = await db_session.get(Execution, UUID(result["execution_id"]))
+        assert execution is not None and execution.solution_deployment_id == did
+        assert execution.runtime_mode == "deployment-v1"
+        attempt = await db_session.scalar(select(WorkflowExecutionAttempt).where(
+            WorkflowExecutionAttempt.execution_id == execution.id))
+        assert attempt is not None and attempt.status == "succeeded" and attempt.worker_id
+        assert attempt.runtime_evidence_hash == execution.runtime_evidence_hash
+    finally:
+        for path in legacy_files[solution.id]:
+            await storage.delete(path)
+        immutable = SolutionDeploymentStorage(solution.id, did)
+        async with immutable._client_factory() as client:
+            for key in (immutable.source_artifact_key, deployment_manifest_key(solution.id, did),
+                        f"{immutable.runtime_prefix}{row.path}"):
+                await client.delete_object(Bucket=immutable._bucket, Key=key)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["missing", "fields", "source_descriptors"])
+async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_hashes_are_resealed(
+    db_session, platform_admin, artifact_store, legacy_store, change,
+):
+    from copy import deepcopy
+
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.deployment_manifest import CompiledDeploymentManifest, canonical_json, sha256_digest
+
+    solution, did, _, _, _, _, service, request, _, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
+    deployment = await db_session.get(SolutionDeployment, did)
+    resolution = deepcopy(deployment.resolution_map)
+    definition = next(iter(resolution["workflows"].values()))["definition"]
+    if change == "missing":
+        del definition["legacy_descriptor_evidence"]
+    elif change == "fields":
+        from src.services.solutions.source_revision import legacy_descriptor_evidence
+        definition["legacy_descriptor_evidence"] = legacy_descriptor_evidence({"description": "", "category": "General"})
+    else:
+        definition["description"] = "Other source description"
+    manifest_data = deepcopy(deployment.compiled_manifest)
+    manifest_data["workflows"] = resolution["workflows"]
+    manifest_data["resolution_map_hash"] = sha256_digest(canonical_json(resolution))
+    manifest = CompiledDeploymentManifest.model_validate(manifest_data)
+    await db_session.execute(update(SolutionDeployment).where(SolutionDeployment.id == did).values(
+        resolution_map=resolution, resolution_map_hash=manifest.resolution_map_hash,
+        compiled_manifest=manifest.model_dump(mode="json", exclude_none=True), compiled_manifest_hash=sha256_digest(manifest.canonical_bytes())))
+    artifact_store[(str(did), "manifest")] = manifest.canonical_bytes()
+    with pytest.raises(SolutionSourceRevisionConflict, match="differs from reviewed recipe"):
+        await service.inspect(solution.id, did, request)
+    assert solution.active_deployment_id is None
