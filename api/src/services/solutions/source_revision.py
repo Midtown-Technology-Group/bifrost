@@ -32,6 +32,7 @@ from src.models.contracts.solution_deployments import (
 )
 from src.models.orm.events import EventSource, EventSubscription
 from src.models.orm.solutions import Solution
+from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
@@ -165,6 +166,13 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
     # Older handoff manifests predate a complete registration definition.
     # New workflow revisions must also match every deploy-owned projection.
     snapshot = _workflow_snapshot(workflow)
+    if isinstance(workflow.parameters_schema, list):
+        # Adoption attests the exact legacy representation after checking the
+        # source signature. Preserve it in the registry until reviewed delivery
+        # projects the complete schema; a changed legacy list fails closed.
+        expected_legacy_hash = canonical_digest(workflow.parameters_schema)
+        if entity.legacy_parameters_schema_hash == expected_legacy_hash:
+            snapshot["parameters_schema"] = definition.get("parameters_schema")
     for key in (
         "parameters_schema", "display_name", "description", "category", "tags",
         "endpoint_enabled", "public_endpoint", "access_level", "role_ids",
@@ -252,6 +260,9 @@ class SolutionSourceRevisionService:
         self.db = db
         self.repository = SolutionDeploymentRepository(db)
 
+    async def _has_owned_tables(self, solution_id: UUID) -> bool:
+        return await self.db.scalar(select(Table.id).where(Table.solution_id == solution_id).limit(1)) is not None
+
     async def verify_current_source(
         self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest
     ) -> None:
@@ -316,6 +327,7 @@ class SolutionSourceRevisionService:
             _SOURCE_REVISION_MARKER,
             "bifrost.solution-workflow-revision/v1",
             "bifrost.initial-reviewed-workflow-install/v1",
+            "bifrost.repo-workflow-adoption/v1",
         }:
             raise SolutionSourceRevisionError(
                 "active deployment did not use the reviewed handoff path"
@@ -459,7 +471,7 @@ class SolutionSourceRevisionService:
         try:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
-                has_table_bindings=bool(old_resolution.shared_tables),
+                has_table_bindings=bool(old_resolution.shared_tables) or await self._has_owned_tables(solution_id),
                 has_root_file_bindings=bool(old_resolution.root_file_bindings),
             )
             archive = source_archive(closure)
@@ -617,7 +629,7 @@ class SolutionSourceRevisionService:
         try:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
-                has_table_bindings=bool(old_resolution.shared_tables),
+                has_table_bindings=bool(old_resolution.shared_tables) or await self._has_owned_tables(solution_id),
                 has_root_file_bindings=bool(old_resolution.root_file_bindings),
             )
         except LiveHandoffSourceError as exc:

@@ -649,6 +649,20 @@ client_unit_targets() {
         client-check-runner npm test -- "$@"
 }
 
+candidate_action_pin_checks() {
+    local diff_status=0
+    git diff --quiet origin/main HEAD -- .github/workflows .github/actions \
+        api/scripts/check_github_action_pins.py || diff_status=$?
+    case "$diff_status" in
+        0)
+            echo "Action inputs unchanged: checking full SHA pins locally; CI verifies version comments."
+            python3 api/scripts/check_github_action_pins.py
+            ;;
+        1) python3 api/scripts/check_github_action_pins.py --verify-versions ;;
+        *) echo "ERROR: cannot establish Action input changes." >&2; return "$diff_status" ;;
+    esac
+}
+
 repository_ci_checks() {
     bash scripts/lib/test_stack_lock_test.sh
     python3 scripts/lib/pre_pr_stage_evidence_test.py
@@ -656,7 +670,7 @@ repository_ci_checks() {
     node --test .github/scripts/authorize-merge-queue.test.mjs
     python3 -m unittest scripts.test_codeql_changed_lines
     echo "Checking GitHub Action pins..."
-    python3 api/scripts/check_github_action_pins.py --verify-versions
+    candidate_action_pin_checks
 
     echo "Checking generated Codex skill mirrors..."
     # scripts/check_skill_mirrors.py encapsulates the previous host gate:
