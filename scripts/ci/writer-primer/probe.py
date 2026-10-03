@@ -318,17 +318,319 @@ async def escape_negatives(connection, role, deadline):
     return results
 
 
-async def rejected_connection(host, role, password, database, deadline):
+NEGATIVE_CASES = {
+    "postgres_wrong_password": (
+        "postgres",
+        "wex_incumbent",
+        "synthetic_wrong_password",
+        DATABASE,
+    ),
+    "postgres_unknown_user": (
+        "postgres",
+        "wex_unknown",
+        "synthetic_unknown_password",
+        DATABASE,
+    ),
+    "pool_wrong_password": (
+        "pool",
+        "wex_incumbent",
+        "synthetic_wrong_password",
+        DATABASE,
+    ),
+    "pool_unknown_user": (
+        "pool",
+        "wex_unknown",
+        "synthetic_unknown_password",
+        DATABASE,
+    ),
+    "pool_admin_user": ("pool", "bifrost", "synthetic_primer_admin", DATABASE),
+    "pool_foreign_alias": (
+        "pool",
+        "wex_incumbent",
+        ROLES["wex_incumbent"],
+        "foreign_primer_alias",
+    ),
+}
+POOL_REASONS = {
+    "pool_wrong_password": "password authentication failed",
+    "pool_unknown_user": "password authentication failed",
+    "pool_admin_user": "password authentication failed",
+    "pool_foreign_alias": "no such database: foreign_primer_alias",
+}
+
+
+def classify_rejection(case_id, parameters, error, *, returned=False):
+    if (
+        case_id not in NEGATIVE_CASES
+        or parameters != NEGATIVE_CASES[case_id]
+        or returned
+    ):
+        return "unmatched"
+    if isinstance(error, asyncpg.PostgresError) and error.sqlstate in (
+        "28P01",
+        "28000",
+        "3D000",
+    ):
+        return "postgres_rejection"  # Preserve the existing SQLSTATE path.
+    if (
+        case_id in POOL_REASONS
+        and type(error) is asyncpg.ProtocolViolationError
+        and error.sqlstate == "08P01"
+        and error.severity == "FATAL"
+        and error.message == POOL_REASONS[case_id]
+    ):
+        return (
+            "pool_unknown_database"
+            if case_id == "pool_foreign_alias"
+            else "pool_password_rejection"
+        )
+    return "unmatched"
+
+
+def negative_observation(case_id, outcome, error, signature):
+    host, role, _, database = NEGATIVE_CASES[case_id]
+    names = {
+        "ProtocolViolationError",
+        "PostgresError",
+        "InvalidPasswordError",
+        "InvalidAuthorizationSpecificationError",
+        "InvalidCatalogNameError",
+        "TimeoutError",
+        "ConnectionRefusedError",
+        "ConnectionResetError",
+        "OSError",
+        "EOFError",
+    }
+    observed = type(error).__name__ if error is not None else None
+    state = getattr(error, "sqlstate", None)
+    return {
+        "case_id": case_id,
+        "endpoint": host,
+        "role": role,
+        "database": database,
+        "outcome": outcome,
+        "exception_type": observed
+        if observed in names
+        else "other"
+        if error is not None
+        else None,
+        "sqlstate": state if state in {"28P01", "28000", "3D000", "08P01"} else None,
+        "reason_signature": signature,
+    }
+
+
+async def rejected_connection(case_id, host, role, password, database, deadline):
+    parameters = (host, role, password, database)
+    require(case_id in NEGATIVE_CASES and parameters == NEGATIVE_CASES[case_id])
     connection = None
-    denied = False
+    signature = "unmatched"
+    observation = negative_observation(case_id, "not_dispatched", None, signature)
     try:
-        connection = await connect(host, role, deadline, password, database)
-    except asyncpg.PostgresError as error:
-        denied = error.sqlstate in ("28P01", "28000", "3D000")
-    finally:
-        await close(connection, deadline)
-    require(denied)
-    return {"endpoint": host, "role": role, "database": database, "denied": True}
+        try:
+            observation = negative_observation(
+                case_id, "connection_pending", None, signature
+            )
+            connection = await connect(host, role, deadline, password, database)
+            observation = negative_observation(
+                case_id, "returned_connection", None, signature
+            )
+        except asyncpg.PostgresError as error:
+            signature = classify_rejection(case_id, parameters, error)
+            observation = negative_observation(
+                case_id, "postgres_error", error, signature
+            )
+        except BaseException as error:
+            observation = negative_observation(
+                case_id, "connection_failure", error, signature
+            )
+            raise
+        finally:
+            original = sys.exception()
+            try:
+                await close(connection, deadline)
+            except BaseException:
+                if original is None:
+                    raise
+        require(signature != "unmatched")
+        return {**observation, "denied": True}
+    except BaseException as error:
+        error.primer_negative_observation = observation
+        raise  # Preserve original failure/control; retain only owned closed facts.
+
+
+def classifier_controls():
+    # Actual driver exception classes, synthetic fields; no server/permission proof.
+    results = []
+
+    def protocol(
+        message, *, state="08P01", severity="FATAL", cls=asyncpg.ProtocolViolationError
+    ):
+        error = cls(message)
+        error.message, error.sqlstate, error.severity = message, state, severity
+        return error
+
+    def check(label, case_id, parameters, error, accepted, *, returned=False):
+        actual = (
+            classify_rejection(case_id, parameters, error, returned=returned)
+            != "unmatched"
+        )
+        require(actual is accepted)
+        results.append(
+            {
+                "control_id": label,
+                "expected_rejection_recognized": accepted,
+                "observed_rejection_recognized": actual,
+            }
+        )
+
+    for case_id, message in POOL_REASONS.items():
+        parameters = NEGATIVE_CASES[case_id]
+        check(case_id + "_positive", case_id, parameters, protocol(message), True)
+        for field, replacement in (
+            ("sqlstate", "08006"),
+            ("sqlstate", None),
+            ("severity", "ERROR"),
+            ("severity", None),
+            ("message", None),
+        ):
+            error = protocol(message)
+            setattr(error, field, replacement)
+            check(
+                case_id
+                + "_wrong_"
+                + field
+                + ("_missing" if replacement is None else ""),
+                case_id,
+                parameters,
+                error,
+                False,
+            )
+        for index, replacement in enumerate(
+            ("postgres", "foreign_role", "foreign_password", "foreign_database")
+        ):
+            changed = list(parameters)
+            changed[index] = replacement
+            check(
+                case_id + "_tuple_" + str(index),
+                case_id,
+                tuple(changed),
+                protocol(message),
+                False,
+            )
+        for index, changed in enumerate(
+            (
+                "bad packet",
+                "pooler is shutting down",
+                "no memory for pool",
+                message + "\n",
+                message + " suffix",
+                "prefix " + message,
+            )
+        ):
+            check(
+                case_id + "_message_" + str(index),
+                case_id,
+                parameters,
+                protocol(changed),
+                False,
+            )
+        swapped = (
+            POOL_REASONS["pool_wrong_password"]
+            if case_id == "pool_foreign_alias"
+            else POOL_REASONS["pool_foreign_alias"]
+        )
+        check(case_id + "_swapped", case_id, parameters, protocol(swapped), False)
+        check(
+            case_id + "_returned",
+            case_id,
+            parameters,
+            protocol(message),
+            False,
+            returned=True,
+        )
+        check(
+            case_id + "_unknown_case",
+            "unknown_case",
+            parameters,
+            protocol(message),
+            False,
+        )
+        other_case = (
+            "pool_foreign_alias"
+            if case_id != "pool_foreign_alias"
+            else "pool_wrong_password"
+        )
+        check(case_id + "_wrong_case", other_case, parameters, protocol(message), False)
+        check(
+            case_id + "_wrong_class",
+            case_id,
+            parameters,
+            protocol(message, cls=asyncpg.PostgresError),
+            False,
+        )
+        for index, cls in enumerate(
+            (
+                TimeoutError,
+                ConnectionRefusedError,
+                ConnectionResetError,
+                EOFError,
+                OSError,
+            )
+        ):
+            check(
+                case_id + "_network_" + str(index),
+                case_id,
+                parameters,
+                cls(message),
+                False,
+            )
+        fact = negative_observation(
+            case_id, "postgres_error", protocol(message), "unmatched"
+        )
+        require(
+            set(fact)
+            == {
+                "case_id",
+                "endpoint",
+                "role",
+                "database",
+                "outcome",
+                "exception_type",
+                "sqlstate",
+                "reason_signature",
+            }
+        )
+        require(fact["sqlstate"] == "08P01" and fact["reason_signature"] == "unmatched")
+        require(
+            message not in json.dumps(fact) and parameters[2] not in json.dumps(fact)
+        )
+
+    class DerivedProtocolError(asyncpg.ProtocolViolationError):
+        pass
+
+    case_id = "pool_wrong_password"
+    parameters = NEGATIVE_CASES[case_id]
+    check(
+        "subclass",
+        case_id,
+        parameters,
+        protocol(POOL_REASONS[case_id], cls=DerivedProtocolError),
+        False,
+    )
+    for case_id in ("postgres_wrong_password", "postgres_unknown_user"):
+        for state, cls in (
+            ("28P01", asyncpg.InvalidPasswordError),
+            ("28000", asyncpg.InvalidAuthorizationSpecificationError),
+            ("3D000", asyncpg.InvalidCatalogNameError),
+        ):
+            check(
+                case_id + "_" + state,
+                case_id,
+                NEGATIVE_CASES[case_id],
+                protocol("synthetic control", state=state, cls=cls),
+                True,
+            )
+    return {"kind": "synthetic_actual_driver_classifier_controls", "controls": results}
 
 
 async def collect(deadline):
@@ -401,6 +703,7 @@ async def collect(deadline):
         for host in ("postgres", "pool"):
             failures.append(
                 await rejected_connection(
+                    host + "_wrong_password",
                     host,
                     "wex_incumbent",
                     "synthetic_wrong_password",
@@ -410,6 +713,7 @@ async def collect(deadline):
             )
             failures.append(
                 await rejected_connection(
+                    host + "_unknown_user",
                     host,
                     "wex_unknown",
                     "synthetic_unknown_password",
@@ -419,11 +723,17 @@ async def collect(deadline):
             )
         failures.append(
             await rejected_connection(
-                "pool", "bifrost", "synthetic_primer_admin", DATABASE, deadline
+                "pool_admin_user",
+                "pool",
+                "bifrost",
+                "synthetic_primer_admin",
+                DATABASE,
+                deadline,
             )
         )
         failures.append(
             await rejected_connection(
+                "pool_foreign_alias",
                 "pool",
                 "wex_incumbent",
                 ROLES["wex_incumbent"],
@@ -491,7 +801,9 @@ def write_receipt(value, deadline):
 async def main():
     deadline = time.monotonic() + 120
     async with asyncio.timeout(remaining(deadline)):
+        controls = classifier_controls()
         result = await collect(deadline)
+        result["classifier_controls"] = controls
         write_receipt(result, deadline)
         require(time.monotonic() < deadline)
 
@@ -554,6 +866,12 @@ def write_failure(error):
                     fact["sample_cycle"] = local["cycle"]
             caller_line = trace.tb_lineno
             trace = trace.tb_next
+        owned = getattr(current, "primer_negative_observation", None)
+        if type(owned) is dict and owned.get("case_id") in NEGATIVE_CASES:
+            fact.pop("sample_cycle", None)
+            fact.pop("query", None)
+            fact["task"] = "rejected_connection"
+            fact.update(owned)
         failures.append(fact)
     data = json.dumps(
         {"schema": "bifrost.test.writer-primer-failure/v1", "failures": failures},
