@@ -4,21 +4,25 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - api/Dockerfile
-      - api/Dockerfile.dev
-      - client/Dockerfile
-      - client/Dockerfile.dev
-      - client/Dockerfile.playwright
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+      - '**/*.dockerfile'
+      - '**/Containerfile*'
+      - '**/.dockerignore'
+      - '**/*.dockerignore'
+      - .dockerignore
       - droast.toml
       - .github/workflows/dockerfile-policy.yml
   push:
     branches: [main]
     paths:
-      - api/Dockerfile
-      - api/Dockerfile.dev
-      - client/Dockerfile
-      - client/Dockerfile.dev
-      - client/Dockerfile.playwright
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+      - '**/*.dockerfile'
+      - '**/Containerfile*'
+      - '**/.dockerignore'
+      - '**/*.dockerignore'
+      - .dockerignore
       - droast.toml
       - .github/workflows/dockerfile-policy.yml
   workflow_dispatch:
@@ -43,13 +47,13 @@ jobs:
       - name: Install Dockerfile Roast
         id: install-droast
         env:
-          DROAST_VERSION: "1.4.7"
-          DROAST_LINUX_X86_64_SHA256: 8051a050c3a4bd94dcea1e5d8cda3a57d37baa53ff394396793ebda9d094f68e
+          DROAST_VERSION: "sha-23ea8bf7c9d3ee65d6a0ccec3d76d4566591ad3c"
+          DROAST_LINUX_X86_64_SHA256: 592e9ad6bb5734bea6d951791ef8de54e8e9d6b1243c63aab544574ceb0784b5
         run: |
           set -euo pipefail
           install_path="$RUNNER_TEMP/droast"
           curl --fail --location --silent --show-error \
-            "https://github.com/immanuwell/dockerfile-roast/releases/download/${DROAST_VERSION}/droast-linux-x86_64" \
+            "https://github.com/MTG-Thomas/dockerfile-roast/releases/download/${DROAST_VERSION}/droast-linux-x86_64" \
             --output "$install_path"
           echo "${DROAST_LINUX_X86_64_SHA256}  ${install_path}" | sha256sum -c -
           chmod +x "$install_path"
@@ -61,8 +65,4 @@ jobs:
           --config droast.toml
           --format github
           --no-fail
-          api/Dockerfile
-          api/Dockerfile.dev
-          client/Dockerfile
-          client/Dockerfile.dev
-          client/Dockerfile.playwright
+          .
