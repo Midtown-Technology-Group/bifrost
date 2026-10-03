@@ -6,6 +6,7 @@ if [[ "${1:-}" != format || "$#" != 1 ]]; then
     exit 2
 fi
 python3 - <<'PY'
+import copy
 import hashlib
 import json
 import os
@@ -67,6 +68,7 @@ image_id = None
 image_config = None
 container_id = None
 container_config = None
+container_semantic_config = None
 head = None
 tree = None
 main = None
@@ -109,6 +111,8 @@ DIAGNOSTIC_LOCATIONS = {
 }
 CHECKPOINTS = ("record", "inspect", "association", "fingerprint", "remove", "absence", "complete")
 CONTAINER_SECTIONS = ("Id", "Image", "Config", "HostConfig", "Mounts")
+OOM_FINGERPRINT_POLICY = "docker-oci-oom-enabled/v1"
+OOM_LEAF_STATES = ("missing", "null", "false", "true", "invalid")
 IMAGE_SECTIONS = (
     "Id",
     "Config",
@@ -213,7 +217,13 @@ cleanup_diagnostics = {
             "fingerprint_equal": None,
             "changed_sections": None,
             **(
-                {"host_config_changed_fields": None, "host_config_other_fields_changed": None}
+                {
+                    "host_config_changed_fields": None,
+                    "host_config_other_fields_changed": None,
+                    "fingerprint_policy": OOM_FINGERPRINT_POLICY,
+                    "semantic_fingerprint_equal": None,
+                    "oom_leaf_states": {"initial": None, "cleanup": None},
+                }
                 if name == "container"
                 else {}
             ),
@@ -327,9 +337,11 @@ def resource_fact(resource, field, value):
                 "failed_at",
                 "association_equal",
                 "fingerprint_equal",
+                "semantic_fingerprint_equal",
                 "changed_sections",
             )
             or field not in record
+            or (field == "semantic_fingerprint_equal" and resource != "container")
         ):
             raise ValueError("invalid resource diagnostic field")
         if field in {"last_completed", "failed_at"}:
@@ -346,8 +358,31 @@ def resource_fact(resource, field, value):
         annotation_failed(secondary)
 
 
+def oom_leaf_fact(role, config):
+    try:
+        if role not in ("initial", "cleanup"):
+            raise ValueError("invalid OOM observation role")
+        state = oom_leaf_state(config)
+        if state not in OOM_LEAF_STATES:
+            raise ValueError("invalid OOM observation state")
+        record = cleanup_diagnostics["resources"]["container"]
+        previous = record["oom_leaf_states"]
+        if type(previous) is not dict or set(previous) != {"initial", "cleanup"}:
+            raise ValueError("invalid OOM observation shape")
+        states = {"initial": previous["initial"], "cleanup": previous["cleanup"]}
+        states[role] = state
+        if any(
+            value is not None and (type(value) is not str or value not in OOM_LEAF_STATES) for value in states.values()
+        ):
+            raise ValueError("invalid OOM observation pair")
+        replacement = {**record, "oom_leaf_states": states}
+        cleanup_diagnostics["resources"]["container"] = replacement
+    except BaseException as secondary:
+        annotation_failed(secondary)
+
+
 def section_changes(resource, initial, current):
-    # Same original objects as the unchanged full fingerprint. No values/hashes export.
+    # Raw differences from the original objects; the semantic policy does not rewrite these facts.
     try:
         names = CONTAINER_SECTIONS if resource == "container" else IMAGE_SECTIONS
         changes = []
@@ -668,6 +703,170 @@ def config_digest(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
 
 
+def oom_leaf_state(config):
+    if type(config) is not dict or "HostConfig" not in config or type(config["HostConfig"]) is not dict:
+        return "invalid"
+    host_config = config["HostConfig"]
+    if "OomKillDisable" not in host_config:
+        return "missing"
+    value = host_config["OomKillDisable"]
+    if value is None:
+        return "null"
+    if value is False:
+        return "false"
+    if value is True:
+        return "true"
+    return "invalid"
+
+
+def container_semantic_fingerprint(config):
+    if (
+        type(config) is not dict
+        or any(section not in config for section in CONTAINER_SECTIONS)
+        or oom_leaf_state(config) not in ("null", "false")
+    ):
+        raise ValueError("invalid OOM-enabled fingerprint input")
+    selected = {section: config[section] for section in CONTAINER_SECTIONS}
+    host_config = dict(config["HostConfig"])
+    host_config["OomKillDisable"] = False
+    selected["HostConfig"] = host_config
+    return config_digest(selected)
+
+
+def oom_policy_controls():
+    # Pure synthetic controls share the real helper. No Docker/resource/diagnostic state is changed.
+    baseline = {
+        "Id": "synthetic-container",
+        "Image": "synthetic-image",
+        "Config": {"Cmd": ["cargo", "fmt", "--all"], "Labels": {"synthetic": "only"}},
+        "HostConfig": {
+            "OomKillDisable": False,
+            "NetworkMode": "none",
+            "Privileged": False,
+            "Memory": 0,
+            "OomScoreAdj": 0,
+            "future_policy": {"enabled": False},
+        },
+        "Mounts": [{"Type": "bind", "Source": "/synthetic", "Destination": "/workspace/core-rs", "RW": True}],
+    }
+    absent = object()
+    admitted_pairs = ((None, None), (None, False), (False, None), (False, False))
+
+    def with_leaf(value):
+        config = copy.deepcopy(baseline)
+        if value is absent:
+            del config["HostConfig"]["OomKillDisable"]
+        else:
+            config["HostConfig"]["OomKillDisable"] = copy.deepcopy(value)
+        return config
+
+    def check_pair(left, right, *, left_reject=False, right_reject=False, equal=None, raw_equal=None):
+        if "Config" in left and "Config" in right:
+            shared_labels = {"synthetic": ["policy-control"]}
+            left["Config"]["Labels"] = shared_labels
+            right["Config"]["Labels"] = shared_labels
+        originals = tuple(
+            json.dumps(config, sort_keys=True, separators=(",", ":"), allow_nan=False) for config in (left, right)
+        )
+        fingerprints = []
+        for config, rejected in zip((left, right), (left_reject, right_reject), strict=True):
+            try:
+                fingerprint = container_semantic_fingerprint(config)
+            except ValueError as error:
+                if not rejected or error.args != ("invalid OOM-enabled fingerprint input",):
+                    raise
+                fingerprints.append(None)
+            else:
+                if rejected:
+                    raise ValueError("OOM policy control failure")
+                fingerprints.append(fingerprint)
+        actual = tuple(
+            json.dumps(config, sort_keys=True, separators=(",", ":"), allow_nan=False) for config in (left, right)
+        )
+        if actual != originals or (equal is not None and (fingerprints[0] == fingerprints[1]) is not equal):
+            raise ValueError("OOM policy control failure")
+        if raw_equal is not None:
+            raw = tuple(
+                config_digest({section: config[section] for section in CONTAINER_SECTIONS}) for config in (left, right)
+            )
+            if (raw[0] == raw[1]) is not raw_equal:
+                raise ValueError("OOM policy control failure")
+
+    # A: four admitted pairs, retaining the raw equality distinction.
+    for initial, current in admitted_pairs:
+        check_pair(with_leaf(initial), with_leaf(current), equal=True, raw_equal=initial is current)
+
+    # B: eleven forbidden leaves in left/right/both placements (33 branches).
+    forbidden = (absent, True, 0, 1, -1, 0.0, 1.0, "false", "", [], {})
+    for value in forbidden:
+        invalid = with_leaf(value)
+        valid = with_leaf(False)
+        check_pair(invalid, valid, left_reject=True)
+        check_pair(valid, invalid, right_reject=True)
+        check_pair(invalid, invalid, left_reject=True, right_reject=True)
+
+    # C: four malformed HostConfig sections in left/right/both placements (12).
+    for value in (absent, None, [], False):
+        invalid = copy.deepcopy(baseline)
+        if value is absent:
+            del invalid["HostConfig"]
+        else:
+            invalid["HostConfig"] = copy.deepcopy(value)
+        valid = with_leaf(False)
+        check_pair(invalid, valid, left_reject=True)
+        check_pair(valid, invalid, right_reject=True)
+        check_pair(invalid, invalid, left_reject=True, right_reject=True)
+
+    # D: each other selected section is required in either/both inputs (12).
+    for section in ("Id", "Image", "Config", "Mounts"):
+        invalid = copy.deepcopy(baseline)
+        del invalid[section]
+        valid = with_leaf(False)
+        check_pair(invalid, valid, left_reject=True)
+        check_pair(valid, invalid, right_reject=True)
+        check_pair(invalid, invalid, left_reject=True, right_reject=True)
+
+    # E: eleven unrelated mutations over all four admitted pairs (44).
+    for mutation in (
+        "id",
+        "image",
+        "command",
+        "source",
+        "network",
+        "privileged",
+        "memory",
+        "memory_type",
+        "unknown_nested",
+        "unknown_remove",
+        "unknown_add",
+    ):
+        for initial, current in admitted_pairs:
+            left, right = with_leaf(initial), with_leaf(current)
+            if mutation == "id":
+                right["Id"] = "synthetic-other-container"
+            elif mutation == "image":
+                right["Image"] = "synthetic-other-image"
+            elif mutation == "command":
+                right["Config"]["Cmd"] = ["synthetic-other-command"]
+            elif mutation == "source":
+                right["Mounts"][0]["Source"] = "/synthetic-other"
+            elif mutation == "network":
+                right["HostConfig"]["NetworkMode"] = "synthetic-other-network"
+            elif mutation == "privileged":
+                right["HostConfig"]["Privileged"] = True
+            elif mutation == "memory":
+                right["HostConfig"]["Memory"] = 1
+            elif mutation == "memory_type":
+                right["HostConfig"]["Memory"] = 0.0
+            elif mutation == "unknown_nested":
+                right["HostConfig"]["future_policy"]["enabled"] = None
+            elif mutation == "unknown_remove":
+                del right["HostConfig"]["future_policy"]
+            else:
+                right["HostConfig"]["additional_policy"] = False
+            check_pair(left, right, equal=False)
+
+
 def labels_match(config):
     labels = config.get("Config", {}).get("Labels") or {}
     return (
@@ -788,7 +987,7 @@ def source_gate():
 
 def format_source():
     global image_attempted, container_attempted, image_id, image_config
-    global container_id, container_config, fmt_exit, measured_image, measured_container
+    global container_id, container_config, container_semantic_config, fmt_exit, measured_image, measured_container
     global image_initial, container_initial
     require(not docker("image", "ls", "-q", "--no-trunc", "--filter", "reference=" + image_tag), "build")
     require(not docker("ps", "-aq", "--no-trunc", "--filter", "name=^/" + container_name + "$"), "build")
@@ -848,6 +1047,8 @@ def format_source():
     container_id = created
     container_config = config_digest({k: config[k] for k in ("Id", "Image", "Config", "HostConfig", "Mounts")})
     container_initial = config
+    oom_leaf_fact("initial", config)
+    container_semantic_config = container_semantic_fingerprint(config)
     measured_container = {"id": created, "image_id": image_id, "network_none": True, "mount_matches": True}
     _, fmt_exit = child(["docker", "start", "--attach", created], 60)
     config = inspect_container(created)
@@ -898,7 +1099,10 @@ def cleanup():
                 result["container"] = True
                 resource_fact("container", "last_completed", "complete")
                 return
-            require(container_id is not None and container_config is not None, "cleanup")
+            require(
+                container_id is not None and container_config is not None and container_semantic_config is not None,
+                "cleanup",
+            )
             resource_fact("container", "last_completed", "record")
             checkpoint, kind = "inspect", "unknown"
             config = inspect_container(container_id, end=deadline, diagnostic_slot="container_inspect")
@@ -909,6 +1113,7 @@ def cleanup():
             kind = "association"
             require(association, "cleanup")
             resource_fact("container", "last_completed", "association")
+            oom_leaf_fact("cleanup", config)
             checkpoint, kind = "fingerprint", "unknown"
             equal = (
                 config_digest({k: config[k] for k in ("Id", "Image", "Config", "HostConfig", "Mounts")})
@@ -918,7 +1123,10 @@ def cleanup():
             section_changes("container", container_initial, config)
             host_config_changes(container_initial, config)
             kind = "fingerprint"
-            require(equal, "cleanup")
+            semantic_equal = container_semantic_fingerprint(config) == container_semantic_config
+            resource_fact("container", "semantic_fingerprint_equal", semantic_equal)
+            require(semantic_equal, "cleanup")
+            # v4 checkpoint admits the named semantic policy; raw fingerprint_equal stays factual.
             resource_fact("container", "last_completed", "fingerprint")
             checkpoint, kind = "remove", "unknown"
             docker("rm", "--force", container_id, end=deadline, diagnostic_slot="container_remove")
@@ -1081,6 +1289,7 @@ def main_run():
     global private, private_identity, artifacts, primary, PUBLICATION_END
     disposal = {"container": None, "image": None, "copy": False, "captures": False}
     try:
+        oom_policy_controls()
         parent = Path(os.environ["RUNNER_TEMP"]).resolve()
         require(parent.is_dir(), "source")
         private = Path(tempfile.mkdtemp(prefix=owner + "-", dir=parent))
@@ -1160,7 +1369,7 @@ def main_run():
         primary_exit = exit_fact(primary)
         cleanup_exit = 1 if cleanup_errors else 0
         report = {
-            "schema": "bifrost.test.workflow-result-format-disposal/v3",
+            "schema": "bifrost.test.workflow-result-format-disposal/v4",
             "owner": owner,
             **disposal,
             "original_source_unchanged": source_unchanged,
