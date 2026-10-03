@@ -95,9 +95,12 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
             assert row is not None and table is not None
             assert {"workflow": _digest_row(row), "table": _digest_row(table)} == before
             assert await db.scalar(select(Execution.id).where(Execution.solution_deployment_id == did)) is None
-        result = execute_workflow_sync(e2e_client, headers, str(wid), request_sync=True, max_wait=60)
+        # Admission must use the pinned schema, including the new argument,
+        # while retaining the original caller's omitted constant default.
+        result = execute_workflow_sync(e2e_client, headers, str(wid),
+            input_data={"approved_id":23}, request_sync=True, max_wait=60)
         assert result["status"] == "Success", result
-        assert result["result"] == {"limit":7,"count":0,"approved_id":None}
+        assert result["result"] == {"limit":7,"count":0,"approved_id":23}
         async with AsyncSession(async_engine) as db:
             execution = await db.get(Execution, UUID(result["execution_id"]))
             assert execution is not None and execution.solution_deployment_id == did
