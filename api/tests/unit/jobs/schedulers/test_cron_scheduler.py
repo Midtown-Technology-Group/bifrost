@@ -2,11 +2,8 @@
 
 TDD: these tests were written before the implementation.
 
-Note on DB isolation: each test commits data to its own DB session.
-process_schedule_sources queries ALL active SCHEDULE sources, so leaked
-rows from prior tests may be visible. Assertions use per-source Event
-counts rather than the global results["events_created"] counter, except
-for skipped_overlap which is source-specific enough to be trustworthy.
+Each test owns an outer transaction. Scheduler commits release savepoints,
+so the live scheduler cannot see the unit fixtures and teardown removes them.
 """
 
 from datetime import datetime, timezone
@@ -14,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +25,23 @@ PATH_SUB_REPO = "src.jobs.schedulers.cron_scheduler.EventSubscriptionRepository"
 PATH_PROCESSOR = "src.services.events.processor.EventProcessor"
 # is_cron_expression_valid is imported inside the function body; patch the source module
 PATH_IS_VALID = "src.services.cron_parser.is_cron_expression_valid"
+
+
+@pytest_asyncio.fixture
+async def db_session(async_engine):
+    """Keep internal scheduler commits isolated from sibling processes/tests."""
+    async with async_engine.connect() as connection:
+        outer = await connection.begin()
+        async with AsyncSession(
+            bind=connection,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        ) as session:
+            try:
+                yield session
+            finally:
+                await session.rollback()
+                await outer.rollback()
 
 
 class _DbCtx:
