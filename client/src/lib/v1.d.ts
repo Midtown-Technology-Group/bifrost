@@ -11055,6 +11055,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage Repo Workflow Adoption
+         * @description Stage reviewed source for a populated legacy install, preserving entities.
+         */
+        post: operations["stage_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Repo Workflow Adoption */
+        post: operations["inspect_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Repo Workflow Adoption */
+        post: operations["activate_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/{deployment_id}/workflow-revision/candidate": {
         parameters: {
             query?: never;
@@ -28067,6 +28121,48 @@ export interface components {
              */
             dirty_since?: string | null;
         };
+        /**
+         * RepoWorkflowAdoptionInspectResponse
+         * @description Independent mutable baseline and accepted work for legacy adoption.
+         */
+        RepoWorkflowAdoptionInspectResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Deployment Id
+             * Format: uuid
+             */
+            deployment_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Workflow Ids */
+            workflow_ids: string[];
+            /** Source Hashes */
+            source_hashes: {
+                [key: string]: string;
+            };
+            /** Evidence Id */
+            evidence_id: string;
+            /** State */
+            state: string;
+            /** Legacy Source Hashes */
+            legacy_source_hashes: {
+                [key: string]: string;
+            };
+            /** Installed Control Digest */
+            installed_control_digest: string;
+            /** Retained Inactive Workflow Ids */
+            retained_inactive_workflow_ids: string[];
+            /** Accepted Execution Ids */
+            accepted_execution_ids: string[];
+            /** Accepted Work Exceeds Limit */
+            accepted_work_exceeds_limit: boolean;
+        };
         /** RequiredInstructionsResponse */
         RequiredInstructionsResponse: {
             /** Instructions */
@@ -28486,6 +28582,8 @@ export interface components {
             source_hash?: string | null;
             /** Dependency Solution Id */
             dependency_solution_id?: string | null;
+            /** Legacy Parameters Schema Hash */
+            legacy_parameters_schema_hash?: string | null;
         };
         /**
          * RuntimeResourceResolution
@@ -55772,6 +55870,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InitialWorkflowInstallInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoWorkflowAdoptionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoWorkflowAdoptionInspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+                deployment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitialWorkflowInstallCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoWorkflowAdoptionInspectResponse"];
                 };
             };
             /** @description Validation Error */

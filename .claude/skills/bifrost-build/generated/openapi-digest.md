@@ -597,6 +597,9 @@
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/candidate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/rollback` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/candidate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/preflight` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/rollback` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/activate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/candidate` |
