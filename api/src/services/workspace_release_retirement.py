@@ -8,8 +8,11 @@ from uuid import UUID
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from src.models.contracts.workspace_promotions import (
+    WorkspaceLiveRetirementInventory,
+    WorkspaceLiveRetirementRegistration,
     WorkspaceLiveRetireRequest,
     WorkspaceLiveRetireResponse,
 )
@@ -38,6 +41,69 @@ class WorkspaceReleaseRetirementService:
         self.db = db
         self.organization_id = organization_id
 
+    @staticmethod
+    def _loose_registration_predicate(
+        descriptor: WorkspaceReleaseDescriptor,
+    ) -> ColumnElement[bool]:
+        registration_ids = [UUID(item["workflow_id"])
+                            for item in descriptor.effective_registrations.values()]
+        runtime_path = func.ltrim(func.replace(Workflow.path, "\\", "/"), "/")
+        predicates = [runtime_path.in_(descriptor.governed_paths)]
+        if registration_ids:
+            predicates.append(Workflow.id.in_(registration_ids))
+        # This is shared with mutation-time validation. Inactive rows and
+        # uncaptured, normalized paths cannot disappear from the census.
+        return Workflow.solution_id.is_(None) & or_(*predicates)
+
+    async def inspect(self) -> WorkspaceLiveRetirementInventory:
+        """Read the exact guard cohort without acquiring an activation lock or writing."""
+        target = await self._live_release()
+        if target is None:
+            raise WorkspaceReleaseRetirementError("no Live Workspace release to inspect")
+        release, artifact = target
+        self._require_owner_context(release)
+        try:
+            descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
+        except WorkspaceReleaseRuntimeError as exc:
+            raise WorkspaceReleaseRetirementError(str(exc)) from exc
+        rows = (await self.db.execute(select(
+            Workflow.id, Workflow.organization_id, Workflow.path,
+            Workflow.function_name, Workflow.is_active,
+        ).where(self._loose_registration_predicate(descriptor))
+            .order_by(Workflow.id).limit(1001))).all()
+        if len(rows) > 1000:
+            raise WorkspaceReleaseRetirementError(
+                "retirement registration inventory exceeds its readback bound"
+            )
+        ids = {UUID(item["workflow_id"])
+               for item in descriptor.effective_registrations.values()}
+        registrations = []
+        for row in rows:
+            path = row.path.replace("\\", "/").lstrip("/")
+            registrations.append(WorkspaceLiveRetirementRegistration(
+                workflow_id=row.id, organization_id=row.organization_id,
+                path=path, function_name=row.function_name, is_active=row.is_active,
+                matched_by=(["governed_path"] if path in descriptor.governed_paths else [])
+                + (["effective_registration"] if row.id in ids else []),
+            ))
+        obligation_rows = (await self.db.execute(
+            select(WorkspaceSourceRelease.disposition, func.count(WorkspaceSourceRelease.id))
+            .where(WorkspaceSourceRelease.organization_id == release.organization_id,
+                   WorkspaceSourceRelease.disposition.in_(
+                       ("pending", "attention_required", "deferred")))
+            .group_by(WorkspaceSourceRelease.disposition)
+        )).all()
+        obligations = {disposition: count for disposition, count in obligation_rows}
+        return WorkspaceLiveRetirementInventory(
+            observed_at=datetime.now(UTC), release_row_id=release.id,
+            release_id=descriptor.release_id, artifact_id=artifact.id,
+            organization_id=release.organization_id,
+            governed_manifest_id=descriptor.governed_manifest_id,
+            history_locked=release.lock_state == "locked",
+            loose_registrations=registrations,
+            unresolved_source_obligations=obligations,
+        )
+
     async def retire(
         self,
         request: WorkspaceLiveRetireRequest,
@@ -64,6 +130,7 @@ class WorkspaceReleaseRetirementService:
             )
             if retired is not None:
                 release, artifact = retired
+                self._require_owner_context(release)
                 evidence = getattr(release, "retirement_evidence", None) or {}
                 if (
                     artifact.id != request.expected_artifact_id
@@ -78,6 +145,7 @@ class WorkspaceReleaseRetirementService:
                 "no Live Workspace release to retire"
             )
         release, artifact = target
+        self._require_owner_context(release)
         if (
             artifact.release_id != request.expected_release_id
             or artifact.id != request.expected_artifact_id
@@ -139,26 +207,21 @@ class WorkspaceReleaseRetirementService:
             evidence_id=evidence["evidence_id"],
         )
 
+    def _require_owner_context(self, release: WorkspacePromotionRelease) -> None:
+        # Live is global, but its source journal belongs to the release owner.
+        # An unrelated context must not turn that owner's unresolved debt into
+        # an empty query. Apply the same identity rule to idempotent readback.
+        if release.organization_id != self.organization_id:
+            raise WorkspaceReleaseRetirementError(
+                "retirement requires the Live release owner context"
+            )
+
     async def _require_no_loose_consumers(
         self, descriptor: WorkspaceReleaseDescriptor
     ) -> None:
-        registration_ids = [
-            UUID(item["workflow_id"])
-            for item in descriptor.effective_registrations.values()
-        ]
-        # Match execution's path normalization, including uncaptured legacy
-        # UUIDs. Inactive audit rows still require a reviewed disposition.
-        runtime_path = func.ltrim(func.replace(Workflow.path, "\\", "/"), "/")
-        predicates = [runtime_path.in_(descriptor.governed_paths)]
-        if registration_ids:
-            predicates.append(Workflow.id.in_(registration_ids))
-        rows = (
-            await self.db.execute(
-                select(Workflow.id)
-                .where(Workflow.solution_id.is_(None), or_(*predicates))
-                .limit(1)
-            )
-        ).first()
+        rows = (await self.db.execute(
+            select(Workflow.id).where(self._loose_registration_predicate(descriptor)).limit(1)
+        )).first()
         if rows is not None:
             raise WorkspaceReleaseRetirementError(
                 "Live release still has loose workflow registrations; "

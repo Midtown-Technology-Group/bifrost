@@ -3908,6 +3908,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace-promotions/live/retirement-inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect Workspace Release Retirement
+         * @description Inventory the guard's complete Root cohort, including inactive audit rows.
+         */
+        get: operations["inspect_workspace_release_retirement_api_workspace_promotions_live_retirement_inventory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace-promotions/live/retire": {
         parameters: {
             query?: never;
@@ -34362,6 +34382,77 @@ export interface components {
             /** Evidence Id */
             evidence_id: string;
         };
+        /**
+         * WorkspaceLiveRetirementInventory
+         * @description A bounded read-only census, never an authorization to retire Live.
+         */
+        WorkspaceLiveRetirementInventory: {
+            /**
+             * Schema Version
+             * @default bifrost.workspace-release-retirement-inventory/v1
+             * @constant
+             */
+            schema_version: "bifrost.workspace-release-retirement-inventory/v1";
+            /**
+             * Read Only
+             * @default true
+             * @constant
+             */
+            read_only: true;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Release Row Id
+             * Format: uuid
+             */
+            release_row_id: string;
+            /** Release Id */
+            release_id: string;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Governed Manifest Id */
+            governed_manifest_id: string;
+            /** History Locked */
+            history_locked: boolean;
+            /** Loose Registrations */
+            loose_registrations: components["schemas"]["WorkspaceLiveRetirementRegistration"][];
+            /** Unresolved Source Obligations */
+            unresolved_source_obligations: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * WorkspaceLiveRetirementRegistration
+         * @description One Root row matching the existing retirement guard, including inactive rows.
+         */
+        WorkspaceLiveRetirementRegistration: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Path */
+            path: string;
+            /** Function Name */
+            function_name: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Matched By */
+            matched_by: ("governed_path" | "effective_registration")[];
+        };
         /** WorkspaceLiveStatusResponse */
         WorkspaceLiveStatusResponse: {
             /**
@@ -42614,6 +42705,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_workspace_release_retirement_api_workspace_promotions_live_retirement_inventory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveRetirementInventory"];
                 };
             };
         };
