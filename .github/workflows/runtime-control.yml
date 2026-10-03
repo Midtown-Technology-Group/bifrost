@@ -1,6 +1,8 @@
 name: Runtime control protocol
 
 on:
+  push:
+    branches: [rust/json-custody-preservation]
   pull_request:
     branches: [main, rust/core-mvp-baseline, rust/core-parity-lane]
   workflow_dispatch:
@@ -24,15 +26,73 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Start shared monotonic custody budget
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / ('runtime-control-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'])
+          root.mkdir(mode=0o700)
+          (root / 'state.json').write_text(json.dumps({'start': time.monotonic()}))
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('RUNTIME_CONTROL_EVIDENCE=' + str(root) + '\n')
+          PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard exact source and select private format mode
+        id: mode
+        run: |
+          bash scripts/ci/runtime-control-interchange.sh guard
+          python3 - <<'PY'
+          import os, subprocess
+          subject = subprocess.check_output(['git', 'show', '-s', '--format=%B', 'HEAD'], text=True).splitlines()[0]
+          selected = 'format' if os.environ['GITHUB_EVENT_NAME'] == 'push' and os.environ['GITHUB_REF'] == 'refs/heads/rust/json-custody-preservation' and subject == 'ci: runtime-control format-only' else 'verify'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('value=' + selected + '\n')
+          PY
+      - name: Materialize private action resolver credential
+        id: action-credential
+        if: steps.mode.outputs.value == 'verify'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-materialize
+      - name: Literal pre-PR and action credential disposal
+        if: steps.mode.outputs.value == 'verify'
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.action-credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.action-credential.outputs.identity }}
+        run: bash scripts/ci/runtime-control-interchange.sh pre-pr
       - name: Detect test image input changes
         id: test-image-inputs
+        if: steps.mode.outputs.value == 'verify'
         run: bash scripts/ci/detect-test-image-inputs.sh
-      - name: Prepare supported Python test image
+      - name: Prepare supported Python image and dispose GHCR configuration
+        if: steps.mode.outputs.value == 'verify'
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
-        run: bash api/scripts/ci/prepare-test-images.sh api
-      - name: Verify shared vectors and both real encoder exchanges
-        run: bash scripts/ci/runtime-control-interchange.sh
+        run: bash scripts/ci/runtime-control-interchange.sh prepare
+      - name: Supported source checks and isolated red-green characterization
+        run: bash scripts/ci/runtime-control-interchange.sh '${{ steps.mode.outputs.value }}'
+      - name: Always dispose action credential
+        if: always() && steps.action-credential.outputs.path != ''
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.action-credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.action-credential.outputs.identity }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-cleanup
+      - name: Always verify owned resource disposal
+        if: always()
+        run: bash scripts/ci/runtime-control-interchange.sh cleanup
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: runtime-control-custody
+          path: |
+            ${{ env.RUNTIME_CONTROL_EVIDENCE }}/state.json
+            ${{ env.RUNTIME_CONTROL_EVIDENCE }}/owned-inventory.json
+            ${{ env.RUNTIME_CONTROL_EVIDENCE }}/format.patch
+          if-no-files-found: error
+          retention-days: 14
