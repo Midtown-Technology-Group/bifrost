@@ -49,7 +49,7 @@ def legacy_store(monkeypatch):
 
 
 async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, legacy_schema=False,
-                with_owned_query=False, legacy_descriptors=False, constant_default=False, stage=True):
+                with_owned_query=False, legacy_descriptors=False, constant_default=False, legacy_name=False, stage=True):
     sid, did, wid = uuid4(), uuid4(), uuid4()
     path = "workflows/adopt.py"
     source = (b"from bifrost import workflow\n"
@@ -91,6 +91,9 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
     if legacy_descriptors:
         await db_session.execute(update(Workflow).where(Workflow.id == wid).values(
             description=None, category="General"))
+        await db_session.refresh(row)
+    if legacy_name:
+        await db_session.execute(update(Workflow).where(Workflow.id == wid).values(name="run"))
         await db_session.refresh(row)
     inactive = Workflow(id=uuid4(), solution_id=sid, organization_id=None, name="Inactive retained",
         function_name="dormant", path="workflows/dormant.py", is_active=False, is_orphaned=True)
@@ -607,8 +610,9 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_name", [False, True])
 async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_and_old_pin(
-    db_session, platform_admin, artifact_store, legacy_store,
+    db_session, platform_admin, artifact_store, legacy_store, legacy_name,
 ):
     import base64
 
@@ -618,7 +622,7 @@ async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_an
     from src.services.solutions.source_revision import SolutionSourceRevisionService
 
     solution, did, row, _, _, _, service, request, staged, _ = await _seed(
-        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
+        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True, legacy_name=legacy_name)
     await service.activate(solution.id, did, request, staged.evidence_id)
     base = await db_session.get(SolutionDeployment, did)
     assert base is not None
@@ -636,6 +640,7 @@ async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_an
         expected_evidence_id=staged_revision.evidence_id))
     await db_session.refresh(row)
     assert row.description is None and row.category == "General"
+    assert row.name == ("run" if legacy_name else "Adopted task")
     successor = await db_session.get(SolutionDeployment, next_id)
     assert next(iter(successor.resolution_map["workflows"].values()))["definition"] == next(iter(base.resolution_map["workflows"].values()))["definition"]
     new_pin = await pin_workflow_runtime(db_session, row.id)

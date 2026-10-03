@@ -21,9 +21,10 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("installed_name", ["Native HTTP task", "run"])
 @pytest.mark.parametrize("organization_id", [None, PROVIDER_ORG_ID], ids=["global", "provider"])
 async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_table_over_http(
-    e2e_client, platform_admin, async_engine, organization_id,
+    e2e_client, platform_admin, async_engine, organization_id, installed_name,
 ):
     headers = platform_admin.headers
     token = uuid4().hex[:12]
@@ -60,7 +61,7 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
             solution.allow_outbound_access = False
             solution.git_connected = False
             row = Workflow(id=wid, solution_id=sid, organization_id=organization_id,
-                name="Native HTTP task", function_name="run", path=path,
+                name=installed_name, function_name="run", path=path,
                 parameters_schema=[{"name":"limit","type":"integer","required":False,"default_value":7},
                     {"name":"payload","type":"json","required":False,"default_value":None}],
                 description=None, category="General")
