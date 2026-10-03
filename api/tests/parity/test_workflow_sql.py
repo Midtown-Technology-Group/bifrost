@@ -47,9 +47,9 @@ async def test_queued_cancel_emitted_update_order(async_engine, record_property)
                 assert error is None
         finally:
             event.remove(async_engine.sync_engine, "after_cursor_execute", observe)
-        # Both genuine updates must execute exactly once. Order is retained for
-        # architectural review, not guessed here or declared Rust-equivalent.
-        assert sorted(labels) == ["executions", "workflow_execution_attempts"]
+        # Freeze the actual order observed in supported run37099087578. A
+        # reference-order change must stop SQL parity rather than silently pass.
+        assert labels == ["executions", "workflow_execution_attempts"]
         record_property("queued_cancel_update_order", ",".join(labels))
         async with cohort.sessions() as db:
             execution = await db.get(Execution, cohort.ids["execution"])

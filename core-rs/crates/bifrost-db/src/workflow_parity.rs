@@ -4,9 +4,9 @@
 //! roll back after ANY infrastructure error (including a partial write).
 //! These functions neither commit nor retry. Actor, tenant, owner, source and
 //! session admission are absent and must precede any future application wiring.
-//! Cancel's attempt-then-logical UPDATE order is provisional atomic row-effect
-//! equivalence only. SQLAlchemy's actual unit-of-work SQL order still requires
-//! supported, parameter-free observation before persistence/lock parity acceptance.
+//! Queued Cancel follows the logical-then-attempt UPDATE order observed from
+//! Python in supported run37099087578. Actual Rust DML, failure rollback and
+//! concurrent lock parity still require supported differential execution.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -290,6 +290,33 @@ pub async fn apply_cancel(
         Ok(plan) => plan,
         Err(reason) => return Ok(SqlDecision::Rejected(reason)),
     };
+    // ORM flush predicates only on ID, after its earlier advisory/eligibility
+    // checks. Do not invent a late logical-status fence against other writers.
+    let result = if let Some(now) = now.as_ref() {
+        sqlx::query(
+            "UPDATE public.executions SET status = 'Cancelled'::execution_status, \
+             completed_at = timestamptz 'epoch' + $2::interval \
+             WHERE id = $1::uuid",
+        )
+        .persistent(false)
+        .bind(execution_id.as_str())
+        .bind(now)
+        .execute(&mut **tx)
+        .await
+    } else {
+        sqlx::query(
+            "UPDATE public.executions SET status = 'Cancelling'::execution_status \
+             WHERE id = $1::uuid",
+        )
+        .persistent(false)
+        .bind(execution_id.as_str())
+        .execute(&mut **tx)
+        .await
+    }
+    .map_err(|_| database(SqlStage::WriteExecution))?;
+    exactly_one(result.rows_affected(), SqlStage::WriteExecution)?;
+    // Actual Python queued-cancel flush writes the logical row before the
+    // attempt; the earlier attempt lock and pre-lock time sample stay intact.
     if let (Some(attempt_plan), Some(view), Some(now)) = (plan.attempt, view.as_ref(), now.as_ref())
     {
         // Values are the ratified CancelPlan. No payload, metric or start fields.
@@ -314,31 +341,6 @@ pub async fn apply_cancel(
         .map_err(|_| database(SqlStage::WriteAttempt))?;
         exactly_one(result.rows_affected(), SqlStage::WriteAttempt)?;
     }
-    // ORM flush predicates only on ID, after its earlier advisory/eligibility
-    // checks. Do not invent a late logical-status fence against other writers.
-    let result = if let Some(now) = now {
-        sqlx::query(
-            "UPDATE public.executions SET status = 'Cancelled'::execution_status, \
-             completed_at = timestamptz 'epoch' + $2::interval \
-             WHERE id = $1::uuid",
-        )
-        .persistent(false)
-        .bind(execution_id.as_str())
-        .bind(now)
-        .execute(&mut **tx)
-        .await
-    } else {
-        sqlx::query(
-            "UPDATE public.executions SET status = 'Cancelling'::execution_status \
-             WHERE id = $1::uuid",
-        )
-        .persistent(false)
-        .bind(execution_id.as_str())
-        .execute(&mut **tx)
-        .await
-    }
-    .map_err(|_| database(SqlStage::WriteExecution))?;
-    exactly_one(result.rows_affected(), SqlStage::WriteExecution)?;
     Ok(SqlDecision::Applied(plan))
 }
 
