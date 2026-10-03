@@ -53,6 +53,10 @@ from src.core.cache.keys import (
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.rate_limit import auth_limiter, get_client_ip, mfa_limiter
+from src.core.runtime_sdk_ingress import (
+    classify_sdk_ingress,
+    refresh_runtime_sdk_credential,
+)
 from src.core.security import (
     create_access_token,
     create_mfa_token,
@@ -914,6 +918,47 @@ async def refresh_token(
         refresh_token_value = token_data.refresh_token
     else:
         refresh_token_value = request.cookies.get("refresh_token")
+
+    classification = classify_sdk_ingress(
+        request,
+        selected_token=refresh_token_value,
+        selected_location=(
+            "body"
+            if token_data and token_data.refresh_token
+            else "cookie"
+            if refresh_token_value
+            else "none"
+        ),
+        renewal=True,
+    )
+    if classification != "legacy":
+        if classification == "deny":
+            await auth_limiter.check("refresh", get_client_ip(request))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid runtime SDK credential",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        raw = await request.json()
+        if not isinstance(raw, dict) or not set(raw).issubset({"refresh_token"}):
+            await auth_limiter.check("refresh", get_client_ip(request))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid runtime SDK credential",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if refresh_token_value is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid runtime SDK credential",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        bundle = await refresh_runtime_sdk_credential(
+            request, token=refresh_token_value
+        )
+        return Token(
+            access_token=bundle.access_token, refresh_token=bundle.refresh_token
+        )
 
     engine_claims = (
         decode_renewable_engine_token(refresh_token_value) if refresh_token_value else None
