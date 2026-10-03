@@ -683,7 +683,7 @@ async def test_retirement_cannot_hide_owner_obligations_with_another_context(
 
 @pytest.mark.e2e
 async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutation(
-    e2e_client, platform_admin, db_session,
+    e2e_client, platform_admin, non_admin_user, db_session,
 ) -> None:
     from src.models.orm.solutions import Solution
     from src.services.solutions.repo_workflow_adoption import _digest_row
@@ -726,8 +726,8 @@ async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutat
         source_record_id = record.id
         before = {row.id: _digest_row(row) for row in [release, record, *rows]}
         route = "/api/workspace-promotions/live/retirement-inventory"
-        denied = e2e_client.get(route)
-        assert denied.status_code == 401, denied.text
+        denied = e2e_client.get(route, headers=non_admin_user.headers)
+        assert denied.status_code == 403, denied.text
         for _ in range(2):
             response = e2e_client.get(route, headers=platform_admin.headers)
             assert response.status_code == 200, response.text
