@@ -1,0 +1,123 @@
+name: Agent Prepare codec
+
+on:
+  push:
+    branches: [rust/agent-prepare-codec]
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: agent-prepare-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  CI_API_TEST_IMAGE: midtown-technology-group/bifrost-ci-api-dev
+  CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
+
+jobs:
+  interchange:
+    name: Supported Python Rust Agent Prepare codec interchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Start shared monotonic custody budget
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          from pathlib import Path
+
+          started = time.monotonic()
+          os.umask(0o077)
+          root = Path(os.environ["RUNNER_TEMP"]) / (
+              "agent-prepare-" + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
+          )
+          root.mkdir(mode=0o700)
+          original = None
+          for path, flags, raw in (
+              (root / "private-state.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, json.dumps({"start": started}).encode("ascii")),
+              (
+                  Path(os.environ["GITHUB_ENV"]),
+                  os.O_WRONLY | os.O_APPEND,
+                  ("AGENT_PREPARE_EVIDENCE=" + str(root) + "\n").encode("utf-8"),
+              ),
+          ):
+              fd = -1
+              try:
+                  fd = os.open(path, flags | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+                  remaining = memoryview(raw)
+                  while remaining:
+                      written = os.write(fd, remaining)
+                      if written <= 0:
+                          raise OSError("custody initialization write failed")
+                      remaining = remaining[written:]
+              except BaseException as error:
+                  if original is None:
+                      original = error
+              finally:
+                  if fd >= 0:
+                      try:
+                          os.close(fd)
+                      except BaseException as error:
+                          if original is None:
+                              original = error
+              if original is not None:
+                  raise original
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard exact source and select private format mode
+        id: mode
+        run: |
+          bash scripts/ci/agent-prepare-interchange.sh guard
+      - name: Materialize private action resolver credential
+        id: action-credential
+        if: steps.mode.outputs.value == 'verify'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-materialize
+      - name: Literal pre-PR and action credential disposal
+        if: steps.mode.outputs.value == 'verify'
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.action-credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.action-credential.outputs.identity }}
+        run: bash scripts/ci/agent-prepare-interchange.sh pre-pr
+      - name: Detect test image input changes
+        id: test-image-inputs
+        if: steps.mode.outputs.value == 'verify'
+        run: bash scripts/ci/detect-test-image-inputs.sh
+      - name: Prepare supported Python image and dispose GHCR configuration
+        if: steps.mode.outputs.value == 'verify'
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
+        run: bash scripts/ci/agent-prepare-interchange.sh prepare
+      - name: Supported source checks and isolated red-green characterization
+        run: bash scripts/ci/agent-prepare-interchange.sh '${{ steps.mode.outputs.value }}'
+      - name: Always dispose action credential
+        if: always() && steps.action-credential.outputs.path != ''
+        env:
+          BIFROST_ACTION_PIN_TOKEN_FILE: ${{ steps.action-credential.outputs.path }}
+          SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY: ${{ steps.action-credential.outputs.identity }}
+        run: bash scripts/ci/workflow-sql-source.sh credential-cleanup
+      - name: Always verify owned resource disposal
+        if: always()
+        run: bash scripts/ci/agent-prepare-interchange.sh cleanup
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: agent-prepare-custody
+          path: |
+            ${{ env.AGENT_PREPARE_EVIDENCE }}/receipt.json
+            ${{ env.AGENT_PREPARE_EVIDENCE }}/owned-inventory.json
+            ${{ env.AGENT_PREPARE_EVIDENCE }}/format.patch
+            ${{ env.AGENT_PREPARE_EVIDENCE }}/format-metadata.json
+          if-no-files-found: error
+          retention-days: 14

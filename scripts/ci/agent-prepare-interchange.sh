@@ -1,0 +1,2989 @@
+#!/usr/bin/env bash
+# Supported hosted CI only; never source/execute on the physical Proxmox host.
+set -euo pipefail
+exec python3 - "${1:?guard, pre-pr, prepare, format, verify or cleanup required}" <<'PY'
+import hashlib
+import json
+import math
+import os
+import re
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+import tomllib
+import xml.etree.ElementTree as ET
+from collections import Counter
+from contextlib import contextmanager, suppress
+from pathlib import Path
+
+EXPECTED_SOURCE = {
+    "api/Dockerfile.dev": "54c271f4dd2f95c2b1644c7a7cce11aa5f21ca47126b8afe8ee2dff1c27bca2c",
+    "api/_bifrost_workspace_effects.py": "c5ee9048f68315255ec8bdc20062df25dcf36916f3f4537c70565f158007f6ca",
+    "api/entrypoint.sh": "d638f919a0b11e43cdac1c0c82678258f08811a659557bf78e90955b490167f7",
+    "api/pytest.ini": "e2bf689a6604eddc5a6da276553dcdb84305f507c9da095e153f9bba049a3ff7",
+    "api/scripts/check_github_action_pins.py": "373ad3a39139688b4080dc354e862b0191c916b0dc297dc35ca0b21daf23017b",
+    "api/scripts/ci/prepare-test-images.sh": "a8a2fc0561ea470152998f2ccd87f1c9e07b816fc51505a899289de8b7092600",
+    "api/scripts/init_container.py": "2bb87e240a50f0eba7c2e45ad108ebf7c72b54b575e97fa74eceb458ed2bab4c",
+    "api/scripts/plan_affected_tests.py": "731caad3a659a9e0e47b88cb92cc9cf03f44122e0921d2525dcb7f2a5f3e009d",
+    "api/scripts/quality_api.sh": "b7b83142ccceacbb846777e77875dd66c7f61da8c0303a18ddbcf75f9bc21084",
+    "api/src/__init__.py": "880b63790f67030db2574c4d14bd4abf48a10c90538854c5a3b3aaa8e22442da",
+    "api/src/runtime_protocol/__init__.py": "924a3683d7bf3f4f607c2d107fe1bc3a41f33885a098f0bc34ce26be6fb02041",
+    "api/src/runtime_protocol/agent_prepare.py": "5af216a231e0056a7094928fa77ac6690a735775a54128c05941a63dc78322cd",
+    "api/src/runtime_protocol/control.py": "77a54873539c5116a8645e6db0f74ed403529626b842b1654ef52bc13b5f2a30",
+    "api/src/runtime_protocol/session.py": "a3f116706976d88c65a334377bf11f388c766b607108787bdb9a37191eeb7885",
+    "api/tests/__init__.py": "9b8cec3603c47a22d0993d4a25ec288e23f34267510d11eb0dae3ab3a8a20a2e",
+    "api/tests/runtime_protocol/__init__.py": "cf48305defe6b8f03cee2b6cd524aa650971e08420540e43b6dc96ae373819a2",
+    "api/tests/runtime_protocol/agent_prepare_interchange.py": "2ad8d0c680c2204cb46e82641cdca66ba8416cb4d0cc65eeb0208b1b54bcb65d",
+    "api/tests/runtime_protocol/interchange.py": "5d13a406929264de525eeb34c1b89d4050b7ba59297e17b436b49b87bf6a5575",
+    "api/tests/runtime_protocol/test_agent_prepare.py": "70cb70c83ef191517bad25adf9fd056a508768ec329eb830d120c1468c1a16bb",
+    "api/tests/runtime_protocol/test_control.py": "d9aca2dd1c52fbe7caa7d27d1c0bc2ef1768690629d24802bd5b6d28f965aeba",
+    "core-rs/Cargo.lock": "7e765dc50da514ff62a210a67aa9e8ded6166b67759179187264a313568b3869",
+    "core-rs/Cargo.toml": "4e22240845140ac0b22e8b17eb51147461048982f989d53616f6c58d421e2232",
+    "core-rs/Dockerfile": "a42c446bb8c67462ad6afefdc1aa6bdde4a7d241ad4d1122c26af9e5cfe9270b",
+    "core-rs/crates/bifrost-contracts/Cargo.toml": "3ad2b989985158f1bfbbe969dfdb932bca96ac0e76dfc66b7c4d27daa39d3fd3",
+    "core-rs/crates/bifrost-contracts/examples/runtime_agent_prepare_vectors.rs": "dc08f4b13ca08fa533d56e8bfbe9b316ad7d5e2a220ac56d893eef0deece17c7",
+    "core-rs/crates/bifrost-contracts/examples/runtime_control_vectors.rs": "0f6bfae7d6131014229d0f5867088e3c5255915b88e6ef2ecc398458c9c74d05",
+    "core-rs/crates/bifrost-contracts/src/lib.rs": "35b8f1a85351a543df83abde2c3d13b1a759f0fc9730a2b4d874bb063f660d0f",
+    "core-rs/crates/bifrost-contracts/src/runtime/agent_prepare.rs": "29c76f33dcb7a11cbda5e3bf1690e02fb0f235ca73a6ee0cd4f02ab5505985a3",
+    "core-rs/crates/bifrost-contracts/src/runtime/agent_prepare_tests.rs": "4a1b08853de0a56f5de911db2a0eca1eeb2754b2df0e5d847f6aaeba4c4a5d1f",
+    "core-rs/crates/bifrost-contracts/src/runtime/codec.rs": "a921ec1c8a1e3ecf30e58266d3ce4bb6b385227e5ba724e3f76dddad77f9f843",
+    "core-rs/crates/bifrost-contracts/src/runtime/control.rs": "33ee2987bdb5ff507afbd4a1a0b95681cd9b322be965a530145f68b788497243",
+    "core-rs/crates/bifrost-contracts/src/runtime/mod.rs": "6dab977ea4a6c381f2002f3cd4b3bf55e15a83f4dca6f6b85c53a2a0285233fc",
+    "core-rs/crates/bifrost-contracts/src/runtime/session.rs": "53965be75561bd5ed76ca366d6ca1a826411e66559d212d2cc4c53dfe9406a8e",
+    "core-rs/crates/bifrost-contracts/src/runtime/tests.rs": "642808c15c0085fdabf9c65fbdcf341b6e6256881788e014375608f35cb551a1",
+    "core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/agent-prepare-vectors.json": "c8606adbc81e813c6c8f16d0d7226d95628c9c392052a57445a8675bff8e3480",
+    "core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/control-vectors.json": "a5501a4fde472ebbae9567803e3b96313672ccfbad41fc8165030cbffd1786e6",
+    "core-rs/crates/bifrost-core/Cargo.toml": "fb750efc8754a77cdd8de6aacca1ddf04b8004b4a7d86d3bd1d6eae5e3c84715",
+    "core-rs/crates/bifrost-db/Cargo.toml": "817ae780e6345d98603934d8dfc4f1b772e72652ed71bf06ed94ab648c216cff",
+    "core-rs/crates/bifrost-domain/Cargo.toml": "915b43efc797fe1eeb688bfba0b5e7ef9f6d758343972feba61c07a10bd8fcdd",
+    "docker-compose.test.yml": "ea09ba47a32e6de364d66df34991984be6138bc85e7a68f8b79c94c72dd06052",
+    "pyproject.toml": "7fac5222b03a31882095b894f4dc1b5de4ba6cd51a272f9cb0db354770feb05a",
+    "requirements-pyright.lock": "464362c56fc226e0034621fb15b2237cf287de9c3d7c787417873abebc35b39b",
+    "requirements.lock": "be76160e9eb3b3ba9ab0d9af9e77f311db3578cfaf02b7042d9697bd7c2feea1",
+    "scripts/ci/detect-test-image-inputs.sh": "a40a10b9958751a7db99c423a1a595ba4846cb0bb9ccc16246cbab9cedbc66c8",
+    "scripts/ci/workflow-sql-source.sh": "87da2b469e242251df9d57c4483a8e81fa784db5b3e04b216a7fa743f5d8f1eb",
+    "scripts/lib/pre_pr_stage_evidence.py": "60da3f4c3e95cb220738d077c9dec59451bb66acde732b71067e8d44b9f5de11",
+    "scripts/lib/test_helpers.sh": "c8328009720ceecbe5754d3934ce473e9dff894305c262bed6c3fd4d6f74555d",
+    "scripts/stack_template_init.sh": "fc9c7d104dd82cf7ffdff9f6827674ee100aad32e94cd3d0cc866617e2972bb5",
+    "test.sh": "19d75479975fcdfed46ce840081336d74db366f8ad008ca6aed9f1ce0f927cfb",
+}
+
+SOURCE_KEYS = [
+    "core-rs/Dockerfile",
+    "core-rs/Cargo.toml",
+    "core-rs/Cargo.lock",
+    "core-rs/crates/bifrost-contracts/Cargo.toml",
+    "core-rs/crates/bifrost-contracts/src/lib.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/mod.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/codec.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/agent_prepare.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/agent_prepare_tests.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/control.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/session.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/tests.rs",
+    "core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/control-vectors.json",
+    "core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/agent-prepare-vectors.json",
+    "core-rs/crates/bifrost-contracts/examples/runtime_control_vectors.rs",
+    "core-rs/crates/bifrost-contracts/examples/runtime_agent_prepare_vectors.rs",
+    "core-rs/crates/bifrost-domain/Cargo.toml",
+    "core-rs/crates/bifrost-db/Cargo.toml",
+    "core-rs/crates/bifrost-core/Cargo.toml",
+    "api/src/__init__.py",
+    "api/src/runtime_protocol/__init__.py",
+    "api/src/runtime_protocol/control.py",
+    "api/src/runtime_protocol/session.py",
+    "api/src/runtime_protocol/agent_prepare.py",
+    "api/tests/__init__.py",
+    "api/tests/runtime_protocol/__init__.py",
+    "api/tests/runtime_protocol/test_control.py",
+    "api/tests/runtime_protocol/test_agent_prepare.py",
+    "api/tests/runtime_protocol/interchange.py",
+    "api/tests/runtime_protocol/agent_prepare_interchange.py",
+    "api/pytest.ini",
+    "api/Dockerfile.dev",
+    "api/entrypoint.sh",
+    "api/_bifrost_workspace_effects.py",
+    "pyproject.toml",
+    "requirements.lock",
+    "requirements-pyright.lock",
+    "test.sh",
+    "docker-compose.test.yml",
+    "scripts/lib/test_helpers.sh",
+    "scripts/lib/pre_pr_stage_evidence.py",
+    "scripts/stack_template_init.sh",
+    "scripts/ci/workflow-sql-source.sh",
+    "api/scripts/check_github_action_pins.py",
+    "api/scripts/plan_affected_tests.py",
+    "api/scripts/quality_api.sh",
+    "api/scripts/init_container.py",
+    "api/scripts/ci/prepare-test-images.sh",
+    "scripts/ci/detect-test-image-inputs.sh",
+    "scripts/ci/agent-prepare-interchange.sh",
+    ".github/workflows/agent-prepare.yml",
+]
+
+FROZEN_CORPORA = {
+    "agent": {
+        "direct_test_roster_sha256": "b2eca968e67705eb8ee551ef341bcf191ee8e88ba50968c2bb5f84a23f1ae6f3",
+        "fixture_bytes": 914866,
+        "fixture_sha256": "c8606adbc81e813c6c8f16d0d7226d95628c9c392052a57445a8675bff8e3480",
+        "positive": [
+            "hello",
+            "prepare-parent",
+            "prepared-unexpected-observations",
+            "prepare-solution_deployment",
+            "solution-optionals-present",
+            "prepare-workspace_release",
+            "caller-null",
+            "raw-float-spellings",
+            "raw-whitespace",
+            "magic-adjacent",
+            "retained-reordered-prepare",
+            "fresh-business-map-extra-key",
+        ],
+        "wire": [
+            "hello",
+            "prepare-parent",
+            "prepared-unexpected-observations",
+            "prepare-solution_deployment",
+            "solution-optionals-present",
+            "prepare-workspace_release",
+            "caller-null",
+            "image-null-mismatch",
+            "slot-order",
+            "entry-duplicate",
+            "namespace-dangling",
+            "session-mismatch",
+            "agent-mismatch",
+            "run-mismatch",
+            "evidence-mismatch",
+            "bool-integer",
+            "negative-count",
+            "type-mismatch",
+            "raw-float-spellings",
+            "raw-whitespace",
+            "magic-adjacent",
+            "integer-token-9007199254740992",
+            "integer-token--9007199254740992",
+            "integer-token--0",
+            "integer-token-1e0",
+            "integer-token-1.0",
+            "integer-token-NaN",
+            "integer-token-1e9999",
+            "duplicate-root",
+            "duplicate-nested",
+            "unknown-frame",
+            "protocol-before-sequence",
+            "protocol-non-string",
+            "invalid-json",
+            "empty-json",
+            "trailing-json",
+            "surrogate",
+            "structure-1-unknown-parent",
+            "structure-1-missing-parent",
+            "structure-2-unknown-parent",
+            "structure-2-missing-parent",
+            "structure-3-unknown-parent",
+            "structure-3-missing-parent",
+            "structure-4-unknown-parent",
+            "structure-4-missing-parent",
+            "structure-5-unknown-parent",
+            "structure-5-missing-parent",
+            "structure-6-unknown-parent",
+            "structure-6-missing-parent",
+            "structure-7-unknown-parent",
+            "structure-7-missing-parent",
+            "structure-8-unknown-parent",
+            "structure-8-missing-parent",
+            "structure-9-unknown-parent",
+            "structure-9-missing-parent",
+            "structure-10-unknown-parent",
+            "structure-10-missing-parent",
+            "structure-11-unknown-parent",
+            "structure-11-missing-parent",
+            "structure-12-unknown-parent",
+            "structure-12-missing-parent",
+            "structure-13-unknown-parent",
+            "structure-13-missing-parent",
+            "structure-14-unknown-parent",
+            "structure-14-missing-parent",
+            "structure-15-unknown-parent",
+            "structure-15-missing-parent",
+            "structure-16-unknown-parent",
+            "structure-16-missing-parent",
+            "structure-17-unknown-parent",
+            "structure-17-missing-parent",
+            "structure-18-unknown-parent",
+            "structure-18-missing-parent",
+            "structure-19-unknown-parent",
+            "structure-19-missing-parent",
+            "structure-20-unknown-parent",
+            "structure-20-missing-parent",
+            "structure-21-unknown-parent",
+            "structure-21-missing-parent",
+            "structure-22-unknown-parent",
+            "structure-22-missing-parent",
+            "structure-23-unknown-parent",
+            "structure-23-missing-parent",
+            "structure-24-unknown-solution",
+            "structure-24-missing-solution",
+            "structure-25-unknown-workspace",
+            "structure-25-missing-workspace",
+            "structure-26-unknown-workspace",
+            "structure-26-missing-workspace",
+            "structure-27-unknown-prepared",
+            "structure-27-missing-prepared",
+            "structure-28-unknown-prepared",
+            "structure-28-missing-prepared",
+            "structure-29-unknown-prepared",
+            "structure-29-missing-prepared",
+            "structure-30-unknown-prepared",
+            "structure-30-missing-prepared",
+            "structure-31-unknown-prepared",
+            "structure-31-missing-prepared",
+            "structure-32-unknown-prepared",
+            "structure-32-missing-prepared",
+            "structure-33-unknown-prepared",
+            "structure-33-missing-prepared",
+            "structure-34-unknown-prepared",
+            "structure-34-missing-prepared",
+            "workspace-evidence-unknown",
+            "workspace-evidence-missing",
+            "closed-prepare-facts-duplicate",
+            "closed-prepare-facts-type",
+            "closed-prepare-facts-nonnull",
+            "closed-agent-binding-duplicate",
+            "closed-agent-binding-type",
+            "closed-agent-binding-nonnull",
+            "closed-agent-logical-duplicate",
+            "closed-agent-logical-type",
+            "closed-agent-logical-nonnull",
+            "closed-agent-attempt-duplicate",
+            "closed-agent-attempt-type",
+            "closed-agent-attempt-nonnull",
+            "closed-source-baseline-duplicate",
+            "closed-source-baseline-type",
+            "closed-source-baseline-nonnull",
+            "closed-staged-closure-duplicate",
+            "closed-staged-closure-type",
+            "closed-staged-closure-nonnull",
+            "closed-entrypoint-facts-duplicate",
+            "closed-entrypoint-facts-type",
+            "closed-entrypoint-facts-nonnull",
+            "closed-parent-agent-evidence-duplicate",
+            "closed-parent-agent-evidence-type",
+            "closed-parent-agent-evidence-nonnull",
+            "closed-staged-entry-duplicate",
+            "closed-staged-entry-type",
+            "closed-staged-entry-nonnull",
+            "closed-expected-namespace-duplicate",
+            "closed-expected-namespace-type",
+            "closed-expected-namespace-nonnull",
+            "closed-prepare-artifact-duplicate",
+            "closed-prepare-artifact-type",
+            "closed-prepare-artifact-nonnull",
+            "closed-prepare-interpreter-duplicate",
+            "closed-prepare-interpreter-type",
+            "closed-prepare-interpreter-nonnull",
+            "closed-prepare-sdk-duplicate",
+            "closed-prepare-sdk-type",
+            "closed-prepare-sdk-nonnull",
+            "closed-admission-facts-duplicate",
+            "closed-admission-facts-type",
+            "closed-admission-facts-nonnull",
+            "closed-caller-facts-duplicate",
+            "closed-caller-facts-type",
+            "closed-caller-facts-nonnull",
+            "closed-effective-facts-duplicate",
+            "closed-effective-facts-type",
+            "closed-effective-facts-nonnull",
+            "closed-limit-facts-duplicate",
+            "closed-limit-facts-type",
+            "closed-limit-facts-nonnull",
+            "closed-agent-facts-duplicate",
+            "closed-agent-facts-type",
+            "closed-agent-facts-nonnull",
+            "closed-prompt-facts-duplicate",
+            "closed-prompt-facts-type",
+            "closed-prompt-facts-nonnull",
+            "closed-tool-facts-duplicate",
+            "closed-tool-facts-type",
+            "closed-tool-facts-nonnull",
+            "closed-model-facts-duplicate",
+            "closed-model-facts-type",
+            "closed-model-facts-nonnull",
+            "closed-solution-evidence-duplicate",
+            "closed-solution-evidence-type",
+            "closed-solution-evidence-nonnull",
+            "closed-workspace-evidence-duplicate",
+            "closed-workspace-evidence-type",
+            "closed-workspace-evidence-nonnull",
+            "closed-prepared-facts-duplicate",
+            "closed-prepared-facts-type",
+            "closed-prepared-facts-nonnull",
+            "closed-observation-facts-duplicate",
+            "closed-observation-facts-type",
+            "closed-observation-facts-nonnull",
+            "closed-observed-entry-duplicate",
+            "closed-observed-entry-type",
+            "closed-observed-entry-nonnull",
+            "closed-observed-namespace-duplicate",
+            "closed-observed-namespace-type",
+            "closed-observed-namespace-nonnull",
+            "closed-observed-artifact-duplicate",
+            "closed-observed-artifact-type",
+            "closed-observed-artifact-nonnull",
+            "closed-observed-file-duplicate",
+            "closed-observed-file-type",
+            "closed-observed-file-nonnull",
+            "closed-observed-package-duplicate",
+            "closed-observed-package-type",
+            "closed-observed-package-nonnull",
+            "closed-observed-startup-duplicate",
+            "closed-observed-startup-type",
+            "closed-observed-startup-nonnull",
+            "model-chain-empty",
+            "model-chain-repeated-profile",
+            "solution-optional-schema-null",
+            "solution-optional-bounds-null",
+            "admission-optional-verified-roles-null",
+            "retained-reordered-prepare",
+            "fresh-business-map-extra-key",
+        ],
+    },
+    "control": {
+        "binary": [
+            "empty-stream",
+            "truncated-prefix",
+            "zero-length",
+            "oversize-prefix",
+            "truncated-payload",
+            "partial-read-hello",
+            "partial-read-start",
+        ],
+        "fixture_sha256": "a5501a4fde472ebbae9567803e3b96313672ccfbad41fc8165030cbffd1786e6",
+        "sessions": [
+            "valid-workflow-start-stop",
+            "valid-agent-start-stop",
+            "cancel-after-start",
+            "in-flight-heartbeat-after-cancel",
+            "prepared-heartbeat-and-rejection",
+            "missing-start-authorization",
+            "early-authorization",
+            "start-before-hello",
+            "executing-before-start",
+            "wrong-process",
+            "wrong-session",
+            "wrong-direction",
+            "wrong-artifact",
+            "unknown-capability",
+            "unknown-negotiated-version",
+            "wrong-preparation",
+            "wrong-commit",
+            "wrong-duration",
+            "duplicate-start-no-replay",
+            "sequence-gap",
+            "stale-start-heartbeat",
+            "monotonic-regression",
+            "wrong-stop-identity",
+            "stop-completion-before-start",
+            "reports-after-stop",
+            "no-repeated-authorization",
+            "typed-attempt-mismatch",
+            "empty-process-binding",
+            "launch-digest-not-child-proof",
+            "queued-prepared-heartbeat-after-start",
+            "queued-prepared-heartbeat-after-prestart-cancel",
+            "queued-completed-stop-after-cancel",
+            "queued-prepare-rejected-after-start",
+            "no-completed-regression-after-cancel-ack",
+            "no-executing-regression-after-cancel-ack",
+        ],
+        "wire": [
+            "hello",
+            "start",
+            "prepared_heartbeat",
+            "executing_heartbeat",
+            "cancel",
+            "cancelling_heartbeat",
+            "completed",
+            "cancelled",
+            "prepare_rejected",
+            "missing-envelope-protocol",
+            "missing-envelope-type",
+            "missing-envelope-session_id",
+            "missing-envelope-message_id",
+            "missing-envelope-sequence",
+            "missing-envelope-correlation_id",
+            "missing-envelope-body",
+            "missing-Hello-runtime_incarnation_id",
+            "missing-Hello-supported_protocols",
+            "missing-Hello-capabilities",
+            "missing-Hello-artifact",
+            "missing-Start-prepare_message_id",
+            "missing-Start-committed_start_id",
+            "missing-Start-parent_duration_seconds",
+            "missing-Heartbeat-start_message_id",
+            "missing-Heartbeat-state",
+            "missing-Heartbeat-monotonic_elapsed_ms",
+            "missing-Cancel-cancel_id",
+            "missing-Cancel-reason",
+            "missing-Cancel-grace_ms",
+            "missing-Stopped-start_message_id",
+            "missing-Stopped-cancel_id",
+            "missing-Stopped-reason",
+            "missing-Stopped-result_message_id",
+            "missing-Stopped-error",
+            "missing-nested-artifact-image_digest",
+            "missing-nested-artifact-requirements_lock_sha256",
+            "missing-nested-artifact-sdk-distribution",
+            "missing-nested-artifact-sdk-version",
+            "missing-nested-error-traceback",
+            "unknown-version",
+            "version-not-string",
+            "unknown-envelope-key",
+            "unknown-body-key",
+            "uppercase-uuid",
+            "short-uuid",
+            "uuid-non-hex",
+            "bool-sequence",
+            "float-sequence",
+            "negative-sequence",
+            "zero-sequence",
+            "unsafe-sequence",
+            "unexpected-correlation",
+            "empty-artifact-id",
+            "empty-sdk-version",
+            "invalid-lock-hash",
+            "missing-interpreter-version",
+            "nested-unknown-key",
+            "duplicate-capability",
+            "unsupported-Prepare",
+            "unsupported-Prepared",
+            "unsupported-Result",
+            "unsupported-LogBatch",
+            "unsupported-ModelObservation",
+            "unsupported-WorkflowToolRequested",
+            "unsupported-ToolOutcome",
+            "unsupported-ToolObservation",
+            "unsupported-Usage",
+            "unsupported-ExecutePython",
+            "unsupported-empty",
+            "bad-start-parent_duration_seconds-True",
+            "bad-start-parent_duration_seconds-0",
+            "bad-start-parent_duration_seconds-1.0",
+            "bad-start-prepare_message_id-None",
+            "start-without-correlation",
+            "bool-heartbeat",
+            "unknown-heartbeat-state",
+            "coordinator-loss-as-cancel",
+            "duplicate-envelope",
+            "duplicate-nested",
+            "nan",
+            "infinity",
+            "lone-surrogate",
+            "trailing-json",
+            "not-json",
+            "empty-json",
+            "depth-64",
+            "depth-65",
+            "invalid-utf8",
+            "negative-zero-heartbeat",
+            "negative-zero-cancel-grace",
+            "negative-zero-sequence",
+            "large-positive-finite-heartbeat",
+            "large-negative-finite-heartbeat",
+            "large-positive-overflow-heartbeat",
+            "large-negative-overflow-heartbeat",
+            "large-positive-finite-sequence",
+            "large-negative-finite-sequence",
+            "large-positive-overflow-sequence",
+            "large-negative-overflow-sequence",
+            "rawvalue-hidden-start",
+            "rawvalue-hidden-start-duplicate",
+            "rawvalue-hidden-start-depth",
+            "rawvalue-hidden-hello-artifact",
+            "rawvalue-hidden-stopped-error",
+            "rawvalue-hidden-start-unsupported-protocol",
+            "rawvalue-hidden-start-nonstring-protocol",
+            "rawvalue-hidden-start-malformed-inner",
+            "e0-unsupported-sequence-zero",
+            "e0-unsupported-sequence-bool",
+            "e0-unsupported-sequence-over-safe",
+            "e0-unsupported-session-id",
+            "e0-unsupported-message-id",
+            "e0-unsupported-type-bool",
+            "e0-unsupported-type-empty",
+            "e0-unsupported-type-unknown",
+            "e0-unsupported-correlation-id",
+            "e0-unsupported-correlation-mismatch",
+            "e0-unsupported-body",
+            "e0-unsupported-body-fields",
+            "e0-empty-protocol-sequence-zero",
+            "e0-invalid-json-before-protocol",
+            "e0-duplicate-before-protocol",
+            "e0-surrogate-before-protocol",
+            "e0-depth65-before-protocol",
+            "e0-depth64-protocol-first",
+            "e0-nonfinite-before-protocol",
+            "e0-numeric-overflow-before-protocol",
+            "e0-utf8-before-protocol",
+            "e0-trailing-json-before-protocol",
+            "e0-shape-missing-sequence",
+            "e0-shape-missing-protocol",
+            "e0-shape-extra-key",
+            "e0-shape-root-array",
+            "e0-protocol-bool",
+            "e0-protocol-null",
+            "e0-protocol-object",
+            "e0-supported-unknown-type-bad-header",
+            "e0-supported-unknown-type-bad-body",
+            "e0-supported-bad-body",
+        ],
+    },
+}
+
+PYTHON_AGENT_FUNCTION_COUNTS = {
+    "test_actual_binding_not_supplied_hash": 1,
+    "test_actual_original_reemit_and_consumption": 3,
+    "test_binding_rejects_distinct_actual_owners": 6,
+    "test_byte_different_hashes": 1,
+    "test_complete_wire_cap": 1,
+    "test_depth": 3,
+    "test_escaped_numeric_looking_string": 1,
+    "test_every_nullable_and_optional_field_distinction": 1,
+    "test_existing_control_rejects": 2,
+    "test_fragmented_reader_and_partial_writer": 1,
+    "test_framing_boundaries": 1,
+    "test_fresh_typed_revalidates": 1,
+    "test_initial_read_failure_stops_without_extra_reads": 5,
+    "test_interrupted_read_continues_same_frame": 3,
+    "test_interrupted_write_continues_same_output": 1,
+    "test_mutable_input_is_copied_before_retained_ownership": 1,
+    "test_new_positive_retained_and_fresh_custody": 2,
+    "test_non_json": 2,
+    "test_readonly_view_has_no_mutable_alias": 1,
+    "test_required_fields_at_every_seeded_structural_depth": 1,
+    "test_shared_corpus": 207,
+    "test_source_optional_absence_preserved": 1,
+}
+
+RUST_CONTROL_TESTS = [
+    "runtime::tests::shared_wire_vectors",
+    "runtime::tests::shared_binary_vectors_with_partial_io",
+    "runtime::tests::shared_parent_session_vectors",
+    "runtime::tests::over_cap_payload_and_concatenated_frames",
+    "runtime::tests::ordinary_json_retains_literal_private_looking_keys",
+    "runtime::tests::ordinary_json_keeps_incumbent_structural_limits",
+    "runtime::tests::protocol_precedence_preserves_size_and_depth_boundaries",
+]
+
+RUST_AGENT_TESTS = [
+    "runtime::agent_prepare_tests::full_shared_corpus",
+    "runtime::agent_prepare_tests::original_bytes_not_normalized",
+    "runtime::agent_prepare_tests::byte_different_hashes",
+    "runtime::agent_prepare_tests::fresh_encode_revalidates_opaque_floats",
+    "runtime::agent_prepare_tests::binding_uses_retained_actual_hashes",
+    "runtime::agent_prepare_tests::old_control_rejects_new_bodies",
+    "runtime::agent_prepare_tests::missing_every_present_required_field",
+    "runtime::agent_prepare_tests::optional_absence_survives_fresh_encoding",
+    "runtime::agent_prepare_tests::invalid_utf8",
+    "runtime::agent_prepare_tests::framing_empty_truncated_oversized",
+    "runtime::agent_prepare_tests::direct_complete_frame_boundary",
+    "runtime::agent_prepare_tests::depth_bound",
+    "runtime::agent_prepare_tests::business_private_markers_remain_literal",
+    "runtime::agent_prepare_tests::numeric_looking_strings_do_not_trip_preflight",
+    "runtime::agent_prepare_tests::every_nullable_optional_field_distinction",
+    "runtime::agent_prepare_tests::distinct_retained_binding_owners",
+    "runtime::agent_prepare_tests::reordered_and_business_extension_fresh_retained",
+]
+
+RUST_WORKSPACE_TESTS = [
+    "runtime::tests::shared_wire_vectors",
+    "runtime::tests::shared_binary_vectors_with_partial_io",
+    "runtime::tests::shared_parent_session_vectors",
+    "runtime::tests::over_cap_payload_and_concatenated_frames",
+    "runtime::tests::ordinary_json_retains_literal_private_looking_keys",
+    "runtime::tests::ordinary_json_keeps_incumbent_structural_limits",
+    "runtime::tests::protocol_precedence_preserves_size_and_depth_boundaries",
+    "workflow::tests::running_covers_all_current_attempt_states_and_exact_columns",
+    "workflow::tests::running_preserves_first_start_and_non_none_process_including_empty",
+    "workflow::tests::running_rejects_absence_foreign_missing_wrong_and_completed_fences",
+    "workflow::tests::missing_result_fence_precedes_every_logical_or_attempt_guard",
+    "workflow::tests::tracked_result_checks_every_logical_state_before_attempt_and_outcome",
+    "workflow::tests::all_ten_normalized_success_statuses_and_optional_zero_duration_are_preserved",
+    "workflow::tests::result_has_no_new_attempt_status_or_phase_start_guard",
+    "workflow::tests::result_rejects_exact_stale_fences_before_coordinator_policy",
+    "workflow::tests::four_failure_mappings_assign_nullable_attempt_inputs_without_payload_clearing",
+    "workflow::tests::coordinator_defers_running_but_cancelling_overrides_every_outcome",
+    "workflow::tests::queued_cancel_has_exact_optional_active_attempt_plan",
+    "workflow::tests::running_cancel_ignores_foreign_and_completed_attempts",
+    "workflow::tests::cancel_checks_logical_identity_and_rejects_other_states_before_attempt",
+    "workflow::tests::opaque_token_supports_clone_equality_without_secret_projection",
+    "configuration_preserves_python_database_conventions",
+    "invalid_configuration_fails_without_values",
+    "liveness_and_database_readiness_are_distinct",
+    "graceful_shutdown_stops_http_and_closes_database_pool",
+    "graceful_shutdown_drains_an_inflight_readiness_request",
+    "request_spans_do_not_record_caller_secrets",
+]
+
+OPERATIONS = [
+    "source-guard",
+    "literal-pre-pr",
+    "action-disposal",
+    "api-prepare",
+    "ghcr-disposal",
+    "toolchain-build",
+    "cargo-fetch",
+    "workspace-fmt",
+    "workspace-clippy-all",
+    "workspace-default-tests",
+    "workspace-default-graph",
+    "workspace-all-graph",
+    "locked-inventory",
+    "off-contracts-tests",
+    "off-control-build",
+    "off-graph",
+    "off-rust-control-emit",
+    "off-python-control-validate",
+    "off-rust-control-validate",
+    "raw-contracts-tests",
+    "raw-control-build",
+    "raw-graph",
+    "raw-rust-control-emit",
+    "raw-python-control-validate",
+    "raw-rust-control-validate",
+    "agent-contracts-tests",
+    "agent-control-build",
+    "agent-graph",
+    "agent-rust-control-emit",
+    "agent-python-control-validate",
+    "agent-rust-control-validate",
+    "off-python-control-emit",
+    "raw-python-control-emit",
+    "agent-python-control-emit",
+    "agent-prepare-build",
+    "python-control-tests",
+    "python-agent-tests",
+    "rust-agent-emit",
+    "python-agent-validate",
+    "python-agent-emit",
+    "rust-agent-validate",
+    "source-before",
+    "source-after",
+    "rust-snapshot-before",
+    "rust-snapshot-after",
+    "api-snapshot-before",
+    "api-snapshot-after",
+    "binary-readback",
+    "container-custody-readback",
+    "format-copy",
+    "format-run",
+    "format-patch",
+    "owned-cleanup",
+    "owned-readback",
+    "safe-publication",
+]
+
+PRESERVED = {
+    ".github/workflows/runtime-control.yml": "323283877ad99b509fa3fc916818d1696a6930c9669bd80182ee899ebc288319",
+    "scripts/ci/runtime-control-interchange.sh": "8f4991c25a4c61ed78f9ce19d2db62704941f31816e5e0615e8af495ef111ad0",
+}
+FORMAT_PATHS = (
+    "core-rs/crates/bifrost-contracts/src/runtime/agent_prepare.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/agent_prepare_tests.rs",
+    "core-rs/crates/bifrost-contracts/examples/runtime_agent_prepare_vectors.rs",
+    "core-rs/crates/bifrost-contracts/src/runtime/mod.rs",
+)
+CAPS = {
+    "pre-pr": 360,
+    "prepare": 240,
+    "toolchain": 120,
+    "fetch": 90,
+    "checks": 400,
+    "matrix": 180,
+    "products": 180,
+    "cleanup": 60,
+}
+STAGES = ("guard", *CAPS, "publication")
+FORBIDDEN = {
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GHCR_TOKEN",
+    "GHCR_USERNAME",
+    "DOCKER_CONFIG",
+    "BIFROST_ACTION_PIN_TOKEN_FILE",
+    "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY",
+}
+HELPER = "scripts/ci/workflow-sql-source.sh"
+CONTROL_FIXTURE = "core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/control-vectors.json"
+AGENT_FIXTURE = "core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/agent-prepare-vectors.json"
+RAW_LIMIT = 16 * 1024 * 1024
+RAW_TOTAL = 64 * 1024 * 1024
+EXCHANGE_LIMIT = 1024 * 1024
+MODE = sys.argv[1]
+ROOT = Path.cwd()
+PREFIX = "bifrost-agent-prepare-" + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
+LABEL = "bifrost.agent-prepare.owner"
+EVIDENCE = Path(os.environ["AGENT_PREPARE_EVIDENCE"])
+STATE_PATH = EVIDENCE / "private-state.json"
+RAW_DIRECTORY = Path(os.environ["RUNNER_TEMP"]) / (PREFIX + "-private-diagnostics")
+
+
+class Failure(Exception):
+    def __init__(self, category, code=1):
+        self.category = category
+        self.code = code
+        super().__init__("closed agent Prepare CI failure")
+
+
+class Interrupted(BaseException):
+    def __init__(self, code):
+        self.code = code
+
+
+def require(condition, category="schema"):
+    if not condition:
+        raise Failure(category)
+
+
+def stop_signal(signum, _frame):
+    raise Interrupted(128 + signum)
+
+
+signal.signal(signal.SIGINT, stop_signal)
+signal.signal(signal.SIGTERM, stop_signal)
+os.umask(0o077)
+
+
+def pairs(values):
+    result = {}
+    for key, value in values:
+        require(key not in result)
+        result[key] = value
+    return result
+
+
+def decode(raw, limit=EXCHANGE_LIMIT):
+    require(len(raw) <= limit, "bound")
+    return json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=pairs,
+        parse_constant=lambda _value: (_ for _ in ()).throw(Failure("schema")),
+    )
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode("ascii")
+
+
+def sha_bytes(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def sha_file(path):
+    result = hashlib.sha256()
+    fd = -1
+    original = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        require(stat.S_ISREG(os.fstat(fd).st_mode), "source")
+        while block := os.read(fd, 65536):
+            result.update(block)
+    except BaseException as error:
+        original = error
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except BaseException as error:
+                if original is None:
+                    original = error
+    if original is not None:
+        raise original
+    return result.hexdigest()
+
+
+def identity(path):
+    info = path.lstat()
+    return {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "mode": stat.S_IMODE(info.st_mode)}
+
+
+def checked_directory(path, expected):
+    info = path.lstat()
+    require(
+        expected is not None
+        and stat.S_ISDIR(info.st_mode)
+        and info.st_uid == os.getuid()
+        and identity(path) == expected,
+        "acquisition",
+    )
+    return path
+
+
+def atomic_json(path, value, limit=EXCHANGE_LIMIT):
+    raw = canonical(value)
+    require(len(raw) <= limit, "bound")
+    temporary = path.with_name(path.name + ".new")
+    fd = -1
+    original = None
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        view = memoryview(raw)
+        while view:
+            n = os.write(fd, view)
+            require(n > 0, "io")
+            view = view[n:]
+        os.close(fd)
+        fd = -1
+        temporary.replace(path)
+    except BaseException as error:
+        original = error
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except BaseException as error:
+                if original is None:
+                    original = error
+        try:
+            if temporary.exists():
+                temporary.unlink()
+        except BaseException as error:
+            if original is None:
+                original = error
+    if original is not None:
+        raise original
+
+
+def empty_operation():
+    return {"status": "not_started", "exit": None, "duration_s": None, "counts": None, "exchange": None}
+
+
+def new_receipt(selected):
+    return {
+        "schema": "bifrost.test.agent-prepare-ci/v1",
+        "mode": selected,
+        "candidate": dict.fromkeys(
+            (
+                "associated_sha",
+                "checkout_sha",
+                "checkout_tree",
+                "main_sha",
+                "main_ancestor",
+                "clean_before",
+                "clean_after",
+            )
+        ),
+        "source": dict.fromkeys(
+            (
+                "before",
+                "after",
+                "preserved_before",
+                "preserved_after",
+                "rust_snapshot",
+                "api_snapshot",
+                "locked_inventory",
+            )
+        ),
+        "corpora": {"control": None, "agent": None},
+        "graphs": dict.fromkeys(("workspace_default", "workspace_all_features", "off", "raw", "agent")),
+        "images": {"api": None, "toolchain": None},
+        "binaries": dict.fromkeys(
+            ("off_tests", "raw_tests", "agent_tests", "off_control", "raw_control", "agent_control", "agent_prepare")
+        ),
+        "operations": {name: empty_operation() for name in OPERATIONS},
+        "stages": [],
+        "credentials": dict.fromkeys(("action_disposed", "ghcr_disposed", "product_environment_verified")),
+        "cleanup": {
+            "pre_pr_initial_empty": None,
+            "pre_pr_final_empty": None,
+            "owner_initial_empty": None,
+            "owner_final_empty": None,
+            "resources": [],
+            "first_failure": None,
+        },
+        "format": None,
+        "disposition": {
+            "status": "failed",
+            "primary_operation": None,
+            "primary_class": None,
+            "original_exit": None,
+            "cleanup_failed": False,
+            "publication_failed": False,
+            "elapsed_s": 0,
+        },
+    }
+
+
+state = decode(STATE_PATH.read_bytes())
+require(os.environ.get("GITHUB_ACTIONS") == "true")
+require(MODE in {"guard", "pre-pr", "prepare", "format", "verify", "cleanup"})
+require(type(state["start"]) in (int, float) and math.isfinite(state["start"]))
+require(0 <= time.monotonic() - state["start"] < 1800, "timeout")
+selected = (
+    "format"
+    if (
+        os.environ["GITHUB_EVENT_NAME"] == "push"
+        and os.environ["GITHUB_REF"] == "refs/heads/rust/agent-prepare-codec"
+        and state.get("format_subject", False)
+    )
+    else "verify"
+)
+if "receipt" not in state:
+    state["receipt"] = new_receipt(selected)
+    state["root_identity"] = identity(EVIDENCE)
+    state["raw_identity"] = None
+    atomic_json(STATE_PATH, state)
+    initial_error = None
+    try:
+        RAW_DIRECTORY.mkdir(mode=0o700)
+        state["raw_identity"] = identity(RAW_DIRECTORY)
+    except BaseException as error:
+        initial_error = error
+    finally:
+        try:
+            atomic_json(STATE_PATH, state)
+        except BaseException as error:
+            if initial_error is None:
+                initial_error = error
+    if initial_error is not None:
+        raise initial_error
+checked_directory(EVIDENCE, state["root_identity"])
+if not state.get("raw_removed"):
+    checked_directory(RAW_DIRECTORY, state["raw_identity"])
+receipt = state["receipt"]
+stage_name = None
+stage_start = None
+active_operation = None
+
+
+def save():
+    checked_directory(EVIDENCE, state["root_identity"])
+    atomic_json(STATE_PATH, state)
+
+
+def clean_env():
+    result = os.environ.copy()
+    for name in FORBIDDEN:
+        result.pop(name, None)
+    return result
+
+
+def stage_record(name):
+    return next((item for item in receipt["stages"] if item["name"] == name), None)
+
+
+def milestone(name, phase, status, duration=None):
+    key = name + ":" + phase
+    emitted = state.setdefault("milestones", [])
+    if key in emitted:
+        return
+    require(name in STAGES and phase in {"start", "complete"})
+    require(status in {"running", "success", "failure", "interrupted"})
+    record = {
+        "schema": "bifrost.test.agent-prepare-stage/v1",
+        "stage": name,
+        "phase": phase,
+        "elapsed_s": time.monotonic() - state["start"],
+        "duration_s": duration,
+        "status": status,
+    }
+    raw = canonical(record) + b"\n"
+    require(len(emitted) < 20 and state.get("milestone_bytes", 0) + len(raw) <= 65536, "bound")
+    emitted.append(key)
+    state["milestone_bytes"] = state.get("milestone_bytes", 0) + len(raw)
+    sys.stdout.buffer.write(raw)
+    sys.stdout.buffer.flush()
+
+
+def end_stage(status="success", *, final=True):
+    global stage_start, stage_name
+    if stage_start is not None:
+        row = stage_record(stage_name)
+        row["duration_s"] += time.monotonic() - stage_start
+        row["status"] = status if final else "running"
+        if final:
+            milestone(stage_name, "complete", status, row["duration_s"])
+        stage_start = stage_name = None
+        save()
+
+
+def begin(name):
+    global stage_name, stage_start
+    end_stage(final=False)
+    require(name in STAGES)
+    stage_name, stage_start = name, time.monotonic()
+    row = stage_record(name)
+    if row is None:
+        row = {"name": name, "cap_s": CAPS.get(name, 170), "duration_s": 0, "status": "running"}
+        receipt["stages"].append(row)
+    row["status"] = "running"
+    milestone(name, "start", "running")
+    save()
+
+
+def remaining():
+    require(stage_name is not None)
+    now = time.monotonic()
+    spent = stage_record(stage_name)["duration_s"] + now - stage_start
+    cap = CAPS.get(stage_name, 170)
+    if stage_name in {"guard", "publication"}:
+        other = "guard" if stage_name == "publication" else "publication"
+        cap -= (stage_record(other) or {}).get("duration_s", 0)
+    job_reserve = 60 + 2 if stage_name not in {"cleanup", "publication"} else (2 if stage_name == "cleanup" else 0)
+    left = min(cap - spent, 1800 - (now - state["start"]) - job_reserve)
+    require(left > 0, "timeout")
+    return left
+
+
+def error_class(error):
+    if isinstance(error, Failure):
+        return error.category
+    if not isinstance(error, Exception):
+        return "control"
+    return "io"
+
+
+def error_code(error):
+    if isinstance(error, (Failure, Interrupted)):
+        return error.code
+    return 130 if isinstance(error, KeyboardInterrupt) else 1
+
+
+def primary(error, operation=None):
+    row = receipt["disposition"]
+    if row["primary_class"] is None:
+        row.update(
+            status="interrupted" if error_class(error) == "control" else "failed",
+            primary_operation=operation,
+            primary_class=error_class(error),
+            original_exit=error_code(error),
+        )
+
+
+@contextmanager
+def operation(name):
+    global active_operation
+    require(name in OPERATIONS)
+    row = receipt["operations"][name]
+    require(row["status"] == "not_started")
+    prior = active_operation
+    active_operation = name
+    start = time.monotonic()
+    try:
+        yield row
+        row.update(status="success", exit=0)
+    except BaseException as error:
+        row.update(status="interrupted" if error_class(error) == "control" else "failure")
+        if isinstance(error, Failure):
+            row["exit"] = error.code
+        primary(error, name)
+        raise
+    finally:
+        row["duration_s"] = time.monotonic() - start
+        active_operation = prior
+        # Saving is secondary to the exact pending original operation/control.
+        original = sys.exc_info()[1]
+        try:
+            save()
+        except BaseException:
+            if original is None:
+                raise
+
+
+def child(argv, *, input_bytes=None, env=None, limit=RAW_LIMIT, timeout=None):
+    require(input_bytes is None or len(input_bytes) <= EXCHANGE_LIMIT, "bound")
+    seconds = min(remaining(), timeout) if timeout is not None else remaining()
+    require(seconds > 2, "timeout")
+    deadline = time.monotonic() + seconds
+    state["capture_counter"] = state.get("capture_counter", 0) + 1
+    number = state["capture_counter"]
+    stdout_path = RAW_DIRECTORY / (str(number) + ".stdout")
+    stderr_path = RAW_DIRECTORY / (str(number) + ".stderr")
+    process = selector = None
+    output_fds = []
+    pipes = []
+    original = None
+    cleanup_error = None
+    code = None
+    sizes = {"stdout": 0, "stderr": 0}
+    sent = 0
+    try:
+        # Each returned handle is retained inside the protected lifetime.
+        for path in (stdout_path, stderr_path):
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+            output_fds.append(fd)
+        process = subprocess.Popen(
+            argv,
+            stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            env=clean_env() if env is None else env,
+        )
+        # Popen returned all three members together. Retain every returned pipe
+        # before any configuration can fail or receive a control exception.
+        pipes = [pipe for pipe in (process.stdout, process.stderr, process.stdin) if pipe is not None]
+        for pipe in pipes:
+            os.set_blocking(pipe.fileno(), False)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        if process.stdin is not None:
+            if input_bytes:
+                selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
+            else:
+                process.stdin.close()
+        while selector.get_map():
+            left = deadline - time.monotonic() - 2
+            require(left > 0, "timeout")
+            for key, _ in selector.select(min(left, 0.25)):
+                if key.data == "stdin":
+                    try:
+                        n = os.write(key.fd, memoryview(input_bytes)[sent : sent + 65536])
+                    except BlockingIOError:
+                        continue
+                    require(n > 0, "io")
+                    sent += n
+                    if sent == len(input_bytes):
+                        selector.unregister(key.fileobj)
+                        key.fileobj.close()
+                    continue
+                try:
+                    block = os.read(key.fd, 65536)
+                except BlockingIOError:
+                    continue
+                if not block:
+                    selector.unregister(key.fileobj)
+                    continue
+                channel = key.data
+                require(sizes[channel] + len(block) <= (limit if channel == "stdout" else RAW_LIMIT), "bound")
+                require(sum(sizes.values()) + len(block) <= RAW_LIMIT, "bound")
+                require(state.get("raw_bytes", 0) + sum(sizes.values()) + len(block) <= RAW_TOTAL, "bound")
+                view = memoryview(block)
+                while view:
+                    n = os.write(output_fds[0 if channel == "stdout" else 1], view)
+                    require(n > 0, "io")
+                    view = view[n:]
+                sizes[channel] += len(block)
+        require(input_bytes is None or sent == len(input_bytes), "io")
+        left = deadline - time.monotonic() - 2
+        require(left > 0, "timeout")
+        try:
+            code = process.wait(timeout=left)
+        except subprocess.TimeoutExpired:
+            raise Failure("timeout", 124) from None
+    except BaseException as error:
+        original = error
+    finally:
+
+        def settle(callback):
+            nonlocal cleanup_error
+            try:
+                callback()
+            except BaseException as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+
+        for pipe in pipes:
+            settle(pipe.close)
+        if selector is not None:
+            settle(selector.close)
+        for fd in output_fds:
+            settle(lambda fd=fd: os.close(fd))
+        if process is not None:
+            running = True
+            try:
+                running = process.poll() is None
+            except BaseException as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+            if original is not None or running:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except BaseException as error:
+                    if cleanup_error is None:
+                        cleanup_error = error
+
+            def reap():
+                left = deadline - time.monotonic()
+                require(left > 0, "timeout")
+                process.wait(timeout=min(2, left))
+
+            settle(reap)
+        state["raw_bytes"] = state.get("raw_bytes", 0) + sum(sizes.values())
+        state.setdefault("children", []).append(
+            {
+                "operation": active_operation,
+                "exit": code,
+                "bytes": sizes,
+                "stdin_bytes": sent,
+                "reaped": process is not None and process.returncode is not None,
+                "cleanup_failed": cleanup_error is not None,
+            }
+        )
+        settle(save)
+    if original is not None:
+        raise original
+    if cleanup_error is not None:
+        raise cleanup_error
+    return code, stdout_path, stderr_path
+
+
+def command(argv, **kwargs):
+    code, output, errors = child(argv, **kwargs)
+    if active_operation is not None:
+        receipt["operations"][active_operation]["exit"] = code
+    if code != 0:
+        raise Failure("test", code)
+    return output, errors
+
+
+def capture(argv):
+    output, _ = command(argv, timeout=10)
+    return output.read_text().strip()
+
+
+def inspect(kind, name):
+    return decode(capture(["docker", kind, "inspect", name]).encode())[0]
+
+
+def source_readback(which):
+    result = {}
+    for path in SOURCE_KEYS:
+        actual = sha_file(ROOT / path)
+        if path in EXPECTED_SOURCE:
+            require(actual == EXPECTED_SOURCE[path], "source")
+        # New two CI paths compare actual checkout bytes to its Git object, not themselves.
+        require(sha_bytes(command(["git", "show", "HEAD:" + path])[0].read_bytes()) == actual, "source")
+        result[path] = actual
+    receipt["source"][which] = result
+    preserved = {path: sha_file(ROOT / path) for path in PRESERVED}
+    require(preserved == PRESERVED, "source")
+    receipt["source"]["preserved_" + which] = preserved
+    return result
+
+
+def frozen_corpora():
+    control = decode((ROOT / CONTROL_FIXTURE).read_bytes())
+    agent = decode((ROOT / AGENT_FIXTURE).read_bytes())
+    observed = {
+        "control": {
+            "fixture_sha256": sha_file(ROOT / CONTROL_FIXTURE),
+            **{name: [v["name"] for v in control[name]] for name in ("wire", "binary", "sessions")},
+        },
+        "agent": {
+            "fixture_sha256": sha_file(ROOT / AGENT_FIXTURE),
+            "fixture_bytes": (ROOT / AGENT_FIXTURE).stat().st_size,
+            "wire": [v["name"] for v in agent["wire"]],
+            "positive": [v["name"] for v in agent["wire"] if v["expected"] == "ok"],
+            "direct_test_roster_sha256": FROZEN_CORPORA["agent"]["direct_test_roster_sha256"],
+        },
+    }
+    require(observed == FROZEN_CORPORA, "source")
+    receipt["corpora"] = observed
+
+
+LOCKED_IDENTITY_SHA256 = "2cd2fe8e82b1d53a52fb46008cc79315ec1c70aa173a6f42efeaabc8a6a04d74"
+
+
+PYTHON_PARAMETERS = {
+    "test_actual_original_reemit_and_consumption": ["prepare-parent", "raw-whitespace", "raw-float-spellings"],
+    "test_existing_control_rejects": ["prepare-parent", "prepared-unexpected-observations"],
+    "test_non_json": [r"\xff-InvalidJson", "-InvalidJson"],
+    "test_depth": ["63", "64", "65"],
+    "test_initial_read_failure_stops_without_extra_reads": ["outcome0", "outcome1", "None", "x", "xx"],
+    "test_interrupted_read_continues_same_frame": ["0", "1", "4"],
+    "test_binding_rejects_distinct_actual_owners": [
+        "hello-message",
+        "hello-session",
+        "prepare-message",
+        "slot",
+        "prepare-hash",
+        "hello-hash",
+    ],
+    "test_new_positive_retained_and_fresh_custody": ["retained-reordered-prepare", "fresh-business-map-extra-key"],
+}
+PYTHON_CONTROL_TESTS = {
+    "test_shared_wire_vectors",
+    "test_shared_binary_vectors_with_partial_io",
+    "test_shared_parent_session_vectors",
+    "test_over_cap_payload_and_concatenated_frames",
+}
+
+
+def python_expected():
+    result = set()
+    for name, count in PYTHON_AGENT_FUNCTION_COUNTS.items():
+        parameters = FROZEN_CORPORA["agent"]["wire"] if name == "test_shared_corpus" else PYTHON_PARAMETERS.get(name)
+        if parameters is None:
+            require(count == 1, "source")
+            result.add(name)
+        else:
+            require(len(parameters) == count and len(parameters) == len(set(parameters)), "source")
+            result.update(name + "[" + value + "]" for value in parameters)
+    return result
+
+
+def inventory():
+    packages = tomllib.loads((ROOT / "core-rs/Cargo.lock").read_text())["package"]
+    values = sorted(
+        [[p["name"], p["version"], p.get("source"), p.get("checksum")] for p in packages], key=lambda p: (p[0], p[1])
+    )
+    actual = sha_bytes(canonical(values))
+    receipt["source"]["locked_inventory"] = {
+        "baseline_sha256": LOCKED_IDENTITY_SHA256,
+        "actual_sha256": actual,
+        "count": len(values),
+        "unchanged": actual == LOCKED_IDENTITY_SHA256,
+    }
+    require(actual == LOCKED_IDENTITY_SHA256 and len(values) == 232, "inventory")
+
+
+def tracked_paths():
+    paths = command(["git", "ls-tree", "-rz", "HEAD"])[0].read_bytes().split(b"\0")
+    result = []
+    for row in paths:
+        if not row:
+            continue
+        metadata, name = row.split(b"\t", 1)
+        mode, kind, _git_hash = metadata.decode("ascii").split(" ")
+        # The complete snapshots below exclude symlinks, submodules and path escapes.
+        path = name.decode("utf-8")
+        require(
+            not path.startswith("/") and ".." not in Path(path).parts and "\n" not in path and "\r" not in path,
+            "source",
+        )
+        result.append((path, mode, kind))
+    return result
+
+
+def source_snapshots():
+    rust = {}
+    api = {}
+    for path, mode, kind in tracked_paths():
+        selected_api = (
+            path.startswith("api/src/")
+            or path.startswith("api/tests/runtime_protocol/")
+            or path in {"api/tests/__init__.py", "api/pytest.ini", CONTROL_FIXTURE, AGENT_FIXTURE}
+        )
+        if path.startswith("core-rs/") or selected_api:
+            require(kind == "blob" and mode in {"100644", "100755"}, "source")
+            actual = sha_file(ROOT / path)
+            if path.startswith("core-rs/"):
+                rust[path] = actual
+            if selected_api:
+                api[path] = actual
+    require(rust and api and len(rust) <= 65535 and len(api) <= 65535, "source")
+    require(len(canonical(rust)) <= EXCHANGE_LIMIT and len(canonical(api)) <= EXCHANGE_LIMIT, "bound")
+    state["rust_inventory"] = rust
+    state["api_inventory"] = api
+    for name, values in (("rust", rust), ("api", api)):
+        receipt["source"][name + "_snapshot"] = {
+            "candidate_sha256": sha_bytes(canonical(values)),
+            "mounted_before_sha256": None,
+            "mounted_after_sha256": None,
+            "file_count": len(values),
+        }
+
+
+def absent_owned(project, prefix):
+    values = []
+    for _kind, argv in (
+        ("container", ["docker", "ps", "-aq", "--no-trunc"]),
+        ("volume", ["docker", "volume", "ls", "-q"]),
+        ("network", ["docker", "network", "ls", "-q", "--no-trunc"]),
+    ):
+        selector = "com.docker.compose.project=" + project if project else LABEL + "=" + prefix
+        values.append(capture([*argv, "--filter", "label=" + selector]))
+    return not any(values)
+
+
+def guard():
+    begin("guard")
+    with operation("source-guard"):
+        require(
+            os.environ["GITHUB_EVENT_NAME"] == "push"
+            and os.environ["GITHUB_REF"] == "refs/heads/rust/agent-prepare-codec",
+            "source",
+        )
+        actual = capture(["git", "rev-parse", "HEAD"])
+        require(actual == os.environ["GITHUB_SHA"], "source")
+        require(not capture(["git", "status", "--porcelain", "--untracked-files=all"]), "source")
+        subject = capture(["git", "show", "-s", "--format=%s", "HEAD"])
+        receipt["mode"] = "format" if subject == "ci: agent-prepare format-only" else "verify"
+        state["format_subject"] = receipt["mode"] == "format"
+        capture(["git", "-c", "credential.helper=", "-c", "http.extraheader=", "fetch", "origin", "main"])
+        main = capture(["git", "rev-parse", "origin/main"])
+        command(["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"])
+        receipt["candidate"].update(
+            associated_sha=os.environ["GITHUB_SHA"],
+            checkout_sha=actual,
+            checkout_tree=capture(["git", "rev-parse", "HEAD^{tree}"]),
+            main_sha=main,
+            main_ancestor=True,
+            clean_before=True,
+        )
+        project = capture(["bash", "-c", "source scripts/lib/test_helpers.sh; compute_project_name ."])
+        require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", project) is not None, "source")
+        state["project"] = project
+        state["initial_image_ids"] = capture(
+            ["docker", "image", "ls", "--no-trunc", "--format", "{{.ID}}"]
+        ).splitlines()
+        state["pre_pr_api_tag"] = {
+            "tag": "bifrost-test-api-dev:latest",
+            "previous": capture(["docker", "image", "ls", "-q", "--no-trunc", "bifrost-test-api-dev:latest"]),
+            "id": None,
+            "removed": False,
+            "witness": None,
+        }
+        require(not state["pre_pr_api_tag"]["previous"], "acquisition")
+        require(absent_owned(project, PREFIX), "acquisition")
+        receipt["cleanup"]["pre_pr_initial_empty"] = True
+        require(absent_owned(None, PREFIX), "acquisition")
+        receipt["cleanup"]["owner_initial_empty"] = True
+        with operation("source-before"):
+            source_readback("before")
+            frozen_corpora()
+            source_snapshots()
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write("value=" + receipt["mode"] + "\n")
+    end_stage()
+
+
+def directory(role, *, readable=False):
+    path = (
+        EVIDENCE / role
+        if role not in {"ghcr-config", "private-diagnostics"}
+        else Path(os.environ["RUNNER_TEMP"]) / (PREFIX + "-" + role)
+    )
+    require(not path.exists(), "acquisition")
+    record = {"kind": "directory", "role": role, "path": str(path), "identity": None, "removed": False}
+    state.setdefault("directories", []).append(record)
+    save()
+    # Pending name is retained even if identity observation fails after mkdir.
+    path.mkdir(mode=0o755 if readable else 0o700)
+    record["identity"] = identity(path)
+    save()
+    return path
+
+
+def volume(role):
+    name = PREFIX + "-" + role
+    require(not capture(["docker", "volume", "ls", "-q", "--filter", "name=^" + name + "$"]), "acquisition")
+    record = {"name": name, "facts": None, "removed": False}
+    state.setdefault("volumes", []).append(record)
+    save()
+    command(["docker", "volume", "create", "--label", LABEL + "=" + PREFIX, name])
+    facts = inspect("volume", name)
+    require(facts["Name"] == name and facts["Labels"].get(LABEL) == PREFIX, "acquisition")
+    record["facts"] = {k: facts[k] for k in ("Name", "Mountpoint", "CreatedAt")}
+    save()
+    return name
+
+
+def container(image, argv, *, mounts=(), variables=(), network="none", python=False, input_bytes=None, limit=RAW_LIMIT):
+    require(receipt["mode"] == "format" or receipt["credentials"]["action_disposed"], "credential")
+    require(receipt["mode"] == "format" or receipt["credentials"]["ghcr_disposed"], "credential")
+    state["container_counter"] = state.get("container_counter", 0) + 1
+    name = PREFIX + "-" + str(state["container_counter"])
+    require(not capture(["docker", "ps", "-aq", "--no-trunc", "--filter", "name=^/" + name + "$"]), "acquisition")
+    record = {
+        "name": name,
+        "id": None,
+        "image": image,
+        "network": network,
+        "mounts": list(mounts),
+        "variables": list(variables),
+        "python": python,
+        "removed": False,
+    }
+    state.setdefault("containers", []).append(record)
+    save()
+    argv_create = ["docker", "create", "--name", name, "--label", LABEL + "=" + PREFIX, "--network", network]
+    if input_bytes is not None:
+        argv_create.append("-i")
+    for source, target, readonly in mounts:
+        argv_create += [
+            "--mount",
+            "type="
+            + ("bind" if source.startswith("/") else "volume")
+            + ",source="
+            + source
+            + ",target="
+            + target
+            + (",readonly" if readonly else ""),
+        ]
+    for key, value in variables:
+        require(key not in FORBIDDEN, "credential")
+        argv_create += ["-e", key + "=" + value]
+    if python:
+        argv_create += ["--user", "1000:1000", "--entrypoint", "python"]
+    argv_create += [image, *argv]
+    command(argv_create)
+    cid = capture(["docker", "inspect", name, "--format", "{{.Id}}"])
+    require(re.fullmatch(r"[0-9a-f]{64}", cid) is not None, "acquisition")
+    record["id"] = cid
+    save()
+    verify_container(record)
+    code, out, err = child(
+        ["docker", "start", "-ai" if input_bytes is not None else "-a", cid], input_bytes=input_bytes, limit=limit
+    )
+    verify_container(record)
+    facts = inspect("container", cid)
+    require(not facts["State"]["Running"] and code == facts["State"]["ExitCode"], "acquisition")
+    record["exit"] = code
+    if code != 0:
+        raise Failure("test", code)
+    save()
+    return record, out, err
+
+
+def verify_container(record):
+    facts = inspect("container", record["id"])
+    require(
+        facts["Id"] == record["id"]
+        and facts["Name"] == "/" + record["name"]
+        and facts["Image"] == record["image"]
+        and facts["Config"]["Labels"].get(LABEL) == PREFIX
+        and facts["HostConfig"]["NetworkMode"] == record["network"],
+        "acquisition",
+    )
+    require(len(facts["Mounts"]) == len(record["mounts"]), "acquisition")
+    for source, target, readonly in record["mounts"]:
+        actual = next((m for m in facts["Mounts"] if m["Destination"] == target), None)
+        require(actual is not None and actual["RW"] == (not readonly), "acquisition")
+        require(actual["Source"] == source if source.startswith("/") else actual["Name"] == source, "acquisition")
+    env_keys = {value.split("=", 1)[0] for value in facts["Config"]["Env"]}
+    require(not env_keys.intersection(FORBIDDEN), "credential")
+    if record["python"]:
+        require(facts["Config"]["User"] == "1000:1000" and facts["Config"]["Entrypoint"] == ["python"], "acquisition")
+    if record["network"] == "none" and receipt["mode"] == "verify":
+        receipt["credentials"]["product_environment_verified"] = True
+    return facts
+
+
+def rust(argv, target, *, input_bytes=None, network="none", source=None, limit=RAW_LIMIT):
+    mounts = [
+        (str(source or ROOT / "core-rs"), "/workspace/core-rs", True),
+        (state["cargo_home"], "/usr/local/cargo", network == "none"),
+        (state["targets"][target], "/targets", False),
+    ]
+    if state.get("exchange"):
+        mounts.append((state["exchange"], "/exchange", True))
+    return container(
+        state["toolchain_image"],
+        argv,
+        mounts=mounts,
+        network=network,
+        variables=[
+            ("CARGO_TARGET_DIR", "/targets"),
+            (
+                "BIFROST_RUNTIME_VECTORS",
+                "/workspace/core-rs/crates/bifrost-contracts/tests/fixtures/runtime/v1/control-vectors.json",
+            ),
+        ],
+        input_bytes=input_bytes,
+        limit=limit,
+    )
+
+
+def python(argv, *, input_bytes=None, limit=RAW_LIMIT):
+    mounts = [
+        (str(ROOT / "api/src"), "/app/src", True),
+        (str(ROOT / "api/tests/__init__.py"), "/app/tests/__init__.py", True),
+        (str(ROOT / "api/tests/runtime_protocol"), "/app/tests/runtime_protocol", True),
+        (str(ROOT / "api/pytest.ini"), "/app/pytest.ini", True),
+        (str(ROOT / CONTROL_FIXTURE), "/contracts/control-vectors.json", True),
+        (str(ROOT / AGENT_FIXTURE), "/" + AGENT_FIXTURE, True),
+    ]
+    if state.get("exchange"):
+        mounts.append((state["exchange"], "/exchange", True))
+    return container(
+        state["api_image"],
+        argv,
+        mounts=mounts,
+        python=True,
+        variables=[("BIFROST_RUNTIME_VECTORS", "/contracts/control-vectors.json"), ("PYTHONDONTWRITEBYTECODE", "1")],
+        input_bytes=input_bytes,
+        limit=limit,
+    )
+
+
+def credential_cleanup():
+    env = clean_env()
+    for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
+        if os.environ.get(key):
+            state[key] = os.environ[key]
+    for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
+        require(state.get(key), "credential")
+        env[key] = state[key]
+    command(["bash", HELPER, "credential-cleanup"], env=env)
+    require(not os.path.lexists(state["BIFROST_ACTION_PIN_TOKEN_FILE"]), "credential")
+    require(not Path(state["BIFROST_ACTION_PIN_TOKEN_FILE"]).parent.exists(), "credential")
+    receipt["credentials"]["action_disposed"] = True
+    for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
+        os.environ.pop(key, None)
+    save()
+
+
+def pre_pr():
+    begin("pre-pr")
+    original = None
+    try:
+        state["pre_pr_started"] = True
+        for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
+            require(os.environ.get(key), "credential")
+            state[key] = os.environ[key]
+        save()
+        with operation("literal-pre-pr"):
+            env = clean_env()
+            env["BIFROST_ACTION_PIN_TOKEN_FILE"] = state["BIFROST_ACTION_PIN_TOKEN_FILE"]
+            command(["./test.sh", "pre-pr"], env=env)
+            state["pre_pr_exit_zero"] = True
+            require(not capture(["git", "status", "--porcelain", "--untracked-files=all"]), "source")
+    except BaseException as error:
+        original = error
+    finally:
+        try:
+            with operation("action-disposal"):
+                credential_cleanup()
+        except BaseException as error:
+            if original is None:
+                original = error
+    if original is not None:
+        raise original
+    require(absent_owned(state["project"], PREFIX), "cleanup")
+    receipt["cleanup"]["pre_pr_final_empty"] = True
+    record = state["pre_pr_api_tag"]
+    current = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
+    require(current and state["pre_pr_exit_zero"], "acquisition")
+    facts = inspect("image", current)
+    labels = facts["Config"].get("Labels") or {}
+    # These closed services share this exact frozen context/Dockerfile/image alias.
+    allowed = {"init", "api", "worker", "scheduler", "scheduler-fixtures", "test-runner"}
+    require(
+        facts["Id"] == current
+        and record["tag"] in facts.get("RepoTags", [])
+        and labels.get("com.docker.compose.project") == state["project"]
+        and labels.get("com.docker.compose.service") in allowed,
+        "acquisition",
+    )
+    record["id"] = current
+    record["witness"] = {
+        "project": state["project"],
+        "service": labels["com.docker.compose.service"],
+        "literal_exit": 0,
+        "image": facts,
+    }
+    save()
+    end_stage()
+
+
+def prepare():
+    require(receipt["credentials"]["action_disposed"], "credential")
+    begin("prepare")
+    original = None
+    config = None
+    env = clean_env()
+    state["prepare_tags"] = []
+    try:
+        config = directory("ghcr-config")
+        env = clean_env()
+        env["DOCKER_CONFIG"] = str(config)
+        for key in ("GHCR_TOKEN", "GHCR_USERNAME"):
+            require(os.environ.get(key), "credential")
+            env[key] = os.environ[key]
+        remote = os.environ["REGISTRY"] + "/" + os.environ["CI_API_TEST_IMAGE"] + ":" + os.environ["CI_TEST_IMAGE_TAG"]
+        tags = ["bifrost-test-api-dev:latest", remote]
+        state["prepare_tags"] = []
+        for tag in tags:
+            previous = capture(["docker", "image", "ls", "-q", "--no-trunc", tag])
+            state["prepare_tags"].append({"tag": tag, "previous": previous, "id": None, "removed": False})
+            require(
+                not previous
+                or (
+                    tag == tags[0]
+                    and previous == state["pre_pr_api_tag"]["id"]
+                    and state["pre_pr_api_tag"]["witness"] is not None
+                ),
+                "acquisition",
+            )
+            if previous:
+                facts = inspect("image", previous)
+                require(facts == state["pre_pr_api_tag"]["witness"]["image"], "acquisition")
+        save()
+        with operation("api-prepare"):
+            command(["bash", "api/scripts/ci/prepare-test-images.sh", "api"], env=env)
+            state["api_image"] = capture(["docker", "image", "inspect", tags[0], "--format", "{{.Id}}"])
+    except BaseException as error:
+        original = error
+    finally:
+        for record in state["prepare_tags"]:
+            try:
+                current = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
+                if current:
+                    require(not record["previous"] or record["tag"] == tags[0], "acquisition")
+                    record["id"] = current
+                save()
+            except BaseException as error:
+                if original is None:
+                    original = error
+        try:
+            with operation("ghcr-disposal"):
+                require(config is not None, "credential")
+                command(["docker", "logout", "ghcr.io"], env=env)
+                config_file = config / "config.json"
+                if config_file.exists():
+                    value = decode(config_file.read_bytes())
+                    require(
+                        not value.get("credsStore")
+                        and not value.get("credHelpers")
+                        and not any(value.get("auths", {}).values()),
+                        "credential",
+                    )
+                record = next(v for v in state["directories"] if v["role"] == "ghcr-config")
+                shutil.rmtree(checked_directory(config, record["identity"]))
+                require(not config.exists(), "credential")
+                record["removed"] = True
+                receipt["credentials"]["ghcr_disposed"] = True
+        except BaseException as error:
+            if original is None:
+                original = error
+    if original is not None:
+        raise original
+    _, version, _ = python(["--version"])
+    text = version.read_text().strip()
+    require(re.fullmatch(r"Python 3\.14\.[0-9]+", text) is not None, "image")
+    _, digest, _ = python(
+        ["-c", "import hashlib,sys; print(hashlib.sha256(open(sys.executable,'rb').read()).hexdigest())"]
+    )
+    digest_value = digest.read_text().strip()
+    require(re.fullmatch(r"[0-9a-f]{64}", digest_value) is not None, "image")
+    receipt["images"]["api"] = {
+        "image_id": state["api_image"],
+        "python_version": text,
+        "python_sha256": digest_value,
+        "configuration_verified": True,
+    }
+    end_stage()
+
+
+def toolchain():
+    begin("toolchain")
+    with operation("toolchain-build"):
+        tag = PREFIX + ":toolchain"
+        require(not capture(["docker", "image", "ls", "-q", tag]), "acquisition")
+        record = {"tag": tag, "id": None, "previous": "", "removed": False}
+        state.setdefault("images", []).append(record)
+        save()
+        command(["docker", "build", "--target", "toolchain", "-t", tag, "-f", "core-rs/Dockerfile", "core-rs"])
+        state["toolchain_image"] = capture(["docker", "image", "inspect", tag, "--format", "{{.Id}}"])
+        record["id"] = state["toolchain_image"]
+        _, rustc, _ = container(record["id"], ["rustc", "--version"])
+        _, cargo, _ = container(record["id"], ["cargo", "--version"])
+        rv, cv = rustc.read_text().strip(), cargo.read_text().strip()
+        require(re.fullmatch(r"rustc 1\.98\.1 \([0-9a-f]+ [0-9-]+\)", rv) is not None, "image")
+        require(re.fullmatch(r"cargo 1\.98\.1 \([0-9a-f]+ [0-9-]+\)", cv) is not None, "image")
+        receipt["images"]["toolchain"] = {
+            "image_id": record["id"],
+            "rustc_version": rv,
+            "cargo_version": cv,
+            "configuration_verified": True,
+        }
+    end_stage()
+
+
+def rust_test_counts(output, expected):
+    text = output.read_text()
+    rows = re.findall(r"^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?: .*)?$", text, re.MULTILINE)
+    names = [name for name, _ in rows]
+    require(Counter(names) == Counter(expected), "test")
+    require(all(status == "ok" for _, status in rows), "test")
+    require(not re.search(r"\b[1-9][0-9]* (?:failed|ignored|skipped)\b", text), "test")
+    summaries = re.findall(r"test result: ok\. ([0-9]+) passed; ([0-9]+) failed; ([0-9]+) ignored;", text)
+    require(summaries and sum(int(p) for p, _, _ in summaries) == len(rows), "test")
+    require(all(int(f) == 0 and int(i) == 0 for _, f, i in summaries), "test")
+    return {"passed": len(rows), "failed": 0, "skipped": 0, "ignored": 0, "roster_verified": True}
+
+
+def python_test_counts(record, expected, module):
+    # cp's stream is capped DURING capture; raw XML remains in the private directory.
+    archive, _ = command(["docker", "cp", record["id"] + ":/tmp/bifrost/test-results.xml", "-"], limit=RAW_LIMIT)
+    import io
+    import tarfile
+
+    original = None
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive.read_bytes()), mode="r:") as tar:
+            file = None
+            try:
+                members = tar.getmembers()
+                require(len(members) == 1 and members[0].isfile() and 0 < members[0].size <= RAW_LIMIT, "test")
+                file = tar.extractfile(members[0])
+                require(file is not None, "test")
+                raw = file.read(RAW_LIMIT + 1)
+            except BaseException as error:
+                original = error
+            finally:
+                if file is not None:
+                    try:
+                        file.close()
+                    except BaseException as error:
+                        if original is None:
+                            original = error
+    except BaseException as error:
+        if original is None:
+            original = error
+    if original is not None:
+        raise original
+    require(len(raw) <= RAW_LIMIT and b"<!DOCTYPE" not in raw.upper() and b"<!ENTITY" not in raw.upper(), "test")
+    tree = ET.fromstring(raw)
+    require(tree.tag in {"testsuites", "testsuite"}, "test")
+    rows = list(tree.iter("testcase"))
+    names = []
+    for row in rows:
+        require(row.get("classname") == "tests.runtime_protocol." + module, "test")
+        require(not any(child.tag in {"failure", "error", "skipped"} for child in row), "test")
+        name = row.get("name")
+        require(name in expected, "test")
+        names.append(name)
+    require(Counter(names) == Counter(expected), "test")
+    require(
+        all(
+            int(suite.get("errors", "0")) == 0
+            and int(suite.get("failures", "0")) == 0
+            and int(suite.get("skipped", "0")) == 0
+            for suite in tree.iter("testsuite")
+        ),
+        "test",
+    )
+    return {"passed": len(rows), "failed": 0, "skipped": 0, "ignored": 0, "roster_verified": True}
+
+
+def selection(mode):
+    result = ["--no-default-features"]
+    if mode == "raw":
+        result += ["--features", "serde_json/raw_value"]
+    elif mode == "agent":
+        result += ["--features", "agent-prepare-codec"]
+    return result
+
+
+def feature_graph(mode):
+    workspace = mode.startswith("workspace_")
+    args = [] if mode == "workspace_default" else (["--all-features"] if workspace else selection(mode))
+    _, tree, _ = rust(
+        ["cargo", "tree", "--locked", "--offline", "-e", "features"]
+        + ([] if workspace else ["-p", "bifrost-contracts"])
+        + args,
+        "default" if mode == "workspace_default" else ("clippy" if workspace else mode),
+    )
+    require("serde_json v1.0.151" in tree.read_text(), "feature")
+    manifest = (
+        "/workspace/core-rs/Cargo.toml" if workspace else "/workspace/core-rs/crates/bifrost-contracts/Cargo.toml"
+    )
+    _, output, _ = rust(
+        ["cargo", "metadata", "--locked", "--offline", "--format-version", "1", "--manifest-path", manifest, *args],
+        "default" if mode == "workspace_default" else ("clippy" if workspace else mode),
+    )
+    metadata = decode(output.read_bytes())
+    packages = {package["id"]: package for package in metadata["packages"]}
+    nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
+    contracts = [p for p in packages.values() if p["name"] == "bifrost-contracts"]
+    json_packages = [p for p in packages.values() if p["name"] == "serde_json"]
+    require(len(contracts) == len(json_packages) == 1, "feature")
+    contract = contracts[0]
+    json_package = json_packages[0]
+    require(json_package["version"] == "1.0.151", "feature")
+    contract_node = nodes[contract["id"]]
+    json_features = nodes[json_package["id"]]["features"]
+    sha_dependencies = [d for d in contract_node["deps"] if d["name"] == "sha2"]
+    if sha_dependencies:
+        require(len(sha_dependencies) == 1 and packages[sha_dependencies[0]["pkg"]]["version"] == "0.10.9", "feature")
+    graph = {
+        "serde_json_version": "1.0.151",
+        "agent_feature": "agent-prepare-codec" in contract_node["features"],
+        "raw_value": "raw_value" in json_features,
+        "sha2_direct": bool(sha_dependencies),
+        "float_roundtrip": "float_roundtrip" in json_features,
+        "arbitrary_precision": "arbitrary_precision" in json_features,
+    }
+    require(not graph["float_roundtrip"] and not graph["arbitrary_precision"], "feature")
+    if not workspace:
+        require(
+            graph["agent_feature"] == (mode == "agent")
+            and graph["sha2_direct"] == (mode == "agent")
+            and graph["raw_value"] == (mode != "off"),
+            "feature",
+        )
+    receipt["graphs"][mode] = graph
+
+
+def mounted_snapshot(kind, phase):
+    expected = state[kind + "_inventory"]
+    if kind == "rust":
+        _, output, _ = rust(
+            [
+                "sh",
+                "-c",
+                'test -z "$(find /workspace/core-rs ! -type d ! -type f -print)" && find /workspace/core-rs -type f -exec sha256sum {} +',
+            ],
+            "default",
+        )
+        actual = {}
+        for line in output.read_text().splitlines():
+            match = re.fullmatch(r"([0-9a-f]{64})  /workspace/(core-rs/[^\r\n]+)", line)
+            require(match is not None and match[2] not in actual, "source")
+            actual[match[2]] = match[1]
+    else:
+        # Metadata paths only enter stdin; no business payload or product import.
+        translation = {
+            path: (
+                "/contracts/control-vectors.json"
+                if path == CONTROL_FIXTURE
+                else "/" + path
+                if path == AGENT_FIXTURE
+                else "/app/" + path.removeprefix("api/")
+            )
+            for path in expected
+        }
+        code = """import hashlib,json,os,stat,sys
+paths=json.loads(sys.stdin.buffer.read(1048577)); result={}
+for original,path in paths.items():
+ info=os.lstat(path)
+ if not stat.S_ISREG(info.st_mode): raise ValueError('source type')
+ with open(path,'rb') as source:
+  digest=hashlib.sha256()
+  while block:=source.read(65536): digest.update(block)
+ result[original]=digest.hexdigest()
+for root in ('/app/src','/app/tests/runtime_protocol'):
+ for directory,dirs,files in os.walk(root,followlinks=False):
+  if any(os.path.islink(os.path.join(directory,p)) for p in dirs+files): raise ValueError('source type')
+  for name in files:
+   if os.path.join(directory,name) not in paths.values(): raise ValueError('source extra')
+sys.stdout.write(json.dumps(result,sort_keys=True,separators=(',',':')))
+"""
+        _, output, _ = python(["-c", code], input_bytes=canonical(translation))
+        actual = decode(output.read_bytes())
+    require(actual == expected, "source")
+    receipt["source"][kind + "_snapshot"]["mounted_" + phase + "_sha256"] = sha_bytes(canonical(actual))
+
+
+def binary(mode, name, field):
+    if name == "tests":
+        _, output, _ = rust(
+            [
+                "sh",
+                "-c",
+                "find /targets/debug/deps -maxdepth 1 -type f -name 'bifrost_contracts-*' -perm /111 -exec sha256sum {} +",
+            ],
+            mode,
+        )
+        lines = output.read_text().splitlines()
+        require(len(lines) == 1, "image")
+        match = re.fullmatch(r"([0-9a-f]{64})  (/targets/debug/deps/bifrost_contracts-[0-9a-f]+)", lines[0])
+        require(match is not None, "image")
+        path, digest = match[2], match[1]
+    else:
+        path = "/targets/debug/examples/" + name
+        _, output, _ = rust(["sha256sum", path], mode)
+        match = re.fullmatch(r"([0-9a-f]{64})  " + re.escape(path), output.read_text().strip())
+        require(match is not None, "image")
+        digest = match[1]
+    measured = {"sha256": digest, "image_id": state["toolchain_image"], "target": mode}
+    previous = receipt["binaries"][field]
+    require(previous is None or previous == measured, "image")
+    receipt["binaries"][field] = measured
+    return path
+
+
+def check_exchange(raw, profile, members):
+    require(0 < len(raw) <= EXCHANGE_LIMIT, "bound")
+    value = decode(raw)
+    require(
+        type(value) is dict
+        and set(value) == {"profile", "frames"}
+        and value["profile"] == profile
+        and type(value["frames"]) is list
+        and len(value["frames"]) == len(members),
+        "exchange",
+    )
+    names = []
+    for row in value["frames"]:
+        require(type(row) is dict and set(row) == {"name", "frame_hex"}, "exchange")
+        require(row["name"] in members and type(row["frame_hex"]) is str, "exchange")
+        encoded = row["frame_hex"]
+        require(
+            0 < len(encoded) <= 2 * EXCHANGE_LIMIT
+            and len(encoded) % 2 == 0
+            and re.fullmatch(r"[0-9a-f]+", encoded) is not None,
+            "exchange",
+        )
+        frame = bytes.fromhex(encoded)
+        require(len(frame) > 4 and int.from_bytes(frame[:4], "big") == len(frame) - 4, "exchange")
+        names.append(row["name"])
+    require(Counter(names) == Counter(members), "exchange")
+    return len(names)
+
+
+def exchange_receipt(row, direction, raw, members):
+    row["exchange"] = {"direction": direction, "members": len(members), "bytes": len(raw), "complete_membership": True}
+
+
+def products():
+    begin("products")
+    with operation("python-control-tests") as row:
+        record, _, _ = python(
+            [
+                "-m",
+                "pytest",
+                "--confcutdir=tests/runtime_protocol",
+                "tests/runtime_protocol/test_control.py",
+                "-q",
+                "--no-cov",
+            ]
+        )
+        row["counts"] = python_test_counts(record, PYTHON_CONTROL_TESTS, "test_control")
+    with operation("python-agent-tests") as row:
+        record, _, _ = python(
+            [
+                "-m",
+                "pytest",
+                "--confcutdir=tests/runtime_protocol",
+                "tests/runtime_protocol/test_agent_prepare.py",
+                "-q",
+                "--no-cov",
+            ]
+        )
+        row["counts"] = python_test_counts(record, python_expected(), "test_agent_prepare")
+    control = decode((ROOT / CONTROL_FIXTURE).read_bytes())
+    control_members = [v["name"] for v in control["wire"] if v["expected"] == "ok"]
+    exchange = directory("exchange", readable=True)
+    state["exchange"] = str(exchange)
+    save()
+    for mode in ("off", "raw", "agent"):
+        with operation(mode + "-rust-control-emit") as row:
+            executable = binary(mode, "runtime_control_vectors", mode + "_control")
+            _, output, _ = rust([executable, "emit"], mode, limit=EXCHANGE_LIMIT)
+            raw = output.read_bytes()
+            check_exchange(raw, "bifrost.runtime/v1/control_profile/v1", control_members)
+            exchange_receipt(row, "rust_to_python", raw, control_members)
+            path = exchange / (mode + "-rust-control.json")
+            path.write_bytes(raw)
+            path.chmod(0o644)
+        with operation(mode + "-python-control-validate") as row:
+            _, output, _ = python(["-m", "tests.runtime_protocol.interchange", "validate", "/exchange/" + path.name])
+            require(
+                output.read_bytes()
+                == f"validated {len(control_members)} synthetic peer control encodings\n".encode("ascii"),
+                "exchange",
+            )
+            exchange_receipt(row, "rust_to_python", raw, control_members)
+        with operation(mode + "-python-control-emit") as row:
+            _, output, _ = python(["-m", "tests.runtime_protocol.interchange", "emit"], limit=EXCHANGE_LIMIT)
+            raw = output.read_bytes()
+            check_exchange(raw, "bifrost.runtime/v1/control_profile/v1", control_members)
+            exchange_receipt(row, "python_to_rust", raw, control_members)
+            path = exchange / (mode + "-python-control.json")
+            path.write_bytes(raw)
+            path.chmod(0o644)
+        with operation(mode + "-rust-control-validate") as row:
+            executable = binary(mode, "runtime_control_vectors", mode + "_control")
+            _, output, _ = rust([executable, "validate", "/exchange/" + path.name], mode)
+            require(
+                output.read_bytes()
+                == f"validated {len(control_members)} synthetic peer control encodings\n".encode("ascii"),
+                "exchange",
+            )
+            exchange_receipt(row, "python_to_rust", raw, control_members)
+    members = FROZEN_CORPORA["agent"]["positive"]
+    with operation("rust-agent-emit") as row:
+        executable = binary("agent", "runtime_agent_prepare_vectors", "agent_prepare")
+        _, output, _ = rust([executable, "emit"], "agent", limit=EXCHANGE_LIMIT)
+        raw = output.read_bytes()
+        check_exchange(raw, "agent_prepare_profile/v1", members)
+        exchange_receipt(row, "rust_to_python", raw, members)
+    with operation("python-agent-validate") as row:
+        _, output, _ = python(
+            ["-m", "tests.runtime_protocol.agent_prepare_interchange", "validate"], input_bytes=raw, limit=0
+        )
+        require(output.stat().st_size == 0, "exchange")
+        exchange_receipt(row, "rust_to_python", raw, members)
+    with operation("python-agent-emit") as row:
+        _, output, _ = python(["-m", "tests.runtime_protocol.agent_prepare_interchange", "emit"], limit=EXCHANGE_LIMIT)
+        raw = output.read_bytes()
+        check_exchange(raw, "agent_prepare_profile/v1", members)
+        exchange_receipt(row, "python_to_rust", raw, members)
+    with operation("rust-agent-validate") as row:
+        executable = binary("agent", "runtime_agent_prepare_vectors", "agent_prepare")
+        _, output, _ = rust([executable, "validate"], "agent", input_bytes=raw, limit=0)
+        require(output.stat().st_size == 0, "exchange")
+        exchange_receipt(row, "python_to_rust", raw, members)
+    end_stage()
+
+
+def verify():
+    require(
+        receipt["mode"] == "verify"
+        and receipt["credentials"]["action_disposed"]
+        and receipt["credentials"]["ghcr_disposed"],
+        "credential",
+    )
+    toolchain()
+    begin("fetch")
+    state["cargo_home"] = volume("cargo-home")
+    state["targets"] = {name: volume("target-" + name) for name in ("default", "clippy", "off", "raw", "agent")}
+    with operation("cargo-fetch"):
+        _, output, _ = rust(
+            [
+                "sh",
+                "-c",
+                'test -z "$(find /usr/local/cargo -name credentials -o -name credentials.toml -o -name config -o -name config.toml -o -name .netrc -o -name .git-credentials)"',
+            ],
+            "default",
+            network="bridge",
+        )
+        require(output.stat().st_size == 0, "credential")
+        rust(["cargo", "fetch", "--locked"], "default", network="bridge")
+    end_stage()
+    begin("checks")
+    with operation("locked-inventory"):
+        inventory()
+    with operation("rust-snapshot-before"):
+        mounted_snapshot("rust", "before")
+    with operation("api-snapshot-before"):
+        mounted_snapshot("api", "before")
+    with operation("workspace-fmt"):
+        rust(["cargo", "fmt", "--all", "--", "--check"], "default")
+    with operation("workspace-clippy-all"):
+        rust(
+            [
+                "cargo",
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+                "--offline",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            "clippy",
+        )
+    with operation("workspace-default-tests") as row:
+        _, output, _ = rust(["cargo", "test", "--workspace", "--locked", "--offline"], "default")
+        row["counts"] = rust_test_counts(output, RUST_WORKSPACE_TESTS)
+    with operation("workspace-default-graph"):
+        feature_graph("workspace_default")
+    with operation("workspace-all-graph"):
+        feature_graph("workspace_all_features")
+    end_stage(final=False)
+    begin("matrix")
+    for mode in ("off", "raw", "agent"):
+        args = selection(mode)
+        with operation(mode + "-contracts-tests") as row:
+            _, output, _ = rust(["cargo", "test", "-p", "bifrost-contracts", "--locked", "--offline", *args], mode)
+            expected = RUST_CONTROL_TESTS + (RUST_AGENT_TESTS if mode == "agent" else [])
+            row["counts"] = rust_test_counts(output, expected)
+            binary(mode, "tests", mode + "_tests")
+        with operation(mode + "-control-build"):
+            rust(
+                [
+                    "cargo",
+                    "build",
+                    "-p",
+                    "bifrost-contracts",
+                    "--example",
+                    "runtime_control_vectors",
+                    "--locked",
+                    "--offline",
+                    *args,
+                ],
+                mode,
+            )
+        with operation(mode + "-graph"):
+            feature_graph(mode)
+    with operation("agent-prepare-build"):
+        rust(
+            [
+                "cargo",
+                "build",
+                "-p",
+                "bifrost-contracts",
+                "--example",
+                "runtime_agent_prepare_vectors",
+                "--no-default-features",
+                "--features",
+                "agent-prepare-codec",
+                "--locked",
+                "--offline",
+            ],
+            "agent",
+        )
+    with operation("binary-readback"):
+        for mode in ("off", "raw", "agent"):
+            binary(mode, "tests", mode + "_tests")
+            binary(mode, "runtime_control_vectors", mode + "_control")
+        binary("agent", "runtime_agent_prepare_vectors", "agent_prepare")
+    end_stage()
+    products()
+    begin("checks")
+    with operation("rust-snapshot-after"):
+        mounted_snapshot("rust", "after")
+    with operation("api-snapshot-after"):
+        mounted_snapshot("api", "after")
+    with operation("container-custody-readback"):
+        for record in state.get("containers", []):
+            verify_container(record)
+    with operation("source-after"):
+        source_readback("after")
+        require(receipt["source"]["before"] == receipt["source"]["after"], "source")
+        require(not capture(["git", "status", "--porcelain", "--untracked-files=all"]), "source")
+        require(capture(["git", "rev-parse", "HEAD"]) == receipt["candidate"]["checkout_sha"], "source")
+        receipt["candidate"]["clean_after"] = True
+    end_stage()
+
+
+def format_only():
+    require(receipt["mode"] == "format", "source")
+    toolchain()
+    begin("checks")
+    with operation("format-copy"):
+        parent = directory("source-copy")
+        copy = parent / "repo"
+        command(["git", "clone", "--no-hardlinks", "--no-checkout", str(ROOT), str(copy)])
+        command(["git", "-C", str(copy), "checkout", "--detach", receipt["candidate"]["checkout_sha"]])
+        before = {path: sha_file(copy / path) for path in FORMAT_PATHS}
+        require(all(before[path] == EXPECTED_SOURCE[path] for path in FORMAT_PATHS), "source")
+    with operation("format-run"):
+        # Whole context is RO; ONLY four disposable file overlays can be written.
+        mounts = [(str(copy / "core-rs"), "/workspace/core-rs", True)] + [
+            (str(copy / path), "/workspace/" + path, False) for path in FORMAT_PATHS
+        ]
+        container(
+            state["toolchain_image"],
+            ["rustfmt", "--edition", "2024"] + ["/workspace/" + path for path in FORMAT_PATHS],
+            mounts=mounts,
+        )
+    with operation("format-patch"):
+        changed = set(capture(["git", "-C", str(copy), "diff", "--name-only"]).splitlines())
+        require(changed <= set(FORMAT_PATHS), "source")
+        patch, _ = command(["git", "-C", str(copy), "diff", "--binary"])
+        require(patch.stat().st_size <= RAW_LIMIT, "bound")
+        (EVIDENCE / "format.patch").write_bytes(patch.read_bytes())
+        receipt["format"] = {
+            "before": before,
+            "after": {p: sha_file(copy / p) for p in FORMAT_PATHS},
+            "patch_sha256": sha_file(patch),
+            "source_unchanged": False,
+        }
+    with operation("container-custody-readback"):
+        for record in state.get("containers", []):
+            verify_container(record)
+    with operation("source-after"):
+        source_readback("after")
+        require(receipt["source"]["before"] == receipt["source"]["after"], "source")
+        require(not capture(["git", "status", "--porcelain", "--untracked-files=all"]), "source")
+        receipt["candidate"]["clean_after"] = True
+        receipt["format"]["source_unchanged"] = True
+    end_stage()
+
+
+def cleanup():
+    # Every attempt is independent, including observations and private-state writes.
+    # A failed/control attempt cannot skip another resource or replace the first error.
+    first = None
+    resources = []
+
+    def attempt(callback):
+        nonlocal first
+        try:
+            callback()
+        except BaseException as error:
+            receipt["disposition"]["cleanup_failed"] = True
+            if first is None:
+                first = error
+                receipt["cleanup"]["first_failure"] = error_class(error)
+            # Only a secondary save is suppressed; the first error remains retained.
+            with suppress(BaseException):
+                save()
+
+    def resource(kind, identifier, callback):
+        row = {
+            "kind": kind,
+            "identity": identifier,
+            "acquired": False,
+            "verified": False,
+            "disposed": None,
+            "inspection_status": "failed",
+        }
+        resources.append(row)
+        callback(row)
+
+    def project(row):
+        require(receipt["cleanup"]["pre_pr_initial_empty"] is True, "acquisition")
+        row["acquired"] = bool(state.get("pre_pr_started"))
+        row["verified"] = True
+        if state.get("pre_pr_started"):
+            # Existing source helper chooses exactly this initially absent project.
+            # Inspect its genuine labels before invoking its normal teardown.
+            for kind, argv in (
+                ("container", ["docker", "ps", "-aq", "--no-trunc"]),
+                ("volume", ["docker", "volume", "ls", "-q"]),
+                ("network", ["docker", "network", "ls", "-q", "--no-trunc"]),
+            ):
+                for name in capture(
+                    [*argv, "--filter", "label=com.docker.compose.project=" + state["project"]]
+                ).splitlines():
+                    facts = inspect(kind, name)
+                    labels = facts["Config"]["Labels"] if kind == "container" else facts["Labels"]
+                    require(labels.get("com.docker.compose.project") == state["project"], "acquisition")
+            command(["./test.sh", "stack", "down"])
+        require(absent_owned(state["project"], PREFIX), "cleanup")
+        receipt["cleanup"]["pre_pr_final_empty"] = True
+        row.update(disposed=True, inspection_status="absent")
+
+    def remove_container(record, row):
+        existing = capture(["docker", "ps", "-aq", "--no-trunc", "--filter", "name=^/" + record["name"] + "$"])
+        if not existing:
+            require(record["removed"] or record["id"] is None, "acquisition")
+            row.update(verified=True, disposed=True, inspection_status="absent")
+            return
+        require(record["id"] is None or existing == record["id"], "acquisition")
+        record["id"] = existing
+        verify_container(record)
+        row.update(acquired=True, verified=True, inspection_status="observed")
+        command(["docker", "rm", "-f", existing])
+        require(not capture(["docker", "ps", "-aq", "--no-trunc", "--filter", "id=" + existing]), "cleanup")
+        record["removed"] = True
+        row.update(disposed=True, inspection_status="absent")
+
+    def remove_volume(record, row):
+        existing = capture(["docker", "volume", "ls", "-q", "--filter", "name=^" + record["name"] + "$"])
+        if not existing:
+            require(record["removed"] or record["facts"] is None, "acquisition")
+            row.update(verified=True, disposed=True, inspection_status="absent")
+            return
+        require(existing == record["name"], "acquisition")
+        facts = inspect("volume", existing)
+        require(facts["Labels"].get(LABEL) == PREFIX, "acquisition")
+        selected = {k: facts[k] for k in ("Name", "Mountpoint", "CreatedAt")}
+        require(record["facts"] is None or selected == record["facts"], "acquisition")
+        record["facts"] = selected
+        row.update(acquired=True, verified=True, inspection_status="observed")
+        command(["docker", "volume", "rm", existing])
+        require(not capture(["docker", "volume", "ls", "-q", "--filter", "name=^" + existing + "$"]), "cleanup")
+        record["removed"] = True
+        row.update(disposed=True, inspection_status="absent")
+
+    def remove_image(record, row):
+        existing = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
+        if not existing:
+            require(
+                record["removed"]
+                or record["id"] is None
+                or any(
+                    r is not record and r["id"] == record["id"] and r["removed"]
+                    for r in state.get("prepare_tags", [])
+                    + ([state["pre_pr_api_tag"]] if state.get("pre_pr_api_tag") else [])
+                ),
+                "acquisition",
+            )
+            record["removed"] = True
+            row.update(acquired=record["id"] is not None, verified=True, disposed=True, inspection_status="absent")
+            return
+        # Never infer ownership solely from an image appearing during elapsed time.
+        require(record["id"] is not None and record["id"] not in state["initial_image_ids"], "acquisition")
+        if existing != record["id"]:
+            # Prepare can replace our prePR alias; remove only the retained old ID.
+            require(
+                record is state.get("pre_pr_api_tag")
+                and record["witness"] is not None
+                and any(r["tag"] == record["tag"] and r["id"] == existing for r in state.get("prepare_tags", [])),
+                "acquisition",
+            )
+            facts = inspect("image", record["id"])
+            require(
+                facts["Id"] == record["id"]
+                and not facts.get("RepoTags")
+                and facts["Config"] == record["witness"]["image"]["Config"],
+                "acquisition",
+            )
+            row.update(acquired=True, verified=True, inspection_status="observed")
+            command(["docker", "image", "rm", record["id"]])
+            require(
+                record["id"]
+                not in capture(["docker", "image", "ls", "--no-trunc", "--format", "{{.ID}}"]).splitlines(),
+                "cleanup",
+            )
+            record["removed"] = True
+            row.update(disposed=True, inspection_status="absent")
+            return
+        require(not record["previous"] or record["previous"] == state["pre_pr_api_tag"]["id"], "acquisition")
+        facts = inspect("image", existing)
+        require(facts["Id"] == existing and record["tag"] in facts.get("RepoTags", []), "acquisition")
+        if record is state.get("pre_pr_api_tag"):
+            require(
+                record["witness"] is not None and facts["Config"] == record["witness"]["image"]["Config"], "acquisition"
+            )
+        row.update(acquired=True, verified=True, inspection_status="observed")
+        command(["docker", "image", "rm", record["tag"]])
+        require(not capture(["docker", "image", "ls", "-q", record["tag"]]), "cleanup")
+        record["removed"] = True
+        row.update(disposed=True, inspection_status="absent")
+
+    def remove_directory(record, row):
+        path = Path(record["path"])
+        if not os.path.lexists(path):
+            require(record["removed"] or record["identity"] is None, "acquisition")
+            row.update(verified=True, disposed=True, inspection_status="absent")
+            return
+        require(record["identity"] is not None, "acquisition")
+        checked_directory(path, record["identity"])
+        row.update(acquired=True, verified=True, inspection_status="observed")
+        if record["role"] == "ghcr-config":
+            env = clean_env()
+            env["DOCKER_CONFIG"] = str(path)
+            command(["docker", "logout", "ghcr.io"], env=env)
+            if (path / "config.json").exists():
+                value = decode((path / "config.json").read_bytes())
+                require(
+                    not value.get("credsStore")
+                    and not value.get("credHelpers")
+                    and not any(value.get("auths", {}).values()),
+                    "credential",
+                )
+        shutil.rmtree(path)
+        require(not os.path.lexists(path), "cleanup")
+        record["removed"] = True
+        row.update(disposed=True, inspection_status="absent")
+
+    attempt(lambda: begin("cleanup"))
+    if state.get("project"):
+        attempt(lambda: resource("project", state["project"], project))
+    if state.get("BIFROST_ACTION_PIN_TOKEN_FILE"):
+
+        def action(row):
+            credential_cleanup()
+            row.update(acquired=True, verified=True, disposed=True, inspection_status="absent")
+
+        attempt(lambda: resource("directory", "action-credential", action))
+    for record in state.get("containers", []):
+        attempt(
+            lambda record=record: resource(
+                "container", record["id"] or record["name"], lambda row: remove_container(record, row)
+            )
+        )
+    for record in state.get("volumes", []):
+        attempt(lambda record=record: resource("volume", record["name"], lambda row: remove_volume(record, row)))
+    for record in (
+        ([state["pre_pr_api_tag"]] if state.get("pre_pr_api_tag") else [])
+        + state.get("images", [])
+        + state.get("prepare_tags", [])
+    ):
+        attempt(
+            lambda record=record: resource(
+                "image", record["id"] or PREFIX + "-pending-image", lambda row: remove_image(record, row)
+            )
+        )
+    for record in state.get("directories", []):
+        attempt(lambda record=record: resource("directory", record["role"], lambda row: remove_directory(record, row)))
+    attempt(lambda: require(len(resources) <= 128, "bound"))
+    receipt["cleanup"]["resources"] = resources
+    # Inspect each family independently; no incomplete/error observation is EMPTY.
+    empty = []
+    for _kind, argv in (
+        ("container", ["docker", "ps", "-aq", "--no-trunc"]),
+        ("volume", ["docker", "volume", "ls", "-q"]),
+        ("network", ["docker", "network", "ls", "-q", "--no-trunc"]),
+    ):
+
+        def observe(argv=argv):
+            result = capture([*argv, "--filter", "label=" + LABEL + "=" + PREFIX])
+            require(not result, "cleanup")
+            empty.append(True)
+
+        attempt(observe)
+
+    def diagnostics(row):
+        checked_directory(RAW_DIRECTORY, state["raw_identity"])
+        row.update(acquired=True, verified=True, inspection_status="observed")
+        shutil.rmtree(RAW_DIRECTORY)
+        require(not os.path.lexists(RAW_DIRECTORY), "cleanup")
+        state["raw_removed"] = True
+        row.update(disposed=True, inspection_status="absent")
+
+    attempt(lambda: resource("directory", "private-diagnostics", diagnostics))
+    if len(empty) == 3 and all(row["disposed"] is True and row["verified"] for row in resources):
+        receipt["cleanup"]["owner_final_empty"] = True
+    else:
+        receipt["cleanup"]["owner_final_empty"] = False
+    attempt(save)
+    attempt(lambda: end_stage("failure" if first is not None else "success"))
+    if first is not None:
+        raise first
+
+
+def validate_receipt():
+    # Closed, value-type admission of the publication projection, never diagnostics.
+    def record(value, keys):
+        require(type(value) is dict and set(value) == set(keys))
+
+    def boolean(value):
+        require(type(value) is bool)
+
+    def integer(value, low=0, high=65535):
+        require(type(value) is int and low <= value <= high)
+
+    def time_value(value):
+        require(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 86400)
+
+    def digest(value):
+        require(type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) is not None)
+
+    def git(value):
+        require(type(value) is str and re.fullmatch(r"[0-9a-f]{40}", value) is not None)
+
+    def image(value):
+        require(type(value) is str and value.startswith("sha256:"))
+        digest(value[7:])
+
+    def nullable(value, validator):
+        if value is not None:
+            validator(value)
+
+    def hash_map(value, keys):
+        record(value, keys)
+        for item in value.values():
+            digest(item)
+
+    def version(value):
+        require(
+            type(value) is str
+            and 0 < len(value) <= 128
+            and value.isascii()
+            and re.fullmatch(r"[A-Za-z0-9 .()+_-]+", value) is not None
+        )
+
+    def snapshot(value):
+        record(value, ("candidate_sha256", "mounted_before_sha256", "mounted_after_sha256", "file_count"))
+        digest(value["candidate_sha256"])
+        nullable(value["mounted_before_sha256"], digest)
+        nullable(value["mounted_after_sha256"], digest)
+        integer(value["file_count"])
+
+    def inventory_record(value):
+        record(value, ("baseline_sha256", "actual_sha256", "count", "unchanged"))
+        digest(value["baseline_sha256"])
+        digest(value["actual_sha256"])
+        integer(value["count"])
+        boolean(value["unchanged"])
+
+    record(
+        receipt,
+        (
+            "schema",
+            "mode",
+            "candidate",
+            "source",
+            "corpora",
+            "graphs",
+            "images",
+            "binaries",
+            "operations",
+            "stages",
+            "credentials",
+            "cleanup",
+            "format",
+            "disposition",
+        ),
+    )
+    require(receipt["schema"] == "bifrost.test.agent-prepare-ci/v1" and receipt["mode"] in {"format", "verify"})
+    candidate = receipt["candidate"]
+    record(
+        candidate,
+        ("associated_sha", "checkout_sha", "checkout_tree", "main_sha", "main_ancestor", "clean_before", "clean_after"),
+    )
+    for key in ("associated_sha", "checkout_sha", "checkout_tree", "main_sha"):
+        nullable(candidate[key], git)
+    for key in ("main_ancestor", "clean_before", "clean_after"):
+        nullable(candidate[key], boolean)
+    source = receipt["source"]
+    record(
+        source,
+        ("before", "after", "preserved_before", "preserved_after", "rust_snapshot", "api_snapshot", "locked_inventory"),
+    )
+    for key in ("before", "after"):
+        nullable(source[key], lambda v: hash_map(v, SOURCE_KEYS))
+    for key in ("preserved_before", "preserved_after"):
+        nullable(source[key], lambda v: hash_map(v, PRESERVED))
+    for key in ("rust_snapshot", "api_snapshot"):
+        nullable(source[key], snapshot)
+    nullable(source["locked_inventory"], inventory_record)
+    record(receipt["corpora"], ("control", "agent"))
+    for key, expected in FROZEN_CORPORA.items():
+        if receipt["corpora"][key] is not None:
+            require(receipt["corpora"][key] == expected)
+    record(receipt["graphs"], ("workspace_default", "workspace_all_features", "off", "raw", "agent"))
+    for value in receipt["graphs"].values():
+        if value is not None:
+            record(
+                value,
+                (
+                    "serde_json_version",
+                    "agent_feature",
+                    "raw_value",
+                    "sha2_direct",
+                    "float_roundtrip",
+                    "arbitrary_precision",
+                ),
+            )
+            version(value["serde_json_version"])
+            for key in set(value) - {"serde_json_version"}:
+                boolean(value[key])
+    record(receipt["images"], ("api", "toolchain"))
+    for key, value in receipt["images"].items():
+        if value is not None:
+            record(
+                value,
+                ("image_id", "configuration_verified", "python_version", "python_sha256")
+                if key == "api"
+                else ("image_id", "configuration_verified", "rustc_version", "cargo_version"),
+            )
+            image(value["image_id"])
+            boolean(value["configuration_verified"])
+            if key == "api":
+                version(value["python_version"])
+                digest(value["python_sha256"])
+            else:
+                version(value["rustc_version"])
+                version(value["cargo_version"])
+    record(
+        receipt["binaries"],
+        ("off_tests", "raw_tests", "agent_tests", "off_control", "raw_control", "agent_control", "agent_prepare"),
+    )
+    for value in receipt["binaries"].values():
+        if value is not None:
+            record(value, ("sha256", "image_id", "target"))
+            digest(value["sha256"])
+            image(value["image_id"])
+            require(value["target"] in {"off", "raw", "agent"})
+    record(receipt["operations"], OPERATIONS)
+    for value in receipt["operations"].values():
+        record(value, ("status", "exit", "duration_s", "counts", "exchange"))
+        require(value["status"] in {"not_started", "success", "failure", "interrupted"})
+        nullable(value["exit"], lambda v: integer(v, -255, 255))
+        nullable(value["duration_s"], time_value)
+        if value["status"] == "not_started":
+            require(all(value[k] is None for k in ("exit", "duration_s", "counts", "exchange")))
+        if value["status"] == "success":
+            require(value["exit"] == 0 and value["duration_s"] is not None)
+        if value["counts"] is not None:
+            counts = value["counts"]
+            record(counts, ("passed", "failed", "skipped", "ignored", "roster_verified"))
+            for key in ("passed", "failed", "skipped", "ignored"):
+                integer(counts[key])
+            boolean(counts["roster_verified"])
+        if value["exchange"] is not None:
+            exchange = value["exchange"]
+            record(exchange, ("direction", "members", "bytes", "complete_membership"))
+            require(exchange["direction"] in {"rust_to_python", "python_to_rust"})
+            integer(exchange["members"], 1, 256)
+            integer(exchange["bytes"], 1, EXCHANGE_LIMIT)
+            boolean(exchange["complete_membership"])
+    require(type(receipt["stages"]) is list and len(receipt["stages"]) <= 10)
+    seen = set()
+    for value in receipt["stages"]:
+        record(value, ("name", "cap_s", "duration_s", "status"))
+        require(value["name"] in STAGES and value["name"] not in seen)
+        seen.add(value["name"])
+        integer(value["cap_s"], 0, 1800)
+        require(value["cap_s"] == CAPS.get(value["name"], 170))
+        nullable(value["duration_s"], time_value)
+        require(value["status"] in {"not_started", "running", "success", "failure", "interrupted"})
+    record(receipt["credentials"], ("action_disposed", "ghcr_disposed", "product_environment_verified"))
+    for value in receipt["credentials"].values():
+        nullable(value, boolean)
+    cleanup_value = receipt["cleanup"]
+    record(
+        cleanup_value,
+        (
+            "pre_pr_initial_empty",
+            "pre_pr_final_empty",
+            "owner_initial_empty",
+            "owner_final_empty",
+            "resources",
+            "first_failure",
+        ),
+    )
+    for key in ("pre_pr_initial_empty", "pre_pr_final_empty", "owner_initial_empty", "owner_final_empty"):
+        nullable(cleanup_value[key], boolean)
+    classes = {
+        "source",
+        "credential",
+        "image",
+        "feature",
+        "inventory",
+        "test",
+        "exchange",
+        "timeout",
+        "bound",
+        "acquisition",
+        "io",
+        "control",
+        "cleanup",
+        "publication",
+        "schema",
+    }
+    require(cleanup_value["first_failure"] is None or cleanup_value["first_failure"] in classes)
+    require(type(cleanup_value["resources"]) is list and len(cleanup_value["resources"]) <= 128)
+    for value in cleanup_value["resources"]:
+        record(value, ("kind", "identity", "acquired", "verified", "disposed", "inspection_status"))
+        require(value["kind"] in {"project", "container", "volume", "network", "image", "directory"})
+        label = value["identity"]
+        require(
+            type(label) is str
+            and 1 <= len(label) <= 128
+            and label.isascii()
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]*", label) is not None
+        )
+        if value["kind"] == "directory":
+            require(label in {"action-credential", "ghcr-config", "source-copy", "exchange", "private-diagnostics"})
+        for key in ("acquired", "verified"):
+            boolean(value[key])
+        nullable(value["disposed"], boolean)
+        require(value["inspection_status"] in {"observed", "absent", "failed"})
+    if receipt["format"] is not None:
+        value = receipt["format"]
+        record(value, ("before", "after", "patch_sha256", "source_unchanged"))
+        hash_map(value["before"], FORMAT_PATHS)
+        hash_map(value["after"], FORMAT_PATHS)
+        digest(value["patch_sha256"])
+        boolean(value["source_unchanged"])
+    value = receipt["disposition"]
+    record(
+        value,
+        (
+            "status",
+            "primary_operation",
+            "primary_class",
+            "original_exit",
+            "cleanup_failed",
+            "publication_failed",
+            "elapsed_s",
+        ),
+    )
+    require(value["status"] in {"passed", "failed", "interrupted"})
+    require(value["primary_operation"] is None or value["primary_operation"] in OPERATIONS)
+    require(value["primary_class"] is None or value["primary_class"] in classes)
+    nullable(value["original_exit"], lambda v: integer(v, -255, 255))
+    boolean(value["cleanup_failed"])
+    boolean(value["publication_failed"])
+    time_value(value["elapsed_s"])
+
+
+def admit_success():
+    required = set(OPERATIONS) - {"format-copy", "format-run", "format-patch"}
+    if receipt["mode"] == "format":
+        required = {
+            "source-guard",
+            "source-before",
+            "source-after",
+            "toolchain-build",
+            "container-custody-readback",
+            "format-copy",
+            "format-run",
+            "format-patch",
+            "owned-cleanup",
+            "owned-readback",
+            "safe-publication",
+        }
+    # Publication is still in progress here and succeeds only after final validation/write.
+    require(
+        all(receipt["operations"][name]["status"] == "success" for name in required - {"safe-publication"}), "schema"
+    )
+    require(receipt["candidate"]["clean_before"] is True and receipt["candidate"]["clean_after"] is True, "source")
+    require(receipt["source"]["before"] == receipt["source"]["after"], "source")
+    require(receipt["cleanup"]["owner_final_empty"] is True, "cleanup")
+    require(not receipt["disposition"]["cleanup_failed"], "cleanup")
+    now = time.monotonic()
+    elapsed = now - state["start"]
+    require(elapsed <= 1800, "timeout")
+    durations = {row["name"]: row["duration_s"] for row in receipt["stages"]}
+    if stage_start is not None:
+        durations[stage_name] += now - stage_start
+    # All elapsed time outside the eight fixed stages consumes shared170,
+    # including live publication, checkout/helper work and stage bookkeeping.
+    orchestration = elapsed - sum(value for name, value in durations.items() if name in CAPS)
+    require(
+        orchestration <= 170 and all(durations[row["name"]] <= row["cap_s"] for row in receipt["stages"]), "timeout"
+    )
+    if receipt["mode"] == "verify":
+        require(all(value is True for value in receipt["credentials"].values()), "credential")
+        require(receipt["cleanup"]["pre_pr_final_empty"] is True, "cleanup")
+        require(all(value is not None for value in receipt["graphs"].values()), "feature")
+        for name in {
+            "workspace-default-tests",
+            "python-control-tests",
+            "python-agent-tests",
+            "off-contracts-tests",
+            "raw-contracts-tests",
+            "agent-contracts-tests",
+        }:
+            counts = receipt["operations"][name]["counts"]
+            require(
+                counts is not None
+                and counts["roster_verified"] is True
+                and counts["passed"] > 0
+                and not any(counts[k] for k in ("failed", "skipped", "ignored")),
+                "test",
+            )
+        require(all(value is not None for value in receipt["binaries"].values()), "source")
+        for kind in ("rust", "api"):
+            snap = receipt["source"][kind + "_snapshot"]
+            require(
+                snap is not None
+                and snap["candidate_sha256"] == snap["mounted_before_sha256"] == snap["mounted_after_sha256"],
+                "source",
+            )
+    else:
+        require(receipt["format"] is not None and receipt["format"]["source_unchanged"] is True, "source")
+
+
+def publication(original):
+    pending = original
+    publication_start = None
+    publication_base = 0
+
+    def completed_bound():
+        now = time.monotonic()
+        elapsed = now - state["start"]
+        require(publication_start is not None and elapsed <= 1800, "timeout")
+        durations = {row["name"]: row["duration_s"] for row in receipt["stages"]}
+        # end_stage cleared its live timer before the final files were closed;
+        # this actual start/base retains the entire publication lifetime.
+        durations["publication"] = publication_base + now - publication_start
+        orchestration = elapsed - sum(value for name, value in durations.items() if name in CAPS)
+        require(
+            orchestration <= 170 and all(durations[row["name"]] <= row["cap_s"] for row in receipt["stages"]), "timeout"
+        )
+        return durations["publication"]
+
+    try:
+        begin("publication")
+        publication_start = stage_start
+        publication_base = stage_record("publication")["duration_s"]
+        with operation("safe-publication"):
+            if pending is None:
+                try:
+                    admit_success()
+                except BaseException as error:
+                    pending = error
+                    primary(error, "safe-publication")
+                else:
+                    receipt["disposition"].update(status="passed", original_exit=0)
+            receipt["disposition"]["elapsed_s"] = time.monotonic() - state["start"]
+            validate_receipt()
+            owned = {"schema": "bifrost.test.agent-prepare-owned/v1", **receipt["cleanup"]}
+            atomic_json(EVIDENCE / "owned-inventory.json", owned, 262144)
+            if receipt["format"] is not None:
+                atomic_json(
+                    EVIDENCE / "format-metadata.json",
+                    {"schema": "bifrost.test.agent-prepare-format/v1", **receipt["format"]},
+                    16384,
+                )
+        end_stage(final=False)
+        stage_record("publication")["status"] = "success"
+        # These receipt duration/timestamp samples precede final file completion.
+        # A passed field alone cannot establish post-write or upload acceptance.
+        stage_record("publication")["duration_s"] = completed_bound()
+        receipt["disposition"]["elapsed_s"] = time.monotonic() - state["start"]
+        validate_receipt()
+        atomic_json(EVIDENCE / "receipt.json", receipt, 262144)
+        save()
+        measured = completed_bound()
+        milestone("publication", "complete", "success", measured)
+        save()
+        # Last observable local success boundary: includes final file closure,
+        # private save and milestone flush. No later successful-path IO follows.
+        completed_bound()
+    except BaseException as error:
+        if pending is None:
+            pending = error
+        try:
+            primary(pending, "safe-publication")
+            receipt["disposition"]["publication_failed"] = True
+            row = receipt["operations"]["safe-publication"]
+            row["status"] = "interrupted" if error_class(pending) == "control" else "failure"
+            row["exit"] = error_code(pending)
+        finally:
+            # One best-effort invalidation, not write-until-green or a new reserve.
+            # It runs even if secondary diagnostic bookkeeping also fails.
+            try:
+                checked_directory(EVIDENCE, state["root_identity"])
+                (EVIDENCE / "receipt.json").unlink(missing_ok=True)
+            finally:
+                # Original identity/exit wins even if invalidation fails. Never
+                # accept a passed field without zero producer/job/upload exits.
+                raise pending
+    return pending
+
+
+original = None
+if MODE == "cleanup" and receipt["disposition"]["primary_class"] is not None:
+    # Separate workflow processes retain the first measured class/exit, not a
+    # fictional same Python exception object across process boundaries.
+    original = Failure(receipt["disposition"]["primary_class"], receipt["disposition"]["original_exit"] or 1)
+try:
+    if MODE == "guard":
+        guard()
+    elif MODE == "pre-pr":
+        pre_pr()
+    elif MODE == "prepare":
+        prepare()
+    elif MODE in {"format", "verify"}:
+        require(receipt["mode"] == MODE, "source")
+        format_only() if MODE == "format" else verify()
+    elif MODE == "cleanup":
+        with operation("owned-cleanup"):
+            cleanup()
+        with operation("owned-readback"):
+            require(receipt["cleanup"]["owner_final_empty"] is True, "cleanup")
+            require(receipt["cleanup"]["pre_pr_final_empty"] is True, "cleanup")
+except BaseException as error:
+    if original is None:
+        original = error
+    primary(error, active_operation)
+    with suppress(BaseException):
+        end_stage("interrupted" if error_class(error) == "control" else "failure")
+finally:
+    if MODE == "cleanup":
+        try:
+            original = publication(original)
+        except BaseException as error:
+            receipt["disposition"]["publication_failed"] = True
+            if original is None:
+                original = error
+                primary(error, "safe-publication")
+            with suppress(BaseException):
+                save()
+    else:
+        try:
+            save()
+        except BaseException as error:
+            if original is None:
+                original = error
+if original is not None:
+    # Redacted static classification; original object priority is preserved internally.
+    raise SystemExit(error_code(original)) from None
+PY
