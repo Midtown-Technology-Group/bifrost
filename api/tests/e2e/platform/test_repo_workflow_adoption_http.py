@@ -69,7 +69,10 @@ async def test_native_optional_approval_preserves_legacy_rows_and_runs_owned_tab
         await legacy_storage.write(path, legacy)
         recipe = {"schema_version":"bifrost.solution-workflow-delivery/v1", "solution_id":str(sid),
             "files":{path:"solutions/adopt.py"}, "workflows":[{
-                "id":str(wid),"path":path,"function_name":"run","organization_id":None,"controls":{},
+                "id":str(wid),"path":path,"function_name":"run","organization_id":None,
+                # Preserve the independently installed ORM defaults, which
+                # differ from a new reviewed install's async/zero-cache defaults.
+                "controls":{"execution_mode":row.execution_mode,"cache_ttl_seconds":row.cache_ttl_seconds},
                 "runtime_bounds":{"max_duration_seconds":60,"max_external_calls":10,
                     "max_records_read":100,"max_output_bytes":4096},
             }]}
