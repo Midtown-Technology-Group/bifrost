@@ -462,7 +462,9 @@ fn decision(value: domain::DecisionError) -> &'static str {
         domain::DecisionError::InvalidAttemptState => "InvalidAttemptState",
         domain::DecisionError::InvalidLogicalState => "InvalidLogicalState",
         domain::DecisionError::MissingFence => "MissingFence",
-        domain::DecisionError::LegacyUnfencedOutsideTrackedPath => "LegacyUnfencedOutsideTrackedPath",
+        domain::DecisionError::LegacyUnfencedOutsideTrackedPath => {
+            "LegacyUnfencedOutsideTrackedPath"
+        }
         domain::DecisionError::RequiresCoordinatorPolicy => "RequiresCoordinatorPolicy",
         domain::DecisionError::InconsistentRows => "InconsistentRows",
     }
@@ -470,7 +472,11 @@ fn decision(value: domain::DecisionError) -> &'static str {
 
 fn running_plan(plan: domain::AttemptRunningPlan) -> PlanOutput {
     let domain::AttemptRunningPlan {
-        status, phase, started_at, heartbeat_at, process_id,
+        status,
+        phase,
+        started_at,
+        heartbeat_at,
+        process_id,
     } = plan;
     PlanOutput::Running {
         status: attempt_status(status),
@@ -484,8 +490,18 @@ fn running_plan(plan: domain::AttemptRunningPlan) -> PlanOutput {
 fn result_plan(plan: domain::FencedResultPlan) -> PlanOutput {
     let domain::FencedResultPlan { execution, attempt } = plan;
     let domain::ResultExecutionPlan {
-        status, duration_ms, completed_at, result, result_type, error_message,
-        time_saved, value, variables, execution_context, metrics, logs,
+        status,
+        duration_ms,
+        completed_at,
+        result,
+        result_type,
+        error_message,
+        time_saved,
+        value,
+        variables,
+        execution_context,
+        metrics,
+        logs,
     } = execution;
     let execution = ExecutionPlanOutput {
         status: logical_status(status),
@@ -502,8 +518,15 @@ fn result_plan(plan: domain::FencedResultPlan) -> PlanOutput {
         logs: projection(logs),
     };
     let domain::ResultAttemptPlan {
-        status, phase, failure_phase: phase_failure, failure_code: code_failure,
-        started_at, heartbeat_at, completed_at, duration_ms, peak_memory_bytes,
+        status,
+        phase,
+        failure_phase: phase_failure,
+        failure_code: code_failure,
+        started_at,
+        heartbeat_at,
+        completed_at,
+        duration_ms,
+        peak_memory_bytes,
         cpu_total_seconds,
     } = attempt;
     let attempt = AttemptPlanOutput {
@@ -522,14 +545,22 @@ fn result_plan(plan: domain::FencedResultPlan) -> PlanOutput {
 }
 
 fn cancel_plan(plan: domain::CancelPlan) -> PlanOutput {
-    let domain::CancelPlan { status, completed_at, attempt } = plan;
+    let domain::CancelPlan {
+        status,
+        completed_at,
+        attempt,
+    } = plan;
     PlanOutput::Cancel {
         status: logical_status(status),
         completed_at: time_write(completed_at),
         attempt: attempt.map(|plan| {
             let domain::CancelAttemptPlan {
-                status, phase, failure_phase: phase_failure,
-                failure_code: code_failure, completed_at, heartbeat_at,
+                status,
+                phase,
+                failure_phase: phase_failure,
+                failure_code: code_failure,
+                completed_at,
+                heartbeat_at,
             } = plan;
             CancelAttemptOutput {
                 status: attempt_status(status),
@@ -552,8 +583,8 @@ enum DriverError {
 fn validate_json_shapes(bytes: &[u8]) -> Result<(), DriverError> {
     // This finite type check never normalizes bytes or constructs authority.
     // Deserialize the ORIGINAL bytes afterward so duplicates remain errors.
-    let raw: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|_| DriverError::InvalidRequest)?;
+    let raw: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| DriverError::InvalidRequest)?;
     if !raw.is_object()
         || !raw["schema"].is_string()
         || !raw["rows"].is_object()
@@ -590,13 +621,21 @@ fn validate_json_shapes(bytes: &[u8]) -> Result<(), DriverError> {
 
 fn execute(bytes: &[u8]) -> Result<Response, DriverError> {
     validate_json_shapes(bytes)?;
-    let request: Request = serde_json::from_slice(bytes).map_err(|_| DriverError::InvalidRequest)?;
-    let Request { schema, case_id, operation, rows } = request;
+    let request: Request =
+        serde_json::from_slice(bytes).map_err(|_| DriverError::InvalidRequest)?;
+    let Request {
+        schema,
+        case_id,
+        operation,
+        rows,
+    } = request;
     let Schema::WorkflowDomainV1 = schema;
     if case_id.is_empty()
         || case_id.len() > 64
         || !case_id.as_bytes()[0].is_ascii_alphabetic()
-        || !case_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        || !case_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
     {
         return Err(DriverError::InvalidRequest);
     }
@@ -618,26 +657,57 @@ fn execute(bytes: &[u8]) -> Result<Response, DriverError> {
         HistoryInput::Unrecorded => domain::AttemptHistory::Unrecorded,
     };
     let result = match operation {
-        Operation::Running { execution_id, claim_token, process_id } => {
+        Operation::Running {
+            execution_id,
+            claim_token,
+            process_id,
+        } => {
             let token = domain::ClaimToken::new(claim_token);
-            domain::plan_attempt_running(attempt.as_ref(), &execution_id, &token, process_id.is_some()).map(running_plan)
+            domain::plan_attempt_running(
+                attempt.as_ref(),
+                &execution_id,
+                &token,
+                process_id.is_some(),
+            )
+            .map(running_plan)
         }
-        Operation::Result { execution_id, claim_token, outcome, duration_ms } => {
+        Operation::Result {
+            execution_id,
+            claim_token,
+            outcome,
+            duration_ms,
+        } => {
             let token = claim_token.map(domain::ClaimToken::new);
             let outcome = match outcome {
-                OutcomeInput::Success { status } => domain::WorkflowOutcome::Success(status.domain()),
-                OutcomeInput::Failure { error_type } => domain::WorkflowOutcome::Failure(match error_type {
-                    FailureInput::Timeout => domain::RuntimeFailureKind::Timeout,
-                    FailureInput::Cancelled => domain::RuntimeFailureKind::Cancelled,
-                    FailureInput::ResultPersistence => domain::RuntimeFailureKind::ResultPersistence,
-                    FailureInput::Execution => domain::RuntimeFailureKind::TenantCode,
-                }),
+                OutcomeInput::Success { status } => {
+                    domain::WorkflowOutcome::Success(status.domain())
+                }
+                OutcomeInput::Failure { error_type } => {
+                    domain::WorkflowOutcome::Failure(match error_type {
+                        FailureInput::Timeout => domain::RuntimeFailureKind::Timeout,
+                        FailureInput::Cancelled => domain::RuntimeFailureKind::Cancelled,
+                        FailureInput::ResultPersistence => {
+                            domain::RuntimeFailureKind::ResultPersistence
+                        }
+                        FailureInput::Execution => domain::RuntimeFailureKind::TenantCode,
+                    })
+                }
                 OutcomeInput::CoordinatorLoss {} => domain::WorkflowOutcome::CoordinatorLoss,
             };
-            domain::plan_fenced_result(execution.as_ref(), attempt.as_ref(), &execution_id, token.as_ref(), history, outcome, duration_ms.is_some()).map(result_plan)
+            domain::plan_fenced_result(
+                execution.as_ref(),
+                attempt.as_ref(),
+                &execution_id,
+                token.as_ref(),
+                history,
+                outcome,
+                duration_ms.is_some(),
+            )
+            .map(result_plan)
         }
         Operation::Cancel { execution_id } => {
-            domain::plan_cancel_state(execution.as_ref(), attempt.as_ref(), &execution_id).map(cancel_plan)
+            domain::plan_cancel_state(execution.as_ref(), attempt.as_ref(), &execution_id)
+                .map(cancel_plan)
         }
     };
     Ok(Response {
@@ -645,7 +715,9 @@ fn execute(bytes: &[u8]) -> Result<Response, DriverError> {
         case_id,
         outcome: match result {
             Ok(plan) => ResponseOutcome::Accepted { plan },
-            Err(error) => ResponseOutcome::Rejected { reason: decision(error) },
+            Err(error) => ResponseOutcome::Rejected {
+                reason: decision(error),
+            },
         },
     })
 }
@@ -655,7 +727,9 @@ fn run(input: &mut impl Read, output: &mut impl Write) -> Result<(), DriverError
     let mut buffer = [0_u8; INPUT_LIMIT + 1];
     let mut used = 0;
     while used < buffer.len() {
-        let read = input.read(&mut buffer[used..]).map_err(|_| DriverError::Io)?;
+        let read = input
+            .read(&mut buffer[used..])
+            .map_err(|_| DriverError::Io)?;
         if read == 0 {
             break;
         }
@@ -749,7 +823,11 @@ mod tests {
         assert!(output.ends_with(b"\n"));
         // No stored/submitted UUID, capability, process string or row is echoed.
         for forbidden in [EXECUTION_ID, ATTEMPT_ID, TOKEN, "synthetic-process-secret"] {
-            assert!(!output.windows(forbidden.len()).any(|part| part == forbidden.as_bytes()));
+            assert!(
+                !output
+                    .windows(forbidden.len())
+                    .any(|part| part == forbidden.as_bytes())
+            );
         }
         match serde_json::from_slice(&output) {
             Ok(value) => value,
@@ -760,20 +838,26 @@ mod tests {
     fn invalid(value: &Value) {
         let input = bytes(value);
         let mut output = Vec::new();
-        assert_eq!(run(&mut input.as_slice(), &mut output), Err(DriverError::InvalidRequest));
+        assert_eq!(
+            run(&mut input.as_slice(), &mut output),
+            Err(DriverError::InvalidRequest)
+        );
         assert!(output.is_empty());
     }
 
     #[test]
     fn actual_running_call_outputs_all_columns_and_non_none_empty_process() {
         let mut request = running();
-        assert_eq!(response(&request), json!({
-            "schema": SCHEMA, "case_id": "synthetic_case",
-            "outcome": {"kind": "accepted", "plan": {
-                "kind": "running", "status": "Running", "phase": "Execution",
-                "started_at": "Now", "heartbeat_at": "Now", "process_id": "Keep"
-            }}
-        }));
+        assert_eq!(
+            response(&request),
+            json!({
+                "schema": SCHEMA, "case_id": "synthetic_case",
+                "outcome": {"kind": "accepted", "plan": {
+                    "kind": "running", "status": "Running", "phase": "Execution",
+                    "started_at": "Now", "heartbeat_at": "Now", "process_id": "Keep"
+                }}
+            })
+        );
         request["rows"]["attempt"]["started_at_present"] = json!(true);
         for process in ["", "synthetic-process-secret"] {
             request["operation"]["process_id"] = json!(process);
@@ -792,58 +876,108 @@ mod tests {
     #[test]
     fn result_response_maps_all_actual_fields_and_null_failure_values() {
         let mut request = result(json!({"kind": "success", "status": "Success"}));
-        assert_eq!(response(&request), json!({
-            "schema": SCHEMA, "case_id": "synthetic_case",
-            "outcome": {"kind": "accepted", "plan": {
-                "kind": "result",
-                "execution": {
-                    "status": "Success", "duration_ms": "Keep", "completed_at": "Keep",
-                    "result": "AllowSupplied", "result_type": "AllowSupplied",
-                    "error_message": "AllowSupplied", "time_saved": "AllowSupplied",
-                    "value": "AllowSupplied", "variables": "AllowSupplied",
-                    "execution_context": "AllowSupplied", "metrics": "AllowSupplied",
-                    "logs": "AllowSupplied"
-                },
-                "attempt": {
-                    "status": "Succeeded", "phase": "Terminal",
-                    "failure_phase": null, "failure_code": null, "started_at": "Keep",
-                    "heartbeat_at": "Now", "completed_at": "Now", "duration_ms": "SetSupplied",
-                    "peak_memory_bytes": "SetSupplied", "cpu_total_seconds": "SetSupplied"
-                }
-            }}
-        }));
+        assert_eq!(
+            response(&request),
+            json!({
+                "schema": SCHEMA, "case_id": "synthetic_case",
+                "outcome": {"kind": "accepted", "plan": {
+                    "kind": "result",
+                    "execution": {
+                        "status": "Success", "duration_ms": "Keep", "completed_at": "Keep",
+                        "result": "AllowSupplied", "result_type": "AllowSupplied",
+                        "error_message": "AllowSupplied", "time_saved": "AllowSupplied",
+                        "value": "AllowSupplied", "variables": "AllowSupplied",
+                        "execution_context": "AllowSupplied", "metrics": "AllowSupplied",
+                        "logs": "AllowSupplied"
+                    },
+                    "attempt": {
+                        "status": "Succeeded", "phase": "Terminal",
+                        "failure_phase": null, "failure_code": null, "started_at": "Keep",
+                        "heartbeat_at": "Now", "completed_at": "Now", "duration_ms": "SetSupplied",
+                        "peak_memory_bytes": "SetSupplied", "cpu_total_seconds": "SetSupplied"
+                    }
+                }}
+            })
+        );
         for duration in [0, 7] {
             request["operation"]["duration_ms"] = json!(duration);
             let actual = response(&request);
-            assert_eq!(actual["outcome"]["plan"]["execution"]["duration_ms"], "SetSupplied");
-            assert_eq!(actual["outcome"]["plan"]["execution"]["completed_at"], "Now");
+            assert_eq!(
+                actual["outcome"]["plan"]["execution"]["duration_ms"],
+                "SetSupplied"
+            );
+            assert_eq!(
+                actual["outcome"]["plan"]["execution"]["completed_at"],
+                "Now"
+            );
         }
         if let Some(operation) = request["operation"].as_object_mut() {
             assert!(operation.remove("duration_ms").is_some());
         } else {
             panic!("Synthetic operation object is missing");
         }
-        assert_eq!(response(&request)["outcome"]["plan"]["execution"]["duration_ms"], "Keep");
+        assert_eq!(
+            response(&request)["outcome"]["plan"]["execution"]["duration_ms"],
+            "Keep"
+        );
     }
 
     #[test]
     fn all_ten_normalized_success_strings_pass_through_actual_kernel() {
-        for status in ["Scheduled", "Pending", "Running", "Success", "Failed", "Timeout", "Stuck", "CompletedWithErrors", "Cancelling", "Cancelled"] {
+        for status in [
+            "Scheduled",
+            "Pending",
+            "Running",
+            "Success",
+            "Failed",
+            "Timeout",
+            "Stuck",
+            "CompletedWithErrors",
+            "Cancelling",
+            "Cancelled",
+        ] {
             let request = result(json!({"kind": "success", "status": status}));
             let actual = response(&request);
             assert_eq!(actual["outcome"]["plan"]["execution"]["status"], status);
             assert_eq!(actual["outcome"]["plan"]["attempt"]["status"], "Succeeded");
-            assert_eq!(actual["outcome"]["plan"]["execution"]["result"], "AllowSupplied");
+            assert_eq!(
+                actual["outcome"]["plan"]["execution"]["result"],
+                "AllowSupplied"
+            );
         }
     }
 
     #[test]
     fn four_failure_inputs_and_coordinator_cancellation_are_real_calls() {
         for (error, status, attempt, code, phase) in [
-            ("TimeoutError", "Timeout", "TimedOut", "ExecutionTimeout", "Execution"),
-            ("CancelledError", "Cancelled", "Cancelled", "Cancelled", "Cancellation"),
-            ("ResultPersistenceError", "Failed", "Failed", "ResultPersistFailed", "Result"),
-            ("ExecutionError", "Failed", "Failed", "TenantCodeError", "Execution"),
+            (
+                "TimeoutError",
+                "Timeout",
+                "TimedOut",
+                "ExecutionTimeout",
+                "Execution",
+            ),
+            (
+                "CancelledError",
+                "Cancelled",
+                "Cancelled",
+                "Cancelled",
+                "Cancellation",
+            ),
+            (
+                "ResultPersistenceError",
+                "Failed",
+                "Failed",
+                "ResultPersistFailed",
+                "Result",
+            ),
+            (
+                "ExecutionError",
+                "Failed",
+                "Failed",
+                "TenantCodeError",
+                "Execution",
+            ),
         ] {
             let request = result(json!({"kind": "failure", "error_type": error}));
             let actual = response(&request);
@@ -853,41 +987,71 @@ mod tests {
             assert_eq!(actual["outcome"]["plan"]["attempt"]["failure_phase"], phase);
         }
         let mut request = result(json!({"kind": "coordinator_loss"}));
-        assert_eq!(response(&request)["outcome"], json!({"kind": "rejected", "reason": "RequiresCoordinatorPolicy"}));
+        assert_eq!(
+            response(&request)["outcome"],
+            json!({"kind": "rejected", "reason": "RequiresCoordinatorPolicy"})
+        );
         request["rows"]["execution"]["status"] = json!("Cancelling");
         let actual = response(&request);
-        assert_eq!(actual["outcome"]["plan"]["execution"]["status"], "Cancelled");
-        for column in ["result", "result_type", "error_message", "time_saved", "value"] {
+        assert_eq!(
+            actual["outcome"]["plan"]["execution"]["status"],
+            "Cancelled"
+        );
+        for column in [
+            "result",
+            "result_type",
+            "error_message",
+            "time_saved",
+            "value",
+        ] {
             assert_eq!(actual["outcome"]["plan"]["execution"][column], "Keep");
         }
         for column in ["variables", "execution_context", "metrics", "logs"] {
-            assert_eq!(actual["outcome"]["plan"]["execution"][column], "AllowSupplied");
+            assert_eq!(
+                actual["outcome"]["plan"]["execution"][column],
+                "AllowSupplied"
+            );
         }
-        assert_eq!(actual["outcome"]["plan"]["attempt"]["failure_phase"], "Cancellation");
+        assert_eq!(
+            actual["outcome"]["plan"]["attempt"]["failure_phase"],
+            "Cancellation"
+        );
     }
 
     #[test]
     fn cancel_response_maps_all_actual_columns_and_nullable_attempt() {
         let mut request = fixture(json!({"kind": "cancel", "execution_id": EXECUTION_ID}));
         request["rows"]["execution"]["status"] = json!("Pending");
-        assert_eq!(response(&request)["outcome"]["plan"], json!({
-            "kind": "cancel", "status": "Cancelled", "completed_at": "Now",
-            "attempt": {
-                "status": "Cancelled", "phase": "Terminal", "failure_phase": "Cancellation",
-                "failure_code": "CancelledBeforeClaim", "completed_at": "Now", "heartbeat_at": "Now"
-            }
-        }));
+        assert_eq!(
+            response(&request)["outcome"]["plan"],
+            json!({
+                "kind": "cancel", "status": "Cancelled", "completed_at": "Now",
+                "attempt": {
+                    "status": "Cancelled", "phase": "Terminal", "failure_phase": "Cancellation",
+                    "failure_code": "CancelledBeforeClaim", "completed_at": "Now", "heartbeat_at": "Now"
+                }
+            })
+        );
         request["rows"]["attempt"] = Value::Null;
-        assert_eq!(response(&request)["outcome"]["plan"]["attempt"], Value::Null);
+        assert_eq!(
+            response(&request)["outcome"]["plan"]["attempt"],
+            Value::Null
+        );
         request["rows"]["execution"]["status"] = json!("Running");
-        assert_eq!(response(&request)["outcome"]["plan"], json!({"kind": "cancel", "status": "Cancelling", "completed_at": "Keep", "attempt": null}));
+        assert_eq!(
+            response(&request)["outcome"]["plan"],
+            json!({"kind": "cancel", "status": "Cancelling", "completed_at": "Keep", "attempt": null})
+        );
     }
 
     #[test]
     fn actual_rejection_and_required_null_history_precedence_are_closed() {
         let mut request = running();
         request["operation"]["claim_token"] = json!(EXECUTION_ID);
-        assert_eq!(response(&request)["outcome"], json!({"kind": "rejected", "reason": "InvalidAttemptFence"}));
+        assert_eq!(
+            response(&request)["outcome"],
+            json!({"kind": "rejected", "reason": "InvalidAttemptFence"})
+        );
         request["rows"]["attempt"] = Value::Null;
         assert_eq!(response(&request)["outcome"]["reason"], "MissingAttempt");
         let mut request = result(json!({"kind": "success", "status": "Success"}));
@@ -895,17 +1059,35 @@ mod tests {
         request["rows"]["execution"] = Value::Null;
         assert_eq!(response(&request)["outcome"]["reason"], "MissingFence");
         request["rows"]["history"] = json!("unrecorded");
-        assert_eq!(response(&request)["outcome"]["reason"], "LegacyUnfencedOutsideTrackedPath");
+        assert_eq!(
+            response(&request)["outcome"]["reason"],
+            "LegacyUnfencedOutsideTrackedPath"
+        );
     }
 
     #[test]
     fn unknown_fields_are_rejected_at_every_request_object_level() {
-        let originals = [running(), result(json!({"kind": "success", "status": "Success"})), result(json!({"kind": "failure", "error_type": "ExecutionError"})), result(json!({"kind": "coordinator_loss"}))];
+        let originals = [
+            running(),
+            result(json!({"kind": "success", "status": "Success"})),
+            result(json!({"kind": "failure", "error_type": "ExecutionError"})),
+            result(json!({"kind": "coordinator_loss"})),
+        ];
         for original in originals {
-            for pointer in ["", "/rows", "/rows/execution", "/rows/attempt", "/operation"] {
+            for pointer in [
+                "",
+                "/rows",
+                "/rows/execution",
+                "/rows/attempt",
+                "/operation",
+            ] {
                 let mut request = original.clone();
                 if let Some(Value::Object(object)) = request.pointer_mut(pointer) {
-                    assert!(object.insert("unknown_secret".to_owned(), json!("synthetic-secret")).is_none());
+                    assert!(
+                        object
+                            .insert("unknown_secret".to_owned(), json!("synthetic-secret"))
+                            .is_none()
+                    );
                 } else {
                     panic!("Synthetic object pointer is missing");
                 }
@@ -914,7 +1096,11 @@ mod tests {
             if original["operation"]["kind"] == "result" {
                 let mut request = original;
                 if let Some(Value::Object(object)) = request.pointer_mut("/operation/outcome") {
-                    assert!(object.insert("unknown_secret".to_owned(), json!("synthetic-secret")).is_none());
+                    assert!(
+                        object
+                            .insert("unknown_secret".to_owned(), json!("synthetic-secret"))
+                            .is_none()
+                    );
                 } else {
                     panic!("Synthetic outcome pointer is missing");
                 }
@@ -925,7 +1111,11 @@ mod tests {
 
     #[test]
     fn mandatory_nullable_fields_cannot_be_inferred_from_omission() {
-        for (parent, field) in [("/rows", "execution"), ("/rows", "attempt"), ("/rows/attempt", "claim_token")] {
+        for (parent, field) in [
+            ("/rows", "execution"),
+            ("/rows", "attempt"),
+            ("/rows/attempt", "claim_token"),
+        ] {
             let mut request = running();
             if let Some(Value::Object(object)) = request.pointer_mut(parent) {
                 assert!(object.remove(field).is_some());
@@ -955,7 +1145,10 @@ mod tests {
             ("/case_id", json!("x".repeat(65))),
             ("/operation/kind", json!("unknown")),
             ("/operation/execution_id", json!("NOT-UUID")),
-            ("/operation/claim_token", json!("00000000-0000-4000-8000-00000000000A")),
+            (
+                "/operation/claim_token",
+                json!("00000000-0000-4000-8000-00000000000A"),
+            ),
             ("/rows/history", json!("assumed")),
             ("/rows/execution/status", json!("running")),
             ("/rows/attempt/status", json!("Claimed")),
@@ -989,7 +1182,10 @@ mod tests {
         duplicate.extend_from_slice(br#","schema":"bifrost.test.workflow-domain/v1"}"#);
         for input in [b"{".to_vec(), vec![0xff], double, duplicate] {
             let mut output = Vec::new();
-            assert_eq!(run(&mut input.as_slice(), &mut output), Err(DriverError::InvalidRequest));
+            assert_eq!(
+                run(&mut input.as_slice(), &mut output),
+                Err(DriverError::InvalidRequest)
+            );
             assert!(output.is_empty());
         }
         let mut at_limit = valid;
@@ -1000,7 +1196,10 @@ mod tests {
         too_large.extend_from_slice(&[b' '; 8]);
         let mut input = io::Cursor::new(too_large);
         let mut output = Vec::new();
-        assert_eq!(run(&mut input, &mut output), Err(DriverError::InvalidRequest));
+        assert_eq!(
+            run(&mut input, &mut output),
+            Err(DriverError::InvalidRequest)
+        );
         assert_eq!(input.position(), (INPUT_LIMIT + 1) as u64);
         assert!(output.is_empty());
     }
@@ -1036,7 +1235,10 @@ mod tests {
         assert_eq!(run(&mut FailedRead, &mut output), Err(DriverError::Io));
         assert!(output.is_empty());
         let input = bytes(&running());
-        assert_eq!(run(&mut input.as_slice(), &mut FailedWrite), Err(DriverError::Io));
+        assert_eq!(
+            run(&mut input.as_slice(), &mut FailedWrite),
+            Err(DriverError::Io)
+        );
     }
 }
 
@@ -1059,19 +1261,31 @@ mod strict_shape_tests {
         });
         let alternatives = [
             ("/schema", json!({SCHEMA: null})),
-            ("/rows", json!([original["rows"]["execution"], null, "recorded"])),
+            (
+                "/rows",
+                json!([original["rows"]["execution"], null, "recorded"]),
+            ),
             ("/rows/execution", json!([id, "Running"])),
             ("/rows/execution/status", json!({"Running": null})),
             ("/rows/history", json!({"recorded": null})),
-            ("/rows/attempt", json!([id, id, null, "running", "execution", true, false])),
+            (
+                "/rows/attempt",
+                json!([id, id, null, "running", "execution", true, false]),
+            ),
             ("/rows/attempt/status", json!({"running": null})),
             ("/rows/attempt/phase", json!({"execution": null})),
             ("/rows/attempt/status", json!(3)),
-            ("/operation", json!(["result", id, null, {"kind": "failure", "error_type": "ExecutionError"}, null])),
+            (
+                "/operation",
+                json!(["result", id, null, {"kind": "failure", "error_type": "ExecutionError"}, null]),
+            ),
             ("/operation/kind", json!(1)),
             ("/operation/outcome", json!(["failure", "ExecutionError"])),
             ("/operation/outcome/kind", json!(1)),
-            ("/operation/outcome/error_type", json!({"ExecutionError": null})),
+            (
+                "/operation/outcome/error_type",
+                json!({"ExecutionError": null}),
+            ),
         ];
         for (pointer, alternative) in alternatives {
             let mut request = original.clone();
@@ -1084,7 +1298,10 @@ mod strict_shape_tests {
                 Ok(bytes) => bytes,
                 Err(_) => panic!("Synthetic structural encoding failed"),
             };
-            assert!(matches!(execute(&encoded), Err(DriverError::InvalidRequest)));
+            assert!(matches!(
+                execute(&encoded),
+                Err(DriverError::InvalidRequest)
+            ));
         }
         let mut success = original.clone();
         success["operation"]["outcome"] = json!({"kind": "success", "status": {"Success": null}});
@@ -1092,12 +1309,23 @@ mod strict_shape_tests {
             Ok(bytes) => bytes,
             Err(_) => panic!("Synthetic success encoding failed"),
         };
-        assert!(matches!(execute(&encoded), Err(DriverError::InvalidRequest)));
-        let root_array = json!([SCHEMA, "synthetic_shape", original["operation"], original["rows"]]);
+        assert!(matches!(
+            execute(&encoded),
+            Err(DriverError::InvalidRequest)
+        ));
+        let root_array = json!([
+            SCHEMA,
+            "synthetic_shape",
+            original["operation"],
+            original["rows"]
+        ]);
         let encoded = match serde_json::to_vec(&root_array) {
             Ok(bytes) => bytes,
             Err(_) => panic!("Synthetic root encoding failed"),
         };
-        assert!(matches!(execute(&encoded), Err(DriverError::InvalidRequest)));
+        assert!(matches!(
+            execute(&encoded),
+            Err(DriverError::InvalidRequest)
+        ));
     }
 }
