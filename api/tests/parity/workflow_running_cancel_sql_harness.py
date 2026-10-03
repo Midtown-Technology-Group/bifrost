@@ -93,7 +93,7 @@ SOURCE_PATHS = {
     "core-rs/Dockerfile",
 }
 FROZEN_SOURCE = {
-    "core-rs/crates/bifrost-db/examples/workflow_running_cancel_sql.rs": "a6c6481b56ee9b72bb2391124bf00fea7bb7978a3f60ce6f5db05d35ce679c11",
+    "core-rs/crates/bifrost-db/examples/workflow_running_cancel_sql.rs": "1856974e452237a659038729211e98d8d9f074bca2155e7b2373737bc2ee3953",
     "core-rs/crates/bifrost-db/Cargo.toml": "8e130b9bcd793e0ae4005a21fe95df2e398945888b6afe99fe1066b88770bd2a",
     "core-rs/Cargo.lock": "08a36a258d8ebc8b47e322adbae3fd541d66920ccf6dfc5a2cc0ab8a840ed021",
     "core-rs/crates/bifrost-db/src/workflow_parity.rs": "41362641ee0bd2928ea9fa23882c93273cddf05089936f339571984f13608569",
