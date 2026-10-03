@@ -219,7 +219,7 @@ async def _verified_delivery_proof(db: AsyncSession, deployment: Any, manifest: 
             or any(not isinstance(value, str) for value in mapping.values())):
         raise UnprovenSourceConsumers("Protected repository mapping differs from deployment closure")
     try:
-        receipt = await db.get(OperationReceipt, UUID(proof["receipt_id"]))
+        receipt = await db.get(OperationReceipt, UUID(proof["receipt_id"]), populate_existing=True)
         identity = {"repository_id": policy.repository_id, "solution_id": str(deployment.solution_id),
             "source_commit_sha": proof["commit_sha"], "artifact_digest": proof["artifact_digest"],
             "ci_run_id": proof["ci_run_id"], "ci_run_attempt": proof["ci_run_attempt"],

@@ -184,7 +184,8 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None):
     runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
     deployment = SimpleNamespace(id=SID, compiled_manifest={}, resolution_map={}, dependencies=[],
         compiled_manifest_hash=manifest_hash, resolution_map_hash="sha256:" + "2" * 64)
-    resolution = SimpleNamespace(sources=runtime, resources={}, shared_tables={}, root_file_bindings={})
+    resolution = SimpleNamespace(sources={path: SimpleNamespace(content_hash="sha256:" + hashlib.sha256(raw).hexdigest())
+        for path, raw in runtime.items()}, resources={}, shared_tables={}, root_file_bindings={})
     verify_source = AsyncMock()
     repository = SimpleNamespace(get_runtime_closure=AsyncMock(return_value=deployment))
     storage = SimpleNamespace(read_source_artifact=AsyncMock(return_value=source_archive(runtime)),
@@ -196,7 +197,7 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None):
     monkeypatch.setattr(native_readback, "validate_runtime_closure", lambda *args, **kwargs: (None, resolution))
     monkeypatch.setattr("src.routers.tables._validate_table_policy_claim_refs", AsyncMock())
     return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
-        manifest_hash=manifest_hash, verify_source=verify_source, storage=storage)
+        manifest_hash=manifest_hash, verify_source=verify_source, storage=storage, deployment=deployment, resolution=resolution)
 
 
 async def _read_installed(fixture):
@@ -255,3 +256,39 @@ async def test_successful_runtime_cannot_credit_installed_control_drift(monkeypa
     with pytest.raises(NativeAuthoredSourceMismatch, match="Installed (workflow controls|table metadata or policies)"):
         await _read_installed(fixture)
     fixture.db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drift", [None, "closure", "runtime_bytes", "roles", "table_policy"])
+async def test_cached_bytes_require_fresh_complete_database_readback_without_remote_io(monkeypatch, drift):
+    fixture = _installed_readback(monkeypatch, roles=[str(RID)])
+    collected = await native_readback._read_native_runtime(SID, fixture.deployment, fixture.resolution)
+    fixture.storage.read_source_artifact.reset_mock()
+    fixture.storage.read_runtime_file.reset_mock()
+    base = AsyncMock(return_value=(fixture.solution, fixture.deployment, fixture.resolution))
+    registrations = AsyncMock()
+    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
+        lambda db: SimpleNamespace(_base=base, _registrations=registrations))
+    if drift == "closure":
+        fixture.deployment.resolution_map_hash = "sha256:" + "3" * 64
+    elif drift == "runtime_bytes":
+        from dataclasses import replace
+        collected = replace(collected, files=MappingProxyType({**collected.files, "modules/runtime.py": b"tampered"}))
+    elif drift == "roles":
+        fixture.workflow.roles = []
+    elif drift == "table_policy":
+        fixture.table.access = {"policies": []}
+    if drift:
+        with pytest.raises(NativeAuthoredSourceMismatch):
+            await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
+                expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
+                _verified_runtime=collected)
+    else:
+        result = await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
+            expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
+            _verified_runtime=collected)
+        assert result["workflow_ids"] == [WID]
+    base.assert_awaited_once()
+    registrations.assert_awaited_once()
+    fixture.storage.read_source_artifact.assert_not_awaited()
+    fixture.storage.read_runtime_file.assert_not_awaited()

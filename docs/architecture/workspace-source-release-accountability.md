@@ -37,9 +37,16 @@ Production target membership comes from all protected registry recipes,
 including mappings that mix Root and package files. A missing/inactive Provider
 installation cannot disappear from the target set. Recovery checks the complete
 relevant family in exact scopes, including unexpected active siblings; unrelated
-mutable Solutions are not a prerequisite. The census takes a shared Solutions
-table lock and reads installations without row locks. Membership/status and
-pointer writes wait for this bounded readback transaction; workflow admissions
+mutable Solutions are not a prerequisite. Storage proof is collected and cached
+before the shared Solutions table fence, with a 64 MiB aggregate proof budget.
+Budget exhaustion leaves affected targets visible and debt unresolved.
+Acquisition waits at most one second, and the fenced database phase has a
+five-second cooperative cancellation deadline; a timeout
+rolls back without completing debt. The fence rechecks family membership,
+durable receipts, closure identity and all metadata, binding the previously
+verified bytes to every current source hash without remote storage calls.
+Installations are read without row locks. Membership/status and pointer writes
+wait only for this bounded database phase; workflow admissions
 and historical execution pins continue without a Live fence. Reviewed shared
 Root table verification retains its existing shared row locks. Native accounting
 commits its checkpoint and releases the membership fence before the separate

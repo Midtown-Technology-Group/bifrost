@@ -22,6 +22,7 @@ from src.services.workflow_registration_retirement import (
     validate_workflow_retirement_evidence,
 )
 from src.services.workflow_retirement_consumers import (
+    MAX_INVENTORY_ROWS,
     inspect_workflow_retirement_consumers,
 )
 from src.services.workspace_release_retirement import (
@@ -198,6 +199,24 @@ async def test_native_inventory_finds_inactive_form_uuid_spellings_in_postgresql
         for item in inventory["native_callers"])
     with pytest.raises(WorkspaceReleaseRetirementError):
         await _retire(service, request, platform_admin)
+
+
+@pytest.mark.asyncio
+async def test_unrelated_forms_do_not_exhaust_native_caller_inventory(db_session, platform_admin):
+    _artifact, release, row, _service, _request, _pin = await _fixture(db_session, platform_admin)
+    unrelated = [Form(name=f"Unrelated caller {i}", workflow_id=str(uuid4()),
+        organization_id=release.organization_id, is_active=False, created_by=str(platform_admin.user_id))
+        for i in range(MAX_INVENTORY_ROWS + 1)]
+    caller = Form(name="Actual hex caller", launch_workflow_id=row.id.hex,
+        organization_id=release.organization_id, is_active=False, created_by=str(platform_admin.user_id))
+    db_session.add_all([*unrelated, caller])
+    await db_session.commit()
+    try:
+        inventory = await inspect_workflow_retirement_consumers(db_session, row)
+        assert [item["id"] for item in inventory["native_callers"] if item["entity_type"] == "Form"] == [str(caller.id)]
+    finally:
+        await db_session.execute(delete(Form).where(Form.id.in_([form.id for form in unrelated] + [caller.id])))
+        await db_session.commit()
 
 
 @pytest.mark.asyncio

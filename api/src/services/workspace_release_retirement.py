@@ -100,6 +100,7 @@ class WorkspaceReleaseRetirementService:
         ids = {UUID(item["workflow_id"])
                for item in descriptor.effective_registrations.values()}
         registrations = []
+        application_cache: dict[str, str] = {}
         for row in rows:
             retirement_id = None
             if row.retirement_evidence is not None:
@@ -116,7 +117,7 @@ class WorkspaceReleaseRetirementService:
                 registration_hash=workflow_retirement_snapshot_hash(row),
                 retirement_evidence_id=retirement_id,
                 consumer_inventory=WorkflowRetirementConsumerInventory.model_validate(
-                    await self._consumer_inventory(row)),
+                    await self._consumer_inventory(row, application_cache=application_cache)),
             ))
         obligation_rows = (await self.db.execute(
             select(WorkspaceSourceRelease.disposition, func.count(WorkspaceSourceRelease.id))
@@ -308,12 +309,13 @@ class WorkspaceReleaseRetirementService:
         if set(indexed) != set(ids):
             raise WorkspaceReleaseRetirementError("obsolete registration is outside the exact Live guard cohort")
         evidence = []
+        application_cache: dict[str, str] = {}
         for review in request.obsolete_registrations:
             row = indexed[review.workflow_id]
             if row.retirement_evidence is not None:
                 raise WorkspaceReleaseRetirementError("registration is already retired; inspect its retained evidence")
             before = workflow_retirement_snapshot_hash(row)
-            consumers = await self._consumer_inventory(row, lock=True)
+            consumers = await self._consumer_inventory(row, lock=True, application_cache=application_cache)
             if (before != review.expected_registration_hash
                     or consumers["inventory_digest"] != review.expected_consumer_inventory_digest):
                 raise WorkspaceReleaseRetirementError("obsolete registration or caller inventory CAS mismatch")
@@ -338,9 +340,11 @@ class WorkspaceReleaseRetirementService:
         await self.db.flush()
         return evidence
 
-    async def _consumer_inventory(self, row: Workflow, *, lock: bool = False) -> dict:
+    async def _consumer_inventory(self, row: Workflow, *, lock: bool = False,
+                                  application_cache: dict[str, str] | None = None) -> dict:
         try:
-            return await inspect_workflow_retirement_consumers(self.db, row, lock=lock)
+            return await inspect_workflow_retirement_consumers(self.db, row, lock=lock,
+                application_cache=application_cache)
         except WorkflowRetirementInventoryError as exc:
             raise WorkspaceReleaseRetirementError(str(exc)) from exc
 

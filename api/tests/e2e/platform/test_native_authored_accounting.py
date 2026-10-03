@@ -1,5 +1,6 @@
 """Native authored metadata and journal completion use actual PostgreSQL."""
 
+import asyncio
 import hashlib
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -11,7 +12,7 @@ import yaml
 from bifrost.manifest import ManifestWorkflow
 from sqlalchemy import text, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.core.constants import PROVIDER_ORG_ID
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.models.orm.solutions import Solution
@@ -54,8 +55,9 @@ def _source(f):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unrelated_mutable", [False, True])
+@pytest.mark.parametrize("recovery_fault", [None, "receipt", "readme", "membership", "lock_timeout", "cache_budget"])
 async def test_successful_receipt_replay_then_late_declaration_settles_native_authored_source(
-    db_session, platform_admin, monkeypatch, unrelated_mutable,
+    db_session, platform_admin, monkeypatch, unrelated_mutable, recovery_fault,
 ):
     from datetime import timedelta
     from unittest.mock import AsyncMock
@@ -136,8 +138,49 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
         paths={}, disposition="non_production", reason="All authored changes belong to the explicit Solution target",
         solution_deploy_obligations=[child])
     service = WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID)
-    declared = await service.declare(request, created_by=platform_admin.user_id)
+    original_evidence = native_authored_accounting._installed_evidence
+    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+
+    async def checked_evidence(*args, **kwargs):
+        if kwargs.get("collected") is None:
+            # Red-capable SQL observation: remote proof must not hold the
+            # relation-wide lock that blocks unrelated Solution updates.
+            held = await db_session.scalar(text("SELECT count(*) FROM pg_locks WHERE "
+                "pid=pg_backend_pid() AND relation='solutions'::regclass "
+                "AND mode='ShareLock' AND granted"))
+            assert held == 0
+        result = await original_evidence(*args, **kwargs)
+        if kwargs.get("collected") is None and recovery_fault in {"receipt", "readme", "membership"}:
+            async with sessions() as writer:
+                if recovery_fault == "receipt":
+                    await writer.execute(update(OperationReceipt).where(OperationReceipt.id == receipt.id)
+                        .values(status="failed"))
+                elif recovery_fault == "readme":
+                    await writer.execute(update(Solution).where(Solution.id == f.solution_id).values(readme="Changed after proof"))
+                else:
+                    writer.add(Solution(id=uuid4(), slug=f.solution.slug, repo_subpath=root,
+                        name="New same-family installation", organization_id=None, execution_runtime_mode="repo-v1"))
+                await asyncio.wait_for(writer.commit(), timeout=2)
+        return result
+
+    monkeypatch.setattr(native_authored_accounting, "_installed_evidence", checked_evidence)
+    if recovery_fault == "cache_budget":
+        monkeypatch.setattr(native_authored_accounting, "MAX_CACHED_NATIVE_BYTES", 1)
+    if recovery_fault == "lock_timeout":
+        async with sessions() as writer:
+            await writer.execute(text("LOCK TABLE solutions IN ROW EXCLUSIVE MODE"))
+            declared = await asyncio.wait_for(service.declare(request, created_by=platform_admin.user_id), timeout=4)
+            await writer.rollback()
+    else:
+        declared = await service.declare(request, created_by=platform_admin.user_id)
     child_row = (await db_session.get(WorkspaceSourceRelease, declared.id)).solution_deploy_obligations[0]
+    if recovery_fault:
+        assert child_row.disposition == "pending" and child_row.completion_evidence is None
+        # The failure must release the table fence and leave a usable session.
+        async with sessions() as writer:
+            await writer.execute(update(Solution).where(Solution.id == f.solution_id).values(readme="Post-fence write"))
+            await asyncio.wait_for(writer.commit(), timeout=2)
+        return
     assert child_row.disposition == "released" and child_row.deploy_job_id is None
     assert child_row.completion_evidence["source_content_id"] == source.source_content_id
     original = child_row.completion_evidence

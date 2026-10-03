@@ -8,7 +8,9 @@ families retain their own delivery contracts.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
@@ -31,7 +33,7 @@ from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solution_deploy_obligations import _effective_entity_id_map
-from src.services.solutions.deployment_manifest import validate_runtime_closure
+from src.services.solutions.deployment_manifest import sha256_digest, validate_runtime_closure
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution
 from src.services.solutions.source_revision import (
@@ -121,6 +123,17 @@ class NativeAuthoredMetadata:
     tables: list[dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class _VerifiedNativeRuntime:
+    """Storage proof reusable only for the same immutable deployment closure."""
+
+    deployment_id: UUID
+    manifest_hash: str
+    resolution_hash: str
+    archive_sha256: str
+    files: Mapping[str, bytes]
+
+
 def native_authored_metadata(authored: VerifiedAuthoredSolution) -> NativeAuthoredMetadata:
     files = authored.files
     allowed = {"bifrost.solution.yaml", "README.md", ".bifrost/workflows.yaml", ".bifrost/tables.yaml"}
@@ -168,6 +181,7 @@ def require_native_python_closure(
 async def native_authored_install_readback(
     db: AsyncSession, solution: Solution, authored: VerifiedAuthoredSolution,
     *, expected_active_deployment_id: UUID, expected_active_manifest_hash: str,
+    _verified_runtime: _VerifiedNativeRuntime | None = None,
 ) -> dict[str, Any]:
     """Caller holds the install writer and row locks; no mutation is performed."""
     metadata = native_authored_metadata(authored)
@@ -179,7 +193,14 @@ async def native_authored_install_readback(
     request = SolutionSourceRevisionInspectRequest(
         expected_active_deployment_id=expected_active_deployment_id,
         expected_active_manifest_hash=expected_active_manifest_hash)
-    await SolutionSourceRevisionService(db).verify_current_source(solution.id, request)
+    service = SolutionSourceRevisionService(db)
+    if _verified_runtime is None:
+        await service.verify_current_source(solution.id, request)
+    else:
+        # The accounting fence rechecks native database state without holding
+        # the platform's Solution-write fence through remote object reads.
+        _solution, _base, current_resolution = await service._base(solution.id, request)
+        await service._registrations(solution.id, current_resolution, lock=False)
     deployment = await SolutionDeploymentRepository(db).get_runtime_closure(
         expected_active_deployment_id, solution.organization_id, solution.id)
     if deployment is None:
@@ -190,12 +211,16 @@ async def native_authored_install_readback(
         expected_resolution_hash=deployment.resolution_map_hash)
     if resolution.resources:
         raise NativeAuthoredSourceMismatch("Authored resources require their explicit delivery mapping")
-    storage = SolutionDeploymentStorage(solution.id, deployment.id)
-    archive = await storage.read_source_artifact()
-    runtime_files = _archive_files(archive, set(resolution.sources))
-    for path, content in runtime_files.items():
-        if await storage.read_runtime_file(path) != content:
-            raise NativeAuthoredSourceMismatch("Immutable runtime and archive bytes differ")
+    if _verified_runtime is None:
+        _verified_runtime = await _read_native_runtime(solution.id, deployment, resolution)
+    if (_verified_runtime.deployment_id != deployment.id
+            or _verified_runtime.manifest_hash != deployment.compiled_manifest_hash
+            or _verified_runtime.resolution_hash != deployment.resolution_map_hash
+            or set(_verified_runtime.files) != set(resolution.sources)
+            or any(sha256_digest(raw) != resolution.sources[path].content_hash
+                   for path, raw in _verified_runtime.files.items())):
+        raise NativeAuthoredSourceMismatch("Collected runtime proof differs from the current immutable closure")
+    runtime_files = dict(_verified_runtime.files)
     rows = list((await db.scalars(select(Workflow).options(selectinload(Workflow.roles))
         .where(Workflow.solution_id == solution.id).execution_options(populate_existing=True))).all())
     mapping = await _effective_entity_id_map(db, model=Workflow, solution_id=solution.id,
@@ -252,10 +277,22 @@ async def native_authored_install_readback(
         "solution_id": str(solution.id), "organization_id": str(solution.organization_id) if solution.organization_id else None,
         "deployment_id": str(deployment.id), "manifest_hash": deployment.compiled_manifest_hash,
         "resolution_hash": deployment.resolution_map_hash, "source_content_id": authored.source_content_id,
-        "source_archive_sha256": hashlib.sha256(archive).hexdigest(),
+        "source_archive_sha256": _verified_runtime.archive_sha256,
         "runtime_paths": sorted(runtime_files), "omitted_empty_initializers": omitted,
         "workflow_ids": sorted(str(row.id) for row in rows), "table_ids": sorted(str(row.id) for row in tables),
         "descriptor": descriptor,
         "readme_sha256": hashlib.sha256(metadata.readme.encode()).hexdigest() if metadata.readme is not None else None}
     result["evidence_id"] = canonical_digest(result)
     return result
+
+
+async def _read_native_runtime(solution_id: UUID, deployment: Any, resolution: Any) -> _VerifiedNativeRuntime:
+    storage = SolutionDeploymentStorage(solution_id, deployment.id)
+    archive = await storage.read_source_artifact()
+    runtime_files = _archive_files(archive, set(resolution.sources))
+    for path, content in runtime_files.items():
+        if (sha256_digest(content) != resolution.sources[path].content_hash
+                or await storage.read_runtime_file(path) != content):
+            raise NativeAuthoredSourceMismatch("Immutable runtime and archive bytes differ")
+    return _VerifiedNativeRuntime(deployment.id, deployment.compiled_manifest_hash,
+        deployment.resolution_map_hash, hashlib.sha256(archive).hexdigest(), MappingProxyType(runtime_files))

@@ -305,7 +305,7 @@ class ProtectedGitReader:
                 or re.fullmatch(r"solutions/[a-z0-9]+(?:-[a-z0-9]+)*", repo_subpath) is None):
             raise GitDeliverySourceError("Expected a canonical Solution subtree path")
 
-        def tree_index(document: dict, identity: str) -> dict[str, dict]:
+        def tree_index(document: dict, identity: str, *, prefix: str | None = None) -> dict[str, dict]:
             entries = document.get("tree")
             if (document.get("sha") != identity or document.get("truncated") is not False
                     or not isinstance(entries, list)):
@@ -315,10 +315,11 @@ class ProtectedGitReader:
                 if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
                     raise GitDeliverySourceError("Authored Git tree entry is invalid")
                 path = entry["path"]
-                try:
-                    delivery_path(path)
-                except ValueError as exc:
-                    raise GitDeliverySourceError("Authored Git tree path is unsafe") from exc
+                if prefix is None or path == repo_subpath or path.startswith(prefix):
+                    try:
+                        delivery_path(path)
+                    except ValueError as exc:
+                        raise GitDeliverySourceError("Authored Git tree path is unsafe") from exc
                 if path in index:
                     raise GitDeliverySourceError("Authored Git tree paths are ambiguous")
                 index[path] = entry
@@ -328,7 +329,8 @@ class ProtectedGitReader:
         if (commit.get("sha") != commit_sha or not isinstance(commit.get("tree"), dict)
                 or commit["tree"].get("sha") != expected_tree_sha):
             raise GitDeliverySourceError("Authored commit/tree identity differs")
-        root = tree_index(await self.document(f"git/trees/{expected_tree_sha}?recursive=1"), expected_tree_sha)
+        root = tree_index(await self.document(f"git/trees/{expected_tree_sha}?recursive=1"), expected_tree_sha,
+            prefix=repo_subpath + "/")
         subtree = root.get(repo_subpath, {})
         subtree_sha = subtree.get("sha")
         if (subtree.get("type") != "tree" or subtree.get("mode") != "040000"

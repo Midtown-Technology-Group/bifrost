@@ -7,12 +7,14 @@ changes controls, invents a generic deploy job or settles another package.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import select, text, tuple_
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
@@ -25,16 +27,19 @@ from src.services.solution_source_accountability import (
     _verified_delivery_proof,
 )
 from src.services.solutions.authored_archive import read_authored_archive
-from src.services.solutions.deployment_manifest import validate_runtime_closure
+from src.services.solutions.deployment_manifest import canonical_json, validate_runtime_closure
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution
 from src.services.solutions.native_authored_source import (
     NativeAuthoredSourceMismatch,
+    _read_native_runtime,
+    _VerifiedNativeRuntime,
     native_authored_install_readback,
 )
 
 COMPLETION_SCHEMA = "bifrost.native-solution-deploy-completion/v1"
 UNRESOLVED = ("pending", "attention_required")
+MAX_CACHED_NATIVE_BYTES = 64 * 1024 * 1024
 
 
 def intended_native_targets(registry: dict[str, Any] | None, repo_subpath: str) -> dict[str, str | None]:
@@ -103,7 +108,8 @@ def native_completion_evidence(
 async def _installed_evidence(
     db: AsyncSession, solution: Solution, record: SolutionDeployObligation,
     policy: SolutionGitDeliveryPolicy,
-) -> tuple[VerifiedAuthoredSolution, dict[str, Any]]:
+    *, collected: tuple[VerifiedAuthoredSolution, dict[str, Any], _VerifiedNativeRuntime] | None = None,
+) -> tuple[VerifiedAuthoredSolution, dict[str, Any], _VerifiedNativeRuntime]:
     if (solution.id not in policy.solutions
             or solution.organization_id != policy.organization_id_for(solution.id)
             or solution.status != "active"
@@ -115,7 +121,8 @@ async def _installed_evidence(
         raise NativeAuthoredSourceMismatch("Intended installation has no active deployment")
     # A prior delivery can retain this ORM instance across its SQL checkpoint.
     # Completion must read durable receipt provenance, never a cached proof.
-    await db.refresh(deployment, attribute_names=["validation_result"])
+    await db.refresh(deployment, attribute_names=["state", "compiled_manifest", "resolution_map",
+        "compiled_manifest_hash", "resolution_map_hash", "dependencies", "validation_result"])
     manifest, resolution = validate_runtime_closure(deployment.compiled_manifest,
         deployment.resolution_map, deployment.dependencies,
         expected_manifest_hash=deployment.compiled_manifest_hash,
@@ -124,16 +131,23 @@ async def _installed_evidence(
     if (not proof or proof["commit_sha"] != record.source_commit_sha
             or proof["tree_sha"] != record.source_tree_sha or not proof.get("authored_source")):
         raise NativeAuthoredSourceMismatch("No exact successful native authored delivery is retained")
-    storage = SolutionDeploymentStorage(solution.id, deployment.id)
-    authored = await read_authored_archive(storage, proof["authored_source"],
-        expected_commit_sha=record.source_commit_sha, expected_tree_sha=record.source_tree_sha)
+    if collected is None:
+        storage = SolutionDeploymentStorage(solution.id, deployment.id)
+        authored = await read_authored_archive(storage, proof["authored_source"],
+            expected_commit_sha=record.source_commit_sha, expected_tree_sha=record.source_tree_sha)
+        runtime = await _read_native_runtime(solution.id, deployment, resolution)
+    else:
+        authored, prior, runtime = collected
+        if canonical_digest(proof) != prior["delivery_proof_hash"]:
+            raise NativeAuthoredSourceMismatch("Native delivery receipt changed after byte collection")
     readback = await native_authored_install_readback(db, solution, authored,
         expected_active_deployment_id=deployment.id,
-        expected_active_manifest_hash=deployment.compiled_manifest_hash)
+        expected_active_manifest_hash=deployment.compiled_manifest_hash, _verified_runtime=runtime)
     registry = proof.get("installation_registry")
     return authored, {"readback": readback, "receipt_id": proof["receipt_id"],
         "source_commit_sha": proof["commit_sha"], "source_tree_sha": proof["tree_sha"],
-        "authored_source": proof["authored_source"], "installation_registry": registry}
+        "authored_source": proof["authored_source"], "installation_registry": registry,
+        "delivery_proof_hash": canonical_digest(proof)}, runtime
 
 
 async def reconcile_native_solution_deploy_obligations(
@@ -142,7 +156,8 @@ async def reconcile_native_solution_deploy_obligations(
 ) -> list[UUID]:
     """Success/replay, late declaration and scheduler share the same verifier.
 
-Solution membership and pointer writes wait for a bounded SHARE table lock.
+Remote byte proof precedes a five-second membership/metadata fence.
+Solution membership and pointer writes wait at most one second for its SHARE lock.
 Install reads stay plain: waiting on a writer's row lock here would deadlock
 with its pending table-write lock. Managed component writers also update their
 Solution pointer atomically. Reviewed shared Root tables retain their existing
@@ -167,14 +182,69 @@ No new background job, endpoint or manual cleanup is needed.
     if not selected:
         return []
     packages = {(row.solution_slug, row.repo_subpath) for row in selected}
-    # Row locks cannot fence insertion or inactive->active membership changes.
-    # SHARE blocks INSERT/UPDATE/DELETE while allowing admissions and row-lock
-    # readers. Do not acquire install row locks inside this table-write fence.
-    await db.execute(text("LOCK TABLE solutions IN SHARE MODE"))
     installs = list((await db.scalars(select(Solution).where(Solution.status == "active",
         tuple_(Solution.slug, Solution.repo_subpath).in_(packages)).order_by(Solution.id)
         .execution_options(populate_existing=True))).all())
-    records = list((await db.scalars(query.where(SolutionDeployObligation.id.in_([r.id for r in selected]))
+    # Remote proof never holds the Solution-write fence. Reuse one exact
+    # install/commit proof across declarations; each final DB read stays fresh.
+    cache = {}
+    cached_bytes = 0
+    for record in selected:
+        for solution in installs:
+            if (solution.slug, solution.repo_subpath) != (record.solution_slug, record.repo_subpath):
+                continue
+            key = (solution.id, record.source_commit_sha, record.source_tree_sha)
+            if key in cache:
+                continue
+            if cached_bytes >= MAX_CACHED_NATIVE_BYTES:
+                cache[key] = None
+                continue
+            try:
+                collected = await _installed_evidence(db, solution, record, policy)
+                source, proof, runtime = collected
+                size = (sum(len(path.encode()) + len(raw) for path, raw in source.files.items())
+                    + sum(len(path.encode()) + len(raw) for path, raw in runtime.files.items())
+                    + len(canonical_json(proof)))
+                if cached_bytes + size > MAX_CACHED_NATIVE_BYTES:
+                    # Omitted proof is never omitted membership. The complete
+                    # target set below still prevents this family completing.
+                    cache[key] = None
+                else:
+                    cache[key] = collected
+                    cached_bytes += size
+            except (NativeAuthoredSourceMismatch, UnprovenSourceConsumers, ValueError, KeyError, TypeError):
+                cache[key] = None
+            finally:
+                # In particular release shared Root-table read locks before
+                # another family performs remote storage I/O.
+                await db.commit()
+    selected_ids = [row.id for row in selected]
+    try:
+        async with asyncio.timeout(5):
+            async with db.begin_nested():
+                old_timeout = await db.scalar(text("SELECT current_setting('lock_timeout')"))
+                await db.execute(text("SET LOCAL lock_timeout = '1s'"))
+                await db.execute(text("LOCK TABLE solutions IN SHARE MODE"))
+                completed = await _complete_native_obligations(db, query, selected_ids, packages, cache, policy)
+                await db.execute(text("SELECT set_config('lock_timeout', :value, true)"), {"value": old_timeout})
+            # Release membership immediately, before separate Root/Live proof.
+            await db.commit()
+            return completed
+    except TimeoutError:
+        await db.rollback()
+        return []
+    except DBAPIError as exc:
+        await db.rollback()
+        if getattr(exc.orig, "sqlstate", None) in {"55P03", "57014"}:
+            return []
+        raise
+
+
+async def _complete_native_obligations(db, query, selected_ids, packages, cache, policy):
+    installs = list((await db.scalars(select(Solution).where(Solution.status == "active",
+        tuple_(Solution.slug, Solution.repo_subpath).in_(packages)).order_by(Solution.id)
+        .execution_options(populate_existing=True))).all())
+    records = list((await db.scalars(query.where(SolutionDeployObligation.id.in_(selected_ids))
         .order_by(SolutionDeployObligation.id).with_for_update()
         .execution_options(populate_existing=True))).all())
     completed = []
@@ -190,7 +260,11 @@ No new background job, endpoint or manual cleanup is needed.
             authored = None
             intended = None
             for solution in family:
-                source, proof = await _installed_evidence(db, solution, record, policy)
+                key = (solution.id, record.source_commit_sha, record.source_tree_sha)
+                collected = cache.get(key)
+                if collected is None:
+                    raise NativeAuthoredSourceMismatch("No collected immutable bytes for this exact installation")
+                source, proof, _runtime = await _installed_evidence(db, solution, record, policy, collected=collected)
                 registry = proof["installation_registry"]
                 # Target membership comes from every protected recipe, NOT the
                 # surviving active rows. A missing/inactive intended install
@@ -218,7 +292,4 @@ No new background job, endpoint or manual cleanup is needed.
         record.completion_evidence, record.resolved_at = evidence, now
         completed.append(record.id)
     await db.flush()
-    # Release the membership fence before Root accounting takes its Live fence
-    # and install row locks. Completion remains durable if that later pass fails.
-    await db.commit()
     return completed

@@ -112,7 +112,8 @@ class _Inventory:
 
 
 async def inspect_workflow_retirement_consumers(
-    db: AsyncSession, workflow: Workflow, *, lock: bool = False
+    db: AsyncSession, workflow: Workflow, *, lock: bool = False,
+    application_cache: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return bounded native caller/work evidence for this exact registration.
 
@@ -146,10 +147,17 @@ async def inspect_workflow_retirement_consumers(
         except (AttributeError, TypeError, ValueError):
             return False
 
-    # Form workflow IDs are historical strings: deployments used both UUIDs
-    # and names. Scan every bounded row because UUID parsing accepts formats
-    # PostgreSQL string predicates cannot enumerate (URN, braces, mixed case).
-    forms = await scan.rows(Form, Form.id.is_not(None))
+    # SQL selects a superset of every legacy UUID spelling accepted below,
+    # including URN/braces/hex/mixed case. The bound is on potential callers,
+    # not on unrelated Forms across the platform.
+    def uuid_text(column):
+        return func.replace(func.replace(func.replace(func.replace(func.lower(column),
+            "urn:uuid:", ""), "{", ""), "}", ""), "-", "")
+
+    form_path = func.ltrim(func.replace(Form.workflow_path, "\\", "/"), "/")
+    forms = await scan.rows(Form, or_(Form.workflow_id.in_(names), Form.launch_workflow_id.in_(names),
+        uuid_text(Form.workflow_id) == workflow.id.hex, uuid_text(Form.launch_workflow_id) == workflow.id.hex,
+        (form_path == normalized_path) & (Form.workflow_function_name == workflow.function_name)))
     for form in forms:
         if matches_reference(form.workflow_id):
             scan.caller("Form", form, "workflow_id")
@@ -277,12 +285,19 @@ async def inspect_workflow_retirement_consumers(
     # Apps have no relational workflow FK, and this inventory intentionally
     # avoids reading authored Source, bundles, or compiled dist. Hash all
     # bounded app metadata, dependencies, and activation pointers instead.
-    applications = await scan.rows(Application, Application.id.is_not(None))
-    application_inventory_digest = canonical_digest({
-        "scope": "all-applications",
-        "source_review_required": True,
-        "rows": [_digest_row(row) for row in applications],
-    })
+    # Reuse only within one census or one already-fenced apply transaction.
+    # A new invocation must collect a new complete bounded App snapshot.
+    if application_cache is not None and "digest" in application_cache:
+        application_inventory_digest = application_cache["digest"]
+    else:
+        applications = await scan.rows(Application, Application.id.is_not(None))
+        application_inventory_digest = canonical_digest({
+            "scope": "all-applications",
+            "source_review_required": True,
+            "rows": [_digest_row(row) for row in applications],
+        })
+        if application_cache is not None:
+            application_cache["digest"] = application_inventory_digest
 
     scan.callers.sort(key=lambda row: (
         row["entity_type"], row["id"], row["reference_type"],

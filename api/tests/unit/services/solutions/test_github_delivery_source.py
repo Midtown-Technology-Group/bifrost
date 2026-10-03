@@ -601,6 +601,18 @@ async def test_authored_inventory_rejects_noncanonical_request_before_transport(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("unrelated_path", ["notes/other:operator.txt", "windows\\other.txt"])
+async def test_authored_inventory_does_not_apply_delivery_path_rules_to_unrelated_git_files(unrelated_path):
+    documents, _, _, _ = authored_fixture()
+    documents["git/trees/" + TREE + "?recursive=1"]["tree"].append({"path": unrelated_path,
+        "mode": "100644", "type": "blob", "sha": "d" * 40, "size": 1})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(policy(), "ephemeral-job-token", client).authored_source(SHA,
+            "solutions/fixture", TREE)
+    assert unrelated_path not in source.files
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["commit", "commit_tree", "root_identity", "root_truncated",
     "subtree_identity", "subtree_truncated", "missing_subtree", "invalid_subtree_sha",
     "duplicate_root", "duplicate_subtree", "unsafe", "root_disagreement", "missing_parent",
