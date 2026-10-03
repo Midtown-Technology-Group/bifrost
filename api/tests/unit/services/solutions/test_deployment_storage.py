@@ -247,3 +247,29 @@ async def test_invalid_resource_contract_never_opens_storage(path, size):
     with pytest.raises(ValueError):
         await storage.read_resource(path, size)
     storage._client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content,limit", [(b"", 0), (b"complete", 8), (b"oversized", 4)])
+async def test_source_export_transport_is_bounded_and_accumulates_short_chunks(content, limit):
+    class Body:
+        offset = 0
+        closed = False
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): self.closed = True
+        async def read(self, size):
+            chunk = content[self.offset:self.offset+min(size, 2)]
+            self.offset += len(chunk)
+            return chunk
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    if len(content) > limit:
+        with pytest.raises(DeploymentArtifactIntegrityError, match="byte bound"):
+            await storage.read_runtime_file("helper.py", max_bytes=limit)
+    else:
+        assert await storage.read_runtime_file("helper.py", max_bytes=limit) == content
+    assert body.closed and body.offset <= limit+1
+    client.get_object.assert_awaited_once_with(Bucket="test",
+        Key=storage.runtime_prefix+"helper.py", Range=f"bytes=0-{limit}")

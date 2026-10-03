@@ -180,13 +180,25 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         )
         return key
 
-    async def read_runtime_file(self, path: str) -> bytes:
+    async def read_runtime_file(self, path: str, *, max_bytes: int | None = None) -> bytes:
         normalized = path.replace("\\", "/").lstrip("/")
         if not normalized or any(
             part in {"", ".", ".."} for part in normalized.split("/")
         ):
             raise ValueError(f"Invalid deployment runtime path: {path!r}")
-        return await self._read(f"{self.runtime_prefix}{normalized}")
+        key = f"{self.runtime_prefix}{normalized}"
+        if max_bytes is None:
+            return await self._read(key)
+        if max_bytes < 0:
+            raise DeploymentArtifactIntegrityError("Immutable source exceeds its total byte bound")
+        async with self._client_factory() as client:
+            response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{max_bytes}")
+            body = response["Body"]
+            async with body:
+                content = await self._read_bounded(body, max_bytes + 1)
+            if len(content) > max_bytes:
+                raise DeploymentArtifactIntegrityError("Immutable source exceeds its total byte bound")
+            return content
 
     async def read_resource(self, path: str, size_bytes: int) -> bytes:
         """Read one pinned resource with a transport bound before buffering bytes."""

@@ -45,6 +45,7 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
     )
     assert set(jobs["test-e2e-gate"]["needs"]) == {
         "affected-test-plan",
+        "lint",
         "test-e2e",
         "test-client-e2e",
         "test-client-unit",
@@ -80,6 +81,7 @@ def test_ci_test_image_consumers_use_the_exact_published_tag() -> None:
     for job_name in image_jobs:
         assert set(jobs[job_name]["needs"]) == {
             "affected-test-plan",
+            "lint",
             "publish-ci-test-images",
         }
 

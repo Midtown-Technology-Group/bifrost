@@ -51,7 +51,7 @@ from src.services.solutions.reviewed_workflow_artifact import (
 from src.services.solutions.root_file_bindings import require_root_workspace_files
 from src.services.solutions.shared_table_bindings import require_shared_tables
 from src.services.solutions.source_revision import (
-    SolutionSourceRevisionConflict, SolutionSourceRevisionError, _require_registration,
+    SolutionSourceRevisionConflict, SolutionSourceRevisionError, _require_registration, _workflow_snapshot,
 )
 from src.services.solutions.storage import SolutionStorage
 from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
@@ -187,7 +187,8 @@ class RepoWorkflowAdoptionService:
         entities = compile_reviewed_workflows(body.reviewed_recipe, files, resources,
             WorkflowIndexer(self.db), has_owned_tables=has_owned_tables,
             legacy_parameter_hashes={row.id: canonical_digest(row.parameters_schema)
-                                     for row in rows if row.is_active and isinstance(row.parameters_schema, list)})
+                                     for row in rows if row.is_active and isinstance(row.parameters_schema, list)},
+            legacy_descriptor_snapshots={row.id: _workflow_snapshot(row) for row in rows if row.is_active})
         await self._registrations(solution, rows, entities, legacy_files)
         manifest, resolution = build_reviewed_artifact(solution_id, deployment_id, body.reviewed_recipe,
             files, resources, entities, body.source_commit_sha, ADOPTION_MARKER)
@@ -229,7 +230,8 @@ class RepoWorkflowAdoptionService:
         manifest, resolution = await inspect_reviewed_artifact(solution_id, deployment_id, deployment,
             request.reviewed_recipe, WorkflowIndexer(self.db), ADOPTION_MARKER, has_owned_tables=has_owned_tables,
             legacy_parameter_hashes={row.id: canonical_digest(row.parameters_schema)
-                                     for row in rows if row.is_active and isinstance(row.parameters_schema, list)})
+                                     for row in rows if row.is_active and isinstance(row.parameters_schema, list)},
+            legacy_descriptor_snapshots={row.id: _workflow_snapshot(row) for row in rows if row.is_active})
         await self._registrations(solution, rows, resolution.workflows, legacy_files)
         await require_shared_tables(self.db, request.reviewed_recipe.shared_tables,
                                    solution_organization_id=solution.organization_id)

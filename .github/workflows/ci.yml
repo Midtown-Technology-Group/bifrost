@@ -98,10 +98,12 @@ jobs:
   # immutable inputs for the post-merge publisher and never select a runtime.
   # =============================================================================
   build-candidate-images:
+    needs: lint
     if: >-
+      ${{ !cancelled() && needs.lint.result == 'success' &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
       (github.event_name == 'merge_group' ||
-       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     name: Build candidate ${{ matrix.component }} image
     permissions:
@@ -271,11 +273,15 @@ jobs:
   # Source code is still mounted from each PR checkout by docker-compose.test.yml.
   # =============================================================================
   publish-ci-test-images:
+    needs: lint
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      ${{ !cancelled() &&
+      (needs.lint.result == 'success' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      (github.event_name == 'workflow_dispatch' ||
       github.event_name == 'merge_group' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     name: Publish CI Test Images
     permissions:
@@ -335,7 +341,8 @@ jobs:
           cache-to: type=gha,scope=test-playwright,mode=max
 
   # =============================================================================
-  # Lint & Type Check - Fast, gates all builds alongside unit tests
+  # Lint & Type Check - Run alongside client units, before expensive work.
+  # A failed agent iteration must not launch image builds or full test stacks.
   # =============================================================================
   lint:
     needs: affected-test-plan
@@ -530,8 +537,8 @@ jobs:
   # Unit Tests - Fast, gates all builds
   # =============================================================================
   test-unit:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Unit Tests
     permissions:
@@ -611,8 +618,8 @@ jobs:
   # stateless checks remain visible in the uploaded advisory artifact.
   # =============================================================================
   mcp-conformance:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: MCP Conformance
     permissions:
@@ -684,8 +691,8 @@ jobs:
   # no ruleset edits needed.
   # =============================================================================
   test-e2e:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     permissions:
@@ -784,8 +791,8 @@ jobs:
   # persistent BuildKit caches when their baked inputs change.
   # =============================================================================
   test-client-e2e:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     strategy:
@@ -887,12 +894,16 @@ jobs:
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
-    needs: [affected-test-plan, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
+    needs: [affected-test-plan, lint, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
     steps:
       - name: Check shard results
         run: |
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "Lint/type checking failed or was cancelled; expensive test lanes were not admitted (result: ${{ needs.lint.result }})."
+            exit 1
+          fi
           if [ "${{ needs.affected-test-plan.result }}" != "success" ]; then
             echo "Affected test planning failed or was cancelled (result: ${{ needs.affected-test-plan.result }})"
             exit 1
