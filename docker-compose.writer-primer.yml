@@ -1,0 +1,68 @@
+# Separate disposable identity primer; no application services or shared volumes.
+services:
+  postgres:
+    image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: bifrost_wex_primer
+      POSTGRES_USER: bifrost
+      POSTGRES_PASSWORD: synthetic_primer_admin
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U bifrost -d bifrost_wex_primer]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  migrate:
+    labels:
+      bifrost.writer-primer.candidate: ${GITHUB_SHA:?hosted exact candidate required}
+    image: bifrost-writer-primer-api:local
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+    environment:
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:synthetic_primer_admin@postgres:5432/bifrost_wex_primer
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:synthetic_primer_admin@postgres:5432/bifrost_wex_primer
+      BIFROST_ENVIRONMENT: testing
+      BIFROST_SECRET_KEY: synthetic-primer-test-secret-key-32-bytes
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
+    command: [alembic, upgrade, head]
+  provision:
+    labels:
+      bifrost.writer-primer.candidate: ${GITHUB_SHA:?hosted exact candidate required}
+    image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    platform: linux/amd64
+    environment:
+      PGPASSWORD: synthetic_primer_admin
+    volumes:
+      - ./scripts/ci/writer-primer/provision.sql:/primer/provision.sql:ro
+    command: [psql, -X, -v, ON_ERROR_STOP=1, -h, postgres, -U, bifrost, -d, bifrost_wex_primer, -f, /primer/provision.sql]
+  pool:
+    labels:
+      bifrost.writer-primer.candidate: ${GITHUB_SHA:?hosted exact candidate required}
+    image: edoburu/pgbouncer@sha256:9c78945868a6a142c7fc40ccd843bbe5a606df163c7ffce4de70e0d628d696a2
+    platform: linux/amd64
+    volumes:
+      - ./scripts/ci/writer-primer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./scripts/ci/writer-primer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    command: [/usr/bin/pgbouncer, /etc/pgbouncer/pgbouncer.ini]
+    healthcheck:
+      test: [CMD, pg_isready, -h, localhost, -p, "5432", -U, wex_incumbent, -d, bifrost_wex_primer]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  probe:
+    labels:
+      bifrost.writer-primer.candidate: ${GITHUB_SHA:?hosted exact candidate required}
+    image: bifrost-writer-primer-api:local
+    user: "1000:1000"
+    entrypoint: [python]
+    volumes:
+      - ./scripts/ci/writer-primer/probe.py:/primer/probe.py:ro
+      - ${PRIMER_RESULTS:?fixed conductor results directory required}:/results
+    command: [/primer/probe.py]
