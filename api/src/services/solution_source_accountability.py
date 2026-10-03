@@ -407,20 +407,28 @@ async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
     query = select(WorkspaceSourceRelease).where(
         WorkspaceSourceRelease.organization_id == accountability_organization_id,
         WorkspaceSourceRelease.disposition.in_(UNRESOLVED))
-    if await db.scalar(query.limit(1)) is None:
-        return []
-    try:
-        consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
-    except (UnprovenSourceConsumers, ValueError):
-        return []
     # Rotate unsupported records behind never/least-recently examined rows.
     # Exact declaration replay additionally targets its identity immediately.
     if source_release_id is not None:
         query = query.where(WorkspaceSourceRelease.id == source_release_id)
-    records = list((await db.scalars(query.order_by(
+    ordered = query.order_by(
         WorkspaceSourceRelease.accounting_checked_at.asc().nulls_first(),
         WorkspaceSourceRelease.created_at.asc(), WorkspaceSourceRelease.id)
-        .limit(min(max(limit, 1), 1000)).with_for_update().execution_options(populate_existing=True))).all())
+    # Select the bounded work set before the expensive aggregate readback, but
+    # acquire Source row locks only AFTER the collector's global/install locks.
+    # Re-read unresolved state under those locks before changing accounting.
+    identities = list((await db.scalars(ordered.with_only_columns(WorkspaceSourceRelease.id)
+        .limit(min(max(limit, 1), 1000)))).all())
+    if not identities:
+        return []
+    try:
+        consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
+    except (UnprovenSourceConsumers, ValueError):
+        # An unproven consumer prevents completion, not recovery rotation.
+        # Storage/infrastructure errors still propagate for the caller to retry.
+        consumers, loose_hashes, uncertain = [], {}, True
+    records = list((await db.scalars(ordered.where(WorkspaceSourceRelease.id.in_(identities))
+        .with_for_update().execution_options(populate_existing=True))).all())
     now = datetime.now(UTC)
     completed = []
     for record in records:

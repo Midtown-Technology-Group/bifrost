@@ -222,6 +222,36 @@ async def test_later_unpinned_install_blocks_completion_before_any_bundle_read(
 
 
 @pytest.mark.asyncio
+async def test_unknown_consumer_rotates_examined_obligations_without_claiming_completion(
+    db_session, platform_admin, accounting_install,
+):
+    """A real mutable-install blocker must not freeze the oldest debt forever."""
+    from src.models.orm.solutions import Solution
+    from src.services.solution_source_accountability import reconcile_solution_owned_source
+
+    f = accounting_install
+    await _attach_accounting_proof(db_session, f)
+    db_session.add(Solution(id=uuid4(), slug="accounting-rotation-blocker",
+        name="Unproven mutable consumer", organization_id=PROVIDER_ORG_ID,
+        status="active", execution_runtime_mode="repo-v1", active_deployment_id=None))
+    records = [WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=uuid4().hex + "a" * 8, source_tree_sha=f.tree,
+        paths={f.path: f.digest.removeprefix("sha256:")}, disposition="pending",
+        declared_disposition="pending", declaration_actor="platform_admin",
+        created_by=platform_admin.user_id, created_at=datetime.now(UTC) + timedelta(seconds=i))
+        for i in range(2)]
+    db_session.add_all(records)
+    await db_session.flush()
+    assert await reconcile_solution_owned_source(db_session, limit=1) == []
+    assert records[0].accounting_checked_at is not None
+    assert records[1].accounting_checked_at is None
+    await db_session.commit()
+    assert await reconcile_solution_owned_source(db_session, limit=1) == []
+    assert records[1].accounting_checked_at is not None
+    assert all(row.disposition == "pending" and row.completion_evidence is None for row in records)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("recovery", ["rotation", "exact_replay"])
 async def test_recovery_reaches_older_eligible_source_behind_100_blockers(
     db_session, platform_admin, accounting_install, recovery
