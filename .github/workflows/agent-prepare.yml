@@ -117,6 +117,7 @@ jobs:
           path: |
             ${{ env.AGENT_PREPARE_EVIDENCE }}/receipt.json
             ${{ env.AGENT_PREPARE_EVIDENCE }}/owned-inventory.json
+            ${{ env.AGENT_PREPARE_EVIDENCE }}/pre-pr-measurement.json
             ${{ env.AGENT_PREPARE_EVIDENCE }}/format.patch
             ${{ env.AGENT_PREPARE_EVIDENCE }}/format-metadata.json
           if-no-files-found: error

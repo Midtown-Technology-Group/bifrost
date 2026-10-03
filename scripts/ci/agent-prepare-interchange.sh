@@ -1635,40 +1635,306 @@ def credential_cleanup():
     save()
 
 
-def pre_pr():
-    begin("pre-pr")
+PRE_PR_STAGES = {
+    "repository",
+    "client",
+    "stack",
+    "quality",
+    "generated",
+    "unit",
+    "e2e",
+    "mcp",
+    "client-unit",
+    "browser",
+    "image",
+}
+
+
+def pre_pr_file(path, limit=65536):
+    # O_NONBLOCK prevents an unexpected FIFO from blocking before fstat admission.
+    fd = -1
     original = None
+    result = bytearray()
     try:
-        state["pre_pr_started"] = True
-        for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
-            require(os.environ.get(key), "credential")
-            state[key] = os.environ[key]
-        save()
-        with operation("literal-pre-pr"):
-            env = clean_env()
-            env["BIFROST_ACTION_PIN_TOKEN_FILE"] = state["BIFROST_ACTION_PIN_TOKEN_FILE"]
-            command(["./test.sh", "pre-pr"], env=env)
-            state["pre_pr_exit_zero"] = True
-            require(not capture(["git", "status", "--porcelain", "--untracked-files=all"]), "source")
+        remaining()
+        require(path == path.resolve(), "acquisition")
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_size <= limit, "acquisition")
+        while block := os.read(fd, min(65536, limit + 1 - len(result))):
+            result.extend(block)
+            require(len(result) <= limit, "bound")
+        remaining()
+        after = os.fstat(fd)
+        require(
+            (
+                after.st_dev,
+                after.st_ino,
+                after.st_uid,
+                after.st_mode,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            )
+            == (info.st_dev, info.st_ino, info.st_uid, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns),
+            "source",
+        )
     except BaseException as error:
         original = error
     finally:
-        try:
-            with operation("action-disposal"):
-                credential_cleanup()
-        except BaseException as error:
-            if original is None:
-                original = error
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except BaseException as error:
+                if original is None:
+                    original = error
     if original is not None:
         raise original
-    require(absent_owned(state["project"], PREFIX), "cleanup")
-    receipt["cleanup"]["pre_pr_final_empty"] = True
+    return bytes(result)
+
+
+def pre_pr_environment():
+    # Invoke the existing trusted shell source, including its primary-checkout
+    # .env.test fallback; never guess effective environment from a text parser.
+    script = (
+        "source ./test.sh help >/dev/null; export BIFROST_TEST_ENV_FILE; "
+        "python3 -c 'import json,os; "
+        "print(json.dumps({k:os.environ.get(k) for k in "
+        '("COMPOSE_FILE","COMPOSE_PROJECT_NAME","BIFROST_SKIP_BUILD","BIFROST_TEST_ENV_FILE")}))' + "'"
+    )
+    # Match the existing stage runner's argv0: help reads $0, which must be
+    # the genuine script path rather than the shell name or a synthetic label.
+    value = decode(capture(["bash", "-c", script, "./test.sh"]).encode(), 65536)
+    require(
+        type(value) is dict
+        and set(value) == {"COMPOSE_FILE", "COMPOSE_PROJECT_NAME", "BIFROST_SKIP_BUILD", "BIFROST_TEST_ENV_FILE"}
+        and value["COMPOSE_FILE"] == "docker-compose.test.yml"
+        and value["COMPOSE_PROJECT_NAME"] == state["project"]
+        and value["BIFROST_SKIP_BUILD"] != "1"
+        and type(value["BIFROST_TEST_ENV_FILE"]) is str,
+        "source",
+    )
+    selected = Path(value["BIFROST_TEST_ENV_FILE"])
+    common = Path(capture(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"]))
+    primary = common.parent / ".env.test"
+    expected = ROOT / ".env.test" if (ROOT / ".env.test").is_file() else primary
+    if not expected.is_file():
+        expected = ROOT / ".env.test"
+    require(selected == expected, "source")
+    value["env_digest"] = sha_bytes(pre_pr_file(selected)) if selected.is_file() else "missing"
+    return value
+
+
+def pre_pr_snapshot(env_file, ledger, stage="stack"):
+    # The helper observes Compose under the same trusted effective environment.
+    require(stage in PRE_PR_STAGES, "schema")
+    raw = capture(
+        [
+            "bash",
+            "-c",
+            'source ./test.sh help >/dev/null; python3 "$@"',
+            "./test.sh",
+            "scripts/lib/pre_pr_stage_evidence.py",
+            "snapshot",
+            "--repo",
+            str(ROOT),
+            "--state",
+            str(ledger),
+            "--stage",
+            stage,
+            "--compose-file",
+            "docker-compose.test.yml",
+            "--env-file",
+            env_file,
+        ]
+    )
+    value = decode(raw.encode(), 65536)
+    require(
+        type(value) is dict
+        and set(value)
+        == {
+            "head",
+            "status",
+            "compose_sha256",
+            "compose_available",
+            "compose_images",
+            "env_sha256",
+            "docker_version",
+            "compose_version",
+            "python_version",
+            "node_version",
+            "browser_config_sha256",
+        }
+        and value["head"] == receipt["candidate"]["checkout_sha"]
+        and value["status"] == ""
+        and value["compose_available"] is True,
+        "source",
+    )
+    for key in value.keys() - {"compose_available", "compose_images"}:
+        require(type(value[key]) is str and value[key] != "unavailable", "source")
+    require(
+        type(value["compose_images"]) is list
+        and len(value["compose_images"]) <= 128
+        and all(type(item) is str and re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in value["compose_images"]),
+        "source",
+    )
+    return value
+
+
+def validate_pre_pr_measurement(value):
+    require(
+        type(value) is dict
+        and set(value)
+        == {
+            "schema",
+            "candidate_sha",
+            "run_id",
+            "run_attempt",
+            "admission",
+            "literal_exit",
+            "stages",
+            "image_witness",
+            "diagnostic",
+        }
+        and value["schema"] == "bifrost.test.agent-prepare-pre-pr-measurement/v1"
+        and value["candidate_sha"] == receipt["candidate"]["checkout_sha"]
+        and type(value["candidate_sha"]) is str
+        and re.fullmatch(r"[0-9a-f]{40}", value["candidate_sha"])
+        and value["run_id"] == os.environ["GITHUB_RUN_ID"]
+        and value["run_attempt"] == os.environ["GITHUB_RUN_ATTEMPT"]
+        and all(type(value[k]) is str and re.fullmatch(r"[0-9]+", value[k]) for k in ("run_id", "run_attempt"))
+        and type(value["admission"]) is str
+        and value["admission"] in {"admitted", "missing", "invalid"}
+        and (
+            value["literal_exit"] is None
+            or (type(value["literal_exit"]) is int and -255 <= value["literal_exit"] <= 255)
+        )
+        and type(value["stages"]) is list
+        and len(value["stages"]) <= 11
+        and type(value["image_witness"]) is str
+        and value["image_witness"] in {"none", "stack-complete"}
+        and value["diagnostic"] == "unknown",
+        "schema",
+    )
+    names = []
+    for row in value["stages"]:
+        require(
+            type(row) is dict
+            and set(row) == {"stage", "status", "command_exit"}
+            and type(row["stage"]) is str
+            and row["stage"] in PRE_PR_STAGES
+            and type(row["status"]) is str
+            and row["status"] in {"running", "complete", "failed"}
+            and row["command_exit"] is None,
+            "schema",
+        )
+        names.append(row["stage"])
+    require(names == sorted(set(names)), "schema")
+    if value["admission"] != "admitted":
+        require(not names and value["image_witness"] == "none", "schema")
+    if value["image_witness"] == "stack-complete":
+        require(any(row["stage"] == "stack" and row["status"] == "complete" for row in value["stages"]), "schema")
+    require(len(canonical(value)) <= 16384, "bound")
+
+
+def pre_pr_capture():
+    value = state["pre_pr_measurement"]
+    # Operation exit may hold a timeout/control classification rather than a
+    # child return. Only the first actual literal child's retained wait result
+    # supplies this separate measurement, including negative signal returns.
+    index = state.get("pre_pr_literal_child_index")
+    children = state.get("children", [])
+    if index is not None and len(children) > index:
+        child_record = children[index]
+        require(child_record["operation"] == "literal-pre-pr", "source")
+        value["literal_exit"] = child_record["exit"]
+    ledger = Path(state["pre_pr_ledger"])
+    plan = Path(state["pre_pr_plan"])
+    if not ledger.exists() or not plan.exists():
+        value["admission"] = "missing"
+        raise Failure("source")
+    require(state["pre_pr_fresh"] is True, "source")
+    require(pre_pr_environment() == state["pre_pr_environment"], "source")
+    current = pre_pr_snapshot(state["pre_pr_environment"]["BIFROST_TEST_ENV_FILE"], ledger)
+    initial = state["pre_pr_snapshot"]
+    require(
+        {k: v for k, v in current.items() if k != "compose_images"}
+        == {k: v for k, v in initial.items() if k != "compose_images"},
+        "source",
+    )
+    raw_plan = pre_pr_file(plan)
+    parsed_plan = decode(raw_plan, 65536)
+    require(
+        type(parsed_plan) is dict and parsed_plan.get("scope") in {"affected", "comprehensive", "docs-only"}, "source"
+    )
+    context = "scope=" + parsed_plan["scope"] + ";full=0;plan=" + sha_bytes(raw_plan)
+    observed = decode(pre_pr_file(ledger), 65536)
+    require(type(observed) is dict and set(observed) == {"stages"} and type(observed["stages"]) is dict, "schema")
+    require(0 < len(observed["stages"]) <= 11 and set(observed["stages"]) <= PRE_PR_STAGES, "schema")
+    for path in ("test.sh", "scripts/lib/pre_pr_stage_evidence.py", "docker-compose.test.yml"):
+        require(sha_file(ROOT / path) == EXPECTED_SOURCE[path], "source")
+    common_keys = {
+        "head",
+        "status",
+        "compose_sha256",
+        "env_sha256",
+        "docker_version",
+        "compose_version",
+        "python_version",
+        "node_version",
+    }
+    rows = []
+    for name, row in sorted(observed["stages"].items()):
+        require(
+            type(row) is dict
+            and set(row) == {"status", "context", "signature"}
+            and type(row["status"]) is str
+            and row["status"] in {"running", "complete", "failed"}
+            and row["context"] == context
+            and type(row["signature"]) is dict,
+            "schema",
+        )
+        keys = common_keys | ({"compose_images"} if name != "repository" else set())
+        if name == "browser":
+            keys |= {"browser_config_sha256"}
+        # start intentionally excludes mutable build-image IDs for these stages.
+        if row["status"] == "running" and name in {"client", "stack", "quality", "browser", "image"}:
+            keys -= {"compose_images"}
+        require(set(row["signature"]) == keys, "schema")
+        # The authoritative helper selects client/test profiles for these
+        # stages; their genuine Compose hashes differ from default stack.
+        stage_snapshot = current
+        if name in {"client", "client-unit", "browser", "mcp"}:
+            stage_snapshot = pre_pr_snapshot(state["pre_pr_environment"]["BIFROST_TEST_ENV_FILE"], ledger, name)
+        for key in keys - {"compose_images"}:
+            require(type(row["signature"][key]) is str and row["signature"][key] == stage_snapshot[key], "source")
+        if "compose_images" in keys:
+            ids = row["signature"]["compose_images"]
+            require(type(ids) is list and len(ids) <= 128 and ids == sorted(set(ids)), "schema")
+            require(all(type(item) is str and re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in ids), "schema")
+        rows.append({"stage": name, "status": row["status"], "command_exit": None})
+    # Commit admitted rows only after every private record was validated.
+    value.update(admission="admitted", stages=rows)
+    state["pre_pr_stack_record"] = observed["stages"].get("stack")
+    validate_pre_pr_measurement(value)
+    save()
+
+
+def pre_pr_image_witness():
+    value = state["pre_pr_measurement"]
     record = state["pre_pr_api_tag"]
     current = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
-    require(current and state["pre_pr_exit_zero"], "acquisition")
+    require(current and current not in state["initial_image_ids"], "acquisition")
+    stack = state.get("pre_pr_stack_record")
+    require(
+        value["admission"] == "admitted"
+        and stack is not None
+        and stack["status"] == "complete"
+        and current in stack["signature"]["compose_images"],
+        "acquisition",
+    )
     facts = inspect("image", current)
     labels = facts["Config"].get("Labels") or {}
-    # These closed services share this exact frozen context/Dockerfile/image alias.
     allowed = {"init", "api", "worker", "scheduler", "scheduler-fixtures", "test-runner"}
     require(
         facts["Id"] == current
@@ -1677,14 +1943,115 @@ def pre_pr():
         and labels.get("com.docker.compose.service") in allowed,
         "acquisition",
     )
+    # Resolve genuine Compose build association under the effective environment;
+    # private config never reaches the safe artifact.
+    config = decode(
+        capture(
+            [
+                "bash",
+                "-c",
+                'source ./test.sh help >/dev/null; docker compose -f "$COMPOSE_FILE" --profile e2e --profile test config --format json',
+                "./test.sh",
+            ]
+        ).encode()
+    )
+    require(type(config) is dict and config.get("name") == state["project"], "acquisition")
+    for name in allowed:
+        service = config["services"][name]
+        build = service["build"]
+        require(
+            service["image"] == record["tag"]
+            and type(build) is dict
+            and Path(build["context"]) == ROOT
+            and build["dockerfile"] == "api/Dockerfile.dev",
+            "acquisition",
+        )
     record["id"] = current
     record["witness"] = {
         "project": state["project"],
         "service": labels["com.docker.compose.service"],
-        "literal_exit": 0,
+        "literal_exit": value["literal_exit"],
+        "provenance": "stack-complete",
         "image": facts,
     }
+    value["image_witness"] = "stack-complete"
+    validate_pre_pr_measurement(value)
     save()
+
+
+def pre_pr():
+    state["pre_pr_measurement"] = {
+        "schema": "bifrost.test.agent-prepare-pre-pr-measurement/v1",
+        "candidate_sha": receipt["candidate"]["checkout_sha"],
+        "run_id": os.environ["GITHUB_RUN_ID"],
+        "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+        "admission": "invalid",
+        "literal_exit": None,
+        "stages": [],
+        "image_witness": "none",
+        "diagnostic": "unknown",
+    }
+    begin("pre-pr")
+    original = None
+    try:
+        for key in ("BIFROST_ACTION_PIN_TOKEN_FILE", "SQL_SOURCE_ACTION_CREDENTIAL_IDENTITY"):
+            require(os.environ.get(key), "credential")
+            state[key] = os.environ[key]
+        metadata = Path(capture(["git", "rev-parse", "--absolute-git-dir"]))
+        directory = metadata / "bifrost-test-locks"
+        ledger = Path(
+            capture(
+                ["git", "rev-parse", "--path-format=absolute", "--git-path", "bifrost-test-locks/pre-pr-stages.json"]
+            )
+        )
+        plan = directory / "pre-pr-affected-plan.json"
+        require(metadata == metadata.resolve() and ledger == directory / "pre-pr-stages.json", "acquisition")
+        require(
+            directory == directory.resolve() and not os.path.lexists(ledger) and not os.path.lexists(plan),
+            "acquisition",
+        )
+        state.update(pre_pr_ledger=str(ledger), pre_pr_plan=str(plan), pre_pr_fresh=True)
+        state["pre_pr_environment"] = pre_pr_environment()
+        state["pre_pr_snapshot"] = pre_pr_snapshot(state["pre_pr_environment"]["BIFROST_TEST_ENV_FILE"], ledger)
+        require(state["pre_pr_snapshot"]["env_sha256"] == state["pre_pr_environment"]["env_digest"], "source")
+        for path in ("test.sh", "scripts/lib/pre_pr_stage_evidence.py", "docker-compose.test.yml"):
+            require(sha_file(ROOT / path) == EXPECTED_SOURCE[path], "source")
+        require(not os.path.lexists(ledger) and not os.path.lexists(plan), "acquisition")
+        state["pre_pr_started"] = True
+        save()
+        with operation("literal-pre-pr"):
+            env = clean_env()
+            env["BIFROST_ACTION_PIN_TOKEN_FILE"] = state["BIFROST_ACTION_PIN_TOKEN_FILE"]
+            state["pre_pr_literal_child_index"] = len(state.get("children", []))
+            command(["./test.sh", "pre-pr"], env=env)
+            state["pre_pr_exit_zero"] = True
+            require(not capture(["git", "status", "--porcelain", "--untracked-files=all"]), "source")
+    except BaseException as error:
+        original = error
+    finally:
+        # Capture, genuine image acquisition and credential disposal are independent;
+        # none can replace the first original command/control object.
+        for callback in (pre_pr_capture, pre_pr_image_witness):
+            try:
+                callback()
+            except BaseException as error:
+                if original is None:
+                    original = error
+        try:
+            with operation("action-disposal"):
+                credential_cleanup()
+        except BaseException as error:
+            if original is None:
+                original = error
+        try:
+            save()
+        except BaseException as error:
+            if original is None:
+                original = error
+    if original is not None:
+        raise original
+    require(absent_owned(state["project"], PREFIX), "cleanup")
+    receipt["cleanup"]["pre_pr_final_empty"] = True
     end_stage()
 
 
@@ -2387,6 +2754,24 @@ def cleanup():
         row.update(disposed=True, inspection_status="absent")
 
     def remove_image(record, row):
+        if record is state.get("pre_pr_api_tag") and state.get("pre_pr_started"):
+            # Absence is not acquisition proof for an actual partial/failed build.
+            # Require the admitted immutable witness before any absence shortcut.
+            measurement = state.get("pre_pr_measurement")
+            witness = record.get("witness")
+            require(
+                type(measurement) is dict
+                and measurement.get("admission") == "admitted"
+                and measurement.get("image_witness") == "stack-complete"
+                and type(record.get("id")) is str
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", record["id"])
+                and record["id"] not in state["initial_image_ids"]
+                and type(witness) is dict
+                and witness.get("provenance") == "stack-complete"
+                and type(witness.get("image")) is dict
+                and witness["image"].get("Id") == record["id"],
+                "acquisition",
+            )
         existing = capture(["docker", "image", "ls", "-q", "--no-trunc", record["tag"]])
         if not existing:
             require(
@@ -2829,6 +3214,10 @@ def admit_success():
         orchestration <= 170 and all(durations[row["name"]] <= row["cap_s"] for row in receipt["stages"]), "timeout"
     )
     if receipt["mode"] == "verify":
+        validate_pre_pr_measurement(state.get("pre_pr_measurement"))
+        require(state["pre_pr_measurement"]["admission"] == "admitted", "source")
+        require(state["pre_pr_measurement"]["literal_exit"] == 0, "test")
+        require(all(row["status"] == "complete" for row in state["pre_pr_measurement"]["stages"]), "test")
         require(all(value is True for value in receipt["credentials"].values()), "credential")
         require(receipt["cleanup"]["pre_pr_final_empty"] is True, "cleanup")
         require(all(value is not None for value in receipt["graphs"].values()), "feature")
@@ -2896,6 +3285,9 @@ def publication(original):
             validate_receipt()
             owned = {"schema": "bifrost.test.agent-prepare-owned/v1", **receipt["cleanup"]}
             atomic_json(EVIDENCE / "owned-inventory.json", owned, 262144)
+            if state.get("pre_pr_measurement") is not None:
+                validate_pre_pr_measurement(state["pre_pr_measurement"])
+                atomic_json(EVIDENCE / "pre-pr-measurement.json", state["pre_pr_measurement"], 16384)
             if receipt["format"] is not None:
                 atomic_json(
                     EVIDENCE / "format-metadata.json",
