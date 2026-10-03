@@ -191,6 +191,7 @@ class WorkspaceSourceReleaseService:
         if existing is not None:
             _assert_compatible_replay(existing, request, paths)
             if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
                 await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
 
@@ -259,9 +260,13 @@ class WorkspaceSourceReleaseService:
                 raise
             _assert_compatible_replay(existing, request, paths)
             if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
                 await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
         await self._reconcile_solution_delivery(record.id)
+        # A bounded accounting fence may roll back and expire the caller's
+        # committed declaration. Reload scalars before synchronous DTO access.
+        await self.db.refresh(record)
         await self.db.refresh(record, attribute_names=["solution_deploy_obligations"])
         return source_release_response(record, now=now)
 

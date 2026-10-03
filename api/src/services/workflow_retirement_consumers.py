@@ -13,11 +13,11 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from bifrost.workspace_release import canonical_digest
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.inspection import inspect as orm_inspect
 
+from bifrost.workspace_release import canonical_digest
 from src.models.enums import ExecutionStatus
 from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.agents import Agent, AgentTool
@@ -28,6 +28,12 @@ from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.forms import Form, FormField
 from src.models.orm.services import ServiceAttempt, ServiceDefinition
 from src.models.orm.workflows import Workflow
+from src.services.execution.attempts import (
+    TERMINAL_ATTEMPT_STATUSES as TERMINAL_WORKFLOW_ATTEMPT_STATUSES,
+)
+from src.services.execution_attempts import (
+    TERMINAL_ATTEMPT_STATUSES as TERMINAL_GENERIC_ATTEMPT_STATUSES,
+)
 
 WORKFLOW_RETIREMENT_CONSUMER_SCHEMA = "bifrost.workflow-retirement-consumers/v1"
 MAX_INVENTORY_ROWS = 1024
@@ -39,7 +45,13 @@ _ACCEPTED_EXECUTION_STATUSES = (
     ExecutionStatus.STUCK,
 )
 _ACTIVE_SERVICE_ATTEMPT_STATES = ("starting", "running", "stopping")
-_OPEN_APPROVAL_STATUSES = ("pending", "approved", "dispatched")
+_TERMINAL_EXECUTION_STATUSES = (
+    ExecutionStatus.SUCCESS,
+    ExecutionStatus.FAILED,
+    ExecutionStatus.TIMEOUT,
+    ExecutionStatus.CANCELLED,
+    ExecutionStatus.COMPLETED_WITH_ERRORS,
+)
 
 
 class WorkflowRetirementInventoryError(ValueError):
@@ -151,8 +163,8 @@ async def inspect_workflow_retirement_consumers(
     # including URN/braces/hex/mixed case. The bound is on potential callers,
     # not on unrelated Forms across the platform.
     def uuid_text(column):
-        return func.replace(func.replace(func.replace(func.replace(func.lower(column),
-            "urn:uuid:", ""), "{", ""), "}", ""), "-", "")
+        return func.replace(func.replace(func.replace(func.replace(func.replace(func.lower(column),
+            "urn:", ""), "uuid:", ""), "{", ""), "}", ""), "-", "")
 
     form_path = func.ltrim(func.replace(Form.workflow_path, "\\", "/"), "/")
     forms = await scan.rows(Form, or_(Form.workflow_id.in_(names), Form.launch_workflow_id.in_(names),
@@ -231,8 +243,7 @@ async def inspect_workflow_retirement_consumers(
         ExecutionAttempt.logical_job_id == Execution.id,
         ExecutionAttempt.completed_at.is_(None),
     ))
-    legacy_uuid = func.replace(func.replace(func.replace(func.replace(
-        func.lower(Execution.workflow_name), "urn:uuid:", ""), "{", ""), "}", ""), "-", "")
+    legacy_uuid = uuid_text(Execution.workflow_name)
     execution_identity = or_(
         Execution.workflow_id == workflow.id,
         # Legacy/inline rows may lack the FK. Retain any exact stored-name or
@@ -274,10 +285,33 @@ async def inspect_workflow_retirement_consumers(
             scan.work("ExecutionAttempt", row,
                       scope_row=execution_by_id.get(row.logical_job_id))
 
+    # Dispatch is retained approval provenance, not a completion status. Only
+    # known terminal execution/attempt evidence can release a dispatched row;
+    # missing/mismatched execution identities and unknown attempt states block.
+    unresolved_workflow_attempt = exists(select(WorkflowExecutionAttempt.id).where(
+        WorkflowExecutionAttempt.execution_id == Execution.id,
+        or_(WorkflowExecutionAttempt.completed_at.is_(None),
+            WorkflowExecutionAttempt.status.not_in(TERMINAL_WORKFLOW_ATTEMPT_STATUSES)),
+    ))
+    unresolved_generic_attempt = exists(select(ExecutionAttempt.id).where(
+        ExecutionAttempt.logical_job_type == "workflow",
+        ExecutionAttempt.logical_job_id == Execution.id,
+        or_(ExecutionAttempt.completed_at.is_(None),
+            ExecutionAttempt.status.not_in(TERMINAL_GENERIC_ATTEMPT_STATUSES)),
+    ))
+    completed_approval_execution = exists(select(Execution.id).where(
+        Execution.id == AgentActionApproval.execution_id,
+        execution_identity,
+        Execution.status.in_(_TERMINAL_EXECUTION_STATUSES),
+        Execution.completed_at.is_not(None),
+        ~unresolved_workflow_attempt,
+        ~unresolved_generic_attempt,
+    ))
     approvals = await scan.rows(
         AgentActionApproval,
         (AgentActionApproval.workflow_id == workflow.id)
-        & AgentActionApproval.status.in_(_OPEN_APPROVAL_STATUSES),
+        & or_(AgentActionApproval.status.in_(("pending", "approved")),
+              (AgentActionApproval.status == "dispatched") & ~completed_approval_execution),
     )
     for row in approvals:
         scan.work("AgentActionApproval", row)

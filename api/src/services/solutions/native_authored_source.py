@@ -252,7 +252,7 @@ async def native_authored_install_readback(
         raise NativeAuthoredSourceMismatch("Owned tables differ from authored manifest")
     table_by_id = {row.id: row for row in tables}
     from shared.policies.probe import make_seed_admin_bypass
-    from shared.policy_rules import resolve_policy_refs
+    from shared.policy_rules import PolicyRuleDomainMismatch, PolicyRuleNotFound, resolve_policy_refs
 
     from src.models.contracts.policies import TablePolicies
     from src.repositories.policy_rule import PolicyRuleRepository
@@ -264,9 +264,12 @@ async def native_authored_install_readback(
         access = {"policies": entry["policies"]} if entry["policies"] is not None else make_seed_admin_bypass()
         policy = TablePolicies.model_validate(access)
         await _validate_table_policy_claim_refs(db, solution.organization_id, policy, solution.id)
-        await resolve_policy_refs(policy.model_copy(deep=True),
-            repo=PolicyRuleRepository(db, org_id=solution.organization_id, is_superuser=True),
-            action_domain="table", solution_id=solution.id)
+        try:
+            await resolve_policy_refs(policy.model_copy(deep=True),
+                repo=PolicyRuleRepository(db, org_id=solution.organization_id, is_superuser=True),
+                action_domain="table", solution_id=solution.id)
+        except (PolicyRuleNotFound, PolicyRuleDomainMismatch) as exc:
+            raise NativeAuthoredSourceMismatch("Authored table policy reference cannot resolve in its domain") from exc
         if (row.organization_id != solution.organization_id or row.access != access
                 or any(getattr(row, key) != value for key, value in expected.items())):
             raise NativeAuthoredSourceMismatch("Installed table metadata or policies differ from authored manifest")

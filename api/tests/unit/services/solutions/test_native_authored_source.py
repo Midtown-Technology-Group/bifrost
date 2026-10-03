@@ -153,13 +153,13 @@ async def test_descriptor_drift_does_not_allow_accounting(field, value):
     db.commit.assert_not_awaited()
 
 
-def _installed_readback(monkeypatch, *, roles=(), role_names=None):
+def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None):
     workflow_fields = {"id": WID, "name": "probe", "path": "functions/probe.py",
         "function_name": "probe", "roles": list(roles)}
     if role_names is not None:
         workflow_fields["role_names"] = role_names
     # Actual INSTALL stores this unexpanded dictionary after policy validation.
-    policies = [{"name": "read", "actions": ["read"]}]
+    policies = policies if policies is not None else [{"name": "read", "actions": ["read"]}]
     table_fields = {"id": TID, "name": "evidence", "policies": policies}
     source = authored(**{
         ".bifrost/workflows.yaml": yaml.safe_dump({"workflows": {WID: workflow_fields}}).encode(),
@@ -219,6 +219,31 @@ async def test_successful_readback_preserves_inline_policy_omissions(monkeypatch
     fixture.db.commit.assert_not_awaited()
     fixture.db.flush.assert_not_awaited()
     fixture.db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing", "wrong_domain", "infrastructure"])
+async def test_named_table_policy_resolution_classifies_only_authored_mismatches(monkeypatch, fault):
+    from shared.policy_rules import PolicyRuleDomainMismatch, PolicyRuleNotFound
+
+    fixture = _installed_readback(monkeypatch, policies=[{"$ref": "reviewed_rule"}])
+    lookup = AsyncMock(return_value=None if fault == "missing" else SimpleNamespace(domain="file"))
+    failure = RuntimeError("policy repository unavailable")
+    if fault == "infrastructure":
+        lookup.side_effect = failure
+    monkeypatch.setattr("src.repositories.policy_rule.PolicyRuleRepository",
+        lambda *_args, **_kwargs: SimpleNamespace(get_for_ref=lookup))
+    if fault == "infrastructure":
+        with pytest.raises(RuntimeError) as raised:
+            await _read_installed(fixture)
+        assert raised.value is failure
+    else:
+        with pytest.raises(NativeAuthoredSourceMismatch, match="policy reference") as raised:
+            await _read_installed(fixture)
+        assert isinstance(raised.value.__cause__, PolicyRuleNotFound if fault == "missing" else PolicyRuleDomainMismatch)
+    lookup.assert_awaited_once_with(name="reviewed_rule", domain="table", solution_id=SID)
+    assert fixture.table.access == {"policies": [{"$ref": "reviewed_rule"}]}
+    fixture.db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

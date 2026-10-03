@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+
 from src.models.enums import ExecutionStatus
 from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.agents import Agent, AgentTool
@@ -232,7 +233,9 @@ async def test_terminal_execution_history_does_not_consume_active_inventory_boun
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("uuid_format", ["canonical", "uppercase", "mixedcase", "hyphenless", "braced", "urn"])
+@pytest.mark.parametrize("uuid_format", [
+    "canonical", "uppercase", "mixedcase", "hyphenless", "braced", "urn", "uuid_prefix", "urn_prefix",
+])
 async def test_form_workflow_string_accepts_uuid_parser_formats(uuid_format):
     workflow = _workflow()
     target = str(workflow.id)
@@ -247,6 +250,10 @@ async def test_form_workflow_string_accepts_uuid_parser_formats(uuid_format):
         reference = target.replace("-", "")
     elif uuid_format == "braced":
         reference = f"{{{target}}}"
+    elif uuid_format == "uuid_prefix":
+        reference = f"uuid:{target}"
+    elif uuid_format == "urn_prefix":
+        reference = f"urn:{target}"
     else:
         reference = f"urn:uuid:{target}"
     # Confirm the test input really is accepted by the resolver's UUID parser.

@@ -27,7 +27,9 @@ from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solutions.github_delivery_source import (
     GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader, VerifiedAuthoredSolution, VerifiedGitSource,
 )
-from src.services.solutions.source_revision import SolutionSourceRevisionConflict, SolutionSourceRevisionService
+from src.services.solutions.source_revision import (
+    SolutionSourceRevisionConflict, SolutionSourceRevisionService, retain_legacy_registration_names,
+)
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
 from src.services.solutions.workflow_revision_recipe import compile_workflow_registrations
@@ -108,7 +110,9 @@ class GitSourceDeliveryService:
         current_hashes = {path: ref.content_hash for path, ref in {**resolution.sources, **resolution.resources}.items()}
         matches = manifest.git.commit_sha == source.commit_sha and current_hashes == source.source_hashes
         if source.workflow_recipe is not None:
-            desired = compile_workflow_registrations(source.workflow_recipe, source.files, WorkflowIndexer(self.db))
+            desired = retain_legacy_registration_names(
+                compile_workflow_registrations(source.workflow_recipe, source.files, WorkflowIndexer(self.db)),
+                dict(resolution.workflows))
             matches = matches and desired == resolution.workflows and source.workflow_recipe.shared_tables == resolution.shared_tables
         if matches:
             expected_current = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=base.id,

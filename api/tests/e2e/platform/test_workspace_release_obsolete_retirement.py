@@ -8,10 +8,12 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from src.core.constants import PROVIDER_ORG_ID
 from src.core.security import mint_engine_token
 from src.models.contracts.workspace_promotions import WorkspaceLiveRetireRequest
 from src.models.enums import ExecutionStatus
+from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.forms import Form
@@ -30,8 +32,9 @@ from src.services.workspace_release_retirement import (
     WorkspaceReleaseRetirementService,
 )
 from src.services.workspace_release_runtime import resolve_pinned_workspace_runtime
-
-from tests.e2e.platform.test_solution_source_revision import db_session as db_session
+from tests.e2e.platform.test_solution_source_revision import (
+    db_session as db_session,  # noqa: PLC0414
+)
 from tests.e2e.platform.test_workspace_release_retirement import (
     _pinned_evidence,
     _seed_live_release,
@@ -179,26 +182,134 @@ async def test_failed_retirement_keeps_live_and_registration_unmodified(db_sessi
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("spelling", ["hex", "urn", "braced", "mixed_case"])
+@pytest.mark.parametrize("spelling", ["hex", "urn", "uuid_prefix", "urn_prefix", "braced", "mixed_case"])
+@pytest.mark.parametrize("reference_type", ["workflow_id", "launch_workflow_id"])
 async def test_native_inventory_finds_inactive_form_uuid_spellings_in_postgresql(
-    db_session, platform_admin, spelling,
+    db_session, platform_admin, spelling, reference_type,
 ):
     _artifact, release, row, service, request, _pin = await _fixture(db_session, platform_admin)
     reference = {
         "hex": row.id.hex,
         "urn": row.id.urn,
+        "uuid_prefix": "uuid:" + str(row.id),
+        "urn_prefix": "urn:" + str(row.id),
         "braced": "{" + str(row.id).upper() + "}",
         "mixed_case": str(row.id)[:18].upper() + str(row.id)[18:],
     }[spelling]
-    form = Form(name="Retained inactive caller", workflow_id=reference,
+    form = Form(name="Retained inactive caller", **{reference_type: reference},
         organization_id=release.organization_id, is_active=False, created_by=str(platform_admin.user_id))
     db_session.add(form)
     await db_session.commit()
     inventory = await inspect_workflow_retirement_consumers(db_session, row)
-    assert any(item["id"] == str(form.id) and item["reference_type"] == "workflow_id"
+    assert any(item["id"] == str(form.id) and item["reference_type"] == reference_type
         for item in inventory["native_callers"])
     with pytest.raises(WorkspaceReleaseRetirementError):
         await _retire(service, request, platform_admin)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [
+    ExecutionStatus.SUCCESS, ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT,
+    ExecutionStatus.CANCELLED, ExecutionStatus.COMPLETED_WITH_ERRORS,
+])
+async def test_dispatched_approval_with_completed_execution_remains_history(
+    db_session, platform_admin, status,
+):
+    _artifact, _release, row, service, request, _pin = await _fixture(db_session, platform_admin)
+    now = datetime.now(UTC)
+    execution = Execution(workflow_id=row.id, workflow_name=row.name,
+        executed_by_name="Retained approval execution", status=status, completed_at=now)
+    db_session.add(execution)
+    await db_session.flush()
+    db_session.add_all([
+        WorkflowExecutionAttempt(execution_id=execution.id, attempt_number=1,
+            status="succeeded", phase="terminal", completed_at=now),
+        ExecutionAttempt(logical_job_type="workflow", logical_job_id=execution.id,
+            attempt_number=1, status="succeeded", completed_at=now,
+            policy_identifier="retirement-test", workload_class="workflow",
+            admission_policy="accepted", mechanism="queue"),
+    ])
+    approval = AgentActionApproval(agent_id=uuid4(), workflow_id=row.id,
+        execution_id=execution.id, status="dispatched", parameters={}, caller={})
+    db_session.add(approval)
+    await db_session.commit()
+    inventory = await inspect_workflow_retirement_consumers(db_session, row)
+    assert inventory["accepted_work"] == []
+    await _retire(service, request, platform_admin)
+    retained = await db_session.get(AgentActionApproval, approval.id, populate_existing=True)
+    assert retained is not None and retained.status == "dispatched"
+    assert retained.execution_id == execution.id
+    retained_execution = await db_session.get(Execution, execution.id, populate_existing=True)
+    assert retained_execution is not None and retained_execution.status == status
+    assert retained_execution.completed_at == now
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", [
+    "pending_approval", "approved_approval", "unfinished_execution", "nonterminal_execution",
+    "workflow_attempt", "generic_attempt", "unknown_attempt", "missing_execution", "missing_execution_id",
+    "wrong_workflow", "unknown_legacy_name",
+])
+async def test_approval_without_proven_finished_dispatch_blocks_retirement(
+    db_session, platform_admin, kind,
+):
+    _artifact, _release, row, service, request, _pin = await _fixture(db_session, platform_admin)
+    now = datetime.now(UTC)
+    execution_id = uuid4() if kind == "missing_execution" else None
+    if kind not in {"missing_execution", "missing_execution_id"}:
+        workflow_id = row.id
+        if kind == "wrong_workflow":
+            unrelated = Workflow(name="Unrelated approval execution", function_name="unrelated",
+                path=f"features/unrelated_approval/{uuid4().hex}.py")
+            db_session.add(unrelated)
+            await db_session.flush()
+            workflow_id = unrelated.id
+        elif kind == "unknown_legacy_name":
+            workflow_id = None
+        execution = Execution(workflow_id=workflow_id,
+            workflow_name="Unknown legacy workflow" if kind == "unknown_legacy_name" else row.name,
+            executed_by_name="Unresolved approval execution",
+            status=ExecutionStatus.STUCK if kind == "nonterminal_execution" else ExecutionStatus.SUCCESS,
+            completed_at=None if kind == "unfinished_execution" else now)
+        db_session.add(execution)
+        await db_session.flush()
+        execution_id = execution.id
+        if kind == "workflow_attempt":
+            db_session.add(WorkflowExecutionAttempt(execution_id=execution.id,
+                attempt_number=1, status="dispatching", phase="dispatch"))
+        elif kind in {"generic_attempt", "unknown_attempt"}:
+            db_session.add(ExecutionAttempt(logical_job_type="workflow", logical_job_id=execution.id,
+                attempt_number=1, status="unknown" if kind == "unknown_attempt" else "running",
+                completed_at=now if kind == "unknown_attempt" else None,
+                policy_identifier="retirement-test", workload_class="workflow",
+                admission_policy="accepted", mechanism="queue"))
+    approval = AgentActionApproval(agent_id=uuid4(), workflow_id=row.id,
+        execution_id=execution_id, parameters={}, caller={},
+        status=kind.removesuffix("_approval") if kind.endswith("_approval") else "dispatched")
+    db_session.add(approval)
+    await db_session.commit()
+    inventory = await inspect_workflow_retirement_consumers(db_session, row)
+    assert any(item["entity_type"] == "AgentActionApproval" and item["id"] == str(approval.id)
+        for item in inventory["accepted_work"])
+    with pytest.raises(WorkspaceReleaseRetirementError):
+        await _retire(service, request, platform_admin)
+
+
+@pytest.mark.asyncio
+async def test_dispatched_approval_history_does_not_exhaust_inventory_bound(db_session, platform_admin):
+    _artifact, _release, row, _service, _request, _pin = await _fixture(db_session, platform_admin)
+    execution = Execution(workflow_id=row.id, workflow_name=row.name,
+        executed_by_name="Retained approval history", status=ExecutionStatus.SUCCESS,
+        completed_at=datetime.now(UTC))
+    db_session.add(execution)
+    await db_session.flush()
+    history = [AgentActionApproval(agent_id=uuid4(), workflow_id=row.id,
+        execution_id=execution.id, status="dispatched", parameters={}, caller={})
+        for _ in range(MAX_INVENTORY_ROWS + 1)]
+    db_session.add_all(history)
+    await db_session.commit()
+    inventory = await inspect_workflow_retirement_consumers(db_session, row)
+    assert inventory["accepted_work"] == []
 
 
 @pytest.mark.asyncio

@@ -10,9 +10,9 @@ from uuid import uuid4
 import pytest
 import yaml
 from bifrost.manifest import ManifestWorkflow
-from sqlalchemy import text, update
+from sqlalchemy import null, text, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.constants import PROVIDER_ORG_ID
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.models.orm.solutions import Solution
@@ -30,6 +30,7 @@ from src.services.solutions.github_delivery_source import (
 from src.services.solutions.github_source_delivery import GitSourceDeliveryService
 
 from tests.e2e.platform.test_solution_source_revision import _seed_adopted_revision
+from tests.e2e.platform.test_solution_source_revision import committed_delivery_db as committed_delivery_db
 from tests.e2e.platform.test_solution_source_revision import db_session as db_session
 
 pytestmark = pytest.mark.e2e
@@ -57,7 +58,7 @@ def _source(f):
 @pytest.mark.parametrize("unrelated_mutable", [False, True])
 @pytest.mark.parametrize("recovery_fault", [None, "receipt", "readme", "membership", "lock_timeout", "cache_budget"])
 async def test_successful_receipt_replay_then_late_declaration_settles_native_authored_source(
-    db_session, platform_admin, monkeypatch, unrelated_mutable, recovery_fault,
+    committed_delivery_db, async_session_factory, platform_admin, monkeypatch, unrelated_mutable, recovery_fault,
 ):
     from datetime import timedelta
     from unittest.mock import AsyncMock
@@ -76,7 +77,9 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
     from src.services.solutions.github_delivery_source import GitDeliveryIdentity
     from src.services.workspace_source_releases import WorkspaceSourceReleaseService
 
-    f = await _seed_adopted_revision(db_session, platform_admin, monkeypatch, source_commit_sha="a" * 40)
+    db_session = committed_delivery_db
+    commit_sha = uuid4().hex + uuid4().hex[:8]
+    f = await _seed_adopted_revision(db_session, platform_admin, monkeypatch, source_commit_sha=commit_sha)
     root = f"solutions/{f.solution.slug}"
     await db_session.execute(update(Solution).where(Solution.id == f.solution_id).values(repo_subpath=root, readme="Prior instructions\n"))
     if unrelated_mutable:
@@ -85,7 +88,8 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
     await db_session.commit()
     await db_session.refresh(f.solution)
     source = _source(f)
-    source = replace(source, subtree_sha=_git_subtree_sha(dict(source.files), source.source_files, root + "/"))
+    source = replace(source, commit_sha=commit_sha,
+        subtree_sha=_git_subtree_sha(dict(source.files), source.source_files, root + "/"))
     f.objects[(str(f.base_id), f.path)] = f.old_source
     monkeypatch.setattr(native_authored_source, "SolutionDeploymentStorage", source_revision.SolutionDeploymentStorage)
     policy = SolutionGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace", repository_id=1,
@@ -139,7 +143,9 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
         solution_deploy_obligations=[child])
     service = WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID)
     original_evidence = native_authored_accounting._installed_evidence
-    sessions = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    # Engine-bound factory uses independent PostgreSQL backends. A second
+    # session bound to db_session.bind would share its existing connection.
+    sessions = async_session_factory
 
     async def checked_evidence(*args, **kwargs):
         if kwargs.get("collected") is None:
@@ -154,7 +160,7 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
             async with sessions() as writer:
                 if recovery_fault == "receipt":
                     await writer.execute(update(OperationReceipt).where(OperationReceipt.id == receipt.id)
-                        .values(status="failed"))
+                        .values(status="failed", response=null(), error={"code": "proof_changed"}))
                 elif recovery_fault == "readme":
                     await writer.execute(update(Solution).where(Solution.id == f.solution_id).values(readme="Changed after proof"))
                 else:
@@ -168,11 +174,16 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
         monkeypatch.setattr(native_authored_accounting, "MAX_CACHED_NATIVE_BYTES", 1)
     if recovery_fault == "lock_timeout":
         async with sessions() as writer:
+            assert await writer.scalar(text("SELECT pg_backend_pid()")) != await db_session.scalar(
+                text("SELECT pg_backend_pid()"))
             await writer.execute(text("LOCK TABLE solutions IN ROW EXCLUSIVE MODE"))
             declared = await asyncio.wait_for(service.declare(request, created_by=platform_admin.user_id), timeout=4)
             await writer.rollback()
     else:
         declared = await service.declare(request, created_by=platform_admin.user_id)
+    assert declared.source_commit_sha == commit_sha
+    assert declared.source_tree_sha == source.tree_sha
+    assert declared.disposition == "non_production"
     child_row = (await db_session.get(WorkspaceSourceRelease, declared.id)).solution_deploy_obligations[0]
     if recovery_fault:
         assert child_row.disposition == "pending" and child_row.completion_evidence is None
