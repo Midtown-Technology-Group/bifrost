@@ -92,6 +92,16 @@ PROPERTY_KEYS = {
     "http_cancel_reference_application_identity",
 }
 FAILURE_LABELS = {
+    "api_entrypoint",
+    "build_association",
+    "build_context",
+    "build_dockerfile",
+    "build_image_id_new",
+    "build_image_id_valid",
+    "build_project_label",
+    "build_repo_tag",
+    "build_selected_image",
+    "build_service_label",
     "candidate_dirty",
     "capture_bound",
     "capture_identity",
@@ -99,6 +109,7 @@ FAILURE_LABELS = {
     "capture_write",
     "child_budget",
     "child_timeout",
+    "client_build_target",
     "compose_project",
     "deadline",
     "file_bound",
@@ -155,6 +166,8 @@ FAILURE_PHASES = {
     "checkout_directory",
     "compose_config",
     "build",
+    "build_inspect",
+    "build_association",
     "pre_pr",
     "stack",
     "measure",
@@ -296,6 +309,200 @@ def observe_failure(target, phase, actual_operation):
         with suppress(BaseException):
             record_failure(target, phase, error)
         raise
+
+
+_BUILD_COMPOUND_LABELS = (
+    "build_selected_image",
+    "build_context",
+    "build_dockerfile",
+    "build_project_label",
+    "build_service_label",
+    "build_repo_tag",
+    "build_image_id_valid",
+    "build_image_id_new",
+)
+_BUILD_TAIL_LABELS = ("api_entrypoint", "client_build_target")
+
+
+class _BuildFalseOperand:
+    # Lexical diagnostic only: no image facts, authority or retained exception.
+    __slots__ = ("first",)
+
+    def __init__(self):
+        self.first = None
+
+
+def _build_operand(observer, label, value):
+    # Never coerce truthiness or replace the exact original operand object.
+    with suppress(BaseException):
+        if (
+            type(observer) is _BuildFalseOperand
+            and observer.first is None
+            and type(label) is str
+            and label in (*_BUILD_COMPOUND_LABELS, *_BUILD_TAIL_LABELS)
+            and (value is False or (label == "build_image_id_valid" and value is None))
+        ):
+            observer.first = label
+    return value
+
+
+def _record_build_failure(target, observer, error):
+    # Called only by the actual build_association catch. No caller label override.
+    with suppress(BaseException):
+        if target["failure"] is not None:
+            return
+        value = failure_observation(error, "build_association")
+        if type(error) is Failure and type(error.label) is str and type(observer) is _BuildFalseOperand:
+            first = observer.first
+            if type(first) is str and (
+                (error.label == "build_association" and first in _BUILD_COMPOUND_LABELS)
+                or (error.label in _BUILD_TAIL_LABELS and first == error.label)
+            ):
+                value["label"] = first
+        validate_failure_observation(value)
+        target["failure"] = value
+
+
+def build_attribution_controls():
+    # Pure synthetic same-helper controls; no real image/capture/HTTP facts.
+    labels = _BUILD_COMPOUND_LABELS
+    sentinel = object()
+    observer = _BuildFalseOperand()
+    require(_build_operand(observer, labels[0], sentinel) is sentinel and observer.first is None, "metadata_shape")
+    for result in (True, re.fullmatch(r"sha256:[0-9a-f]{64}", "sha256:" + "0" * 64)):
+        observer = _BuildFalseOperand()
+        require(
+            _build_operand(observer, "build_image_id_valid", result) is result and observer.first is None,
+            "metadata_shape",
+        )
+    observer = _BuildFalseOperand()
+    require(
+        _build_operand(observer, "build_image_id_valid", None) is None and observer.first == "build_image_id_valid",
+        "metadata_shape",
+    )
+
+    class Unsupported:
+        def __bool__(self):
+            raise RuntimeError("synthetic truthiness must remain untouched")
+
+    for result in (None, 0, "", [], Unsupported()):
+        observer = _BuildFalseOperand()
+        require(_build_operand(observer, labels[0], result) is result and observer.first is None, "metadata_shape")
+    require(_build_operand(None, labels[0], False) is False, "metadata_shape")
+    observer = _BuildFalseOperand()
+    require(_build_operand(observer, "unknown", False) is False and observer.first is None, "metadata_shape")
+
+    for false_index in range(len(labels)):
+        observer, calls, target = _BuildFalseOperand(), [], {"failure": None}
+
+        def actual_operand(index, false_index=false_index, calls=calls, observer=observer):
+            calls.append(index)
+            return _build_operand(observer, labels[index], index != false_index)
+
+        try:
+            require(
+                actual_operand(0)
+                and actual_operand(1)
+                and actual_operand(2)
+                and actual_operand(3)
+                and actual_operand(4)
+                and actual_operand(5)
+                and actual_operand(6)
+                and actual_operand(7),
+                "build_association",
+            )
+        except Failure as original:
+            _record_build_failure(target, observer, original)
+            require(original.label == "build_association", "metadata_shape")
+        else:
+            raise Failure("metadata_shape")
+        require(calls == list(range(false_index + 1)) and observer.first == labels[false_index], "metadata_shape")
+        require(
+            target["failure"]
+            == {"phase": "build_association", "kind": "guard", "label": labels[false_index], "native_exit": None},
+            "metadata_shape",
+        )
+        first = target["failure"]
+        record_failure(target, "cleanup", Failure("preexisting_raw"))
+        require(target["failure"] is first, "metadata_shape")
+
+    calls, observer = [], _BuildFalseOperand()
+    for label in labels:
+        calls.append(label)
+        require(_build_operand(observer, label, True) is True, "metadata_shape")
+    require(calls == list(labels) and observer.first is None, "metadata_shape")
+    for label in _BUILD_TAIL_LABELS:
+        observer, target = _BuildFalseOperand(), {"failure": None}
+        try:
+            require(_build_operand(observer, label, False), label)
+        except Failure as original:
+            _record_build_failure(target, observer, original)
+            require(target["failure"]["label"] == label and original.label == label, "metadata_shape")
+        else:
+            raise Failure("metadata_shape")
+
+    observer = _BuildFalseOperand()
+    _build_operand(observer, labels[0], False)
+    for original, kind, label in (
+        (Failure("api_entrypoint"), "guard", "api_entrypoint"),
+        (Failure("client_build_target"), "guard", "client_build_target"),
+        (Failure("initial_images"), "guard", "initial_images"),
+        (Failure("native_command_failed", -9), "native", "native_command_failed"),
+        (KeyboardInterrupt(), "control", None),
+        (RuntimeError(), "internal", None),
+    ):
+        target = {"failure": None}
+        _record_build_failure(target, observer, original)
+        require(target["failure"]["kind"] == kind and target["failure"]["label"] == label, "metadata_shape")
+
+    class BrokenTarget(dict):
+        def __setitem__(self, _key, _value):
+            raise RuntimeError("synthetic annotation failure")
+
+    original = KeyboardInterrupt()
+    try:
+        try:
+            raise original
+        except BaseException as error:
+            _record_build_failure(BrokenTarget(failure=None), observer, error)
+            raise
+    except BaseException as caught:
+        require(caught is original, "metadata_shape")
+    else:
+        raise Failure("metadata_shape")
+    for unavailable in (None, object()):
+        target = {"failure": None}
+        _record_build_failure(target, unavailable, Failure("build_association"))
+        require(target["failure"]["label"] == "build_association", "metadata_shape")
+    for bad in (True, "unknown", object()):
+        observer.first = bad
+        target = {"failure": None}
+        _record_build_failure(target, observer, Failure("build_association"))
+        require(target["failure"]["label"] == "build_association", "metadata_shape")
+    for observed, actual in (("api_entrypoint", "build_association"), ("api_entrypoint", "client_build_target")):
+        observer.first = observed
+        target = {"failure": None}
+        _record_build_failure(target, observer, Failure(actual))
+        require(target["failure"]["label"] == actual, "metadata_shape")
+
+    observer, target, caught_original = _BuildFalseOperand(), {"failure": None}, []
+
+    def actual_failure():
+        try:
+            require(_build_operand(observer, labels[0], False), "build_association")
+        except BaseException as error:
+            caught_original.append(error)
+            _record_build_failure(target, observer, error)
+            raise
+
+    try:
+        observe_failure(target, "build", actual_failure)
+    except BaseException as caught:
+        require(len(caught_original) == 1 and caught is caught_original[0], "metadata_shape")
+        require(target["failure"]["phase"] == "build_association", "metadata_shape")
+        require(target["failure"]["label"] == labels[0], "metadata_shape")
+    else:
+        raise Failure("metadata_shape")
 
 
 def failure_observation_controls():
@@ -744,34 +951,47 @@ def compose_config():
 
 
 def build_association(config, service, tag, facts_value):
-    selected = config["services"][service]
-    build = selected["build"]
-    labels = facts_value["Config"].get("Labels") or {}
-    expected_context = ROOT / "client" if service == "client-check-runner" else ROOT
-    expected_file = "Dockerfile" if service == "client-check-runner" else "api/Dockerfile.dev"
-    require(
-        selected["image"] == tag
-        and Path(build["context"]) == expected_context
-        and build["dockerfile"] == expected_file
-        and labels.get("com.docker.compose.project") == state["project"]
-        and labels.get("com.docker.compose.service") == service
-        and tag in facts_value.get("RepoTags", [])
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", facts_value["Id"])
-        and facts_value["Id"] not in state["initial_image_ids"],
-        "build_association",
-    )
-    if service == "client-check-runner":
-        require(build.get("target") == "ci", "client_build_target")
-    else:
+    observer = None
+    with suppress(BaseException):
+        observer = _BuildFalseOperand()
+    try:
+        selected = config["services"][service]
+        build = selected["build"]
+        labels = facts_value["Config"].get("Labels") or {}
+        expected_context = ROOT / "client" if service == "client-check-runner" else ROOT
+        expected_file = "Dockerfile" if service == "client-check-runner" else "api/Dockerfile.dev"
         require(
-            facts_value["Config"].get("Entrypoint") == ["/entrypoint.sh"],
-            "api_entrypoint",
+            _build_operand(observer, "build_selected_image", selected["image"] == tag)
+            and _build_operand(observer, "build_context", Path(build["context"]) == expected_context)
+            and _build_operand(observer, "build_dockerfile", build["dockerfile"] == expected_file)
+            and _build_operand(
+                observer, "build_project_label", labels.get("com.docker.compose.project") == state["project"]
+            )
+            and _build_operand(observer, "build_service_label", labels.get("com.docker.compose.service") == service)
+            and _build_operand(observer, "build_repo_tag", tag in facts_value.get("RepoTags", []))
+            and _build_operand(
+                observer, "build_image_id_valid", re.fullmatch(r"sha256:[0-9a-f]{64}", facts_value["Id"])
+            )
+            and _build_operand(observer, "build_image_id_new", facts_value["Id"] not in state["initial_image_ids"]),
+            "build_association",
         )
+        if service == "client-check-runner":
+            require(_build_operand(observer, "client_build_target", build.get("target") == "ci"), "client_build_target")
+        else:
+            require(
+                _build_operand(
+                    observer, "api_entrypoint", facts_value["Config"].get("Entrypoint") == ["/entrypoint.sh"]
+                ),
+                "api_entrypoint",
+            )
+    except BaseException as error:
+        _record_build_failure(state, observer, error)
+        raise
 
 
 def own_image(config, service, tag):
-    value = inspect_one("image", tag)
-    build_association(config, service, tag, value)
+    value = observe_failure(state, "build_inspect", lambda: inspect_one("image", tag))
+    observe_failure(state, "build_association", lambda: build_association(config, service, tag, value))
     state["images"][tag] = {
         "id": value["Id"],
         "config": value["Config"],
@@ -2075,6 +2295,7 @@ def acquire_directories():
 
 def main_work():
     observe_failure(state, "schema_controls", failure_observation_controls)
+    observe_failure(state, "schema_controls", build_attribution_controls)
     observe_failure(state, "schema_controls", properties_wrapper_controls)
     observe_failure(state, "source_guard", source_guard)
     config = observe_failure(state, "compose_config", compose_config)
