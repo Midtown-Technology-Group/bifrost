@@ -49,7 +49,8 @@ async def test_public_retirement_rejects_engine_superuser_transport(e2e_client, 
             status=ExecutionStatus.RUNNING))
         await db.flush()
         db.add(WorkflowExecutionAttempt(execution_id=execution_id, attempt_number=1,
-            claim_token=claim_token, status="running", phase="execution"))
+            claim_token=claim_token, status="running", phase="execution",
+            published_at=datetime.now(UTC), claimed_at=datetime.now(UTC), started_at=datetime.now(UTC)))
         await db.commit()
     token, _ = mint_engine_token(execution_id=str(execution_id), attempt_token=str(claim_token),
         solution_id=str(uuid4()), organization_id=str(PROVIDER_ORG_ID),
@@ -152,7 +153,7 @@ async def test_failed_retirement_keeps_live_and_registration_unmodified(db_sessi
         row.name = "Changed after observed inventory"
     elif blocker == "new_caller":
         db_session.add(Form(name="Stored inactive caller", workflow_id=str(row.id),
-            organization_id=release.organization_id, is_active=False))
+            organization_id=release.organization_id, is_active=False, created_by=str(platform_admin.user_id)))
     elif blocker == "unlisted_row":
         db_session.add(Workflow(name="Unreviewed duplicate", function_name="obsolete",
             path=row.path.replace("/", "\\"), organization_id=release.organization_id, is_active=False))
@@ -189,7 +190,7 @@ async def test_native_inventory_finds_inactive_form_uuid_spellings_in_postgresql
         "mixed_case": str(row.id)[:18].upper() + str(row.id)[18:],
     }[spelling]
     form = Form(name="Retained inactive caller", workflow_id=reference,
-        organization_id=release.organization_id, is_active=False)
+        organization_id=release.organization_id, is_active=False, created_by=str(platform_admin.user_id))
     db_session.add(form)
     await db_session.commit()
     inventory = await inspect_workflow_retirement_consumers(db_session, row)
@@ -222,7 +223,8 @@ async def test_native_inventory_finds_accepted_work_even_with_terminal_logical_s
     await db_session.flush()
     if kind == "workflow_attempt":
         db_session.add(WorkflowExecutionAttempt(execution_id=execution.id,
-            attempt_number=1, status="running", phase="execution"))
+            attempt_number=1, claim_token=uuid4(), status="running", phase="execution",
+            published_at=datetime.now(UTC), claimed_at=datetime.now(UTC), started_at=datetime.now(UTC)))
     elif kind == "generic_attempt":
         db_session.add(ExecutionAttempt(logical_job_type="workflow", logical_job_id=execution.id,
             attempt_number=1, policy_identifier="retirement-test", workload_class="workflow",

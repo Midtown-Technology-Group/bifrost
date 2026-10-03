@@ -25,8 +25,10 @@ from src.services.solutions.source_revision import SolutionSourceRevisionConflic
 from src.services.solutions.workflow_revision import project_workflow_registrations
 from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe, compile_workflow_registrations
 
+from tests.e2e.platform.test_initial_workflow_install import artifact_store as artifact_store
+from tests.e2e.platform.test_initial_workflow_install import db_session as db_session
+
 pytestmark = pytest.mark.e2e
-pytest_plugins = ["tests.e2e.platform.test_initial_workflow_install"]
 
 
 @pytest.fixture

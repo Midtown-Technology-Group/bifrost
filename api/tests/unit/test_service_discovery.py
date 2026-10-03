@@ -158,7 +158,9 @@ def _mock_db_with_existing(existing):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing
     mock_result.scalar_one.return_value = existing
+    mock_result.rowcount = 1
     mock_db.execute.return_value = mock_result
+    mock_db.scalar.return_value = None
     return mock_db
 
 
@@ -369,6 +371,7 @@ def _service_row(existing_type="service"):
 def _result(scalar_one_or_none=None, scalar_one=None, first=None):
     res = MagicMock()
     res.scalar_one_or_none.return_value = scalar_one_or_none
+    res.rowcount = 1
     if scalar_one is not None:
         res.scalar_one.return_value = scalar_one
     if first is not None:
@@ -396,6 +399,7 @@ async def test_indexer_ensures_definition_and_stamps_revision():
             _result(scalar_one=row),  # re-fetch
         ]
     )
+    mock_db.scalar.return_value = None
 
     indexer = WorkflowIndexer(mock_db)
     await indexer.index_python_file("workflows/telegram.py", SAMPLE_SERVICE.encode())
@@ -420,6 +424,7 @@ async def test_indexer_creates_missing_definition():
             _result(scalar_one=row),
         ]
     )
+    mock_db.scalar.return_value = None
 
     indexer = WorkflowIndexer(mock_db)
     await indexer.index_python_file("workflows/telegram.py", SAMPLE_SERVICE.encode())
@@ -447,6 +452,7 @@ async def test_indexer_parks_definition_on_type_change():
             _result(scalar_one=row),  # re-fetch
         ]
     )
+    mock_db.scalar.return_value = None
 
     indexer = WorkflowIndexer(mock_db)
     await indexer.index_python_file("workflows/telegram.py", SAMPLE_WORKFLOW_SAME_FN.encode())

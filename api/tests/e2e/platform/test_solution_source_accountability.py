@@ -183,7 +183,8 @@ async def test_database_consumer_drift_keeps_source_unresolved(db_session, platf
         db_session.add(accepted)
         await db_session.flush()
         db_session.add(WorkflowExecutionAttempt(execution_id=accepted.id,
-            attempt_number=1, status="running", phase="execution"))
+            attempt_number=1, claim_token=uuid4(), status="running", phase="execution",
+            published_at=datetime.now(UTC), claimed_at=datetime.now(UTC), started_at=datetime.now(UTC)))
     else:
         db_session.add(Execution(id=uuid4(), workflow_name="unproven accepted work", executed_by_name="fixture",
             workflow_id=f.workflow_id, status=ExecutionStatus.PENDING))
