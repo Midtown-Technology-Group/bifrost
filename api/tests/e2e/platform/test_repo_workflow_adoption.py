@@ -46,7 +46,7 @@ def legacy_store(monkeypatch):
 
 
 async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, legacy_schema=False,
-                with_owned_query=False, legacy_descriptors=False, stage=True):
+                with_owned_query=False, legacy_descriptors=False, constant_default=False, stage=True):
     sid, did, wid = uuid4(), uuid4(), uuid4()
     path = "workflows/adopt.py"
     source = (b"from bifrost import workflow\n"
@@ -58,6 +58,9 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
                   "async def run(user: str = 'root'):\n"
                   f"    rows = await tables.query('adoption-{sid.hex}', limit=1)\n"
                   "    return {'user': user, 'version': 'old', 'count': rows.total}\n").encode()
+    if constant_default:
+        source = source.replace(b"@workflow", b"DEFAULT_USER = 'root'\n@workflow").replace(
+            b"user: str = 'root'", b"user: str = DEFAULT_USER")
     if legacy_descriptors:
         source = source.replace(b"effects=[]", b"category='Reviewed category', description='Reviewed description', effects=[]")
     solution = Solution(id=sid, slug=f"adopt-{sid.hex[:12]}", name="Adopted install",
@@ -104,6 +107,19 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
     before = {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
     staged = await service.stage(sid, did, platform_admin.user_id, body, {path: source}, {}) if stage else None
     return solution, did, row, inactive, table, config, service, request, staged, before
+
+
+@pytest.mark.asyncio
+async def test_adoption_resolves_unchanged_constant_defaults_without_rewriting_legacy_rows(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    solution, did, row, inactive, table, config, service, request, staged, before = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=True, with_owned_query=True, constant_default=True)
+    result = await service.activate(solution.id, did, request, staged.evidence_id)
+    assert result.state == "active"
+    assert row.parameters_schema[0]["default_value"] == "root"
+    assert before == {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
 
 
 @pytest.mark.asyncio

@@ -10,9 +10,18 @@ from src.services.solutions.deployment_manifest import RuntimeEntityDefinition
 from src.services.solutions.source_revision import (
     SolutionSourceRevisionError,
     _require_registration,
+    _entrypoint_signature,
     _workflow_snapshot,
     legacy_descriptor_evidence,
 )
+
+
+def test_source_only_signature_includes_resolved_parameter_defaults():
+    row, _ = _registration()
+    source = b"from bifrost import workflow\nDEFAULT_LIMIT = 10\n@workflow\nasync def run(limit: int = DEFAULT_LIMIT):\n return limit\n"
+    before = _entrypoint_signature({row.path: source}, row)
+    after = _entrypoint_signature({row.path: source.replace(b"DEFAULT_LIMIT = 10", b"DEFAULT_LIMIT = 20")}, row)
+    assert before != after
 
 
 def _registration():

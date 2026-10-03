@@ -16,6 +16,15 @@ from bifrost.solution_delivery_review import (
 from shared.cli_artifact import build_cli_artifact
 
 
+def test_body_only_source_review_rejects_changed_named_parameter_default():
+    recipe = {"schema_version": "bifrost.solution-source-delivery/v1", "solution_id": str(uuid4()),
+        "files": {"run.py": "run.py"}}
+    source = b"from bifrost import workflow\nDEFAULT_LIMIT = 10\n@workflow\nasync def run(limit: int = DEFAULT_LIMIT):\n return limit\n"
+    with pytest.raises(WorkflowRecipeError, match="registration or signatures"):
+        review_solution_recipe(recipe, {"run.py": source.replace(b"DEFAULT_LIMIT = 10", b"DEFAULT_LIMIT = 20")}, {},
+            previous_recipe_value=recipe, previous_files={"run.py": source})
+
+
 def fixture():
     recipe = {"schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(uuid4()),
         "files": {"run.py": "solutions/demo/run.py"}, "resources": {"rates.json": "data/rates.json"},
