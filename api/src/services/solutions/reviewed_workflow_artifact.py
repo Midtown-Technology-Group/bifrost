@@ -35,6 +35,7 @@ from src.services.solutions.source_revision import (
     SolutionSourceRevisionError,
     _archive_files,
     legacy_descriptor_evidence,
+    legacy_registration_name_evidence,
 )
 from src.services.solutions.workflow_revision_recipe import (
     ReviewedWorkflowRecipe,
@@ -49,6 +50,7 @@ def compile_reviewed_workflows(
     has_owned_tables: bool = False,
     legacy_parameter_hashes: dict[UUID, str] | None = None,
     legacy_descriptor_snapshots: dict[UUID, dict] | None = None,
+    legacy_registration_names: dict[UUID, str] | None = None,
 ) -> dict[str, RuntimeEntityDefinition]:
     """Require the exact executable closure and declared resource bytes."""
     validate_resource_files(recipe, resources, files)
@@ -74,6 +76,20 @@ def compile_reviewed_workflows(
                 payload = item.model_dump(mode="json")
                 payload["definition"]["legacy_descriptor_evidence"] = legacy_descriptor_evidence(
                     legacy_descriptor_snapshots[item.resolved_id])
+                marked[ref] = RuntimeEntityDefinition.model_validate(payload)
+            entities = marked
+        if legacy_registration_names is not None:
+            if set(legacy_registration_names) != {item.resolved_id for item in entities.values()}:
+                raise SolutionSourceRevisionError("legacy registration name identities differ from reviewed workflows")
+            marked = {}
+            for ref, item in entities.items():
+                payload = item.model_dump(mode="json")
+                installed = legacy_registration_names[item.resolved_id]
+                declared = payload["definition"]["name"]
+                if installed != declared:
+                    payload["definition"]["legacy_registration_name_evidence"] = legacy_registration_name_evidence(
+                        installed, declared)
+                    payload["definition"]["name"] = installed
                 marked[ref] = RuntimeEntityDefinition.model_validate(payload)
             entities = marked
     except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
@@ -152,6 +168,7 @@ async def inspect_reviewed_artifact(
     has_owned_tables: bool = False,
     legacy_parameter_hashes: dict[UUID, str] | None = None,
     legacy_descriptor_snapshots: dict[UUID, dict] | None = None,
+    legacy_registration_names: dict[UUID, str] | None = None,
 ) -> tuple[CompiledDeploymentManifest, DeploymentResolutionMap]:
     """Recompile fresh archive bytes and compare the complete immutable document."""
     try:
@@ -174,6 +191,7 @@ async def inspect_reviewed_artifact(
         recipe, files, resources, indexer, has_owned_tables=has_owned_tables,
         legacy_parameter_hashes=legacy_parameter_hashes,
         legacy_descriptor_snapshots=legacy_descriptor_snapshots,
+        legacy_registration_names=legacy_registration_names,
     )
     expected_manifest, expected_resolution = build_reviewed_artifact(
         solution_id, deployment_id, recipe, files, resources, entities,

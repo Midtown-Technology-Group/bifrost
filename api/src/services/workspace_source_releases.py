@@ -351,6 +351,8 @@ class WorkspaceSourceReleaseService:
                     not in {
                         "bifrost.workspace-live-handoff/v1",
                         "bifrost.solution-source-revision/v1",
+                        "bifrost.repo-workflow-adoption/v1",
+                        "bifrost.solution-workflow-revision/v1",
                     }
                 ):
                     raise WorkspaceSourceReleaseConflict(
