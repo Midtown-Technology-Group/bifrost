@@ -22,7 +22,12 @@ initial_networks="$(docker network ls -q --filter "label=com.docker.compose.proj
 test -z "$initial_containers$initial_volumes$initial_networks"
 test ! -e "$evidence"
 mkdir -p "$evidence"
-chmod 755 "$evidence"
+# The unchanged runner entrypoint recursively chowns its mounted /tmp/bifrost.
+# Both CI host and container must retain write access to synthetic evidence.
+# This is trusted isolated CI, not an immutable or adversarial-user mount.
+chmod 1777 "$evidence"
+mkdir "$evidence/observations"
+chmod 1777 "$evidence/observations"
 candidate="$(git rev-parse HEAD)"
 git rev-parse HEAD HEAD^{tree} > "$evidence/source.txt"
 
@@ -31,6 +36,14 @@ cleanup() {
     trap - EXIT
     set +e
     if [ "$parity_started" -eq 1 ]; then
+        custody_after="$(sha256sum "$evidence/driver" "$evidence/receipt.json")" || cleanup_status=1
+        printf '%s\n' "$custody_after" > "$evidence/custody-after.txt" || cleanup_status=1
+        if [ "$custody_after" != "$custody_before" ]; then
+            cleanup_status=1
+            printf 'Driver or receipt changed during the parity invocation\n' >&2
+        fi
+        stat -c '%n uid=%u gid=%g mode=%a' "$evidence" "$evidence/driver" "$evidence/receipt.json" \
+            > "$evidence/custody-ownership-after.txt" || cleanup_status=1
         runner_image_after="$(docker image inspect bifrost-test-api-dev:latest --format '{{.Id}}')" || cleanup_status=1
         printf '%s\n' "$runner_image_after" > "$evidence/api-image-after.txt" || cleanup_status=1
         if [ "$runner_image_after" != "$api_image_before" ]; then
@@ -129,6 +142,10 @@ receipt = {
 }
 (evidence / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 PY
+
+# Bind these bytes outside runner-writable files for independent final readback.
+custody_before="$(sha256sum "$evidence/driver" "$evidence/receipt.json")"
+printf '%s\n' "$custody_before" > "$evidence/custody-before.txt"
 
 # No schema or test-runner image alteration. Loader/ABI is exercised in that image.
 ./test.sh stack up 2>&1 | tee "$evidence/stack-up.log"
