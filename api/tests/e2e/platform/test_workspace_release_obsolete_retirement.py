@@ -1,5 +1,6 @@
 """One retirement transaction seals obsolete rows without losing historical pins."""
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -7,12 +8,18 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from src.models.contracts.workspace_promotions import WorkspaceLiveRetireRequest
+from src.models.enums import ExecutionStatus
+from src.models.orm.execution_attempts import ExecutionAttempt
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.forms import Form
 from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import WorkspaceSourceRelease
 from src.services.audit_context import ActorContext, clear_actor, set_actor
 from src.services.workflow_registration_retirement import (
     validate_workflow_retirement_evidence,
+)
+from src.services.workflow_retirement_consumers import (
+    inspect_workflow_retirement_consumers,
 )
 from src.services.workspace_release_retirement import (
     WorkspaceReleaseRetirementError,
@@ -134,3 +141,63 @@ async def test_failed_retirement_keeps_live_and_registration_unmodified(db_sessi
     from src.models.orm.workspace_promotions import WorkspacePromotionRelease
     live = await db_session.get(WorkspacePromotionRelease, release_id, populate_existing=True)
     assert live is not None and live.activation_state == "live" and live.retirement_evidence is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("spelling", ["hex", "urn", "braced", "mixed_case"])
+async def test_native_inventory_finds_inactive_form_uuid_spellings_in_postgresql(
+    db_session, platform_admin, spelling,
+):
+    _artifact, release, row, service, request, _pin = await _fixture(db_session, platform_admin)
+    reference = {
+        "hex": row.id.hex,
+        "urn": row.id.urn,
+        "braced": "{" + str(row.id).upper() + "}",
+        "mixed_case": str(row.id)[:18].upper() + str(row.id)[18:],
+    }[spelling]
+    form = Form(name="Retained inactive caller", workflow_id=reference,
+        organization_id=release.organization_id, is_active=False)
+    db_session.add(form)
+    await db_session.commit()
+    inventory = await inspect_workflow_retirement_consumers(db_session, row)
+    assert any(item["id"] == str(form.id) and item["reference_type"] == "workflow_id"
+        for item in inventory["native_callers"])
+    with pytest.raises(WorkspaceReleaseRetirementError):
+        await _retire(service, request, platform_admin)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["legacy_urn", "legacy_hex", "workflow_attempt", "generic_attempt"])
+async def test_native_inventory_finds_accepted_work_even_with_terminal_logical_state(
+    db_session, platform_admin, kind,
+):
+    _artifact, _release, row, service, request, _pin = await _fixture(db_session, platform_admin)
+    legacy = kind.startswith("legacy_")
+    execution = Execution(workflow_id=None if legacy else row.id,
+        workflow_name=row.id.urn if kind == "legacy_urn" else row.id.hex if legacy else row.name,
+        executed_by_name="Retirement query fixture",
+        status=ExecutionStatus.PENDING if legacy else ExecutionStatus.SUCCESS,
+        completed_at=None if legacy else datetime.now(UTC))
+    # Historical terminal executions and another UUID must be excluded by SQL,
+    # rather than consuming the bounded accepted-work census.
+    history = Execution(workflow_id=row.id, workflow_name=row.name,
+        executed_by_name="Retained history", status=ExecutionStatus.SUCCESS,
+        completed_at=datetime.now(UTC))
+    unrelated = Execution(workflow_id=None, workflow_name=uuid4().urn,
+        executed_by_name="Unrelated accepted work", status=ExecutionStatus.PENDING)
+    db_session.add_all([execution, history, unrelated])
+    await db_session.flush()
+    if kind == "workflow_attempt":
+        db_session.add(WorkflowExecutionAttempt(execution_id=execution.id,
+            attempt_number=1, status="running", phase="execution"))
+    elif kind == "generic_attempt":
+        db_session.add(ExecutionAttempt(logical_job_type="workflow", logical_job_id=execution.id,
+            attempt_number=1, policy_identifier="retirement-test", workload_class="workflow",
+            admission_policy="accepted", mechanism="queue"))
+    await db_session.commit()
+    inventory = await inspect_workflow_retirement_consumers(db_session, row)
+    observed = {item["id"] for item in inventory["accepted_work"] if item["entity_type"] == "Execution"}
+    assert str(execution.id) in observed
+    assert str(history.id) not in observed and str(unrelated.id) not in observed
+    with pytest.raises(WorkspaceReleaseRetirementError):
+        await _retire(service, request, platform_admin)

@@ -124,10 +124,12 @@ def test_rehashed_malformed_evidence_still_fails_closed(field, value):
 
 def test_marker_tampering_or_unknown_fields_cannot_reuse_an_evidence_digest():
     row = _retire()
+    assert row.retirement_evidence is not None
     row.retirement_evidence = {**row.retirement_evidence, "reason": "Changed review"}
     with pytest.raises(WorkflowRetirementEvidenceError, match="digest differs"):
         validate_workflow_retirement_evidence(row)
     row = _retire()
+    assert row.retirement_evidence is not None
     row.retirement_evidence = {**row.retirement_evidence, "solution_id": str(uuid4())}
     with pytest.raises(WorkflowRetirementEvidenceError, match="malformed"):
         validate_workflow_retirement_evidence(row)

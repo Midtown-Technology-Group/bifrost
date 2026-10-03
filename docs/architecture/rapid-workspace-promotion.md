@@ -315,7 +315,9 @@ Read the result back with `GET /api/workspace-promotions/live` (CLI
 release owns Live, the formerly-governed loose paths resolve through the legacy
 `repo-v1` lane again and the governed read/mutation rejections no longer apply; a
 later activation must use `--expect-no-active-release` with the `repo-v1:...`
-base. Retirement itself migrates no entity or source.
+base. Retirement does not move source or ownership. Its optional reviewed
+obsolete-registration list closes those rows' execution admission while
+preserving their identities, history and historical runtime pins.
 
 ### Obsolete registrations in the same cutover
 
