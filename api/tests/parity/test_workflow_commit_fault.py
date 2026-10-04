@@ -140,7 +140,7 @@ class FixtureConstructors:
         return {
             "schema": "bifrost.test.f4-constructor-observation/v1",
             "role": "observer",
-            "env_count": 27,
+            "env_count": 28,
             "env_source_equal": actor_environment() == self.environment,
             "source_calls": {"settings": 0, "prepare": 0, "engine": 1, "factory": 1, "guard": 0},
             "endpoint": {"hostname": endpoint.host, "port": endpoint.port, "drivername": endpoint.drivername},
