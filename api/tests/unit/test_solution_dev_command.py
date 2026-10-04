@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import yaml
 from click.testing import CliRunner
 
@@ -22,6 +23,62 @@ class _SolutionListResponse:
 async def _get_bound_solution(_self, path, **_kwargs):
     assert path == "/api/solutions"
     return _SolutionListResponse()
+
+
+def test_start_requires_target_before_default_profile_or_auth(tmp_path, monkeypatch):
+    import bifrost.client as client_mod
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("BIFROST_API_URL", raising=False)
+    (tmp_path / "bifrost.solution.yaml").write_text("slug: s\nname: S\nscope: org\n")
+    selected_urls = []
+
+    class _ProductionProfileClient:
+        get = _get_bound_solution
+        api_url = "https://bifrost.midtowntg.com"
+
+    def get_instance(**kwargs):
+        selected_urls.append(kwargs.get("api_url"))
+        return _ProductionProfileClient()
+
+    monkeypatch.setattr(client_mod.BifrostClient, "get_instance", staticmethod(get_instance))
+    result = CliRunner().invoke(solution_group, ["start"])
+
+    assert result.exit_code == 1
+    assert "Local development requires an explicit API target" in result.output
+    assert "Stored default profiles are not used" in result.output
+    assert selected_urls == []
+
+
+@pytest.mark.parametrize("selector", ["argument", "workspace", "environment"])
+def test_local_start_client_honors_explicit_target(tmp_path, monkeypatch, selector):
+    import bifrost.client as client_mod
+    from bifrost.commands.solution import _client_for_solution_workspace
+
+    monkeypatch.delenv("BIFROST_API_URL", raising=False)
+    target = "https://dev.bifrost.midtowntg.com"
+    argument = None
+    if selector == "argument":
+        argument = target
+        monkeypatch.setenv("BIFROST_API_URL", "https://other.example.test")
+    elif selector == "workspace":
+        (tmp_path / ".env").write_text(f"BIFROST_API_URL={target}\n")
+    else:
+        monkeypatch.setenv("BIFROST_API_URL", target)
+    selected_urls = []
+    client = object()
+
+    def get_instance(**kwargs):
+        assert kwargs["require_auth"] is True
+        selected_urls.append(kwargs["api_url"])
+        return client
+
+    monkeypatch.setattr(client_mod.BifrostClient, "get_instance", staticmethod(get_instance))
+
+    assert _client_for_solution_workspace(
+        tmp_path, argument, require_explicit_url=True,
+    ) is client
+    assert selected_urls == [target]
 
 
 def test_solution_init_creates_remote_install_and_binding(tmp_path, monkeypatch):

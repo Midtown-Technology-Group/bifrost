@@ -531,9 +531,17 @@ def _workspace_from_path_arg(path: str) -> pathlib.Path:
 def _client_for_solution_workspace(
     workspace: pathlib.Path,
     api_url: str | None,
+    *,
+    require_explicit_url: bool = False,
 ) -> BifrostClient:
     """Use --url, the workspace selector, or the normal default profile."""
     selected_url = api_url or resolve_environment_url(workspace)
+    if require_explicit_url and not selected_url:
+        raise click.ClickException(
+            "Local development requires an explicit API target. "
+            "Set BIFROST_API_URL in this workspace's .env or pass --url <dev-api-url>. "
+            "Stored default profiles are not used by solution start."
+        )
     return BifrostClient.get_instance(require_auth=True, api_url=selected_url)
 
 
@@ -3376,7 +3384,8 @@ def _vite_child_env(
 )
 @click.argument("app_slug", required=False)
 @click.option("--solution", "solution_ref", default=None, help="Install id or unique slug.")
-@click.option("--url", "api_url", default=None, help="Bifrost instance URL (default: current profile).")
+@click.option("--url", "api_url", default=None,
+              help="Explicit API target; otherwise BIFROST_API_URL in environment or workspace .env.")
 @click.option(
     "--port",
     default=3000,
@@ -3422,7 +3431,7 @@ def start_cmd(
         )
     descriptor = load_descriptor(workspace)
 
-    client = _client_for_solution_workspace(workspace, api_url)
+    client = _client_for_solution_workspace(workspace, api_url, require_explicit_url=True)
     binding = asyncio.run(
         _resolve_solution_install(client, workspace, descriptor, solution_ref)
     )
