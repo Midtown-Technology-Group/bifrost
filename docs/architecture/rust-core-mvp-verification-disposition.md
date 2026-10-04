@@ -598,3 +598,24 @@ tree comparison preserves all 2,155 Python entries from the previously audited
 head, and committed AST inspection confirms the allowlist remains empty.
 This preserves the 2,140-file authored boundary audit without claiming a fresh
 runtime scan or Rust-specific workspace accommodation.
+
+The three characterization source files are now author-frozen against local
+`8b7d2c6597fd134044e74249e188c55a9c3c0844`. A fresh platform fetch remains
+`7e737cacdba56b214e427afed5a28e89ae1b6a47`, contained in that candidate.
+The Python author report has SHA-256
+`5dc5075bf2ce2f6e7a10747f863d87cbadd63e0a28ea92e1cd6dbb3614f66e06`;
+the CI author report has SHA-256
+`e97953ce48d5c4b9fd906263fbafe1e72ce090523ae9a527a12132d42cb9283e`.
+Root verified their exact file hashes and read both reports. Separate full
+source review is running; neither author report approves runtime execution.
+
+Declared venues comprise 35 genuine Python cases with native planner calls,
+seven reference-only cases with no native call, and 11 native-only cases with
+no impossible SQL rows or original consumer invocation. Native-only items
+still resolve the test's shared fixture dependencies; they do not establish
+absence of a fixture engine. Source checks are not executed drift detection.
+The harness is now 2,581 lines and the CI script 2,200 lines. Review must assess
+that complexity against architectural benefit as well as correctness. No new
+characterization runtime, commit of these three files, push, or acceptance
+claim has occurred. Existing authority, coexistence and full-MVP gates remain
+open.
