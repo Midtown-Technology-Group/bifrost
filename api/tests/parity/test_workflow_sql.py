@@ -9,7 +9,12 @@ from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.repositories.executions import ExecutionRepository
 
 from tests.parity.workflow_domain_harness import WorkflowCohort, load_cases
-from tests.parity.workflow_sql_harness import load_fixture, source_session
+from tests.parity.workflow_sql_harness import (
+    load_fixture,
+    observer_after_finalize,
+    observer_queued_cleanup,
+    source_session,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -26,7 +31,7 @@ def result_source_session(setup_test_environment, request):
         raise
     finally:
         if observer is not None:
-            observer.close(original)
+            observer_after_finalize(observer, original)
 
 
 @pytest_asyncio.fixture
@@ -54,6 +59,8 @@ async def test_queued_cancel_emitted_update_order(async_engine, record_property,
     cohort = WorkflowCohort(async_engine, case)
     cohort.sessions = async_sessionmaker(async_engine, autoflush=False, expire_on_commit=False)
     labels = []
+    body_error = None
+    body_traceback = None
 
     def observe(_connection, _cursor, _statement, _parameters, context, _many):
         # Inspect compiled statement metadata only. Never retain SQL or binds.
@@ -91,8 +98,14 @@ async def test_queued_cancel_emitted_update_order(async_engine, record_property,
             assert attempt.status == "cancelled"
             assert execution.completed_at is not None
             assert execution.completed_at == attempt.completed_at == attempt.heartbeat_at
+    except BaseException as error:
+        body_error, body_traceback = error, error.__traceback__
+        raise
     finally:
-        await cohort.close()
+        record_failure = (
+            result_source_function.session.record_queued_close_failure if result_source_function is not None else None
+        )
+        await observer_queued_cleanup(cohort.close, record_failure, body_error, body_traceback)
 
 
 @pytest.mark.parametrize(

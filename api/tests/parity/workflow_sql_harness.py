@@ -656,6 +656,150 @@ def observer_actor(pairs, dbapi, connection, actor):
     pairs[index] = (record, physical, connection, actor)
 
 
+def observer_annotation(sink, error):
+    """Return a failure fact only when this actual annotation invocation raises."""
+    try:
+        sink(error)
+    except BaseException:
+        return True
+    return False
+
+
+def observer_after_finalize(observer, original):
+    first = original if original is not None else observer.poison
+    first_traceback = first.__traceback__ if first is not None else None
+    try:
+        observer.after_actor_barrier(first)
+    except BaseException as error:
+        if first is None:
+            first, first_traceback = error, error.__traceback__
+        with suppress(BaseException):
+            observer.annotation_failed |= observer_annotation(observer.poison_with, error)
+    try:
+        observer.close(first)
+    except BaseException as error:
+        if first is None:
+            first, first_traceback = error, error.__traceback__
+    if first is not None:
+        raise first.with_traceback(first_traceback)
+
+
+async def observer_queued_cleanup(close, record_failure, original, traceback):
+    close_error = None
+    close_traceback = None
+    try:
+        await close()
+    except BaseException as error:
+        close_error, close_traceback = error, error.__traceback__
+        if record_failure is not None:
+            observer_annotation(record_failure, error)
+    if original is not None:
+        raise original.with_traceback(traceback)
+    if close_error is not None:
+        raise close_error.with_traceback(close_traceback)
+
+
+def observer_queued_close_failure(namespace, poison_sink, error):
+    """One irreversible custody operation; controls supply only private synthetic state."""
+    check(isinstance(error, BaseException), "Result queued close error type")
+    namespace["_HELD_CUSTODY"] = True
+    poison_sink(error)
+
+
+def observer_after_eligibility(held, original, poison, active, engine, factory, fixture, session, entered, completed):
+    check(held is False and original is None and poison is None, "Result after actor retained custody")
+    check(active is None and engine is None and factory is None, "Result after actor source lifetime")
+    check(
+        type(fixture["construction_count"]) is int
+        and fixture["construction_count"] == 1
+        and fixture["endpoint_admitted"] is True,
+        "Result after actor fixture admission",
+    )
+    check(type(entered) is list and type(completed) is list, "Result after actor ledger types")
+    check(len(entered) == len(completed) == 299, "Result after actor ledger length")
+    check(
+        all(left is right for left, right in zip(entered, completed, strict=True))
+        and len({id(owner) for owner in entered}) == 299
+        and all(owner.closed is True and owner.phase == "completed" for owner in entered),
+        "Result after actor completed identity",
+    )
+    item = entered[-1].test_item_identity
+    observer_item(item, session, entered, require_last=True)
+    check(
+        all(owner.test_item_identity is actual for owner, actual in zip(entered, session.items, strict=True)),
+        "Result after actor selected order",
+    )
+    return item
+
+
+def observer_after_deadline(entry, created_at, ceiling):
+    check(
+        all(type(value) in {int, float} and math.isfinite(value) for value in (entry, created_at, ceiling))
+        and created_at <= entry
+        and 0 < ceiling <= 900,
+        "Result after actor clock types",
+    )
+    end = min(entry + 20, created_at + ceiling)
+    check(entry < end, "Result after actor deadline")
+    return end
+
+
+def observer_after_ready(value, context, sources, nodeid):
+    closed(
+        value,
+        {
+            "schema",
+            "candidate",
+            "invocation_uuid",
+            "phase",
+            "sources",
+            "functions_entered",
+            "functions_completed",
+            "last_item",
+        },
+    )
+    check(
+        value["schema"] == "bifrost.private.result-after-ready/v1"
+        and value["candidate"] == context["candidate"]
+        and value["invocation_uuid"] == context["invocation_uuid"]
+        and value["phase"] == "last_selected_actor_settled_before_observer_cleanup",
+        "Result after actor ready association",
+    )
+    closed(sources, {"api/tests/parity/workflow_sql_harness.py", "api/tests/parity/test_workflow_sql.py"})
+    closed(value["sources"], set(sources))
+    check(
+        all(type(digest) is str and re.fullmatch(r"[0-9a-f]{64}", digest) for digest in sources.values())
+        and value["sources"] == sources,
+        "Result after actor ready sources",
+    )
+    check(
+        type(value["functions_entered"]) is int
+        and type(value["functions_completed"]) is int
+        and value["functions_entered"] == value["functions_completed"] == 299,
+        "Result after actor ready counts",
+    )
+    observer_junit_identity(value["last_item"])
+    check(value["last_item"] == nodeid, "Result after actor ready Item")
+
+
+def observer_after_decision(value, context, *, rejected=False):
+    keys = {"schema", "candidate", "invocation_uuid", "phase", "decision"}
+    closed(value, keys | ({"reason"} if rejected else set()))
+    check(
+        value["schema"] == "bifrost.private.result-after-decision/v1"
+        and value["candidate"] == context["candidate"]
+        and value["invocation_uuid"] == context["invocation_uuid"]
+        and value["phase"] == "frontend_observed_after_last_actor"
+        and value["decision"] == ("reject" if rejected else "admit"),
+        "Result after actor decision association",
+    )
+    if rejected:
+        check(
+            value["reason"] in {"frontend_unverified", "source_association", "deadline", "cleanup"},
+            "Result after actor rejection reason",
+        )
+
+
 def observer_decisions(have_admit, have_failed):
     check(
         type(have_admit) is bool and type(have_failed) is bool and not (have_admit and have_failed),
@@ -827,6 +971,19 @@ def observer_item(item, session, entered, *, require_last=False):
         )
 
 
+def observer_final_complete(value):
+    return (
+        value["fixture_constructions"] == 1
+        and value["functions_entered"] > 0
+        and value["functions_completed"] == value["functions_entered"]
+        and value["production_closed"] == value["production_lifetimes"]
+        and all(value[name] is True for name in _OBSERVER_CHECKS)
+        and not value["poisoned"]
+        and not value["cleanup_failed"]
+        and value["dsn_binding"]["complete"]
+    )
+
+
 def observer_final_record(value, context, nodeid, *, require_complete=False):
     closed(value, _OBSERVER_FINAL_KEYS)
     check(
@@ -859,16 +1016,7 @@ def observer_final_record(value, context, nodeid, *, require_complete=False):
     for name in ("poisoned", "cleanup_failed", "complete"):
         check(type(value[name]) is bool, "Result final outcome type")
     observer_dsn_binding(value["dsn_binding"])
-    complete = (
-        value["fixture_constructions"] == 1
-        and value["functions_entered"] > 0
-        and value["functions_completed"] == value["functions_entered"]
-        and value["production_closed"] == value["production_lifetimes"]
-        and all(value[name] is True for name in _OBSERVER_CHECKS)
-        and not value["poisoned"]
-        and not value["cleanup_failed"]
-        and value["dsn_binding"]["complete"]
-    )
+    complete = observer_final_complete(value)
     check(value["complete"] is complete, "Result final completion predicate")
     if require_complete:
         check(complete and value["functions_entered"] == 299, "Result final complete admission")
@@ -969,6 +1117,7 @@ class ResultSourceObserver:
         self.active = None
         self.completed = []
         self.poison = None
+        self.annotation_failed = False
         self.owned_files = []
         self.created_at = time.monotonic()
         self.modules = {}
@@ -1009,6 +1158,13 @@ class ResultSourceObserver:
     def poison_with(self, error):
         if self.poison is None:
             self.poison = error
+
+    def record_queued_close_failure(self, error):
+        try:
+            observer_queued_close_failure(globals(), self.poison_with, error)
+        except BaseException:
+            self.annotation_failed = True
+            raise
 
     def require_live(self):
         if self.poison is not None:
@@ -1704,9 +1860,142 @@ class ResultSourceObserver:
             check(time.monotonic() < end, "Result endpoint decision deadline")
             time.sleep(0.01)
 
+    def after_path(self, suffix):
+        check(suffix in {"ready", "admit", "failed", "ready.part", "admit.part", "failed.part"}, "Result after path")
+        return Path("/bifrost-results") / f".result-after-{self.context['invocation_uuid']}-{suffix}.json"
+
+    def publish_after_ready(self, raw, end):
+        check(time.monotonic() < end and len(raw) <= 4096 and os.geteuid() == 1000, "Result after publication bound")
+        directory = os.stat("/bifrost-results", follow_symlinks=False)
+        check(
+            stat.S_ISDIR(directory.st_mode) and stat.S_IMODE(directory.st_mode) == 0o777 and directory.st_uid == 1000,
+            "Result after supported directory",
+        )
+        final, temporary = self.after_path("ready"), self.after_path("ready.part")
+        fd = None
+        first = None
+        try:
+            temporary_index = len(self.owned_files)
+            self.owned_files.append((temporary, None, None))
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
+            info = os.fstat(fd)
+            self.owned_files[temporary_index] = (temporary, info.st_dev, info.st_ino)
+            os.fchmod(fd, 0o644)
+            offset = 0
+            while offset < len(raw):
+                check(time.monotonic() < end, "Result after publication deadline")
+                written = os.write(fd, raw[offset:])
+                check(written > 0, "Result after metadata write incomplete")
+                offset += written
+            os.fsync(fd)
+            info = os.fstat(fd)
+            before = observer_file_fact(info, uid=1000, limit=4096)
+            check(info.st_size == len(raw), "Result after metadata complete write")
+            check(
+                observer_file_fact(os.stat(temporary, follow_symlinks=False), uid=1000, limit=4096) == before,
+                "Result after temporary identity",
+            )
+            os.close(fd)
+            fd = None
+            check(time.monotonic() < end, "Result after publication deadline")
+            final_index = len(self.owned_files)
+            self.owned_files.append((final, None, None))
+            os.link(temporary, final, follow_symlinks=False)
+            self.owned_files[final_index] = (final, info.st_dev, info.st_ino)
+            observer_publication(
+                os.stat(final, follow_symlinks=False), os.stat(temporary, follow_symlinks=False), uid=1000, limit=4096
+            )
+            os.unlink(temporary)
+            check(
+                observer_file_fact(os.stat(final, follow_symlinks=False), uid=1000, limit=4096) == before
+                and not os.path.lexists(temporary)
+                and time.monotonic() < end,
+                "Result after publication readback",
+            )
+        except BaseException as error:
+            first = error
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except BaseException as error:
+                    if first is None:
+                        first = error
+        if first is not None:
+            raise first
+
+    def after_actor_barrier(self, original=None):
+        if original is not None or self.poison is not None:
+            return
+        try:
+            entry = time.monotonic()
+            end = observer_after_deadline(entry, self.created_at, self.context["target_remaining_seconds"])
+            item = observer_after_eligibility(
+                _HELD_CUSTODY,
+                original,
+                self.poison,
+                self.active,
+                database._engine,
+                database._async_session_factory,
+                self.fixture,
+                self.pytest_session,
+                self.entered,
+                self.completed,
+            )
+            self.loaded_source_admission(source_admission())
+            sources = {
+                path: self.receipt["sources"][path]
+                for path in ("api/tests/parity/workflow_sql_harness.py", "api/tests/parity/test_workflow_sql.py")
+            }
+            ready = {
+                "schema": "bifrost.private.result-after-ready/v1",
+                "candidate": self.context["candidate"],
+                "invocation_uuid": self.context["invocation_uuid"],
+                "phase": "last_selected_actor_settled_before_observer_cleanup",
+                "sources": sources,
+                "functions_entered": len(self.entered),
+                "functions_completed": len(self.completed),
+                "last_item": item.nodeid,
+            }
+            observer_after_ready(ready, self.context, sources, item.nodeid)
+            raw = json.dumps(ready, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode("ascii")
+            # All six logical records have fresh names, including parent-owned decisions.
+            check(
+                all(
+                    not os.path.lexists(self.after_path(suffix))
+                    for suffix in ("ready", "admit", "failed", "ready.part", "admit.part", "failed.part")
+                ),
+                "Result after stale metadata",
+            )
+            self.publish_after_ready(raw, end)
+            check(
+                self.read_shared(self.after_path("ready"), limit=4096, uid=1000, end=end) == ready,
+                "Result after complete ready readback",
+            )
+            admit, failed = self.after_path("admit"), self.after_path("failed")
+            while True:
+                check(time.monotonic() < end, "Result after decision deadline")
+                have_admit, have_failed = os.path.lexists(admit), os.path.lexists(failed)
+                observer_decisions(have_admit, have_failed)
+                if have_admit or have_failed:
+                    value = self.read_shared(
+                        failed if have_failed else admit, limit=1024, uid=self.context["parent_uid"], end=end
+                    )
+                    observer_after_decision(value, self.context, rejected=have_failed)
+                    check(time.monotonic() < end, "Result after admitted deadline")
+                    check(not have_failed, "Result after frontend rejected")
+                    check(not os.path.lexists(failed), "Result after late duplicate decision")
+                    return
+                time.sleep(0.01)
+        except BaseException as error:
+            self.annotation_failed |= observer_annotation(self.poison_with, error)
+            raise
+
     def close(self, original=None):
         first = original if original is not None else self.poison
-        cleanup_failed = False
+        cleanup_failed = self.annotation_failed
+        if first is not None:
+            cleanup_failed |= observer_annotation(self.poison_with, first)
         outcomes = dict.fromkeys(_OBSERVER_CHECKS)
         actions = []
         for hook in self.session_hooks:
@@ -1748,7 +2037,8 @@ class ResultSourceObserver:
         actions.append(lifetime_complete)
         # This descriptor belongs to the observer; its mount/path belongs to the parent.
         actions.append(self.finish_private)
-        first, cleanup_failed = observer_settle(actions, first)
+        first, settle_failed = observer_settle(actions, first)
+        cleanup_failed |= settle_failed
 
         def hooks_removed():
             hooks = self.session_hooks + [hook for owner in self.entered for hook in owner.own_listeners]
@@ -1804,17 +2094,7 @@ class ResultSourceObserver:
                 "export_item": item.nodeid,
                 "dsn_binding": self.dsn_binding(),
             }
-            value["complete"] = (
-                value["fixture_constructions"] == 1
-                and self.fixture["endpoint_admitted"]
-                and value["functions_entered"] > 0
-                and value["functions_completed"] == value["functions_entered"]
-                and value["production_closed"] == value["production_lifetimes"]
-                and all(value[name] is True for name in _OBSERVER_CHECKS)
-                and not value["poisoned"]
-                and not value["cleanup_failed"]
-                and value["dsn_binding"]["complete"]
-            )
+            value["complete"] = self.fixture["endpoint_admitted"] and observer_final_complete(value)
             raw = observer_final_record(value, self.context, item.nodeid)
             observer_append_final(item, raw)
         except BaseException as error:
@@ -1842,7 +2122,7 @@ def require_source_observer(case):
     return owner
 
 
-def source_observer_controls():
+async def source_observer_controls():
     """Eight synthetic families exercise these exact runtime validators; no custody claim."""
 
     def negative(action):
@@ -2176,6 +2456,252 @@ def source_observer_controls():
     observer_append_final(item, raw)
     negative(lambda: observer_append_final(item, raw))
     check(item.user_properties == [("result_source_observer_final", raw)], "Result final publication control")
+    # These same-helper controls never mutate the genuine irreversible custody latch.
+    real_held = _HELD_CUSTODY
+    synthetic_namespace = {"_HELD_CUSTODY": False}
+    synthetic_poison = []
+
+    def poison_first(error):
+        if not synthetic_poison:
+            synthetic_poison.append(error)
+
+    observer_queued_close_failure(synthetic_namespace, poison_first, close_error)
+    check(
+        synthetic_namespace["_HELD_CUSTODY"] is True and synthetic_poison == [close_error],
+        "Result queued close synthetic latch",
+    )
+    observer_queued_close_failure(synthetic_namespace, poison_first, sentinel)
+    check(synthetic_poison[0] is close_error, "Result queued close first poison")
+    invalid_namespace = {"_HELD_CUSTODY": False}
+    negative(lambda: observer_queued_close_failure(invalid_namespace, poison_first, None))
+    check(invalid_namespace["_HELD_CUSTODY"] is False, "Result invalid latch unchanged")
+    sink_namespace = {"_HELD_CUSTODY": False}
+    try:
+        observer_queued_close_failure(sink_namespace, lambda _error: (_ for _ in ()).throw(sentinel), close_error)
+    except BaseException as error:
+        check(error is sentinel and sink_namespace["_HELD_CUSTODY"] is True, "Result latch sink failure")
+    else:
+        raise AssertionError("Result latch sink error swallowed")
+    owners = [SimpleNamespace(test_item_identity=actual, closed=True, phase="completed") for actual in session.items]
+    fixture = {"construction_count": 1, "endpoint_admitted": True}
+
+    def readiness(
+        *,
+        held=False,
+        original=None,
+        poison=None,
+        active=None,
+        engine=None,
+        factory=None,
+        actual_fixture=None,
+        actual_entered=None,
+        actual_completed=None,
+    ):
+        return observer_after_eligibility(
+            held,
+            original,
+            poison,
+            active,
+            engine,
+            factory,
+            fixture if actual_fixture is None else actual_fixture,
+            session,
+            owners if actual_entered is None else actual_entered,
+            owners if actual_completed is None else actual_completed,
+        )
+
+    check(readiness() is item, "Result after actual ledger helper control")
+    for held in (True, None, 0):
+        negative(lambda held=held: readiness(held=held))
+    negative(lambda: readiness(held=synthetic_namespace["_HELD_CUSTODY"]))
+    for key in ("original", "poison", "active", "engine", "factory"):
+        negative(lambda key=key: readiness(**{key: sentinel}))
+    for changed_fixture in (fixture | {"construction_count": True}, fixture | {"endpoint_admitted": False}):
+        negative(lambda changed_fixture=changed_fixture: readiness(actual_fixture=changed_fixture))
+    negative(lambda: readiness(actual_completed=owners[:-1]))
+    negative(lambda: readiness(actual_completed=list(reversed(owners))))
+    negative(lambda: readiness(actual_entered=[*owners[:-1], owners[0]], actual_completed=[*owners[:-1], owners[0]]))
+    incomplete = [*owners[:-1], SimpleNamespace(test_item_identity=item, closed=False, phase="completed")]
+    negative(lambda: readiness(actual_entered=incomplete, actual_completed=incomplete))
+    wrong_phase = [*owners[:-1], SimpleNamespace(test_item_identity=item, closed=True, phase="entered")]
+    negative(lambda: readiness(actual_entered=wrong_phase, actual_completed=wrong_phase))
+    check(observer_after_deadline(10, 0, 900) == 30, "Result after entry ceiling")
+    check(observer_after_deadline(10, 0, 15) == 15, "Result after original anchor")
+    negative(lambda: observer_after_deadline(15, 0, 15))
+    negative(lambda: observer_after_deadline(True, 0, 900))
+    sources = {
+        "api/tests/parity/workflow_sql_harness.py": "c" * 64,
+        "api/tests/parity/test_workflow_sql.py": "d" * 64,
+    }
+    after_ready = {
+        "schema": "bifrost.private.result-after-ready/v1",
+        "candidate": context["candidate"],
+        "invocation_uuid": context["invocation_uuid"],
+        "phase": "last_selected_actor_settled_before_observer_cleanup",
+        "sources": sources,
+        "functions_entered": 299,
+        "functions_completed": 299,
+        "last_item": item.nodeid,
+    }
+    observer_after_ready(after_ready, context, sources, item.nodeid)
+    for changed in (
+        after_ready | {"functions_entered": True},
+        after_ready | {"functions_completed": 298},
+        after_ready | {"sources": sources | {"unknown": "e" * 64}},
+        after_ready | {"sources": sources | {"api/tests/parity/test_workflow_sql.py": "e" * 64}},
+        after_ready | {"phase": "fixture_constructed_before_sql"},
+        after_ready | {"unknown": None},
+        after_ready | {"last_item": session.items[0].nodeid},
+        after_ready | {"candidate": {"head": "e" * 40, "tree": "b" * 40}},
+        after_ready | {"invocation_uuid": "00000000-0000-4000-8000-000000000002"},
+    ):
+        negative(lambda changed=changed: observer_after_ready(changed, context, sources, item.nodeid))
+    after_decision = {
+        "schema": "bifrost.private.result-after-decision/v1",
+        "candidate": context["candidate"],
+        "invocation_uuid": context["invocation_uuid"],
+        "phase": "frontend_observed_after_last_actor",
+        "decision": "admit",
+    }
+    observer_after_decision(after_decision, context)
+    rejected = after_decision | {"decision": "reject", "reason": "deadline"}
+    observer_after_decision(rejected, context, rejected=True)
+    negative(lambda: observer_after_decision(decision, context))
+    negative(lambda: observer_after_decision(after_decision | {"reason": "deadline"}, context))
+    negative(lambda: observer_after_decision(rejected | {"reason": "arbitrary"}, context, rejected=True))
+    # Inert collaborators exercise the actual finalizer, not a parallel priority model.
+    final_base = final | {"complete": False}
+    finalization_receipts = []
+
+    def finalizer_control(*, barrier_error=None, annotation_errors=0, close_error=None, prior=None):
+        order = []
+        observer = SimpleNamespace(poison=prior, annotation_failed=False)
+        sink_calls = 0
+
+        def after(_original):
+            order.append("after")
+            if barrier_error is not None:
+                raise barrier_error
+
+        def poison(error):
+            nonlocal sink_calls
+            sink_calls += 1
+            if sink_calls <= annotation_errors:
+                raise close_error or sentinel
+            if observer.poison is None:
+                observer.poison = error
+
+        def close(actual_first):
+            order.append("close")
+            failed = observer.annotation_failed
+            if actual_first is not None:
+                failed |= observer_annotation(observer.poison_with, actual_first)
+            value = final_base | {"poisoned": observer.poison is not None, "cleanup_failed": failed}
+            value["complete"] = observer_final_complete(value)
+            observer_final_record(value, context, item.nodeid)
+            finalization_receipts.append(value)
+            if close_error is not None:
+                raise close_error
+            if actual_first is not None:
+                raise actual_first
+
+        observer.after_actor_barrier = after
+        observer.poison_with = poison
+        observer.close = close
+        return observer, order
+
+    clean_observer, clean_order = finalizer_control()
+    observer_after_finalize(clean_observer, None)
+    check(clean_order == ["after", "close"] and finalization_receipts[-1]["complete"], "Result clean actual finalize")
+    first_error = ValueError("synthetic original")
+    try:
+        raise first_error
+    except BaseException as error:
+        first_traceback = error.__traceback__
+
+    def original_traceback_retained(error):
+        current = error.__traceback__
+        while current is not None:
+            if current is first_traceback:
+                return True
+            current = current.tb_next
+        return False
+
+    for original_error, barrier_error, annotation_errors, secondary_close in (
+        (None, first_error, 0, None),
+        (first_error, None, 0, None),
+        (first_error, close_error, 2, sentinel),
+        (None, first_error, 2, sentinel),
+        (None, first_error, 1, None),
+    ):
+        actual_observer, order = finalizer_control(
+            barrier_error=barrier_error, annotation_errors=annotation_errors, close_error=secondary_close
+        )
+        try:
+            observer_after_finalize(actual_observer, original_error)
+        except BaseException as error:
+            check(
+                error is first_error and original_traceback_retained(error), "Result actual finalize first object/chain"
+            )
+        else:
+            raise AssertionError("Result actual finalize swallowed primary")
+        observed = finalization_receipts[-1]
+        check(order == ["after", "close"] and observed["complete"] is False, "Result actual finalize close/order")
+        if annotation_errors:
+            check(observed["cleanup_failed"] is True, "Result actual annotation failure OR retained")
+        else:
+            check(observed["poisoned"] is True, "Result actual first error recorded")
+    # A prior poison is retained even if the inert barrier and close raise later objects.
+    prior_observer, prior_order = finalizer_control(barrier_error=close_error, close_error=sentinel, prior=first_error)
+    try:
+        observer_after_finalize(prior_observer, None)
+    except BaseException as error:
+        check(error is first_error and prior_order == ["after", "close"], "Result actual prior poison priority")
+    else:
+        raise AssertionError("Result actual prior poison swallowed")
+
+    for body_error, closing_error, annotation_error, have_sink in (
+        (None, None, None, True),
+        (first_error, None, None, True),
+        (None, close_error, None, True),
+        (None, close_error, sentinel, True),
+        (first_error, close_error, sentinel, True),
+        (first_error, close_error, sentinel, False),
+    ):
+        queued_order = []
+
+        async def inert_close(closing_error=closing_error, queued_order=queued_order):
+            queued_order.append("close")
+            if closing_error is not None:
+                raise closing_error
+
+        def inert_annotation(
+            error, annotation_error=annotation_error, closing_error=closing_error, queued_order=queued_order
+        ):
+            queued_order.append("annotation")
+            check(error is closing_error, "Result queued actual close annotation object")
+            if annotation_error is not None:
+                raise annotation_error
+
+        expected_error = body_error if body_error is not None else closing_error
+        try:
+            await observer_queued_cleanup(
+                inert_close,
+                inert_annotation if have_sink else None,
+                body_error,
+                first_traceback if body_error is not None else None,
+            )
+        except BaseException as error:
+            check(error is expected_error, "Result actual queued first object")
+            if body_error is not None:
+                check(original_traceback_retained(error), "Result actual queued original traceback chain")
+        else:
+            check(expected_error is None, "Result actual queued error swallowed")
+        check(
+            queued_order == (["close", "annotation"] if closing_error is not None and have_sink else ["close"]),
+            "Result actual queued awaited once and failure-only sink",
+        )
+    check(_HELD_CUSTODY is real_held, "Result pure controls retain actual custody identity")
     completed += 1
     return completed
 
@@ -3456,7 +3982,7 @@ async def decode_control(case, case_id):
     if case_id == "p-005":
         clock_comparison_controls()
         case.request.node.user_properties.append(("result_clock_controls", 6))
-        completed = source_observer_controls()
+        completed = await source_observer_controls()
         check(completed == 8, "Result observer control completion")
         case.request.node.user_properties.append(("result_source_observer_controls", completed))
         check(
