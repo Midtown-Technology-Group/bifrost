@@ -3908,6 +3908,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace-promotions/live/retirement-inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect Workspace Release Retirement
+         * @description Inventory the guard's complete Root cohort, including inactive audit rows.
+         */
+        get: operations["inspect_workspace_release_retirement_api_workspace_promotions_live_retirement_inventory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace-promotions/live/retire": {
         parameters: {
             query?: never;
@@ -31139,6 +31159,12 @@ export interface components {
         /** SolutionGitSourceDeliveryResponse */
         SolutionGitSourceDeliveryResponse: {
             /**
+             * Authored Source State
+             * @default unmapped
+             * @enum {string}
+             */
+            authored_source_state: "unmapped" | "verified" | "attention_required";
+            /**
              * State
              * @enum {string}
              */
@@ -33762,6 +33788,41 @@ export interface components {
              */
             disable_global_key: boolean;
         };
+        /** WorkflowRetirementConsumerInventory */
+        WorkflowRetirementConsumerInventory: {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "bifrost.workflow-retirement-consumers/v1";
+            /** Native Callers */
+            native_callers: components["schemas"]["WorkflowRetirementNativeReference"][];
+            /** Accepted Work */
+            accepted_work: components["schemas"]["WorkflowRetirementNativeReference"][];
+            /** Application Inventory Digest */
+            application_inventory_digest: string;
+            /**
+             * Application Source Dist Review Required
+             * @default true
+             * @constant
+             */
+            application_source_dist_review_required: true;
+            /** Inventory Digest */
+            inventory_digest: string;
+        };
+        /** WorkflowRetirementNativeReference */
+        WorkflowRetirementNativeReference: {
+            /** Entity Type */
+            entity_type: string;
+            /** Id */
+            id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Solution Id */
+            solution_id: string | null;
+            /** Reference Type */
+            reference_type?: string | null;
+        };
         /**
          * WorkflowRolesResponse
          * @description Response model for getting roles assigned to a workflow.
@@ -34342,6 +34403,8 @@ export interface components {
             reason: string;
             /** Acknowledgement */
             acknowledgement: string;
+            /** Obsolete Registrations */
+            obsolete_registrations?: components["schemas"]["WorkspaceRegistrationRetirementReview"][];
         };
         /** WorkspaceLiveRetireResponse */
         WorkspaceLiveRetireResponse: {
@@ -34361,6 +34424,88 @@ export interface components {
             governed_path_count: number;
             /** Evidence Id */
             evidence_id: string;
+        };
+        /**
+         * WorkspaceLiveRetirementInventory
+         * @description A bounded read-only census, never an authorization to retire Live.
+         */
+        WorkspaceLiveRetirementInventory: {
+            /**
+             * Schema Version
+             * @default bifrost.workspace-release-retirement-inventory/v1
+             * @constant
+             */
+            schema_version: "bifrost.workspace-release-retirement-inventory/v1";
+            /**
+             * Read Only
+             * @default true
+             * @constant
+             */
+            read_only: true;
+            /**
+             * State
+             * @default live
+             * @enum {string}
+             */
+            state: "live" | "retired";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Release Row Id
+             * Format: uuid
+             */
+            release_row_id: string;
+            /** Release Id */
+            release_id: string;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Governed Manifest Id */
+            governed_manifest_id: string;
+            /** History Locked */
+            history_locked: boolean;
+            /** Loose Registrations */
+            loose_registrations: components["schemas"]["WorkspaceLiveRetirementRegistration"][];
+            /** Unresolved Source Obligations */
+            unresolved_source_obligations: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * WorkspaceLiveRetirementRegistration
+         * @description One Root row matching the existing retirement guard, including inactive rows.
+         */
+        WorkspaceLiveRetirementRegistration: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Path */
+            path: string;
+            /** Function Name */
+            function_name: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Matched By */
+            matched_by: ("governed_path" | "effective_registration")[];
+            /** Registration Hash */
+            registration_hash: string;
+            /** Retirement Evidence Id */
+            retirement_evidence_id?: string | null;
+            consumer_inventory: components["schemas"]["WorkflowRetirementConsumerInventory"];
         };
         /** WorkspaceLiveStatusResponse */
         WorkspaceLiveStatusResponse: {
@@ -34756,6 +34901,31 @@ export interface components {
             diagnostic_decision?: components["schemas"]["PromotionDiagnosticDecision"] | null;
             /** Expires At */
             expires_at?: string | null;
+        };
+        /**
+         * WorkspaceRegistrationRetirementReview
+         * @description Exact obsolete row, with a separately reviewed external caller census.
+         *
+         *     Native inventory cannot prove absence of indirect Python, App or external
+         *     callers. The supplied review is a human cutover gate, never inferred from
+         *     a zero native caller count or from repository evidence alone.
+         */
+        WorkspaceRegistrationRetirementReview: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             */
+            workflow_id: string;
+            /** Expected Registration Hash */
+            expected_registration_hash: string;
+            /** Expected Consumer Inventory Digest */
+            expected_consumer_inventory_digest: string;
+            /** Reviewed External Callers Digest */
+            reviewed_external_callers_digest: string;
+            /** Review Reference */
+            review_reference: string;
+            /** Reason */
+            reason: string;
         };
         /** WorkspaceReleaseActivateRequest */
         WorkspaceReleaseActivateRequest: {
@@ -42614,6 +42784,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_workspace_release_retirement_api_workspace_promotions_live_retirement_inventory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceLiveRetirementInventory"];
                 };
             };
         };

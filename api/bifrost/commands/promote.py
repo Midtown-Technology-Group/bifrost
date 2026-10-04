@@ -50,6 +50,7 @@ PROMOTION_ACTIVATE_ENDPOINT = "/api/workspace-promotions/releases/{release_id}/a
 PROMOTION_RELEASE_STATUS_ENDPOINT = "/api/workspace-promotions/releases/{release_id}"
 PROMOTION_LIVE_STATUS_ENDPOINT = "/api/workspace-promotions/live"
 PROMOTION_LIVE_RETIRE_ENDPOINT = "/api/workspace-promotions/live/retire"
+PROMOTION_RETIREMENT_INVENTORY_ENDPOINT = "/api/workspace-promotions/live/retirement-inventory"
 PLATFORM_JOB_STATUS_ENDPOINT = "/api/platform-jobs/{job_id}"
 PREPARE_POLL_INTERVAL_SECONDS = 2.0
 PREPARE_POLL_TIMEOUT_SECONDS = 30 * 60
@@ -65,6 +66,7 @@ _SUBCOMMANDS = {
     "prepare",
     "activate",
     "retire-live",
+    "retirement-inventory",
     "status",
 }
 
@@ -291,11 +293,16 @@ def _parser() -> argparse.ArgumentParser:
         "--reason", required=True, help="Operator reason recorded as evidence"
     )
     retire_live.add_argument(
+        "--obsolete-registrations-file", type=pathlib.Path,
+        help="Reviewed JSON array of exact obsolete UUIDs and inventory/review digests",
+    )
+    retire_live.add_argument(
         "--acknowledge",
         required=True,
         help=f"Must be exactly {RETIRE_LIVE_ACKNOWLEDGEMENT}",
     )
     retire_live.add_argument("--json", action="store_true", help="Emit machine JSON")
+    subparsers.add_parser("retirement-inventory", help="Read the complete Live retirement census")
 
     release_status = subparsers.add_parser(
         "status",
@@ -958,9 +965,21 @@ def _handle_retire_live(options: argparse.Namespace) -> int:
             f"--acknowledge must be exactly {RETIRE_LIVE_ACKNOWLEDGEMENT}"
         )
     client = BifrostClient.get_instance(require_auth=True)
+    obsolete_file = getattr(options, "obsolete_registrations_file", None)
+    obsolete = None
+    if obsolete_file is not None:
+        if not all((options.expected_release_id, options.expected_artifact_id, options.governed_manifest_id)):
+            raise PromotionBundleError("obsolete registration retirement requires explicit Live identity fields")
+        obsolete = json.loads(obsolete_file.read_text(encoding="utf-8"))
+        if not isinstance(obsolete, list) or not obsolete or len(obsolete) > 1000:
+            raise PromotionBundleError("obsolete registrations must be a nonempty bounded JSON array")
     active = _read_live(client)
     if active is None:
-        raise PromotionBundleError("there is no Live Workspace release to retire")
+        if not all((options.expected_release_id, options.expected_artifact_id, options.governed_manifest_id)):
+            raise PromotionBundleError("there is no Live Workspace release to retire")
+        # An exact explicit request can read back the already-retired result.
+        # The server rejects any different retained identity or review set.
+        active = {}
     release_id = options.expected_release_id or str(active.get("release_id") or "")
     artifact_id = options.expected_artifact_id or str(active.get("artifact_id") or "")
     runtime = active.get("runtime") or {}
@@ -973,16 +992,16 @@ def _handle_retire_live(options: argparse.Namespace) -> int:
             "could not resolve the Live release identity; pass "
             "--expected-release-id, --expected-artifact-id, and --governed-manifest-id"
         )
-    response = client.post_sync(
-        PROMOTION_LIVE_RETIRE_ENDPOINT,
-        json={
-            "expected_release_id": release_id,
-            "expected_artifact_id": artifact_id,
-            "governed_manifest_id": governed_manifest_id,
-            "reason": options.reason,
-            "acknowledgement": options.acknowledge,
-        },
-    )
+    body: dict[str, Any] = {
+        "expected_release_id": release_id,
+        "expected_artifact_id": artifact_id,
+        "governed_manifest_id": governed_manifest_id,
+        "reason": options.reason,
+        "acknowledgement": options.acknowledge,
+    }
+    if obsolete is not None:
+        body["obsolete_registrations"] = obsolete
+    response = client.post_sync(PROMOTION_LIVE_RETIRE_ENDPOINT, json=body)
     raise_for_status_with_detail(response)
     result = response.json()
     if not isinstance(result, dict):
@@ -1550,6 +1569,12 @@ def handle_promote(args: list[str]) -> int:
             return _handle_activate(options)
         if options.command == "retire-live":
             return _handle_retire_live(options)
+        if options.command == "retirement-inventory":
+            client = BifrostClient.get_instance(require_auth=True)
+            response = client.get_sync(PROMOTION_RETIREMENT_INVENTORY_ENDPOINT)
+            raise_for_status_with_detail(response)
+            print(json.dumps(response.json(), indent=2, sort_keys=True))
+            return 0
         if options.command == "status":
             return _handle_status(options, parser)
         raise PromotionBundleError(f"unsupported promotion command: {options.command}")

@@ -1738,3 +1738,36 @@ def test_retire_live_requires_exact_acknowledgement(capsys) -> None:
         == 1
     )
     assert promote.RETIRE_LIVE_ACKNOWLEDGEMENT in capsys.readouterr().err
+
+
+def test_obsolete_retirement_file_requires_independent_live_identity(monkeypatch, tmp_path, capsys):
+    path = tmp_path / "reviewed-obsolete.json"
+    path.write_text('[{"workflow_id": "11111111-1111-1111-1111-111111111111"}]')
+    class Client:
+        def get_sync(self, *_args, **_kwargs):
+            raise AssertionError("must not infer reviewed target identity")
+        def post_sync(self, *_args, **_kwargs):
+            raise AssertionError("must not mutate without independent identity")
+    monkeypatch.setattr(promote.BifrostClient, "get_instance", lambda **_kw: Client())
+    assert promote.handle_promote(["retire-live", "--reason", "Reviewed obsolete rows",
+        "--acknowledge", promote.RETIRE_LIVE_ACKNOWLEDGEMENT,
+        "--obsolete-registrations-file", str(path)]) == 1
+    assert "explicit Live identity" in capsys.readouterr().err
+
+
+def test_retirement_inventory_is_read_only_and_emits_native_evidence(monkeypatch, capsys):
+    calls = []
+    class Response:
+        def json(self):
+            return {"read_only": True, "state": "retired", "loose_registrations": []}
+    class Client:
+        def get_sync(self, endpoint):
+            calls.append(endpoint)
+            return Response()
+        def post_sync(self, *_args, **_kwargs):
+            raise AssertionError("inventory must not mutate")
+    monkeypatch.setattr(promote.BifrostClient, "get_instance", lambda **_kw: Client())
+    monkeypatch.setattr(promote, "raise_for_status_with_detail", lambda _response: None)
+    assert promote.handle_promote(["retirement-inventory"]) == 0
+    assert calls == [promote.PROMOTION_RETIREMENT_INVENTORY_ENDPOINT]
+    assert json.loads(capsys.readouterr().out)["read_only"] is True
