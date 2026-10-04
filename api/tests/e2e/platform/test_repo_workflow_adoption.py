@@ -1,11 +1,13 @@
 """A populated install changes runtime only with current source/control proof."""
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import select, update
 
+from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.solution_deployments import (
     InitialWorkflowInstallInspectRequest, InitialWorkflowInstallRequest,
 )
@@ -16,14 +18,17 @@ from src.models.orm.solution_config_schema import SolutionConfigSchema
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
+from src.models.orm.workspace_promotions import WorkspaceSourceRelease
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.repo_workflow_adoption import RepoWorkflowAdoptionService, _digest_row
 from src.services.solutions.source_revision import SolutionSourceRevisionConflict, SolutionSourceRevisionError
 from src.services.solutions.workflow_revision import project_workflow_registrations
 from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe, compile_workflow_registrations
 
+from tests.e2e.platform.test_initial_workflow_install import artifact_store as artifact_store
+from tests.e2e.platform.test_initial_workflow_install import db_session as db_session
+
 pytestmark = pytest.mark.e2e
-pytest_plugins = ["tests.e2e.platform.test_initial_workflow_install"]
 
 
 @pytest.fixture
@@ -46,7 +51,7 @@ def legacy_store(monkeypatch):
 
 
 async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, legacy_schema=False,
-                with_owned_query=False, legacy_descriptors=False, stage=True):
+                with_owned_query=False, legacy_descriptors=False, constant_default=False, legacy_name=False, stage=True):
     sid, did, wid = uuid4(), uuid4(), uuid4()
     path = "workflows/adopt.py"
     source = (b"from bifrost import workflow\n"
@@ -58,6 +63,9 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
                   "async def run(user: str = 'root'):\n"
                   f"    rows = await tables.query('adoption-{sid.hex}', limit=1)\n"
                   "    return {'user': user, 'version': 'old', 'count': rows.total}\n").encode()
+    if constant_default:
+        source = source.replace(b"@workflow", b"DEFAULT_USER = 'root'\n@workflow").replace(
+            b"user: str = 'root'", b"user: str = DEFAULT_USER")
     if legacy_descriptors:
         source = source.replace(b"effects=[]", b"category='Reviewed category', description='Reviewed description', effects=[]")
     solution = Solution(id=sid, slug=f"adopt-{sid.hex[:12]}", name="Adopted install",
@@ -86,6 +94,9 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
         await db_session.execute(update(Workflow).where(Workflow.id == wid).values(
             description=None, category="General"))
         await db_session.refresh(row)
+    if legacy_name:
+        await db_session.execute(update(Workflow).where(Workflow.id == wid).values(name="run"))
+        await db_session.refresh(row)
     inactive = Workflow(id=uuid4(), solution_id=sid, organization_id=None, name="Inactive retained",
         function_name="dormant", path="workflows/dormant.py", is_active=False, is_orphaned=True)
     table = Table(id=uuid4(), name=f"adoption-{sid.hex}", solution_id=sid, organization_id=None)
@@ -104,6 +115,134 @@ async def _seed(db_session, platform_admin, artifact_store, legacy_store, *, leg
     before = {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
     staged = await service.stage(sid, did, platform_admin.user_id, body, {path: source}, {}) if stage else None
     return solution, did, row, inactive, table, config, service, request, staged, before
+
+
+@pytest.mark.asyncio
+async def test_adoption_resolves_unchanged_constant_defaults_without_rewriting_legacy_rows(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    solution, did, row, inactive, table, config, service, request, staged, before = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=True, with_owned_query=True, constant_default=True)
+    result = await service.activate(solution.id, did, request, staged.evidence_id)
+    assert result.state == "active"
+    assert row.parameters_schema[0]["default_value"] == "root"
+    assert before == {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
+
+
+@pytest.mark.asyncio
+async def test_adoption_rejects_changed_constant_default_before_storing_a_candidate(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    solution, did, row, _, _, _, service, request, _, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=True, with_owned_query=True, constant_default=True, stage=False)
+    changed = legacy_store[solution.id][row.path].replace(b"DEFAULT_USER = 'root'", b"DEFAULT_USER = 'other'")
+    body = InitialWorkflowInstallRequest(source_commit_sha="c" * 40, reviewed_recipe=request.reviewed_recipe,
+        files=[{"path": row.path, "content_base64": "AA=="}])
+    with pytest.raises(SolutionSourceRevisionConflict, match="source parameter contract"):
+        await service.stage(solution.id, did, platform_admin.user_id, body, {row.path: changed}, {})
+    assert solution.active_deployment_id is None
+
+
+@pytest.mark.asyncio
+async def test_adoption_adds_optional_parameter_with_original_rows_and_complete_runtime_pin(
+    db_session, platform_admin, artifact_store, legacy_store,
+):
+    from src.services.solutions.deployment_runtime import pin_workflow_runtime
+    solution, did, row, inactive, table, config, service, request, _, before = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=True, with_owned_query=True, stage=False)
+    source = legacy_store[solution.id][row.path].replace(
+        b"user: str = 'root'", b"user: str = 'root', *, approved_id: int | None = None")
+    body = InitialWorkflowInstallRequest(source_commit_sha="c" * 40, reviewed_recipe=request.reviewed_recipe,
+        files=[{"path": row.path, "content_base64": "AA=="}])
+    staged = await service.stage(solution.id, did, platform_admin.user_id, body, {row.path: source}, {})
+    await service.activate(solution.id, did, request, staged.evidence_id)
+    assert before == {str(item.id): _digest_row(item) for item in (row, inactive, table, config)}
+    pin = await pin_workflow_runtime(db_session, row.id)
+    assert pin is not None and pin.parameters_schema is not None
+    assert pin.parameters_schema["properties"]["approved_id"]["default"] is None
+    assert pin.parameters_schema["properties"]["user"]["default"] == "root"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["old_default", "required", "modern_registry"])
+async def test_adoption_rejects_optional_addition_that_changes_existing_admission(
+    db_session, platform_admin, artifact_store, legacy_store, change,
+):
+    from src.models.orm.solution_deployments import SolutionDeployment
+    solution, did, row, _, _, _, service, request, _, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store,
+        legacy_schema=change != "modern_registry", with_owned_query=True, stage=False)
+    argument = b"approved_id: int" if change == "required" else b"approved_id: int | None = None"
+    source = legacy_store[solution.id][row.path].replace(
+        b"user: str = 'root'", b"user: str = 'root', *, " + argument)
+    if change == "old_default":
+        source = source.replace(b"user: str = 'root'", b"user: str = 'other'")
+    body = InitialWorkflowInstallRequest(source_commit_sha="c" * 40, reviewed_recipe=request.reviewed_recipe,
+        files=[{"path": row.path, "content_base64": "AA=="}])
+    with pytest.raises(SolutionSourceRevisionConflict, match="source parameter contract"):
+        await service.stage(solution.id, did, platform_admin.user_id, body, {row.path: source}, {})
+    assert await db_session.get(SolutionDeployment, did) is None
+    assert solution.active_deployment_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("successor", [False, True])
+async def test_native_runtime_anchor_supersedes_old_source_only_with_matching_closure(
+    db_session, platform_admin, artifact_store, legacy_store, successor,
+):
+    from src.models.contracts.solution_deployments import (
+        SolutionSourceRevisionCommitRequest, SolutionSourceRevisionInspectRequest,
+    )
+    from src.models.contracts.workspace_promotions import (
+        WorkspaceSourceSupersessionEvidence, WorkspaceSourceSupersessionPath,
+    )
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.deployment_manifest import sha256_digest
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+    from src.services.workspace_source_releases import WorkspaceSourceReleaseConflict, WorkspaceSourceReleaseService
+
+    solution, did, row, _, _, _, service, request, staged, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store)
+    await service.activate(solution.id, did, request, staged.evidence_id)
+    source = legacy_store[solution.id][row.path]
+    if successor:
+        base = await db_session.get(SolutionDeployment, did)
+        expected = SolutionSourceRevisionInspectRequest(
+            expected_active_deployment_id=did, expected_active_manifest_hash=base.compiled_manifest_hash)
+        did = uuid4()
+        source = source.replace(b"'old'", b"'new'")
+        revision = SolutionWorkflowRevisionService(db_session)
+        inspected = await revision.stage_workflows(solution.id, did, platform_admin.user_id,
+            expected, request.reviewed_recipe, {row.path: source}, "d" * 40)
+        await revision.activate_workflows(solution.id, did, SolutionSourceRevisionCommitRequest(
+            **expected.model_dump(), expected_evidence_id=inspected.evidence_id), request.reviewed_recipe)
+    digest = sha256_digest(source).removeprefix("sha256:")
+    old_path = "features/adoption/workflows/adopt.py"
+    record = WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=uuid4().hex + "a" * 8, source_tree_sha="b" * 40,
+        paths={old_path: "c" * 64}, declaration_actor="platform_admin",
+        disposition="attention_required", declared_disposition="pending", reason="Historical loose source",
+        created_by=platform_admin.user_id, created_at=datetime.now(UTC) - timedelta(days=1))
+    db_session.add(record)
+    await db_session.flush()
+    evidence = WorkspaceSourceSupersessionEvidence(superseding_solution_deployment_ids=[did],
+        reviewed_global_solution_ids=[solution.id], production_readback_id="sha256:" + "d" * 64,
+        verified_at=datetime.now(UTC), paths={old_path: WorkspaceSourceSupersessionPath(
+            current_git_sha256=digest, runtime_owner="solution", runtime_ref=str(did),
+            runtime_path=row.path, runtime_source_sha256="0" * 64)})
+    accounting = WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID)
+    with pytest.raises(WorkspaceSourceReleaseConflict, match="runtime hash is unverified"):
+        await accounting.set_manual_disposition(record.id, disposition="superseded",
+            reason="Reviewed native runtime replaces historical source", supersession_evidence=evidence)
+    assert record.disposition == "attention_required" and record.completion_evidence is None
+    evidence.paths[old_path].runtime_source_sha256 = digest
+    result = await accounting.set_manual_disposition(record.id, disposition="superseded",
+        reason="Reviewed native runtime replaces historical source", supersession_evidence=evidence)
+    assert result.disposition == "superseded"
+    assert result.completion_evidence["review"]["paths"][old_path]["runtime_ref"] == str(did)
 
 
 @pytest.mark.asyncio
@@ -166,13 +305,15 @@ async def test_unfinished_attempt_blocks_even_when_execution_is_terminal(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["source", "inactive_source", "credential", "inactive", "table", "config", "description", "category"])
+@pytest.mark.parametrize("change", ["source", "inactive_source", "credential", "inactive", "table", "config", "description", "category", "name"])
 async def test_adoption_rejects_stale_mutable_source_or_any_retained_control(
     db_session, platform_admin, artifact_store, legacy_store, change,
 ):
     solution, did, row, inactive, table, config, service, request, staged, _ = await _seed(
         db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
-    if change == "description":
+    if change == "name":
+        await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(name="Changed caller"))
+    elif change == "description":
         await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(description=""))
     elif change == "category":
         await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(category="Changed category"))
@@ -206,8 +347,9 @@ async def test_adoption_rejects_stale_review_digest(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_name", [False, True])
 async def test_adoption_then_source_successor_preserves_owned_controls_and_old_pin(
-    db_session, platform_admin, artifact_store, legacy_store,
+    db_session, platform_admin, artifact_store, legacy_store, legacy_name,
 ):
     from src.models.contracts.solution_deployments import (
         SolutionSourceRevisionCommitRequest, SolutionSourceRevisionInspectRequest,
@@ -220,7 +362,7 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
 
     solution, did, row, inactive, table, config, service, request, staged, before = await _seed(
         db_session, platform_admin, artifact_store, legacy_store,
-        legacy_schema=True, with_owned_query=True, legacy_descriptors=True)
+        legacy_schema=True, with_owned_query=True, legacy_descriptors=True, legacy_name=legacy_name)
     await service.activate(solution.id, did, request, staged.evidence_id)
     old_pin = await pin_workflow_runtime(db_session, row.id)
     assert old_pin is not None and old_pin.deployment_id == did
@@ -252,6 +394,8 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
     new_pin = await pin_workflow_runtime(db_session, row.id)
     assert new_pin is not None
     assert solution.active_deployment_id == next_id and new_pin.deployment_id == next_id
+    assert new_pin.name == old_pin.name == ("run" if legacy_name else "Adopted task")
+    assert row.name == new_pin.name
     assert new_pin.parameters_schema == old_pin.parameters_schema
     accepted = await resolve_pinned_workflow_runtime(db_session, did, row.id)
     assert accepted.queue_evidence() == old_pin.queue_evidence()
@@ -291,20 +435,22 @@ async def test_adoption_candidate_cannot_replace_its_staged_legacy_baseline(
 
 
 @pytest.mark.asyncio
-async def test_adopted_legacy_schema_drift_blocks_source_successor(
-    db_session, platform_admin, artifact_store, legacy_store,
+@pytest.mark.parametrize("change", ["schema", "name"])
+async def test_adopted_registration_drift_blocks_source_successor(
+    db_session, platform_admin, artifact_store, legacy_store, change,
 ):
     from src.models.contracts.solution_deployments import SolutionSourceRevisionInspectRequest
     from src.models.orm.solution_deployments import SolutionDeployment
     from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
     solution, did, row, _, _, _, service, request, staged, _ = await _seed(
         db_session, platform_admin, artifact_store, legacy_store,
-        legacy_schema=True, with_owned_query=True)
+        legacy_schema=True, with_owned_query=True, legacy_name=True)
     await service.activate(solution.id, did, request, staged.evidence_id)
     base = await db_session.get(SolutionDeployment, did)
     assert base is not None
-    await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(
-        parameters_schema=[{"name": "user", "type": "string", "required": True}]))
+    drift = {"name": "Renamed caller"} if change == "name" else {
+        "parameters_schema": [{"name": "user", "type": "string", "required": True}]}
+    await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(**drift))
     expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=did,
         expected_active_manifest_hash=base.compiled_manifest_hash)
     with pytest.raises(SolutionSourceRevisionError, match="registration differs"):
@@ -419,8 +565,8 @@ async def test_nullable_legacy_adoption_over_http_preserves_rows_and_executes_se
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["missing", "fields", "source_descriptors"])
-async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_hashes_are_resealed(
+@pytest.mark.parametrize("change", ["missing", "fields", "source_descriptors", "name_missing", "name_source", "name_installed", "name_extra"])
+async def test_preflight_recompiles_legacy_evidence_even_if_artifact_hashes_are_resealed(
     db_session, platform_admin, artifact_store, legacy_store, monkeypatch, change,
 ):
     from copy import deepcopy
@@ -433,7 +579,7 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
     from src.services.solutions.deployment_manifest import CompiledDeploymentManifest, canonical_json, sha256_digest
 
     solution, did, _, _, _, _, service, request, _, _ = await _seed(
-        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
+        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True, legacy_name=True)
     deployment = await db_session.get(SolutionDeployment, did)
     resolution = deepcopy(deployment.resolution_map)
     definition = next(iter(resolution["workflows"].values()))["definition"]
@@ -442,8 +588,19 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
     elif change == "fields":
         from src.services.solutions.source_revision import legacy_descriptor_evidence
         definition["legacy_descriptor_evidence"] = legacy_descriptor_evidence({"description": "", "category": "General"})
-    else:
+    elif change == "source_descriptors":
         definition["description"] = "Other source description"
+    elif change == "name_missing":
+        del definition["legacy_registration_name_evidence"]
+    else:
+        from src.services.solutions.source_revision import legacy_registration_name_evidence
+        installed = "other" if change == "name_installed" else "run"
+        declared = "Other declaration" if change == "name_source" else "Adopted task"
+        definition["legacy_registration_name_evidence"] = legacy_registration_name_evidence(installed, declared)
+        definition["name"] = installed
+        if change == "name_extra":
+            definition["legacy_registration_name_evidence"]["fields"]["access_level"] = "authenticated"
+
     manifest_data = deepcopy(deployment.compiled_manifest)
     manifest_data["workflows"] = resolution["workflows"]
     manifest_data["resolution_map_hash"] = sha256_digest(canonical_json(resolution))
@@ -473,8 +630,9 @@ async def test_preflight_recompiles_legacy_descriptor_evidence_even_if_artifact_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_name", [False, True])
 async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_and_old_pin(
-    db_session, platform_admin, artifact_store, legacy_store,
+    db_session, platform_admin, artifact_store, legacy_store, legacy_name,
 ):
     import base64
 
@@ -484,7 +642,7 @@ async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_an
     from src.services.solutions.source_revision import SolutionSourceRevisionService
 
     solution, did, row, _, _, _, service, request, staged, _ = await _seed(
-        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True)
+        db_session, platform_admin, artifact_store, legacy_store, legacy_descriptors=True, legacy_name=legacy_name)
     await service.activate(solution.id, did, request, staged.evidence_id)
     base = await db_session.get(SolutionDeployment, did)
     assert base is not None
@@ -502,9 +660,33 @@ async def test_source_only_successor_retains_exact_legacy_descriptor_evidence_an
         expected_evidence_id=staged_revision.evidence_id))
     await db_session.refresh(row)
     assert row.description is None and row.category == "General"
+    assert row.name == ("run" if legacy_name else "Adopted task")
     successor = await db_session.get(SolutionDeployment, next_id)
     assert next(iter(successor.resolution_map["workflows"].values()))["definition"] == next(iter(base.resolution_map["workflows"].values()))["definition"]
     new_pin = await pin_workflow_runtime(db_session, row.id)
     assert new_pin is not None
     assert new_pin.deployment_id == next_id and new_pin.source_hash != old_pin.source_hash
     assert (await resolve_pinned_workflow_runtime(db_session, did, row.id)).queue_evidence() == old_pin.queue_evidence()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_name", [False, True])
+async def test_reviewed_workflow_successor_rejects_source_rename_for_native_adoption(
+    db_session, platform_admin, artifact_store, legacy_store, legacy_name,
+):
+    from src.models.contracts.solution_deployments import SolutionSourceRevisionInspectRequest
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+
+    solution, did, row, _, _, _, service, request, staged, _ = await _seed(
+        db_session, platform_admin, artifact_store, legacy_store, legacy_name=legacy_name)
+    await service.activate(solution.id, did, request, staged.evidence_id)
+    base = await db_session.get(SolutionDeployment, did)
+    expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=did,
+        expected_active_manifest_hash=base.compiled_manifest_hash)
+    renamed = legacy_store[solution.id][row.path].replace(b"Adopted task", b"Renamed task")
+    with pytest.raises(SolutionSourceRevisionError, match="source registration name changed|Rename, scope"):
+        await SolutionWorkflowRevisionService(db_session).stage_workflows(
+            solution.id, uuid4(), platform_admin.user_id, expected, request.reviewed_recipe,
+            {row.path: renamed}, "d" * 40)
+    assert solution.active_deployment_id == did

@@ -3,21 +3,26 @@ import base64
 import copy
 import hashlib
 import json
+from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
+from operator import setitem
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
 import jwt
 import pytest
+from bifrost.workspace_release import canonical_digest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from pydantic import ValidationError
-
-from bifrost.workspace_release import canonical_digest
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.services.github_actions_oidc import GITHUB_ACTIONS_ISSUER
 from src.services.solutions.github_delivery_source import (
-    GitDeliverySourceError, ProtectedGitReader, RECIPE_SCHEMA,
-    authenticate_git_delivery, delivery_audience,
+    RECIPE_SCHEMA,
+    GitDeliverySourceError,
+    ProtectedGitReader,
+    authenticate_git_delivery,
+    delivery_audience,
 )
 
 SID = UUID("00000000-0000-0000-0000-000000000010")
@@ -248,7 +253,123 @@ async def test_protected_registry_is_bound_to_exact_configured_installations(fau
             source = await reader.source(SID, SHA, digest)
             assert source.control_hashes[path] == hashlib.sha256(content).hexdigest()
             assert source.installation_registry["installations"] == {str(SID): {
-                "recipe_path": RECIPE, "organization_id": str(policy().organization_id)}}
+                "recipe_path": RECIPE, "organization_id": str(policy().organization_id),
+                "repo_subpath": "solutions/fixture", "package_subpaths": ["solutions/fixture"]}}
+
+
+def add_git_document(documents, path, content):
+    sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content,
+        usedforsecurity=False).hexdigest()
+    entries = documents["git/trees/" + TREE + "?recursive=1"]["tree"]
+    entries[:] = [row for row in entries if row["path"] != path]
+    entries.append({"path": path, "type": "blob", "mode": "100644", "sha": sha, "size": len(content)})
+    documents["git/blobs/" + sha] = {"sha": sha, "encoding": "base64", "content": base64.b64encode(content).decode()}
+
+
+def family_registry_fixture(*, root_mapped=False, resource_mapping=None):
+    documents, _, digest = fixture()
+    peer_id, root_id = UUID(int=20), UUID(int=30)
+    peer_path, root_path = "config/solution-delivery/peer.json", "config/solution-delivery/root.json"
+    peer_files = {"fixture.py": "solutions/fixture/fixture.py", "helper.py": "solutions/fixture/helper.py"}
+    if root_mapped:
+        peer_files["helper.py"] = "features/helpers/runtime.py"
+        add_git_document(documents, "features/helpers/runtime.py", b"value = 1\n")
+    peer = {"schema_version": RECIPE_SCHEMA, "solution_id": str(peer_id), "files": peer_files}
+    if resource_mapping is not None:
+        peer.update(schema_version="bifrost.solution-workflow-delivery/v1", resources=resource_mapping,
+            workflows=[{"id": str(UUID(int=100)), "path": "fixture.py", "function_name": "fixture",
+                "organization_id": None, "runtime_bounds": {"max_duration_seconds": 30,
+                    "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096}, "controls": {}}])
+        for path in resource_mapping.values():
+            add_git_document(documents, path, b'{"rate":1}')
+    add_git_document(documents, peer_path, json.dumps(peer).encode())
+    add_git_document(documents, root_path, json.dumps({"schema_version": RECIPE_SCHEMA,
+        "solution_id": str(root_id), "files": {"root.py": "features/root.py"}}).encode())
+    add_git_document(documents, "features/root.py", b"value = 1\n")
+    add_git_document(documents, "config/solution-delivery/installations.json", json.dumps({
+        "schema_version": "bifrost.solution-delivery-installations/v1", "installations": [
+            {"target": "production", "recipe": path} for path in (RECIPE, peer_path, root_path)]}).encode())
+    configured = policy().model_copy(update={"solutions": {SID: RECIPE, peer_id: peer_path, root_id: root_path},
+        "solution_organization_ids": {SID: None, peer_id: policy().organization_id, root_id: None}})
+    return documents, digest, configured, peer, peer_id, root_id
+
+
+@pytest.mark.asyncio
+async def test_registry_target_family_is_derived_from_all_protected_recipes_without_database_rows():
+    documents, digest, configured, _, peer_id, root_id = family_registry_fixture()
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
+    targets = source.installation_registry["installations"]
+    assert set(targets) == {str(SID), str(peer_id), str(root_id)}
+    assert targets[str(SID)] == {"recipe_path": RECIPE, "organization_id": None,
+        "repo_subpath": "solutions/fixture", "package_subpaths": ["solutions/fixture"]}
+    assert targets[str(peer_id)]["organization_id"] == str(policy().organization_id)
+    assert targets[str(peer_id)]["repo_subpath"] == "solutions/fixture"
+    assert targets[str(root_id)]["repo_subpath"] is None
+    assert targets[str(root_id)]["package_subpaths"] == []
+    # Reading another recipe proves its association, not its installed controls.
+    assert "config/solution-delivery/peer.json" not in source.control_hashes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("root_mapped,resources,expected,packages", [
+    (True, None, None, ["solutions/fixture"]),
+    (False, {"rates.json": "solutions/fixture/data/rates.json"}, "solutions/fixture", ["solutions/fixture"]),
+    (False, {"rates.json": "data/rates.json"}, None, ["solutions/fixture"]),
+    (False, {"rates.json": "solutions/other/data/rates.json"}, None, ["solutions/fixture", "solutions/other"]),
+])
+async def test_registry_family_retains_every_package_consumed_by_mixed_sources_or_resources(root_mapped, resources, expected, packages):
+    documents, digest, configured, _, peer_id, _ = family_registry_fixture(
+        root_mapped=root_mapped, resource_mapping=resources)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
+    assert source.installation_registry["installations"][str(peer_id)]["repo_subpath"] == expected
+    assert source.installation_registry["installations"][str(peer_id)]["package_subpaths"] == packages
+    fixture_targets = {identity for identity, entry in source.installation_registry["installations"].items()
+        if "solutions/fixture" in entry["package_subpaths"]}
+    # No install rows are consulted: a missing/inactive mixed peer remains
+    # independently declared as a consumer of the fixture package.
+    assert fixture_targets == {str(SID), str(peer_id)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing_recipe", "recipe_symlink", "recipe_blob_drift", "recipe_id",
+    "recipe_schema", "recipe_duplicate", "unsafe_source", "missing_source", "recipe_bytes", "aggregate_bytes"])
+async def test_other_registry_target_recipe_is_verified_and_bounded_before_association(fault, monkeypatch):
+    from src.services.solutions import github_delivery_source
+
+    documents, digest, configured, peer, _, _ = family_registry_fixture()
+    path = "config/solution-delivery/peer.json"
+    entries = documents["git/trees/" + TREE + "?recursive=1"]["tree"]
+    entry = next(row for row in entries if row["path"] == path)
+    if fault == "missing_recipe":
+        entries.remove(entry)
+    elif fault == "recipe_symlink":
+        entry["mode"] = "120000"
+    elif fault == "recipe_blob_drift":
+        documents["git/blobs/" + entry["sha"]]["content"] = base64.b64encode(b"forged").decode()
+    elif fault == "recipe_id":
+        peer["solution_id"] = str(UUID(int=99))
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "recipe_schema":
+        peer["schema_version"] = "unreviewed/v1"
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "recipe_duplicate":
+        raw = json.dumps(peer).encode().replace(b'"files": {', b'"files": {}, "files": {')
+        add_git_document(documents, path, raw)
+    elif fault == "unsafe_source":
+        peer["files"]["helper.py"] = "solutions/fixture/../other.py"
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "missing_source":
+        peer["files"]["helper.py"] = "solutions/fixture/missing.py"
+        add_git_document(documents, path, json.dumps(peer).encode())
+    elif fault == "recipe_bytes":
+        entry["size"] = 128 * 1024 + 1
+    elif fault == "aggregate_bytes":
+        monkeypatch.setattr(github_delivery_source, "MAX_METADATA_BYTES", 1)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        with pytest.raises(GitDeliverySourceError):
+            await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
 
 
 @pytest.mark.asyncio
@@ -386,3 +507,186 @@ async def test_unapproved_endpoint_never_sends_job_credentials(suffix):
         with pytest.raises(GitDeliverySourceError, match="allowlist"):
             await ProtectedGitReader(policy(), "ephemeral-job-token", client).document(suffix)
     assert calls == []
+
+
+def authored_fixture():
+    """Fourteen authored files, of which only seven belong to the recipe."""
+    runtime_paths = ["functions/audit.py", "functions/recall.py", "modules/__init__.py",
+        "modules/audit_search.py", "modules/message_recall.py", "modules/microsoft/auth.py",
+        "shared/microsoft/tenant_identity.py"]
+    runtime = {path: b"" if path.endswith("__init__.py") else b"value = 1\n" for path in runtime_paths}
+    authored = {**runtime, "modules/microsoft/__init__.py": b"", "shared/__init__.py": b"",
+        "shared/microsoft/__init__.py": b"", "README.md": b"# Authored documentation\n",
+        "bifrost.solution.yaml": b"slug: fixture\nname: Fixture\n",
+        ".bifrost/workflows.yaml": b"workflows: {}\n", ".bifrost/tables.yaml": b"tables: {}\n"}
+    recipe = {"schema_version": RECIPE_SCHEMA, "solution_id": str(SID),
+        "files": {path: "solutions/fixture/" + path for path in runtime}}
+    documents, _, _ = fixture()
+    entries, blobs = [], {}
+    contents = {RECIPE: json.dumps(recipe).encode(), **{"solutions/fixture/" + path: value
+        for path, value in authored.items()}}
+    for path, content in contents.items():
+        sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content,
+            usedforsecurity=False).hexdigest()
+        entries.append({"path": path, "type": "blob", "mode": "100755" if path.endswith("auth.py")
+            else "100644", "sha": sha, "size": len(content)})
+        blobs["git/blobs/" + sha] = {"sha": sha, "encoding": "base64",
+            "content": base64.b64encode(content).decode()}
+    subtree_sha = "c" * 40
+    directories = sorted({"/".join(path.split("/")[:depth]) for path in authored
+        for depth in range(1, len(path.split("/")))})
+    subtree_entries = [{**row, "path": row["path"].removeprefix("solutions/fixture/")}
+        for row in entries if row["path"].startswith("solutions/fixture/")]
+    for path in directories:
+        sha = hashlib.sha1(path.encode(), usedforsecurity=False).hexdigest()
+        subtree_entries.append({"path": path, "type": "tree", "mode": "040000", "sha": sha})
+        entries.append({"path": "solutions/fixture/" + path, "type": "tree", "mode": "040000", "sha": sha})
+    entries.extend([{"path": "solutions", "type": "tree", "mode": "040000", "sha": "e" * 40},
+        {"path": "solutions/fixture", "type": "tree", "mode": "040000", "sha": subtree_sha}])
+    documents["git/trees/" + TREE + "?recursive=1"]["tree"] = entries
+    documents["git/trees/" + subtree_sha + "?recursive=1"] = {
+        "sha": subtree_sha, "truncated": False, "tree": subtree_entries}
+    documents.update(blobs)
+    digest = canonical_digest({"schema_version": RECIPE_SCHEMA, "solution_id": str(SID),
+        "source_commit_sha": SHA, "source_tree_sha": TREE, "recipe_path": RECIPE,
+        "source_hashes": {path: "sha256:" + hashlib.sha256(value).hexdigest()
+            for path, value in runtime.items()}})
+    return documents, authored, runtime, digest
+
+
+@pytest.mark.asyncio
+async def test_authored_inventory_is_complete_immutable_and_independent_of_runtime_recipe():
+    from src.services.solution_deploy_obligations import solution_source_content_id
+
+    documents, authored, runtime, digest = authored_fixture()
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        evidence = await reader.authored_source(SHA, "solutions/fixture", TREE)
+        native = await reader.source(SID, SHA, digest)
+    assert len(evidence.source_files) == 14 and len(native.files) == 7
+    assert evidence.files == authored and native.files == runtime
+    assert evidence.commit_sha == SHA and evidence.tree_sha == TREE and evidence.subtree_sha == "c" * 40
+    assert evidence.solution_slug == "fixture" and evidence.repo_subpath == "solutions/fixture"
+    assert list(evidence.files) == sorted(authored)
+    manifest = evidence.file_manifest()
+    assert [row["path"] for row in manifest] == ["solutions/fixture/" + path for path in sorted(authored)]
+    assert evidence.source_content_id == solution_source_content_id(solution_slug="fixture",
+        repo_subpath="solutions/fixture", source_files=manifest)
+    executable = next(row for row in manifest if row["path"].endswith("auth.py"))
+    assert executable["mode"] == "100755"
+    assert executable["sha256"] == hashlib.sha256(authored["modules/microsoft/auth.py"]).hexdigest()
+    assert executable["size"] == len(authored["modules/microsoft/auth.py"])
+    with pytest.raises(TypeError):
+        setitem(evidence.files, "README.md", b"forged")
+    with pytest.raises(FrozenInstanceError):
+        cast(Any, evidence.source_files[0]).size = 1
+    manifest[0]["size"] = 123
+    assert evidence.file_manifest()[0]["size"] != 123
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit,path,tree", [
+    ("A" * 40, "solutions/fixture", TREE), ("a" * 39, "solutions/fixture", TREE),
+    (SHA, "solutions/fixture", "B" * 40), (SHA, "solutions/fixture", "b" * 41),
+    (SHA, "solutions/fixture/nested", TREE), (SHA, "solutions/../fixture", TREE),
+    (SHA, "solutions/fixture/", TREE), (SHA, "solutions/Fixture", TREE),
+    (SHA, "solutions/fixture_name", TREE), (SHA, "other/fixture", TREE),
+])
+async def test_authored_inventory_rejects_noncanonical_request_before_transport(commit, path, tree):
+    calls = []
+    async with httpx.AsyncClient(transport=transport({}, calls)) as client:
+        with pytest.raises(GitDeliverySourceError):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).authored_source(commit, path, tree)
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unrelated_path", ["notes/other:operator.txt", "windows\\other.txt"])
+async def test_authored_inventory_does_not_apply_delivery_path_rules_to_unrelated_git_files(unrelated_path):
+    documents, _, _, _ = authored_fixture()
+    documents["git/trees/" + TREE + "?recursive=1"]["tree"].append({"path": unrelated_path,
+        "mode": "100644", "type": "blob", "sha": "d" * 40, "size": 1})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(policy(), "ephemeral-job-token", client).authored_source(SHA,
+            "solutions/fixture", TREE)
+    assert unrelated_path not in source.files
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["commit", "commit_tree", "root_identity", "root_truncated",
+    "subtree_identity", "subtree_truncated", "missing_subtree", "invalid_subtree_sha",
+    "duplicate_root", "duplicate_subtree", "unsafe", "root_disagreement", "missing_parent",
+    "symlink", "gitlink", "invalid_mode", "invalid_blob_sha", "bool_size", "blob_bytes", "blob_identity"])
+async def test_authored_inventory_rejects_incomplete_or_forged_git_transport(fault):
+    documents, _, _, _ = authored_fixture()
+    root = documents["git/trees/" + TREE + "?recursive=1"]
+    subtree = documents["git/trees/" + "c" * 40 + "?recursive=1"]
+    entry = next(row for row in subtree["tree"] if row["path"] == "README.md")
+    root_entry = next(row for row in root["tree"] if row["path"] == "solutions/fixture/README.md")
+    if fault == "commit":
+        documents["git/commits/" + SHA]["sha"] = "d" * 40
+    elif fault == "commit_tree":
+        documents["git/commits/" + SHA]["tree"]["sha"] = "d" * 40
+    elif fault == "root_identity":
+        root["sha"] = "d" * 40
+    elif fault == "root_truncated":
+        root["truncated"] = True
+    elif fault == "subtree_identity":
+        subtree["sha"] = "d" * 40
+    elif fault == "subtree_truncated":
+        subtree["truncated"] = True
+    elif fault == "missing_subtree":
+        root["tree"] = [row for row in root["tree"] if row["path"] != "solutions/fixture"]
+    elif fault == "invalid_subtree_sha":
+        next(row for row in root["tree"] if row["path"] == "solutions/fixture")["sha"] = "G" * 40
+    elif fault == "duplicate_root":
+        root["tree"].append(copy.copy(root_entry))
+    elif fault == "duplicate_subtree":
+        subtree["tree"].append(copy.copy(entry))
+    elif fault == "unsafe":
+        entry["path"] = "../README.md"
+    elif fault == "root_disagreement":
+        root_entry["size"] += 1
+    elif fault == "missing_parent":
+        subtree["tree"] = [row for row in subtree["tree"] if row["path"] != "modules"]
+        root["tree"] = [row for row in root["tree"] if row["path"] != "solutions/fixture/modules"]
+    elif fault in {"symlink", "gitlink", "invalid_mode", "invalid_blob_sha", "bool_size"}:
+        changes = {"symlink": {"mode": "120000"}, "gitlink": {"mode": "160000", "type": "commit"},
+            "invalid_mode": {"mode": "100664"}, "invalid_blob_sha": {"sha": "g" * 40}, "bool_size": {"size": True}}
+        entry.update(changes[fault])
+        root_entry.update(changes[fault])
+    elif fault == "blob_bytes":
+        documents["git/blobs/" + entry["sha"]]["content"] = base64.b64encode(b"forged").decode()
+    elif fault == "blob_identity":
+        documents["git/blobs/" + entry["sha"]]["sha"] = "d" * 40
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        with pytest.raises(GitDeliverySourceError):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).authored_source(SHA, "solutions/fixture", TREE)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["count", "single_bytes", "total_bytes", "empty"])
+async def test_authored_inventory_bounds_are_checked_before_blob_transport(fault):
+    documents, _, _, _ = authored_fixture()
+    root = documents["git/trees/" + TREE + "?recursive=1"]
+    subtree = documents["git/trees/" + "c" * 40 + "?recursive=1"]
+    if fault == "count":
+        for number in range(1001):
+            entry = {"path": f"extra-{number}.txt", "type": "blob", "mode": "100644",
+                "sha": "d" * 40, "size": 0}
+            subtree["tree"].append(entry)
+            root["tree"].append({**entry, "path": "solutions/fixture/" + entry["path"]})
+    elif fault == "empty":
+        subtree["tree"] = []
+        root["tree"] = [row for row in root["tree"] if not row["path"].startswith("solutions/fixture/")]
+    else:
+        selected = [row for row in subtree["tree"] if row["type"] == "blob"]
+        for entry in selected[:1 if fault == "single_bytes" else 2]:
+            size = 10 * 1024 * 1024 + 1 if fault == "single_bytes" else 6 * 1024 * 1024
+            entry["size"] = size
+            next(row for row in root["tree"] if row["path"] == "solutions/fixture/" + entry["path"])["size"] = size
+    calls = []
+    async with httpx.AsyncClient(transport=transport(documents, calls)) as client:
+        with pytest.raises(GitDeliverySourceError):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).authored_source(SHA, "solutions/fixture", TREE)
+    assert not any(path.startswith("git/blobs/") for path in calls)

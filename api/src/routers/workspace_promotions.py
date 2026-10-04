@@ -25,6 +25,7 @@ from src.models.contracts.platform_jobs import PlatformJobAccepted
 from src.models.contracts.workspace_promotions import (
     SolutionDeployObligationListResponse,
     SolutionDeployObligationResponse,
+    WorkspaceLiveRetirementInventory,
     WorkspaceLiveRetireRequest,
     WorkspaceLiveRetireResponse,
     WorkspaceLiveStatusResponse,
@@ -531,6 +532,20 @@ async def retry_workspace_release_history_lock(
     )
 
 
+@router.get("/live/retirement-inventory", response_model=WorkspaceLiveRetirementInventory)
+async def inspect_workspace_release_retirement(
+    ctx: Context, db: DbSession, user: CurrentSuperuser,
+) -> WorkspaceLiveRetirementInventory:
+    """Inventory the guard's complete Root cohort, including inactive audit rows."""
+    if ctx.org_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="an organization context is required")
+    try:
+        return await WorkspaceReleaseRetirementService(db, ctx.org_id).inspect()
+    except WorkspaceReleaseRetirementError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
 @router.post("/live/retire", response_model=WorkspaceLiveRetireResponse)
 async def retire_workspace_release(
     request: WorkspaceLiveRetireRequest,
@@ -538,6 +553,11 @@ async def retire_workspace_release(
     db: DbSession,
     user: CurrentSuperuser,
 ) -> WorkspaceLiveRetireResponse:
+    if user.is_engine_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Live retirement requires an authenticated administrator, not an execution token",
+        )
     if not get_settings().workspace_release_retirement_enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -148,11 +148,29 @@ test.describe("Bulk user actions", () => {
 		).toBeVisible();
 
 		// Pick the destination org from the OrganizationSelect.
-		await dialog.getByRole("combobox").click();
+		const organizationPicker = dialog.getByRole("combobox", {
+			name: "Organization scope",
+		});
+		await organizationPicker.click();
+		const pickerId = await organizationPicker.getAttribute("aria-controls");
+		expect(pickerId).toBeTruthy();
 		await page.getByRole("option", { name: DEST_ORG_NAME }).click();
+		await expect(organizationPicker).toContainText(DEST_ORG_NAME);
+		// Closed picker content survives its exit animation. Wait for that exact
+		// overlay to unmount before the single submit, without replaying the move.
+		await expect(page.locator(`[id="${pickerId}"]`)).toHaveCount(0);
 
 		// Submit and watch for the success toast.
-		await dialog.getByRole("button", { name: /move users/i }).click();
+		const [moveResponse] = await Promise.all([
+			page.waitForResponse(
+				(response) =>
+					new URL(response.url()).pathname === "/api/users/bulk" &&
+					response.request().method() === "PATCH",
+				{ timeout: 10000 },
+			),
+			dialog.getByRole("button", { name: /move users/i }).click(),
+		]);
+		expect(moveResponse.ok(), await moveResponse.text()).toBe(true);
 		await expect(
 			page.getByText(
 				new RegExp(`move to org \\(${SELECTED_USER_COUNT}\\)`, "i"),

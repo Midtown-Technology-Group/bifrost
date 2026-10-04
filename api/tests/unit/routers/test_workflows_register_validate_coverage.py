@@ -436,7 +436,7 @@ async def test_register_workflow_validates_and_preserves_promoted_uuid() -> None
         with pytest.raises(HTTPException) as exc:
             await workflows.register_workflow(
                 collision_request,
-                _Db(None, None, race_owner, flush_error=race_error),
+                _Db(None, None, None, race_owner, flush_error=race_error),
                 _admin(),
             )
 
@@ -452,7 +452,7 @@ async def test_register_workflow_validates_and_preserves_promoted_uuid() -> None
         description=None,
         organization_id=None,
     )
-    db = _Db(None, None, created)
+    db = _Db(None, None, None, created)
     indexer = SimpleNamespace(index_python_file=AsyncMock())
     with (
         patch("src.services.file_storage.FileStorageService", return_value=service),
