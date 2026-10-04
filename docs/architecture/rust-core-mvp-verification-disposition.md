@@ -871,3 +871,21 @@ closure or retroactive evidence for the first run. Rust build/target/frontend
 and selected207 JUnit comparison were not reached. The exact pre-PR subcheck
 remains UNKNOWN; only read-only source diagnosis is released. Do not rerun
 unchanged, waive pre-PR or redefine MVP success around source checks/upload.
+
+
+Second-run pre-PR source diagnosis is frozen,
+`6e11a3827f137236a9b31b046895d1db7f7b894e737681fec382d8947af29682`;
+root read it fully and verified allsix actual candidate source pins against
+inspection `1b9c3883795cd0066b882c233c82fa20deca9d3efee2b2bc65b87e433cd651c2`.
+It finds no source-provable subgate cause. The proposed next seam observes a
+fresh host Git-metadata stage ledger after native failure/settlement, before
+cleanup: fixed65,536-byte private read, physical-checkout-only qualification,
+private unchanged-helper binding, closed stage/status projection. Existing
+primary/v1 sixkeys stay unchanged; one additional versioned three-key ASCII
+line would be bounded192bytes and combined diagnostics512bytes. Missing,
+preexisting, mismatched or ambiguous records remain unknown; running denotes
+incomplete bookkeeping, not a proved tool failure. No raw signatures or
+logs, native/helper invocation, clock growth or gate waiver is proposed.
+This additional output/dependency is explicit DESIGN scope, not silently
+covered by PUB1. Independent design review is requested; source authoring
+and any changed-candidate run remain unreleased.
