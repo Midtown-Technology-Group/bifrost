@@ -204,11 +204,17 @@ async def native_authored_install_readback(
         expected_active_manifest_hash=expected_active_manifest_hash)
     service = SolutionSourceRevisionService(db)
     if _verified_runtime is None:
-        await service.verify_current_source(solution.id, request)
+        _solution, base, current_resolution = await service._base(
+            solution.id, request, allow_resources=True
+        )
+        await service._registrations(solution.id, current_resolution, lock=False)
+        await service._base_files(solution.id, base.id, current_resolution)
     else:
         # The accounting fence rechecks native database state without holding
         # the platform's Solution-write fence through remote object reads.
-        _solution, _base, current_resolution = await service._base(solution.id, request)
+        _solution, _base, current_resolution = await service._base(
+            solution.id, request, allow_resources=True
+        )
         await service._registrations(solution.id, current_resolution, lock=False)
     deployment = await SolutionDeploymentRepository(db).get_runtime_closure(
         expected_active_deployment_id, solution.organization_id, solution.id)

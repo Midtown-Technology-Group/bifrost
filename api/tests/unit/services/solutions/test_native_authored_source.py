@@ -2,7 +2,7 @@
 
 import hashlib
 from types import MappingProxyType, SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import UUID
 
 import pytest
@@ -209,19 +209,22 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
         if resources else {})
     resolution = SimpleNamespace(sources={path: SimpleNamespace(content_hash="sha256:" + hashlib.sha256(raw).hexdigest())
         for path, raw in runtime.items()}, resources=runtime_resources, shared_tables={}, root_file_bindings={})
-    verify_source = AsyncMock()
+    base_read = AsyncMock(return_value=(solution, deployment, resolution))
+    registrations = AsyncMock()
+    base_files = AsyncMock()
     repository = SimpleNamespace(get_runtime_closure=AsyncMock(return_value=deployment))
     storage = SimpleNamespace(read_source_artifact=AsyncMock(return_value=source_archive(runtime)),
         read_runtime_file=AsyncMock(side_effect=lambda path: runtime[path]),
         read_resource=AsyncMock(side_effect=lambda path, _size: resource_bytes if resources else b""))
     monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
-        lambda db: SimpleNamespace(verify_current_source=verify_source))
+        lambda db: SimpleNamespace(_base=base_read, _registrations=registrations, _base_files=base_files))
     monkeypatch.setattr(native_readback, "SolutionDeploymentRepository", lambda db: repository)
     monkeypatch.setattr(native_readback, "SolutionDeploymentStorage", lambda *args: storage)
     monkeypatch.setattr(native_readback, "validate_runtime_closure", lambda *args, **kwargs: (None, resolution))
     monkeypatch.setattr("src.routers.tables._validate_table_policy_claim_refs", AsyncMock())
     return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
-        manifest_hash=manifest_hash, verify_source=verify_source, storage=storage, deployment=deployment, resolution=resolution)
+        manifest_hash=manifest_hash, base_read=base_read, registrations=registrations, base_files=base_files,
+        storage=storage, deployment=deployment, resolution=resolution)
 
 
 async def _read_installed(fixture):
@@ -238,7 +241,9 @@ async def test_successful_readback_preserves_inline_policy_omissions(monkeypatch
     assert result["runtime_paths"] == ["functions/probe.py", "modules/runtime.py"]
     assert result["source_content_id"] == fixture.source.source_content_id
     assert result["evidence_id"].startswith("sha256:")
-    fixture.verify_source.assert_awaited_once()
+    fixture.base_read.assert_awaited_once_with(SID, ANY, allow_resources=True)
+    fixture.registrations.assert_awaited_once_with(SID, fixture.resolution, lock=False)
+    fixture.base_files.assert_awaited_once_with(SID, SID, fixture.resolution)
     assert fixture.storage.read_runtime_file.await_count == 2
     fixture.db.commit.assert_not_awaited()
     fixture.db.flush.assert_not_awaited()
@@ -266,12 +271,42 @@ async def test_authored_resource_requires_exact_active_resolution_and_storage_by
     tampered = replace(collected, resources=MappingProxyType({"config/guardrails.json": b'{"allow": true}\n'}))
     base = AsyncMock(return_value=(fixture.solution, fixture.deployment, fixture.resolution))
     monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
-        lambda db: SimpleNamespace(_base=base, _registrations=AsyncMock()))
+        lambda db: SimpleNamespace(_base=base, _registrations=AsyncMock(), _base_files=AsyncMock()))
     with pytest.raises(NativeAuthoredSourceMismatch, match="resource"):
         await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
             expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
             _verified_runtime=tampered)
+    base.assert_awaited_once_with(SID, ANY, allow_resources=True)
     fixture.storage.read_resource.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_source_revision_base_requires_explicit_resource_opt_in(monkeypatch):
+    from src.models.contracts.solution_deployments import SolutionSourceRevisionInspectRequest
+    from src.services.solutions import source_revision
+
+    manifest = SimpleNamespace(agents=[], forms=[], events=[], applications=[], tables=[],
+        dependencies=[], file_locations=[], connections=[], config_requirements=[],
+        resources={"config/guardrails.json": object()})
+    resolution = SimpleNamespace(workflows=[object()], shared_tables={})
+    base = SimpleNamespace(id=SID, state="active", compiled_manifest={}, resolution_map={}, dependencies=[],
+        compiled_manifest_hash="sha256:" + "1" * 64, resolution_map_hash="sha256:" + "2" * 64,
+        validation_result={"schema_version": "bifrost.solution-source-revision/v1"})
+    installed = SimpleNamespace(id=SID, status="active", active_deployment_id=SID,
+        execution_runtime_mode="deployment-v1", organization_id=None)
+    db = SimpleNamespace(scalar=AsyncMock(return_value=installed))
+    monkeypatch.setattr(source_revision, "SolutionDeploymentRepository",
+        lambda _db: SimpleNamespace(get_runtime_closure=AsyncMock(return_value=base)))
+    monkeypatch.setattr(source_revision, "validate_runtime_closure",
+        lambda *_args, **_kwargs: (manifest, resolution))
+    monkeypatch.setattr(source_revision, "require_shared_tables", AsyncMock())
+    service = source_revision.SolutionSourceRevisionService(db)
+    request = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=SID,
+        expected_active_manifest_hash=base.compiled_manifest_hash)
+
+    with pytest.raises(source_revision.SolutionSourceRevisionError, match="without immutable resources"):
+        await service._base(SID, request)
+    assert await service._base(SID, request, allow_resources=True) == (installed, base, resolution)
 
 
 @pytest.mark.asyncio
