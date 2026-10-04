@@ -958,3 +958,25 @@ an ancestor. Platform main remains
 `7e737cacdba56b214e427afed5a28e89ae1b6a47`, with #1001 an ancestor;
 #1011 remains open at `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`.
 The Rust experiment requires no accommodation in authored workspace code.
+
+
+The transport test environment direction is now selected from independent
+source review `3e734c171edcdedcc92d10ef85ec9a7088391acc45c13e3869b2c1b52e887421`:
+compile in the existing Rust checks image, then run the standalone diagnostic
+and exact copied native binaries in one nonroot, externally disconnected
+container from the existing API development Dockerfile's `builder` target.
+Root independently verified all 12 committed recipe and manifest pins. No
+Compose stack or application entrypoint is needed. Actual compiler-artifact
+joins, ELF compatibility, installed wheels and the shared suite remain unproved.
+A venue script and isolated workflow would require a separate two-path
+allocation after the diagnostic's source and child roster are frozen.
+
+Independent review `f811f335629b28e8c3556a6fd84bdae34491af8ab2b2faa40ffbf301112480a8`
+clarifies safe Rust file cleanup for this experiment. Explicit `File` drops
+provide ownership disposal without a caller-visible close result. They must
+never be reported as measured syscall-close success. Dependent fixture-key
+deletion instead waits for Python's actual settlement of every native child
+and group, process reap, pipe EOF, known Python FD closure and unchanged file
+and directory identities. Real/effective UID agreement is required in the
+selected nonroot venue. Root accepted this bounded design clarification;
+concrete implementation and runtime cleanup evidence remain review gates.
