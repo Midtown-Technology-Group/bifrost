@@ -698,3 +698,28 @@ the publication and safe diagnostic seams to the existing parent owner;
 no source repair or replacement run is released yet. No unchanged rerun,
 time/cap growth, pre-PR bypass, public-contract change, auth/schema/Start
 authority, merge or deployment is permitted by this disposition.
+
+Read-only diagnosis isolates two finite source seams. Original runner
+entrypoint ownership changes can make the parent's0600 public evidence
+unreadable by its host uploader. Independently, the parent preserves the
+primary error privately but exposes only exit1/130 after conditional capture
+disposal, leaving no safe first-stage diagnostic. Neither finding identifies
+the actual primary failure or proves actual ownership or private disposal.
+Independent source notes SHA-256:
+`82a0fea903d0f5c6db4f3976d7d82299542affb1aa0632abacb174686e65aa14`.
+
+The parent owner's frozen diagnosis/design proposal SHA-256 is
+`b03e9921435c13cc1d066bd5afd745e6af5ac47a363b4bd5c6dadd6efc555083`.
+It ranks falsifiable pre-PR, safe-file/custody, native build/settlement and
+stack/frontend hypotheses. It proposes0644 admission on the newly owned
+FD for the existing approved public outputs only, plus one closed bounded
+first-failure diagnostic frozen before cleanup. Actual failing-native
+association must not be replaced by the last launched child. Raw outputs,
+exception strings, traceback and private captures remain excluded.
+
+Root completed the proposal read and requested separate design review.
+One evidentiary correction is mandatory: the proposal's statement that
+private capture disposal was independently reported is unsupported;
+disposal remains UNKNOWN because neither the log nor artifacts prove it.
+No source repair or replacement execution is released by this checkpoint.
+The candidate stays clean at0ef442248; both main heads remain unchanged.
