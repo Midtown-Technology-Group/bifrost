@@ -159,9 +159,46 @@ digest was not independently matched to a local ZIP. Report/inspection
 fingerprints are
 `b9f4a59cd425b64202936f66db98e08a7bf811291b1558a6815abc368dcd0975` and
 `def5f9af5ee0390d41a7dbf815974096fe56959eac3ea440af36eef7597f08df`.
-The second-run release is consumed. There is no third-run, retry, dispatch,
-fix/push loop, PR, merge or deployment authorization. Independent source work
-may continue without reopening older stopped campaigns.
+The second-run release was consumed. The separately reviewed correction and
+third-run release below supersede only its prohibition on one changed third
+candidate. No unchanged retry or older stopped campaign was reopened.
+
+## Consumed-COMMIT controller: third runtime run failed
+
+Independent source review accepted whole-tree symlink metadata classification
+while preserving regular-only admission for every selected platform/workspace
+source, complete membership and physical no-symlink checks. The controller
+was committed as `5be46529c122c7133ed1a85e6e344ee14105fb11`, tree
+`4a1dda722cbec0c9721ffefdaa97435fd457c43a`; its SHA-256 is
+`8363c47e5844ddabe5b347467c96e788ab01997cdf4359a2ea9deab4e53eb586`.
+The workflow was unchanged. One separately released push produced
+[run 37201902355](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37201902355),
+attempt 1, job 111435151403. Characterization failed; safe evidence upload
+succeeded.
+
+The producer stops at `workspace.fetch`, which exited 128. The preceding twelve
+commands exited 0; all thirteen have settled native process, EOF, group and FD
+observations. Platform head/tree match the candidate, main remains
+`c45725f82f0961ce45c1dc7e4928402b44176882`, and workspace remains null. The fetch
+cause is unknown. No pre-PR, control, build, stack, frontend, SQL, actor or fault
+execution is evidenced. This progress does not retrospectively establish the
+causes of either earlier failure.
+
+Disposal records `primary_exit=1`, `cleanup_exit=1`, `complete=false`, with
+13/13 processes settled, captures closed/removed and credentials disposed. Files
+report 30 admitted, 30 removed, zero remaining and zero unknown. Network and
+volume counts remain null; scoped file removal does not establish complete
+resource custody. Both fault lanes remain entirely null and `passed=false`.
+
+Artifact 11303660682 supplies the three safe files; its GitHub-reported ZIP
+digest was not independently matched to a local ZIP. Report/inspection
+fingerprints are
+`caeb7f7060858ccb2bcbee7a6baca47a5cb0984f81ec4668fbf80a174a19e47e` and
+`59d3ffb0b5e20b1ca76f9282d7d0854648f4675f6fbff786b1269bb0492fd5f6`.
+The third release is consumed. No fourth run, rerun, dispatch, repair/push loop,
+PR, merge, deployment or authority change is authorized. Read-only diagnosis
+and independent source packages may continue; all unstarted acceptance gates
+remain held.
 
 ## Remaining architectural acceptance
 
