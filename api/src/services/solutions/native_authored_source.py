@@ -32,6 +32,7 @@ from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
+from src.core.solution_delivery_policy import delivery_path
 from src.services.solution_deploy_obligations import _effective_entity_id_map
 from src.services.solutions.deployment_manifest import sha256_digest, validate_runtime_closure
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
@@ -132,12 +133,26 @@ class _VerifiedNativeRuntime:
     resolution_hash: str
     archive_sha256: str
     files: Mapping[str, bytes]
+    resources: Mapping[str, bytes]
 
 
-def native_authored_metadata(authored: VerifiedAuthoredSolution) -> NativeAuthoredMetadata:
+def native_authored_metadata(
+    authored: VerifiedAuthoredSolution,
+    *,
+    resource_paths: frozenset[str] = frozenset(),
+) -> NativeAuthoredMetadata:
     files = authored.files
     allowed = {"bifrost.solution.yaml", "README.md", ".bifrost/workflows.yaml", ".bifrost/tables.yaml"}
-    if any(path not in allowed and not path.endswith(".py") for path in files):
+    if any(not isinstance(path, str) or delivery_path(path) != path for path in resource_paths):
+        raise NativeAuthoredSourceMismatch("Authored resource mapping has a noncanonical path")
+    if resource_paths & (allowed | {path for path in files if path.endswith(".py")}) or not resource_paths.issubset(files):
+        raise NativeAuthoredSourceMismatch(
+            "Authored resource mapping differs from protected Git"
+        )
+    if any(
+        path not in allowed and not path.endswith(".py") and path not in resource_paths
+        for path in files
+    ):
         raise NativeAuthoredSourceMismatch("Authored files require a different delivery component")
     if "bifrost.solution.yaml" not in files:
         raise NativeAuthoredSourceMismatch("Authored Solution descriptor is missing")
@@ -184,12 +199,6 @@ async def native_authored_install_readback(
     _verified_runtime: _VerifiedNativeRuntime | None = None,
 ) -> dict[str, Any]:
     """Caller holds the install writer and row locks; no mutation is performed."""
-    metadata = native_authored_metadata(authored)
-    descriptor = metadata.descriptor.model_dump(exclude={"logo"})
-    if any(getattr(solution, key) != value for key, value in descriptor.items()):
-        raise NativeAuthoredSourceMismatch("Installed Solution descriptor differs from protected Git")
-    if solution.readme != metadata.readme:
-        raise NativeAuthoredSourceMismatch("Installed README differs from protected Git")
     request = SolutionSourceRevisionInspectRequest(
         expected_active_deployment_id=expected_active_deployment_id,
         expected_active_manifest_hash=expected_active_manifest_hash)
@@ -209,8 +218,12 @@ async def native_authored_install_readback(
         deployment.resolution_map, deployment.dependencies,
         expected_manifest_hash=expected_active_manifest_hash,
         expected_resolution_hash=deployment.resolution_map_hash)
-    if resolution.resources:
-        raise NativeAuthoredSourceMismatch("Authored resources require their explicit delivery mapping")
+    metadata = native_authored_metadata(authored, resource_paths=frozenset(resolution.resources))
+    descriptor = metadata.descriptor.model_dump(exclude={"logo"})
+    if any(getattr(solution, key) != value for key, value in descriptor.items()):
+        raise NativeAuthoredSourceMismatch("Installed Solution descriptor differs from protected Git")
+    if solution.readme != metadata.readme:
+        raise NativeAuthoredSourceMismatch("Installed README differs from protected Git")
     if _verified_runtime is None:
         _verified_runtime = await _read_native_runtime(solution.id, deployment, resolution)
     if (_verified_runtime.deployment_id != deployment.id
@@ -220,6 +233,13 @@ async def native_authored_install_readback(
             or any(sha256_digest(raw) != resolution.sources[path].content_hash
                    for path, raw in _verified_runtime.files.items())):
         raise NativeAuthoredSourceMismatch("Collected runtime proof differs from the current immutable closure")
+    if set(_verified_runtime.resources) != set(resolution.resources):
+        raise NativeAuthoredSourceMismatch("Collected resource paths differ from the current immutable closure")
+    if any(len(_verified_runtime.resources[path]) != resource.size_bytes
+           or sha256_digest(_verified_runtime.resources[path]) != resource.content_hash
+           or authored.files.get(path) != _verified_runtime.resources[path]
+           for path, resource in resolution.resources.items()):
+        raise NativeAuthoredSourceMismatch("Authored resource bytes differ from the current immutable closure")
     runtime_files = dict(_verified_runtime.files)
     rows = list((await db.scalars(select(Workflow).options(selectinload(Workflow.roles))
         .where(Workflow.solution_id == solution.id).execution_options(populate_existing=True))).all())
@@ -282,6 +302,10 @@ async def native_authored_install_readback(
         "resolution_hash": deployment.resolution_map_hash, "source_content_id": authored.source_content_id,
         "source_archive_sha256": _verified_runtime.archive_sha256,
         "runtime_paths": sorted(runtime_files), "omitted_empty_initializers": omitted,
+        "resource_hashes": {
+            path: resolution.resources[path].content_hash
+            for path in sorted(resolution.resources)
+        },
         "workflow_ids": sorted(str(row.id) for row in rows), "table_ids": sorted(str(row.id) for row in tables),
         "descriptor": descriptor,
         "readme_sha256": hashlib.sha256(metadata.readme.encode()).hexdigest() if metadata.readme is not None else None}
@@ -297,5 +321,19 @@ async def _read_native_runtime(solution_id: UUID, deployment: Any, resolution: A
         if (sha256_digest(content) != resolution.sources[path].content_hash
                 or await storage.read_runtime_file(path) != content):
             raise NativeAuthoredSourceMismatch("Immutable runtime and archive bytes differ")
-    return _VerifiedNativeRuntime(deployment.id, deployment.compiled_manifest_hash,
-        deployment.resolution_map_hash, hashlib.sha256(archive).hexdigest(), MappingProxyType(runtime_files))
+    resources: dict[str, bytes] = {}
+    for path, resource in resolution.resources.items():
+        if delivery_path(path) != path:
+            raise NativeAuthoredSourceMismatch("Immutable resource path is noncanonical")
+        content = await storage.read_resource(path, resource.size_bytes)
+        if len(content) != resource.size_bytes or sha256_digest(content) != resource.content_hash:
+            raise NativeAuthoredSourceMismatch("Immutable resource bytes differ from their active resolution")
+        resources[path] = content
+    return _VerifiedNativeRuntime(
+        deployment.id,
+        deployment.compiled_manifest_hash,
+        deployment.resolution_map_hash,
+        hashlib.sha256(archive).hexdigest(),
+        MappingProxyType(runtime_files),
+        MappingProxyType(resources),
+    )
