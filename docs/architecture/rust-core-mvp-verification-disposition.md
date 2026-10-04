@@ -115,3 +115,15 @@ Its catalog-selected rebuild still does not prove the installed constraint.
 Read current installed FK actions and characterize genuine caller transactions
 before selecting mixed-writer deletion authority. No schema correction is
 justified by the incomplete audit.
+
+## Preserved W0 pull-request checks
+
+Read-only inspection on 2026-10-04 finds W0 parity [#1008](https://github.com/Midtown-Technology-Group/bifrost/pull/1008)
+at `09539559961dd22ed3fd3f9179de84bc8f3bd772` and W0 bootstrap
+[#1009](https://github.com/Midtown-Technology-Group/bifrost/pull/1009) at
+`5ad5010400bf1ade5d1a96cda22684a3f4d6cf35` remain open. Both have a current
+failed `CodSpeed Performance Analysis` check. Their successful functional
+checks and the separate green source-check lane do not waive those failures.
+Keep the performance-analysis disposition blocking; do not rerun benchmarks,
+change thresholds or claim comparable measurement evidence from these checks.
+Neither W0 PR was modified or merged by this checkpoint.
