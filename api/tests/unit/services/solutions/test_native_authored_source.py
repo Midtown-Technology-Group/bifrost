@@ -248,10 +248,11 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     db = AsyncMock()
     connection_rows = ([SimpleNamespace(integration_name="DNSFilter",
         template=metadata.connections[0]["template"], position=0)] if connections else [])
+    root_integration_names = ["DNSFilter"] if connections else []
     # Exercise the real owned-ID mapping as well as both metadata comparisons.
     scalar_results = [SimpleNamespace(all=lambda: connection_rows)]
     if connections:
-        scalar_results.append(SimpleNamespace(all=lambda: ["DNSFilter"]))
+        scalar_results.append(SimpleNamespace(all=lambda: root_integration_names))
     scalar_results.extend([
         SimpleNamespace(all=lambda: [workflow]), SimpleNamespace(all=lambda: [workflow.id]),
         SimpleNamespace(all=lambda: [table]), SimpleNamespace(all=lambda: [table.id]),
@@ -283,7 +284,7 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
         manifest_hash=manifest_hash, base_read=base_read, registrations=registrations, base_files=base_files,
         storage=storage, deployment=deployment, resolution=resolution,
-        connection_rows=connection_rows)
+        connection_rows=connection_rows, root_integration_names=root_integration_names)
 
 
 async def _read_installed(fixture):
@@ -358,7 +359,7 @@ async def test_connection_readback_requires_exact_owned_template_and_existing_ro
     elif drift == "template":
         fixture.connection_rows[0].template["config_schema"][0]["required"] = False
     elif drift == "integration":
-        fixture.db.scalars.side_effect[1] = SimpleNamespace(all=lambda: [])
+        fixture.root_integration_names.clear()
     if drift:
         with pytest.raises(NativeAuthoredSourceMismatch, match="connection"):
             await _read_installed(fixture)
