@@ -681,6 +681,7 @@
 | POST | `/api/workspace-promotions/drafts` |
 | GET | `/api/workspace-promotions/live` |
 | POST | `/api/workspace-promotions/live/retire` |
+| GET | `/api/workspace-promotions/live/retirement-inventory` |
 | POST | `/api/workspace-promotions/preview` |
 | POST | `/api/workspace-promotions/preview-jobs` |
 | GET | `/api/workspace-promotions/releases/{release_id}` |

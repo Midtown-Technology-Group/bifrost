@@ -45,6 +45,8 @@ class SolutionGitSourceDeliveryRequest(BaseModel):
 
 
 class SolutionGitSourceDeliveryResponse(BaseModel):
+    # Runtime activation is distinct from complete authored Source delivery.
+    authored_source_state: Literal["unmapped", "verified", "attention_required"] = "unmapped"
     state: Literal["active", "already_active"]
     solution_id: UUID
     deployment_id: UUID

@@ -98,3 +98,32 @@ After all consumers are verified, run complete consumer and obligation
 readback, retire Live through its guarded operation, then remove obsolete lane
 code and operational steps. Preserve stale-write, dependency, admission and
 unexpected-live-execution checks in the remaining deployment paths.
+
+## Installed caller names and authored declarations
+
+Native adoption may retain an installed caller name that differs from the
+literal name compiled from the reviewed source. The server reads the installed
+name itself; requests cannot supply a replacement caller identity. The runtime
+`definition.name` remains the installed name and
+`definition.legacy_registration_name_evidence` separately seals both that name
+and the source declaration with the versioned
+`bifrost.solution-legacy-registration-name/v1` contract and canonical hash.
+
+Candidate inspection recompiles the complete archive and reconstructs this
+binding from fresh installed rows. Resealing a forged manifest cannot substitute
+another installed or source name. Exact UUID, function, path, scope, type,
+security controls, baseline digests and accepted-work/CAS checks still apply.
+Activation does not rewrite registration names or descriptor metadata.
+
+Source-only successors retain the sealed definition and require unchanged
+signatures/decorators. Reviewed workflow successors preserve an existing name
+binding only when the new source compiles to the same sealed declaration; an
+unreviewed rename remains an error. New workflow identities do not inherit an
+existing binding. Runtime pins validate the sealed binding and retain the installed caller name.
+Export compares registrations with the immutable identity; older accepted pins
+retain their own bytes.
+
+This contract adds no aliases, live registration PATCH path or table grants.
+Missing resources and incompatible execution controls require their own verified
+resolution before a family can be adopted. Qualify the deployed contract before
+submitting a fresh production candidate; a green source PR is not runtime proof.
