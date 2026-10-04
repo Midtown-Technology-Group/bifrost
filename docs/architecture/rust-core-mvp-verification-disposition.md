@@ -1000,3 +1000,25 @@ Read-only PR reconciliation confirms W0 #1008 and #1009 remain open at their
 recorded heads with CodSpeed failures, and #1037 remains open/blocked at
 `3918d608a2d497d1ca8424fd4229d191323e2d7a`. No threshold adjustment, rerun,
 merge or deployment was performed.
+
+
+The four-label repair closes STAGE1-H1. Root and independent reviewer verified
+that corrected source
+`5f083b0d2f5d82b60cbf4e7bb270ff7833c727d0c0359d46bb3374f79698b9e1`
+differs only in those expected labels; inverse comparison restores the entire
+reviewed snapshot. Independent final SOURCE acceptance is
+`afd0e79973d7d42201c33779eb4e46d70deddd8eecda4b1d87a070ee0919f328`.
+Root committed and pushed candidate
+`aafc710649b5f77f7835244323bc080e4d05cf1d`, tree
+`8feece72550e07b1b1e34020f1ac78c22bc7e980`, with a clean worktree containing
+current platform main. Release
+`daba98802ee462610796ceb028a41aacaab7a015a59d9dc27fcf33c6299360ad`
+authorizes one changed-candidate source-check run and one characterization
+attempt, preserving literal pre-PR and all existing clocks/caps.
+
+Actual GitHub source-check run37240412992 (push) and characterization
+run37240412538 (workflow_dispatch) were observed in progress at that exact
+head. Neither result is yet accepted. Controls passing, stage evidence,
+selected parity and cleanup must be established from the terminal run and
+approved artifacts. No unchanged rerun, private-output export, PR creation,
+merge, deployment or M1 authority follows from this release.
