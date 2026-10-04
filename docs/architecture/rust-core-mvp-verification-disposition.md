@@ -241,7 +241,17 @@ remain required before any business wiring. This candidate is not a pull
 request or proof of literal pre-PR, normal CI or lifecycle ownership.
 
 Authority decisions M1–M5 and current installed-schema writer closure remain
-held. The full runtime boundary, unchanged Cove compatibility, committed events,
+held. A later fresh-main checkpoint at
+`7e737cacdba56b214e427afed5a28e89ae1b6a47` carries all11 selected M1
+API/caller source pins and requirements.lock, and all25 selected Python M3
+writer/locking pins, byte-for-byte. Root independently checked all hashes.
+The separate source-carry reports are
+`ef24f38631b514e5872137757e2e0114fc05b3b018775fbaf0b360cd7c2e88d7`
+and `d9ff79ce6233e08c83eb5a2ee9e02c4266aa7c2b8a20f258c99e23f6e40906d2`.
+The fixed rosters do not prove unlisted writer, installed catalog or privilege
+closure. M3's cross-owner read and ANY table-lock concession, including
+ACCESS EXCLUSIVE, remains unapproved; it cannot be advertised as SHARE-only.
+Current main contains no Rust source; all Rust proof remains candidate-bound. The full runtime boundary, unchanged Cove compatibility, committed events,
 Redis failure, mixed writers, ambiguous commit/spawn handling, in-flight routing
 rollback and fair resource/cost measurements remain unproved. Sopdet access and
 compatibility are blocked independently. Preserve the W0 PRs and public
@@ -730,7 +740,9 @@ while accepting the bounded permission/diagnostic interfaces, receipt
 Root corrected only that sentence and the revision title in an immutable
 v011 copy, SHA-256
 `4acb16060801a883952910515553469a7f5c2dfe7cccb5b578eaf93a949c6a68`;
-the original report remains historical evidence. Actual disposal is UNKNOWN.
+the original report remains historical evidence. Actual disposal is UNKNOWN. Independent
+readback closed the sole design HOLD, receipt
+`b49d78e7ac112186055799b3745909c5808c25ff2f007c4936f9fd48fcab84ef`.
 
 Root released source-only package CLAIM-CHAR-PUB1 to the existing parent
 owner, receipt SHA-256
