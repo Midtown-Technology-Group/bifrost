@@ -1,0 +1,40 @@
+name: Reviewed workflow consumed-COMMIT fault characterization
+
+on:
+  push:
+    branches: [test/workflow-commit-fault-controller-source]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-commit-fault-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name == 'push' && github.repository == 'Midtown-Technology-Group/bifrost' && github.ref == 'refs/heads/test/workflow-commit-fault-controller-source'
+    name: Two source-bound lost COMMIT response lanes
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate without retained action credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Characterize the reviewed consumed-COMMIT package
+        shell: bash
+        run: bash scripts/ci/workflow-commit-fault.sh
+      - name: Upload only closed F4 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workflow-commit-fault-${{ github.sha }}
+          path: |
+            commit-fault-evidence/fault.receipt.json
+            commit-fault-evidence/producer.json
+            commit-fault-evidence/disposal.json
+          if-no-files-found: error
+          retention-days: 14
