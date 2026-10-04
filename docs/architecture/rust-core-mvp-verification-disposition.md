@@ -124,9 +124,44 @@ The GitHub-reported ZIP digest was observed, not independently matched to a loca
 ZIP. Report/inspection fingerprints:
 `73e4e0b9459c4b3cda7453630fa19738a9b96a3699fbc3ffc26789afb8eabdac`,
 `f1c9b042ef92bb5804356514275cb28fbab4b79d4bb17bd1a19d50b597e8728f`.
-The first-run release is exhausted. No second run, rerun, dispatch, fix/push cycle,
-PR, merge or deployment follows. Read-only source diagnosis and independent
-packages may continue. This failure does not revive any older stopped campaign.
+The first-run release was exhausted. The separately reviewed correction and
+second-run release below supersede only its prohibition on one changed second
+candidate; all other execution and acceptance boundaries remain. This failure
+does not revive any older stopped campaign.
+
+## Consumed-COMMIT controller: second runtime run failed
+
+Independent source review accepted a narrow correction for the exact checkout
+origin and lazy acquisition/disposal of the pre-PR log directory. The controller
+was committed as `45fa2343e5f85b9698d2bad194120062caa4ad1c`, tree
+`eed1e402f4f7d3de8a7dbcc5b9f01eec356666fe`. Its SHA-256 is
+`5a44a057b3b29b4b413c369187a84f8299c94456b6668ce0eeed61715ae3abd0`.
+The workflow was unchanged. One separately released push produced
+[run 37200188754](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37200188754),
+attempt 1, job 111430111525. Characterization failed; the three-file safe evidence
+upload succeeded.
+
+The producer stops at `git.tree_roster`. All ten started Git commands exited 0
+and settled their native process, EOF, group and FD observations. Source head
+and tree match the candidate above; main is
+`c45725f82f0961ce45c1dc7e4928402b44176882`; workspace remains null. No object
+admission, pre-PR, control, build, stack, frontend, SQL, actor or fault execution
+is evidenced. The actual primary cause remains unknown.
+
+Disposal records `primary_exit=1`, `cleanup_exit=1`, `complete=false`, with
+10/10 processes settled, captures closed/removed and credentials disposed. Files
+report 24 admitted, 24 removed, zero remaining and zero unknown. Network and
+volume counts remain null. File closure does not establish complete resource
+custody. Both fault lanes remain entirely null and `passed=false`.
+
+Artifact 11301969403 contains the three safe files; its GitHub-reported ZIP
+digest was not independently matched to a local ZIP. Report/inspection
+fingerprints are
+`b9f4a59cd425b64202936f66db98e08a7bf811291b1558a6815abc368dcd0975` and
+`def5f9af5ee0390d41a7dbf815974096fe56959eac3ea440af36eef7597f08df`.
+The second-run release is consumed. There is no third-run, retry, dispatch,
+fix/push loop, PR, merge or deployment authorization. Independent source work
+may continue without reopening older stopped campaigns.
 
 ## Remaining architectural acceptance
 
