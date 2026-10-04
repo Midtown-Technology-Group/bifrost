@@ -1230,3 +1230,16 @@ the five-file transport source has been silently rebased. Current-main clean
 integration and literal pre-PR remain required before a PR handoff or new
 qualified candidate run. Same watch handles51555/67302 returned terminal0/1
 respectively and are closed; no replacement watch or run was started.
+
+
+Independent failed-evidence review
+`8cd2aa2d9951971ae2156b27f0d6b43d109a7983b5d0a814980d82a1fd43893a`
+is accepted after root readback. No source contradiction identifies a specific
+builder field or repair. The same builder ownership/configuration guard is
+used before cleanup removal, so a refusal there may also prevent disposal;
+this structural possibility is not the actual cause. Build-phase failure also
+precedes stack_attempted, so successful pre-PR resource disposal cannot be
+assumed from later stack cleanup. No guard relaxation, name-only removal or
+cleanup-policy change is authorized. The next proposed diagnostic is a small
+closed nonsecret predicate identifier; raw exception text/configuration and
+private captures remain excluded. Its concrete source remains pending review.
