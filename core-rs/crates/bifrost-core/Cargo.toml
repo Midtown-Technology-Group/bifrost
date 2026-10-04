@@ -8,6 +8,11 @@ publish.workspace = true
 
 [features]
 telemetry-tls = []
+admission-transport-prototype = ["dep:http-body-util", "dep:hyper", "dep:hyper-util", "dep:rustls", "dep:serde", "dep:tokio-rustls"]
+
+[[example]]
+name = "admission_transport_prototype"
+required-features = ["admission-transport-prototype"]
 
 [[test]]
 name = "telemetry_tls"
@@ -18,11 +23,17 @@ bifrost-contracts.workspace = true
 bifrost-domain.workspace = true
 bifrost-db.workspace = true
 axum.workspace = true
+http-body-util = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
+rustls = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio.workspace = true
+tokio-rustls = { workspace = true, optional = true }
 tonic.workspace = true
 tower.workspace = true
 tracing.workspace = true

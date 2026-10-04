@@ -1,0 +1,30 @@
+name: M1 isolated native transport prototype
+on:
+  push:
+    branches: [test/m1-native-admission-transport]
+permissions:
+  contents: read
+concurrency:
+  group: m1-native-transport-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  prototype:
+    if: github.repository == 'Midtown-Technology-Group/bifrost' && github.ref == 'refs/heads/test/m1-native-admission-transport' && github.event_name == 'push' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Run the isolated synthetic transport venue
+        run: bash core-rs/scripts/admission-transport.sh
+      - name: Retain only the closed safe venue disposition
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: m1-transport-venue-${{ github.run_id }}-${{ github.run_attempt }}
+          path: m1-transport-venue.json
+          if-no-files-found: error
+          retention-days: 3
