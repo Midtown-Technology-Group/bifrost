@@ -970,10 +970,26 @@ mod tests {
         let original = claim();
         for (pointer, value, reason) in [
             ("/rows/execution/id", json!(ATTEMPT_ID), "InconsistentRows"),
-            ("/rows/attempt/execution_id", json!(ATTEMPT_ID), "InconsistentRows"),
-            ("/rows/attempt/completed_at_present", json!(true), "InconsistentRows"),
-            ("/rows/attempt/status", json!("claimed"), "InvalidAttemptState"),
-            ("/rows/attempt/claim_token", json!(TOKEN), "InvalidAttemptState"),
+            (
+                "/rows/attempt/execution_id",
+                json!(ATTEMPT_ID),
+                "InconsistentRows",
+            ),
+            (
+                "/rows/attempt/completed_at_present",
+                json!(true),
+                "InconsistentRows",
+            ),
+            (
+                "/rows/attempt/status",
+                json!("claimed"),
+                "InvalidAttemptState",
+            ),
+            (
+                "/rows/attempt/claim_token",
+                json!(TOKEN),
+                "InvalidAttemptState",
+            ),
         ] {
             let mut request = original.clone();
             if let Some(target) = request.pointer_mut(pointer) {
