@@ -802,3 +802,25 @@ Frozen changed bytes, inverse AST and independent correction readback remain
 required. No replacement run, changed expectations or runtime authority is
 released. W0 PR1008/1009 remain unchanged and CodSpeed-blocked; amendment
 PR1011 remains93ec9421b23b0b4a1493ab45f15f55ded3377d2e, open and unmerged.
+
+
+PUB1 final bounded SOURCE is accepted by independent readback
+`82db77b4451ec7a483515489da72f487b1f43ac28c739be0a426cdf07547f22a`
+and accountable root. Exact inverse bytes recover reviewed4ade; root
+Bash/AST/expanded lint/format/diff and all33 incumbent hash checks pass.
+The sole-path repair was committed and pushed as
+92a7a611d901b035c0f14ba26adac4825b655a8d, tree
+e91e2975fbaec823b84e08fc94187414cb6a07a9; clean candidate contains current
+main and both prerequisite ancestry checks pass. Script hash is
+`ad1094cfb16741caa10c421018cbc5eaae8353ff42b42a94db552ca4cf21a8c2`.
+Root one-changed-candidate run release is
+`1748ca4a093b6d48972a68814525bcd931bf51481ab0a8c7183edf4c95464f91`.
+Supported characterization run
+[37235996706](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37235996706)
+was actually dispatched on that head, workflow_dispatch, initially in progress;
+incumbent push source-check run
+[37235989500](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37235989500)
+also starts on the same head. Neither initial live status proves any executed
+gate passed. LiteralprePR,207 source-derived JUnit identities, real reference
+observations, fixed envelopes, scoped cleanup and safe artifact delivery remain
+required. No unchanged rerun, PR/merge/deployment or authority expansion follows.
