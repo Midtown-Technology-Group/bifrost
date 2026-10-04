@@ -169,15 +169,63 @@ checks retain their original deadlines and causal placement.
 Set equality observes registered-volume absence. It does not reconstruct
 already removed pre-PR anonymous identities, prove immutable same-name object
 continuity, certify physical disk/layer cleanup, or justify invented historical
-resource counts. Unknown history and custody still prevent overall completion.
-Distinct design review fingerprint:
+resource counts. Missing required source, ownership or disposition history
+still prevents completion. Distinct design review fingerprint:
 `67c61c751e5dbfabee6a298f878c5aa04784aace57c7c046c4fb68198ad1e6c7`.
 
-All selections above permit bounded source authoring only. The parent source
-is awaiting the volume-census amendment and a new exact-file freeze. Full
-independent source review, supported execution, actual custody and cleanup
-remain outstanding. The earlier green 27-test run does not qualify these newer
-source changes.
+The selected v0.1.35 count scope explicitly amends the earlier blanket history
+wording. Resource counts describe applicable parent admissions, source-associated
+current identities and actual admission gaps, supported by private per-identity
+records. They do not enumerate every already-removed opaque pre-PR object.
+This limitation applies to the unchanged public schema, including its
+`complete` field; neither a count nor success certifies exhaustive opaque
+history, total daemon emptiness, physical layer cleanup or unseen descendants.
+
+A missing expected acquisition, lost handle, unexplained mount, missing source
+reference, failed ownership join or unresolved actual disposition still counts
+as unknown or fails admission. It cannot disappear because no identifier was
+returned or a dictionary contains only successful acquisitions. Unknown is zero
+only after complete applicable observation and individual ownership/disposition
+joins. An unavailable or incomplete observation stays null. Earlier source or
+custody failure remains latched even if later snapshots match.
+
+Every actual qualified target volume name and all its CID/image/destination/
+driver/access references participate in the ledger. Shared references count
+one object but each reference must join. Initial refusal to adopt preexisting
+names, pre-PR-final preservation, late final preservation and each task name's
+actual absence remain separate requirements. Cargo/target custody stays separate.
+No matching scalar totals or endpoint sets supply missing per-identity evidence.
+
+Opaque pre-PR still requires its genuine source-qualified invocation, native/
+process/FD settlement, supported scoped cleanup and complete independent
+container/network/volume checks before fresh acquisition. Observed unresolved
+resources or missing phase evidence prevent completion. The experiment supplies
+no historical zero/count for unselected opaque acquisitions. Actual trusted,
+exclusive disposable-job admission remains mandatory. Required controls must
+reject acquisition gaps, missing source/mount references, conflicting drivers,
+initial-name adoption, incomplete censuses and missing/wrong absence joins,
+including a missing join hidden behind otherwise matching totals.
+
+Selected design and distinct review fingerprints:
+`587dd6a571c4ab07b55d445797c3e4f212ede2d7294f1c9839d3d85dbc2c52be`,
+`340a6149f1e0b683ca8ac6c0d112a13a93ce93feae25558f95645b5fc7fbc4f6`.
+This changes count interpretation explicitly before execution; it waives no
+observed failure and changes no command, clock, artifact size or business lane.
+
+The architect retains this finite experiment despite its substantial supervision
+cost. The current controller is 6532 lines; this is a maintenance burden, not a
+Rust benefit. Source review and the first supported invocation must test its
+feasibility within existing bounds. Infrastructure failure is not evidence that
+Rust atomicity failed, and it must not trigger indefinite blind retries or budget
+growth. Independent cost review fingerprint:
+`8e2e827c22108531420aa54bbccc64547515ce48be4c9bc25176be9cccdbbd5e`.
+
+All selections above permit bounded source authoring only. Frozen parent source
+`2b5f6e00bc3cc716097e5fbfe4bf87d1924f2b208bb02e7bb8f9635291f7bcde`
+still blocks completion conservatively and needs the selected per-identity scope
+and controls before a new exact-file freeze. Full independent source review,
+supported execution, actual custody and cleanup remain outstanding. The earlier
+green 27-test run does not qualify these newer source changes.
 
 ---
 
