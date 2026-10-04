@@ -2634,7 +2634,8 @@ Usage: solution start [OPTIONS] [APP_SLUG]
 
 Options:
   --solution TEXT         Install id or unique slug.
-  --url TEXT              Bifrost instance URL (default: current profile).
+  --url TEXT              Explicit API target; otherwise BIFROST_API_URL in
+                          environment or workspace .env.
   --port INTEGER          Stable local proxy origin port; reuse it across
                           restarts.  [default: 3000]
   --host TEXT             Address for the local origin to bind.  [default:
