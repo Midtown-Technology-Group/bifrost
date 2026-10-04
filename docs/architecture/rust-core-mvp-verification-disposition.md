@@ -1243,3 +1243,22 @@ assumed from later stack cleanup. No guard relaxation, name-only removal or
 cleanup-policy change is authorized. The next proposed diagnostic is a small
 closed nonsecret predicate identifier; raw exception text/configuration and
 private captures remain excluded. Its concrete source remains pending review.
+
+
+Source-cost checkpoint against immutable candidate90ea: Git-tracked core-rs
+contains21 Rust files,9,726 physical lines and367,453 bytes, including tests
+and example/vector drivers. This is source inventory, not runtime memory,
+throughput, implementation hours or production-owned domain behavior. The
+selected four parity infrastructure files total12,179 physical lines and
+536,240 bytes: parent4,250, SQL harness4,340, domain harness2,581, commit-fault
+harness1,008. This is a deliberately partial inventory, not the complete
+testing cost; the separate transport experiment is excluded. Counts were
+obtained from exact committed Git blobs without executing product/test code.
+
+This infrastructure burden is material to the eventual go/no-go decision.
+Passing vector drivers cannot substitute for real lifecycle ownership, and
+new diagnostic/venue machinery must remain bounded. Before CONTINUE, the
+report must account for review/fix cycles and reusable versus one-off harness
+maintenance alongside actual parity, authority and rollback evidence. No speed
+or memory benefit has been measured, and no arbitrary line-count threshold
+is used as a correctness waiver or as sufficient evidence to STOP.
