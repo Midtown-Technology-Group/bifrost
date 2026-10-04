@@ -3,6 +3,9 @@
 Evidence checkpoint: 2026-10-04. This records blocking verification results,
 not an MVP CONTINUE/STOP decision or deployment authorization.
 
+The [parity matrix](rust-core-mvp-parity-matrix.md) separates implemented
+source, supported checks and still-unproven lifecycle acceptance.
+
 The architecture authority remains [platform PR #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011),
 head `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. The platform main used for the recorded execution campaigns is
 `c45725f82f0961ce45c1dc7e4928402b44176882`; workspace main is
