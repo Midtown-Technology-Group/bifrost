@@ -1118,3 +1118,20 @@ CI-image publication and all production/deploy/release jobs were skipped.
 No backend E2E execution or image publication is claimed. Watch63676 returned
 exit1 and is closed. Historical stopped campaigns are not revived; selected
 53-case/207-venue parity and transport runtime remain unproved.
+
+
+Transport Python correction v0.1.1 is frozen at
+`fae5c8fe65d658b79821c91e10606b1882d93f604409c831e5335312404124bf`.
+Root read the entire incremental delta and repeated AST, immutable-copy/five-pin,
+repository and strict isolated Ruff, format and diff checks; static checks pass
+and the four other files remain unchanged. Independent review
+`e8cfb4f03154aab1a651f221026e62c8151e0058622073803bbb035b75d6f99b`
+closes H1/H2 code defects but keeps **SOURCE HOLD**: child deadlines tighten only
+when each child closes, after earlier responder/client awaits. Capture can still
+signal beyond the shared shutdown deadline during those earlier waits.
+Helper-only controls also miss the actual responder loop and child cutoff wiring.
+Root assigned a finite Python-only repair to tighten all children at shared
+shutdown entry and exercise those actual caller compositions with inert records.
+A small extraction of existing cleanup order is allowed only for that proof;
+no new framework, timer, reserve, native actor, route or public label is selected.
+Compilation, PKI, runtime, venue allocation and actual M1 authority remain held.
