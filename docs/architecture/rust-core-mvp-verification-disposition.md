@@ -824,3 +824,50 @@ also starts on the same head. Neither initial live status proves any executed
 gate passed. LiteralprePR,207 source-derived JUnit identities, real reference
 observations, fixed envelopes, scoped cleanup and safe artifact delivery remain
 required. No unchanged rerun, PR/merge/deployment or authority expansion follows.
+
+
+The second changed-candidate characterization run37235996706 completed
+FAILED on attempt1, job111535096810. The main step ran21:25:08–21:28:45UTC;
+the new closed diagnostic records phaseprepr/operationprepr/exit1,
+native_settled=true and classguard. It proves the literalprePR process failed
+before selected parity, while its inner failing subgate remains UNKNOWN.
+The first0ef run's missing cause cannot be retroactively filled from this run.
+Safe publication/upload now succeeds: artifact11315408715,1406bytes, digest
+`b0e42573f378b5b99d2221ccce22bb1f6c84ea5de542949ff26c7a511b6c9ad2`.
+Root read all five approved members and verified archive SHA: source.txt joins
+exact92a7 head/tree; both exit files1; frontend.json null/null/matchedfalse;
+project-resources.txt reports cleanup_status0/inspection_status0 and allthree
+final census strings empty. Initial census values are UNKNOWN in source;
+empty strings are assigned only after actual final owned-scope census calls.
+This is parent-reported scoped cleanup evidence, not global absence or a new
+independent private-disposal observation. Exact evidence receipt is
+`9bf7f6be2f6513946c9ed2ec72f3d785ccf9111566fad3dac85c2e340ce196b0`;
+full retained log SHA
+`6af3d062c56217a9832ef1a7842b772d807cae1b266ccdb242433444d59079fe`.
+Independent failed-run evidence assessment and read-only source diagnosis of
+the pre-PR prerequisite are requested. No raw private output, unchanged rerun,
+gate bypass or Rust parity is inferred.
+
+Separate source-check run37235989500 passed formatting/strictlockedClippy,
+31default tests and17offline/network-none example tests on the exact candidate.
+Independent executed-evidence receipt
+`ceb88f831eb12fa4746cad9f05fe7a5e273aba3a3daeaaa80016f1ba482ddc4f`
+is accepted by root after full relevant test/command blocks and report read.
+Actual image is sha256:c026eb72362620df90f6e03a04709a00c8533a982a0b0aa3da7077597a491e92;
+complete log SHA
+`0ea8c9d79f8da579b44f31cb7b1ce98c0bfe8c5bbcc348721c4d6858a53b1de5`.
+Neither this check nor successful upload proves pre-PR,Python/PG parity,events,
+owner-grants,Start,agent compatibility,rollback or full MVP completion.
+
+
+Independent failed-run evidence review
+`1607fa65f795161907053622f90fcd07aba2017049b90516557897a61118a396`
+is accepted after root full read. It confirms actual prepr failure/settlement,
+source-controls execution/normal return, allfive safe members/digest and
+source-backed actual final owned-project empty censuses. Zero cleanup errors
+on this source path supports successful scoped private unlink/rmdir for THIS
+run; it is not an independent filesystem readback, global process/daemon/FD
+closure or retroactive evidence for the first run. Rust build/target/frontend
+and selected207 JUnit comparison were not reached. The exact pre-PR subcheck
+remains UNKNOWN; only read-only source diagnosis is released. Do not rerun
+unchanged, waive pre-PR or redefine MVP success around source checks/upload.

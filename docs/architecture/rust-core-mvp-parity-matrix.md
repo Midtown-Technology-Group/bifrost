@@ -31,6 +31,22 @@ failed on attempt 1. The primary exit-1 cause is unavailable in the retained log
 the evidence upload separately failed with EACCES on `source.txt` and no artifact
 was retained. None of the new Python/PostgreSQL claims or cleanup is accepted.
 
+The publication/diagnostic repair candidate
+`92a7a611d901b035c0f14ba26adac4825b655a8d`, tree
+`e91e2975fbaec823b84e08fc94187414cb6a07a9`, preserves all Rust/reference
+inputs. Its [source-check run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37235989500)
+passed the same48 Rust tests, formatting and strict Clippy; independent
+bounded evidence receipt is
+`ceb88f831eb12fa4746cad9f05fe7a5e273aba3a3daeaaa80016f1ba482ddc4f`.
+Its [characterization run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37235996706)
+failed at literalprePR (retained exit1, native_settled=true) before the selected
+comparison. Safe diagnostics and upload now worked: artifact11315408715
+contains five approved files, digest
+`b0e42573f378b5b99d2221ccce22bb1f6c84ea5de542949ff26c7a511b6c9ad2`.
+The pre-PR subgate remains unknown; no unchanged rerun is authorized. This
+isolates a prerequisite failure, not Rust semantic drift. Frontend remains
+unobserved/unmatched; no53 claim cases or207 required identities are accepted.
+
 The reference source is pinned by each campaign's receipts; do not silently
 substitute a newer Python implementation. Main observed at the associated
 checkpoint was platform `7ff37809f249ff21a9ca150780fbc8f1c6d07b0c` and workspace
@@ -50,7 +66,7 @@ it does not mean no partial evidence exists.
 | Surface | Python authority / behavior | Rust source | Current parity status | Required acceptance evidence |
 | --- | --- | --- | --- | --- |
 | Service startup, configuration, health/readiness, tracing and shutdown | Existing platform remains traffic owner; Rust foundation adds its own health surface | `core-rs/crates/bifrost-core/`, `core-rs/Dockerfile` | Rust default checks passed at c911; production operation is unproven | Supported startup/readiness failure, bounded shutdown and observability evidence; normal W0 CI disposition |
-| Existing-attempt claim | Original workflow consumer, attempt helper and PostgreSQL delivery checks; Python retains actual allocation | `plan_existing_attempt_claim` and explicit domain-vector driver | Source/unit checks accepted; candidate differential run failed with missing primary evidence | Actual Python/PG rows, real lock/lease observations, deliberate drift controls and qualified cleanup; pure plan does not confer SQL/Start authority |
+| Existing-attempt claim | Original workflow consumer, attempt helper and PostgreSQL delivery checks; Python retains actual allocation | `plan_existing_attempt_claim` and explicit domain-vector driver | Source/unit checks accepted; latest characterization stopped at literalprePR, before differential tests | Actual Python/PG rows, real lock/lease observations, deliberate drift controls and qualified cleanup; pure plan does not confer SQL/Start authority |
 | Attempt running | Original `mark_attempt_running`, called by `api/tests/parity/workflow_domain_harness.py` | `plan_attempt_running` in `core-rs/crates/bifrost-domain/src/workflow/mod.rs` | Pure typed row-plan tests passed; durable ownership and HTTP unproven | Paired real DB transitions, exact fences/state precedence, mixed writers and unchanged runtime Start behavior |
 | Fenced result and nullable projections | Original consumer `_process_success` / `_process_failure`; omitted arguments remain omitted | `plan_fenced_result`; `bifrost-db/src/workflow_parity.rs`, `workflow_numeric.rs`; SQL vector example | Typed plan tests passed; complete SQL/result parity unproven | Genuine Python/Rust committed rows, type/null/numeric/clock fidelity, fence loss and transactional outcomes |
 | Queued/running cancellation | Original `ExecutionRepository.cancel_execution`; reference SQL order is observed by `test_workflow_sql.py` | `plan_cancel_state` and selected SQL example paths | Plan tests passed; coexistence, lock ordering and event parity unproven | Actual cancellation/result/running races, update order, no cross-tenant effect and committed-event outcomes |
