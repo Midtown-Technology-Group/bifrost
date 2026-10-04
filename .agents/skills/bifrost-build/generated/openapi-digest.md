@@ -676,17 +676,9 @@
 | POST | `/api/workflows/{workflow_id}/roles` |
 | DELETE | `/api/workflows/{workflow_id}/roles/{role_id}` |
 | GET | `/api/workspace-promotions/artifacts/{artifact_id}` |
-| POST | `/api/workspace-promotions/artifacts/{artifact_id}/canary` |
-| POST | `/api/workspace-promotions/artifacts/{artifact_id}/prepare` |
-| POST | `/api/workspace-promotions/drafts` |
 | GET | `/api/workspace-promotions/live` |
-| POST | `/api/workspace-promotions/live/retire` |
 | GET | `/api/workspace-promotions/live/retirement-inventory` |
-| POST | `/api/workspace-promotions/preview` |
-| POST | `/api/workspace-promotions/preview-jobs` |
 | GET | `/api/workspace-promotions/releases/{release_id}` |
-| POST | `/api/workspace-promotions/releases/{release_id}/activate` |
-| POST | `/api/workspace-promotions/releases/{release_id}/retry-history-lock` |
 | GET | `/api/workspace-promotions/solution-deploy-obligations` |
 | GET | `/api/workspace-promotions/solution-deploy-obligations/{obligation_id}` |
 | GET | `/api/workspace-promotions/source-releases` |

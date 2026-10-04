@@ -29,6 +29,22 @@ def test_platform_admin_cannot_call_retired_workspace_writer(
 
 
 @pytest.mark.e2e
+def test_public_schema_does_not_advertise_retired_workspace_writers(e2e_client):
+    response = e2e_client.get("/openapi.json")
+    assert response.status_code == 200, response.text
+    paths = response.json()["paths"]
+    for suffix in (
+        "/preview", "/preview-jobs", "/drafts",
+        "/artifacts/{artifact_id}/canary",
+        "/artifacts/{artifact_id}/prepare",
+        "/releases/{release_id}/activate",
+        "/releases/{release_id}/retry-history-lock",
+        "/live/retire",
+    ):
+        assert "post" not in paths.get("/api/workspace-promotions" + suffix, {})
+
+
+@pytest.mark.e2e
 def test_retained_source_journal_still_requires_platform_admin(e2e_client, org1_user):
     response = e2e_client.get(
         "/api/workspace-promotions/source-releases",

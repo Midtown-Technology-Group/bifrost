@@ -15,6 +15,13 @@ A changed signature uses reviewed workflow revision; a body-only change uses
 Source revision. Apps retain their separate Source, SDK build and immutable
 published distribution path.
 
+Generic Root file writes, Git sync and explicit workflow registration remain
+superuser operations. The file indexer only enriches existing registrations;
+uploading a new function does not register it. Retired registration identities
+remain fenced against revival. Solution development resolves local workflows
+first and defaults to `global_repo_access: false`; shared Root execution requires
+an explicit opt-in. Keep migrated production targets sealed.
+
 There is no `bifrost promote` command, local `--promotion-evidence` option or
 public preview, draft, canary, prepare, activate, retry-history or retirement
 writer in this revision. Those operations cannot be used to create a new global

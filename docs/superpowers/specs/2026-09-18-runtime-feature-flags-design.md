@@ -1,7 +1,9 @@
 # Runtime feature flags over SystemConfig — design note
 
-Status: proposed
-Motivating example: `workspace_release_retirement_enabled`
+Status: historical proposal; the loose release writer and its boolean flags
+were removed from the current source. This note describes the earlier contract
+and does not authorize recreating it.
+Motivating example at the time: `workspace_release_retirement_enabled`
 
 ## Problem
 
