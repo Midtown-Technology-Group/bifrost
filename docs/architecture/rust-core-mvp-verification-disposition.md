@@ -901,3 +901,46 @@ unknown stage observation cannot suppress the valid primary line. No source
 or run is released by this review. A separate decision-ready M1 transport
 addendum is being prepared against actual locked crates; authority and
 business-admission projections remain unapproved.
+
+
+### Stage diagnostics and isolated transport: source allocations (2026-10-04)
+
+The stage-diagnostic design holds are closed for source authoring. Root read the
+complete corrective design and exact 33-variant grammar; the different-author
+review accepted their conjunction. The sole owned implementation path remains
+`scripts/ci/workflow-domain-parity.sh` on the claim-characterization worktree.
+Allocation `2f9f70d500eb316714d4a35c36f0b12a684f4a164bee205303bc49f774b309de`
+allows a privacy-safe stage/status observation after the actual failed pre-PR
+child has settled. It preserves the existing primary diagnostic and uses one
+bounded combined write. Missing, stale, malformed or ambiguous evidence remains
+unknown. This is source work only: concrete review and a changed-candidate
+supported run are still required. The observed pre-PR failure remains unresolved.
+
+The independent native transport design review also accepted a separate
+synthetic experiment for source authoring. Review receipt
+`9acf37cea3ff45d85c81994fe992cb8ff1cda21ee8c360da9a66b1e9fbd718e3`
+applies the original design, corrective addendum and mandatory streamed-response,
+explicit-provider and bounded-cleanup conditions together. Root created a clean
+worktree at `/home/thomas/src/bifrost-m1-native-admission-transport`, branch
+`test/m1-native-admission-transport`, from candidate
+`92a7a611d901b035c0f14ba26adac4825b655a8d`. All eight selected baseline source
+pins were independently verified before allocation
+`d127de56889ff2923ebc6ccd40d5fe7ac89867238584f7b29f2b733b559e1bee`.
+
+Its five owned paths are the workspace manifest and lock, the core crate
+manifest, a new `admission_transport_prototype.rs` example, and a new
+`api/tests/diagnostics/core_admission_transport.py` diagnostic. Only two inert
+probe routes are admitted. The experiment uses native mandatory client TLS and
+revalidates actual peer certificates and the current leaf allowlist on every
+request, including a retained connection. It introduces no business admission,
+production bootstrap invocation, database access, runtime grant or SDK change.
+New dependency packages or versions, extra owned paths, custom cryptography,
+fake expiry clocks, automatic redirects or retries require stopping and reporting.
+
+Both allocations prohibit author commits, pushes and runtime execution before
+root and different-author concrete source review. The transport suite's exact
+scenario/child roster, source-to-binary joins and shared supported Python/Rust
+venue remain execution gates. Existing Rust checks do not exercise this new
+optional example or diagnostic. Actual M1 issuer and key custody, API-origin
+assertions, business-operation authority, M2–M5 and C2/C3 remain held. Neither
+allocation resolves the current lifecycle parity, mixed-writer or rollback gates.
