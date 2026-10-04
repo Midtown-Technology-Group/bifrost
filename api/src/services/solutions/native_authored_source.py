@@ -31,6 +31,7 @@ from src.models.contracts.solution_deployments import (
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
+from src.models.orm.solution_connection_schema import SolutionConnectionSchema
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.core.solution_delivery_policy import delivery_path
 from src.services.solution_deploy_obligations import _effective_entity_id_map
@@ -122,6 +123,7 @@ class NativeAuthoredMetadata:
     readme: str | None
     workflows: list[dict[str, Any]]
     tables: list[dict[str, Any]]
+    connections: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -142,7 +144,8 @@ def native_authored_metadata(
     resource_paths: frozenset[str] = frozenset(),
 ) -> NativeAuthoredMetadata:
     files = authored.files
-    allowed = {"bifrost.solution.yaml", "README.md", ".bifrost/workflows.yaml", ".bifrost/tables.yaml"}
+    allowed = {"bifrost.solution.yaml", "README.md", ".bifrost/workflows.yaml",
+        ".bifrost/tables.yaml", ".bifrost/connections.yaml"}
     if any(not isinstance(path, str) or delivery_path(path) != path for path in resource_paths):
         raise NativeAuthoredSourceMismatch("Authored resource mapping has a noncanonical path")
     if resource_paths & (allowed | {path for path in files if path.endswith(".py")}) or not resource_paths.issubset(files):
@@ -171,12 +174,72 @@ def native_authored_metadata(
     readme = readme_bytes.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n") if readme_bytes is not None else None
     return NativeAuthoredMetadata(descriptor, readme,
         _entries(files.get(".bifrost/workflows.yaml"), "workflows", ManifestWorkflow),
-        _entries(files.get(".bifrost/tables.yaml"), "tables", ManifestTable))
+        _entries(files.get(".bifrost/tables.yaml"), "tables", ManifestTable),
+        _connection_entries(files.get(".bifrost/connections.yaml")))
+
+
+def _connection_entries(content: bytes | None) -> list[dict[str, Any]]:
+    if content is None:
+        return []
+    document = _yaml_document(content)
+    if set(document) != {"connections"} or not isinstance(document["connections"], dict):
+        raise NativeAuthoredSourceMismatch("Authored connection declaration has an unsupported shape")
+    entries = []
+    positions = set()
+    for key, declaration in document["connections"].items():
+        if (not isinstance(key, str) or not key or len(key) > 255 or not isinstance(declaration, dict)
+                or set(declaration) != {"integration_name", "template", "position"}
+                or declaration["integration_name"] != key):
+            raise NativeAuthoredSourceMismatch("Authored connection declaration is ambiguous")
+        position = declaration["position"]
+        template = declaration["template"]
+        if (not isinstance(position, int) or isinstance(position, bool) or position < 0
+                or position in positions or not isinstance(template, dict)
+                or set(template) != {"name", "entity_id_name", "default_entity_id", "data_provider_id",
+                    "config_schema", "oauth"}
+                or template["name"] != key or template["oauth"] is not None
+                or template["data_provider_id"] is not None):
+            raise NativeAuthoredSourceMismatch("Authored connection template is unsupported")
+        positions.add(position)
+        for field in ("entity_id_name", "default_entity_id"):
+            if (template[field] is not None and (not isinstance(template[field], str)
+                    or len(template[field]) > 255)):
+                raise NativeAuthoredSourceMismatch("Authored connection template is invalid")
+        schema = template["config_schema"]
+        if not isinstance(schema, list):
+            raise NativeAuthoredSourceMismatch("Authored connection schema is invalid")
+        checked_schema = []
+        schema_positions = set()
+        schema_keys = set()
+        for item in schema:
+            if (not isinstance(item, dict)
+                    or set(item) != {"key", "type", "required", "description", "options", "position"}):
+                raise NativeAuthoredSourceMismatch("Authored connection field has unsupported data")
+            field_position = item["position"]
+            if (not isinstance(item["key"], str) or not item["key"] or len(item["key"]) > 255
+                    or item["key"] in schema_keys
+                    or not isinstance(item["type"], str)
+                    or item["type"] not in {"string", "int", "bool", "json", "secret"}
+                    or not isinstance(item["required"], bool)
+                    or (item["description"] is not None and (not isinstance(item["description"], str)
+                        or len(item["description"]) > 500))
+                    or (item["options"] is not None and (not isinstance(item["options"], list)
+                        or any(not isinstance(option, str) for option in item["options"])))
+                    or not isinstance(field_position, int) or isinstance(field_position, bool)
+                    or field_position < 0 or field_position in schema_positions):
+                raise NativeAuthoredSourceMismatch("Authored connection field is invalid")
+            schema_keys.add(item["key"])
+            schema_positions.add(field_position)
+            checked_schema.append(dict(item))
+        entries.append({"integration_name": key,
+            "template": {**template, "config_schema": checked_schema}, "position": position})
+    return sorted(entries, key=lambda entry: entry["position"])
 
 
 def require_native_python_closure(
     authored: VerifiedAuthoredSolution, runtime_files: dict[str, bytes],
     entry_paths: set[str], *, has_table_bindings: bool,
+    has_resource_bindings: bool = False,
     has_root_file_bindings: bool = False,
 ) -> list[str]:
     """Unused empty initializers may be authored without becoming runtime files."""
@@ -184,9 +247,10 @@ def require_native_python_closure(
     if any(path not in python or python[path] != content for path, content in runtime_files.items()):
         raise NativeAuthoredSourceMismatch("Native runtime bytes differ from protected authored files")
     omitted = sorted(set(python) - set(runtime_files))
-    if any(not path.endswith("/__init__.py") or python[path] != b"" for path in omitted):
+    if any(not path.endswith("/__init__.py") or python[path].strip() for path in omitted):
         raise NativeAuthoredSourceMismatch("Unmapped authored Python has not been delivered")
     closure = source_closure(python, entry_paths, has_table_bindings=has_table_bindings,
+        has_resource_bindings=has_resource_bindings,
         has_root_file_bindings=has_root_file_bindings)
     if set(closure) != set(runtime_files):
         raise NativeAuthoredSourceMismatch("Runtime files differ from the complete authored dependency closure")
@@ -230,6 +294,21 @@ async def native_authored_install_readback(
         raise NativeAuthoredSourceMismatch("Installed Solution descriptor differs from protected Git")
     if solution.readme != metadata.readme:
         raise NativeAuthoredSourceMismatch("Installed README differs from protected Git")
+    connection_rows = list((await db.scalars(select(SolutionConnectionSchema)
+        .where(SolutionConnectionSchema.solution_id == solution.id)
+        .order_by(SolutionConnectionSchema.position)
+        .execution_options(populate_existing=True))).all())
+    actual_connections = [{"integration_name": row.integration_name,
+        "template": row.template, "position": row.position} for row in connection_rows]
+    if actual_connections != metadata.connections:
+        raise NativeAuthoredSourceMismatch("Installed connection declarations differ from protected Git")
+    if metadata.connections:
+        from src.models.orm.integrations import Integration
+        actual_names = set((await db.scalars(select(Integration.name).where(
+            Integration.name.in_([entry["integration_name"] for entry in metadata.connections]),
+            Integration.is_deleted.is_(False)))).all())
+        if actual_names != {entry["integration_name"] for entry in metadata.connections}:
+            raise NativeAuthoredSourceMismatch("Authored connection integration is not installed")
     if _verified_runtime is None:
         _verified_runtime = await _read_native_runtime(solution.id, deployment, resolution)
     if (_verified_runtime.deployment_id != deployment.id
@@ -301,6 +380,7 @@ async def native_authored_install_readback(
             raise NativeAuthoredSourceMismatch("Installed table metadata or policies differ from authored manifest")
     omitted = require_native_python_closure(authored, runtime_files,
         {row.path for row in rows}, has_table_bindings=bool(tables or resolution.shared_tables),
+        has_resource_bindings=bool(resolution.resources),
         has_root_file_bindings=bool(resolution.root_file_bindings))
     result = {"schema_version": "bifrost.native-solution-authored-readback/v1",
         "solution_id": str(solution.id), "organization_id": str(solution.organization_id) if solution.organization_id else None,
@@ -312,6 +392,7 @@ async def native_authored_install_readback(
             path: resolution.resources[path].content_hash
             for path in sorted(resolution.resources)
         },
+        "connection_schemas": metadata.connections,
         "workflow_ids": sorted(str(row.id) for row in rows), "table_ids": sorted(str(row.id) for row in tables),
         "descriptor": descriptor,
         "readme_sha256": hashlib.sha256(metadata.readme.encode()).hexdigest() if metadata.readme is not None else None}

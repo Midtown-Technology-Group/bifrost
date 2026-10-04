@@ -94,6 +94,32 @@ def test_empty_initializer_is_not_ignored_when_it_is_a_dependency():
             {"functions/probe.py"}, has_table_bindings=True)
 
 
+@pytest.mark.parametrize("initializer", [b"\n", b"\r\n\t"])
+def test_unused_whitespace_only_package_initializer_is_preserved_as_authored(initializer):
+    source = authored(**{"shared/__init__.py": initializer})
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    assert require_native_python_closure(source, runtime, {"functions/probe.py"},
+        has_table_bindings=True) == ["shared/__init__.py", "shared/microsoft/__init__.py"]
+
+
+def test_unused_package_initializer_with_code_is_not_omitted():
+    source = authored(**{"shared/__init__.py": b"\n\"docstring\"\n"})
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    with pytest.raises(NativeAuthoredSourceMismatch, match="Unmapped authored Python"):
+        require_native_python_closure(source, runtime, {"functions/probe.py"}, has_table_bindings=True)
+
+
+def test_resource_import_requires_an_active_resource_binding():
+    source = authored(**{"functions/probe.py": b"from bifrost import resources\n"
+        b"from modules.runtime import helper\ndef probe():\n    return resources.read('config/guardrails.json')\n",
+        "config/guardrails.json": b'{"allow": false}\n'})
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    with pytest.raises(ValueError, match="resource bindings"):
+        require_native_python_closure(source, runtime, {"functions/probe.py"}, has_table_bindings=True)
+    assert require_native_python_closure(source, runtime, {"functions/probe.py"}, has_table_bindings=True,
+        has_resource_bindings=True) == ["shared/__init__.py", "shared/microsoft/__init__.py"]
+
+
 @pytest.mark.parametrize("path", ["src/index.tsx", "dist/index.html", ".bifrost/apps.yaml", "settings.json"])
 def test_apps_and_other_components_do_not_become_workflow_source(path):
     with pytest.raises(NativeAuthoredSourceMismatch, match="different delivery component"):
@@ -112,6 +138,26 @@ def test_exact_immutable_resource_mapping_is_required_for_authored_assets():
         native_authored_metadata(source, resource_paths=frozenset({"config/other.json"}))
     with pytest.raises(NativeAuthoredSourceMismatch, match="resource mapping"):
         native_authored_metadata(source, resource_paths=frozenset({"functions/probe.py"}))
+
+
+def _dns_connection_declaration():
+    return {"connections": {"DNSFilter": {
+        "integration_name": "DNSFilter", "position": 0,
+        "template": {"name": "DNSFilter", "entity_id_name": None, "default_entity_id": None,
+            "data_provider_id": None, "oauth": None,
+            "config_schema": [{"key": "api_key", "type": "secret", "required": True,
+                "description": "DNSFilter API token from Account Settings", "options": None, "position": 0}]}}}}
+
+
+def test_connection_metadata_is_exact_strict_and_keeps_the_secret_schema_only():
+    content = yaml.safe_dump(_dns_connection_declaration()).encode()
+    metadata = native_authored_metadata(authored(**{".bifrost/connections.yaml": content}))
+    assert metadata.connections == [{"integration_name": "DNSFilter", "position": 0,
+        "template": _dns_connection_declaration()["connections"]["DNSFilter"]["template"]}]
+    bad = _dns_connection_declaration()
+    bad["connections"]["DNSFilter"]["template"]["config_schema"][0]["default"] = "secret"
+    with pytest.raises(NativeAuthoredSourceMismatch, match="unsupported data"):
+        native_authored_metadata(authored(**{".bifrost/connections.yaml": yaml.safe_dump(bad).encode()}))
 
 
 @pytest.mark.parametrize("content", [
@@ -167,7 +213,8 @@ async def test_descriptor_drift_does_not_allow_accounting(field, value):
     db.commit.assert_not_awaited()
 
 
-def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None, resources=False):
+def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None, resources=False,
+        resource_import=False, connections=False):
     workflow_fields = {"id": WID, "name": "probe", "path": "functions/probe.py",
         "function_name": "probe", "roles": list(roles)}
     if role_names is not None:
@@ -182,6 +229,11 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     resource_bytes = b'{"allow": false}\n'
     if resources:
         changes["config/guardrails.json"] = resource_bytes
+    if resource_import:
+        changes["functions/probe.py"] = (b"from bifrost import resources\nfrom modules.runtime import helper\n"
+            b"def probe():\n    return resources.read('config/guardrails.json')\n")
+    if connections:
+        changes[".bifrost/connections.yaml"] = yaml.safe_dump(_dns_connection_declaration()).encode()
     source = authored(**changes)
     resource_paths = frozenset({"config/guardrails.json"}) if resources else frozenset()
     metadata = native_authored_metadata(source, resource_paths=resource_paths)
@@ -194,11 +246,17 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     table = Table(id=UUID(TID), solution_id=SID, organization_id=None, access={"policies": policies},
         **ManifestTable.model_validate(table_fields).to_orm_values(Destination.INSTALL).direct)
     db = AsyncMock()
+    connection_rows = ([SimpleNamespace(integration_name="DNSFilter",
+        template=metadata.connections[0]["template"], position=0)] if connections else [])
     # Exercise the real owned-ID mapping as well as both metadata comparisons.
-    db.scalars.side_effect = [
+    scalar_results = [SimpleNamespace(all=lambda: connection_rows)]
+    if connections:
+        scalar_results.append(SimpleNamespace(all=lambda: ["DNSFilter"]))
+    scalar_results.extend([
         SimpleNamespace(all=lambda: [workflow]), SimpleNamespace(all=lambda: [workflow.id]),
         SimpleNamespace(all=lambda: [table]), SimpleNamespace(all=lambda: [table.id]),
-    ]
+    ])
+    db.scalars.side_effect = scalar_results
     manifest_hash = "sha256:" + "1" * 64
     runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
     deployment = SimpleNamespace(id=SID, compiled_manifest={}, resolution_map={}, dependencies=[],
@@ -224,7 +282,8 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     monkeypatch.setattr("src.routers.tables._validate_table_policy_claim_refs", AsyncMock())
     return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
         manifest_hash=manifest_hash, base_read=base_read, registrations=registrations, base_files=base_files,
-        storage=storage, deployment=deployment, resolution=resolution)
+        storage=storage, deployment=deployment, resolution=resolution,
+        connection_rows=connection_rows)
 
 
 async def _read_installed(fixture):
@@ -252,7 +311,7 @@ async def test_successful_readback_preserves_inline_policy_omissions(monkeypatch
 
 @pytest.mark.asyncio
 async def test_authored_resource_requires_exact_active_resolution_and_storage_bytes(monkeypatch):
-    fixture = _installed_readback(monkeypatch, resources=True)
+    fixture = _installed_readback(monkeypatch, resources=True, resource_import=True)
     result = await _read_installed(fixture)
     assert result["resource_hashes"] == {
         "config/guardrails.json": fixture.resolution.resources["config/guardrails.json"].content_hash
@@ -278,6 +337,37 @@ async def test_authored_resource_requires_exact_active_resolution_and_storage_by
             _verified_runtime=tampered)
     base.assert_awaited_once_with(SID, ANY, allow_resources=True)
     fixture.storage.read_resource.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resource_import_fails_closed_without_active_resolution_binding(monkeypatch):
+    fixture = _installed_readback(monkeypatch, resource_import=True)
+    with pytest.raises(ValueError, match="resource bindings"):
+        await _read_installed(fixture)
+    fixture.db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drift", [None, "missing", "extra", "template", "integration"])
+async def test_connection_readback_requires_exact_owned_template_and_existing_root_name(monkeypatch, drift):
+    fixture = _installed_readback(monkeypatch, connections=True)
+    if drift == "missing":
+        fixture.connection_rows.clear()
+    elif drift == "extra":
+        fixture.connection_rows.append(SimpleNamespace(integration_name="Unexpected", template={}, position=1))
+    elif drift == "template":
+        fixture.connection_rows[0].template["config_schema"][0]["required"] = False
+    elif drift == "integration":
+        fixture.db.scalars.side_effect[1] = SimpleNamespace(all=lambda: [])
+    if drift:
+        with pytest.raises(NativeAuthoredSourceMismatch, match="connection"):
+            await _read_installed(fixture)
+    else:
+        result = await _read_installed(fixture)
+        assert result["connection_schemas"][0]["integration_name"] == "DNSFilter"
+    fixture.db.add.assert_not_called()
+    fixture.db.commit.assert_not_awaited()
+    fixture.db.flush.assert_not_awaited()
 
 
 @pytest.mark.asyncio
