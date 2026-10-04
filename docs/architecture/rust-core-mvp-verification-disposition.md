@@ -1176,3 +1176,36 @@ readback before exec of the same diagnostic, and a blocking unknown/cached-only
 source-check disposition. The five prototype files remain immutable. Runner
 source, actual compilation/ABI/wheels/TLS/cleanup, runtime release and production
 M1 authority remain separate pending gates; no merge or deployment occurred.
+
+
+Normal CI run37242947036 is now terminal **SUCCESS** at exact candidate
+`90ea5a34056600979b0fde74fb7af39e1f2ae56d`. Root read current job metadata:
+quality, client/backend units, four backend E2E shards, two client E2E shards
+and the E2E aggregate passed. The MCP job passed its configured gate; its
+two advisory stateless failures remain recorded, rather than claiming universal
+conformance. Production/deployment/release jobs were skipped. This ordinary
+repository result is separate from characterization.
+
+Characterization run37243531110 attempt1 is terminal **FAILURE**. Root read
+actual run/job metadata and the complete frozen failure report
+`928eaa271d523bf16b94b2e63908d827585b2f4902306bdba7c784d4b27c1c5f`,
+plus the five approved artifact members. The safe primary reports build phase,
+null operation/exit/native-settled, and guard exception; its exact predicate is
+**UNKNOWN**, with no evidence of a failed native builder. Artifact11317953923
+is delivered successfully at digest
+`ff6e799a33799c855857ed2fdb78da2e5ddfb5ff4b4b23a6ea3aecb6747ac5ee`.
+Both exit files contain1; frontend before/after remain null and matched false.
+Resource cleanup and inspection statuses are both1, with containers UNKNOWN.
+Blank volume/network strings under failed inspection do not prove absence;
+custody remains **HOLD**. No fixture53/JUnit207/drift, mixed-writer or service
+parity acceptance follows. Root assigned bounded source-only predicate diagnosis
+and independent evidence review; no rerun or speculative repair is released.
+
+The supported transport venue interface has independent DESIGN acceptance
+`3f522293eb2557dfc8591d901cc7509d22a5c3cdf7fc5abd9f7bcf2725190324`.
+Root fully read it and confirmed the fixed PID1 software-readback/exec design,
+source-enforced suite counts and non-cached source-check admission semantics.
+Only the two allocated venue paths may be authored; the five accepted prototype
+files remain immutable. Concrete venue source, command/custody roster, compiler
+and actual TLS/runtime evidence are pending. This is no production-authority,
+merge or deployment approval.
