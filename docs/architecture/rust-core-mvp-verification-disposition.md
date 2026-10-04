@@ -635,3 +635,19 @@ Root released one source-only repair batch, receipt SHA-256
 The parent and Python owners retain separate paths. Exact scenarios, commands,
 clocks and authority remain fixed. Repaired bytes require distinct review;
 this disposition provides no runtime, cleanup, frontend or parity acceptance.
+
+The H6 test correction passed separate source review, receipt SHA-256
+`27ab7530ea272f83dde49563cb11ef0ef8452816d4456a93cfcdc8c223003fae`.
+Parent v014 corrected the five implementation branches, but its separate
+review remains HOLD, receipt SHA-256
+`f744cf61452fe127f7239f0064484cc0f121c9a67bcabbef4791e747aa272107`.
+Two obligations remain: controls through the actual launch-to-settlement
+retention path, and original CleanupEnd admission before new termination
+signals. Root released a finite combined correction with inert underlying
+bindings, preserving the actual production launch path and all existing
+clocks/commands, receipt SHA-256
+`bf30578130f614dee4cfa87f5c3bd1f496fee55fc3a30b8c54e7c46129ff6792`.
+Declared source inventory predicts 207 selected JUnit items; none of the new
+claim cases or controls has executed. Reference-only cases and allocation
+deferrals remain distinct from Rust parity. No full-MVP gate is closed by
+these source verdicts.
