@@ -1135,3 +1135,44 @@ shutdown entry and exercise those actual caller compositions with inert records.
 A small extraction of existing cleanup order is allowed only for that proof;
 no new framework, timer, reserve, native actor, route or public label is selected.
 Compilation, PKI, runtime, venue allocation and actual M1 authority remain held.
+
+
+The nine-projection typing repair is independently accepted at
+`138e8317e93eb7b6d026762202806a63b0f3a03ed0cd8be3d160cce26fbd7b17`.
+Root independently recovered each full baseline AST after erasing only the nine
+casts/new type imports and verified the parent/fixture bytes. Candidate
+`90ea5a34056600979b0fde74fb7af39e1f2ae56d`, tree
+`00f15c09b2751510b37696a807b10f364b3d70e2`, contains current main and is clean,
+committed and pushed. Release
+`086aeb4a69a7e53476f126c653e8cfaf87fa9471844ca92113a71f511ac651a1`
+selected one source-check push and one first ordinary CI attempt for this head.
+Actual source-check run37242931739 passed fresh fmt, strict Clippy, 31 default
+and 17 offline example tests. Actual lint111555147151 in normal run37242947036
+passed Ruff, Pyright 1.1.409 with zero errors, TypeScript and ESLint; 1,611
+incumbent ESLint warnings remain. Root read commands, actual result blocks and
+all 48 native test names; relevant receipt is
+`9830e899cb6e71a1c88ca96f74963f41398d77594031e13cdf619f9e34195ca3`.
+The complete ordinary CI run is still in progress, so no overall green follows.
+
+Quality success justified one changed-candidate characterization attempt under
+release `7c6381bdaf85baade6b3b4b2b9b90e51f7ca97b6eb577824dff1827dcd72051b`.
+Actual run37243531110 attempt1 is in progress at exact90ea/private branch;
+parent source5f083, literal pre-PR, 53 cases, 207 JUnit expectations, drift checks,
+command/capture budgets and closed artifacts are unchanged. No result, unchanged
+rerun, original Docker-cause attribution, historical campaign revival or authority
+acceptance is licensed. Normal CI and characterization evidence remain separate.
+
+The transport source is now accepted by root and independent review
+`d87260cd6484e0bf1ea7f569ccd50b15d438a5223753441f0a2c018b10a37cc2` at
+Python `609a89986e45d0ddfcb98f371904fff2e12df3bdca5f41deaf1ca38c03f11822`.
+Actual-caller controls cover pre-await child cutoff and independent responder
+cleanup; source checks pass, but controls remain unexecuted. Root allocated only
+two supported-venue source paths under
+`c6a27d97fba736b166b9e01c335c58de6e8fc048c8bdb2231f7d05b082598b5d`.
+Interface selection
+`0cf3c4243527c3513d51d182599cfd84aa469feeef2292da801dddc48c25221a`
+freezes truthful source-enforced suite completion, one runtime-PID1 software
+readback before exec of the same diagnostic, and a blocking unknown/cached-only
+source-check disposition. The five prototype files remain immutable. Runner
+source, actual compilation/ABI/wheels/TLS/cleanup, runtime release and production
+M1 authority remain separate pending gates; no merge or deployment occurred.
