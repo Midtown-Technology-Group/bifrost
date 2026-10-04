@@ -1056,3 +1056,43 @@ and full delta `1d9a250d94d6e8ddfeec7d30009d8a5bf1ec6d1aa22d66ec8f52c87f2bb843ae
 claim four native declarations, 16 Python cases and three sequential native
 children. Those are authored declarations, not executed results. Rust
 compilation, PKI, runtime and the separate two-path venue remain held.
+
+
+The finite quality diagnosis now explicitly retracts the earlier inference
+that the socket mock necessarily violates an enabled assignment rule.
+Review `6f5c3f278cd0292e40203f7bdfe7da4a4f1d9e99ad3dc84d47b7dbe72c6ffee2`
+traces the exact Pyright member-assignment diagnostic to
+`reportAttributeAccessIssue`, disabled in the selected Docker configuration.
+Qualified static Ruff passes; the actual failing quality tool remains unknown.
+No speculative cast, ignore, rule change or unchanged characterization rerun
+is justified. The existing normal CI lane was independently assessed separately; its
+non-Docker Pyright configuration cannot by itself prove the original cause.
+
+Root completed the frozen transport-source read. Independent review
+`799748ade384b15c79a3fd26c0e1358a4427737fa54d3ed98a1f45f94c874256`
+places the Python diagnostic on **SOURCE HOLD** for three concrete defects:
+synchronous responder/hostname close failures can bypass independent cleanup
+and leave dependent key deletion eligible; environment restoration can replace
+the original error and skip later restorations; signal dispatch can occur after
+the original applicable deadline. Already-done responder task failures must
+also be observed. Root assigned one correction batch restricted to that Python
+file and inert controls exercising the actual repaired compositions. The four
+other frozen files, native-child and route rosters, budgets and public labels
+must remain unchanged. Root and different-author source review are required
+before venue allocation or runtime. No Rust compiler or transport execution
+has occurred for this prototype, and actual M1 authority remains unapproved.
+
+
+Root selected the first ordinary CI execution of unchanged candidate
+`aafc710649b5f77f7835244323bc080e4d05cf1d`, after reading assessment
+`2c1fc361f00b142f51f4c8147ed4bc181e71f4ccc4d8d47228b7b18944c8d333`
+and verifying clean local/remote head and existing workflow guards. Release
+`6d737862950197165d7c6cc45e6e6209f92d7119a9c9efcaf80cf7c67c354613`
+permits one normal CI attempt, including the incumbent conditional publication
+of three CI test images/caches and ordinary isolated-test logs/artifacts.
+It does not permit exporting prior private characterization captures.
+Actual run37241842493 attempt1 is in progress at that exact head/private branch,
+created 2026-10-04T22:55:24Z. No outcome is yet claimed. Deployment, production
+image promotion, tag/release and merge guards are ineligible for this event/ref;
+no CodSpeed run is selected. Original Docker-quality cause and selected claim
+parity remain unproved regardless of the distinct normal CI result.
