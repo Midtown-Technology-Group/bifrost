@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from types import SimpleNamespace
-from uuid import UUID
-from unittest.mock import AsyncMock, patch
+from uuid import UUID, uuid4
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -246,7 +247,13 @@ async def test_existing_execution_is_rehydrated_before_current_runtime_is_pinned
 
 
 @pytest.mark.asyncio
-async def test_new_execution_validates_arguments_against_the_pinned_registration(monkeypatch):
+@pytest.mark.parametrize("parameters", [
+    {"stale_parameter": 42},
+    {"ticket_id": "wrong-type"},
+    {},
+    {"ticket_id": 42, "_event": {"body": {}}},
+])
+async def test_new_execution_validates_arguments_against_the_pinned_registration(monkeypatch, parameters):
     class Database:
         async def execute(self, *_):
             return None
@@ -263,8 +270,89 @@ async def test_new_execution_validates_arguments_against_the_pinned_registration
             "required": ["ticket_id"], "additionalProperties": False})))
     with pytest.raises(ValueError, match="pinned input contract"):
         await _persist_execution_pin(_context(), "22222222-2222-2222-2222-222222222222",
-            "11111111-1111-1111-1111-111111111111", {"stale_parameter": 42}, None,
+            "11111111-1111-1111-1111-111111111111", parameters, None,
             form_id=None, sync=False, api_key_id=None, file_path=None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mapping,accepted", [
+    ({"payload": "{{ payload }}", "apply": True}, True),
+    ({"payload": "{{ payload }}", "apply": True, "unexpected": 1}, False),
+    ({"payload": "{{ payload }}", "apply": True, "_other": 1}, False),
+    ({"payload": "{{ payload }}", "apply": "true"}, False),
+    ({"apply": True}, False),
+])
+async def test_event_dispatch_obeys_strict_pinned_schema_and_retains_metadata(
+    monkeypatch, mapping, accepted,
+):
+    from src.models.enums import EventDeliveryStatus
+    from src.services.events.processor import EventProcessor
+
+    event = SimpleNamespace(
+        id=uuid4(), event_type="ticket.updated", data={"ticket_id": 42},
+        headers={"x-source": "halo"}, source_ip="192.0.2.1",
+        received_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
+        organization_id=None,
+        event_source=SimpleNamespace(organization_id=None, schedule_source=None),
+    )
+    deployment_id = uuid4()
+    workflow_id = uuid4()
+    delivery = SimpleNamespace(
+        id=uuid4(), event_id=event.id, workflow_id=workflow_id, execution_id=None,
+        workflow=SimpleNamespace(id=workflow_id, type="workflow", organization_id=None),
+        subscription=SimpleNamespace(input_mapping=mapping),
+    )
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.get.side_effect = [delivery, None]
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    runtime = SimpleNamespace(
+        name="Strict webhook", deployment_id=deployment_id, runtime_mode="deployment-v1",
+        parameters_schema={
+            "type": "object", "additionalProperties": False,
+            "properties": {"payload": {"type": "object"}, "apply": {"type": "boolean"}},
+            "required": ["payload", "apply"],
+        },
+        queue_evidence=lambda: {"solution_deployment_id": str(deployment_id)},
+    )
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr("src.services.solutions.deployment_runtime.pin_workflow_runtime", AsyncMock(return_value=runtime))
+    monkeypatch.setattr("src.services.execution.retry_policy.workflow_retry_policy_snapshot", AsyncMock(return_value={}))
+    monkeypatch.setattr("src.services.execution.attempts.ensure_dispatch_attempt", AsyncMock())
+    publish = AsyncMock()
+    monkeypatch.setattr(async_executor, "_publish_scheduled_once", publish)
+
+    processor = EventProcessor(AsyncMock())
+    if not accepted:
+        with pytest.raises(ValueError, match="pinned input contract"):
+            await processor._queue_workflow_execution(delivery, event)
+        db.add.assert_not_called()
+        publish.assert_not_awaited()
+        assert delivery.execution_id is None
+        return
+
+    await processor._queue_workflow_execution(delivery, event)
+
+    execution = db.add.call_args.args[0]
+    assert execution.solution_deployment_id == deployment_id
+    assert execution.parameters["payload"] == event.data
+    assert execution.parameters["apply"] is True
+    metadata = execution.parameters["_event"]
+    assert metadata["id"] == str(event.id)
+    assert metadata["body"] == event.data
+    assert metadata["headers"] == event.headers
+    assert metadata["source_ip"] == event.source_ip
+    assert execution.dispatch_evidence["request"]["parameters"]["_event"] == metadata
+    assert execution.dispatch_evidence["publish"]["parameters"]["_event"] == metadata
+    assert execution.dispatch_evidence["request"]["event"]["id"] == str(event.id)
+    assert delivery.execution_id == execution.id
+    assert delivery.status == EventDeliveryStatus.QUEUED
+    db.commit.assert_awaited_once()
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -291,7 +291,14 @@ async def _persist_execution_pin(
         if pinned_schema is not None:
             from src.services.tool_schema import validate_arguments_against_schema
 
-            issues, schema_error = validate_arguments_against_schema(pinned_schema, parameters)
+            # A verified event delivery carries transport metadata, not a
+            # user-declared argument. Retain it in the durable dispatch below.
+            arguments = (
+                {key: value for key, value in parameters.items() if key != "_event"}
+                if event_delivery is not None
+                else parameters
+            )
+            issues, schema_error = validate_arguments_against_schema(pinned_schema, arguments)
             if issues or schema_error:
                 # The API may have read registration metadata before a pointer
                 # switch. Validate again against the exact accepted deployment.
