@@ -514,6 +514,7 @@ async def source_controls():
     """Inert local objects exercise the real helpers; never business/clock authority."""
     from types import SimpleNamespace
 
+    from tests.parity import workflow_commit_fault_child as child
     from tests.parity.workflow_commit_fault import (
         CONTROL_LIMIT,
         OBSERVER_SCHEMA,
@@ -531,6 +532,50 @@ async def source_controls():
     )
 
     completed = []
+    actual_environment = actor_environment()
+    original_environment = dict(os.environ)
+    shared = sys.modules.get("tests.parity.workflow_commit_fault")
+    require(shared is not None and shared.closed is closed and child.os is os, "environment_control_origins")
+
+    def environment_control(candidate, expected_label=None):
+        temporary = Restoration()
+        original_error = None
+        try:
+            temporary.install(child, "os", SimpleNamespace(environ=candidate))
+            if expected_label is None:
+                require(actor_environment() == actual_environment, "environment_control_positive")
+            else:
+                try:
+                    actor_environment()
+                except FaultAdmissionError as error:
+                    require(error.label == expected_label, "environment_control_label")
+                else:
+                    raise AssertionError("F4 environment negative admitted")
+        except BaseException as error:
+            original_error = error
+        finally:
+            try:
+                temporary.restore()
+            except BaseException as error:
+                if original_error is None:
+                    original_error = error
+        if original_error is not None:
+            raise original_error
+        require(
+            child.os is os and sys.modules.get("tests.parity.workflow_commit_fault") is shared and shared.closed is closed,
+            "environment_control_restoration",
+        )
+        require(dict(os.environ) == original_environment, "environment_control_real_environment")
+
+    environment_control(original_environment.copy())
+    missing_version = original_environment.copy()
+    del missing_version["BIFROST_VERSION"]
+    environment_control(missing_version, "environment_missing")
+    environment_control({**original_environment, "BIFROST_VERSION": "not-qualified"}, "environment_profile")
+    environment_control({**original_environment, "BIFROST_F4_UNREVIEWED": "1"}, "environment_extra")
+    environment_control({**original_environment, "ANTHROPIC_API_TEST_KEY": "not-empty"}, "vendor_environment")
+    require(actor_environment() == actual_environment, "environment_control_actual_restored")
+    completed.append("environment")
     invocation = "abcdef00-0000-4000-8000-000000000001"
 
     def rejected(operation):
@@ -1007,5 +1052,5 @@ async def source_controls():
             require(close_unadmitted_writer(writer, custody, original) is original, "bootstrap_close_first_error")
             require(writer.closed and custody["failed"] is (close_error is not None), "bootstrap_partial_custody")
     completed.append("bootstrap")
-    require(len(completed) == 7 and len(set(completed)) == 7, "control_family_roster")
+    require(len(completed) == 8 and len(set(completed)) == 8, "control_family_roster")
     return tuple(completed)
