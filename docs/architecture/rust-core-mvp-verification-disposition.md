@@ -521,3 +521,32 @@ its first formatting failure remains
 recorded. Neither run executes the 53 proposed characterization scenarios or
 proves Python/PostgreSQL parity, lifecycle authority, rollback, C2/C3 or MVP
 acceptance. Literal pre-PR and normal CI remain separate PR gates.
+
+## Claim characterization: standard-lane lifetime seam
+
+Fresh main fetches remain platform
+`7e737cacdba56b214e427afed5a28e89ae1b6a47` and workspace
+`848134becf9e8fdb930efc86872daa62fdeb93cc`; the prerequisite merges remain
+ancestors. The workspace boundary audit covers that exact unchanged head.
+
+The original test launcher restarts PgBouncer before creating its pytest
+runner and removes that runner on completion. An outer before/after probe
+therefore cannot establish the required same-runner lifetime. The proposed
+test-owned handshake observes readiness after the actual pooled constructor
+returns, then completion after the selected function finalizers, while the
+same runner remains alive. It preserves the original launcher and reset.
+
+Independent design review accepts this direction conditionally but holds
+source authoring on three concrete interfaces: mandatory gate selection that
+does not depend on socket presence, physical whole-script deadline and cleanup
+enforcement, and loop-neutral broker/finalizer custody that observes actual
+cleanup failures. A closed driver is not sufficient evidence that disposal
+returned successfully. The source proposal receipt SHA-256 is
+`322dd8ee08342c4ba8473e51c5761a570ca6e6d15704365e8f28223d2b24fdec`;
+the independent design review receipt SHA-256 is
+`b389fb85f90dca8acc69cc0ea3ff27b0841cb5a8eae846c9c84456ed629fe08f`.
+
+Actual frontend image/version/configuration remain unmeasured. A conditional
+reviewed profile must fail closed on a mismatch; neither checked-in defaults
+nor a self-reported version prove transport or installed source. No frontend
+runtime, Python claim scenario, or new characterization campaign has run.
