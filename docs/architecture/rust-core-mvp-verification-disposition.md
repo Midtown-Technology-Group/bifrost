@@ -783,3 +783,22 @@ cause/disposal, actual uploader delivery,207 JUnit identities and full
 workflow/agent parity remain unproven. Fresh platform/workspace main fetches
 remain7e737cacdba56b214e427afed5a28e89ae1b6a47 and
 78f37f5a5cbd7b0a6c382b54ccc617c8747418aa respectively.
+
+
+Independent concrete PUB1 review is complete, receipt SHA-256
+`8240a08ed8f604aa9e7cfcb69210da70636fe32e22f40ff34b2ff2af5160057d`.
+It found no semantic blocker and independently confirmed the ordinary-entry
+cleanup attribution argument. Final source acceptance is held solely for
+two control-only lambda early bindings at script2237 and2413. Root's fresh
+static audit, `72cbfde2424d51db5aa293bf8f2b32a33f8a6c0b63950c7a03f83ee7cdd3a281`,
+passes Bash/AST/default lint/format and finds two B023 issues under auxiliary
+expanded E,F,I,UP,B,SIM rules. Synchronous invocation currently avoids a
+deferred late-binding bug; explicit bindings remove new control-source debt.
+An initial extraction omitted the final newline and caused an auxiliary
+format failure; exact newline retention passes, so no source-format failure
+is inferred. Root released only those two bindings, receipt
+`91708bb0a0f4717f19e6810d6e7270bf4554eb1a58cbafbe8f2b089f543ca2da`.
+Frozen changed bytes, inverse AST and independent correction readback remain
+required. No replacement run, changed expectations or runtime authority is
+released. W0 PR1008/1009 remain unchanged and CodSpeed-blocked; amendment
+PR1011 remains93ec9421b23b0b4a1493ab45f15f55ded3377d2e, open and unmerged.
