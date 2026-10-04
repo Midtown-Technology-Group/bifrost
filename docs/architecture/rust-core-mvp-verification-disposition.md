@@ -500,3 +500,24 @@ Independent review receipt SHA-256 is
 These controls have not executed; installed behavior, resource custody, cache
 disposition and runtime admission remain held. This closes source findings,
 not M4, C2/C3 or MVP acceptance.
+
+The exact four native formatter wraps, including their optional trailing tuple
+commas, passed independent source review. The repair changes no arguments,
+ordering or expectations. Receipt SHA-256 is
+`70b2784c6906794792475c79a33113fbe2cdf4973d866b72f428da605ebb8539`.
+One separately released changed candidate,
+`6f41f297aa6f2107086474bc402704647967b1d3`, tree
+`1c7cb34dea16af6ae792d4eb6830fda29ff5f5a0`, passed
+[source run 37221919975](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37221919975),
+attempt 1. Actual formatting, strict locked all-target/all-feature Clippy,
+31 default workspace tests and 17 explicit locked/offline example tests passed;
+none failed, were ignored or filtered. The example tests ran using the actual
+checks image ID with networking disabled. Root evidence receipt SHA-256 is
+`c209914e3107e3d664b1ad4269d51e5c2f0fdbbfd81d9ca214fabed5dcfeca75`.
+Independent review accepted this bounded source/unit evidence; its receipt
+SHA-256 is `6e53cedb7026307554ee275f1220063bbc953a43f2b2307ef75da0e8ddb357fd`.
+This source-check campaign is closed successfully without an unchanged retry;
+its first formatting failure remains
+recorded. Neither run executes the 53 proposed characterization scenarios or
+proves Python/PostgreSQL parity, lifecycle authority, rollback, C2/C3 or MVP
+acceptance. Literal pre-PR and normal CI remain separate PR gates.
