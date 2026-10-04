@@ -21,7 +21,7 @@ the exact predicate is unknown and resource custody remains held.
 A bounded optional predicate diagnostic has root and independent DESIGN
 acceptance; concrete source and any further execution remain separate gates.
 The transport prototype has source acceptance, while its supported venue
-source and actual compiler/TLS/runtime evidence remain pending.
+source is frozen under review and actual compiler/TLS/runtime evidence remains pending.
 
 Historical campaigns below retain their exact candidate/main/workspace pins.
 In particular, advances through #1048, #1056 and #1061 do not retroactively
@@ -1289,3 +1289,16 @@ The transport recipe keeps the original documented /tmp mode1777 and
 Python-owned0700 fixture directories. Root's abbreviated0700tmpfs description
 was inaccurate; source matches the actual selected recipe. No new permissions
 recipe or frozen prototype change is selected.
+
+
+The M1 supported venue SOURCE v0.1.0 handoff is frozen under report
+`f40ea15055b8ac726711630cce7955bf9cec4a428c342018a3256cce583e0775`.
+Runner hash is `0913953e386892b69e37177843f648f4efb0848364f1e8032688aafb9a5c2690`
+and workflow hash is `623d8148b7de9d7b04b004809832ce86332cd3121827716f1b9c5a545a4ac059`.
+The finite command roster is34 maximum (28 normal, six conditional live
+cleanup), with two owned containers. Root read the complete report and roster,
+verified both immutable copies and all five carried prototype pins, and ran
+Bash syntax, embedded supervisor/readback AST and diff checks successfully.
+Full frozen code review and independent review are pending; these static
+checks do not execute the runner or establish native/TLS/resource custody.
+No launch, push, PR or production authority is approved by the handoff.
