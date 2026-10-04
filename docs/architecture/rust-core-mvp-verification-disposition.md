@@ -4,9 +4,14 @@ Evidence checkpoint: 2026-10-04. This records blocking verification results,
 not an MVP CONTINUE/STOP decision or deployment authorization.
 
 The architecture authority remains [platform PR #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011),
-head `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. The platform main used here is
+head `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. The platform main used for the recorded execution campaigns is
 `c45725f82f0961ce45c1dc7e4928402b44176882`; workspace main is
-`848134becf9e8fdb930efc86872daa62fdeb93cc`.
+`848134becf9e8fdb930efc86872daa62fdeb93cc`. A later read-only fetch on
+2026-10-04 observed platform main `7ff37809f249ff21a9ca150780fbc8f1c6d07b0c`
+and the same workspace head. Both prerequisite merges (#1001 and #1112)
+remain ancestors. The platform advance is the four-file immutable empty-source
+export repair (#1048); it does not change the collector schema, SQL or source
+pins. It does not retroactively change any campaign candidate or evidence.
 
 ## Result verification: stopped and blocking
 
@@ -231,3 +236,48 @@ checks and the separate green source-check lane do not waive those failures.
 Keep the performance-analysis disposition blocking; do not rerun benchmarks,
 change thresholds or claim comparable measurement evidence from these checks.
 Neither W0 PR was modified or merged by this checkpoint.
+
+
+## Agent deletion catalog: corrected source accepted, launch held
+
+The frozen collector source has SHA-256
+`a8c4aa1ceaf2a86e10b1d3a5c188c832e027d90a136fd9d4825d9ccf975cb1d9`
+on candidate baseline `4234d30e62e8db4d077751541907a5cec4888041`. Root
+and a separate reviewer accepted only the bounded source corrections: exact
+pytest class-plugin registration, malformed-versus-oversized foreign-key
+precedence, and controls that reach actual multirow/association guards.
+Independent review receipt SHA-256 is
+`8b933b9f6d5b6b58825196f58eebddb0d160e74e10d077f057f8fbf05eb80dfb`;
+root source-preservation receipt is
+`c43b85aa91e62fa6491793180ccb3b226b68c2df672b6adadeb9b3d0c3b5e1af`.
+
+Static AST, lint and formatting checks passed. The 13 SQL statements, 17 source
+edge objects, main resource lifecycle and ten control families are preserved.
+Controls, plugin qualification and SQL remain unexecuted. Source acceptance
+does not prove installed behavior, semantic closure or M4/C2/C3 acceptance.
+The collector remains deliberately nonaccepting when semantics are unqualified.
+
+A supported launch still requires current-main candidate reconciliation,
+repository checks, actual image/configuration/source qualification, private
+raw-output custody, safe property-only evidence delivery and physical cleanup.
+The existing wrapper tees output and writes JUnit under a directory it makes
+world-writable; that directory cannot be asserted to provide private custody.
+A finite source-based launch assessment is in progress. No collector commit,
+push or runtime run has been released by this source disposition.
+
+## Private workspace source acquisition: transport interface held
+
+The researched official App-token action, immutable pin
+`bcd2ba49218906704ab6c1aa796996da409d3eb1`, exposes token, installation ID
+and App slug, but no actual issued expiry or effective permission response.
+A conventional requested/provisioned-scope trust model was considered explicitly;
+it would not be observed minted-response evidence. The exact action also
+exposes neither redirect disabling nor request cancellation/deadline controls.
+It therefore cannot satisfy the selected credential transport and shared
+source-deadline requirements unchanged.
+
+A small wrapper around supported official-library request options is undergoing
+source-only feasibility review. No custom cryptography, action fork, runtime
+credential change, secret provisioning or fourth controller run is authorized.
+The third run's original fetch failure cause remains unknown; an unprovisioned
+private read-access prerequisite is not retrospective proof of that cause.
