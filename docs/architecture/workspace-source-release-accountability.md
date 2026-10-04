@@ -240,7 +240,7 @@ does not establish supersession. Use `deferred` while that proof is missing;
 ## Retired releases
 
 Retiring the global Live release (see
-[Rapid Workspace Promotion](rapid-workspace-promotion.md#retirement-and-demotion-of-the-immutable-loose-release))
+[Retained Workspace release evidence](rapid-workspace-promotion.md#cleanup-deployment-gate))
 leaves no Live release for the platform. Retirement does not silently close
 outstanding accountability: a source-release record that is still `pending`
 keeps its deadline, and the existing accountability sweep disposes it to
