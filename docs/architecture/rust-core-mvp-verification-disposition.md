@@ -77,6 +77,20 @@ Any fourth run requires another explicit reviewed-candidate release; no
 unchanged rerun, timeout growth or expectation waiver is permitted.
 The initial two-run allowance and its failures remain recorded.
 
+The architect then released one fourth changed candidate containing only the
+two native formatter wraps, independently reviewed and committed as
+`c911b46baa7260ed1492bfbe5e1295c6db9eb410`.
+[Run 37185003270](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37185003270),
+attempt 1, completed successfully. The actual source identity matches that
+commit and tree `2989913821669cebcebd00cbac44fb4fc609d8a6`. The unchanged
+pinned Docker checks target passed `cargo fmt --check`,
+`cargo clippy --locked --all-targets --all-features -- -D warnings`, and
+`cargo test --locked --all`. Default test groups passed 7, 6 and 14 tests,
+with no failed, ignored or filtered tests; other groups contained no tests.
+The four-cycle source-check campaign is closed successfully. Do not rerun this
+unchanged candidate; the prior failures remain historical evidence. This does
+not reopen the stopped Result campaign or prove runtime fault behavior.
+
 The lane does not run Python, PostgreSQL, fault injection, the example's native
 tests or the complete Result suite. Hosted runner disposal is its builder
 lifecycle boundary; intermediate build layers are not independently certified
