@@ -184,11 +184,16 @@ def test_readme_uses_existing_text_import_semantics_without_changing_byte_eviden
 
 
 @pytest.mark.asyncio
-async def test_stale_readme_cannot_be_credited_by_a_green_runtime():
+async def test_stale_readme_cannot_be_credited_by_a_green_runtime(monkeypatch):
     source = authored()
     metadata = native_authored_metadata(source)
     solution = SimpleNamespace(**metadata.descriptor.model_dump(exclude={"logo"}), readme="Earlier instructions\n", id=SID)
     db = AsyncMock()
+    base = SimpleNamespace(id=SID)
+    resolution = SimpleNamespace(resources={}, sources={}, workflows=[], shared_tables={})
+    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService", lambda _db: SimpleNamespace(
+        _base=AsyncMock(return_value=(solution, base, resolution)), _registrations=AsyncMock(),
+        _base_files=AsyncMock()))
     with pytest.raises(NativeAuthoredSourceMismatch, match="README"):
         await native_authored_install_readback(db, solution, source,
             expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
@@ -201,12 +206,17 @@ async def test_stale_readme_cannot_be_credited_by_a_green_runtime():
     ("version", "99.0.0"), ("allow_outbound_access", True), ("allow_inbound_access", False),
     ("repo_subpath", "solutions/other"), ("git_connected", True), ("name", "Other name"),
 ])
-async def test_descriptor_drift_does_not_allow_accounting(field, value):
+async def test_descriptor_drift_does_not_allow_accounting(monkeypatch, field, value):
     source = authored()
     metadata = native_authored_metadata(source)
     values = {**metadata.descriptor.model_dump(exclude={"logo"}), "readme": metadata.readme, "id": SID}
     values[field] = value
     db = AsyncMock()
+    base = SimpleNamespace(id=SID)
+    resolution = SimpleNamespace(resources={}, sources={}, workflows=[], shared_tables={})
+    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService", lambda _db: SimpleNamespace(
+        _base=AsyncMock(return_value=(SimpleNamespace(id=SID), base, resolution)),
+        _registrations=AsyncMock(), _base_files=AsyncMock()))
     with pytest.raises(NativeAuthoredSourceMismatch, match="descriptor"):
         await native_authored_install_readback(db, SimpleNamespace(**values), source,
             expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
@@ -284,7 +294,8 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
         manifest_hash=manifest_hash, base_read=base_read, registrations=registrations, base_files=base_files,
         storage=storage, deployment=deployment, resolution=resolution,
-        connection_rows=connection_rows, root_integration_names=root_integration_names)
+        connection_rows=connection_rows, root_integration_names=root_integration_names,
+        scalar_results=scalar_results)
 
 
 async def _read_installed(fixture):
@@ -327,16 +338,27 @@ async def test_authored_resource_requires_exact_active_resolution_and_storage_by
     collected = await native_readback._read_native_runtime(SID, fixture.deployment, fixture.resolution)
     assert dict(collected.resources) == {"config/guardrails.json": b'{"allow": false}\n'}
     fixture.storage.read_resource.reset_mock()
+    fixture.db.scalars.side_effect = fixture.scalar_results
+    base = AsyncMock(return_value=(fixture.solution, fixture.deployment, fixture.resolution))
+    registrations = AsyncMock()
+    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
+        lambda db: SimpleNamespace(_base=base, _registrations=registrations, _base_files=AsyncMock()))
+    collected_result = await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
+        expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
+        _verified_runtime=collected)
+    assert collected_result["resource_hashes"] == result["resource_hashes"]
+    assert base.await_args.kwargs["allow_resources"] is True
+    fixture.storage.read_resource.assert_not_awaited()
+
+    fixture.db.scalars.side_effect = fixture.scalar_results
     from dataclasses import replace
     tampered = replace(collected, resources=MappingProxyType({"config/guardrails.json": b'{"allow": true}\n'}))
-    base = AsyncMock(return_value=(fixture.solution, fixture.deployment, fixture.resolution))
-    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
-        lambda db: SimpleNamespace(_base=base, _registrations=AsyncMock(), _base_files=AsyncMock()))
     with pytest.raises(NativeAuthoredSourceMismatch, match="resource"):
         await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
             expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
             _verified_runtime=tampered)
-    base.assert_awaited_once_with(SID, ANY, allow_resources=True)
+    assert base.await_count == 2
+    assert all(call.kwargs["allow_resources"] is True for call in base.await_args_list)
     fixture.storage.read_resource.assert_not_awaited()
 
 
