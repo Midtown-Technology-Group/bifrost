@@ -3137,19 +3137,25 @@ def source_copy_membership(root, roster):
     require(required <= set(roster), "copy_required_members")
 
 
-def source_preflight(controller, environment, end):
-    root = Path(controller.values["candidate_root"])
-    version = native_text(controller, controller.run("git.version", end, environment), 256, ascii_only=True)
-    require(re.fullmatch(r"git version [0-9]+\.[0-9]+[^\r\n]*\n", version), "git_version")
-    origin = native_text(controller, controller.run("git.origin", end, environment), 512, ascii_only=True)
+def admit_git_origin(origin):
     require(
         origin
         in (
+            "https://github.com/Midtown-Technology-Group/bifrost\n",
             "https://github.com/Midtown-Technology-Group/bifrost.git\n",
             "git@github.com:Midtown-Technology-Group/bifrost.git\n",
         ),
         "git_origin",
     )
+    return origin
+
+
+def source_preflight(controller, environment, end):
+    root = Path(controller.values["candidate_root"])
+    version = native_text(controller, controller.run("git.version", end, environment), 256, ascii_only=True)
+    require(re.fullmatch(r"git version [0-9]+\.[0-9]+[^\r\n]*\n", version), "git_version")
+    origin = native_text(controller, controller.run("git.origin", end, environment), 512, ascii_only=True)
+    admit_git_origin(origin)
     actual_root = native_text(controller, controller.run("git.root", end, environment), 4096)
     require(actual_root == str(root) + "\n" and root.resolve(strict=True) == root, "git_root")
     controller.source["head"] = git_identity(controller, "git.head", end, environment)
@@ -5009,13 +5015,8 @@ def disposal_projection(controller, primary_exit):
             sum(entry["identity"] is None or (entry["kind"] == "file" and entry["closed"] is False) for entry in files),
         )
     log = getattr(controller, "log_tree", None)
-    if log is not None and log.identity is not None:
-        actual = resources["files"]
-        if all(value is not None for value in actual.values()):
-            actual["admitted"] += 1
-            actual["removed"] += int(log.removed)
-            actual["remaining"] += int(not log.removed)
-            actual["unknown"] += int(log.unknown)
+    if log is not None:
+        resources["files"] = log_file_projection(resources["files"], log)
     stack = getattr(controller, "stack_current", None)
     runner = getattr(controller, "runner_current", None)
     if stack is not None:
@@ -5064,6 +5065,8 @@ def disposal_projection(controller, primary_exit):
 
 def projection_controls():
     """Private inert values use the same publication admission functions."""
+    log_origin_controls()
+    log_syscall_controls()
     for number, actor, family, code in (
         (1, "python", "python_connection_lost", "08003"),
         (2, "rust", "rust_io", "unexpected_eof"),
@@ -5527,22 +5530,40 @@ class LogTreeCustody:
         self.initial_owner = None
         self.removed = False
         self.unknown = True
+        self.acquire_entered = False
+        self.preexisting_refused = False
+        self.mkdir_attempted = False
+        self.mkdir_returned = False
+        self.exposed = None
         self.before_marker_absent = False
         self.marker_observed = False
         self.records = []
         self.end = None
 
+    def refuse_preexisting(self):
+        if os.path.lexists(self.path):
+            self.preexisting_refused = True
+            raise Failure("log_tree_preexisting")
+
     def create(self):
-        require(not os.path.lexists(self.path), "log_tree_preexisting")
+        self.acquire_entered = True
+        require(type(self.end) is float and time.monotonic() < self.end, "log_acquisition_deadline")
+        self.refuse_preexisting()
+        require(time.monotonic() < self.end, "log_acquisition_deadline")
+        self.mkdir_attempted = True
         os.mkdir(self.path, 0o700)
+        self.mkdir_returned = True
+        require(time.monotonic() < self.end, "log_acquisition_deadline")
         before = os.lstat(self.path)
+        require(time.monotonic() < self.end, "log_acquisition_deadline")
+        admit_log_acquisition(before)
         self.identity = (before.st_dev, before.st_ino)
         self.initial_owner = (before.st_uid, before.st_gid)
-        require(
-            stat.S_ISDIR(before.st_mode) and before.st_uid == os.getuid() and stat.S_IMODE(before.st_mode) == 0o700,
-            "log_tree_acquisition",
-        )
+        self.exposed = False
         self.unknown = False
+
+    def mark_exposed(self):
+        self.exposed = True
 
     def directory(self):
         require(self.identity is not None and not self.removed, "log_tree_unowned")
@@ -5979,7 +6000,10 @@ def source_setup(controller, environment):
     controller.marker_mode = 0o666 & ~source_umask()
     projection_controls()
     end = controller.stage_end("prepr", 480)
-    controller.prepr_native = controller.run("prepr", end, environment)
+    controller.log_tree.end = end
+    controller.prepr_native = acquire_log_dispatch(
+        controller.log_tree, lambda: controller.run("prepr", end, environment)
+    )
     source_disk_match(root, controller.sources)
     source_copy_membership(root, controller.git_roster)
     project_inventory(controller, "prepr_final", end, environment)
@@ -6406,12 +6430,16 @@ def cleanup_all(controller, environment):
                     entry["removed"] = controller.workspace_tree.removed
         except BaseException as error:
             controller.fail(error, cleanup=True)
-    if hasattr(controller, "log_tree") and controller.log_tree.identity is not None:
+    if hasattr(controller, "log_tree") and controller.log_tree.mkdir_attempted:
         try:
             require(time.monotonic() < end, "log_disposal_deadline")
+            require(controller.log_tree.identity is not None, "log_partial_acquisition")
             controller.log_tree.end = end
-            restore_task_log(controller, end, environment)
-            controller.log_tree.remove(controller)
+            if controller.log_tree.exposed is False:
+                remove_initial_log(controller, end)
+            else:
+                restore_task_log(controller, end, environment)
+                controller.log_tree.remove(controller)
         except BaseException as error:
             controller.log_tree.unknown = True
             controller.fail(error, cleanup=True)
@@ -6446,16 +6474,483 @@ def cleanup_all(controller, environment):
         controller.credentials_disposed = len(entries) == 1 and entries[0]["removed"] is True
 
 
-def exclude_log_descendant_mounts(controller):
+def acquire_log_dispatch(tree, dispatch):
+    tree.create()
+    tree.mark_exposed()
+    return dispatch()
+
+
+def remove_initial_log(controller, end):
+    end = min(end, controller.whole_end)
+    tree = controller.log_tree
+    admit_initial_log_removal(controller, end)
+    require(time.monotonic() < end, "log_initial_deadline")
+    before = os.lstat(tree.path)
+    require(
+        stat.S_ISDIR(before.st_mode)
+        and (before.st_dev, before.st_ino) == tree.identity
+        and (before.st_uid, before.st_gid) == tree.initial_owner == (os.getuid(), os.getgid())
+        and stat.S_IMODE(before.st_mode) == 0o700,
+        "log_initial_remove_profile",
+    )
+    require(time.monotonic() < end, "log_initial_deadline")
+    # rmdir refuses any new child; never recursively adopt or unlink one.
+    os.rmdir(tree.path)
+    require(time.monotonic() < end, "log_initial_deadline")
+    require(not os.path.lexists(tree.path), "log_initial_remove_remaining")
+    tree.removed = True
+
+
+def admit_log_acquisition(before):
+    require(
+        stat.S_ISDIR(before.st_mode)
+        and (before.st_uid, before.st_gid) == (os.getuid(), os.getgid())
+        and stat.S_IMODE(before.st_mode) == 0o700,
+        "log_tree_acquisition",
+    )
+    return before
+
+
+def log_syscall_controls():
+    # Temporarily replace only these source syscalls with inert operations.
+    # Each acquired seam is independently restored even when a control fails.
+    restoration_failures = []
+
+    def exercise(kind, control=None):
+        restoration_failures.clear()
+        body_error = OSError("inert-body") if control is None else control
+        iterator_error = OSError("inert-iterator-close")
+        fd_error = OSError("inert-fd-close")
+        state = {
+            "exists": kind == "foreign",
+            "dispatch": 0,
+            "iterator_close": 0,
+            "fd_close": 0,
+            "rmdir": 0,
+            "lstat": 0,
+            "read": 0,
+            "phase": "acquire",
+        }
+        directory = os.stat_result((stat.S_IFDIR | 0o700, 2, 1, 2, os.getuid(), os.getgid(), 0, 0, 0, 0))
+        regular = os.stat_result((stat.S_IFREG | 0o600, 3, 1, 1, os.getuid(), os.getgid(), 0, 0, 0, 0))
+        tree = LogTreeCustody(Path("/inert-f4-log"))
+        tree.end = 10.0
+        controller = object.__new__(Controller)
+        controller.log_tree, controller.whole_end = tree, 100.0
+        controller.native, controller.accepted_records, controller.listener_records = [], [], []
+        controller.cleanup_failed = False
+
+        class Iterator:
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if kind in ("body", "body_both_close"):
+                    raise body_error
+                if kind == "nonempty":
+                    return "inert-entry"
+                raise StopIteration
+
+            def close(self):
+                state["iterator_close"] += 1
+                if kind in ("iterator_close", "body_both_close"):
+                    raise iterator_error
+
+        def mkdir(_path, _mode):
+            if kind == "mkdir":
+                raise body_error
+            state["exists"] = True
+
+        def lstat(_path):
+            state["lstat"] += 1
+            if kind == "lstat":
+                raise body_error
+            fields = list(directory)
+            if kind == "type" or (kind == "replacement" and state["lstat"] >= 4):
+                fields[0] = stat.S_IFREG | 0o700
+            if kind == "owner" or (kind == "owner_drift" and state["lstat"] >= 4):
+                fields[4] += 1
+            if kind == "mode" or (kind == "mode_drift" and state["lstat"] >= 4):
+                fields[0] = stat.S_IFDIR | 0o777
+            return os.stat_result(fields)
+
+        def close(_fd):
+            state["fd_close"] += 1
+            if kind in ("fd_close", "body_both_close"):
+                raise fd_error
+
+        def read(_fd, _count):
+            state["read"] += 1
+            if kind == "mount_read" or (kind == "partial_mount" and state["read"] > 1):
+                raise body_error
+            if state["read"] > 1:
+                return b""
+            mount = b"/inert-f4-log" if kind == "mount" else b"/"
+            return b"1 0 0:1 / " + mount + b" rw - tmpfs tmpfs rw\n"
+
+        def rmdir(_path):
+            state["rmdir"] += 1
+            if kind == "late_entry":
+                raise body_error
+            state["exists"] = False
+
+        def dispatch():
+            state["dispatch"] += 1
+            require(tree.exposed is True, "log_control_dispatch_before_exposure")
+            raise body_error
+
+        def open_file(path, _flags):
+            if str(path) == "/proc/self/mountinfo":
+                state["phase"] = "mount"
+                return 41
+            return 40
+
+        replacements = (
+            (os.path, "lexists", lambda _path: state["exists"]),
+            (os, "mkdir", mkdir),
+            (os, "lstat", lstat),
+            (os, "open", open_file),
+            (os, "fstat", lambda fd: regular if fd == 41 else directory),
+            (os, "scandir", lambda _fd: Iterator()),
+            (os, "close", close),
+            (os, "read", read),
+            (os, "rmdir", rmdir),
+            (
+                time,
+                "monotonic",
+                lambda: (
+                    11.0
+                    if (kind == "expired" and state["phase"] == "remove")
+                    or (kind == "mount_expired" and state["phase"] == "mount")
+                    else 1.0
+                ),
+            ),
+        )
+        restored = []
+        original = None
+        observed = None
+        try:
+            for owner, name, replacement in replacements:
+                restored.append((owner, name, getattr(owner, name)))
+                setattr(owner, name, replacement)
+            try:
+                if kind == "race":
+                    tree.refuse_preexisting()
+                    state["exists"] = True
+                if kind == "dispatch":
+                    acquire_log_dispatch(tree, dispatch)
+                else:
+                    acquire_log_dispatch(tree, lambda: state.update(dispatch=state["dispatch"] + 1))
+                    # A separate actual create path supplies strictly unexposed state.
+                    # Never clear exposure on the acquire-and-dispatch object.
+                    tree = LogTreeCustody(Path("/inert-f4-log"))
+                    tree.end = 10.0
+                    state["exists"] = False
+                    tree.create()
+                    controller.log_tree = tree
+                    state["phase"] = "remove"
+                    remove_initial_log(controller, 10.0)
+            except Exception as error:
+                observed = error
+            if kind == "success":
+                require(observed is None and tree.removed and not state["exists"], "log_control_empty_success")
+            else:
+                require(observed is not None and not tree.removed, "log_control_expected_red")
+            if kind in (
+                "mkdir",
+                "lstat",
+                "dispatch",
+                "body",
+                "body_both_close",
+                "mount_read",
+                "partial_mount",
+                "late_entry",
+            ):
+                require(observed is body_error, "log_control_first_exception_identity")
+            if kind == "iterator_close":
+                require(observed is iterator_error, "log_control_iterator_error_identity")
+            if kind == "fd_close":
+                require(observed is fd_error, "log_control_fd_error_identity")
+            if kind in ("foreign", "race", "mkdir", "lstat", "type", "owner", "mode"):
+                require(state["dispatch"] == 0, "log_control_dispatch_after_bad_acquire")
+            if kind in ("foreign", "race"):
+                require(tree.preexisting_refused and not tree.mkdir_attempted, "log_control_foreign_refusal")
+            if kind in ("mkdir", "lstat", "type", "owner", "mode"):
+                require(tree.mkdir_attempted and tree.identity is None, "log_control_partial_not_adopted")
+            if kind in ("body", "body_both_close", "iterator_close", "fd_close"):
+                require(state["iterator_close"] == 1 and state["fd_close"] == 1, "log_control_independent_closes_once")
+            if kind in ("nonempty", "mount", "expired", "mount_expired", "replacement", "owner_drift", "mode_drift"):
+                require(state["rmdir"] == 0, "log_control_remove_after_bad_admission")
+        except BaseException as error:
+            original = error
+        finally:
+            for owner, name, actual in reversed(restored):
+                try:
+                    setattr(owner, name, actual)
+                except BaseException as error:
+                    restoration_failures.append(error)
+                    original = first_error(original, error)
+        if original is not None:
+            raise original
+
+    for kind in (
+        "success",
+        "foreign",
+        "race",
+        "mkdir",
+        "lstat",
+        "type",
+        "owner",
+        "mode",
+        "dispatch",
+        "body",
+        "body_both_close",
+        "iterator_close",
+        "fd_close",
+        "nonempty",
+        "mount_read",
+        "partial_mount",
+        "mount_expired",
+        "mount",
+        "expired",
+        "late_entry",
+        "replacement",
+        "owner_drift",
+        "mode_drift",
+    ):
+        exercise(kind)
+
+    # Non-Exception control flow must cross the same protected composition.
+    bindings = (
+        (os.path, "lexists"),
+        (os, "mkdir"),
+        (os, "lstat"),
+        (os, "open"),
+        (os, "fstat"),
+        (os, "scandir"),
+        (os, "close"),
+        (os, "read"),
+        (os, "rmdir"),
+        (time, "monotonic"),
+    )
+    originals = [(owner, name, getattr(owner, name)) for owner, name in bindings]
+    for control in (SystemExit(71), KeyboardInterrupt()):
+        try:
+            exercise("dispatch", control)
+        except BaseException as error:
+            if error is not control:
+                raise
+        else:
+            raise Failure("log_control_flow_swallowed")
+        require(not restoration_failures, "log_control_restore_failed")
+        require(
+            all(getattr(owner, name) is actual for owner, name, actual in originals), "log_control_original_bindings"
+        )
+
+
+def log_origin_controls():
+    for value in (
+        "https://github.com/Midtown-Technology-Group/bifrost\n",
+        "https://github.com/Midtown-Technology-Group/bifrost.git\n",
+        "git@github.com:Midtown-Technology-Group/bifrost.git\n",
+    ):
+        require(admit_git_origin(value) is value, "origin_control_return")
+    for value in (
+        "https://github.com/other/bifrost\n",
+        "https://example.com/Midtown-Technology-Group/bifrost\n",
+        "https://github.com/midtown-Technology-Group/bifrost\n",
+        "https://github.com/Midtown-Technology-Group/bifrost?x=1\n",
+        "https://github.com/Midtown-Technology-Group/bifrost\n\n",
+    ):
+        try:
+            admit_git_origin(value)
+        except Failure:
+            pass
+        else:
+            raise Failure("origin_control_accepted")
+    observed = os.stat_result((stat.S_IFDIR | 0o700, 2, 1, 2, os.getuid(), os.getgid(), 0, 0, 0, 0))
+    require(admit_log_acquisition(observed) is observed, "log_control_acquisition_return")
+    for index, value in (
+        (0, stat.S_IFREG | 0o700),
+        (0, stat.S_IFDIR | 0o777),
+        (4, os.getuid() + 1),
+        (5, os.getgid() + 1),
+    ):
+        fields = list(observed)
+        fields[index] = value
+        try:
+            admit_log_acquisition(os.stat_result(fields))
+        except Failure:
+            pass
+        else:
+            raise Failure("log_control_bad_acquisition")
+    tree = LogTreeCustody(Path("/inert-not-acquired"))
+    base = resource_count(8, 8, 0, 0)
+    require(log_file_projection(base, tree) == base, "log_control_unattempted")
+    tree.preexisting_refused = True
+    require(log_file_projection(base, tree) == base, "log_control_foreign")
+    tree.mkdir_attempted = True
+    for returned in (False, True):
+        tree.mkdir_returned = returned
+        require(log_file_projection(base, tree) == resource_count(8, 8, None, 1), "log_control_uncertain")
+        require(
+            log_file_projection(resource_count(), tree) == resource_count(None, None, None, 1), "log_control_null_base"
+        )
+    tree.identity, tree.initial_owner = (1, 2), (3, 4)
+    tree.unknown, tree.exposed = False, False
+    require(log_file_projection(base, tree) == resource_count(9, 8, 1, 0), "log_control_admitted")
+    tree.mark_exposed()
+    tree.mark_exposed()
+    require(tree.exposed is True, "log_control_exposure_monotone")
+    tree.unknown = True
+    require(log_file_projection(base, tree) == resource_count(9, 8, None, 1), "log_control_readback_unknown")
+    controller = object.__new__(Controller)
+    controller.native, controller.accepted_records, controller.listener_records = [], [], []
+    controller.cleanup_failed = False
+    initial_log_settlement(controller)
+    native = object.__new__(Native)
+    native.process, native.returncode = None, None
+    native.settled = native.group_settled = native.fd_settled = True
+    native.stdout_eof = native.stderr_eof = True
+    native.captures, native.handles = [], []
+    controller.native = [native]
+    initial_log_settlement(controller)
+    for field in ("settled", "group_settled", "fd_settled"):
+        setattr(native, field, False)
+        try:
+            initial_log_settlement(controller)
+        except Failure:
+            pass
+        else:
+            raise Failure("log_control_unsettled_accepted")
+        setattr(native, field, True)
+    for field in ("captures", "handles"):
+        setattr(native, field, [{"closed": False}])
+        try:
+            initial_log_settlement(controller)
+        except Failure:
+            pass
+        else:
+            raise Failure("log_control_fd_accepted")
+        setattr(native, field, [])
+    for field, value in (
+        ("accepted_records", [{"closed": False}]),
+        ("listener_records", [{"closed": True, "registered": True, "removed": True}]),
+        ("listener_records", [{"closed": True, "registered": False, "removed": False}]),
+    ):
+        setattr(controller, field, value)
+        try:
+            initial_log_settlement(controller)
+        except Failure:
+            pass
+        else:
+            raise Failure("log_control_ipc_accepted")
+        setattr(controller, field, [])
+    tree.unknown, tree.removed = False, True
+    require(log_file_projection(base, tree) == resource_count(9, 9, 0, 0), "log_control_removed")
+
+
+def log_file_projection(base, tree):
+    result = dict(base)
+    if not tree.mkdir_attempted:
+        return result
+    if tree.identity is None:
+        result["remaining"] = None
+        result["unknown"] = (result["unknown"] if type(result["unknown"]) is int else 0) + 1
+        return result
+    for key, increment in (("admitted", 1), ("removed", int(tree.removed))):
+        if type(result[key]) is int:
+            result[key] += increment
+    if tree.unknown:
+        result["remaining"] = None
+        result["unknown"] = (result["unknown"] if type(result["unknown"]) is int else 0) + 1
+    elif type(result["remaining"]) is int:
+        result["remaining"] += int(not tree.removed)
+    return result
+
+
+def initial_log_settlement(controller):
+    for native in controller.native:
+        require(
+            native.settled
+            and native.group_settled
+            and native.fd_settled
+            and (native.process is None or (native.returncode is not None and native.stdout_eof and native.stderr_eof))
+            and all(entry["closed"] is True for entry in native.captures)
+            and all(entry["closed"] is True for entry in native.handles),
+            "log_initial_native_unsettled",
+        )
+    require(
+        all(record["closed"] is True for record in controller.accepted_records)
+        and all(
+            record["closed"] is True and record["registered"] is False and record["removed"] is True
+            for record in controller.listener_records
+        )
+        and not controller.cleanup_failed,
+        "log_initial_ipc_unsettled",
+    )
+
+
+def admit_initial_log_removal(controller, end):
+    end = min(end, controller.whole_end)
+    tree = controller.log_tree
+    require(tree.identity is not None and tree.exposed is False and not tree.unknown, "log_initial_custody")
+    initial_log_settlement(controller)
+    require(time.monotonic() < end, "log_initial_deadline")
+    before = os.lstat(tree.path)
+    require(
+        stat.S_ISDIR(before.st_mode)
+        and (before.st_dev, before.st_ino) == tree.identity
+        and (before.st_uid, before.st_gid) == tree.initial_owner == (os.getuid(), os.getgid())
+        and stat.S_IMODE(before.st_mode) == 0o700,
+        "log_initial_identity",
+    )
+    descriptor = iterator = None
+    original = None
+    try:
+        require(time.monotonic() < end, "log_initial_deadline")
+        descriptor = os.open(tree.path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        require(file_identity(os.fstat(descriptor)) == file_identity(before), "log_initial_fd")
+        require(time.monotonic() < end, "log_initial_deadline")
+        iterator = os.scandir(descriptor)
+        require(next(iterator, None) is None, "log_initial_nonempty")
+        require(time.monotonic() < end, "log_initial_deadline")
+        require(
+            file_identity(os.fstat(descriptor)) == file_identity(before)
+            and file_identity(os.lstat(tree.path)) == file_identity(before),
+            "log_initial_stable",
+        )
+    except BaseException as error:
+        original = error
+    finally:
+        if iterator is not None:
+            try:
+                iterator.close()
+            except BaseException as error:
+                original = first_error(original, error)
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except BaseException as error:
+                original = first_error(original, error)
+    if original is not None:
+        raise original
+    exclude_log_descendant_mounts(controller, end)
+    require(time.monotonic() < end, "log_initial_deadline")
+
+
+def exclude_log_descendant_mounts(controller, end):
+    end = min(end, controller.whole_end)
     descriptor = None
     original = None
     raw = bytearray()
     try:
+        require(time.monotonic() < end, "mountinfo_deadline")
         descriptor = os.open("/proc/self/mountinfo", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         before = os.fstat(descriptor)
         require(stat.S_ISREG(before.st_mode), "mountinfo_profile")
         while True:
-            require(time.monotonic() < controller.whole_end, "mountinfo_deadline")
+            require(time.monotonic() < end, "mountinfo_deadline")
             chunk = os.read(descriptor, 65536)
             if not chunk:
                 break
@@ -6476,10 +6971,12 @@ def exclude_log_descendant_mounts(controller):
                 original = first_error(original, error)
     if original is not None:
         raise original
+    require(time.monotonic() < end, "mountinfo_deadline")
     path = str(controller.log_tree.path)
     rows = bytes(raw).decode("ascii", "strict").splitlines()
     require(len(rows) <= 4096, "mountinfo_cardinality")
     for row in rows:
+        require(time.monotonic() < end, "mountinfo_deadline")
         columns = row.split(" ")
         require(len(columns) >= 10 and "-" in columns and all(columns), "mountinfo_shape")
         mount = columns[4]
@@ -6516,7 +7013,7 @@ def restore_task_log(controller, end, environment):
         ),
         "log_restore_image_injection",
     )
-    exclude_log_descendant_mounts(controller)
+    exclude_log_descendant_mounts(controller, end)
     root_before = os.lstat(tree.path)
     before = tree.snapshot()
     uid, gid = os.getuid(), os.getgid()
@@ -6676,7 +7173,7 @@ def initialize_parent(controller, environment):
     )
     controller.log_tree = LogTreeCustody(Path("/tmp") / ("bifrost-" + project))
     controller.log_tree.end = controller.whole_end
-    controller.log_tree.create()
+    controller.log_tree.refuse_preexisting()
     controller.selector = selectors.DefaultSelector()
     controller.custody = ContainerCustody(controller)
     controller.volume_custody = VolumeCustody(controller)
