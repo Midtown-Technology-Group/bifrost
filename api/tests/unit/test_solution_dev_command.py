@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import yaml
 from click.testing import CliRunner
 
@@ -22,6 +23,133 @@ class _SolutionListResponse:
 async def _get_bound_solution(_self, path, **_kwargs):
     assert path == "/api/solutions"
     return _SolutionListResponse()
+
+
+def test_start_requires_target_before_default_profile_or_auth(tmp_path, monkeypatch):
+    import bifrost.client as client_mod
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("BIFROST_API_URL", raising=False)
+    (tmp_path / "bifrost.solution.yaml").write_text("slug: s\nname: S\nscope: org\n")
+    selected_urls = []
+
+    class _ProductionProfileClient:
+        get = _get_bound_solution
+        api_url = "https://bifrost.midtowntg.com"
+
+    def get_instance(**kwargs):
+        selected_urls.append(kwargs.get("api_url"))
+        return _ProductionProfileClient()
+
+    monkeypatch.setattr(client_mod.BifrostClient, "get_instance", staticmethod(get_instance))
+    result = CliRunner().invoke(solution_group, ["start"])
+
+    assert result.exit_code == 1
+    assert "Local development requires an explicit API target" in result.output
+    assert "Stored default profiles are not used" in result.output
+    assert selected_urls == []
+
+
+@pytest.mark.parametrize("selector", ["argument", "workspace", "environment"])
+def test_local_start_client_honors_explicit_target(tmp_path, monkeypatch, selector):
+    import bifrost.client as client_mod
+    from bifrost.commands.solution import _client_for_solution_workspace
+
+    monkeypatch.delenv("BIFROST_API_URL", raising=False)
+    target = "https://dev.bifrost.midtowntg.com"
+    argument = None
+    if selector == "argument":
+        argument = target
+        monkeypatch.setenv("BIFROST_API_URL", "https://other.example.test")
+    elif selector == "workspace":
+        (tmp_path / ".env").write_text(f"BIFROST_API_URL={target}\n")
+    else:
+        monkeypatch.setenv("BIFROST_API_URL", target)
+    selected_urls = []
+    client = object()
+
+    def get_instance(**kwargs):
+        assert kwargs["require_auth"] is True
+        selected_urls.append(kwargs["api_url"])
+        return client
+
+    monkeypatch.setattr(client_mod.BifrostClient, "get_instance", staticmethod(get_instance))
+
+    assert _client_for_solution_workspace(
+        tmp_path, argument, require_explicit_url=True,
+    ) is client
+    assert selected_urls == [target]
+
+
+@pytest.fixture
+def inert_start_profiles(tmp_path, monkeypatch):
+    """Exercise the real client/selector with isolated profiles and no HTTP."""
+    from unittest.mock import Mock
+
+    import bifrost.client as client_mod
+    import bifrost.credentials as credentials_mod
+
+    monkeypatch.chdir(tmp_path)
+    for key in credentials_mod.AUTH_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    (tmp_path / "bifrost.solution.yaml").write_text("slug: s\nname: S\n")
+    production = "https://bifrost.midtowntg.com"
+    development = "https://dev.bifrost.midtowntg.com"
+    monkeypatch.setattr(credentials_mod, "get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr(credentials_mod, "get_credentials_path", lambda: tmp_path / "inert-credentials.json")
+    backend = credentials_mod.JsonBackend()
+    for url in [production, development]:
+        backend.save(credentials_mod.Credentials(url, "inert-access", "inert-refresh", "2099-01-01T00:00:00Z"))
+    persistent = Mock(return_value=backend)
+    default = Mock(return_value=production)
+    monkeypatch.setattr(credentials_mod, "get_persistent_backend", persistent)
+    monkeypatch.setattr(credentials_mod, "get_default_connection", default)
+    monkeypatch.setattr(client_mod._thread_local, "bifrost_client", None, raising=False)
+    requested_urls = []
+
+    async def get_without_network(client, path, **_kwargs):
+        requested_urls.append(client.api_url)
+        assert path == "/api/solutions"
+
+        class _Response:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"solutions": []}
+
+        return _Response()
+
+    monkeypatch.setattr(client_mod.BifrostClient, "get", get_without_network)
+    yield persistent, default, requested_urls, development
+    client = getattr(client_mod._thread_local, "bifrost_client", None)
+    if client is not None:
+        client._sync_http.close()
+
+
+@pytest.mark.parametrize("target", ["/", "///", " ", " /// "])
+def test_start_rejects_empty_normalized_url_before_real_profile_selection(inert_start_profiles, target):
+    persistent, default, requested_urls, _development = inert_start_profiles
+
+    result = CliRunner().invoke(solution_group, ["start", "--url", target])
+
+    assert result.exit_code == 1
+    assert "Local development requires an explicit API target" in result.output
+    persistent.assert_not_called()
+    default.assert_not_called()
+    assert requested_urls == []
+
+
+def test_start_passes_checked_canonical_url_to_real_profile_selection(inert_start_profiles):
+    persistent, default, requested_urls, development = inert_start_profiles
+
+    result = CliRunner().invoke(solution_group, ["start", "--url", development + "///"])
+
+    assert result.exit_code == 1
+    assert "No solution install found for 's'" in result.output
+    persistent.assert_called()
+    default.assert_not_called()
+    assert requested_urls == [development]
 
 
 def test_solution_init_creates_remote_install_and_binding(tmp_path, monkeypatch):
@@ -492,7 +620,7 @@ def test_start_unbound_workspace_reports_missing_install(tmp_path: Path, monkeyp
         staticmethod(lambda **kwargs: _FakeClient()),
     )
 
-    result = CliRunner().invoke(solution_group, ["start"])
+    result = CliRunner().invoke(solution_group, ["start", "--url", "http://localhost:8000"])
 
     assert result.exit_code != 0
     assert "No solution install found for 'dispatch'" in result.output

@@ -228,7 +228,31 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         if max_bytes < 0:
             raise DeploymentArtifactIntegrityError("Immutable source exceeds its total byte bound")
         async with self._client_factory() as client:
-            response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{max_bytes}")
+            try:
+                response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{max_bytes}")
+            except Exception as exc:
+                provider_response = getattr(exc, "response", None)
+                status = (
+                    provider_response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                    if isinstance(provider_response, dict)
+                    else getattr(exc, "status_code", None)
+                )
+                if status != 416:
+                    raise
+                # Empty objects have no satisfiable byte range. Prove the exact
+                # key is empty without issuing an unbounded download; hash
+                # verification at the caller still certifies the sealed bytes.
+                metadata = await client.head_object(Bucket=self._bucket, Key=key)
+                size = (
+                    metadata.get("ContentLength")
+                    if isinstance(metadata, dict)
+                    else getattr(metadata, "content_length", None)
+                )
+                if type(size) is not int or size != 0:
+                    raise DeploymentArtifactIntegrityError(
+                        "Immutable source range failed without a verified empty object"
+                    ) from exc
+                return b""
             body = response["Body"]
             async with body:
                 content = await self._read_bounded(body, max_bytes + 1)

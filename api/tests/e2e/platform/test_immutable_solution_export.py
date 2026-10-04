@@ -46,8 +46,10 @@ async def test_export_keeps_complete_sealed_imports_and_assets(
     path = f"workflows/export_{token}.py"
     package = f"modules/export_{token}"
     files = {
-        path: f"from modules.export_{token} import read\nasync def run():\n    return read()\n".encode(),
-        package + "/__init__.py": b"from .helper import read\n",
+        path: f"from modules.export_{token}.helper import read\nasync def run():\n    return read()\n".encode(),
+        # Real adopted packages carry empty initializers. A ranged object read
+        # must preserve them rather than turn a valid immutable export into 500.
+        package + "/__init__.py": b"",
         package + "/helper.py": b'def read():\n    return "sealed"\n',
     }
     workflow = Workflow(

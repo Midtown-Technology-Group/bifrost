@@ -180,6 +180,16 @@ bifrost solution start [<app-slug>] [--org <name|uuid>] [--port <n>]
 
 `start` serves **one app at a time** (one Vite dev server) and lets you choose which:
 
+Choose the API target explicitly with `--url`, `BIFROST_API_URL` in the process
+environment, or `BIFROST_API_URL` in the Solution root's `.env`. `start` refuses
+to inherit a stored default profile when none of these is configured. For MTG
+development, use `bifrost solution start --url https://dev.bifrost.midtowntg.com`
+or save that URL once in the project's `.env`. This runs local functions and the
+App proxy without the Workspace Live preview/prepare/activate ceremony.
+SDK calls use the selected API's tables and integrations; vendor credentials on
+that instance must still be suitable for development. Explicitly targeting a
+production API permits production effects and does not create a sandbox.
+
 - **One `standalone_v2` app** in the workspace → bare `bifrost solution start` auto-selects it
   (like `swa start` / `firebase` — no need to name the single app).
 - **Several apps** → name the one you want: `bifrost solution start <app-slug>`. Bare `start`

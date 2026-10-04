@@ -2,7 +2,7 @@
 
 import hashlib
 from types import MappingProxyType, SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import UUID
 
 import pytest
@@ -94,10 +94,70 @@ def test_empty_initializer_is_not_ignored_when_it_is_a_dependency():
             {"functions/probe.py"}, has_table_bindings=True)
 
 
+@pytest.mark.parametrize("initializer", [b"\n", b"\r\n\t"])
+def test_unused_whitespace_only_package_initializer_is_preserved_as_authored(initializer):
+    source = authored(**{"shared/__init__.py": initializer})
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    assert require_native_python_closure(source, runtime, {"functions/probe.py"},
+        has_table_bindings=True) == ["shared/__init__.py", "shared/microsoft/__init__.py"]
+
+
+def test_unused_package_initializer_with_code_is_not_omitted():
+    source = authored(**{"shared/__init__.py": b"\n\"docstring\"\n"})
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    with pytest.raises(NativeAuthoredSourceMismatch, match="Unmapped authored Python"):
+        require_native_python_closure(source, runtime, {"functions/probe.py"}, has_table_bindings=True)
+
+
+def test_resource_import_requires_an_active_resource_binding():
+    source = authored(**{"functions/probe.py": b"from bifrost import resources\n"
+        b"from modules.runtime import helper\ndef probe():\n    return resources.read('config/guardrails.json')\n",
+        "config/guardrails.json": b'{"allow": false}\n'})
+    runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
+    with pytest.raises(ValueError, match="resource bindings"):
+        require_native_python_closure(source, runtime, {"functions/probe.py"}, has_table_bindings=True)
+    assert require_native_python_closure(source, runtime, {"functions/probe.py"}, has_table_bindings=True,
+        has_resource_bindings=True) == ["shared/__init__.py", "shared/microsoft/__init__.py"]
+
+
 @pytest.mark.parametrize("path", ["src/index.tsx", "dist/index.html", ".bifrost/apps.yaml", "settings.json"])
 def test_apps_and_other_components_do_not_become_workflow_source(path):
     with pytest.raises(NativeAuthoredSourceMismatch, match="different delivery component"):
         native_authored_metadata(authored(**{path: b"not runtime Python"}))
+
+
+def test_exact_immutable_resource_mapping_is_required_for_authored_assets():
+    source = authored(**{"config/guardrails.json": b'{"allow": false}\n'})
+    with pytest.raises(NativeAuthoredSourceMismatch, match="different delivery component"):
+        native_authored_metadata(source)
+    metadata = native_authored_metadata(
+        source, resource_paths=frozenset({"config/guardrails.json"})
+    )
+    assert metadata.descriptor.slug == "fixture"
+    with pytest.raises(NativeAuthoredSourceMismatch, match="resource mapping"):
+        native_authored_metadata(source, resource_paths=frozenset({"config/other.json"}))
+    with pytest.raises(NativeAuthoredSourceMismatch, match="resource mapping"):
+        native_authored_metadata(source, resource_paths=frozenset({"functions/probe.py"}))
+
+
+def _dns_connection_declaration():
+    return {"connections": {"DNSFilter": {
+        "integration_name": "DNSFilter", "position": 0,
+        "template": {"name": "DNSFilter", "entity_id_name": None, "default_entity_id": None,
+            "data_provider_id": None, "oauth": None,
+            "config_schema": [{"key": "api_key", "type": "secret", "required": True,
+                "description": "DNSFilter API token from Account Settings", "options": None, "position": 0}]}}}}
+
+
+def test_connection_metadata_is_exact_strict_and_keeps_the_secret_schema_only():
+    content = yaml.safe_dump(_dns_connection_declaration()).encode()
+    metadata = native_authored_metadata(authored(**{".bifrost/connections.yaml": content}))
+    assert metadata.connections == [{"integration_name": "DNSFilter", "position": 0,
+        "template": _dns_connection_declaration()["connections"]["DNSFilter"]["template"]}]
+    bad = _dns_connection_declaration()
+    bad["connections"]["DNSFilter"]["template"]["config_schema"][0]["default"] = "secret"
+    with pytest.raises(NativeAuthoredSourceMismatch, match="unsupported data"):
+        native_authored_metadata(authored(**{".bifrost/connections.yaml": yaml.safe_dump(bad).encode()}))
 
 
 @pytest.mark.parametrize("content", [
@@ -124,16 +184,13 @@ def test_readme_uses_existing_text_import_semantics_without_changing_byte_eviden
 
 
 @pytest.mark.asyncio
-async def test_stale_readme_cannot_be_credited_by_a_green_runtime():
-    source = authored()
-    metadata = native_authored_metadata(source)
-    solution = SimpleNamespace(**metadata.descriptor.model_dump(exclude={"logo"}), readme="Earlier instructions\n", id=SID)
-    db = AsyncMock()
+async def test_stale_readme_cannot_be_credited_by_a_green_runtime(monkeypatch):
+    fixture = _installed_readback(monkeypatch)
+    fixture.solution.readme = "Earlier instructions\n"
     with pytest.raises(NativeAuthoredSourceMismatch, match="README"):
-        await native_authored_install_readback(db, solution, source,
-            expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
-    db.scalars.assert_not_awaited()
-    db.commit.assert_not_awaited()
+        await _read_installed(fixture)
+    fixture.db.scalars.assert_not_awaited()
+    fixture.db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -141,19 +198,16 @@ async def test_stale_readme_cannot_be_credited_by_a_green_runtime():
     ("version", "99.0.0"), ("allow_outbound_access", True), ("allow_inbound_access", False),
     ("repo_subpath", "solutions/other"), ("git_connected", True), ("name", "Other name"),
 ])
-async def test_descriptor_drift_does_not_allow_accounting(field, value):
-    source = authored()
-    metadata = native_authored_metadata(source)
-    values = {**metadata.descriptor.model_dump(exclude={"logo"}), "readme": metadata.readme, "id": SID}
-    values[field] = value
-    db = AsyncMock()
+async def test_descriptor_drift_does_not_allow_accounting(monkeypatch, field, value):
+    fixture = _installed_readback(monkeypatch)
+    setattr(fixture.solution, field, value)
     with pytest.raises(NativeAuthoredSourceMismatch, match="descriptor"):
-        await native_authored_install_readback(db, SimpleNamespace(**values), source,
-            expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
-    db.commit.assert_not_awaited()
+        await _read_installed(fixture)
+    fixture.db.commit.assert_not_awaited()
 
 
-def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None):
+def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None, resources=False,
+        resource_import=False, connections=False):
     workflow_fields = {"id": WID, "name": "probe", "path": "functions/probe.py",
         "function_name": "probe", "roles": list(roles)}
     if role_names is not None:
@@ -161,11 +215,21 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     # Actual INSTALL stores this unexpanded dictionary after policy validation.
     policies = policies if policies is not None else [{"name": "read", "actions": ["read"]}]
     table_fields = {"id": TID, "name": "evidence", "policies": policies}
-    source = authored(**{
+    changes = {
         ".bifrost/workflows.yaml": yaml.safe_dump({"workflows": {WID: workflow_fields}}).encode(),
         ".bifrost/tables.yaml": yaml.safe_dump({"tables": {TID: table_fields}}).encode(),
-    })
-    metadata = native_authored_metadata(source)
+    }
+    resource_bytes = b'{"allow": false}\n'
+    if resources:
+        changes["config/guardrails.json"] = resource_bytes
+    if resource_import:
+        changes["functions/probe.py"] = (b"from bifrost import resources\nfrom modules.runtime import helper\n"
+            b"def probe():\n    return resources.read('config/guardrails.json')\n")
+    if connections:
+        changes[".bifrost/connections.yaml"] = yaml.safe_dump(_dns_connection_declaration()).encode()
+    source = authored(**changes)
+    resource_paths = frozenset({"config/guardrails.json"}) if resources else frozenset()
+    metadata = native_authored_metadata(source, resource_paths=resource_paths)
     solution = SimpleNamespace(**metadata.descriptor.model_dump(exclude={"logo"}),
         id=SID, organization_id=None, readme=metadata.readme)
     role_ids = [] if role_names is not None else list(dict.fromkeys(UUID(role) for role in roles))
@@ -175,29 +239,46 @@ def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None
     table = Table(id=UUID(TID), solution_id=SID, organization_id=None, access={"policies": policies},
         **ManifestTable.model_validate(table_fields).to_orm_values(Destination.INSTALL).direct)
     db = AsyncMock()
+    connection_rows = ([SimpleNamespace(integration_name="DNSFilter",
+        template=metadata.connections[0]["template"], position=0)] if connections else [])
+    root_integration_names = ["DNSFilter"] if connections else []
     # Exercise the real owned-ID mapping as well as both metadata comparisons.
-    db.scalars.side_effect = [
+    scalar_results = [SimpleNamespace(all=lambda: connection_rows)]
+    if connections:
+        scalar_results.append(SimpleNamespace(all=lambda: root_integration_names))
+    scalar_results.extend([
         SimpleNamespace(all=lambda: [workflow]), SimpleNamespace(all=lambda: [workflow.id]),
         SimpleNamespace(all=lambda: [table]), SimpleNamespace(all=lambda: [table.id]),
-    ]
+    ])
+    db.scalars.side_effect = scalar_results
     manifest_hash = "sha256:" + "1" * 64
     runtime = {path: source.files[path] for path in ("functions/probe.py", "modules/runtime.py")}
     deployment = SimpleNamespace(id=SID, compiled_manifest={}, resolution_map={}, dependencies=[],
         compiled_manifest_hash=manifest_hash, resolution_map_hash="sha256:" + "2" * 64)
+    runtime_resources = ({"config/guardrails.json": SimpleNamespace(
+        object_key=f"_solutions/{SID}/{SID}/_resources/config/guardrails.json",
+        content_hash="sha256:" + hashlib.sha256(resource_bytes).hexdigest(), size_bytes=len(resource_bytes))}
+        if resources else {})
     resolution = SimpleNamespace(sources={path: SimpleNamespace(content_hash="sha256:" + hashlib.sha256(raw).hexdigest())
-        for path, raw in runtime.items()}, resources={}, shared_tables={}, root_file_bindings={})
-    verify_source = AsyncMock()
+        for path, raw in runtime.items()}, resources=runtime_resources, shared_tables={}, root_file_bindings={})
+    base_read = AsyncMock(return_value=(solution, deployment, resolution))
+    registrations = AsyncMock()
+    base_files = AsyncMock()
     repository = SimpleNamespace(get_runtime_closure=AsyncMock(return_value=deployment))
     storage = SimpleNamespace(read_source_artifact=AsyncMock(return_value=source_archive(runtime)),
-        read_runtime_file=AsyncMock(side_effect=lambda path: runtime[path]))
+        read_runtime_file=AsyncMock(side_effect=lambda path: runtime[path]),
+        read_resource=AsyncMock(side_effect=lambda path, _size: resource_bytes if resources else b""))
     monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
-        lambda db: SimpleNamespace(verify_current_source=verify_source))
+        lambda db: SimpleNamespace(_base=base_read, _registrations=registrations, _base_files=base_files))
     monkeypatch.setattr(native_readback, "SolutionDeploymentRepository", lambda db: repository)
     monkeypatch.setattr(native_readback, "SolutionDeploymentStorage", lambda *args: storage)
     monkeypatch.setattr(native_readback, "validate_runtime_closure", lambda *args, **kwargs: (None, resolution))
     monkeypatch.setattr("src.routers.tables._validate_table_policy_claim_refs", AsyncMock())
     return SimpleNamespace(source=source, solution=solution, db=db, workflow=workflow, table=table,
-        manifest_hash=manifest_hash, verify_source=verify_source, storage=storage, deployment=deployment, resolution=resolution)
+        manifest_hash=manifest_hash, base_read=base_read, registrations=registrations, base_files=base_files,
+        storage=storage, deployment=deployment, resolution=resolution,
+        connection_rows=connection_rows, root_integration_names=root_integration_names,
+        scalar_results=scalar_results)
 
 
 async def _read_installed(fixture):
@@ -214,11 +295,114 @@ async def test_successful_readback_preserves_inline_policy_omissions(monkeypatch
     assert result["runtime_paths"] == ["functions/probe.py", "modules/runtime.py"]
     assert result["source_content_id"] == fixture.source.source_content_id
     assert result["evidence_id"].startswith("sha256:")
-    fixture.verify_source.assert_awaited_once()
+    fixture.base_read.assert_awaited_once_with(SID, ANY, allow_resources=True)
+    fixture.registrations.assert_awaited_once_with(SID, fixture.resolution, lock=False)
+    fixture.base_files.assert_awaited_once_with(SID, SID, fixture.resolution)
     assert fixture.storage.read_runtime_file.await_count == 2
     fixture.db.commit.assert_not_awaited()
     fixture.db.flush.assert_not_awaited()
     fixture.db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_authored_resource_requires_exact_active_resolution_and_storage_bytes(monkeypatch):
+    fixture = _installed_readback(monkeypatch, resources=True, resource_import=True)
+    result = await _read_installed(fixture)
+    assert result["resource_hashes"] == {
+        "config/guardrails.json": fixture.resolution.resources["config/guardrails.json"].content_hash
+    }
+    fixture.storage.read_resource.assert_awaited_once_with("config/guardrails.json", len(b'{"allow": false}\n'))
+
+    fixture.storage.read_resource.side_effect = lambda _path, _size: b'{"allow": true}\n'
+    with pytest.raises(NativeAuthoredSourceMismatch, match="resource bytes"):
+        await native_readback._read_native_runtime(SID, fixture.deployment, fixture.resolution)
+    fixture.storage.read_resource.side_effect = lambda _path, _size: b'{"allow": false}\n'
+
+    collected = await native_readback._read_native_runtime(SID, fixture.deployment, fixture.resolution)
+    assert dict(collected.resources) == {"config/guardrails.json": b'{"allow": false}\n'}
+    fixture.storage.read_resource.reset_mock()
+    fixture.db.scalars.side_effect = fixture.scalar_results
+    base = AsyncMock(return_value=(fixture.solution, fixture.deployment, fixture.resolution))
+    registrations = AsyncMock()
+    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService",
+        lambda db: SimpleNamespace(_base=base, _registrations=registrations, _base_files=AsyncMock()))
+    collected_result = await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
+        expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
+        _verified_runtime=collected)
+    assert collected_result["resource_hashes"] == result["resource_hashes"]
+    assert base.await_args.kwargs["allow_resources"] is True
+    fixture.storage.read_resource.assert_not_awaited()
+
+    fixture.db.scalars.side_effect = fixture.scalar_results
+    from dataclasses import replace
+    tampered = replace(collected, resources=MappingProxyType({"config/guardrails.json": b'{"allow": true}\n'}))
+    with pytest.raises(NativeAuthoredSourceMismatch, match="resource"):
+        await native_authored_install_readback(fixture.db, fixture.solution, fixture.source,
+            expected_active_deployment_id=SID, expected_active_manifest_hash=fixture.manifest_hash,
+            _verified_runtime=tampered)
+    assert base.await_count == 2
+    assert all(call.kwargs["allow_resources"] is True for call in base.await_args_list)
+    fixture.storage.read_resource.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resource_import_fails_closed_without_active_resolution_binding(monkeypatch):
+    fixture = _installed_readback(monkeypatch, resource_import=True)
+    with pytest.raises(ValueError, match="resource bindings"):
+        await _read_installed(fixture)
+    fixture.db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drift", [None, "missing", "extra", "template", "integration"])
+async def test_connection_readback_requires_exact_owned_template_and_existing_root_name(monkeypatch, drift):
+    fixture = _installed_readback(monkeypatch, connections=True)
+    if drift == "missing":
+        fixture.connection_rows.clear()
+    elif drift == "extra":
+        fixture.connection_rows.append(SimpleNamespace(integration_name="Unexpected", template={}, position=1))
+    elif drift == "template":
+        fixture.connection_rows[0].template["config_schema"][0]["required"] = False
+    elif drift == "integration":
+        fixture.root_integration_names.clear()
+    if drift:
+        with pytest.raises(NativeAuthoredSourceMismatch, match="connection"):
+            await _read_installed(fixture)
+    else:
+        result = await _read_installed(fixture)
+        assert result["connection_schemas"][0]["integration_name"] == "DNSFilter"
+    fixture.db.add.assert_not_called()
+    fixture.db.commit.assert_not_awaited()
+    fixture.db.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_source_revision_base_requires_explicit_resource_opt_in(monkeypatch):
+    from src.models.contracts.solution_deployments import SolutionSourceRevisionInspectRequest
+    from src.services.solutions import source_revision
+
+    manifest = SimpleNamespace(agents=[], forms=[], events=[], applications=[], tables=[],
+        dependencies=[], file_locations=[], connections=[], config_requirements=[],
+        resources={"config/guardrails.json": object()})
+    resolution = SimpleNamespace(workflows=[object()], shared_tables={})
+    base = SimpleNamespace(id=SID, state="active", compiled_manifest={}, resolution_map={}, dependencies=[],
+        compiled_manifest_hash="sha256:" + "1" * 64, resolution_map_hash="sha256:" + "2" * 64,
+        validation_result={"schema_version": "bifrost.solution-source-revision/v1"})
+    installed = SimpleNamespace(id=SID, status="active", active_deployment_id=SID,
+        execution_runtime_mode="deployment-v1", organization_id=None)
+    db = SimpleNamespace(scalar=AsyncMock(return_value=installed))
+    monkeypatch.setattr(source_revision, "SolutionDeploymentRepository",
+        lambda _db: SimpleNamespace(get_runtime_closure=AsyncMock(return_value=base)))
+    monkeypatch.setattr(source_revision, "validate_runtime_closure",
+        lambda *_args, **_kwargs: (manifest, resolution))
+    monkeypatch.setattr(source_revision, "require_shared_tables", AsyncMock())
+    service = source_revision.SolutionSourceRevisionService(db)
+    request = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=SID,
+        expected_active_manifest_hash=base.compiled_manifest_hash)
+
+    with pytest.raises(source_revision.SolutionSourceRevisionError, match="without immutable resources"):
+        await service._base(SID, request)
+    assert await service._base(SID, request, allow_resources=True) == (installed, base, resolution)
 
 
 @pytest.mark.asyncio

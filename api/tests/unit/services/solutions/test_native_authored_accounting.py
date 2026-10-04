@@ -7,9 +7,38 @@ from uuid import uuid4
 
 import pytest
 from bifrost.workspace_release import canonical_digest
-from src.services.solutions.native_authored_accounting import intended_native_targets, native_completion_evidence
+from src.services.solutions.native_authored_accounting import (
+    _cached_native_evidence_size,
+    intended_native_targets,
+    native_completion_evidence,
+)
 from src.services.solutions.native_authored_source import NativeAuthoredSourceMismatch
 from tests.unit.services.solutions.test_native_authored_source import authored
+
+
+def test_multi_install_cache_budget_counts_resource_path_and_bytes():
+    from types import MappingProxyType
+    from src.services.solutions.native_authored_source import _VerifiedNativeRuntime
+
+    proof = {"receipt": "a" * 36}
+    runtime = _VerifiedNativeRuntime(uuid4(), "manifest", "resolution", "archive",
+        MappingProxyType({"flow.py": b"x"}), MappingProxyType({"settings.json": b"resource-bytes"}))
+    source = SimpleNamespace(files={"flow.py": b"x"})
+    size_with_resource = _cached_native_evidence_size(source, proof, runtime)
+    runtime_without_resource = _VerifiedNativeRuntime(runtime.deployment_id, runtime.manifest_hash,
+        runtime.resolution_hash, runtime.archive_sha256, runtime.files, MappingProxyType({}))
+    size_without_resource = _cached_native_evidence_size(source, proof, runtime_without_resource)
+    assert size_with_resource - size_without_resource == len("settings.json") + len(b"resource-bytes")
+    # One package fits; adding the second package's resource proof exceeds the
+    # family-wide budget, so the complete multi-install readback cannot be cached.
+    limit = size_without_resource + size_with_resource - 1
+    assert size_without_resource <= limit
+    assert size_without_resource + size_with_resource > limit
+    authored_source, record, targets, installations = fixture()
+    first = next(iter(targets))
+    with pytest.raises(NativeAuthoredSourceMismatch, match="Every intended installation"):
+        native_completion_evidence(record, authored_source, target_installs=targets,
+            installations={first: installations[first]}, verified_at=datetime.now(UTC))
 
 
 def fixture():
