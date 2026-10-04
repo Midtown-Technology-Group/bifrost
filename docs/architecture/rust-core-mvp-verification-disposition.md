@@ -297,7 +297,9 @@ conductor SHA-256
 It retains all validated aliases and recipe associations, compares each
 generated hostname against its own actual container ID, and requires retained
 child settlement before qualified helper disposal. These are source changes
-awaiting distinct/root review, not executed controls or installed proof.
+accepted by root and distinct source review, not executed controls or installed
+proof. The independent source receipt SHA-256 is
+`92da4d61b8e56e971bc613ac7854b65800735bc263468fe8c5b61b90df5c2a0e`.
 The actual privileged-helper mount-namespace exclusion witness remains missing;
 privileged ownership restoration and parent launch remain held. Unexpected private CLI-cache
 members and unqualified helper acquisition remain unknown; neither is silently
