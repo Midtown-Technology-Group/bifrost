@@ -48,9 +48,34 @@ The first source-check candidate `fbd30d67a7a4498dcaa8f9f617e3891aa68ebd6a`
 failed [run 37183372833](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37183372833),
 attempt 1, at `cargo fmt --check` in the existing pinned Docker checks target.
 Clippy and default Cargo tests did not start. A repair is limited to the native
-formatter's reported hunks in `workflow_sql_vectors.rs`; independent source
-review is pending. This new lane permits at most one separately released,
-genuinely corrected second candidate and no unchanged rerun.
+formatter's reported hunks in `workflow_sql_vectors.rs` and must receive
+independent source review before execution. The initial allowance covers at most
+one separately released, genuinely corrected second candidate and no unchanged
+rerun.
+
+The reviewed formatting repair was committed as
+`c6adc7cf99c3709bc61533b6215ff6d92e5f2f17`. Its second source-check
+[run 37183950928](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37183950928),
+attempt 1, passed native formatting, then failed compilation during Clippy with
+five `E0599` errors: the new test calls `CanonicalUuid.to_string()`, but that
+wrapper supplies `as_str()` and does not implement `Display`. Default Cargo
+tests did not start. Correcting the test callers must preserve canonical UUID
+validation and the shared contract type. The initial two-run allowance is
+exhausted; source repair does not authorize another run. A further supported
+execution requires an explicit architect decision after review, within the
+stewardship limit; no unchanged rerun or test/lint waiver is permitted.
+
+The architect separately released one third changed candidate after independent
+review of all five caller repairs. Commit
+`caaba8fec7e834418a0553bf1237b536c05b4d3f` uses the existing
+`CanonicalUuid.as_str()` accessor without changing the shared type or validation.
+[Run 37184771575](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37184771575)
+completed with failure at formatting: the longer accessor calls require two
+additional line wraps. Clippy and default tests did not start; the UUID repair
+is not compiler-verified. This is cycle three within the stewardship ceiling.
+Any fourth run requires another explicit reviewed-candidate release; no
+unchanged rerun, timeout growth or expectation waiver is permitted.
+The initial two-run allowance and its failures remain recorded.
 
 The lane does not run Python, PostgreSQL, fault injection, the example's native
 tests or the complete Result suite. Hosted runner disposal is its builder
@@ -66,3 +91,13 @@ rollback and fair resource/cost measurements remain unproved. Sopdet access and
 compatibility are blocked independently. Preserve the W0 PRs and public
 workspace boundary. No merge, production deployment, live vendor use or full
 MVP acceptance is authorized by this checkpoint.
+
+The initial agent-deletion audit missed a later migration and must not be used
+as evidence of a current ORM/migration disagreement. Although the initial and
+February 17 definitions omit the conversation delete action,
+`20260227_add_ondelete_to_remaining_fks.py` explicitly rebuilds
+`conversations.agent_id` with `SET NULL`, matching the ORM's intended behavior.
+Its catalog-selected rebuild still does not prove the installed constraint.
+Read current installed FK actions and characterize genuine caller transactions
+before selecting mixed-writer deletion authority. No schema correction is
+justified by the incomplete audit.
