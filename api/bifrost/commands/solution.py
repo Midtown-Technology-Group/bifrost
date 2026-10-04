@@ -536,6 +536,8 @@ def _client_for_solution_workspace(
 ) -> BifrostClient:
     """Use --url, the workspace selector, or the normal default profile."""
     selected_url = api_url or resolve_environment_url(workspace)
+    if require_explicit_url:
+        selected_url = (selected_url or "").strip().rstrip("/")
     if require_explicit_url and not selected_url:
         raise click.ClickException(
             "Local development requires an explicit API target. "
