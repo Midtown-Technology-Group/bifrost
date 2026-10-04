@@ -539,7 +539,8 @@ def _client_for_solution_workspace(
     if require_explicit_url and not selected_url:
         raise click.ClickException(
             "Local development requires an explicit API target. "
-            "Set BIFROST_API_URL in this workspace's .env or pass --url <dev-api-url>. "
+            "Set BIFROST_API_URL in the environment or this workspace's .env, "
+            "or pass --url <dev-api-url>. "
             "Stored default profiles are not used by solution start."
         )
     return BifrostClient.get_instance(require_auth=True, api_url=selected_url)

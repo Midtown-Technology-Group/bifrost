@@ -549,7 +549,7 @@ def test_start_unbound_workspace_reports_missing_install(tmp_path: Path, monkeyp
         staticmethod(lambda **kwargs: _FakeClient()),
     )
 
-    result = CliRunner().invoke(solution_group, ["start"])
+    result = CliRunner().invoke(solution_group, ["start", "--url", "http://localhost:8000"])
 
     assert result.exit_code != 0
     assert "No solution install found for 'dispatch'" in result.output
