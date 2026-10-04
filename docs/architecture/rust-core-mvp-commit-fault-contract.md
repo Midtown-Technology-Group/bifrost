@@ -144,10 +144,40 @@ waives no observed failure or uncertainty. Distinct design review fingerprint:
 `9cebbf3b03370403b4b6e77f6f93917033425ddc5fbb89a93fbddbe396253576`.
 Source authoring is released; implementation and runtime proof remain pending.
 
-All selections above permit bounded source authoring only. The two parent
-files remain unfinished drafts; full independent source review, supported
-execution, actual custody and cleanup remain outstanding. The earlier green
-27-test run does not qualify these newer source changes.
+The current roster is v0.1.27:
+`abba56575b0ce5ac261b26c4c327c44d7daf16c395902214f2b8c237caa4435d`.
+It changes only the existing initial, pre-PR-final and target-final volume
+censuses to unfiltered Docker volume listings with closed name/driver/scope
+records. The other 214 row objects, all counts, deadlines and capture bounds
+remain unchanged. Source-declared anonymous mounts need actual custody even
+when they have no Compose project label; project-filtered absence is insufficient.
+
+Require a complete initial volume-name set before any acquisition. Preserve
+preexisting volumes and reject their adoption, including actual task-container
+mounts into that set. Retain every qualified named or anonymous mount's actual
+name, driver, destination and access mode. Each census admits at most 4096
+complete unique records; malformed, duplicate, truncated or unsupported output
+fails rather than supplying a positive prefix.
+
+After genuine pre-PR and all its writers settle, the complete volume-name set
+must equal the initial set before fresh target acquisition. After actual target,
+helper, container and owned-volume disposal, require the same equality and
+absence of every measured task mount name. Use only the original scoped
+teardown; never prune or delete unrelated volumes to force equality. These
+checks retain their original deadlines and causal placement.
+
+Set equality observes registered-volume absence. It does not reconstruct
+already removed pre-PR anonymous identities, prove immutable same-name object
+continuity, certify physical disk/layer cleanup, or justify invented historical
+resource counts. Unknown history and custody still prevent overall completion.
+Distinct design review fingerprint:
+`67c61c751e5dbfabee6a298f878c5aa04784aace57c7c046c4fb68198ad1e6c7`.
+
+All selections above permit bounded source authoring only. The parent source
+is awaiting the volume-census amendment and a new exact-file freeze. Full
+independent source review, supported execution, actual custody and cleanup
+remain outstanding. The earlier green 27-test run does not qualify these newer
+source changes.
 
 ---
 
