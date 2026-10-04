@@ -17,6 +17,17 @@ passed formatting, locked all-target/all-feature Clippy and default Cargo tests
 (7 + 6 + 14 = 27). This does not establish that examples, SQL scenarios,
 Python characterization, protocol integration or events passed.
 
+A later claim-characterization checkpoint is candidate
+`0ef442248babd12a829543d801e5c6666a785ed2`, tree
+`c9cb442957e8fd69f6c25b74a82d8a486248645c`, containing platform main
+`7e737cacdba56b214e427afed5a28e89ae1b6a47`. Its
+[source-check run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37232398145)
+passed on push attempt 1: formatting, locked all-target/all-feature strict
+Clippy, 31 default workspace tests and 17 explicitly selected example tests.
+Independent executed-evidence review is pending. Its separate
+[characterization run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37232401370)
+is still in progress; none of the new Python/PostgreSQL claims is accepted yet.
+
 The reference source is pinned by each campaign's receipts; do not silently
 substitute a newer Python implementation. Main observed at the associated
 checkpoint was platform `7ff37809f249ff21a9ca150780fbc8f1c6d07b0c` and workspace
@@ -36,6 +47,7 @@ it does not mean no partial evidence exists.
 | Surface | Python authority / behavior | Rust source | Current parity status | Required acceptance evidence |
 | --- | --- | --- | --- | --- |
 | Service startup, configuration, health/readiness, tracing and shutdown | Existing platform remains traffic owner; Rust foundation adds its own health surface | `core-rs/crates/bifrost-core/`, `core-rs/Dockerfile` | Rust default checks passed at c911; production operation is unproven | Supported startup/readiness failure, bounded shutdown and observability evidence; normal W0 CI disposition |
+| Existing-attempt claim | Original workflow consumer, attempt helper and PostgreSQL delivery checks; Python retains actual allocation | `plan_existing_attempt_claim` and explicit domain-vector driver | Source/unit checks passed; candidate differential run pending | Actual Python/PG rows, real lock/lease observations, deliberate drift controls and qualified cleanup; pure plan does not confer SQL/Start authority |
 | Attempt running | Original `mark_attempt_running`, called by `api/tests/parity/workflow_domain_harness.py` | `plan_attempt_running` in `core-rs/crates/bifrost-domain/src/workflow/mod.rs` | Pure typed row-plan tests passed; durable ownership and HTTP unproven | Paired real DB transitions, exact fences/state precedence, mixed writers and unchanged runtime Start behavior |
 | Fenced result and nullable projections | Original consumer `_process_success` / `_process_failure`; omitted arguments remain omitted | `plan_fenced_result`; `bifrost-db/src/workflow_parity.rs`, `workflow_numeric.rs`; SQL vector example | Typed plan tests passed; complete SQL/result parity unproven | Genuine Python/Rust committed rows, type/null/numeric/clock fidelity, fence loss and transactional outcomes |
 | Queued/running cancellation | Original `ExecutionRepository.cancel_execution`; reference SQL order is observed by `test_workflow_sql.py` | `plan_cancel_state` and selected SQL example paths | Plan tests passed; coexistence, lock ordering and event parity unproven | Actual cancellation/result/running races, update order, no cross-tenant effect and committed-event outcomes |
@@ -65,6 +77,23 @@ controls in these categories:
 | Source-only/out-of-tracked | 9 | Source admission and selected surface bounds |
 | Decode-parity gate | 20 | Retained-row decoding fidelity |
 | Feature-preservation | 8 | Separate feature controls, excluded from SQL pytest parametrization |
+
+The later claim fixture declares 53 scenarios: 22 genuine Python cases compare
+existing-attempt Rust plans; 13 genuine allocations compare Rust deferral; seven
+Python-reference-only cases omit the Rust driver; eleven native-only boundaries
+create no impossible SQL rows. Shared fixture dependencies still resolve. The
+selected domain module predicts 207 JUnit identities (138 original cases,
+53 claim cases, five detector-plane cases and eleven singletons). These are
+source counts, not executed pass counts or 207 service-level parity cases.
+
+The accepted three-path characterization change adds 4,609 and removes 339 lines
+relative to `8b7d2c6597fd134044e74249e188c55a9c3c0844`: harness +1,306/-172,
+tests +489/-22, conductor +2,814/-145. Their resulting sizes are respectively
+2,581, 634 and 2,828 lines. This is verification-code maintenance cost, not
+production Rust size, elapsed labor, performance benefit or reliability proof.
+The full evaluation must justify the custom conductor and recurring review
+burden against demonstrated lifecycle invariants; green unit checks do not
+settle that cost/benefit question.
 
 The SQL pytest source declares 233 paired cases + 65 non-feature controls +
 one queued-cancel ordering test = 299 items. This arithmetic is a source count,
