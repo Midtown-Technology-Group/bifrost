@@ -1,0 +1,968 @@
+{
+  "schema": "bifrost.test.workflow-claim-fixtures/v1",
+  "scenarios": [
+    {
+      "case_id": "claim-missing",
+      "execution_selector": "missing",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legacy_inline_defer",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-allocation-history",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": null,
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [
+          2,
+          7
+        ],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "allocation_reference_only",
+      "sql_seed": "no_active_history_2_7",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-worker-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_create_claimed_attempt_owned_session",
+      "native_comparison": "none_reference_only",
+      "behavior_category": "supplied_worker_write",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": {
+        "worker_id": null,
+        "worker_incarnation_id": null
+      }
+    },
+    {
+      "case_id": "claim-worker-empty",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_create_claimed_attempt_owned_session",
+      "native_comparison": "none_reference_only",
+      "behavior_category": "supplied_worker_write",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": {
+        "worker_id": "",
+        "worker_incarnation_id": null
+      }
+    },
+    {
+      "case_id": "claim-delivery-valid",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "valid"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "none_ownership_reference_only",
+      "behavior_category": "lease_admission",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-delivery-wrong-token",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "wrong_token"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "none_ownership_reference_only",
+      "behavior_category": "lease_rejection_before_domain",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-delivery-expired",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "expired"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "none_ownership_reference_only",
+      "behavior_category": "lease_rejection_before_domain",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-delivery-nonclaimed",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "nonclaimed"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "none_ownership_reference_only",
+      "behavior_category": "lease_rejection_before_domain",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-advisory-blocker",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "none_lock_reference_only",
+      "behavior_category": "actual_advisory_serialization",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-scheduled",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Scheduled",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-pending",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "existing_published_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-running",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Running",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-success",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Success",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-failed",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Failed",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-timeout",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Timeout",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-stuck",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Stuck",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-completed_with_errors",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "CompletedWithErrors",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-cancelling",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Cancelling",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-logical-cancelled",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Cancelled",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "logical_skip_before_attempt",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-dispatching-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "dispatching",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "active_state_rejection",
+      "sql_seed": "legal_active_dispatching",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-dispatching-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "dispatching",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_invalid_active_guard",
+      "sql_seed": "FORBIDDEN_BY_STATE_SHAPE_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-published-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "existing_published_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-published-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_invalid_active_guard",
+      "sql_seed": "FORBIDDEN_BY_STATE_SHAPE_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-claimed-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "claimed",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_invalid_active_guard",
+      "sql_seed": "FORBIDDEN_BY_STATE_SHAPE_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-claimed-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "claimed",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "active_state_rejection",
+      "sql_seed": "legal_active_claimed",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-running-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "running",
+        "attempt_token_present": false,
+        "attempt_phase": "execution",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_invalid_active_guard",
+      "sql_seed": "FORBIDDEN_BY_STATE_SHAPE_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-attempt-running-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "running",
+        "attempt_token_present": true,
+        "attempt_phase": "execution",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "active_state_rejection",
+      "sql_seed": "legal_active_running",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-succeeded-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "succeeded",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-succeeded-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "succeeded",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-failed-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "failed",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-failed-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "failed",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-timed_out-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "timed_out",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-timed_out-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "timed_out",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-cancelled-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "cancelled",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-cancelled-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "cancelled",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-worker_lost-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "worker_lost",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-worker_lost-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "worker_lost",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-admission_rejected-null",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "admission_rejected",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-history-admission_rejected-present",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "admission_rejected",
+        "attempt_token_present": true,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner_defer_vs_reference_allocation",
+      "behavior_category": "completed_excluded_allocation_reference_only",
+      "sql_seed": "legal_completed_current_number_1",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-dispatch-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "dispatch",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-dispatch-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "dispatch",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-queue-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-queue-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "queue",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-claim-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-claim-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "claim",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-admission-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "admission",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-admission-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "admission",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-execution-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "execution",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-execution-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "execution",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-result-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "result",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-result-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "result",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-terminal-unstarted",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "terminal",
+        "started_at_present": false,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "original_consumer",
+      "native_comparison": "actual_planner",
+      "behavior_category": "legal_odd_phase_reuse",
+      "sql_seed": "legal_active_published",
+      "direct_worker_values": null
+    },
+    {
+      "case_id": "claim-phase-terminal-started",
+      "execution_selector": "current",
+      "arrangement": {
+        "status": "Pending",
+        "attempt_status": "published",
+        "attempt_token_present": false,
+        "attempt_phase": "terminal",
+        "started_at_present": true,
+        "completed_history_numbers": [],
+        "delivery": "absent"
+      },
+      "execution_path": "none_native_boundary_only",
+      "native_comparison": "actual_planner_only_no_python_comparison",
+      "behavior_category": "structural_odd_start_preserved",
+      "sql_seed": "FORBIDDEN_PUBLISHED_STARTED_NO_INSERT",
+      "direct_worker_values": null
+    }
+  ]
+}
