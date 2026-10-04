@@ -563,3 +563,148 @@ fn opaque_token_supports_clone_equality_without_secret_projection() {
     assert!(original == original.clone());
     assert!(original != token(4));
 }
+
+fn expected_existing_claim() -> ClaimDecision {
+    ClaimDecision::Plan(ExistingAttemptClaimPlan {
+        logical_status: LogicalExecutionStatus::Running,
+        attempt_status: AttemptStatus::Claimed,
+        attempt_phase: AttemptPhase::Claim,
+        claim_token: ClaimTokenWrite::SetParentNonNull,
+        worker_id: InputWrite::SetSupplied,
+        worker_incarnation_id: InputWrite::SetSupplied,
+        claimed_at: TimeWrite::Now,
+        heartbeat_at: TimeWrite::Now,
+    })
+}
+
+#[test]
+fn claim_skip_precedence_covers_all_logical_states_and_foreign_rows() {
+    let mut malformed = attempt(AttemptStatus::Failed);
+    malformed.execution_id = id(90);
+    malformed.completed_at_present = true;
+    assert_eq!(
+        plan_existing_attempt_claim(None, Some(&malformed), &id(1)),
+        Ok(ClaimDecision::DeferLegacyInline)
+    );
+    for status in LOGICAL_STATES {
+        for foreign in [false, true] {
+            let mut logical = execution(status);
+            if foreign {
+                logical.id = id(91);
+            }
+            let expected = if status != LogicalExecutionStatus::Pending {
+                Ok(ClaimDecision::NoClaim)
+            } else {
+                Err(DecisionError::InconsistentRows)
+            };
+            assert_eq!(
+                plan_existing_attempt_claim(Some(&logical), Some(&malformed), &id(1)),
+                expected
+            );
+            if status != LogicalExecutionStatus::Pending {
+                assert_eq!(
+                    plan_existing_attempt_claim(Some(&logical), None, &id(1)),
+                    Ok(ClaimDecision::NoClaim)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn claim_defers_allocation_only_after_pending_identity_and_active_selection() {
+    let mut logical = execution(LogicalExecutionStatus::Pending);
+    assert_eq!(
+        plan_existing_attempt_claim(Some(&logical), None, &id(1)),
+        Ok(ClaimDecision::DeferAttemptAllocation)
+    );
+    logical.id = id(91);
+    assert_eq!(
+        plan_existing_attempt_claim(Some(&logical), None, &id(1)),
+        Err(DecisionError::InconsistentRows)
+    );
+    logical.id = id(1);
+    let mut historical = attempt(AttemptStatus::Published);
+    historical.claim_token = None;
+    historical.completed_at_present = true;
+    assert_eq!(
+        plan_existing_attempt_claim(Some(&logical), Some(&historical), &id(1)),
+        Err(DecisionError::InconsistentRows)
+    );
+    // A source-selected absence excludes completed history; allocation and MAX
+    // over that history are deferred rather than reconstructed by this kernel.
+    assert_eq!(
+        plan_existing_attempt_claim(Some(&logical), None, &id(1)),
+        Ok(ClaimDecision::DeferAttemptAllocation)
+    );
+}
+
+#[test]
+fn claim_checks_every_attempt_status_and_token_without_mutating_inputs() {
+    let logical = execution(LogicalExecutionStatus::Pending);
+    let logical_before = logical.clone();
+    for status in ATTEMPT_STATES {
+        for stored_token in [None, Some(token(3))] {
+            let mut active = attempt(status);
+            active.claim_token = stored_token;
+            let before = active.clone();
+            let expected = if status == AttemptStatus::Published && active.claim_token.is_none() {
+                Ok(expected_existing_claim())
+            } else {
+                Err(DecisionError::InvalidAttemptState)
+            };
+            assert_eq!(
+                plan_existing_attempt_claim(Some(&logical), Some(&active), &id(1)),
+                expected
+            );
+            assert!(active == before);
+            assert!(logical == logical_before);
+            active.execution_id = id(90);
+            assert_eq!(
+                plan_existing_attempt_claim(Some(&logical), Some(&active), &id(1)),
+                Err(DecisionError::InconsistentRows)
+            );
+        }
+    }
+}
+
+#[test]
+fn claim_keeps_odd_phases_and_start_history_and_sets_exact_directives() {
+    let logical = execution(LogicalExecutionStatus::Pending);
+    for phase in [
+        AttemptPhase::Dispatch,
+        AttemptPhase::Claim,
+        AttemptPhase::Admission,
+        AttemptPhase::Queue,
+        AttemptPhase::Execution,
+        AttemptPhase::Result,
+        AttemptPhase::Terminal,
+    ] {
+        for started in [false, true] {
+            let mut active = attempt(AttemptStatus::Published);
+            active.claim_token = None;
+            active.phase = phase;
+            active.started_at_present = started;
+            let before = active.clone();
+            assert_eq!(
+                plan_existing_attempt_claim(Some(&logical), Some(&active), &id(1)),
+                Ok(expected_existing_claim())
+            );
+            assert!(active == before);
+            active.completed_at_present = true;
+            assert_eq!(
+                plan_existing_attempt_claim(Some(&logical), Some(&active), &id(1)),
+                Err(DecisionError::InconsistentRows)
+            );
+        }
+    }
+    // No worker values are inputs: SetSupplied applies equally to None (NULL)
+    // and an empty supplied string. Both timestamps use the same future sample.
+    let ClaimDecision::Plan(plan) = expected_existing_claim() else {
+        panic!("expected claim plan");
+    };
+    assert_eq!(plan.worker_id, InputWrite::SetSupplied);
+    assert_eq!(plan.worker_incarnation_id, InputWrite::SetSupplied);
+    assert_eq!(plan.claimed_at, TimeWrite::Now);
+    assert_eq!(plan.heartbeat_at, TimeWrite::Now);
+}

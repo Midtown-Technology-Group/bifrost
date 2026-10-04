@@ -1,0 +1,44 @@
+name: Workflow existing-attempt claim source checks
+
+on:
+  push:
+    branches: [rust/workflow-existing-attempt-claim]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-claim-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Claim decision formatting, lint and default tests
+    if: github.event_name == 'push' && github.repository == 'Midtown-Technology-Group/bifrost' && github.ref == 'refs/heads/rust/workflow-existing-attempt-claim' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Verify exact clean source and run existing checks target
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_head=$(git rev-parse HEAD)
+          candidate_tree=$(git rev-parse 'HEAD^{tree}')
+          [[ "$candidate_head" == "$GITHUB_SHA" ]]
+          [[ "$candidate_head" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]
+          candidate_status=$(git status --porcelain=v1 --untracked-files=all)
+          [[ -z "$candidate_status" ]]
+          dockerfile_digest=$(sha256sum core-rs/Dockerfile)
+          dockerfile_digest=${dockerfile_digest%% *}
+          toolchain_digest=$(sha256sum core-rs/rust-toolchain.toml)
+          toolchain_digest=${toolchain_digest%% *}
+          [[ "$dockerfile_digest" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$toolchain_digest" =~ ^[0-9a-f]{64}$ ]]
+          printf '{"schema":"bifrost.test.workflow-claim-source/v1","head":"%s","tree":"%s","dockerfile_sha256":"%s","toolchain_sha256":"%s","command":"docker_checks"}\n' "$candidate_head" "$candidate_tree" "$dockerfile_digest" "$toolchain_digest"
+          docker build --target checks -f core-rs/Dockerfile core-rs

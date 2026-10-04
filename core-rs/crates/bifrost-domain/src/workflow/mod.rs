@@ -414,3 +414,70 @@ pub fn plan_cancel_state(
         _ => Err(DecisionError::InvalidLogicalState),
     }
 }
+
+/// A future parent must supply a non-null claim capability after a plan exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimTokenWrite {
+    SetParentNonNull,
+}
+
+/// Directives for reusing an already-published, unfenced active attempt.
+/// Both `Now` writes require one future caller-owned UTC sample. Unlisted
+/// columns remain unchanged; this value grants no durable claim authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExistingAttemptClaimPlan {
+    pub logical_status: LogicalExecutionStatus,
+    pub attempt_status: AttemptStatus,
+    pub attempt_phase: AttemptPhase,
+    pub claim_token: ClaimTokenWrite,
+    pub worker_id: InputWrite,
+    pub worker_incarnation_id: InputWrite,
+    pub claimed_at: TimeWrite,
+    pub heartbeat_at: TimeWrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimDecision {
+    Plan(ExistingAttemptClaimPlan),
+    DeferLegacyInline,
+    NoClaim,
+    DeferAttemptAllocation,
+}
+
+/// Plan only the existing-attempt branch of the original claim operation.
+/// Allocation, delivery ownership, locking, token generation and commit remain
+/// caller obligations. Supplied worker `None` values are SQL NULL writes.
+pub fn plan_existing_attempt_claim(
+    execution: Option<&LogicalExecutionView>,
+    active_attempt: Option<&WorkflowAttemptView>,
+    execution_id: &CanonicalUuid,
+) -> Result<ClaimDecision, DecisionError> {
+    let Some(execution) = execution else {
+        return Ok(ClaimDecision::DeferLegacyInline);
+    };
+    if execution.status != LogicalExecutionStatus::Pending {
+        return Ok(ClaimDecision::NoClaim);
+    }
+    if &execution.id != execution_id {
+        return Err(DecisionError::InconsistentRows);
+    }
+    let Some(attempt) = active_attempt else {
+        return Ok(ClaimDecision::DeferAttemptAllocation);
+    };
+    if &attempt.execution_id != execution_id || attempt.completed_at_present {
+        return Err(DecisionError::InconsistentRows);
+    }
+    if attempt.status != AttemptStatus::Published || attempt.claim_token.is_some() {
+        return Err(DecisionError::InvalidAttemptState);
+    }
+    Ok(ClaimDecision::Plan(ExistingAttemptClaimPlan {
+        logical_status: LogicalExecutionStatus::Running,
+        attempt_status: AttemptStatus::Claimed,
+        attempt_phase: AttemptPhase::Claim,
+        claim_token: ClaimTokenWrite::SetParentNonNull,
+        worker_id: InputWrite::SetSupplied,
+        worker_incarnation_id: InputWrite::SetSupplied,
+        claimed_at: TimeWrite::Now,
+        heartbeat_at: TimeWrite::Now,
+    }))
+}
