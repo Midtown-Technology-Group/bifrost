@@ -572,3 +572,29 @@ reserves; no publication or fit guarantee follows. CLI/process-group/pipe
 settlement does not prove Docker daemon work settled. Unknown remote resource
 state remains a failed gate. Exact operation and finalizer choreography still
 needs the finite amendment and independent review before source release.
+
+The completed amendment passed independent design review, receipt SHA-256
+`1bc0470e21caeb02b970124433f75ad6fab88712705109e2f3783ce97b3b74c3`.
+It selects 71 direct parent command slots, including full builder readback and
+three separate cleanup census/container/image readbacks. This is not a count
+of opaque descendants or proof of execution. All 34 consumed source paths are
+frozen; actual future candidate hashes remain required.
+
+Source authoring is released in three existing paths: the Python harness and
+its test module, and the parity CI script. The 53-case arrangement fixture is
+committed locally at `8b7d2c6597fd134044e74249e188c55a9c3c0844`; only its
+schema label differs from the reviewed design. No cases have executed.
+The broker uses a local 20-second exchange bound. The unchanged pytest timeout
+and actual parent deadline independently enforce their outer limits; the
+broker does not claim to know their remaining clock budgets. Independent
+clarification receipt SHA-256 is
+`6fb59d1fd2d1e5e94a4ec92eac5192db9086f699baca11b6c488d5db548248e8`.
+Authored source review and a separate supported execution decision remain
+required before any new characterization run.
+
+The latest workspace fetch is `78f37f5a5cbd7b0a6c382b54ccc617c8747418aa`.
+Its change touches delivery configuration and documentation only. Exact Git
+tree comparison preserves all 2,155 Python entries from the previously audited
+head, and committed AST inspection confirms the allowlist remains empty.
+This preserves the 2,140-file authored boundary audit without claiming a fresh
+runtime scan or Rust-specific workspace accommodation.
