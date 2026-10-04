@@ -1209,3 +1209,24 @@ Only the two allocated venue paths may be authored; the five accepted prototype
 files remain immutable. Concrete venue source, command/custody roster, compiler
 and actual TLS/runtime evidence are pending. This is no production-authority,
 merge or deployment approval.
+
+
+Fresh main reconciliation now records platform
+`a54990bcc947fd097717bef55b37184f32bbd155` (#1061) and workspace
+`6dfcf74a09743aa83d74f9fe582f8869828e61bf`. Both prerequisite merge commits
+remain ancestors (actual Git checks exit0). Root read the complete three
+production-file delta: protected native Solution readback now validates explicit
+resource mappings and immutable resource bytes/hashes/sizes, connection schemas
+and installed integration names; accounting includes resource bytes in its
+existing evidence bound. These are Python-owned source/deployment verification
+responsibilities for this MVP. Runtime-envelope/source-closure review must retain
+these resource identities and connection metadata rather than treating only
+Python files as the complete deployment proof. No arbitrary workflow import
+discovery or Rust-specific workspace accommodation is introduced by this delta.
+
+The existing90ea green CI and failed characterization remain evidence against
+7e737, not against the newly advanced main. Neither the claim candidate nor
+the five-file transport source has been silently rebased. Current-main clean
+integration and literal pre-PR remain required before a PR handoff or new
+qualified candidate run. Same watch handles51555/67302 returned terminal0/1
+respectively and are closed; no replacement watch or run was started.
