@@ -1,0 +1,42 @@
+name: Secretless F4 source auth quality
+
+on:
+  push:
+    branches: [test/f4-source-auth-quality]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: f4-source-auth-quality-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    if: github.repository == 'Midtown-Technology-Group/bifrost' && github.event_name == 'push' && github.ref == 'refs/heads/test/f4-source-auth-quality' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Admit exact candidate and commit subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_head=$(git rev-parse HEAD)
+          actual_subject=$(git log -1 --format=%s)
+          actual_status=$(git status --porcelain=v1 --untracked-files=all)
+          [[ "$actual_head" == "$GITHUB_SHA" ]]
+          [[ "$actual_subject" == 'ci: verify secretless source auth controls' ]]
+          [[ -z "$actual_status" ]]
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '24.21.0'
+      - name: Check unchanged controls and exact guard mutants
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec python3 -I -S -B scripts/ci/f4-source-auth-check.py
