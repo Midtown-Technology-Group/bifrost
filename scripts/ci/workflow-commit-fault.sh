@@ -2502,7 +2502,7 @@ def tree_roster(raw):
     for record in raw[:-1].split(b"\0"):
         require(b"\t" in record, "git_tree_record")
         header, path_bytes = record.split(b"\t", 1)
-        match = re.fullmatch(rb"(100644|100755) blob ([0-9a-f]{40})", header)
+        match = re.fullmatch(rb"(100644|100755|120000) blob ([0-9a-f]{40})", header)
         require(match is not None, "git_tree_kind")
         path = path_bytes.decode("utf-8", "strict")
         require(
@@ -2519,6 +2519,61 @@ def tree_roster(raw):
     return result
 
 
+def tree_metadata_controls():
+    oid = hashlib.sha1(b"blob 1\0x").hexdigest()
+    regular = b"100644 blob " + oid.encode("ascii") + b"\tcore-rs/inert\0"
+    link = b"120000 blob " + oid.encode("ascii") + b"\tskills/inert\0"
+    roster = tree_roster(regular + link)
+    require(len(roster) == 2 and roster["skills/inert"] == {"mode": "120000", "oid": oid},
+            "tree_control_link_retained")
+    paths = ("core-rs/inert",)
+    require(git_batch_request(roster, paths) == (oid + "\n").encode("ascii"), "tree_control_regular_request")
+    response = (oid + " blob 1\n").encode("ascii") + b"x\n"
+    require(git_batch_response(response, roster, paths)[paths[0]]["bytes"] == b"x", "tree_control_regular_response")
+    for helper, arguments in (
+        (git_batch_request, (roster, ("skills/inert",))),
+        (git_batch_response, (response, roster, ("skills/inert",))),
+        (source_disk_match, (Path("/inert-never-read"), {"skills/inert": roster["skills/inert"]})),
+    ):
+        try:
+            helper(*arguments)
+        except Failure:
+            pass
+        else:
+            raise Failure("tree_control_selected_link")
+    executable = tree_roster(regular.replace(b"100644", b"100755", 1))
+    require(git_batch_request(executable, paths) == (oid + "\n").encode("ascii"), "tree_control_executable")
+    for raw in (
+        regular + regular,
+        b"160000 commit " + oid.encode("ascii") + b"\tother\0",
+        b"120000 tree " + oid.encode("ascii") + b"\tother\0",
+        b"100600 blob " + oid.encode("ascii") + b"\tother\0",
+        b"100644 blob " + oid.encode("ascii") + b"\t../other\0",
+    ):
+        try:
+            tree_roster(raw)
+        except Failure:
+            pass
+        else:
+            raise Failure("tree_control_bad_metadata")
+    copy_roster = {path: {"mode": "100644", "oid": oid} for path in API_COPY_PATHS}
+    copy_tree_membership(copy_roster)
+    extra = tree_roster(b"120000 blob " + oid.encode("ascii") + b"\tassets/inert-unexpected\0")
+    copy_roster.update(extra)
+    require(copy_roster["assets/inert-unexpected"]["mode"] == "120000", "tree_control_copy_link_retained")
+    try:
+        copy_tree_membership(copy_roster)
+    except Failure:
+        pass
+    else:
+        raise Failure("tree_control_copy_membership")
+
+
+def selected_regular_members(roster, paths):
+    require(all(path in roster and roster[path]["mode"] in ("100644", "100755") for path in paths),
+            "git_selected_regular")
+
+
 def git_batch_request(roster, paths):
     require(
         type(paths) is tuple
@@ -2528,12 +2583,14 @@ def git_batch_request(roster, paths):
         and all(path in roster for path in paths),
         "git_batch_paths",
     )
+    selected_regular_members(roster, paths)
     # Object IDs may repeat across files. Each requested record is retained in
     # path order; no object deduplication may drop a required software member.
     return b"".join((roster[path]["oid"] + "\n").encode("ascii") for path in paths)
 
 
 def git_batch_response(raw, roster, paths):
+    selected_regular_members(roster, paths)
     require(type(raw) is bytes and len(raw) <= 16 * 1024 * 1024, "git_batch_bound")
     offset = 0
     result = {}
@@ -2563,6 +2620,7 @@ def git_batch_response(raw, roster, paths):
 
 def source_disk_match(root, sources):
     for path, record in sources.items():
+        require(record["mode"] in ("100644", "100755"), "source_selected_regular")
         physical = root / path
         # Every ancestor is checked in the actual candidate namespace. A
         # symlink to a matching mirror is not admitted as the selected source.
@@ -3108,7 +3166,7 @@ def controlled_environment():
     return result
 
 
-def source_copy_membership(root, roster):
+def copy_tree_membership(roster):
     required = set(API_COPY_PATHS)
     for prefix in ("api/bifrost/", "assets/"):
         require(
@@ -3116,6 +3174,12 @@ def source_copy_membership(root, roster):
             == {path for path in required if path.startswith(prefix)},
             "copy_committed_members",
         )
+
+
+def source_copy_membership(root, roster):
+    required = set(API_COPY_PATHS)
+    copy_tree_membership(roster)
+    for prefix in ("api/bifrost/", "assets/"):
         base = root / prefix.rstrip("/")
         actual = set()
         for directory, directories, files in os.walk(base, followlinks=False):
@@ -5065,6 +5129,7 @@ def disposal_projection(controller, primary_exit):
 
 def projection_controls():
     """Private inert values use the same publication admission functions."""
+    tree_metadata_controls()
     log_origin_controls()
     log_syscall_controls()
     for number, actor, family, code in (
