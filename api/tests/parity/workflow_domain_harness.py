@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import redis.asyncio as redis
@@ -2065,7 +2065,7 @@ class ClaimCohort(WorkflowCohort):
                         lease_token=None if delivery == "nonclaimed" else lease_token,
                         lease_expires_at=None
                         if delivery == "nonclaimed"
-                        else now + timedelta(seconds=-1 if delivery == "expired" else 60),
+                        else cast(datetime, now) + timedelta(seconds=-1 if delivery == "expired" else 60),
                     )
                 )
                 self.lease = DeliveryLease(

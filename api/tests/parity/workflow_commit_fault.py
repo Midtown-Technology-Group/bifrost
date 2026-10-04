@@ -8,6 +8,7 @@ import math
 import re
 import struct
 from dataclasses import dataclass
+from typing import Any, cast
 from uuid import UUID
 
 CONTROL_LIMIT = 4096
@@ -743,7 +744,7 @@ def validate_rows(rows):
         for record in records:
             closed(record, [name for name, _kind, _nullable in columns])
             for name, kind, nullable in columns:
-                cell = closed(record[name], ("sql_null", "value"))
+                cell = closed(cast(dict[str, Any], record)[name], ("sql_null", "value"))
                 require(type(cell["sql_null"]) is bool, "null_flag")
                 value = cell["value"]
                 if cell["sql_null"]:
@@ -764,7 +765,7 @@ def validate_rows(rows):
                     require(math.isfinite(struct.unpack("!d", bytes.fromhex(value))[0]), "nonfinite_cell")
                 else:
                     raise FaultAdmissionError("unselected_cell_kind")
-            identities.append(record["id"]["value"])
+            identities.append(cast(dict[str, Any], record)["id"]["value"])
         require(identities == sorted(identities) and len(set(identities)) == len(identities), "row_order")
     encode(rows, ROW_LIMIT)
     return rows

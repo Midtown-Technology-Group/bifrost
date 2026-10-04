@@ -19,6 +19,7 @@ import struct
 import sys
 import time
 import tomllib
+from collections.abc import Awaitable
 from contextlib import asynccontextmanager, contextmanager, suppress
 from contextvars import ContextVar
 from copy import deepcopy
@@ -26,7 +27,7 @@ from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import delete, event, select, text
@@ -224,7 +225,7 @@ def materialize(fields: dict, lane: str) -> dict:
         closed(value["value"], set(members))
         result = {}
         for name in members:
-            supplied, item = tag(value["value"][name])
+            supplied, item = tag(cast(dict[str, Any], value["value"])[name])
             if supplied:
                 result[name] = item
         return True, result
@@ -273,7 +274,7 @@ def source_lock_packages(raw: bytes) -> set[str]:
     packages = lock.get("package")
     check(type(packages) is list and 1 <= len(packages) <= 232, "Result source lock packages")
     identities = []
-    for package in packages:
+    for package in cast(list[Any], packages):
         check(type(package) is dict, "Result source lock package")
         name, version = package.get("name"), package.get("version")
         check(
@@ -2983,7 +2984,10 @@ class ResultCohort(WorkflowCohort):
     async def empty_buffers(self):
         for role in ("execution", "foreign"):
             identity = str(self.ids[role])
-            check(await self.redis.hlen(pending_changes_key(identity)) == 0, "Result sync buffer not empty")
+            check(
+                await cast(Awaitable[int], self.redis.hlen(pending_changes_key(identity))) == 0,
+                "Result sync buffer not empty",
+            )
             check(await self.redis.xlen(execution_logs_stream_key(identity)) == 0, "Result log buffer not empty")
 
     async def snapshot(self):
@@ -3416,8 +3420,8 @@ def response(raw, case_id):
     if decision["kind"] == "applied":
         closed(decision, {"kind", "plan"})
         closed(decision["plan"], {"execution", "attempt"})
-        closed(decision["plan"]["execution"], EXEC_FIELDS)
-        closed(decision["plan"]["attempt"], ATTEMPT_FIELDS)
+        closed(cast(dict[str, Any], decision["plan"])["execution"], EXEC_FIELDS)
+        closed(cast(dict[str, Any], decision["plan"])["attempt"], ATTEMPT_FIELDS)
     elif decision["kind"] == "rejected":
         closed(decision, {"kind", "reason"})
         check(decision["reason"] in REASONS, "Result domain rejection")
@@ -4302,7 +4306,7 @@ async def source_control(engine, case, case_id, fixture):
             await cohort.redis.delete(active_execution_key(str(cohort.ids["execution"])))
     if case_id == "x-unsupported-buffer":
         key = pending_changes_key(str(cohort.ids["execution"]))
-        await cohort.redis.hset(key, "synthetic", "{}")
+        await cast(Awaitable[int], cohort.redis.hset(key, "synthetic", "{}"))
         rejected = False
         try:
             await cohort.empty_buffers()
