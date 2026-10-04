@@ -2,7 +2,9 @@
 
 Status: frozen design for source authoring only, 2026-10-04. The controller is
 being implemented in `test/workflow-commit-fault-controller-source`, based on
-`c911b46baa7260ed1492bfbe5e1295c6db9eb410`. Full source review and supported
+`9b54e910e8e5380150f8ee26cfa1f13e5bec7424`, carrying the reviewed
+prerequisites on the earlier `c911b46baa7260ed1492bfbe5e1295c6db9eb410`
+source-check baseline. Full source review and supported
 execution remain required. This document grants no runtime, authority, role,
 schema, merge, deployment or vendor-use permission.
 
@@ -18,7 +20,9 @@ requiring distinct design review record the freeze gate that has now passed;
 the architect separately released source authoring after each review. Those
 reviews do not discharge full source or runtime review. The current native
 roster contains 207 labels (159 normal, 48 failure), with 18 frontend probes.
-Metadata-profile selection changes only the two config-render argv inputs.
+The metadata-profile section records its original two config-render argv
+amendments. The current selections below supersede its roster lineage; the
+remaining retained packet bodies are unchanged.
 
 Independent review fingerprints, in section order:
 
@@ -31,6 +35,77 @@ campaign passed formatting, strict all-target/all-feature Clippy and 27 default
 tests in [run 37185003270](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37185003270).
 It did not run this experiment. See [verification disposition](rust-core-mvp-verification-disposition.md)
 for the historical failures and remaining acceptance gates.
+
+
+## Current source-authoring selections
+
+Platform main is `c45725f82f0961ce45c1dc7e4928402b44176882`; workspace
+main is `848134becf9e8fdb930efc86872daa62fdeb93cc`. Both prerequisite merges
+remain ancestors. RFC #1011 remains provisional at
+`93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. These are fetched source refs,
+not deployed identities.
+
+The controlled item now lives at
+`api/tests/diagnostics/workflow_commit_fault.py`. Its exact-byte relocation
+keeps it out of ordinary automatic `test_*.py` discovery while preserving the
+mandatory explicit invocation, real ancestor conftest and all assertions.
+No test skip, planner rule, helper import or ordinary test command changed.
+The file SHA is `9a4eb183aafa42625f225a18b49a93e5704938ed00e1f6b5583e4826f9675592`.
+Its source review fingerprint is
+`f4ebe6743e314a02636f3a848f997d1c6ded742408b89eb57a63038a98719dbe`.
+Actual standalone module/conftest identity still needs runtime qualification.
+
+The existing API image supplies `BIFROST_VERSION=unknown`; qualify the actual
+image configuration and inherited runtime value rather than manufacturing an
+override. Python/observer runtime environments therefore contain exactly
+28 selected keys; their supplied environment files still contain 27. Rust
+retains its single key. The observer now requires eight control families,
+including the actual environment guard's positive case and four negative
+cases. These operate on a private diagnostic alias; genuine `os.environ`
+stays unchanged and original failure precedence survives restoration.
+Source review fingerprint:
+`da7712a61a432d849d66ecc1c2e45e6df20927fb66b687070e9f1b30c522b37a`.
+The controls have not run in the supported environment.
+
+Current native roster v0.1.24 fingerprint:
+`b50e2428a47a665e316c20f5d08db087dfa147ede542304b5f8fe1123bc2150b`.
+It retains 207 labels and 18 frontend probes. Initial image enumeration now
+retains all immutable IDs, including untagged/intermediate images, under the
+existing stream caps and a stricter 4096-record bound. A newly built tag must
+not confer ownership of an initially present cached ID. Initial tags must also
+be absent. Exact source/build/config joins and an exclusive supported daemon
+remain necessary; unknown ownership fails without deletion or retry.
+
+API/toolchain build tags are selectors for their first image inspection only;
+later use and disposal require measured immutable IDs. Complete cold Cargo
+work precedes the original 180-second stack interval. After stack startup and
+qualification of all 11 service containers, one joint image inspection measures
+the owned API image and borrowed PgBouncer image before frontend probes.
+The current Compose recipe uses `edoburu/pgbouncer:latest`; record the actual
+named digest without inventing a pinned digest or signature claim. Actual
+frozen version, platform, process and INI checks remain strict. PgBouncer is
+not added to task-owned image removal. Distinct design review fingerprint:
+`b9fc79e822541a3ef56f9e08c98a5adca5a3fedd5ee57a2ee7cd7bf3bc75d457`.
+No command, capture cap or clock extension was authorized.
+
+Only the sole controlled target receives host command-local
+`BIFROST_TEST_USE_CLEAN_BOOT=1`, alongside its existing skip-build option.
+Normal pre-PR behavior stays unchanged. This selects the existing runner's
+one-shot fresh-stack preparation; otherwise it resets PgBouncer/database after
+the retained identity/schema observations. Before this invocation, require
+actual marker absence without following symlinks, original task-owned log
+folder identity and genuine fresh-stack qualification. Never delete a marker
+to obtain admission. Afterwards, require the actual zero-byte regular one-link
+marker with source-supported ownership transitions and unchanged full
+frontend/database lifetime evidence. Neither marker nor flag proves behavior.
+Do not propagate the selector to actor environments or use it for a second
+suite. Distinct design review fingerprint:
+`3af16d081842aae3c3f4ef99247b3d2a3c44996443f1c5c60843397ae23faf52`.
+
+All selections above permit bounded source authoring only. The two parent
+files remain unfinished drafts; full independent source review, supported
+execution, actual custody and cleanup remain outstanding. The earlier green
+27-test run does not qualify these newer source changes.
 
 ---
 
