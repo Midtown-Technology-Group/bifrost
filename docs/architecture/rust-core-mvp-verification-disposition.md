@@ -6,20 +6,27 @@ not an MVP CONTINUE/STOP decision or deployment authorization.
 The [parity matrix](rust-core-mvp-parity-matrix.md) separates implemented
 source, supported checks and still-unproven lifecycle acceptance.
 
-The architecture authority remains [platform PR #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011),
-head `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. The platform main used for the recorded execution campaigns is
-`c45725f82f0961ce45c1dc7e4928402b44176882`; workspace main is
-`848134becf9e8fdb930efc86872daa62fdeb93cc`. A later read-only fetch on
-2026-10-04 observed platform main `7ff37809f249ff21a9ca150780fbc8f1c6d07b0c`
-and the same workspace head. Both prerequisite merges (#1001 and #1112)
-remain ancestors. The platform advance is the four-file immutable empty-source
-export repair (#1048); it does not change the collector schema, SQL or source
-pins. A subsequent fetch observed platform main
-`7e737cacdba56b214e427afed5a28e89ae1b6a47`, which adds the explicit API-target
-requirement for SDK Solution start and associated tests/reference material.
-The latest read-only fetch confirms that platform head and the same workspace
-head, with both prerequisite merges still present. Neither advance retroactively
-changes any campaign candidate or evidence.
+The provisional architecture remains [platform PR #1011](https://github.com/Midtown-Technology-Group/bifrost/pull/1011),
+head `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`; the PR remains open.
+Current fetched platform main is `a54990bcc947fd097717bef55b37184f32bbd155`
+and workspace main is `6dfcf74a09743aa83d74f9fe582f8869828e61bf`.
+Both prerequisite merges (#1001 and #1112) remain ancestors. The documentation
+candidate contains this platform main; implementation candidates retain their
+separately recorded source pins until reviewed integration.
+
+Latest claim candidate `90ea5a34056600979b0fde74fb7af39e1f2ae56d`
+passed ordinary repository CI and 48 supported Rust checks. Its dedicated
+characterization failed at a build-phase local guard before comparison;
+the exact predicate is unknown and resource custody remains held.
+A bounded optional predicate diagnostic has root and independent DESIGN
+acceptance; concrete source and any further execution remain separate gates.
+The transport prototype has source acceptance, while its supported venue
+source and actual compiler/TLS/runtime evidence remain pending.
+
+Historical campaigns below retain their exact candidate/main/workspace pins.
+In particular, advances through #1048, #1056 and #1061 do not retroactively
+qualify prior runs. #1061 adds native Solution resource/connection readback;
+its current-source implications are recorded in the reconciliation below.
 
 ## Result verification: stopped and blocking
 
