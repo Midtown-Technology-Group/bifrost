@@ -889,3 +889,15 @@ logs, native/helper invocation, clock growth or gate waiver is proposed.
 This additional output/dependency is explicit DESIGN scope, not silently
 covered by PUB1. Independent design review is requested; source authoring
 and any changed-candidate run remain unreleased.
+
+
+Independent stage-diagnostic DESIGN review
+`8f9174d8bdca7677974b3880958a4d79c107294c22ea7ced3f641f9c05426866`
+accepts the bounded direction but holds source allocation for exact
+status-dependent signature grammar and retained .git/locks path-to-FD
+association. Root fully read it and released only a design clarification.
+The eventual primary+stage output must use one combined bounded write;
+unknown stage observation cannot suppress the valid primary line. No source
+or run is released by this review. A separate decision-ready M1 transport
+addendum is being prepared against actual locked crates; authority and
+business-admission projections remain unapproved.
