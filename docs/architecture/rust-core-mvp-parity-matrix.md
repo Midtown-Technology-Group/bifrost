@@ -24,9 +24,12 @@ A later claim-characterization checkpoint is candidate
 [source-check run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37232398145)
 passed on push attempt 1: formatting, locked all-target/all-feature strict
 Clippy, 31 default workspace tests and 17 explicitly selected example tests.
-Independent executed-evidence review is pending. Its separate
+Independent executed-evidence review accepted this bounded proof (receipt
+`193163eea4e3a2e17670c6d919ab943fb04ac110602458719b5773f0ecb7728a`). Its separate
 [characterization run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37232401370)
-is still in progress; none of the new Python/PostgreSQL claims is accepted yet.
+failed on attempt 1. The primary exit-1 cause is unavailable in the retained log;
+the evidence upload separately failed with EACCES on `source.txt` and no artifact
+was retained. None of the new Python/PostgreSQL claims or cleanup is accepted.
 
 The reference source is pinned by each campaign's receipts; do not silently
 substitute a newer Python implementation. Main observed at the associated
@@ -47,7 +50,7 @@ it does not mean no partial evidence exists.
 | Surface | Python authority / behavior | Rust source | Current parity status | Required acceptance evidence |
 | --- | --- | --- | --- | --- |
 | Service startup, configuration, health/readiness, tracing and shutdown | Existing platform remains traffic owner; Rust foundation adds its own health surface | `core-rs/crates/bifrost-core/`, `core-rs/Dockerfile` | Rust default checks passed at c911; production operation is unproven | Supported startup/readiness failure, bounded shutdown and observability evidence; normal W0 CI disposition |
-| Existing-attempt claim | Original workflow consumer, attempt helper and PostgreSQL delivery checks; Python retains actual allocation | `plan_existing_attempt_claim` and explicit domain-vector driver | Source/unit checks passed; candidate differential run pending | Actual Python/PG rows, real lock/lease observations, deliberate drift controls and qualified cleanup; pure plan does not confer SQL/Start authority |
+| Existing-attempt claim | Original workflow consumer, attempt helper and PostgreSQL delivery checks; Python retains actual allocation | `plan_existing_attempt_claim` and explicit domain-vector driver | Source/unit checks accepted; candidate differential run failed with missing primary evidence | Actual Python/PG rows, real lock/lease observations, deliberate drift controls and qualified cleanup; pure plan does not confer SQL/Start authority |
 | Attempt running | Original `mark_attempt_running`, called by `api/tests/parity/workflow_domain_harness.py` | `plan_attempt_running` in `core-rs/crates/bifrost-domain/src/workflow/mod.rs` | Pure typed row-plan tests passed; durable ownership and HTTP unproven | Paired real DB transitions, exact fences/state precedence, mixed writers and unchanged runtime Start behavior |
 | Fenced result and nullable projections | Original consumer `_process_success` / `_process_failure`; omitted arguments remain omitted | `plan_fenced_result`; `bifrost-db/src/workflow_parity.rs`, `workflow_numeric.rs`; SQL vector example | Typed plan tests passed; complete SQL/result parity unproven | Genuine Python/Rust committed rows, type/null/numeric/clock fidelity, fence loss and transactional outcomes |
 | Queued/running cancellation | Original `ExecutionRepository.cancel_execution`; reference SQL order is observed by `test_workflow_sql.py` | `plan_cancel_state` and selected SQL example paths | Plan tests passed; coexistence, lock ordering and event parity unproven | Actual cancellation/result/running races, update order, no cross-tenant effect and committed-event outcomes |

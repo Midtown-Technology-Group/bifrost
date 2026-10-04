@@ -672,3 +672,29 @@ Their results remain unproved. The existing characterization command retains
 literal `./test.sh pre-pr`, all original checks, fixed clocks and cleanup gates.
 No PR, merge, deployment, authority change or full-MVP acceptance is included.
 No unchanged rerun is authorized by this release.
+
+The candidate source-check run37232398145 completed successfully; separate
+executed-evidence review accepted formatting, strict Clippy and actual31+17
+tests, receipt SHA-256
+`193163eea4e3a2e17670c6d919ab943fb04ac110602458719b5773f0ecb7728a`.
+Actual checks image is
+`sha256:81b3da3503e2f321778c5f4687e8ff72bc98af6c0e4685a745fc50a440a3c256`.
+Retained source-check log SHA-256 is
+`6266c8114a3117288bfc83e016e24630a843cbd6d718d504f02ac1ec03c3f8ae`.
+
+Characterization run37232401370 completed FAILURE on attempt1, job111524699452
+in3m56s. Its main step exits1 without publishing the primary exception or
+native stage outcome. The evidence upload sees five files but independently
+fails EACCES opening `source.txt`; the artifacts API reports zero artifacts.
+Retained full job-log SHA-256 is
+`75b45d92130489b2b220409c001462815d768a87954b4bf4f0cf0651b213488e`.
+Neither pre-PR success, Rust/Python drift, actual selected tests nor cleanup
+can be inferred from this failure. Ownership changes by the mounted-log
+entrypoint and publication0600 are a source-supported upload hypothesis,
+not recovered runtime identity or an explanation of the primary failure.
+
+The candidate remains HOLD. Root released bounded read-only diagnosis of
+the publication and safe diagnostic seams to the existing parent owner;
+no source repair or replacement run is released yet. No unchanged rerun,
+time/cap growth, pre-PR bypass, public-contract change, auth/schema/Start
+authority, merge or deployment is permitted by this disposition.
