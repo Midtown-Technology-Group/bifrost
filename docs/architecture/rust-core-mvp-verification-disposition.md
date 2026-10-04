@@ -723,3 +723,25 @@ private capture disposal was independently reported is unsupported;
 disposal remains UNKNOWN because neither the log nor artifacts prove it.
 No source repair or replacement execution is released by this checkpoint.
 The candidate stays clean at0ef442248; both main heads remain unchanged.
+
+Independent design review found only the unsupported disposal assertion,
+while accepting the bounded permission/diagnostic interfaces, receipt
+`9013015f5c1e321a935cce4cde4dbb123de253b66a20c1ed287312d9dcaf6e39`.
+Root corrected only that sentence and the revision title in an immutable
+v011 copy, SHA-256
+`4acb16060801a883952910515553469a7f5c2dfe7cccb5b578eaf93a949c6a68`;
+the original report remains historical evidence. Actual disposal is UNKNOWN.
+
+Root released source-only package CLAIM-CHAR-PUB1 to the existing parent
+owner, receipt SHA-256
+`f57fc0199e288af773bd013f125d68b5e35b7defbad1f8b7ef68223881c5f547`.
+It owns only `scripts/ci/workflow-domain-parity.sh`: same-FD0644 admission
+for eleven existing approved public outputs, and a once-only512-byte
+ASCII stderr diagnostic with six closed keys, actual failing-native
+association and immutable first-error observation before cleanup.
+Nonblocking output must independently restore inherited descriptor state,
+never close it, retry, expose payloads or replace the original failure.
+Private captures, all original command/scenario/clock/cap/security and
+pre-PR contracts remain. Exact changed bytes and controls require root
+and different-author source review. No replacement run, commit/push by
+the builder, merge, deployment or authority migration is released.
