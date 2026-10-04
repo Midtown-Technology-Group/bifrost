@@ -1262,3 +1262,23 @@ report must account for review/fix cycles and reusable versus one-off harness
 maintenance alongside actual parity, authority and rollback evidence. No speed
 or memory benefit has been measured, and no arbitrary line-count threshold
 is used as a correctness waiver or as sufficient evidence to STOP.
+
+
+Root accepted diagnostic DESIGN
+`75a04d3ca4c57670eb1b833849daab873750d78a29f514d4e4b75843c2f4d6b9`
+for one-path SOURCE authoring only under allocation
+`720e4697e979397084abc9479f815c537a50efa9185b8344c8e59ae583481c9b`.
+The original six-key primary remains unchanged. One optional separately
+versioned build-guard record may expose only one of nine literal builder
+predicates or unknown, frozen from the genuine first build/local guard with
+no native association. Raw exception text and configuration remain excluded.
+The same combined512-byte limit, one FD2 write, original ends, closed artifacts,
+command roster, business guards and cleanup admission remain authoritative.
+Finite same-body controls must show first-error retention and optional-render
+failure preserving primary delivery. Source, independent review and current-main
+integration are pending; this release includes no commit, push or runtime.
+
+The transport recipe keeps the original documented /tmp mode1777 and
+Python-owned0700 fixture directories. Root's abbreviated0700tmpfs description
+was inaccurate; source matches the actual selected recipe. No new permissions
+recipe or frozen prototype change is selected.
