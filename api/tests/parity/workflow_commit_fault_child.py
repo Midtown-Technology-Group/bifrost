@@ -276,7 +276,7 @@ class ForwardedConstructors:
         return {
             "schema": "bifrost.test.f4-constructor-observation/v1",
             "role": "python",
-            "env_count": 27,
+            "env_count": 28,
             "env_source_equal": actor_environment() == self.environment,
             "source_calls": {name: 1 for name in self.calls},
             "endpoint": {"hostname": endpoint.host, "port": endpoint.port, "drivername": endpoint.drivername},
@@ -454,6 +454,7 @@ def actor_environment():
         "EMBEDDINGS_AI_TEST_KEY",
         "BIFROST_POSTURE_HARDENED",
         "BIFROST_TEMP_LOCATION",
+        "BIFROST_VERSION",
     )
     require(all(key in os.environ for key in keys), "environment_missing")
     selected = {key: os.environ[key] for key in keys}
@@ -477,6 +478,7 @@ def actor_environment():
     require(
         selected["BIFROST_ENVIRONMENT"] == "testing"
         and selected["BIFROST_TEMP_LOCATION"] == "/tmp/bifrost/temp"
+        and selected["BIFROST_VERSION"] == "unknown"
         and selected["PYTHONPATH"] == "/app"
         and selected["BIFROST_WORK_DELIVERY_BACKEND"] in ("rabbitmq", "postgres"),
         "environment_profile",
@@ -566,7 +568,7 @@ async def python_actor(value, channel):
         constructors.install()
         await database.init_db()
         database.get_session_factory()
-        require(len(environment) == 27, "environment_count")
+        require(len(environment) == 28, "environment_count")
         await channel.send("constructor_ready", constructors.ready())
         acceptance = await channel.receive("constructor_accept", ("role",))
         require(acceptance["role"] == "python", "constructor_role")
