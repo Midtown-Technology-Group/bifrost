@@ -757,3 +757,29 @@ Private captures, all original command/scenario/clock/cap/security and
 pre-PR contracts remain. Exact changed bytes and controls require root
 and different-author source review. No replacement run, commit/push by
 the builder, merge, deployment or authority migration is released.
+
+
+CLAIM-CHAR-PUB1 is now source-frozen, not source-approved. Root independently
+verified the actual sole-path delta and all33 unchanged incumbent input
+bytes against candidate0ef442248. Complete parent source SHA-256
+`4ade64564326cb2682030c7e9eb17fc6e997177763ae91ba0b14cbf977520c77`
+(3337lines/142901bytes); complete incremental delta
+`a686cc4ca3e7dab570531508c2a7a12de6a4554301cadefd2e27f79037b8bcb3`.
+Root fully read the delta, author report
+`33b6e27c6abeb33765046e44da2c16b8c12cbd07d8931481a5b6cb114576217c`,
+inspection `9a35df77226d2951ddee346d90265c74cd6998a68441165fbee0058155677615`
+and cleanup-primary reachability assessment
+`85bf69c4697e0f7505b81468aa6e19d99241c89062693e377763436de40fb93d`.
+The assessment distinguishes a synthesized unsettled-child counterexample
+from the ordinary entry path: successful work has waited every actual native;
+failure settlement already retains a work error. Independent review must
+falsify or confirm that argument against the actual call graph. No cleanup
+rewrite was added on the strength of an unreachable synthetic state.
+Author Bash/AST/diff and isolated cached Ruff120/py313 checks pass; root
+independently checked source hashes and diff whitespace. Controls remain
+unexecuted. Concrete different-author review has been requested against the
+frozen bytes and source-only release, before any replacement run. First-run
+cause/disposal, actual uploader delivery,207 JUnit identities and full
+workflow/agent parity remain unproven. Fresh platform/workspace main fetches
+remain7e737cacdba56b214e427afed5a28e89ae1b6a47 and
+78f37f5a5cbd7b0a6c382b54ccc617c8747418aa respectively.
