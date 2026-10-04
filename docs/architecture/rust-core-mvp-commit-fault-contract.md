@@ -19,10 +19,12 @@ The sections below retain the exact reviewed design packets. Their statements
 requiring distinct design review record the freeze gate that has now passed;
 the architect separately released source authoring after each review. Those
 reviews do not discharge full source or runtime review. The current native
-roster contains 207 labels (159 normal, 48 failure), with 18 frontend probes.
+roster contains 217 labels (165 normal, 52 failure), with 18 frontend probes.
 The metadata-profile section records its original two config-render argv
 amendments. The current selections below supersede its roster lineage; the
-remaining retained packet bodies are unchanged.
+remaining retained packet bodies are unchanged. The current cleanup selection
+explicitly supersedes their native-command count bounds of 207 with 217;
+all other field types, artifact sizes and clocks stay unchanged.
 
 Independent review fingerprints, in section order:
 
@@ -67,7 +69,7 @@ Source review fingerprint:
 `da7712a61a432d849d66ecc1c2e45e6df20927fb66b687070e9f1b30c522b37a`.
 The controls have not run in the supported environment.
 
-Current native roster v0.1.24 fingerprint:
+The image-acquisition roster v0.1.24 fingerprint:
 `b50e2428a47a665e316c20f5d08db087dfa147ede542304b5f8fe1123bc2150b`.
 It retains 207 labels and 18 frontend probes. Initial image enumeration now
 retains all immutable IDs, including untagged/intermediate images, under the
@@ -110,11 +112,37 @@ the directory itself under a sticky `/tmp`. Actual hosted permissions and
 removal outcomes are unmeasured. Residual or unknown logs prevent overall
 `disposal.complete` and `passed`; Docker resource absence does not settle them.
 
-A proposed extra privileged removal command was independently rejected pending
-root-child cancellation and settlement proof. It is not selected or released:
-the authoritative roster stays at 207. Killing or reaping a nonroot `sudo`
-monitor would not prove its root command stopped. No privileged wrapper,
-helper, retry or larger deadline is authorized by this document.
+The extra host-privileged removal proposal remains rejected: killing or reaping
+a nonroot `sudo` monitor would not prove its root command stopped. No host
+privilege supervisor, `sudo` operation, retry or larger deadline is selected.
+
+Its replacement is one owned cleanup container, using the existing Docker CID
+create/qualify/start/terminal/kill/remove/absence custody pattern. Direct GNU
+`chown` restores only the task-owned log tree to the actual numeric host
+UID/GID. The host then performs bounded no-follow removal. The container has
+no network, a read-only root filesystem, only CHOWN/DAC_READ_SEARCH capabilities,
+and one writable bind of the qualified log tree. It uses the immutable qualified
+API image without pulling or invoking its API entrypoint. Actual source/software,
+daemon, image, mount, membership, ownership and writer-settlement checks are
+mandatory. Its Docker client exit is distinct from container settlement.
+
+All log writers, including stack-down/export, must settle first. Actual terminal
+exit, unchanged root/member identities with restored host ownership, and
+independent container removal/absence precede host deletion. Final log-root
+absence is required. An inaccessible census, unsupported image/daemon, failed
+restore or remaining file still prevents successful disposal; no chmod rescue
+or second attempt is selected. API image disposal follows helper settlement.
+
+The replacement explicitly adds six normal and four failure-only methods to
+the original 207, preserving those original row objects. Current roster v0.1.26:
+`e5b64ccbbaf147866f4498660524e0508dd57969453e41f60a9a8da6bc25882b`.
+Parent producer/disposal native counters now admit at most 217 and reject 218.
+The added calls consume the original cleanup deadline; business lanes, frontend
+probes, capture limits, artifact schemas and sizes are unchanged. This corrects
+an omitted task-file cleanup mechanism before the first controller run; it
+waives no observed failure or uncertainty. Distinct design review fingerprint:
+`9cebbf3b03370403b4b6e77f6f93917033425ddc5fbb89a93fbddbe396253576`.
+Source authoring is released; implementation and runtime proof remain pending.
 
 All selections above permit bounded source authoring only. The two parent
 files remain unfinished drafts; full independent source review, supported
