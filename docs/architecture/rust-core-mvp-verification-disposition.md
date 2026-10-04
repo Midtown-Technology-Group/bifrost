@@ -462,3 +462,41 @@ No custom cryptography, action fork, runtime credential change, secret
 provisioning or fourth controller run is authorized.
 The third run's original fetch failure cause remains unknown; an unprovisioned
 private read-access prerequisite is not retrospective proof of that cause.
+
+## Claim characterization: driver source accepted, first check failed
+
+The private Rust driver now calls the actual existing-attempt claim planner
+and serializes its four outcomes and eight write directives. Candidate
+`7880f4728ffdd97115a6d7935dec63da406c60f2`, tree
+`6d90482614eee978d8fda32be0a397427173cc1a`, contains current main
+`7e737cacdba56b214e427afed5a28e89ae1b6a47`. Independent source review
+accepted the two-file driver/CI package; its receipt SHA-256 is
+`79f6f833922eb1b0eb63193705390eec4105cf7c9c3662caa44767ab6d3fb5a1`.
+The 14 original example tests remain unchanged; three new tests are declared.
+
+The first [supported source run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37221553752),
+attempt 1, failed at `cargo fmt --check`. The native diagnostic requests four
+tuple line wraps in the new guard test. Clippy, default tests and the explicit
+example tests did not start. This is a diagnosed formatting failure, not a
+functional result. Only those reported wraps are released for source repair;
+a changed second candidate needs independent review and a separate execution
+release. No unchanged retry or expectation waiver is permitted.
+
+The claim scenario design distinguishes 40 original-consumer cases, two direct
+original-helper cases and 11 impossible-row native boundary controls. Thirteen
+consumer cases characterize Python allocation while Rust explicitly defers it;
+they are not equivalent allocation implementations. PostgreSQL constraints stay
+enabled. Corrected scenario design review receipt SHA-256 is
+`32ab46b90929ed68eca4781df07e7cca7f0075ef31c558ec273413362ab730e4`.
+No claim characterization cases have run. Constructor/source association,
+connection and frontend lifetime evidence, execution allocation and actual
+Python/PostgreSQL parity remain held.
+
+The M4 helper namespace preflight and its unexpected-exception regression
+controls also passed bounded source review at conductor SHA-256
+`474fbc4cde84874be3ece8a2f4837c06395e7783d592ab132accf6f1ef059e20`.
+Independent review receipt SHA-256 is
+`1765c6f6aed9674c3f720c4d134c876e806870b80d9392f7d16156791d26e6b0`.
+These controls have not executed; installed behavior, resource custody, cache
+disposition and runtime admission remain held. This closes source findings,
+not M4, C2/C3 or MVP acceptance.
