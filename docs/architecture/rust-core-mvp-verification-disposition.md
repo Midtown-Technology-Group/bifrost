@@ -619,3 +619,19 @@ that complexity against architectural benefit as well as correctness. No new
 characterization runtime, commit of these three files, push, or acceptance
 claim has occurred. Existing authority, coexistence and full-MVP gates remain
 open.
+
+The full three-file independent source review subsequently returned HOLD,
+receipt SHA-256
+`2456a98d7eb2da5356b363e024f183ec8cdfdf0b6f758db2a828c4c0084a292f`.
+Six finite findings require correction: independent cleanup after partial
+process acquisition; first-error protection during settlement; frontend match
+publication only after completed lifetime admission; canonical compact frame
+admission; file operations bounded by their original work/cleanup phase;
+and unexpected control exceptions preserved by expected-fault tests.
+The fixture-engine wording correction does not change fixture behavior.
+
+Root released one source-only repair batch, receipt SHA-256
+`48a3d6db5a81ffe9552bfd5d4b12a76020e3f71f0ea3d79064eeff60d66cc12e`.
+The parent and Python owners retain separate paths. Exact scenarios, commands,
+clocks and authority remain fixed. Repaired bytes require distinct review;
+this disposition provides no runtime, cleanup, frontend or parity acceptance.
