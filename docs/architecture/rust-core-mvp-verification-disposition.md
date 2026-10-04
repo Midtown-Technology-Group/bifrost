@@ -550,3 +550,25 @@ Actual frontend image/version/configuration remain unmeasured. A conditional
 reviewed profile must fail closed on a mismatch; neither checked-in defaults
 nor a self-reported version prove transport or installed source. No frontend
 runtime, Python claim scenario, or new characterization campaign has run.
+
+The architect selected the following interface direction for the finite
+amendment: a closed receipt declares the frontend requirement without asserting
+success; every new genuine claim case requires the witness. A synchronous
+module broker avoids sharing async transports across function event loops.
+A test-owned forwarding alias observes each original `close_db` invocation
+exactly once and retains failures through both unchanged function finalizers.
+The incumbent isolation fixture still wraps ordinary exceptions; preserving
+the original error at the observer boundary does not change that behavior.
+The public synchronous driver `is_closed()` getter can provide per-connection
+readback, but cannot certify all pool resources or transport security.
+Independent source-data receipt SHA-256 is
+`e14cc9d11e54f747b71587644aab344941e8eef18188cf33cb4dd0597f722e80`.
+
+Deadline enforcement belongs in a fixed executor for this existing parity
+script's original operations. The selected design reserves script-entry
+seconds 2520–2640 for cleanup and 2640–2700 for publication, without extending
+the workflow's 45-minute limit. The earlier job clock can truncate those
+reserves; no publication or fit guarantee follows. CLI/process-group/pipe
+settlement does not prove Docker daemon work settled. Unknown remote resource
+state remains a failed gate. Exact operation and finalizer choreography still
+needs the finite amendment and independent review before source release.
