@@ -5122,7 +5122,23 @@ def prepr_phase(controller):
     docker_admission(controller)
     raw, _, _ = controller.run(
         "compose_base_config",
-        ["docker", "compose", "-f", "docker-compose.test.yml", "config", "--format", "json"],
+        [
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.test.yml",
+            "--profile",
+            "e2e",
+            "--profile",
+            "test",
+            "--profile",
+            "client",
+            "--profile",
+            "client-check",
+            "config",
+            "--format",
+            "json",
+        ],
         extra={"COMPOSE_PROJECT_NAME": controller.target_project, "LOG_DIR": str(controller.log_directory)},
     )
     config = decode(raw)
