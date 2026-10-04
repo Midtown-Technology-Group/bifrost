@@ -54,6 +54,11 @@ FAILURE_PHASES = frozenset(
     ("setup", "controls", "source", "prepr", "build", "stack", "target", "frontend", "cleanup", "publication")
 )
 FAILURE_CLASSES = frozenset(("control", "guard", "os", "system_exit", "interrupt", "other"))
+PREPR_STAGES = frozenset(
+    ("repository", "client", "stack", "quality", "generated", "unit", "e2e", "mcp", "client-unit", "browser", "image")
+)
+PREPR_SCHEMA = "bifrost.test.claim-prepr-stage/v1"
+PREPR_HELPER_HASH = "60da3f4c3e95cb220738d077c9dec59451bb66acde732b71067e8d44b9f5de11"
 
 SOURCE_PATHS = (
     ".github/workflows/workflow-domain-parity.yml",
@@ -739,6 +744,9 @@ class Parent:
         self.natives = []
         self.phase = "setup"
         self.failure_snapshot = None
+        self.failure_native = None
+        self.failure_error = None
+        self.prepr_stage = None
         self.diagnostic_failed = False
         self.capture_bytes = 0
         self.private = None
@@ -1807,7 +1815,11 @@ def freeze_failure(parent, error, native=None):
             "exception_class": coarse_failure(error),
         }
         diagnostic_bytes(value)  # Validate before the single completed snapshot assignment.
-        parent.failure_snapshot = value
+        parent.failure_snapshot, parent.failure_native, parent.failure_error = (
+            value,
+            native if native is not None and any(owned is native for owned in parent.natives) else None,
+            error,
+        )
     except BaseException:
         # Diagnostic faults are secondary; do not replace the genuine boundary error.
         parent.diagnostic_failed = True
@@ -1838,12 +1850,340 @@ def diagnostic_bytes(value):
     return raw
 
 
-def emit_diagnostic(value, end, file_os, clock):
+def prepr_stage_bytes(value):
+    closed(value, {"schema", "stage", "status"})
+    require(type(value["schema"]) is str and value["schema"] == PREPR_SCHEMA, "prepr-stage-schema")
+    stage, status = value["stage"], value["status"]
+    require(
+        type(stage) is str
+        and type(status) is str
+        and ((stage in PREPR_STAGES and status in {"running", "failed"}) or (stage, status) == ("unknown", "unknown")),
+        "prepr-stage-enum",
+    )
+    raw = b"bifrost-claim-prepr-stage/v1 " + json.dumps(value, separators=(",", ":")).encode("ascii") + b"\n"
+    require(len(raw) <= 192 and raw.isascii(), "prepr-stage-bound")
+    return raw
+
+
+def combined_diagnostic_bytes(value, stage):
+    raw = diagnostic_bytes(value)  # An optional observation can never suppress a valid primary line.
+    if stage is not None:
+        try:
+            combined = raw + prepr_stage_bytes(stage)
+            require(len(combined) <= 512 and combined.isascii(), "diagnostic-combined-bound")
+            return combined
+        except BaseException:
+            pass  # Primary already exists; even an interrupted optional rendering keeps its delivery available.
+    return raw
+
+
+def prepr_eligible(parent, native, error):
+    value = parent.failure_snapshot
+    return (
+        native is not None
+        and any(owned is native for owned in parent.natives)
+        and parent.failure_native is native
+        and parent.failure_error is error
+        and isinstance(error, Failure)
+        and native.label == "prepr"
+        and native.process is not None
+        and native.acquired is True
+        and native.unknown is False
+        and native.settled is True
+        and type(native.code) is int
+        and -(2**31) <= native.code < 2**31
+        and native.code != 0
+        and type(value) is dict
+        and value.get("phase") == "prepr"
+        and value.get("operation") == "prepr"
+        and type(value.get("exit_code")) is int
+        and value["exit_code"] == native.code
+        and value.get("native_settled") is True
+        and value.get("exception_class") == "guard"
+    )
+
+
+def prepr_projection(raw, candidate):
+    value = decode(raw, 65536)
+    closed(value, {"stages"})
+    stages = value["stages"]
+    require(type(stages) is dict and len(stages) <= 11 and set(stages) <= PREPR_STAGES, "prepr-ledger-stages")
+    context = None
+    incomplete = []
+    base = {
+        "head",
+        "status",
+        "compose_sha256",
+        "env_sha256",
+        "docker_version",
+        "compose_version",
+        "python_version",
+        "node_version",
+    }
+    for stage, record in stages.items():
+        closed(record, {"status", "context", "signature"})
+        status = record["status"]
+        require(type(status) is str and status in {"running", "complete", "failed"}, "prepr-record-status")
+        observed_context = record["context"]
+        require(
+            type(observed_context) is str
+            and re.fullmatch(r"scope=(affected|comprehensive);full=0;plan=[0-9a-f]{64}", observed_context),
+            "prepr-context",
+        )
+        if context is None:
+            context = observed_context
+        require(context == observed_context, "prepr-context-drift")
+        keys = set(base)
+        if stage != "repository" and not (
+            status == "running" and stage in {"client", "stack", "quality", "browser", "image"}
+        ):
+            keys.add("compose_images")
+        if stage == "browser":
+            keys.add("browser_config_sha256")
+        signature = record["signature"]
+        closed(signature, keys)
+        require(
+            type(signature["head"]) is str
+            and re.fullmatch(r"[0-9a-f]{40}", signature["head"])
+            and signature["head"] == candidate,
+            "prepr-head",
+        )
+        state = signature["status"]
+        require(
+            type(state) is str and "\x00" not in state and len(state.encode("utf-8", "strict")) <= 32768, "prepr-status"
+        )
+        require(
+            type(signature["compose_sha256"]) is str and HEX64.fullmatch(signature["compose_sha256"]), "prepr-compose"
+        )
+        for key in ("env_sha256", "browser_config_sha256"):
+            if key in signature:
+                digest = signature[key]
+                require(type(digest) is str and (digest == "missing" or HEX64.fullmatch(digest)), "prepr-digest")
+        for key in ("docker_version", "compose_version", "node_version"):
+            version = signature[key]
+            require(type(version) is str and re.fullmatch(r"[ -~]{0,256}", version), "prepr-version")
+        version = signature["python_version"]
+        require(type(version) is str and re.fullmatch(r"[!-~]{1,64}", version), "prepr-python")
+        if "compose_images" in signature:
+            images = signature["compose_images"]
+            require(
+                type(images) is list
+                and len(images) <= 128
+                and all(type(image) is str and IID.fullmatch(image) for image in images),
+                "prepr-images",
+            )
+            require(images == sorted(set(images)), "prepr-images-order")
+        if status != "complete":
+            incomplete.append((stage, status))
+    stage, status = incomplete[0] if len(incomplete) == 1 else ("unknown", "unknown")
+    return {"schema": PREPR_SCHEMA, "stage": stage, "status": status}
+
+
+class PreprLedger:
+    """One fixed optional host ledger; actual caller hardwires os/clock/custody, controls are inert."""
+
+    def __init__(self, root, candidate, file_os, clock, records):
+        self.root, self.candidate = root, candidate
+        self.os, self.clock, self.records = file_os, clock, records
+        self.handles = {}
+        self.ready = False
+        self.observation_error = None  # Private actual secondary identity, including eligibility/read interrupts.
+        self.uid, self.gid = file_os.geteuid(), file_os.getegid()
+
+    def check_end(self):
+        phase_admit(WORK_END, self.clock, "prepr-reader-end")
+
+    def location(self, name):
+        # This fixed roster has no runtime path/module/file selector.
+        return {
+            "root": (None, self.root),
+            "git": ("root", ".git"),
+            "locks": ("git", "bifrost-test-locks"),
+            "scripts": ("root", "scripts"),
+            "lib": ("scripts", "lib"),
+            "helper": ("lib", "pre_pr_stage_evidence.py"),
+            "ledger": ("locks", "pre-pr-stages.json"),
+        }[name]
+
+    def metadata(self, name, value):
+        mode = stat.S_IMODE(value.st_mode)
+        require(value.st_uid == self.uid, "prepr-owner")
+        if name in {"helper", "ledger"}:
+            require(stat.S_ISREG(value.st_mode) and value.st_nlink == 1, "prepr-file-type")
+            require(mode == (0o644 if name == "helper" else 0o600), "prepr-file-mode")
+            if name == "ledger":
+                require(value.st_gid == self.gid and 0 < value.st_size <= 65536, "prepr-ledger-size-gid")
+            else:
+                require(value.st_size == 6024, "prepr-helper-size")
+            return (
+                value.st_dev,
+                value.st_ino,
+                value.st_uid,
+                value.st_gid,
+                value.st_mode,
+                value.st_nlink,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+        require(
+            stat.S_ISDIR(value.st_mode) and mode & 0o7000 == 0 and mode & 0o700 == 0o700 and mode & 0o022 == 0,
+            "prepr-directory-mode",
+        )
+        return value.st_dev, value.st_ino, value.st_uid, value.st_gid, value.st_mode
+
+    def open(self, name):
+        self.check_end()
+        parent, component = self.location(name)
+        parent_fd = None if parent is None else self.handles[parent]["fd"]
+        record = {"fd": None, "path": component, "identity": None, "closed": True, "unknown": False}
+        self.records.append(record)
+        self.handles[name] = record  # Registration precedes every returned-FD validation.
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+        if name not in {"helper", "ledger"}:
+            flags |= os.O_DIRECTORY
+        record["fd"] = self.os.open(component, flags, dir_fd=parent_fd)
+        record["closed"] = False
+        require(self.os.get_inheritable(record["fd"]) is False, "prepr-fd-inheritance")
+        record["identity"] = self.metadata(name, self.os.fstat(record["fd"]))
+        self.check(name)
+
+    def check(self, name):
+        self.check_end()
+        record = self.handles[name]
+        parent, component = self.location(name)
+        parent_fd = None if parent is None else self.handles[parent]["fd"]
+        actual = self.os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+        require(
+            self.metadata(name, self.os.fstat(record["fd"])) == record["identity"]
+            and self.metadata(name, actual) == record["identity"],
+            "prepr-path-association",
+        )
+
+    def check_all(self):
+        for name, record in self.handles.items():
+            if record["fd"] is not None and not record["closed"]:
+                self.check(name)
+
+    def read(self, name, bound):
+        self.check(name)
+        fd = self.handles[name]["fd"]
+        self.check_end()
+        require(self.os.lseek(fd, 0, os.SEEK_SET) == 0, "prepr-seek")
+        chunks, count = [], 0
+        while True:
+            self.check_end()
+            raw = self.os.read(fd, min(16384, bound + 1 - count))
+            require(type(raw) is bytes, "prepr-read-type")
+            if not raw:
+                break
+            chunks.append(raw)
+            count += len(raw)
+            require(count <= bound, "prepr-read-bound")
+        self.check(name)
+        require(count == self.os.fstat(fd).st_size, "prepr-read-eof")
+        return b"".join(chunks)
+
+    def helper(self):
+        require(hashlib.sha256(self.read("helper", 8192)).hexdigest() == PREPR_HELPER_HASH, "prepr-helper-hash")
+
+    def prepare(self):
+        for name in ("root", "git", "scripts", "lib", "helper"):
+            self.open(name)
+        self.helper()
+        try:
+            self.open("locks")
+        except FileNotFoundError:
+            require(self.handles["locks"]["fd"] is None, "prepr-locks-acquired")
+        else:
+            try:
+                self.os.stat("pre-pr-stages.json", dir_fd=self.handles["locks"]["fd"], follow_symlinks=False)
+            except FileNotFoundError:
+                pass  # Real relative absence; no before-ledger inode exists.
+            else:
+                raise Failure("prepr-preexisting")
+        self.check_all()
+        self.ready = True
+
+    def collect(self):
+        require(self.ready, "prepr-not-ready")
+        self.check_all()
+        self.helper()  # Same retained helper FD and frozen bytes after writer settlement.
+        if self.handles["locks"]["fd"] is None:
+            self.open("locks")
+        self.open("ledger")
+        raw = self.read("ledger", 65536)
+        self.check_all()
+        return prepr_projection(raw, self.candidate)
+
+    def close(self):
+        errors = []
+        for name in ("ledger", "helper", "locks", "lib", "scripts", "git", "root"):
+            record = self.handles.get(name)
+            if record is None or record["fd"] is None or record.get("attempted") is True:
+                continue
+            record["attempted"] = True
+            try:
+                self.os.close(record["fd"])  # Independent once-close even after WorkEnd.
+                record["closed"] = True
+            except BaseException as error:
+                record["unknown"] = True
+                errors.append(error)
+        return errors
+
+
+def prepr_original(parent):
+    reader = PreprLedger(parent.values["ROOT"], parent.values["CANDIDATE"], os, time.monotonic, FILE_CUSTODY)
+    prepr_execute(parent, reader)
+
+
+def prepr_execute(parent, reader):
+    # Fixed actual composition, shared only with inert source controls; no runtime selector.
+    try:
+        reader.prepare()
+    except (Failure, OSError, ValueError):
+        reader.ready = False  # Diagnostic-only profile refusal cannot replace literal prePR.
+        errors = reader.close()
+        parent.cleanup_errors.extend(errors)
+        if errors:
+            raise errors[0] from None
+    except BaseException:
+        parent.cleanup_errors.extend(reader.close())
+        raise
+    try:
+        parent.original("prepr", WORK_END)
+    except BaseException as error:
+        stage = None
+        try:
+            eligible = prepr_eligible(parent, parent.failure_native, error) and reader.clock() < WORK_END
+            if eligible:
+                stage = {"schema": PREPR_SCHEMA, "stage": "unknown", "status": "unknown"}
+                if reader.ready:
+                    stage = reader.collect()
+        except BaseException as observation_error:
+            # Optional eligibility/read faults cannot bypass closes or replace original failed prePR.
+            reader.observation_error = observation_error
+            if stage is not None:
+                stage = {"schema": PREPR_SCHEMA, "stage": "unknown", "status": "unknown"}
+        errors = reader.close()
+        parent.cleanup_errors.extend(errors)
+        if errors and stage is not None:
+            stage = {"schema": PREPR_SCHEMA, "stage": "unknown", "status": "unknown"}
+        parent.prepr_stage = stage  # Nonunknown assignment only after known closure.
+        raise
+    else:
+        errors = reader.close()
+        parent.cleanup_errors.extend(errors)
+        if errors:
+            raise errors[0]
+
+
+def emit_diagnostic(value, end, file_os, clock, stage=None):
     # Inherited stderr is borrowed, never closed. One nonblocking write, no retry or new end.
     first = None
     blocking = None
     try:
-        raw = diagnostic_bytes(value)
+        raw = combined_diagnostic_bytes(value, stage)
         phase_admit(end, clock, "diagnostic-deadline")
         blocking = file_os.get_blocking(2)
         require(type(blocking) is bool, "diagnostic-blocking")
@@ -1962,7 +2302,7 @@ def main_work(parent):
     require(re.fullmatch(r"[0-9a-f]{40}", parent.values["CANDIDATE"]), "candidate-id")
     publish(evidence / "source.txt", parent.original("source.head_tree", WORK_END), 256, WORK_END)
     parent.phase = "prepr"
-    parent.original("prepr", WORK_END)
+    prepr_original(parent)
     require(parent.original("prepr.head", WORK_END).decode("ascii").strip() == parent.values["CANDIDATE"], "prepr-head")
     require(parent.original("prepr.clean", WORK_END) == b"", "prepr-dirty")
     parent.phase = "build"
@@ -2112,6 +2452,557 @@ def main_cleanup(parent):
             all(record["closed"] is True and record["unknown"] is False for record in FILE_CUSTODY), "local-fd-unknown"
         ),
     )
+
+
+def prepr_stage_controls():
+    candidate = "1" * 40
+    context = "scope=comprehensive;full=0;plan=" + "2" * 64
+    base_keys = (
+        "head",
+        "status",
+        "compose_sha256",
+        "env_sha256",
+        "docker_version",
+        "compose_version",
+        "python_version",
+        "node_version",
+    )
+    images_keys = (*base_keys, "compose_images")
+    browser_keys = (*base_keys, "browser_config_sha256")
+    browser_images_keys = (*images_keys, "browser_config_sha256")
+    # Independent fixed expected map: each row supplies running/finished keys, yielding all33 variants.
+    variants = tuple(
+        (stage, status, keys)
+        for stage, running, finished in (
+            ("repository", base_keys, base_keys),
+            ("client", base_keys, images_keys),
+            ("stack", base_keys, images_keys),
+            ("quality", base_keys, images_keys),
+            ("generated", images_keys, images_keys),
+            ("unit", images_keys, images_keys),
+            ("e2e", images_keys, images_keys),
+            ("mcp", images_keys, images_keys),
+            ("client-unit", images_keys, images_keys),
+            ("browser", browser_keys, browser_images_keys),
+            ("image", base_keys, images_keys),
+        )
+        for status, keys in (("running", running), ("failed", finished), ("complete", finished))
+    )
+    values = {
+        "head": candidate,
+        "status": "unavailable",
+        "compose_sha256": "3" * 64,
+        "env_sha256": "missing",
+        "docker_version": "unavailable",
+        "compose_version": "",
+        "python_version": "3.13.5",
+        "node_version": "v24.0.0",
+        "compose_images": [],
+        "browser_config_sha256": "missing",
+    }
+
+    def record(status, keys):
+        return {"status": status, "context": context, "signature": {key: values[key] for key in keys}}
+
+    def encoded(records):
+        return json.dumps({"stages": records}, ensure_ascii=True).encode()
+
+    for stage, status, keys in variants:
+        actual = record(status, keys)
+        result = prepr_projection(encoded({stage: actual}), candidate)
+        wanted = ("unknown", "unknown") if status == "complete" else (stage, status)
+        require((result["stage"], result["status"]) == wanted, "control-prepr-variant")
+        if status == "complete":
+            other = "unit" if stage == "repository" else "repository"
+            other_keys = next(keys for name, disposition, keys in variants if name == other and disposition == "failed")
+            result = prepr_projection(encoded({stage: actual, other: record("failed", other_keys)}), candidate)
+            require((result["stage"], result["status"]) == (other, "failed"), "control-prepr-complete-carry")
+        wrong = record(status, keys)
+        if "compose_images" in wrong["signature"]:
+            del wrong["signature"]["compose_images"]
+        else:
+            wrong["signature"]["compose_images"] = []
+        try:
+            prepr_projection(encoded({stage: wrong}), candidate)
+        except Failure as error:
+            require(str(error) == "closed-keys", "control-prepr-variant-negative")
+        else:
+            raise Failure("control-prepr-variant-negative")
+    repository_keys = next(keys for stage, status, keys in variants if stage == "repository" and status == "failed")
+    baseline = record("failed", repository_keys)
+    positive = record("failed", repository_keys)
+    positive["signature"]["status"] = " M private-χ.py\n"
+    require(
+        prepr_projection(encoded({"repository": positive}), candidate)["stage"] == "repository", "control-prepr-utf8"
+    )
+    for records in (
+        {},
+        {"repository": record("complete", repository_keys)},
+        {"repository": baseline, "client": record("failed", (*repository_keys, "compose_images"))},
+    ):
+        require(prepr_projection(encoded(records), candidate)["stage"] == "unknown", "control-prepr-incomplete-count")
+    mutations = (
+        ("head", "4" * 40, "prepr-head"),
+        ("status", None, "prepr-status"),
+        ("status", "x" * 32769, "prepr-status"),
+        ("status", "\x00", "prepr-status"),
+        ("compose_sha256", "A" * 64, "prepr-compose"),
+        ("env_sha256", False, "prepr-digest"),
+        ("env_sha256", "unavailable", "prepr-digest"),
+        ("docker_version", "x" * 257, "prepr-version"),
+        ("node_version", "v1\n", "prepr-version"),
+        ("python_version", "3.13 5", "prepr-python"),
+        ("python_version", "", "prepr-python"),
+    )
+    rejected = []
+    for key, value, label in mutations:
+        changed = record("failed", repository_keys)
+        changed["signature"][key] = value
+        rejected.append((encoded({"repository": changed}), label))
+    for field, value, label in (
+        ("status", True, "prepr-record-status"),
+        ("context", context.replace("full=0", "full=1"), "prepr-context"),
+        ("context", context + "\n", "prepr-context"),
+        ("status", "unknown", "prepr-record-status"),
+    ):
+        changed = record("failed", repository_keys)
+        changed[field] = value
+        rejected.append((encoded({"repository": changed}), label))
+    changed = record("failed", repository_keys)
+    changed["signature"]["extra"] = None
+    rejected.append((encoded({"repository": changed}), "closed-keys"))
+    changed = record("failed", repository_keys)
+    del changed["signature"]["head"]
+    rejected.append((encoded({"repository": changed}), "closed-keys"))
+    changed = record("complete", repository_keys)
+    changed["context"] = context.replace("comprehensive", "affected")
+    rejected.append((encoded({"repository": baseline, "client": changed}), "prepr-context-drift"))
+    rejected.extend(
+        (
+            (encoded({"unknown": baseline}), "prepr-ledger-stages"),
+            (b'{"stages":{},"stages":{}}', "duplicate-key"),
+            (b'{"stages":{"repository":NaN}}', "json-constant"),
+            (b"\xef\xbb\xbf" + encoded({"repository": baseline}), "json-syntax"),
+            (b" " * 65537, "json-bound"),
+            (b'{"stages":{},"extra":null}', "closed-keys"),
+            (b'{"stages":[]}', "prepr-ledger-stages"),
+        )
+    )
+    unit_keys = next(keys for stage, status, keys in variants if stage == "unit" and status == "failed")
+    for images, label in (
+        (["sha256:" + "0" * 64], None),
+        (["sha256:" + f"{index:064x}" for index in range(128)], None),
+        (["sha256:" + "0" * 64] * 2, "prepr-images-order"),
+        (["sha256:" + "1" * 64, "sha256:" + "0" * 64], "prepr-images-order"),
+        (["sha256:" + f"{index:064x}" for index in range(129)], "prepr-images"),
+        ([None], "prepr-images"),
+        (["tag:latest"], "prepr-images"),
+        (None, "prepr-images"),
+    ):
+        changed = record("failed", unit_keys)
+        changed["signature"]["compose_images"] = images
+        raw = encoded({"unit": changed})
+        if label is None:
+            require(prepr_projection(raw, candidate)["stage"] == "unit", "control-prepr-images-positive")
+        else:
+            rejected.append((raw, label))
+    for raw, label in rejected:
+        try:
+            prepr_projection(raw, candidate)
+        except Failure as error:
+            if str(error) != label:
+                raise
+        else:
+            raise Failure("control-prepr-grammar-negative")
+    primary = {
+        "schema": FAILURE_SCHEMA,
+        "phase": "prepr",
+        "operation": "prepr",
+        "exit_code": 1,
+        "native_settled": True,
+        "exception_class": "guard",
+    }
+    stage = {"schema": PREPR_SCHEMA, "stage": "repository", "status": "failed"}
+    require(
+        combined_diagnostic_bytes(primary, stage) == diagnostic_bytes(primary) + prepr_stage_bytes(stage),
+        "control-prepr-combined",
+    )
+    for invalid in ({}, {**stage, "stage": True}, {**stage, "status": "unknown"}, {**stage, "schema": None}):
+        require(combined_diagnostic_bytes(primary, invalid) == diagnostic_bytes(primary), "control-prepr-primary-only")
+    parent = Parent()
+    parent.phase = "prepr"
+    native = Native("prepr", WORK_END, 1)
+    native.process, native.acquired, native.settled, native.code = object(), True, True, 1
+    parent.natives.append(native)
+    error = Failure("synthetic")
+    freeze_failure(parent, error, native)
+    require(prepr_eligible(parent, native, error), "control-prepr-eligible")
+    for field, value in (
+        ("unknown", True),
+        ("acquired", False),
+        ("settled", False),
+        ("code", 0),
+        ("code", True),
+        ("label", "target"),
+    ):
+        old = getattr(native, field)
+        setattr(native, field, value)
+        require(not prepr_eligible(parent, native, error), "control-prepr-ineligible")
+        setattr(native, field, old)
+    require(
+        not prepr_eligible(parent, native, Control())
+        and not prepr_eligible(parent, Native("prepr", WORK_END, 1), error),
+        "control-prepr-first-object",
+    )
+
+
+def prepr_reader_controls():
+    # Exact reviewed source is inert bytes only: no import/exec or hash-binding override.
+    helper_bytes = (
+        b'#!/usr/bin/env python3\n"""Small, dependency-free evidence ledger for resumable p'
+        b're-PR stages."""\n\nfrom __future__ import annotations\n\nimport argparse\nimport has'
+        b"hlib\nimport json\nimport os\nimport subprocess\nimport sys\nimport tempfile\nfrom pat"
+        b"hlib import Path\n\n\ndef run(command: list[str], cwd: Path) -> str:\n    try:\n     "
+        b"   return subprocess.check_output(command, cwd=cwd, text=True, stderr=subprocess"
+        b".DEVNULL).strip()\n    except (OSError, subprocess.CalledProcessError):\n        r"
+        b'eturn "unavailable"\n\n\ndef digest(path: Path) -> str:\n    if not path.is_file():\n'
+        b'        return "missing"\n    h = hashlib.sha256()\n    with path.open("rb") as st'
+        b'ream:\n        for chunk in iter(lambda: stream.read(1024 * 1024), b""):\n        '
+        b"    h.update(chunk)\n    return h.hexdigest()\n\n\ndef snapshot(repo: Path, compose_"
+        b"file: str, env_file: str, stage: str | None = None) -> dict[str, object]:\n    st"
+        b'atus = run(["git", "status", "--porcelain", "--untracked-files=all"], repo)\n    '
+        b'head = run(["git", "rev-parse", "HEAD"], repo)\n    command = ["docker", "compose'
+        b'", "-f", compose_file]\n    profile = {"client": "client-check", "client-unit": "'
+        b'client-check", "browser": "client", "mcp": "test"}.get(stage)\n    if profile:\n  '
+        b'      command += ["--profile", profile]\n    compose = run([*command, "config"], '
+        b'repo)\n    names = run([*command, "config", "--images"], repo)\n    if stage == "i'
+        b'mage" and names != "unavailable":\n        names += f"\\nbifrost-local-api-candida'
+        b'te:{head[:12]}"\n    # Resolve configured tags, not just running containers: anot'
+        b"her checkout can\n    # rebuild a shared test-image tag between two local gate in"
+        b'vocations.\n    images = run(["docker", "image", "inspect", "--format", "{{.Id}}"'
+        b', *names.splitlines()], repo) if names and names != "unavailable" else "unavaila'
+        b'ble"\n    return {\n        "head": head,\n        "status": status,\n        "compo'
+        b'se_sha256": hashlib.sha256(compose.encode()).hexdigest(),\n        "compose_avail'
+        b'able": compose != "unavailable",\n        "compose_images": sorted(set(images.spl'
+        b'itlines())) if images != "unavailable" else [],\n        "env_sha256": digest(rep'
+        b'o / env_file),\n        "docker_version": run(["docker", "version", "--format", "'
+        b'{{.Server.Version}}"], repo),\n        "compose_version": run(["docker", "compose'
+        b'", "version", "--short"], repo),\n        "python_version": sys.version.split()[0'
+        b'],\n        "node_version": run(["node", "--version"], repo),\n        "browser_co'
+        b'nfig_sha256": digest(repo / "client" / "playwright.config.ts"),\n    }\n\n\ndef sign'
+        b'ature(value: dict[str, object], stage: str) -> dict[str, object]:\n    keys = {"h'
+        b'ead", "status", "compose_sha256", "env_sha256", "docker_version", "compose_versi'
+        b'on", "python_version", "node_version"}\n    if stage != "repository":\n        key'
+        b's.add("compose_images")\n    if stage == "browser":\n        keys.update({"compose'
+        b'_images", "browser_config_sha256"})\n    return {key: value[key] for key in sorte'
+        b"d(keys)}\n\n\ndef invariant_signature(value: dict[str, object], stage: str) -> dict"
+        b'[str, object]:\n    result = signature(value, stage)\n    if stage in {"client", "'
+        b'stack", "quality", "browser", "image"}:\n        result.pop("compose_images", Non'
+        b"e)\n    return result\n\n\ndef read_state(path: Path) -> dict[str, object]:\n    try:"
+        b'\n        return json.loads(path.read_text(encoding="utf-8"))\n    except (OSError'
+        b", json.JSONDecodeError):\n        return {}\n\n\ndef atomic_write(path: Path, value:"
+        b" dict[str, object]) -> None:\n    path.parent.mkdir(parents=True, exist_ok=True)\n"
+        b'    fd, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)\n  '
+        b'  try:\n        with os.fdopen(fd, "w", encoding="utf-8") as stream:\n            '
+        b'json.dump(value, stream, sort_keys=True, indent=2)\n            stream.write("\\n"'
+        b")\n        os.replace(temporary, path)\n    finally:\n        if os.path.exists(tem"
+        b"porary):\n            os.unlink(temporary)\n\n\ndef main() -> int:\n    parser = argp"
+        b'arse.ArgumentParser()\n    parser.add_argument("action", choices=["snapshot", "st'
+        b'art", "success", "failed", "reuse", "fresh"])\n    parser.add_argument("--repo", '
+        b'required=True, type=Path)\n    parser.add_argument("--state", required=True, type'
+        b'=Path)\n    parser.add_argument("--stage")\n    parser.add_argument("--context", d'
+        b'efault="")\n    parser.add_argument("--compose-file", default="docker-compose.tes'
+        b't.yml")\n    parser.add_argument("--env-file", default=".env.test")\n    args = pa'
+        b"rser.parse_args()\n    current = snapshot(args.repo, args.compose_file, args.env_"
+        b'file, args.stage)\n\n    if args.action == "snapshot":\n        print(json.dumps(cu'
+        b'rrent, sort_keys=True))\n        return 0\n    if args.action == "fresh":\n        '
+        b"args.state.unlink(missing_ok=True)\n        return 0\n    if not args.stage:\n     "
+        b'   parser.error("--stage is required for stage actions")\n    state = read_state('
+        b'args.state)\n    stages = state.setdefault("stages", {})\n    if args.action == "s'
+        b'uccess" and current["status"]:\n        return 1\n    previous = stages.get(args.s'
+        b'tage, {})\n    if args.action == "success" and previous.get("signature") != invar'
+        b'iant_signature(current, args.stage):\n        return 1\n    if args.action == "reu'
+        b'se":\n        record = stages.get(args.stage, {})\n        available = current["co'
+        b'mpose_available"] and current["docker_version"] != "unavailable" and current["co'
+        b'mpose_version"] != "unavailable" and current["node_version"] != "unavailable"\n  '
+        b'      if args.stage != "repository":\n            available = available and bool('
+        b'current["compose_images"])\n        reusable = available and record.get("status")'
+        b' == "complete" and record.get("context") == args.context and record.get("signatu'
+        b're") == signature(current, args.stage) and not current["status"]\n        return '
+        b"0 if reusable else 1\n    stored_signature = invariant_signature(current, args.st"
+        b'age) if args.action == "start" else signature(current, args.stage)\n    stages[ar'
+        b'gs.stage] = {"status": {"start": "running", "success": "complete", "failed": "fa'
+        b'iled"}[args.action], "context": args.context, "signature": stored_signature}\n   '
+        b' atomic_write(args.state, state)\n    return 0\n\n\nif __name__ == "__main__":\n    r'
+        b"aise SystemExit(main())\n"
+    )
+    require(
+        len(helper_bytes) == 6024 and hashlib.sha256(helper_bytes).hexdigest() == PREPR_HELPER_HASH,
+        "control-prepr-fixture",
+    )
+    candidate = "1" * 40
+    context = "scope=affected;full=0;plan=" + "2" * 64
+    ledger_bytes = json.dumps(
+        {
+            "stages": {
+                "repository": {
+                    "status": "failed",
+                    "context": context,
+                    "signature": {
+                        "head": candidate,
+                        "status": "",
+                        "compose_sha256": "3" * 64,
+                        "env_sha256": "missing",
+                        "docker_version": "unavailable",
+                        "compose_version": "",
+                        "python_version": "3.13.5",
+                        "node_version": "",
+                    },
+                }
+            }
+        }
+    ).encode()
+
+    class Fact:
+        def __init__(self, inode, mode, size=0):
+            self.st_dev, self.st_ino = 1, inode
+            self.st_uid = self.st_gid = 1001
+            self.st_mode, self.st_size = mode, size
+            self.st_nlink = 1
+            self.st_mtime_ns = self.st_ctime_ns = 0
+
+    class Files:
+        def __init__(self, locks=True, preexisting=False):
+            self.entries = {}
+            for index, path in enumerate(
+                ("/repo", "/repo/.git", "/repo/scripts", "/repo/scripts/lib", "/repo/.git/bifrost-test-locks")
+            ):
+                self.entries[path] = Fact(index + 1, stat.S_IFDIR | 0o755)
+            self.data = {"/repo/scripts/lib/pre_pr_stage_evidence.py": helper_bytes}
+            self.entries["/repo/scripts/lib/pre_pr_stage_evidence.py"] = Fact(7, stat.S_IFREG | 0o644, 6024)
+            if not locks:
+                del self.entries["/repo/.git/bifrost-test-locks"]
+            if preexisting:
+                self.install()
+            self.fds, self.offsets, self.opened, self.closed = {}, {}, [], []
+            self.flags = []
+            self.open_failure = self.stat_failure = None
+            self.close_failures = {}
+            self.read_failure = None
+            self.partial = self.overflow = self.drift_read = False
+            self.stat_counts = {}
+            self.replace_before = None
+
+        def geteuid(self):
+            return 1001
+
+        def getegid(self):
+            return 1001
+
+        def path(self, name, dir_fd):
+            return name if dir_fd is None else self.fds[dir_fd][0] + "/" + name
+
+        def install(self):
+            self.entries.setdefault("/repo/.git/bifrost-test-locks", Fact(6, stat.S_IFDIR | 0o755))
+            path = "/repo/.git/bifrost-test-locks/pre-pr-stages.json"
+            self.entries[path] = Fact(8, stat.S_IFREG | 0o600, len(ledger_bytes))
+            self.data[path] = ledger_bytes
+
+        def open(self, name, flags, dir_fd=None):
+            path = self.path(name, dir_fd)
+            if path == self.open_failure:
+                raise OSError("synthetic-open")
+            if path not in self.entries:
+                raise FileNotFoundError
+            fd = len(self.opened) + 10
+            self.fds[fd] = path, self.entries[path]
+            self.offsets[fd] = 0
+            self.opened.append(fd)
+            self.flags.append(flags)
+            return fd
+
+        def get_inheritable(self, fd):
+            require(fd in self.fds, "control-prepr-acquired")
+            return False
+
+        def fstat(self, fd):
+            if self.fds[fd][0] == self.stat_failure:
+                raise OSError("synthetic-fstat-after-fd")
+            return self.fds[fd][1]
+
+        def stat(self, name, dir_fd=None, follow_symlinks=False):
+            require(follow_symlinks is False, "control-prepr-no-follow")
+            path = self.path(name, dir_fd)
+            self.stat_counts[path] = self.stat_counts.get(path, 0) + 1
+            if path == self.replace_before and self.stat_counts[path] == 2:
+                self.replace(path)
+            if path not in self.entries:
+                raise FileNotFoundError
+            return self.entries[path]
+
+        def replace(self, path):
+            old = self.entries[path]
+            new = Fact(old.st_ino + 100, old.st_mode, old.st_size)
+            self.entries[path] = new
+
+        def lseek(self, fd, offset, whence):
+            require(offset == 0 and whence == os.SEEK_SET, "control-prepr-seek")
+            self.offsets[fd] = 0
+            return 0
+
+        def read(self, fd, count):
+            path, fact = self.fds[fd]
+            if path.endswith("pre-pr-stages.json"):
+                if self.read_failure is not None:
+                    raise self.read_failure
+                if self.partial:
+                    return b""
+                if self.overflow:
+                    return b"x" * count
+                if self.drift_read:
+                    fact.st_mtime_ns += 1
+            raw = self.data[path][self.offsets[fd] : self.offsets[fd] + count]
+            self.offsets[fd] += len(raw)
+            return raw
+
+        def close(self, fd):
+            self.closed.append(fd)
+            path = self.fds[fd][0]
+            if path in self.close_failures:
+                raise self.close_failures[path]
+
+    def composed(files, mutation=None, expected=None, clock=None):
+        isolated = Parent()
+        isolated.phase = "prepr"
+        native = Native("prepr", WORK_END, 1)
+        native.process, native.acquired, native.settled, native.code = object(), True, True, 1
+        isolated.natives.append(native)
+        original = Failure("synthetic-prepr") if expected is None else expected
+        calls = []
+        records = []
+        reader = PreprLedger("/repo", candidate, files, (lambda: 0) if clock is None else clock, records)
+
+        def original_command(label, end):
+            calls.append((label, end))
+            files.install()
+            if mutation is not None:
+                mutation(files, native)
+            freeze_failure(isolated, original, native)
+            raise original
+
+        isolated.original = original_command
+        try:
+            prepr_execute(isolated, reader)  # Actual prepare→original command→observe→independent close body.
+        except BaseException as error:
+            if error is not original:
+                raise
+        else:
+            raise Failure("control-prepr-first-error")
+        require(calls == [("prepr", WORK_END)], "control-prepr-literal-boundary")
+        require(
+            sorted(files.closed) == sorted(files.opened) and len(files.closed) == len(set(files.closed)),
+            "control-prepr-all-once-close",
+        )
+        require(not files.closed or files.fds[files.closed[-1]][0] == "/repo", "control-prepr-root-last")
+        require(
+            all(flags & os.O_CLOEXEC and flags & os.O_NOFOLLOW for flags in files.flags), "control-prepr-noninherited"
+        )
+        before = list(files.closed)
+        require(reader.close() == [] and files.closed == before, "control-prepr-no-close-retry")
+        if (
+            reader.observation_error is not None
+            and not isinstance(reader.observation_error, Failure)
+            and reader.observation_error is not files.read_failure
+        ):
+            raise reader.observation_error.with_traceback(reader.observation_error.__traceback__)
+        for error in isolated.cleanup_errors:
+            if not any(error is expected for expected in files.close_failures.values()):
+                raise error.with_traceback(error.__traceback__)
+        return isolated, records
+
+    for locks in (True, False):
+        parent, records = composed(Files(locks=locks))
+        require(
+            parent.prepr_stage == {"schema": PREPR_SCHEMA, "stage": "repository", "status": "failed"},
+            "control-prepr-reader-positive",
+        )
+        require(all(record["closed"] and not record["unknown"] for record in records), "control-prepr-closure-positive")
+    parent, _records = composed(Files(preexisting=True))
+    require(parent.prepr_stage["stage"] == "unknown", "control-prepr-old-state")
+    for path in ("/repo", "/repo/.git", "/repo/.git/bifrost-test-locks"):
+        files = Files()
+        files.replace_before = path
+        parent, _records = composed(files)
+        require(parent.prepr_stage["stage"] == "unknown", "control-prepr-before-replacement")
+        parent, _records = composed(Files(), lambda files, _native, path=path: files.replace(path))
+        require(parent.prepr_stage["stage"] == "unknown", "control-prepr-after-replacement")
+    for mode in (stat.S_IFREG | 0o644, stat.S_IFLNK | 0o777, stat.S_IFDIR | 0o777, stat.S_IFDIR | 0o2755):
+        files = Files()
+        files.entries["/repo/.git"].st_mode = mode
+        parent, _records = composed(files)
+        require(parent.prepr_stage["stage"] == "unknown", "control-prepr-layout")
+    for path in ("/repo/scripts/lib/pre_pr_stage_evidence.py", "/repo/.git/bifrost-test-locks"):
+        for fault in ("open_failure", "stat_failure"):
+            files = Files()
+            setattr(files, fault, path)
+            parent, _records = composed(files)
+            require(parent.prepr_stage["stage"] == "unknown", "control-prepr-partial-acquisition")
+    for field, value in (
+        ("st_mode", stat.S_IFLNK | 0o600),
+        ("st_mode", stat.S_IFREG | 0o644),
+        ("st_nlink", 2),
+        ("st_uid", 0),
+        ("st_gid", 0),
+        ("st_size", 65537),
+    ):
+
+        def changed(files, _native, field=field, value=value):
+            setattr(files.entries["/repo/.git/bifrost-test-locks/pre-pr-stages.json"], field, value)
+
+        parent, _records = composed(Files(), changed)
+        require(parent.prepr_stage["stage"] == "unknown", "control-prepr-file-metadata")
+    for field in ("partial", "overflow", "drift_read"):
+        parent, _records = composed(Files(), lambda files, _native, field=field: setattr(files, field, True))
+        require(parent.prepr_stage["stage"] == "unknown", "control-prepr-read-refusal")
+    for original in (Control(), SystemExit(), KeyboardInterrupt()):
+        parent, _records = composed(Files(), expected=original)
+        require(parent.prepr_stage is None, "control-prepr-control-ineligible")
+    for field, value in (("code", 0), ("unknown", True), ("settled", False), ("acquired", False)):
+        parent, _records = composed(
+            Files(), lambda _files, native, field=field, value=value: setattr(native, field, value)
+        )
+        require(parent.prepr_stage is None, "control-prepr-native-ineligible")
+    moments = [0]
+
+    def expired(_files, _native):
+        moments[0] = WORK_END + 1
+
+    parent, _records = composed(Files(), expired, clock=lambda: moments[0])
+    require(parent.prepr_stage is None, "control-prepr-expired")
+    for secondary in (Control(), SystemExit(), KeyboardInterrupt()):
+
+        def interrupted(files, _native, secondary=secondary):
+            files.read_failure = secondary
+            files.close_failures["/repo/scripts/lib/pre_pr_stage_evidence.py"] = secondary
+            files.close_failures["/repo/.git"] = secondary
+
+        parent, records = composed(Files(), interrupted)
+        require(
+            parent.prepr_stage["stage"] == "unknown" and parent.cleanup_errors == [secondary, secondary],
+            "control-prepr-secondary-retention",
+        )
+        require(sum(record["unknown"] for record in records) == 2, "control-prepr-close-unknown")
+
+    def helper_drift(files, _native):
+        path = "/repo/scripts/lib/pre_pr_stage_evidence.py"
+        files.data[path] = b"x" + helper_bytes[1:]
+
+    parent, _records = composed(Files(), helper_drift)
+    require(parent.prepr_stage["stage"] == "unknown", "control-prepr-helper-hash-drift")
+    parent, _records = composed(
+        Files(), lambda files, _native: files.replace("/repo/scripts/lib/pre_pr_stage_evidence.py")
+    )
+    require(parent.prepr_stage["stage"] == "unknown", "control-prepr-helper-path-drift")
 
 
 def publication_diagnostic_controls():
@@ -2377,6 +3268,24 @@ def publication_diagnostic_controls():
         len(actual.writes) == 1 and actual.events == ["get", ("set", False), "write", ("set", True)],
         "control-diagnostic-one-write",
     )
+    stage = {"schema": PREPR_SCHEMA, "stage": "repository", "status": "failed"}
+    for optional in (stage, {"schema": "unknown"}, None):
+        actual = DiagnosticOS()
+        emit_diagnostic(baseline, 10, actual, lambda: 0, optional)
+        expected_raw = diagnostic_bytes(baseline) + (prepr_stage_bytes(stage) if optional is stage else b"")
+        require(
+            actual.writes == [expected_raw] and actual.events == ["get", ("set", False), "write", ("set", True)],
+            "control-prepr-one-combined-or-primary-write",
+        )
+    actual = DiagnosticOS("partial")
+    try:
+        emit_diagnostic(baseline, 10, actual, lambda: 0, stage)
+    except Failure as error:
+        if str(error) != "diagnostic-write":
+            raise
+    else:
+        raise Failure("control-prepr-combined-partial")
+    require(len(actual.writes) == 1 and actual.events[-1] == ("set", True), "control-prepr-combined-no-retry")
     for fault in ("get", "set", "write"):
         for primary in (BlockingIOError(), Control(), SystemExit(), KeyboardInterrupt()):
             actual = DiagnosticOS(fault, primary, Control())
@@ -2435,6 +3344,8 @@ def publication_diagnostic_controls():
 
 def source_controls():
     """Inert same-helper drift controls; no subprocess/OS mutation in these cases."""
+    prepr_stage_controls()
+    prepr_reader_controls()
     publication_diagnostic_controls()
     expected = Failure("synthetic")
     actual = Control()
@@ -3324,7 +4235,7 @@ def entry():
     if first is not None:
         if parent.failure_snapshot is not None and not parent.diagnostic_failed:
             try:
-                emit_diagnostic(parent.failure_snapshot, PUBLICATION_END, os, time.monotonic)
+                emit_diagnostic(parent.failure_snapshot, PUBLICATION_END, os, time.monotonic, parent.prepr_stage)
             except BaseException:
                 parent.diagnostic_failed = True  # No delivery claim or replacement of the retained first error.
         # No private exception/native payload is printed or reclassified as success.
