@@ -96,6 +96,38 @@ tests or the complete Result suite. Hosted runner disposal is its builder
 lifecycle boundary; intermediate build layers are not independently certified
 empty. It does not replace normal Rust CI or literal pre-PR verification.
 
+## Consumed-COMMIT controller: first runtime run failed
+
+The separately reviewed controller candidate
+`016f2aee773bb0ac8fa52835ce3c5db1608f7c15`, tree
+`51b93c752406d39d3a78167c631698611c5a0900`, was committed and pushed once.
+[Run 37196588531](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37196588531),
+attempt 1, job 111419660646, completed with failure. The characterization step
+failed and the upload of the three closed evidence artifacts succeeded.
+
+The producer stops at `git.origin`. Only `git.version` and `git.origin` started;
+both exited 0 with complete native/EOF/group/FD settlement. All four source
+identity fields remain null. No pre-PR, build, stack, frontend, SQL, actor, fault
+or control execution is evidenced. Native success does not prove output admission.
+The actual primary cause remains unknown; the safe receipts omit private output
+and the original exception. A source-based hypothesis is not a runtime diagnosis.
+
+Disposal records `primary_exit=1`, `cleanup_exit=1`, `complete=false`, with 2/2
+processes settled. Captures are closed and removed; credentials are disposed.
+Files report 9 admitted, 8 removed, 1 remaining and 1 unknown. Network and volume
+counts remain null. This does not prove complete disposal or an empty environment.
+Both fault lanes are entirely null and `passed=false`; Rust/Python transaction
+behavior remains untested by this run.
+
+Artifact 11301581371 supplies the three bounded, single-final-LF safe files.
+The GitHub-reported ZIP digest was observed, not independently matched to a local
+ZIP. Report/inspection fingerprints:
+`73e4e0b9459c4b3cda7453630fa19738a9b96a3699fbc3ffc26789afb8eabdac`,
+`f1c9b042ef92bb5804356514275cb28fbab4b79d4bb17bd1a19d50b597e8728f`.
+The first-run release is exhausted. No second run, rerun, dispatch, fix/push cycle,
+PR, merge or deployment follows. Read-only source diagnosis and independent
+packages may continue. This failure does not revive any older stopped campaign.
+
 ## Remaining architectural acceptance
 
 Authority decisions M1–M5 and current installed-schema writer closure remain

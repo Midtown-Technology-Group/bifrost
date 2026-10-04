@@ -1,12 +1,13 @@
 # Rust MVP: COMMIT-loss controller contract
 
-Status: frozen design for source authoring only, 2026-10-04. The controller is
-being implemented in `test/workflow-commit-fault-controller-source`, based on
+Status: corrected controller source reviewed, 2026-10-04. The controller in
+`test/workflow-commit-fault-controller-source` is based on
 `9b54e910e8e5380150f8ee26cfa1f13e5bec7424`, carrying the reviewed
 prerequisites on the earlier `c911b46baa7260ed1492bfbe5e1295c6db9eb410`
-source-check baseline. Full source review and supported
-execution remain required. This document grants no runtime, authority, role,
-schema, merge, deployment or vendor-use permission.
+source-check baseline. Root and independent source review have accepted the
+corrected frozen package. A separate architect release permits its first bounded
+supported CI run; no runtime acceptance is claimed. This document grants no
+authority, role, schema, merge, deployment or vendor-use permission.
 
 The selected experiment runs the real Python consumer and Rust Result operation
 against the existing Alembic-managed schema. For each lane it must witness a
@@ -18,7 +19,7 @@ HTTP, event, mixed-writer or runtime-extraction parity.
 The sections below retain the exact reviewed design packets. Their statements
 requiring distinct design review record the freeze gate that has now passed;
 the architect separately released source authoring after each review. Those
-reviews do not discharge full source or runtime review. The current native
+design reviews do not discharge source or runtime review. The current native
 roster contains 217 labels (165 normal, 52 failure), with 18 frontend probes.
 The metadata-profile section records its original two config-render argv
 amendments. The current selections below supersede its roster lineage; the
@@ -213,19 +214,50 @@ This changes count interpretation explicitly before execution; it waives no
 observed failure and changes no command, clock, artifact size or business lane.
 
 The architect retains this finite experiment despite its substantial supervision
-cost. The current controller is 6532 lines; this is a maintenance burden, not a
+cost. The corrected controller is 6872 lines; this is a maintenance burden, not a
 Rust benefit. Source review and the first supported invocation must test its
 feasibility within existing bounds. Infrastructure failure is not evidence that
 Rust atomicity failed, and it must not trigger indefinite blind retries or budget
 growth. Independent cost review fingerprint:
 `8e2e827c22108531420aa54bbccc64547515ce48be4c9bc25176be9cccdbbd5e`.
 
-All selections above permit bounded source authoring only. Frozen parent source
-`2b5f6e00bc3cc716097e5fbfe4bf87d1924f2b208bb02e7bb8f9635291f7bcde`
-still blocks completion conservatively and needs the selected per-identity scope
-and controls before a new exact-file freeze. Full independent source review,
-supported execution, actual custody and cleanup remain outstanding. The earlier
-green 27-test run does not qualify these newer source changes.
+The corrected frozen conductor is
+`5ce92579ce807f2c2ccb127de57970d86a1500fa2e4d0a3ab90899a865b266a6`;
+the workflow remains
+`9ddb9c3831e915b30ae079756a2e04fd2274a747130a7d84f7dd0c2057c05e3b`.
+Full prior source review and the complete correction diff cover the actual
+result-envelope validator, exact kernel/top/container PID1 joins, independent
+socket close after selector-unregister failure, and public-only JSON serialization
+with one final LF included in the cap. Same-helper controls are authored but
+unexecuted. The selected per-identity and same-image volume joins are included.
+Private IPC encoding, error classification, 217 native argv templates, clocks,
+caps, schemas and the two 71-cell fault lanes remain unchanged.
+
+Root full-source review fingerprint:
+`6b10afc64628f190816f752badfc2fe4cdf7d7d5505f92136a06fae431307de3`.
+Corrected independent source review fingerprint:
+`13d185f0becded19ea612effc0ab89c2d596f850c575dda087a2c5c38b29171c`.
+Root actual AST/argv/static inspection fingerprint:
+`dbefdd08d2bca45edcaebc0bb5317280d06018defa4a1373dd23c989cbd8bbc9`.
+
+Separate first-supported-run release fingerprint:
+`119686a21ccc3584f210b0289792f352b832f4a3000cdd0b74fb0df8eda7bc4a`.
+It permits one clean two-file commit and push of this exact branch to the MTG
+repository, triggering its supported push-only workflow. Genuine pre-PR must
+pass before the unchanged controlled target. No rerun, dispatch, second run,
+automatic fix/push cycle, limit extension or revival of a stopped campaign is
+included. A failed or unavailable gate remains blocking. No PR may open before
+genuine supported pre-PR evidence. Actual installed qualification, committed fate,
+all 71 cells, original deadline fit, custody, cleanup and publication remain
+outstanding. The earlier green 27-test run does not qualify this newer package.
+
+That one release has now been consumed by candidate
+`016f2aee773bb0ac8fa52835ce3c5db1608f7c15`, tree
+`51b93c752406d39d3a78167c631698611c5a0900`.
+[Run 37196588531](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37196588531),
+attempt 1, failed at producer stage `git.origin`. No fault execution is evidenced;
+the actual primary cause remains unknown. Cleanup is incomplete. No second run
+or repair/push cycle is released. See the linked verification disposition.
 
 ---
 
