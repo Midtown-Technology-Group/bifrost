@@ -402,7 +402,10 @@ Node `24.21.0` and Python `3.12.3`. Supported evidence receipt SHA-256 is
 `6f2a487676921b0c783a8ec0117af52aedd8cabb40f54a9db5d7143d921628c5`;
 the extracted actual summary SHA-256 is
 `5c4eca3c58c189c2a6b08e1a26f88836fd859e386c0dfac9379369440572a883`.
-Distinct evidence review remains pending at this checkpoint.
+Distinct review independently joined the committed blobs, live GitHub run/job,
+full log and exact summary, accepting only this bounded executed-control proof.
+Its receipt SHA-256 is
+`90f9bac6b634868ebb022e34659eb72190469b360a1cc116f120619c52633808`.
 
 This proves those actual helpers and inert controls for this supported profile.
 It does not prove Python/Rust response, database or event parity, production
