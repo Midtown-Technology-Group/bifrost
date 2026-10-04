@@ -20,6 +20,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import time
 import tomllib
 import uuid
@@ -1427,6 +1428,7 @@ def parse_blobs(raw, requested, tree):
 
 def source_preflight(controller):
     controller.begin("prepr")
+    primary_diagnostic_controls()
     controller.run("git_fetch_main", ["git", "fetch", "--no-tags", "origin", "main"])
     identity, _, _ = controller.run(
         "git_candidate_identity", ["git", "rev-parse", "--show-toplevel", "HEAD", "HEAD^{tree}", "origin/main"]
@@ -5953,6 +5955,132 @@ def primary_exit(error):
     return 1
 
 
+PRIMARY_DIAGNOSTIC_LABELS = frozenset(
+    {
+        "read-bound",
+        "duplicate-json",
+        "nonfinite-json",
+        "compose-selected-source",
+        "compose-selected-environment",
+        "dsn-original-profile",
+        "dsn-original-supported-options",
+        "dsn-principal-profile",
+        "compose-api-source-recipe",
+    }
+)
+
+
+def primary_diagnostic_projection(first):
+    if first is None:
+        return None
+    kind, label = "unknown", None
+    if type(first) is Failure and type(first.label) is str and first.label in PRIMARY_DIAGNOSTIC_LABELS:
+        kind, label = "guard", first.label
+    elif type(first) in {CapturedSignal, KeyboardInterrupt, SystemExit}:
+        kind = "control"
+    return {"schema": "bifrost.test.workflow-result-primary-failure/v1", "kind": kind, "label": label}
+
+
+def emit_primary_diagnostic(first, writer, check_deadline):
+    # Diagnostic availability cannot replace the already selected original error or exit.
+    try:
+        value = primary_diagnostic_projection(first)
+        if value is None:
+            return first
+        check_deadline()
+        raw = encode(value) + b"\n"
+        require(len(raw) <= 512 and raw.isascii(), "primary-diagnostic-bound")
+        text = raw.decode("ascii")
+        check_deadline()
+        require(writer.write(text) == len(text), "primary-diagnostic-short-write")
+        check_deadline()
+        writer.flush()
+        check_deadline()
+    except BaseException:
+        pass
+    return first
+
+
+def primary_diagnostic_controls():
+    class FailureSubclass(Failure):
+        pass
+
+    class SignalSubclass(CapturedSignal):
+        pass
+
+    class KeyboardSubclass(KeyboardInterrupt):
+        pass
+
+    class SystemExitSubclass(SystemExit):
+        pass
+
+    class Writer:
+        def __init__(self, mode=None):
+            self.mode = mode
+            self.lines = []
+            self.flushes = 0
+
+        def write(self, value):
+            self.lines.append(value)
+            if self.mode == "write":
+                raise KeyboardInterrupt()
+            return len(value) - (self.mode == "short")
+
+        def flush(self):
+            self.flushes += 1
+            if self.mode == "flush":
+                raise SystemExit()
+
+    def no_deadline():
+        return None
+
+    for label in sorted(PRIMARY_DIAGNOSTIC_LABELS):
+        original = Failure(label)
+        projected = primary_diagnostic_projection(original)
+        require(projected["kind"] == "guard" and projected["label"] == label, "primary-diagnostic-control")
+        writer = Writer()
+        require(emit_primary_diagnostic(original, writer, no_deadline) is original, "primary-diagnostic-control")
+        require(
+            len(writer.lines) == 1
+            and len(writer.lines[0].encode("ascii")) <= 512
+            and writer.lines[0].endswith("\n")
+            and writer.flushes == 1,
+            "primary-diagnostic-control",
+        )
+    for original in (
+        Failure("unknown"),
+        Failure("secret-like-untrusted-value"),
+        Failure(7),
+        FailureSubclass("read-bound"),
+        ValueError(),
+        SignalSubclass(15),
+        KeyboardSubclass(),
+        SystemExitSubclass(),
+    ):
+        projected = primary_diagnostic_projection(original)
+        require(projected["kind"] == "unknown" and projected["label"] is None, "primary-diagnostic-control")
+    for original in (CapturedSignal(15), KeyboardInterrupt(), SystemExit()):
+        projected = primary_diagnostic_projection(original)
+        require(projected["kind"] == "control" and projected["label"] is None, "primary-diagnostic-control")
+    for original in (Failure("read-bound"), CapturedSignal(15), KeyboardInterrupt(), SystemExit()):
+        selected_exit = primary_exit(original)
+        for mode in ("write", "short", "flush"):
+            writer = Writer(mode)
+            require(emit_primary_diagnostic(original, writer, no_deadline) is original, "primary-diagnostic-control")
+            require(primary_exit(original) == selected_exit and len(writer.lines) == 1, "primary-diagnostic-control")
+
+        def expired():
+            raise Failure("deadline")
+
+        writer = Writer()
+        require(emit_primary_diagnostic(original, writer, expired) is original, "primary-diagnostic-control")
+        require(not writer.lines and not writer.flushes, "primary-diagnostic-control")
+    writer = Writer()
+    require(primary_diagnostic_projection(None) is None, "primary-diagnostic-control")
+    require(emit_primary_diagnostic(None, writer, no_deadline) is None, "primary-diagnostic-control")
+    require(not writer.lines and not writer.flushes, "primary-diagnostic-control")
+
+
 def disposal_record(controller):
     processes = {
         "started": sum(session["process"] is not None for session in controller.sessions),
@@ -6197,6 +6325,7 @@ def main():
             except BaseException as error:
                 if first is None:
                     first = error
+    emit_primary_diagnostic(first, sys.stdout, lambda: deadline(WHOLE_END))
     return primary_exit(first)
 
 
