@@ -190,7 +190,7 @@ class TestWrite:
                     "release_id": "sha256:" + "a" * 64,
                     "message": (
                         "path 'modules/vendor.py' is governed by active "
-                        "workspace-release-v1; use `bifrost promote`"
+                        "workspace-release-v1; use reviewed Solution delivery"
                     ),
                 }
             },
@@ -203,7 +203,7 @@ class TestWrite:
         )
 
         assert result.exit_code == 4
-        assert "use `bifrost promote`" in result.output
+        assert "use reviewed Solution delivery" in result.output
         assert "merge the changes" not in result.output
 
     def test_writes_from_stdin_when_dash(self) -> None:

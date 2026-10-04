@@ -179,7 +179,7 @@ def _print_http_error(exc: httpx.HTTPStatusError) -> _ExitCode:
                 "message",
                 "Workspace source is governed by the immutable Live release.",
             ),
-            "Use `bifrost promote` with reviewed protected-main source.",
+            "Use reviewed Solution delivery with reviewed protected-main source.",
         ]
         _emit_error(payload, human)
         return 4

@@ -1109,7 +1109,7 @@ async def _build_signed_url(
                     "path": request.path,
                     "message": (
                         "Presigned PUT is not supported for shared Workspace "
-                        "source; use a guarded file write or `bifrost promote`."
+                        "source; use a guarded file write or reviewed Solution delivery."
                     ),
                 },
             )
@@ -1385,7 +1385,7 @@ async def preview_workspace_file_impact(
                     severity="blocker" if is_mutation else "info",
                     message=(
                         f"active workspace-release-v1 {release_view.release.release_id} "
-                        "is the immutable Live authority; use `bifrost promote` "
+                        "is the immutable Live authority; use reviewed Solution delivery "
                         "for reviewed source changes"
                     ),
                     path=result.path,

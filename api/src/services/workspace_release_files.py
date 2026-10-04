@@ -32,7 +32,7 @@ class WorkspaceReleasePathGoverned(RuntimeError):
         self.release_id = release_id
         super().__init__(
             f"path {path!r} is governed by active workspace-release-v1 "
-            f"{release_id}; use `bifrost promote` to change reviewed Live source"
+            f"{release_id}; use reviewed Solution delivery to change reviewed Live source"
         )
 
 

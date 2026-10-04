@@ -890,10 +890,6 @@ def main(args: list[str] | None = None) -> int:
         if command == "run":
             return handle_run(args[1:])
 
-        if command == "promote":
-            from bifrost.commands.promote import handle_promote
-            return handle_promote(args[1:])
-
         if command == "git":
             return handle_git(args[1:])
 
@@ -957,7 +953,6 @@ Usage:
 Commands:
   sync        Bidirectional sync between local files and Bifrost platform
   run         Run a workflow directly (silent JSON output) or interactively via browser
-  promote     Build a local-only draft or preview exact protected-main bytes
   git         Git source control operations (fetch, status, commit, push, resolve, diff, discard)
   push        Push local files to Bifrost platform (alias for sync)
   pull        Pull files from Bifrost platform to local directory (alias for sync)
@@ -1020,8 +1015,6 @@ Direct files vs bulk local sync:
 
 Examples:
   bifrost run workflow.py -w greet
-  bifrost promote draft workflow.py -w greet
-  bifrost promote preview workflow.py -w greet
   bifrost run workflow.py -w greet -p '{"name": "World"}'
   bifrost run workflow.py -w greet | jq .
   bifrost run workflow.py --interactive
@@ -1578,7 +1571,6 @@ def _run_direct(
     verbose: bool = False,
     organization_id: str | None = None,
     solution_root: "pathlib.Path | None" = None,
-    promotion_evidence: "pathlib.Path | None" = None,
     workflow_file: str | None = None,
     resource_recipe: pathlib.Path | None = None,
 ) -> int:
@@ -1685,12 +1677,9 @@ def _run_direct(
 
     workflow_fn = workflows[selected_workflow]
 
-    started_at = time.monotonic()
     try:
         from bifrost._local_resources import local_resource_context
 
-        if resource_recipe is not None and promotion_evidence is not None:
-            raise ValueError("Resource recipes use Solution delivery; loose promotion evidence does not cover resources")
         source = pathlib.Path(workflow_file) if workflow_file is not None else None
         with local_resource_context(source, resource_recipe):
             result = asyncio.run(workflow_fn(**params))
@@ -1698,59 +1687,6 @@ def _run_direct(
             print(f"Result: {json.dumps(result, indent=2, default=str)}")
         else:
             print(json.dumps(result, default=str))
-        if promotion_evidence is not None and workflow_file is not None:
-            from bifrost.promotion import (
-                build_promotion_bundle,
-                sha256_bytes,
-            )
-            from bifrost.workspace_release import workspace_closure_id
-
-            root = pathlib.Path.cwd().resolve()
-            selected_path = pathlib.Path(workflow_file)
-            if selected_path.is_absolute():
-                selected_path = selected_path.resolve().relative_to(root)
-            bundle = build_promotion_bundle(root, selected_path.as_posix())
-            canonical_params = json.dumps(
-                params, sort_keys=True, separators=(",", ":"), default=str
-            ).encode("utf-8")
-            canonical_result = json.dumps(
-                result, sort_keys=True, separators=(",", ":"), default=str
-            ).encode("utf-8")
-            evidence = {
-                "schema_version": "bifrost.workspace-local-run-evidence/v1",
-                "authority": "local_only",
-                "activatable": False,
-                "succeeded": True,
-                "snapshot_id": bundle.snapshot_id,
-                "closure_id": workspace_closure_id(
-                    {
-                        "path": selected_path.as_posix(),
-                        "function": selected_workflow,
-                    },
-                    {
-                        str(item["path"]): str(item["sha256"])
-                        for item in bundle.files
-                    },
-                ),
-                "entry": {
-                    "path": selected_path.as_posix(),
-                    "function": selected_workflow,
-                },
-                "evidence_id": f"local:{uuid.uuid4()}",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "duration_ms": int((time.monotonic() - started_at) * 1000),
-                "input_sha256": sha256_bytes(canonical_params),
-                "result_sha256": sha256_bytes(canonical_result),
-                "observed_effects": [],
-            }
-            temporary = promotion_evidence.with_suffix(
-                promotion_evidence.suffix + ".tmp"
-            )
-            temporary.write_text(
-                json.dumps(evidence, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            temporary.replace(promotion_evidence)
         return 0
     except Exception as e:
         print(f"Error executing workflow: {e}", file=sys.stderr)
@@ -1783,7 +1719,6 @@ def handle_run(args: list[str]) -> int:
     verbose = False
     inline_params: dict[str, Any] | None = None
     organization_id: str | None = None
-    promotion_evidence: pathlib.Path | None = None
     resource_recipe: pathlib.Path | None = None
 
     # Parse arguments
@@ -1826,22 +1761,12 @@ def handle_run(args: list[str]) -> int:
                 return 1
             resource_recipe = pathlib.Path(args[i + 1]).absolute()
             i += 2
-        elif args[i] == "--promotion-evidence":
-            if i + 1 >= len(args):
-                print("Error: --promotion-evidence requires a file path", file=sys.stderr)
-                return 1
-            promotion_evidence = pathlib.Path(args[i + 1])
-            i += 2
         elif args[i] in ("--help", "-h"):
             print_run_help()
             return 0
         else:
             print(f"Unknown option: {args[i]}", file=sys.stderr)
             return 1
-
-    if resource_recipe is not None and promotion_evidence is not None:
-        print("Error: Resource recipes use Solution delivery; loose promotion evidence does not cover resources", file=sys.stderr)
-        return 1
 
     # Check file exists
     if not os.path.isfile(workflow_file):
@@ -1926,7 +1851,6 @@ def handle_run(args: list[str]) -> int:
             selected_workflow, workflows, params,
             verbose=verbose, organization_id=organization_id,
             solution_root=solution_root,
-            promotion_evidence=promotion_evidence,
             workflow_file=abs_file_path,
             resource_recipe=resource_recipe,
         )
@@ -4714,7 +4638,6 @@ Options:
   --verbose, -v                Show status messages (e.g., "Running...", "Result:")
   --interactive, -i            Open browser-based session instead of direct execution
   --no-browser, -n             Don't auto-open browser (only with --interactive)
-  --promotion-evidence FILE    Write snapshot-bound local-run evidence after success
   --resource-recipe FILE       Read declared dirty checkout resources locally, without HTTP fallback
   --help, -h                   Show this help message
 
@@ -4723,7 +4646,6 @@ Examples:
   bifrost run workflow.py -w greet -p '{"name": "World"}'                  # With parameters
   bifrost run workflow.py -w greet -v                                      # Verbose output
   bifrost run workflow.py -w greet | jq .                                  # Pipe to jq
-  bifrost run workflow.py -w greet --promotion-evidence .promotion-run.json
   bifrost run workflow.py --interactive                                    # Browser-based session
 """.strip())
 

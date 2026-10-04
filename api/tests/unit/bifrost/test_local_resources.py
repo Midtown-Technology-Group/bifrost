@@ -218,12 +218,13 @@ def test_local_module_import_uses_same_explicit_map_and_cannot_fall_back(tmp_pat
     assert current_local_resources() is None
 
 
-def test_resource_run_cannot_write_incomplete_loose_promotion_evidence(tmp_path, monkeypatch):
-    source, recipe, _ = checkout(tmp_path)
+def test_local_run_rejects_retired_promotion_evidence_option(tmp_path, monkeypatch, capsys):
+    source, _, _ = checkout(tmp_path)
     offline_cli(monkeypatch)
     evidence = tmp_path / "evidence.json"
-    assert cli.handle_run([str(source), "-w", "run", "--resource-recipe", str(recipe),
+    assert cli.handle_run([str(source), "-w", "run",
         "--promotion-evidence", str(evidence)]) == 1
+    assert "Unknown option: --promotion-evidence" in capsys.readouterr().err
     assert not evidence.exists()
 
 

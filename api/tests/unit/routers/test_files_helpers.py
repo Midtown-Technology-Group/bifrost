@@ -362,7 +362,7 @@ async def test_workspace_graph_uses_immutable_live_and_blocks_legacy_write(
     assert inspected.diagnostics[0].severity == "info"
     assert proposed.ready_to_write is False
     assert proposed.diagnostics[0].severity == "blocker"
-    assert "use `bifrost promote`" in proposed.diagnostics[0].message
+    assert "use reviewed Solution delivery" in proposed.diagnostics[0].message
 
 
 @pytest.mark.asyncio
@@ -450,7 +450,7 @@ async def test_workspace_graph_blocks_identical_bytes_with_unbound_live_registra
     assert result.ready_to_write is False
     assert diagnostic.severity == "blocker"
     assert str(workflow_id) in diagnostic.message
-    assert f"bifrost promote preview {path} -w report" in diagnostic.message
+    assert f"Use reviewed Solution delivery for {path}::report" in diagnostic.message
 
 
 @pytest.mark.asyncio
@@ -562,7 +562,7 @@ async def test_workspace_write_reports_release_governance_conflict(monkeypatch):
                 "reason": "workspace_release_governed_path",
                 "path": path,
                 "release_id": "sha256:" + "a" * 64,
-                "message": "use `bifrost promote`",
+                "message": "use reviewed Solution delivery",
             },
         )
 
@@ -593,7 +593,7 @@ async def test_workspace_write_reports_release_governance_conflict(monkeypatch):
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail["reason"] == "workspace_release_governed_path"
-    assert "promote" in exc_info.value.detail["message"]
+    assert "reviewed Solution delivery" in exc_info.value.detail["message"]
 
 
 @pytest.mark.asyncio

@@ -250,7 +250,7 @@ async def test_stage_rejects_path_governed_by_immutable_live(monkeypatch):
         governed,
     )
 
-    with pytest.raises(ChangesetInvalid, match="use `bifrost promote`"):
+    with pytest.raises(ChangesetInvalid, match="use reviewed Solution delivery"):
         await svc.stage(
             row.id,
             WorkspaceRepoFileMutationRequest(
@@ -293,7 +293,7 @@ async def test_activation_rechecks_release_governance_after_validation(monkeypat
         governed,
     )
 
-    with pytest.raises(ChangesetInvalid, match="use `bifrost promote`"):
+    with pytest.raises(ChangesetInvalid, match="use reviewed Solution delivery"):
         await svc.activate(
             row.id,
             WorkspaceRepoActivateRequest(candidate_id=validation.candidate_id),

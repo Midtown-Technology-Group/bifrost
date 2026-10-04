@@ -526,7 +526,7 @@ async def test_global_live_governed_path_requires_exact_registration() -> None:
         "function_name": "other",
         "status": "unbound",
         "mismatch_fields": [],
-        "repair_command": "bifrost promote preview features/demo.py -w other",
+        "repair_command": "Use reviewed Solution delivery for features/demo.py::other",
     }
 
 
