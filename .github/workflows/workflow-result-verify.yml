@@ -1,0 +1,45 @@
+name: Reviewed workflow Result verification
+
+on:
+  push:
+    branches:
+      - test/workflow-result-feature-source
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      (github.event_name != 'pull_request' ||
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'test/workflow-result-feature-source'))
+    name: Result source, feature, SQL and lifetime verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate without retained action credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify reviewed Result package
+        run: bash scripts/ci/workflow-result-verify.sh
+      - name: Upload closed safe evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: workflow-result-verify-${{ github.sha }}
+          path: |
+            result-verify-evidence/producer.json
+            result-verify-evidence/features.json
+            result-verify-evidence/junit.json
+            result-verify-evidence/disposal.json
+            result-verify-evidence/receipt.json
+          if-no-files-found: error
+          retention-days: 14
