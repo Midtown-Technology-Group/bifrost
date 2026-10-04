@@ -215,6 +215,31 @@ remain held.
 
 ## Remaining architectural acceptance
 
+The missing existing-published-attempt claim planner is now implemented in
+`bifrost-domain`, with four new test functions and all fourteen prior domain
+tests preserved. Candidate `0df61473a8a3774da81b5a8e4c9284735b006a07`
+includes current main `7e737cacdba56b214e427afed5a28e89ae1b6a47`.
+Root and independent source review accepted its exact guard order and eight
+write directives; independent source receipt SHA-256 is
+`def6c37e256c2d2c477482b1dd34ac67b563065793ac71165a378a734aaca6b6`.
+Missing execution defers the legacy path, non-pending execution skips before
+attempt validation, and no active attempt defers allocation. A published,
+unfenced active attempt produces a pure running/claimed row plan. The planner
+generates no token, reads no clock, writes no database and grants no Start.
+[Supported source checks](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37218867181)
+passed on attempt 1: formatting, locked all-target/all-feature Clippy with
+warnings denied, and locked default workspace tests. All 31 tests passed
+(7 contracts, 6 bootstrap, 18 domain), including the four new claim tests;
+none failed or were ignored. The actual source metadata joins the candidate
+and tree `17e9c13618285017fe210d276a0e17705645b024`. Evidence receipt
+SHA-256 is `8f3d67e54e8ec2e5593c7d8eae51c0c279c78a1a3eea995c5ed270b5df8d4521`.
+Independent executed-evidence review accepted that bounded proof, receipt
+SHA-256 `c515f704c3e10ff29dc87db4890ad7956841257f74f89f4b5fb43bf42d568014`.
+This is source/unit proof, not live PostgreSQL testing or Python/Rust behavioral parity.
+Actual original-Python characterization and deliberate semantic drift detection
+remain required before any business wiring. This candidate is not a pull
+request or proof of literal pre-PR, normal CI or lifecycle ownership.
+
 Authority decisions M1–M5 and current installed-schema writer closure remain
 held. The full runtime boundary, unchanged Cove compatibility, committed events,
 Redis failure, mixed writers, ambiguous commit/spawn handling, in-flight routing
