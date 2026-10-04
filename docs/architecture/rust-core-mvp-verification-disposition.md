@@ -1096,3 +1096,25 @@ created 2026-10-04T22:55:24Z. No outcome is yet claimed. Deployment, production
 image promotion, tag/release and merge guards are ineligible for this event/ref;
 no CodSpeed run is selected. Original Docker-quality cause and selected claim
 parity remain unproved regardless of the distinct normal CI result.
+
+
+The first ordinary CI run37241842493 is now terminal **FAILURE**, not a live
+watch. Root read actual lint commands/results and all nine diagnostics;
+executed-quality receipt is
+`e2b67623f43f6dd309a0c393338478888115b4ca59b5e30a452f6c3642a3e440`.
+Comprehensive Ruff passed. Pyright 1.1.409 reported nine errors in three parity
+harnesses: typed dictionary indexing, an optional DB-clock value, optional
+package iteration, and two async Redis return annotations. Root assigned a
+three-file source-only typing correction preserving existing validation,
+actual database-clock selection, Redis awaits, operation order and drift
+expectations. No ignores, rule changes, upgrades, runtime semantic changes
+or source/CI rerun are released by that assignment; distinct source review
+must precede a changed-candidate run. These actual errors replace speculation
+as the next repair target, without retrospectively proving the Docker cause.
+
+Final metadata confirms client units succeeded, while the E2E aggregate gate
+failed on the lint prerequisite. Backend unit/MCP/backend and browser shards,
+CI-image publication and all production/deploy/release jobs were skipped.
+No backend E2E execution or image publication is claimed. Watch63676 returned
+exit1 and is closed. Historical stopped campaigns are not revived; selected
+53-case/207-venue parity and transport runtime remain unproved.
