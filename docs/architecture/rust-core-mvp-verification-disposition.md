@@ -1022,3 +1022,37 @@ head. Neither result is yet accepted. Controls passing, stage evidence,
 selected parity and cleanup must be established from the terminal run and
 approved artifacts. No unchanged rerun, private-output export, PR creation,
 merge, deployment or M1 authority follows from this release.
+
+
+Terminal results for the STAGE1 candidate are now available. Source-check
+run37240412992 passed fresh fmt, strict locked all-feature Clippy, 31 default
+Rust tests and 17 offline example tests. Root read the actual command, image
+and complete test-result blocks; independent executed-evidence receipt is
+`cd01ce14e429c4a7acf5bdc05323d4a722b8a2b32f04947a25b66b47e6c01278`.
+The measured checks image is
+`sha256:ebe08aae7facae1547fc4b90b751a8eaf2ee0937b2a21c0a2516c38b5f4b76e7`.
+
+Characterization run37240412538 attempt1 failed at pre-PR after reaching
+**quality / failed**. Its original primary diagnostic remains prepr/exit1,
+native_settled=true, classguard. The exact quality subtool and cause remain
+unknown. Reaching pre-PR supports normal return of this invocation's declared
+controls, and the nonunknown stage supports completion of the reviewed reader
+admission checks; neither is a general custody attestation. Independent review
+`9b7cb8a90ed38e254dc2113760ab7acbd4d9899bd1814853e9a4a4ef83714027`
+is accepted after root read the actual diagnostics and all approved artifact
+members. Artifact11317087581 is 1,406 bytes with digest
+`664ba8c51d3fe703424555c5104db393d31faeeabf3f5159f9cc435aa5c36efe`;
+source/head/tree match, both exits are1, frontend is null/null/false, and
+successful final scoped resource censuses report empty containers, volumes
+and networks. This remains source-scoped cleanup evidence, not independent
+filesystem or global disposal proof. Selected 53-case/207-venue parity was
+not reached. No unchanged rerun is released; source-only quality diagnosis
+is underway. The watch handle99615 is terminal and must not be polled as live.
+
+The separate five-path native transport source has also frozen for concrete
+root and different-author review. Author report
+`7543b7ead8747a184bea5da8ec73683550d9a73b3d647bdd670372205c177b65`
+and full delta `1d9a250d94d6e8ddfeec7d30009d8a5bf1ec6d1aa22d66ec8f52c87f2bb843ae`
+claim four native declarations, 16 Python cases and three sequential native
+children. Those are authored declarations, not executed results. Rust
+compilation, PKI, runtime and the separate two-path venue remain held.
