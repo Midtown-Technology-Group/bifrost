@@ -185,20 +185,12 @@ def test_readme_uses_existing_text_import_semantics_without_changing_byte_eviden
 
 @pytest.mark.asyncio
 async def test_stale_readme_cannot_be_credited_by_a_green_runtime(monkeypatch):
-    source = authored()
-    metadata = native_authored_metadata(source)
-    solution = SimpleNamespace(**metadata.descriptor.model_dump(exclude={"logo"}), readme="Earlier instructions\n", id=SID)
-    db = AsyncMock()
-    base = SimpleNamespace(id=SID)
-    resolution = SimpleNamespace(resources={}, sources={}, workflows=[], shared_tables={})
-    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService", lambda _db: SimpleNamespace(
-        _base=AsyncMock(return_value=(solution, base, resolution)), _registrations=AsyncMock(),
-        _base_files=AsyncMock()))
+    fixture = _installed_readback(monkeypatch)
+    fixture.solution.readme = "Earlier instructions\n"
     with pytest.raises(NativeAuthoredSourceMismatch, match="README"):
-        await native_authored_install_readback(db, solution, source,
-            expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
-    db.scalars.assert_not_awaited()
-    db.commit.assert_not_awaited()
+        await _read_installed(fixture)
+    fixture.db.scalars.assert_not_awaited()
+    fixture.db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -207,20 +199,11 @@ async def test_stale_readme_cannot_be_credited_by_a_green_runtime(monkeypatch):
     ("repo_subpath", "solutions/other"), ("git_connected", True), ("name", "Other name"),
 ])
 async def test_descriptor_drift_does_not_allow_accounting(monkeypatch, field, value):
-    source = authored()
-    metadata = native_authored_metadata(source)
-    values = {**metadata.descriptor.model_dump(exclude={"logo"}), "readme": metadata.readme, "id": SID}
-    values[field] = value
-    db = AsyncMock()
-    base = SimpleNamespace(id=SID)
-    resolution = SimpleNamespace(resources={}, sources={}, workflows=[], shared_tables={})
-    monkeypatch.setattr(native_readback, "SolutionSourceRevisionService", lambda _db: SimpleNamespace(
-        _base=AsyncMock(return_value=(SimpleNamespace(id=SID), base, resolution)),
-        _registrations=AsyncMock(), _base_files=AsyncMock()))
+    fixture = _installed_readback(monkeypatch)
+    setattr(fixture.solution, field, value)
     with pytest.raises(NativeAuthoredSourceMismatch, match="descriptor"):
-        await native_authored_install_readback(db, SimpleNamespace(**values), source,
-            expected_active_deployment_id=SID, expected_active_manifest_hash="sha256:" + "1" * 64)
-    db.commit.assert_not_awaited()
+        await _read_installed(fixture)
+    fixture.db.commit.assert_not_awaited()
 
 
 def _installed_readback(monkeypatch, *, roles=(), role_names=None, policies=None, resources=False,
