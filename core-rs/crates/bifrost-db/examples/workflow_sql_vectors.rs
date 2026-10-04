@@ -1566,6 +1566,366 @@ fn emit(value: &Value) -> Parse<()> {
         .map_err(|_| ())
 }
 
+// Private F4 activation only. Ordinary parser/transaction/output modes above
+// remain unchanged; the supervisor owns actual before-create deadlines.
+mod commit_fault {
+    use super::*;
+    use sqlx::Row;
+    use std::{os::unix::{net::UnixStream, fs::{FileTypeExt,MetadataExt}}, time::Instant};
+
+    struct Channel {
+        socket: UnixStream,
+        invocation: String,
+        sent: u64,
+        received: u64,
+        end: Instant,
+    }
+    impl Channel {
+        fn remaining(&self) -> Parse<Duration> {
+            self.end.checked_duration_since(Instant::now()).ok_or(())
+        }
+        fn send(&mut self, kind: &str, body: Value, data: bool) -> Parse<()> {
+            self.sent = self.sent.checked_add(1).ok_or(())?;
+            let raw = serde_json::to_vec(&json!({"schema":"bifrost.test.workflow-commit-ipc/v1",
+                "lane":"rust","invocation":self.invocation,"seq":self.sent,"kind":kind,"body":body}))
+                .map_err(|_| ())?;
+            if raw.is_empty() || raw.len() > if data {INPUT_LIMIT} else {OUTPUT_LIMIT} {
+                return Err(());
+            }
+            self.socket.set_write_timeout(Some(self.remaining()?)).map_err(|_| ())?;
+            self.socket.write_all(&(raw.len() as u32).to_be_bytes()).map_err(|_| ())?;
+            self.socket.set_write_timeout(Some(self.remaining()?)).map_err(|_| ())?;
+            self.socket.write_all(&raw).map_err(|_| ())
+        }
+        fn receive(&mut self, kind: &str, keys: &[&str]) -> Parse<Node> {
+            self.socket.set_read_timeout(Some(self.remaining()?)).map_err(|_| ())?;
+            let mut prefix = [0u8;4];
+            self.socket.read_exact(&mut prefix).map_err(|_| ())?;
+            let length = u32::from_be_bytes(prefix) as usize;
+            if length == 0 || length > OUTPUT_LIMIT { return Err(()); }
+            let mut raw = vec![0u8;length];
+            self.socket.set_read_timeout(Some(self.remaining()?)).map_err(|_| ())?;
+            self.socket.read_exact(&mut raw).map_err(|_| ())?;
+            let node = Node::parse(std::str::from_utf8(&raw).map_err(|_| ())?,0)?;
+            node.keys(&["schema","lane","invocation","seq","kind","body"])?;
+            self.received = self.received.checked_add(1).ok_or(())?;
+            if node.member("schema")?.string()? != "bifrost.test.workflow-commit-ipc/v1"
+                || node.member("lane")?.string()? != "rust"
+                || node.member("invocation")?.string()? != self.invocation
+                || node.member("kind")?.string()? != kind
+                || !matches!(node.member("seq")?,Node::Number(number) if number == &self.received.to_string()) {
+                return Err(());
+            }
+            let Node::Object(mut members) = node else {return Err(());};
+            let body = members.remove("body").ok_or(())?;
+            body.keys(keys)?;
+            Ok(body)
+        }
+    }
+    struct Input {
+        invocation: String,
+        owned: String,
+        foreign: String,
+        attempt: String,
+        foreign_attempt: String,
+        sql: SqlResultInput,
+    }
+    fn input(node: &Node) -> Parse<Input> {
+        node.keys(&["schema","invocation","cycle","actor","scope","request"])?;
+        if node.member("schema")?.string()? != "bifrost.test.workflow-result-fault-input/v1"
+            || node.member("actor")?.string()? != "rust"
+            || !matches!(node.member("cycle")?,Node::Number(number) if number == "2") {return Err(());}
+        let invocation = uuid(node.member("invocation")?)?.to_string();
+        let scope = node.member("scope")?;
+        scope.keys(&["foreign_execution_id","attempt_id","foreign_attempt_id"])?;
+        let foreign = uuid(scope.member("foreign_execution_id")?)?.to_string();
+        if uuid(scope.member("attempt_id")?)? == uuid(scope.member("foreign_attempt_id")?)? {return Err(());}
+        let request_node = node.member("request")?;
+        let (id, sql) = request(request_node)?;
+        if id != "r-attempt-claimed-unstarted" {return Err(());}
+        let owned = uuid(request_node.member("cohort")?.member("execution_id")?)?.to_string();
+        if owned == foreign {return Err(());}
+        let operation = request_node.member("operation")?;
+        if operation.member("lane")?.string()? != "success" {return Err(());}
+        let raw = operation.member("raw_fields")?;
+        raw.keys(&["status","result","error","error_type","duration_ms","variables","execution_context","metrics","roi"])?;
+        for directive in raw.object()?.values() {
+            directive.keys(&["kind"])?;
+            if directive.member("kind")?.string()? != "absent" {return Err(());}
+        }
+        Ok(Input {invocation,owned,foreign,
+            attempt:uuid(scope.member("attempt_id")?)?.to_string(),
+            foreign_attempt:uuid(scope.member("foreign_attempt_id")?)?.to_string(),sql})
+    }
+    fn binding() -> Value { json!({"cycle":2,"actor":"rust","connection":2}) }
+    fn classification(error: &sqlx::Error) -> Value {
+        match error {
+            sqlx::Error::Io(error) => {
+                let code = match error.kind() {
+                    io::ErrorKind::UnexpectedEof => "unexpected_eof",
+                    io::ErrorKind::ConnectionReset => "connection_reset",
+                    io::ErrorKind::BrokenPipe => "broken_pipe",
+                    _ => "other",
+                };
+                json!({"family":"rust_io","code":code})
+            }
+            _ => json!({"family":"other","code":null}),
+        }
+    }
+    async fn snapshot(tx: &mut sqlx::Transaction<'_,sqlx::Postgres>, input: &Input) -> Parse<Value> {
+        let mut result = serde_json::Map::new();
+        for (name,query,limit) in [("executions",EXECUTIONS_SQL,2usize),
+            ("attempts",ATTEMPTS_SQL,2usize),("logs",LOGS_SQL,1024usize)] {
+            let rows = sqlx::query(query).persistent(false).bind(&input.owned).bind(&input.foreign)
+                .fetch_all(&mut **tx).await.map_err(|_| ())?;
+            if rows.len() > limit || (name != "logs" && rows.len() != 2) {return Err(());}
+            let mut values = Vec::new();
+            for row in rows {
+                let bytes: i32 = row.try_get("row_bytes").map_err(|_| ())?;
+                let raw: Option<String> = row.try_get("row_json").map_err(|_| ())?;
+                let raw = raw.ok_or(())?;
+                if bytes <= 0 || bytes as usize > INPUT_LIMIT || raw.len() != bytes as usize {return Err(());}
+                let node = Node::parse(&raw,0)?;
+                let actual: String = row.try_get("row_id").map_err(|_| ())?;
+                let id = node.member("id")?.member("value")?;
+                if !(matches!(id,Node::String(value) if value == &actual)
+                    || matches!(id,Node::Number(value) if value == &actual)) {return Err(());}
+                validate_row(name,&node)?;
+                if name=="executions" && actual!=input.owned && actual!=input.foreign {return Err(());}
+                if name=="attempts" && actual!=input.attempt && actual!=input.foreign_attempt {return Err(());}
+                values.push(serde_json::from_str::<Value>(&raw).map_err(|_| ())?);
+            }
+            result.insert(name.to_owned(),Value::Array(values));
+        }
+        Ok(Value::Object(result))
+    }
+    async fn selected(tx: &mut sqlx::Transaction<'_,sqlx::Postgres>) -> Parse<Value> {
+        let row = sqlx::query(ASSIGNED_SQL).persistent(false).fetch_one(&mut **tx).await.map_err(|_| ())?;
+        let xid: Option<String> = row.try_get("xid").map_err(|_| ())?;
+        let xid = xid.ok_or(())?;
+        if xid.parse::<u64>().map_err(|_| ())? == 0 || xid.starts_with('0') {return Err(());}
+        let pid: i32 = row.try_get("backend_pid").map_err(|_| ())?;
+        let database: String = row.try_get("database_name").map_err(|_| ())?;
+        let address: Option<String> = row.try_get("server_address").map_err(|_| ())?;
+        let address = address.ok_or(())?;
+        let port: Option<i32> = row.try_get("server_port").map_err(|_| ())?;
+        let port = port.ok_or(())?;
+        let version: String = row.try_get("server_version_num").map_err(|_| ())?;
+        if pid <= 0 || database.is_empty() || database.len()>63 || address.parse::<std::net::Ipv4Addr>().is_err()
+            || !(1..=65535).contains(&port) || !(160000..170000).contains(&version.parse::<u32>().map_err(|_| ())?) {
+            return Err(());
+        }
+        Ok(json!({"xid":xid,"backend_pid":pid,"database_name":database,"server_address":address,
+            "server_port":port,"server_version_num":version}))
+    }
+    pub(super) async fn run(node: &Node, options: PgConnectOptions) -> Parse<SqlResponse> {
+        let input = input(node)?;
+        let end = Instant::now().checked_add(Duration::from_secs(30)).ok_or(())?;
+        let before=std::fs::symlink_metadata("/run/f4-control.sock").map_err(|_| ())?;
+        if !before.file_type().is_socket() || before.mode() & 0o7777 != 0o600 {return Err(());}
+        let socket = tokio::time::timeout_at(tokio::time::Instant::from_std(end),
+            tokio::net::UnixStream::connect("/run/f4-control.sock")).await.map_err(|_| ())?
+            .map_err(|_| ())?.into_std().map_err(|_| ())?;
+        socket.set_nonblocking(false).map_err(|_| ())?;
+        let after=std::fs::symlink_metadata("/run/f4-control.sock").map_err(|_| ())?;
+        if (before.dev(),before.ino(),before.mode(),before.uid(),before.gid()) !=
+            (after.dev(),after.ino(),after.mode(),after.uid(),after.gid()) {return Err(());}
+        let mut channel = Channel {socket,invocation:input.invocation.clone(),sent:0,received:0,end};
+        channel.send("hello",json!({}),false)?;
+        channel.receive("hello_accept",&[])?;
+        let pool = PgPoolOptions::new().max_connections(1).acquire_timeout(Duration::from_secs(5))
+            .connect_lazy_with(options);
+        let mut error_kind = Value::Null;
+        let mut commit = "not_dispatched";
+        let mut response = None;
+        let operation = tokio::time::timeout_at(tokio::time::Instant::from_std(end),async {
+            let mut connection = pool.acquire().await.map_err(|_| ())?;
+            let mut tx = connection.begin().await.map_err(|_| ())?;
+            for query in ["SET LOCAL statement_timeout = '5000ms'","SET LOCAL lock_timeout = '5000ms'"] {
+                sqlx::query(query).persistent(false).execute(&mut *tx).await.map_err(|_| ())?;
+            }
+            let (decision,mut clock) = sql::apply_result_observed(&mut tx,&input.sql).await;
+            let Ok(SqlDecision::Applied(AppliedResult {plan:tentative,affected_execution_rows,affected_attempt_rows})) = decision else {
+                let _original_rollback = tx.rollback().await;
+                return Err(());
+            };
+            let rows = snapshot(&mut tx,&input).await?;
+            let witness = selected(&mut tx).await?;
+            channel.send("snapshot",json!({"cycle":2,"actor":"rust","phase":"post_flush","rows":rows}),true)?;
+            let mut ready = binding();
+            let map = ready.as_object_mut().ok_or(())?;
+            map.insert("xid".to_owned(),witness.get("xid").ok_or(())?.clone());
+            map.insert("backend_pid".to_owned(),witness.get("backend_pid").ok_or(())?.clone());
+            map.insert("query_witness".to_owned(),witness);
+            channel.send("selected_ready",ready,false)?;
+            let release = channel.receive("release_commit",&["cycle","actor","connection"])?;
+            if release.member("actor")?.string()? != "rust"
+                || !matches!(release.member("cycle")?,Node::Number(number) if number == "2")
+                || !matches!(release.member("connection")?,Node::Number(number) if number == "2") {return Err(());}
+            channel.send("listener_returned",binding(),false)?;
+            clock.commit_dispatch();
+            // Borrow the concrete original cause before the ordinary lossy
+            // mapper. Consumed Err retains SQLx's incumbent Drop rollback queue.
+            match tx.commit().await {
+                Ok(()) => {
+                    commit="acknowledged";
+                    clock.commit_ack();
+                    response=Some(SqlResponse {decision:json!({"kind":"applied","plan":plan(tentative)}),
+                        settlement:Settlement::Committed,execution_rows:Some(affected_execution_rows),
+                        attempt_rows:Some(affected_attempt_rows),failed:false,clock:Some(clock)});
+                    Ok(())
+                }
+                Err(error) => {
+                    commit="error";
+                    error_kind=classification(&error);
+                    let original=SettlementFailure::database(SettlementStage::Commit,error);
+                    let mut failed=SqlResponse::failure(Failure::Settlement(original),Settlement::Unknown);
+                    failed.execution_rows=Some(affected_execution_rows);
+                    failed.attempt_rows=Some(affected_attempt_rows);
+                    failed.clock=Some(clock);
+                    response=Some(failed);
+                    Ok(())
+                }
+            }
+        }).await;
+        let close_completed = tokio::time::timeout_at(tokio::time::Instant::from_std(end),pool.close()).await.is_ok();
+        let closed = close_completed && pool.is_closed();
+        let publication = channel.send("actor_finished",json!({"cycle":2,"actor":"rust","connection":2,
+            "commit":commit,"error":error_kind,"pool_closed":closed}),false);
+        // Publication/close cannot turn native failure or normal non-target ACK
+        // into the required committed/response-lost positive. Parent qualifies
+        // actual error+fate+rows independently, and requires real process exit.
+        if !matches!(operation,Ok(Ok(()))) || publication.is_err() || !closed {return Err(());}
+        let response=response.ok_or(())?;
+        if !delivery_admitted(&response) {return Err(());}
+        Ok(response)
+    }
+
+    const EXECUTIONS_SQL: &str = "SELECT id::text AS row_id,row_bytes,CASE WHEN row_bytes<=65536 THEN row_data::text ELSE NULL END AS row_json FROM (SELECT id,row_data,pg_catalog.octet_length(row_data::text) AS row_bytes FROM (SELECT id,pg_catalog.jsonb_build_object('id',pg_catalog.jsonb_build_object('sql_null',\"id\" IS NULL,'value',\"id\"::text),'workflow_name',pg_catalog.jsonb_build_object('sql_null',\"workflow_name\" IS NULL,'value',\"workflow_name\"::text),'workflow_version',pg_catalog.jsonb_build_object('sql_null',\"workflow_version\" IS NULL,'value',\"workflow_version\"::text),'status',pg_catalog.jsonb_build_object('sql_null',\"status\" IS NULL,'value',\"status\"::text),'parameters',pg_catalog.jsonb_build_object('sql_null',\"parameters\" IS NULL,'value',\"parameters\"::text),'result',pg_catalog.jsonb_build_object('sql_null',\"result\" IS NULL,'value',\"result\"::text),'result_type',pg_catalog.jsonb_build_object('sql_null',\"result_type\" IS NULL,'value',\"result_type\"::text),'variables',pg_catalog.jsonb_build_object('sql_null',\"variables\" IS NULL,'value',\"variables\"::text),'execution_context',pg_catalog.jsonb_build_object('sql_null',\"execution_context\" IS NULL,'value',\"execution_context\"::text),'error_message',pg_catalog.jsonb_build_object('sql_null',\"error_message\" IS NULL,'value',\"error_message\"::text),'started_at',pg_catalog.jsonb_build_object('sql_null',\"started_at\" IS NULL,'value',(extract(epoch FROM \"started_at\") * 1000000)::bigint),'completed_at',pg_catalog.jsonb_build_object('sql_null',\"completed_at\" IS NULL,'value',(extract(epoch FROM \"completed_at\") * 1000000)::bigint),'duration_ms',pg_catalog.jsonb_build_object('sql_null',\"duration_ms\" IS NULL,'value',\"duration_ms\"),'peak_memory_bytes',pg_catalog.jsonb_build_object('sql_null',\"peak_memory_bytes\" IS NULL,'value',\"peak_memory_bytes\"),'process_rss_bytes',pg_catalog.jsonb_build_object('sql_null',\"process_rss_bytes\" IS NULL,'value',\"process_rss_bytes\"),'cpu_user_seconds',pg_catalog.jsonb_build_object('sql_null',\"cpu_user_seconds\" IS NULL,'value',pg_catalog.encode(pg_catalog.float8send(\"cpu_user_seconds\"),'hex')),'cpu_system_seconds',pg_catalog.jsonb_build_object('sql_null',\"cpu_system_seconds\" IS NULL,'value',pg_catalog.encode(pg_catalog.float8send(\"cpu_system_seconds\"),'hex')),'cpu_total_seconds',pg_catalog.jsonb_build_object('sql_null',\"cpu_total_seconds\" IS NULL,'value',pg_catalog.encode(pg_catalog.float8send(\"cpu_total_seconds\"),'hex')),'time_saved',pg_catalog.jsonb_build_object('sql_null',\"time_saved\" IS NULL,'value',\"time_saved\"),'value',pg_catalog.jsonb_build_object('sql_null',\"value\" IS NULL,'value',\"value\"::text),'executed_by',pg_catalog.jsonb_build_object('sql_null',\"executed_by\" IS NULL,'value',\"executed_by\"::text),'executed_by_name',pg_catalog.jsonb_build_object('sql_null',\"executed_by_name\" IS NULL,'value',\"executed_by_name\"::text),'organization_id',pg_catalog.jsonb_build_object('sql_null',\"organization_id\" IS NULL,'value',\"organization_id\"::text),'form_id',pg_catalog.jsonb_build_object('sql_null',\"form_id\" IS NULL,'value',\"form_id\"::text),'workflow_id',pg_catalog.jsonb_build_object('sql_null',\"workflow_id\" IS NULL,'value',\"workflow_id\"::text),'solution_deployment_id',pg_catalog.jsonb_build_object('sql_null',\"solution_deployment_id\" IS NULL,'value',\"solution_deployment_id\"::text),'runtime_mode',pg_catalog.jsonb_build_object('sql_null',\"runtime_mode\" IS NULL,'value',\"runtime_mode\"::text),'runtime_evidence',pg_catalog.jsonb_build_object('sql_null',\"runtime_evidence\" IS NULL,'value',\"runtime_evidence\"::text),'runtime_evidence_hash',pg_catalog.jsonb_build_object('sql_null',\"runtime_evidence_hash\" IS NULL,'value',\"runtime_evidence_hash\"::text),'dispatch_evidence',pg_catalog.jsonb_build_object('sql_null',\"dispatch_evidence\" IS NULL,'value',\"dispatch_evidence\"::text),'dispatch_evidence_hash',pg_catalog.jsonb_build_object('sql_null',\"dispatch_evidence_hash\" IS NULL,'value',\"dispatch_evidence_hash\"::text),'retry_policy',pg_catalog.jsonb_build_object('sql_null',\"retry_policy\" IS NULL,'value',\"retry_policy\"::text),'attempt_tracking_version',pg_catalog.jsonb_build_object('sql_null',\"attempt_tracking_version\" IS NULL,'value',\"attempt_tracking_version\"::text),'api_key_id',pg_catalog.jsonb_build_object('sql_null',\"api_key_id\" IS NULL,'value',\"api_key_id\"::text),'is_local_execution',pg_catalog.jsonb_build_object('sql_null',\"is_local_execution\" IS NULL,'value',\"is_local_execution\"),'execution_model',pg_catalog.jsonb_build_object('sql_null',\"execution_model\" IS NULL,'value',\"execution_model\"::text),'session_id',pg_catalog.jsonb_build_object('sql_null',\"session_id\" IS NULL,'value',\"session_id\"::text),'created_at',pg_catalog.jsonb_build_object('sql_null',\"created_at\" IS NULL,'value',(extract(epoch FROM \"created_at\") * 1000000)::bigint),'scheduled_at',pg_catalog.jsonb_build_object('sql_null',\"scheduled_at\" IS NULL,'value',(extract(epoch FROM \"scheduled_at\") * 1000000)::bigint)) AS row_data FROM public.executions WHERE id IN ($1::uuid,$2::uuid) ORDER BY id LIMIT 3) AS cells) AS sized ORDER BY id";
+
+    const ATTEMPTS_SQL: &str = "SELECT id::text AS row_id,row_bytes,CASE WHEN row_bytes<=65536 THEN row_data::text ELSE NULL END AS row_json FROM (SELECT id,row_data,pg_catalog.octet_length(row_data::text) AS row_bytes FROM (SELECT id,pg_catalog.jsonb_build_object('id',pg_catalog.jsonb_build_object('sql_null',\"id\" IS NULL,'value',\"id\"::text),'execution_id',pg_catalog.jsonb_build_object('sql_null',\"execution_id\" IS NULL,'value',\"execution_id\"::text),'attempt_number',pg_catalog.jsonb_build_object('sql_null',\"attempt_number\" IS NULL,'value',\"attempt_number\"),'claim_token',pg_catalog.jsonb_build_object('sql_null',\"claim_token\" IS NULL,'value',\"claim_token\"::text),'status',pg_catalog.jsonb_build_object('sql_null',\"status\" IS NULL,'value',\"status\"::text),'phase',pg_catalog.jsonb_build_object('sql_null',\"phase\" IS NULL,'value',\"phase\"::text),'failure_phase',pg_catalog.jsonb_build_object('sql_null',\"failure_phase\" IS NULL,'value',\"failure_phase\"::text),'failure_code',pg_catalog.jsonb_build_object('sql_null',\"failure_code\" IS NULL,'value',\"failure_code\"::text),'worker_id',pg_catalog.jsonb_build_object('sql_null',\"worker_id\" IS NULL,'value',\"worker_id\"::text),'worker_incarnation_id',pg_catalog.jsonb_build_object('sql_null',\"worker_incarnation_id\" IS NULL,'value',\"worker_incarnation_id\"::text),'process_id',pg_catalog.jsonb_build_object('sql_null',\"process_id\" IS NULL,'value',\"process_id\"::text),'runtime_mode',pg_catalog.jsonb_build_object('sql_null',\"runtime_mode\" IS NULL,'value',\"runtime_mode\"::text),'runtime_evidence_hash',pg_catalog.jsonb_build_object('sql_null',\"runtime_evidence_hash\" IS NULL,'value',\"runtime_evidence_hash\"::text),'dispatch_evidence_hash',pg_catalog.jsonb_build_object('sql_null',\"dispatch_evidence_hash\" IS NULL,'value',\"dispatch_evidence_hash\"::text),'policy_digest',pg_catalog.jsonb_build_object('sql_null',\"policy_digest\" IS NULL,'value',\"policy_digest\"::text),'policy_version',pg_catalog.jsonb_build_object('sql_null',\"policy_version\" IS NULL,'value',\"policy_version\"::text),'published_at',pg_catalog.jsonb_build_object('sql_null',\"published_at\" IS NULL,'value',(extract(epoch FROM \"published_at\") * 1000000)::bigint),'claimed_at',pg_catalog.jsonb_build_object('sql_null',\"claimed_at\" IS NULL,'value',(extract(epoch FROM \"claimed_at\") * 1000000)::bigint),'started_at',pg_catalog.jsonb_build_object('sql_null',\"started_at\" IS NULL,'value',(extract(epoch FROM \"started_at\") * 1000000)::bigint),'heartbeat_at',pg_catalog.jsonb_build_object('sql_null',\"heartbeat_at\" IS NULL,'value',(extract(epoch FROM \"heartbeat_at\") * 1000000)::bigint),'completed_at',pg_catalog.jsonb_build_object('sql_null',\"completed_at\" IS NULL,'value',(extract(epoch FROM \"completed_at\") * 1000000)::bigint),'duration_ms',pg_catalog.jsonb_build_object('sql_null',\"duration_ms\" IS NULL,'value',\"duration_ms\"),'peak_memory_bytes',pg_catalog.jsonb_build_object('sql_null',\"peak_memory_bytes\" IS NULL,'value',\"peak_memory_bytes\"),'cpu_total_seconds',pg_catalog.jsonb_build_object('sql_null',\"cpu_total_seconds\" IS NULL,'value',pg_catalog.encode(pg_catalog.float8send(\"cpu_total_seconds\"),'hex')),'created_at',pg_catalog.jsonb_build_object('sql_null',\"created_at\" IS NULL,'value',(extract(epoch FROM \"created_at\") * 1000000)::bigint)) AS row_data FROM public.workflow_execution_attempts WHERE execution_id IN ($1::uuid,$2::uuid) ORDER BY id LIMIT 3) AS cells) AS sized ORDER BY id";
+
+    const LOGS_SQL: &str = "SELECT id::text AS row_id,row_bytes,CASE WHEN row_bytes<=65536 THEN row_data::text ELSE NULL END AS row_json FROM (SELECT id,row_data,pg_catalog.octet_length(row_data::text) AS row_bytes FROM (SELECT id,pg_catalog.jsonb_build_object('id',pg_catalog.jsonb_build_object('sql_null',\"id\" IS NULL,'value',\"id\"),'execution_id',pg_catalog.jsonb_build_object('sql_null',\"execution_id\" IS NULL,'value',\"execution_id\"::text),'level',pg_catalog.jsonb_build_object('sql_null',\"level\" IS NULL,'value',\"level\"::text),'message',pg_catalog.jsonb_build_object('sql_null',\"message\" IS NULL,'value',\"message\"::text),'log_metadata',pg_catalog.jsonb_build_object('sql_null',\"log_metadata\" IS NULL,'value',\"log_metadata\"::text),'timestamp',pg_catalog.jsonb_build_object('sql_null',\"timestamp\" IS NULL,'value',(extract(epoch FROM \"timestamp\") * 1000000)::bigint),'sequence',pg_catalog.jsonb_build_object('sql_null',\"sequence\" IS NULL,'value',\"sequence\")) AS row_data FROM public.execution_logs WHERE execution_id IN ($1::uuid,$2::uuid) ORDER BY id LIMIT 1025) AS cells) AS sized ORDER BY id";
+
+    const ASSIGNED_SQL: &str = "SELECT pg_backend_pid() AS backend_pid,pg_current_xact_id_if_assigned()::text AS xid,current_database() AS database_name,inet_server_addr()::text AS server_address,inet_server_port() AS server_port,current_setting('server_version_num') AS server_version_num";
+
+    fn validate_row(table: &str,node: &Node) -> Parse<()> {
+        let columns: &[(&str,&str,bool)] = match table {
+            "executions" => &[
+                ("id","uuid",false),
+                ("workflow_name","text",false),
+                ("workflow_version","text",true),
+                ("status","text",false),
+                ("parameters","jsonb",false),
+                ("result","jsonb",true),
+                ("result_type","text",true),
+                ("variables","jsonb",true),
+                ("execution_context","jsonb",true),
+                ("error_message","text",true),
+                ("started_at","utc_us",true),
+                ("completed_at","utc_us",true),
+                ("duration_ms","integer",true),
+                ("peak_memory_bytes","integer",true),
+                ("process_rss_bytes","integer",true),
+                ("cpu_user_seconds","float64_bits",true),
+                ("cpu_system_seconds","float64_bits",true),
+                ("cpu_total_seconds","float64_bits",true),
+                ("time_saved","integer",false),
+                ("value","decimal",false),
+                ("executed_by","uuid",true),
+                ("executed_by_name","text",false),
+                ("organization_id","uuid",true),
+                ("form_id","uuid",true),
+                ("workflow_id","uuid",true),
+                ("solution_deployment_id","uuid",true),
+                ("runtime_mode","text",false),
+                ("runtime_evidence","jsonb",true),
+                ("runtime_evidence_hash","text",true),
+                ("dispatch_evidence","jsonb",true),
+                ("dispatch_evidence_hash","text",true),
+                ("retry_policy","jsonb",false),
+                ("attempt_tracking_version","text",true),
+                ("api_key_id","uuid",true),
+                ("is_local_execution","bool",false),
+                ("execution_model","text",true),
+                ("session_id","uuid",true),
+                ("created_at","utc_us",false),
+                ("scheduled_at","utc_us",true),
+            ],
+            "attempts" => &[
+                ("id","uuid",false),
+                ("execution_id","uuid",false),
+                ("attempt_number","integer",false),
+                ("claim_token","uuid",true),
+                ("status","text",false),
+                ("phase","text",false),
+                ("failure_phase","text",true),
+                ("failure_code","text",true),
+                ("worker_id","text",true),
+                ("worker_incarnation_id","uuid",true),
+                ("process_id","text",true),
+                ("runtime_mode","text",true),
+                ("runtime_evidence_hash","text",true),
+                ("dispatch_evidence_hash","text",true),
+                ("policy_digest","text",true),
+                ("policy_version","text",false),
+                ("published_at","utc_us",true),
+                ("claimed_at","utc_us",true),
+                ("started_at","utc_us",true),
+                ("heartbeat_at","utc_us",true),
+                ("completed_at","utc_us",true),
+                ("duration_ms","integer",true),
+                ("peak_memory_bytes","integer",true),
+                ("cpu_total_seconds","float64_bits",true),
+                ("created_at","utc_us",false),
+            ],
+            "logs" => &[
+                ("id","integer",false),
+                ("execution_id","uuid",false),
+                ("level","text",false),
+                ("message","text",false),
+                ("log_metadata","jsonb",true),
+                ("timestamp","utc_us",false),
+                ("sequence","integer",false),
+            ],
+            _ => return Err(()),
+        };
+        let keys:Vec<&str>=columns.iter().map(|(name,_,_)|*name).collect();
+        node.keys(&keys)?;
+        for (name,kind,nullable) in columns {
+            let cell=node.member(name)?;
+            cell.keys(&["sql_null","value"])?;
+            let Node::Bool(is_null)=cell.member("sql_null")? else {return Err(());};
+            let value=cell.member("value")?;
+            if *is_null {
+                if !*nullable || !matches!(value,Node::Null) {return Err(());}
+                continue;
+            }
+            match *kind {
+                "uuid" => {uuid(value)?;}
+                "text"|"jsonb"|"decimal" => {value.string()?;}
+                "bool" if matches!(value,Node::Bool(_)) => {}
+                "integer"|"utc_us" => {
+                    let Node::Number(raw)=value else {return Err(());};
+                    let number=raw.parse::<i64>().map_err(|_| ())?;
+                    if *kind=="integer" && !matches!(*name,"peak_memory_bytes"|"process_rss_bytes") {
+                        i32::try_from(number).map_err(|_| ())?;
+                    }
+                    if number.to_string()!=*raw {return Err(());}
+                }
+                "float64_bits" => {
+                    let raw=value.string()?;
+                    if raw.len()!=16 || !raw.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte)) {return Err(());}
+                    let bits=u64::from_str_radix(raw,16).map_err(|_| ())?;
+                    if !f64::from_bits(bits).is_finite() {return Err(());}
+                }
+                _ => return Err(()),
+            }
+        }
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let mut args = std::env::args_os().skip(1);
@@ -1579,6 +1939,21 @@ async fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     match command.to_str() {
+        Some("apply-result-fault") => {
+            let Ok(url)=std::env::var("BIFROST_RUST_TEST_DATABASE_URL") else {return ExitCode::from(2);};
+            if !url.starts_with("postgres://") && !url.starts_with("postgresql://") {return ExitCode::from(2);}
+            let Ok(options)=PgConnectOptions::from_str(&url) else {return ExitCode::from(2);};
+            let options=options.statement_cache_capacity(0).disable_statement_logging();
+            drop(url);
+            match commit_fault::run(&node,options).await {
+                Ok(response)=>{
+                    if emit(&response.output("r-attempt-claimed-unstarted")).is_err() || response.failed {
+                        ExitCode::from(1)
+                    } else {ExitCode::SUCCESS}
+                },
+                Err(())=>ExitCode::from(1),
+            }
+        }
         Some("observe-schema") => {
             let Ok(input) = schema_request(&node) else {
                 return ExitCode::from(2);
