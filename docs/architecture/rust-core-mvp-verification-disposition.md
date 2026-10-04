@@ -274,9 +274,35 @@ A finite parent launch design has received independent design acceptance:
 121 maximum parent operations, one 2400-second parent boundary, fixed observation
 slots, actual container/image/configuration admission, bounded private captures
 and an explicitly exposed original wrapper log directory. A requested runner
-name is not an observed container identity. The two parent CI files are being
-authored separately; their actual code and installed behavior are not accepted.
-The collector's negative or unknown property must remain a failed result.
+name is not an observed container identity. The two parent CI files are now
+frozen for source review: conductor SHA-256
+`49cc1465172ecf57d0c6a757b24e3a09adf363dd0cb16776b31a1325092dcbf5`
+and workflow SHA-256
+`b85609643b7786932c6bb2e9836736dc7a9ba578a6b55ea8b25809483e88d4a2`.
+Root and independent full source review hold this candidate on three findings:
+validated image aliases are dropped before tag/acquisition checks; whole Config
+equality can reject SeaweedFS replacement because of a generated hostname; and
+no actual mount-exclusion witness gates recursive privileged log ownership
+restoration. Same-filesystem bind mounts are not excluded by device equality.
+Independent review receipt SHA-256 is
+`6bee65cb70670af2dfaca55043df77aed215b1b051b7ff5acd32140eb40d7084`.
+
+Capture and publication writes now require positive bounded progress under the
+original deadlines; action version comments preserve the existing pins. Those
+source corrections passed root preservation checks. No parent execution or
+installed catalog evidence follows. The independently reviewed bounded design
+for image aliases and generated hostnames has now produced a frozen correction,
+conductor SHA-256
+`6952067a839ad8b546f43ee068c809f3be04397e99d805b9846f87a7d4f5a7b7`.
+It retains all validated aliases and recipe associations, compares each
+generated hostname against its own actual container ID, and requires retained
+child settlement before qualified helper disposal. These are source changes
+awaiting distinct/root review, not executed controls or installed proof.
+The actual privileged-helper mount-namespace exclusion witness remains missing;
+privileged ownership restoration and parent launch remain held. Unexpected private CLI-cache
+members and unqualified helper acquisition remain unknown; neither is silently
+deleted to obtain complete custody. The collector's negative or unknown
+property must remain a failed result.
 No collector commit, push or runtime run has been released by this disposition.
 
 ## Private workspace source acquisition: transport interface held
@@ -325,17 +351,79 @@ cleanup, Git transport and controls remain unexecuted.
 Existing empty-credential-helper and disabled-redirect Git arguments were
 already present and remain preserved.
 
-The missing-control design has independent design acceptance for internal
-native-default seams exercising the same production helpers with inert
-handles. Its two-file source implementation is now released; actual code
-review and supported execution remain pending. It does not authorize an
-alternative production transport or count as executed drift/custody proof.
-The workflow-only settlement correction is
-being authored under a separately accepted design: one shared two-second
-failure-only observation ceiling inside the unchanged 45-minute job guard.
-Actual reap, group absence, stream EOF and close facts must gate dependent
-capture/directory removal. This adds no success deadline, job minutes or
-reserved overhead, and makes no time-fit guarantee.
+The actual-helper control corrections passed bounded root and independent
+source review at controller SHA-256
+`e58c66fc475b4f8f65225c1d9468ca155774fa652c0b444e3b565f0f29e2d202`.
+The adapter initially passed source review at SHA-256
+`dbd85b6c12819df773e05209c6feca3180a43acc46f7c010f25151d2ae8690a5`.
+Subsequent sensitivity review found a real masking defect: an oversized write
+fixture could still fail on a later size check when the intended write guard
+was removed. A two-line control-only correction stores otherwise valid bytes
+and requires the specific write error. The final adapter SHA-256 is
+`75ded3022b1ddb8896127e6571419b3817fd089253b5da3ee4bc21a644c58a9f`;
+production definitions are byte-identical to the preceding adapter. Root and
+independent source review accepted that bounded repair. The separate supported
+quality run below now provides bounded JavaScript syntax/control evidence;
+Python parent controls remain unexecuted.
+
+The workflow-only settlement correction also passed root source review at
+SHA-256 `37253ad9946a74c6c907d85f0c8d6813adefa315494ba65a34271f0934303296`.
+It uses one shared two-second failure-only observation ceiling inside the
+unchanged 45-minute job guard. Actual reap, group absence, stream EOF and close
+facts gate dependent capture/directory removal in source. This adds no success
+deadline, job minutes or reserved overhead, and makes no time-fit guarantee.
+Actual process and descriptor settlement remain unproved.
+
+A separate App/runtime-credential-free quality design was accepted for supported CI only:
+load the actual adapter helpers without invoking main, run the unchanged
+controls, and require ten exact production-guard mutations to fail at their
+specific control assertion locations. A generic rejection, timeout or parser
+failure cannot count as drift detection. The two new quality-lane source files
+passed independent source review and were integrated with current main
+`7e737cacdba56b214e427afed5a28e89ae1b6a47` as candidate
+`500dd7402008411f3d03d2bd32c5697698b8cdbc`, tree
+`a2d1bd92394ee56e6fd9e146e87a11a9c3029631`, on
+`test/f4-source-auth-quality`. One separately released push produced
+[supported run 37216604331](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37216604331),
+attempt 1, which completed successfully. Its
+shared deadline, finite invocation roster and closed output are independent
+of the stopped fault campaign. Parent controls, official installed signing,
+production CLI, socket transport and credential custody remain separate gates.
+Independent source/design review receipt SHA-256 is
+`fd308ae5e5a6cf2d7698a6f950341db2da0fdd58d8a7cb4176357ecfcbc183f8`.
+
+The actual closed summary reports syntax and baseline controls passed, all ten
+exact mutations detected (status, complete, response-limit, aggregate-limit,
+abort, utf8, association, permissions, identity and write-progress), and all
+24 driver Node children settled with cleanup complete. Root read the complete
+job log and checked the summary against the frozen source and causal mutation
+table. The observed profile was Ubuntu 24.04 image `20260927.320.1`,
+Node `24.21.0` and Python `3.12.3`. Supported evidence receipt SHA-256 is
+`6f2a487676921b0c783a8ec0117af52aedd8cabb40f54a9db5d7143d921628c5`;
+the extracted actual summary SHA-256 is
+`5c4eca3c58c189c2a6b08e1a26f88836fd859e386c0dfac9379369440572a883`.
+Distinct evidence review remains pending at this checkpoint.
+
+This proves those actual helpers and inert controls for this supported profile.
+It does not prove Python/Rust response, database or event parity, production
+CLI behavior, installed official signing, real credential/socket custody,
+Python parent controls, the fault campaign, or M4/C2/C3 acceptance. Checkout
+used the managed repository-read GitHub token; no App, operator or runtime
+credentials were used. Setup-node printed its default package-manager cache
+setting, but no package cache restore/save or dependency installation appears
+in the log. The 24-child claim concerns the driver, not every trusted action
+or runner process. This successful lane is closed without an unchanged retry;
+it neither revives the stopped fault campaign nor satisfies normal pre-PR/CI
+gates for a future pull request.
+
+A bounded independent packed-source audit matched all sixteen immutable
+registry archives to the lockfile integrity values and inspected the official
+local-signing import path. It found no install lifecycle scripts and recorded
+MIT/ISC notice obligations. The audit receipt SHA-256 is
+`d4b77480538473dec414200a80d48723dcd45f5d033c11e9bd4588d896960c88`.
+This is archive/source correspondence, not an installed dependency, exhaustive
+security or vulnerability certificate. Package installation and signing remain
+unexecuted; unused OAuth/installation network paths are not approved.
 
 The current explicit scope is 219 parent operations plus six workflow-native
 processes, with pinned setup-action internals separately declared. Source
