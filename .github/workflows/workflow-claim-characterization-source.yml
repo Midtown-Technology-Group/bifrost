@@ -1,0 +1,52 @@
+name: Workflow claim characterization source checks
+
+on:
+  push:
+    branches: [test/workflow-claim-characterization]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-claim-characterization-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Claim driver formatting, lint and actual example tests
+    if: github.event_name == 'push' && github.repository == 'Midtown-Technology-Group/bifrost' && github.ref == 'refs/heads/test/workflow-claim-characterization' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Verify clean source and run supported checks and example tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_head=$(git rev-parse HEAD)
+          candidate_tree=$(git rev-parse 'HEAD^{tree}')
+          [[ "$candidate_head" == "$GITHUB_SHA" ]]
+          [[ "$candidate_head" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]
+          candidate_status=$(git status --porcelain=v1 --untracked-files=all)
+          [[ -z "$candidate_status" ]]
+          dockerfile_digest=$(sha256sum core-rs/Dockerfile)
+          dockerfile_digest=${dockerfile_digest%% *}
+          toolchain_digest=$(sha256sum core-rs/rust-toolchain.toml)
+          toolchain_digest=${toolchain_digest%% *}
+          driver_digest=$(sha256sum core-rs/crates/bifrost-domain/examples/workflow_domain_vectors.rs)
+          driver_digest=${driver_digest%% *}
+          for digest in "$dockerfile_digest" "$toolchain_digest" "$driver_digest"; do
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+          done
+          printf '{"schema":"bifrost.test.workflow-claim-characterization-source/v1","head":"%s","tree":"%s","dockerfile_sha256":"%s","toolchain_sha256":"%s","driver_sha256":"%s"}\n' "$candidate_head" "$candidate_tree" "$dockerfile_digest" "$toolchain_digest" "$driver_digest"
+          candidate_image="bifrost-claim-characterization-checks:$candidate_head"
+          docker build --target checks -t "$candidate_image" -f core-rs/Dockerfile core-rs
+          checks_image=$(docker image inspect "$candidate_image" --format '{{.Id}}')
+          [[ "$checks_image" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf '{"schema":"bifrost.test.workflow-claim-characterization-image/v1","image_id":"%s","command":"example_tests_locked_offline"}\n' "$checks_image"
+          docker run --rm --network none "$checks_image" cargo test --locked --offline -p bifrost-domain --example workflow_domain_vectors

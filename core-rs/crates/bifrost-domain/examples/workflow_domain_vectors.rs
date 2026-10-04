@@ -98,6 +98,9 @@ impl TryFrom<String> for HistoryInput {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Operation {
+    Claim {
+        execution_id: CanonicalUuid,
+    },
     Running {
         execution_id: CanonicalUuid,
         claim_token: CanonicalUuid,
@@ -304,12 +307,24 @@ struct Response {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum ResponseOutcome {
     Accepted { plan: Box<PlanOutput> },
+    Deferred { reason: &'static str },
+    NoClaim,
     Rejected { reason: &'static str },
 }
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum PlanOutput {
+    Claim {
+        logical_status: &'static str,
+        attempt_status: &'static str,
+        attempt_phase: &'static str,
+        claim_token: &'static str,
+        worker_id: &'static str,
+        worker_incarnation_id: &'static str,
+        claimed_at: &'static str,
+        heartbeat_at: &'static str,
+    },
     Running {
         status: &'static str,
         phase: &'static str,
@@ -467,6 +482,62 @@ fn decision(value: domain::DecisionError) -> &'static str {
         }
         domain::DecisionError::RequiresCoordinatorPolicy => "RequiresCoordinatorPolicy",
         domain::DecisionError::InconsistentRows => "InconsistentRows",
+    }
+}
+
+fn claim_attempt_status(value: domain::AttemptStatus) -> &'static str {
+    match value {
+        domain::AttemptStatus::Dispatching => "dispatching",
+        domain::AttemptStatus::Published => "published",
+        domain::AttemptStatus::Claimed => "claimed",
+        domain::AttemptStatus::Running => "running",
+        domain::AttemptStatus::Succeeded => "succeeded",
+        domain::AttemptStatus::Failed => "failed",
+        domain::AttemptStatus::TimedOut => "timed_out",
+        domain::AttemptStatus::Cancelled => "cancelled",
+        domain::AttemptStatus::WorkerLost => "worker_lost",
+        domain::AttemptStatus::AdmissionRejected => "admission_rejected",
+    }
+}
+
+fn claim_attempt_phase(value: domain::AttemptPhase) -> &'static str {
+    match value {
+        domain::AttemptPhase::Dispatch => "dispatch",
+        domain::AttemptPhase::Queue => "queue",
+        domain::AttemptPhase::Claim => "claim",
+        domain::AttemptPhase::Admission => "admission",
+        domain::AttemptPhase::Execution => "execution",
+        domain::AttemptPhase::Result => "result",
+        domain::AttemptPhase::Terminal => "terminal",
+    }
+}
+
+fn claim_outcome(result: Result<domain::ClaimDecision, domain::DecisionError>) -> ResponseOutcome {
+    match result {
+        Ok(domain::ClaimDecision::Plan(plan)) => ResponseOutcome::Accepted {
+            plan: Box::new(PlanOutput::Claim {
+                logical_status: logical_status(plan.logical_status),
+                attempt_status: claim_attempt_status(plan.attempt_status),
+                attempt_phase: claim_attempt_phase(plan.attempt_phase),
+                claim_token: match plan.claim_token {
+                    domain::ClaimTokenWrite::SetParentNonNull => "SetParentNonNull",
+                },
+                worker_id: input_write(plan.worker_id),
+                worker_incarnation_id: input_write(plan.worker_incarnation_id),
+                claimed_at: time_write(plan.claimed_at),
+                heartbeat_at: time_write(plan.heartbeat_at),
+            }),
+        },
+        Ok(domain::ClaimDecision::DeferLegacyInline) => ResponseOutcome::Deferred {
+            reason: "DeferLegacyInline",
+        },
+        Ok(domain::ClaimDecision::DeferAttemptAllocation) => ResponseOutcome::Deferred {
+            reason: "DeferAttemptAllocation",
+        },
+        Ok(domain::ClaimDecision::NoClaim) => ResponseOutcome::NoClaim,
+        Err(error) => ResponseOutcome::Rejected {
+            reason: decision(error),
+        },
     }
 }
 
@@ -659,6 +730,17 @@ fn execute(bytes: &[u8]) -> Result<Response, DriverError> {
         HistoryInput::Unrecorded => domain::AttemptHistory::Unrecorded,
     };
     let result = match operation {
+        Operation::Claim { execution_id } => {
+            return Ok(Response {
+                schema: SCHEMA,
+                case_id,
+                outcome: claim_outcome(domain::plan_existing_attempt_claim(
+                    execution.as_ref(),
+                    attempt.as_ref(),
+                    &execution_id,
+                )),
+            });
+        }
         Operation::Running {
             execution_id,
             claim_token,
@@ -844,6 +926,104 @@ mod tests {
         let mut output = Vec::new();
         assert_eq!(
             run(&mut input.as_slice(), &mut output),
+            Err(DriverError::InvalidRequest)
+        );
+        assert!(output.is_empty());
+    }
+
+    fn claim() -> Value {
+        let mut request = fixture(json!({"kind": "claim", "execution_id": EXECUTION_ID}));
+        request["rows"]["execution"]["status"] = json!("Pending");
+        request["rows"]["attempt"]["status"] = json!("published");
+        request["rows"]["attempt"]["claim_token"] = Value::Null;
+        request
+    }
+
+    #[test]
+    fn claim_actual_kernel_serializes_all_four_decisions_and_exact_fields() {
+        let mut request = claim();
+        assert_eq!(
+            response(&request)["outcome"],
+            json!({"kind": "accepted", "plan": {
+                "kind": "claim", "logical_status": "Running", "attempt_status": "claimed",
+                "attempt_phase": "claim", "claim_token": "SetParentNonNull",
+                "worker_id": "SetSupplied", "worker_incarnation_id": "SetSupplied",
+                "claimed_at": "Now", "heartbeat_at": "Now"
+            }})
+        );
+        request["rows"]["attempt"] = Value::Null;
+        assert_eq!(
+            response(&request)["outcome"],
+            json!({"kind": "deferred", "reason": "DeferAttemptAllocation"})
+        );
+        request["rows"]["execution"]["status"] = json!("Success");
+        assert_eq!(response(&request)["outcome"], json!({"kind": "no_claim"}));
+        request["rows"]["execution"] = Value::Null;
+        assert_eq!(
+            response(&request)["outcome"],
+            json!({"kind": "deferred", "reason": "DeferLegacyInline"})
+        );
+    }
+
+    #[test]
+    fn claim_actual_guards_preserve_order_and_existing_operation_outcomes() {
+        let original = claim();
+        for (pointer, value, reason) in [
+            ("/rows/execution/id", json!(ATTEMPT_ID), "InconsistentRows"),
+            ("/rows/attempt/execution_id", json!(ATTEMPT_ID), "InconsistentRows"),
+            ("/rows/attempt/completed_at_present", json!(true), "InconsistentRows"),
+            ("/rows/attempt/status", json!("claimed"), "InvalidAttemptState"),
+            ("/rows/attempt/claim_token", json!(TOKEN), "InvalidAttemptState"),
+        ] {
+            let mut request = original.clone();
+            if let Some(target) = request.pointer_mut(pointer) {
+                *target = value;
+            } else {
+                panic!("Synthetic guard field is missing");
+            }
+            assert_eq!(
+                response(&request)["outcome"],
+                json!({"kind": "rejected", "reason": reason})
+            );
+        }
+        for request in [
+            running(),
+            result(json!({"kind": "success", "status": "Success"})),
+            fixture(json!({"kind": "cancel", "execution_id": EXECUTION_ID})),
+        ] {
+            let actual = response(&request);
+            assert!(matches!(
+                actual["outcome"]["kind"].as_str(),
+                Some("accepted" | "rejected")
+            ));
+        }
+    }
+
+    #[test]
+    fn claim_request_fields_are_closed_required_and_original_duplicates_fail() {
+        for operation in [
+            json!({"kind": "claim"}),
+            json!({"kind": "claim", "execution_id": null}),
+            json!({"kind": "claim", "execution_id": 1}),
+            json!({"kind": "claim", "execution_id": "NOT-UUID"}),
+            json!({"kind": "claim", "execution_id": EXECUTION_ID, "claim_token": TOKEN}),
+        ] {
+            let mut request = claim();
+            request["operation"] = operation;
+            invalid(&request);
+        }
+        let encoded = match String::from_utf8(bytes(&claim())) {
+            Ok(value) => value,
+            Err(_) => panic!("Synthetic ASCII request encoding failed"),
+        };
+        let duplicate = encoded.replace(
+            "\"kind\":\"claim\"",
+            "\"kind\":\"claim\",\"kind\":\"claim\"",
+        );
+        assert_ne!(encoded, duplicate);
+        let mut output = Vec::new();
+        assert_eq!(
+            run(&mut duplicate.as_bytes(), &mut output),
             Err(DriverError::InvalidRequest)
         );
         assert!(output.is_empty());
