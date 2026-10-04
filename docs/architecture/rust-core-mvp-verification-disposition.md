@@ -980,3 +980,23 @@ and group, process reap, pipe EOF, known Python FD closure and unchanged file
 and directory identities. Real/effective UID agreement is required in the
 selected nonroot venue. Root accepted this bounded design clarification;
 concrete implementation and runtime cleanup evidence remain review gates.
+
+
+CLAIM-CHAR-STAGE1 source is frozen at
+`39b51208093ef2d9671b2cf7b8b39c1c4fab497b2c58307f5725fdd629705324`
+(186,217 bytes; 4,250 lines). Root read the complete delta, independently
+verified the unchanged 33 other source-map paths and exact inert helper bytes,
+and repeated static AST, Bash syntax, Ruff lint/format and diff checks. Those
+checks pass, but source acceptance is **held**: four new negative-control
+expectations use `json-shape`, while the unchanged `closed()` helper emits
+`closed-keys`. This would fail the new controls before pre-PR. Root review
+`a0964c6edc4cc9aa5e7a32288a2a5c5fb77d1ad195276b63d7c5aca9f117fbd8`
+records the source finding; author acknowledged it. Independent review remains
+in progress. No controls or runtime were executed, and no source commit, push
+or changed-candidate run is released. Any repair must preserve the rejection
+conditions and exact error assertions, with a new immutable source version.
+
+Read-only PR reconciliation confirms W0 #1008 and #1009 remain open at their
+recorded heads with CodSpeed failures, and #1037 remains open/blocked at
+`3918d608a2d497d1ca8424fd4229d191323e2d7a`. No threshold adjustment, rerun,
+merge or deployment was performed.
