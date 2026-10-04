@@ -102,6 +102,20 @@ Do not propagate the selector to actor environments or use it for a second
 suite. Distinct design review fingerprint:
 `3af16d081842aae3c3f4ef99247b3d2a3c44996443f1c5c60843397ae23faf52`.
 
+The external task-created log directory is an unresolved cleanup gate. The
+unchanged runner can recursively change its owner to UID 1000; teardown exports
+logs and removes Compose resources but leaves that host bind-source directory.
+A different unprivileged host user may be unable to remove nested contents or
+the directory itself under a sticky `/tmp`. Actual hosted permissions and
+removal outcomes are unmeasured. Residual or unknown logs prevent overall
+`disposal.complete` and `passed`; Docker resource absence does not settle them.
+
+A proposed extra privileged removal command was independently rejected pending
+root-child cancellation and settlement proof. It is not selected or released:
+the authoritative roster stays at 207. Killing or reaping a nonroot `sudo`
+monitor would not prove its root command stopped. No privileged wrapper,
+helper, retry or larger deadline is authorized by this document.
+
 All selections above permit bounded source authoring only. The two parent
 files remain unfinished drafts; full independent source review, supported
 execution, actual custody and cleanup remain outstanding. The earlier green
