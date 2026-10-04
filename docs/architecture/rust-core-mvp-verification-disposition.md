@@ -651,3 +651,24 @@ Declared source inventory predicts 207 selected JUnit items; none of the new
 claim cases or controls has executed. Reference-only cases and allocation
 deferrals remain distinct from Rust parity. No full-MVP gate is closed by
 these source verdicts.
+
+Parent v015 closes the remaining two source-review findings, independent
+receipt SHA-256
+`966ccad13349f34fc66d9265e34389755263a2c7f895fdaa1c5bbf800c45e819`.
+Root accepted the exact three frozen paths and released one changed-candidate
+supported run, receipt SHA-256
+`c533c8dbe947c3ba8ab67731612a4caef8d9109208037cc5e892298126c0cdf3`.
+Clean candidate `0ef442248babd12a829543d801e5c6666a785ed2` contains platform
+main `7e737cacdba56b214e427afed5a28e89ae1b6a47`; workspace main remains
+`78f37f5a5cbd7b0a6c382b54ccc617c8747418aa`, preserving the recorded boundary
+proof. Only the three accepted source paths were committed in this step.
+
+The candidate was pushed to `test/workflow-claim-characterization`.
+[Supported characterization run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37232401370)
+is workflow_dispatch attempt 1;
+[source-check run](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37232398145)
+is push attempt 1. Both were verified in progress at release readback.
+Their results remain unproved. The existing characterization command retains
+literal `./test.sh pre-pr`, all original checks, fixed clocks and cleanup gates.
+No PR, merge, deployment, authority change or full-MVP acceptance is included.
+No unchanged rerun is authorized by this release.
