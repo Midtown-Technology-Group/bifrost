@@ -1662,7 +1662,9 @@ mod commit_fault {
         let invocation = uuid(node.member("invocation")?)?.as_str().to_owned();
         let scope = node.member("scope")?;
         scope.keys(&["foreign_execution_id", "attempt_id", "foreign_attempt_id"])?;
-        let foreign = uuid(scope.member("foreign_execution_id")?)?.as_str().to_owned();
+        let foreign = uuid(scope.member("foreign_execution_id")?)?
+            .as_str()
+            .to_owned();
         if uuid(scope.member("attempt_id")?)? == uuid(scope.member("foreign_attempt_id")?)? {
             return Err(());
         }
@@ -1704,7 +1706,9 @@ mod commit_fault {
             owned,
             foreign,
             attempt: uuid(scope.member("attempt_id")?)?.as_str().to_owned(),
-            foreign_attempt: uuid(scope.member("foreign_attempt_id")?)?.as_str().to_owned(),
+            foreign_attempt: uuid(scope.member("foreign_attempt_id")?)?
+                .as_str()
+                .to_owned(),
             sql,
         })
     }
