@@ -944,3 +944,17 @@ venue remain execution gates. Existing Rust checks do not exercise this new
 optional example or diagnostic. Actual M1 issuer and key custody, API-origin
 assertions, business-operation authority, M2–M5 and C2/C3 remain held. Neither
 allocation resolves the current lifecycle parity, mixed-writer or rollback gates.
+
+
+Workspace main advanced to `6dfcf74a09743aa83d74f9fe582f8869828e61bf`
+through #1181. Root fetched both mains and independently parsed all 2,140
+current authored Python files in the committed quality gate's boundary scope.
+There were zero parse errors, zero `src`/`src.*` imports and zero SQLAlchemy
+imports; the internal-import allowlist remains an explicit empty `set()`.
+Audit receipt `780a6159fb96c9161a50ff9265b5d04d64bae163d2312cc8b22f97140833e9a8`
+binds the current scope source and selected-file manifest. This is a fresh
+AST source audit, not execution of the workspace quality gate. #1112 remains
+an ancestor. Platform main remains
+`7e737cacdba56b214e427afed5a28e89ae1b6a47`, with #1001 an ancestor;
+#1011 remains open at `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`.
+The Rust experiment requires no accommodation in authored workspace code.
