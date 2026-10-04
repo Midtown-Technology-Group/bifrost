@@ -14,7 +14,12 @@ head `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. The platform main used for the 
 and the same workspace head. Both prerequisite merges (#1001 and #1112)
 remain ancestors. The platform advance is the four-file immutable empty-source
 export repair (#1048); it does not change the collector schema, SQL or source
-pins. It does not retroactively change any campaign candidate or evidence.
+pins. A subsequent fetch observed platform main
+`7e737cacdba56b214e427afed5a28e89ae1b6a47`, which adds the explicit API-target
+requirement for SDK Solution start and associated tests/reference material.
+The latest read-only fetch confirms that platform head and the same workspace
+head, with both prerequisite merges still present. Neither advance retroactively
+changes any campaign candidate or evidence.
 
 ## Result verification: stopped and blocking
 
@@ -265,8 +270,14 @@ repository checks, actual image/configuration/source qualification, private
 raw-output custody, safe property-only evidence delivery and physical cleanup.
 The existing wrapper tees output and writes JUnit under a directory it makes
 world-writable; that directory cannot be asserted to provide private custody.
-A finite source-based launch assessment is in progress. No collector commit,
-push or runtime run has been released by this source disposition.
+A finite parent launch design has received independent design acceptance:
+121 maximum parent operations, one 2400-second parent boundary, fixed observation
+slots, actual container/image/configuration admission, bounded private captures
+and an explicitly exposed original wrapper log directory. A requested runner
+name is not an observed container identity. The two parent CI files are being
+authored separately; their actual code and installed behavior are not accepted.
+The collector's negative or unknown property must remain a failed result.
+No collector commit, push or runtime run has been released by this disposition.
 
 ## Private workspace source acquisition: transport interface held
 
@@ -279,8 +290,57 @@ exposes neither redirect disabling nor request cancellation/deadline controls.
 It therefore cannot satisfy the selected credential transport and shared
 source-deadline requirements unchanged.
 
-A small wrapper around supported official-library request options is undergoing
-source-only feasibility review. No custom cryptography, action fork, runtime
-credential change, secret provisioning or fourth controller run is authorized.
+The selected source design instead uses official local App JWT signing and
+native Node HTTPS requests with fixed destinations, default TLS verification,
+no redirects or replay, bounded bodies and explicit retained-resource closure.
+Node, npm and the dependency lock are pinned. This is source feasibility;
+installation, actual permissions/expiry, credential custody and transport
+behavior remain unproved.
+
+The first five-file implementation was frozen at controller SHA-256
+`bded67100f2ea60ccc5f71f5c83d928209f065f457d235e4d952378c9d375865`
+on baseline `5be46529c122c7133ed1a85e6e344ee14105fb11`.
+Independent source review held that candidate for four concrete findings:
+
+- Generic private-file cleanup could bypass App-specific disposal guards,
+  including partial acquisition.
+- Authenticated Git inherited ambient proxy and TLS override variables.
+- Required controls did not exercise the actual request/write helpers across
+  failure and custody cases.
+- Bootstrap cleanup requested a kill but did not complete bounded child/group
+  settlement before dependent disposal.
+
+The first controller repair, SHA-256
+`cc7ef5b86cb0d41f609b74ace22b0ef6633c3a5b2cabfe78511262a5276f80a7`,
+adds an early sensitive-path registry, excludes unresolved App custody from
+generic cleanup and qualifies a narrow Git child environment. Review found
+one remaining disposal fence: the actual credential-consuming `workspace.fetch`
+must also be settled before App files are removed. The follow-up controller
+source, SHA-256
+`af793fc20834cfd9c790fe6315c6caaea72dd02f629390e414197be2f30f4ed4`,
+now admits that actual consumer through the same settlement predicate used by
+its declared controls. Root accepted this bounded source correction after
+reading the exact delta and checking preservation independently. Actual
+cleanup, Git transport and controls remain unexecuted.
+Existing empty-credential-helper and disabled-redirect Git arguments were
+already present and remain preserved.
+
+The missing-control design has independent design acceptance for internal
+native-default seams exercising the same production helpers with inert
+handles. Its two-file source implementation is now released; actual code
+review and supported execution remain pending. It does not authorize an
+alternative production transport or count as executed drift/custody proof.
+The workflow-only settlement correction is
+being authored under a separately accepted design: one shared two-second
+failure-only observation ceiling inside the unchanged 45-minute job guard.
+Actual reap, group absence, stream EOF and close facts must gate dependent
+capture/directory removal. This adds no success deadline, job minutes or
+reserved overhead, and makes no time-fit guarantee.
+
+The current explicit scope is 219 parent operations plus six workflow-native
+processes, with pinned setup-action internals separately declared. Source
+inspection is not a certificate of all runner processes or installed behavior.
+No custom cryptography, action fork, runtime credential change, secret
+provisioning or fourth controller run is authorized.
 The third run's original fetch failure cause remains unknown; an unprovisioned
 private read-access prerequisite is not retrospective proof of that cause.
