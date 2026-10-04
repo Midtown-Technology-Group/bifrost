@@ -33,6 +33,27 @@ HEX64 = re.compile(r"[0-9a-f]{64}")
 IID = re.compile(r"sha256:[0-9a-f]{64}")
 WIRE = "bifrost.test.claim-frontend-control/v1"
 FILE_CUSTODY = []  # All local returned FDs, including unknown close outcomes; never retried.
+PUBLIC_OUTPUTS = frozenset(
+    (
+        "source.txt",
+        "receipt.json",
+        "custody-before.txt",
+        "custody-after.txt",
+        "custody-ownership-after.txt",
+        "api-image-before.txt",
+        "api-image-after.txt",
+        "frontend.json",
+        "gate-exit-status.txt",
+        "exit-status.txt",
+        "project-resources.txt",
+    )
+)
+FAILURE_SCHEMA = "bifrost.test.claim-parent-failure/v1"
+FAILURE_PREFIX = b"bifrost-claim-parent-failure/v1 "
+FAILURE_PHASES = frozenset(
+    ("setup", "controls", "source", "prepr", "build", "stack", "target", "frontend", "cleanup", "publication")
+)
+FAILURE_CLASSES = frozenset(("control", "guard", "os", "system_exit", "interrupt", "other"))
 
 SOURCE_PATHS = (
     ".github/workflows/workflow-domain-parity.yml",
@@ -716,6 +737,9 @@ class Parent:
     def __init__(self):
         self.calls = set()
         self.natives = []
+        self.phase = "setup"
+        self.failure_snapshot = None
+        self.diagnostic_failed = False
         self.capture_bytes = 0
         self.private = None
         self.private_identity = None
@@ -786,30 +810,35 @@ class Parent:
                 fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 native.files[index] = fd
                 self.private_files[owned_index] = (path, os.fstat(fd))
-        except BaseException:
+        except BaseException as error:
+            freeze_failure(self, error, native)
             native.unknown = True
             raise
         native.acquired = True
         return native
 
     def pump(self, native):
-        require(native.process is not None and native.acquired, "native-acquisition")
-        require(time.monotonic() < native.end, "native-expired")
-        for key, _events in native.selector.select(0):
-            index = key.data
-            try:
-                raw = os.read(key.fileobj.fileno(), 16384)
-            except BlockingIOError:
-                continue
-            if not raw:
-                native.eof[index] = True
-                native.selector.unregister(key.fileobj)
-                continue
-            capture_chunk(self, native, index, raw, os.write, time.monotonic)
-        native.code = native.process.poll()
-        if native.code is not None and all(native.eof):
-            self.finish_native(native)
-        return native.settled
+        try:
+            require(native.process is not None and native.acquired, "native-acquisition")
+            require(time.monotonic() < native.end, "native-expired")
+            for key, _events in native.selector.select(0):
+                index = key.data
+                try:
+                    raw = os.read(key.fileobj.fileno(), 16384)
+                except BlockingIOError:
+                    continue
+                if not raw:
+                    native.eof[index] = True
+                    native.selector.unregister(key.fileobj)
+                    continue
+                capture_chunk(self, native, index, raw, os.write, time.monotonic)
+            native.code = native.process.poll()
+            if native.code is not None and all(native.eof):
+                self.finish_native(native)
+            return native.settled
+        except BaseException as error:
+            freeze_failure(self, error, native)
+            raise
 
     def finish_native(self, native):
         if native.closed:
@@ -825,12 +854,16 @@ class Parent:
                 self.pump(native)
 
     def wait(self, native):
-        while not native.settled:
-            self.poll_all()
-            if not native.settled:
-                time.sleep(min(0.01, max(0, native.end - time.monotonic())))
-        require(native.code == 0 and not native.unknown, "native-exit-or-capture")
-        return bytes(native.output[0])
+        try:
+            while not native.settled:
+                self.poll_all()
+                if not native.settled:
+                    time.sleep(min(0.01, max(0, native.end - time.monotonic())))
+            require(native.code == 0 and not native.unknown, "native-exit-or-capture")
+            return bytes(native.output[0])
+        except BaseException as error:
+            freeze_failure(self, error, native)
+            raise
 
     def run(self, label, argv, end, bound=STREAM_LIMIT):
         return self.wait(self.launch(label, argv, end, bound))
@@ -1620,6 +1653,7 @@ def cleanup_attempt(parent, operation):
     try:
         operation()
     except BaseException as error:
+        freeze_failure(parent, error)
         parent.cleanup_errors.append(error)
 
 
@@ -1672,35 +1706,162 @@ def retained_file(path, bound, end):
     return result
 
 
-def publish(path, raw, bound, end):
-    require(len(raw) <= bound, "publication-bound")
-    phase_admit(end, time.monotonic, "publication-bound")
+def public_file_guard(file_os, fd, path, identity, end, clock):
+    phase_admit(end, clock, "publication-completion-deadline")
+    value = file_os.fstat(fd)
+    actual = file_os.stat(path, follow_symlinks=False)
+    require(
+        stat.S_ISREG(value.st_mode)
+        and value.st_nlink == 1
+        and (value.st_dev, value.st_ino) == identity
+        and (actual.st_dev, actual.st_ino) == identity
+        and stat.S_ISREG(actual.st_mode)
+        and actual.st_nlink == 1
+        and stat.S_IMODE(value.st_mode) == 0o644
+        and stat.S_IMODE(actual.st_mode) == 0o644,
+        "publication-association",
+    )
+
+
+def publish_body(path, raw, bound, end, file_os, clock, records):
+    # Actual publish hardwires os/time; only inert controls supply these narrow bindings.
+    require(path.name in PUBLIC_OUTPUTS and len(raw) <= bound, "publication-bound")
+    phase_admit(end, clock, "publication-bound")
     fd = None
     record = {"fd": None, "path": path, "identity": None, "closed": True, "unknown": False}
-    FILE_CUSTODY.append(record)
+    records.append(record)
     first = None
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        fd = file_os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
         record["fd"] = fd
         record["closed"] = False
-        identity = os.fstat(fd)
-        record["identity"] = (identity.st_dev, identity.st_ino)
-        progress_write(os.write, fd, raw, end, time.monotonic)
-        phase_admit(end, time.monotonic, "publication-completion-deadline")
-        os.fsync(fd)
-        phase_admit(end, time.monotonic, "publication-completion-deadline")
+        value = file_os.fstat(fd)
+        record["identity"] = (value.st_dev, value.st_ino)
+        actual = file_os.stat(path, follow_symlinks=False)
+        require(
+            stat.S_ISREG(value.st_mode)
+            and value.st_nlink == 1
+            and stat.S_ISREG(actual.st_mode)
+            and actual.st_nlink == 1
+            and (actual.st_dev, actual.st_ino) == record["identity"],
+            "publication-acquisition",
+        )
+        phase_admit(end, clock, "publication-completion-deadline")
+        file_os.fchmod(fd, 0o644)  # Exact acquired FD, before bytes; ambient umask is unchanged.
+        public_file_guard(file_os, fd, path, record["identity"], end, clock)
+        progress_write(file_os.write, fd, raw, end, clock)
+        phase_admit(end, clock, "publication-completion-deadline")
+        file_os.fsync(fd)
+        public_file_guard(file_os, fd, path, record["identity"], end, clock)
     except BaseException as error:
         first = error
     if fd is not None:
         try:
-            os.close(fd)
+            file_os.close(fd)
             record["closed"] = True
         except BaseException as error:
             record["unknown"] = True
             first = first_error(first, error)
     if first is not None:
         raise first
-    phase_admit(end, time.monotonic, "publication-close-deadline")
+    phase_admit(end, clock, "publication-close-deadline")
+
+
+def publish(path, raw, bound, end):
+    publish_body(path, raw, bound, end, os, time.monotonic, FILE_CUSTODY)
+
+
+def coarse_failure(error):
+    if isinstance(error, Control):
+        return "control"
+    if isinstance(error, Failure):
+        return "guard"
+    if isinstance(error, OSError):
+        return "os"
+    if isinstance(error, SystemExit):
+        return "system_exit"
+    if isinstance(error, KeyboardInterrupt):
+        return "interrupt"
+    return "other"
+
+
+def freeze_failure(parent, error, native=None):
+    if parent.failure_snapshot is not None or parent.diagnostic_failed:
+        return
+    try:
+        operation = code = settled = None
+        if native is not None and any(owned is native for owned in parent.natives):
+            require(type(native.label) is str and native.label in NATIVE_LABELS, "diagnostic-operation")
+            operation = native.label
+            # Read retained observations only; never poll merely to fill a diagnostic.
+            if type(native.code) is int and -(2**31) <= native.code < 2**31:
+                code = native.code
+            if native.process is not None and native.acquired is True and type(native.settled) is bool:
+                settled = native.settled
+        value = {
+            "schema": FAILURE_SCHEMA,
+            "phase": parent.phase,
+            "operation": operation,
+            "exit_code": code,
+            "native_settled": settled,
+            "exception_class": coarse_failure(error),
+        }
+        diagnostic_bytes(value)  # Validate before the single completed snapshot assignment.
+        parent.failure_snapshot = value
+    except BaseException:
+        # Diagnostic faults are secondary; do not replace the genuine boundary error.
+        parent.diagnostic_failed = True
+
+
+def diagnostic_bytes(value):
+    require(
+        type(value) is dict
+        and set(value) == {"schema", "phase", "operation", "exit_code", "native_settled", "exception_class"},
+        "diagnostic-shape",
+    )
+    require(
+        type(value["schema"]) is str
+        and value["schema"] == FAILURE_SCHEMA
+        and type(value["phase"]) is str
+        and value["phase"] in FAILURE_PHASES
+        and type(value["exception_class"]) is str
+        and value["exception_class"] in FAILURE_CLASSES,
+        "diagnostic-enum",
+    )
+    operation, code, settled = value["operation"], value["exit_code"], value["native_settled"]
+    require(operation is None or (type(operation) is str and operation in NATIVE_LABELS), "diagnostic-operation")
+    require(code is None or (type(code) is int and -(2**31) <= code < 2**31), "diagnostic-code")
+    require(settled is None or type(settled) is bool, "diagnostic-settled")
+    require(operation is not None or (code is None and settled is None), "diagnostic-association")
+    raw = FAILURE_PREFIX + json.dumps(value, ensure_ascii=True, separators=(",", ":")).encode("ascii") + b"\n"
+    require(len(raw) <= 512 and raw.isascii(), "diagnostic-bound")
+    return raw
+
+
+def emit_diagnostic(value, end, file_os, clock):
+    # Inherited stderr is borrowed, never closed. One nonblocking write, no retry or new end.
+    first = None
+    blocking = None
+    try:
+        raw = diagnostic_bytes(value)
+        phase_admit(end, clock, "diagnostic-deadline")
+        blocking = file_os.get_blocking(2)
+        require(type(blocking) is bool, "diagnostic-blocking")
+        phase_admit(end, clock, "diagnostic-deadline")
+        file_os.set_blocking(2, False)
+        phase_admit(end, clock, "diagnostic-deadline")
+        count = file_os.write(2, raw)
+        require(type(count) is int and count == len(raw), "diagnostic-write")
+        phase_admit(end, clock, "diagnostic-completion-deadline")
+    except BaseException as error:
+        first = error
+    if type(blocking) is bool:
+        try:
+            file_os.set_blocking(2, blocking)  # Independent restoration even after write failure or expiry.
+        except BaseException as error:
+            first = first_error(first, error)
+    if first is not None:
+        raise first
 
 
 def junit_actual(parent):
@@ -1772,6 +1933,7 @@ def receipt(parent, evidence):
 
 
 def main_work(parent):
+    parent.phase = "source"
     root = parent.original("source.root", WORK_END).decode("utf-8").strip()
     require(Path(root).is_absolute() and root == str(Path.cwd()), "source-root")
     parent.values["ROOT"] = root
@@ -1799,9 +1961,11 @@ def main_work(parent):
     parent.values["CANDIDATE"] = parent.original("source.head", WORK_END).decode("ascii").strip()
     require(re.fullmatch(r"[0-9a-f]{40}", parent.values["CANDIDATE"]), "candidate-id")
     publish(evidence / "source.txt", parent.original("source.head_tree", WORK_END), 256, WORK_END)
+    parent.phase = "prepr"
     parent.original("prepr", WORK_END)
     require(parent.original("prepr.head", WORK_END).decode("ascii").strip() == parent.values["CANDIDATE"], "prepr-head")
     require(parent.original("prepr.clean", WORK_END) == b"", "prepr-dirty")
+    parent.phase = "build"
     parent.original("checks.build", WORK_END)
     parent.values["CHECKS_IID"] = image_id(parent.original("checks.image", WORK_END).decode("ascii").strip())
     parent.builder_id = cid(parent.original("builder.create", WORK_END).decode("ascii").strip())
@@ -1818,10 +1982,12 @@ def main_work(parent):
     receipt(parent, evidence)
     parent.custody_before = parent.original("custody.before", WORK_END)
     publish(evidence / "custody-before.txt", parent.custody_before, 4096, WORK_END)
+    parent.phase = "stack"
     parent.stack_attempted = True
     parent.original("stack.up", WORK_END)
     parent.api_before = image_id(parent.original("api.before", WORK_END).decode("ascii").strip())
     publish(evidence / "api-image-before.txt", (parent.api_before + "\n").encode(), 128, WORK_END)
+    parent.phase = "frontend"
     source_model(
         parent,
         parent.front(
@@ -1845,10 +2011,14 @@ def main_work(parent):
     parent.listen(evidence)
     parent.parity_started = True
     argv = next(args for label, args, _stage in ORIGINAL_COMMANDS if label == "target")
+    parent.phase = "target"
     target = parent.launch("target", list(argv), WORK_END)
+    parent.phase = "frontend"
     parent.accept()
     target_gate(parent)
+    parent.phase = "target"
     parent.wait(target)
+    parent.phase = "frontend"
     require(parent.peer.recv(1) == b"", "wire-final-eof")
     rows = census(
         parent.front(
@@ -1866,6 +2036,7 @@ def main_work(parent):
         )
     )
     require(parent.runner["Id"] not in rows, "runner-retained")
+    parent.phase = "source"
     require(
         parent.original("source.final_head", WORK_END).decode("ascii").strip() == parent.values["CANDIDATE"],
         "final-head",
@@ -1874,6 +2045,7 @@ def main_work(parent):
 
 
 def main_cleanup(parent):
+    parent.phase = "cleanup"
     cleanup_attempt(parent, parent.close_failed_natives)
     cleanup_attempt(parent, parent.close_ipc)
     if parent.parity_started:
@@ -1942,8 +2114,328 @@ def main_cleanup(parent):
     )
 
 
+def publication_diagnostic_controls():
+    # Inert data-only bindings exercise the same public body, never real files or inherited stderr.
+    class PublicOS:
+        def __init__(self, fault=None, primary=None, close_error=None):
+            self.fault, self.primary, self.close_error = fault, primary, close_error
+            self.mode = 0o600  # Restrictive synthetic acquisition umask; only fchmod may change it.
+            self.events = []
+            self.data = bytearray()
+            self.stats = 0
+
+        def fail(self, stage):
+            if self.fault == stage and self.primary is not None:
+                raise self.primary
+
+        def open(self, _path, flags, mode):
+            require(flags == os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, "control-public-flags")
+            require(mode == 0o644, "control-public-open-mode")
+            self.events.append("open")
+            self.fail("open")
+            return 11
+
+        def value(self, inode=2):
+            return type(
+                "SyntheticPublicStat",
+                (),
+                {
+                    "st_dev": 1,
+                    "st_ino": inode,
+                    "st_mode": (stat.S_IFDIR if self.fault == "type" else stat.S_IFREG) | self.mode,
+                    "st_nlink": 2 if self.fault == "links" else 1,
+                },
+            )()
+
+        def fstat(self, fd):
+            require(fd == 11, "control-public-fd")
+            self.events.append("fstat")
+            self.fail("fstat")
+            self.stats += 1
+            return self.value(3 if self.fault == "fd_identity" and self.stats > 1 else 2)
+
+        def stat(self, _path, *, follow_symlinks):
+            require(follow_symlinks is False, "control-public-no-follow")
+            self.events.append("stat")
+            return self.value(3 if self.fault == "path_identity" else 2)
+
+        def fchmod(self, fd, mode):
+            require(fd == 11 and mode == 0o644 and not self.data, "control-public-fchmod-fd-before-bytes")
+            self.events.append("fchmod")
+            self.fail("fchmod")
+            if self.fault != "mode":
+                self.mode = mode
+
+        def write(self, fd, raw):
+            require(fd == 11 and self.mode == 0o644, "control-public-write-mode")
+            self.events.append("write")
+            self.fail("write")
+            self.data.extend(raw)
+            return len(raw)
+
+        def fsync(self, fd):
+            require(fd == 11, "control-public-sync")
+            self.events.append("fsync")
+            self.fail("fsync")
+
+        def close(self, fd):
+            require(fd == 11, "control-public-close")
+            self.events.append("close")
+            if self.close_error is not None:
+                raise self.close_error
+
+    path = Path("/inert-public/source.txt")
+    actual = PublicOS()
+    records = []
+    publish_body(path, b"safe", 4, 10, actual, lambda: 0, records)
+    require(
+        actual.data == b"safe"
+        and actual.mode == 0o644
+        and actual.events.count("fchmod") == 1
+        and actual.events.count("close") == 1
+        and records[0]["closed"]
+        and not records[0]["unknown"],
+        "control-public-positive",
+    )
+    for fault in ("type", "links", "path_identity", "fd_identity", "mode"):
+        actual, records = PublicOS(fault), []
+        try:
+            publish_body(path, b"safe", 4, 10, actual, lambda: 0, records)
+        except Failure:
+            pass
+        else:
+            raise Failure("control-public-guard")
+        require(not actual.data and actual.events.count("close") == 1, "control-public-refused-before-write")
+    for fault in ("open", "fstat", "fchmod", "write", "fsync"):
+        for primary in (Control(), SystemExit(), KeyboardInterrupt()):
+            secondary = Control()
+            actual, records = PublicOS(fault, primary, secondary), []
+            try:
+                publish_body(path, b"safe", 4, 10, actual, lambda: 0, records)
+            except BaseException as error:
+                if error is not primary:
+                    raise
+            else:
+                raise Failure("control-public-primary")
+            require(
+                actual.events.count("close") == int(fault != "open") and records[0]["unknown"] is (fault != "open"),
+                "control-public-independent-close",
+            )
+    primary = Control()
+    actual, records = PublicOS(close_error=primary), []
+    try:
+        publish_body(path, b"safe", 4, 10, actual, lambda: 0, records)
+    except BaseException as error:
+        if error is not primary:
+            raise
+    else:
+        raise Failure("control-public-close-fault")
+    require(actual.events.count("close") == 1 and records[0]["unknown"], "control-public-no-close-retry")
+    for rejected in (Path("/inert-public/private-raw.txt"), path):
+        actual, records = PublicOS(), []
+        try:
+            publish_body(
+                rejected, b"safe", 4, 10, actual, lambda rejected=rejected: 20 if rejected == path else 0, records
+            )
+        except Failure:
+            pass
+        else:
+            raise Failure("control-public-admission")
+        require(not actual.events, "control-public-no-acquisition")
+
+    for error, kind in (
+        (Control(), "control"),
+        (Failure("private payload must not appear"), "guard"),
+        (OSError("private payload must not appear"), "os"),
+        (SystemExit("private payload must not appear"), "system_exit"),
+        (KeyboardInterrupt(), "interrupt"),
+        (RuntimeError("private payload must not appear"), "other"),
+    ):
+        isolated = Parent()
+        isolated.phase = "prepr"
+        freeze_failure(isolated, error)
+        require(isolated.failure_snapshot["exception_class"] == kind, "control-diagnostic-class")
+        raw = diagnostic_bytes(isolated.failure_snapshot)
+        require(len(raw) <= 512 and raw.isascii() and b"private payload" not in raw, "control-diagnostic-privacy")
+
+    class FailingSelector:
+        def __init__(self, error):
+            self.error = error
+
+        def select(self, _timeout):
+            raise self.error
+
+    for primary in (Failure("synthetic-capture"), Control(), SystemExit(), KeyboardInterrupt()):
+        isolated = Parent()
+        isolated.phase = "frontend"
+        failed = Native("prepr", WORK_END, 1)
+        failed.acquired = True
+        failed.process = object()
+        failed.selector = FailingSelector(primary)
+        failed.code = 7  # Synthetic previously observed status, never a new poll.
+        awaited = Native("target", WORK_END, 1)
+        isolated.natives = [failed, awaited]
+        try:
+            isolated.wait(awaited)  # Actual poll_all -> actual failing child pump -> wait unwind.
+        except BaseException as error:
+            if error is not primary:
+                raise
+        else:
+            raise Failure("control-diagnostic-actual-child")
+        value = isolated.failure_snapshot
+        require(
+            value["operation"] == "prepr" and value["exit_code"] == 7 and value["native_settled"] is False,
+            "control-diagnostic-child-association",
+        )
+        failed.code, failed.settled = 0, True
+        isolated.phase = "cleanup"
+        freeze_failure(isolated, Control(), awaited)
+        require(isolated.failure_snapshot is value and value["exit_code"] == 7, "control-diagnostic-first-snapshot")
+    for partial in (False, True):
+        isolated = Parent()
+        selected = Native("prepr", WORK_END, 1)
+        selected.process = object() if partial else None
+        isolated.natives = [selected]
+        freeze_failure(isolated, OSError(), selected)
+        require(
+            isolated.failure_snapshot["exit_code"] is None and isolated.failure_snapshot["native_settled"] is None,
+            "control-diagnostic-unmeasured",
+        )
+    for foreign in (None, Native("target", WORK_END, 1)):
+        isolated = Parent()
+        isolated.natives = [failed]  # A completed previous native is not the new local guard's cause.
+        freeze_failure(isolated, Failure("synthetic-local"), foreign)
+        require(
+            all(isolated.failure_snapshot[key] is None for key in ("operation", "exit_code", "native_settled")),
+            "control-diagnostic-local-null",
+        )
+    selected = Native("prepr", WORK_END, 1)
+    selected.process, selected.acquired, selected.code, selected.unknown = object(), True, 0, True
+    isolated = Parent()
+    isolated.natives = [selected]
+    freeze_failure(isolated, Failure("synthetic-custody"), selected)
+    require(
+        isolated.failure_snapshot["exit_code"] == 0 and isolated.failure_snapshot["native_settled"] is False,
+        "control-diagnostic-zero-not-settled",
+    )
+    baseline = {**isolated.failure_snapshot, "operation": None, "exit_code": None, "native_settled": None}
+    for drift in (
+        {"operation": "foreign"},
+        {"exit_code": True},
+        {"operation": "prepr", "exit_code": 2**31},
+        {"operation": "prepr", "exit_code": -(2**31) - 1},
+        {"native_settled": 1},
+        {"phase": "unknown"},
+        {"exception_class": "private-class-name"},
+        {"schema": "unknown"},
+        {"extra": "private"},
+        {"operation": None, "exit_code": 1},
+    ):
+        try:
+            diagnostic_bytes({**baseline, **drift})
+        except Failure:
+            pass
+        else:
+            raise Failure("control-diagnostic-grammar")
+    for label in NATIVE_LABELS:
+        for code in (-(2**31), 2**31 - 1):
+            raw = diagnostic_bytes({**baseline, "operation": label, "exit_code": code, "native_settled": False})
+            require(len(raw) <= 512 and raw.isascii(), "control-diagnostic-bound-positive")
+
+    class DiagnosticOS:
+        def __init__(self, fault=None, primary=None, restore_error=None):
+            self.fault, self.primary, self.restore_error = fault, primary, restore_error
+            self.events = []
+            self.writes = []
+
+        def get_blocking(self, fd):
+            require(fd == 2, "control-diagnostic-inherited-fd")
+            self.events.append("get")
+            if self.fault == "get":
+                raise self.primary
+            return True
+
+        def set_blocking(self, fd, blocking):
+            require(fd == 2 and type(blocking) is bool, "control-diagnostic-blocking-fd")
+            self.events.append(("set", blocking))
+            if blocking and self.restore_error is not None:
+                raise self.restore_error
+            if not blocking and self.fault == "set":
+                raise self.primary
+
+        def write(self, fd, raw):
+            require(fd == 2, "control-diagnostic-write-fd")
+            self.events.append("write")
+            self.writes.append(raw)
+            if self.fault == "write":
+                raise self.primary
+            return len(raw) - 1 if self.fault == "partial" else len(raw)
+
+    actual = DiagnosticOS()
+    emit_diagnostic(baseline, 10, actual, lambda: 0)
+    require(
+        len(actual.writes) == 1 and actual.events == ["get", ("set", False), "write", ("set", True)],
+        "control-diagnostic-one-write",
+    )
+    for fault in ("get", "set", "write"):
+        for primary in (BlockingIOError(), Control(), SystemExit(), KeyboardInterrupt()):
+            actual = DiagnosticOS(fault, primary, Control())
+            try:
+                emit_diagnostic(baseline, 10, actual, lambda: 0)
+            except BaseException as error:
+                if error is not primary:
+                    raise
+            else:
+                raise Failure("control-diagnostic-first-error")
+            require(len(actual.writes) == int(fault == "write"), "control-diagnostic-no-retry")
+            require(
+                ("set", True) in actual.events if fault != "get" else len(actual.events) == 1,
+                "control-diagnostic-restore",
+            )
+    actual = DiagnosticOS("partial")
+    try:
+        emit_diagnostic(baseline, 10, actual, lambda: 0)
+    except Failure:
+        pass
+    else:
+        raise Failure("control-diagnostic-partial-write")
+    require(len(actual.writes) == 1 and actual.events[-1] == ("set", True), "control-diagnostic-partial-restore")
+    actual = DiagnosticOS()
+    try:
+        emit_diagnostic(baseline, 10, actual, lambda: 20)
+    except Failure:
+        pass
+    else:
+        raise Failure("control-diagnostic-expiry")
+    require(not actual.events, "control-diagnostic-expired-no-write")
+    for times, expected_writes in (((0, 0, 20), 0), ((0, 0, 0, 20), 1)):
+        actual = DiagnosticOS()
+        moments = iter(times)
+        try:
+            emit_diagnostic(baseline, 10, actual, lambda moments=moments: next(moments))
+        except Failure:
+            pass
+        else:
+            raise Failure("control-diagnostic-inflight-expiry")
+        require(
+            len(actual.writes) == expected_writes and actual.events[-1] == ("set", True),
+            "control-diagnostic-expired-independent-restore",
+        )
+    primary = Control()
+    actual = DiagnosticOS(restore_error=primary)
+    try:
+        emit_diagnostic(baseline, 10, actual, lambda: 0)
+    except BaseException as error:
+        if error is not primary:
+            raise
+    else:
+        raise Failure("control-diagnostic-restoration-fault")
+    require(len(actual.writes) == 1, "control-diagnostic-restoration-no-replay")
+
+
 def source_controls():
     """Inert same-helper drift controls; no subprocess/OS mutation in these cases."""
+    publication_diagnostic_controls()
     expected = Failure("synthetic")
     actual = Control()
     require(first_error(expected, actual) is expected and first_error(None, actual) is actual, "control-first")
@@ -2208,6 +2700,12 @@ def source_controls():
                 raise Failure("control-acquisition-fault")
             require(len(isolated.natives) == 1 and isolated.calls == {"source.root"}, "control-acquisition-retained")
             retained = isolated.natives[0]
+            require(
+                isolated.failure_snapshot["operation"] == "source.root"
+                and isolated.failure_snapshot["exit_code"] is None
+                and isolated.failure_snapshot["native_settled"] is None,
+                "control-acquisition-diagnostic",
+            )
             process = returned["process"]
             require(
                 retained.process is process
@@ -2759,65 +3257,78 @@ def entry():
             handlers[number] = signal.getsignal(number)
             signal.signal(number, controlled)
         parent.acquire_private()
+        parent.phase = "controls"
         source_controls()
         main_work(parent)
     except BaseException as error:
         first, traceback = error, error.__traceback__
+        freeze_failure(parent, error)
+        parent.phase = "cleanup"
         cleanup_attempt(parent, parent.settle_failure)
     try:
         main_cleanup(parent)
     except BaseException as error:
+        freeze_failure(parent, error)
         parent.cleanup_errors.append(error)
     for number, handler in handlers.items():
         try:
             owned_binding(signal.getsignal(number), controlled)
             signal.signal(number, handler)
         except BaseException as error:
+            freeze_failure(parent, error)
             parent.cleanup_errors.append(error)
     if first is None and parent.cleanup_errors:
         first = parent.cleanup_errors[0]
         traceback = first.__traceback__
+    parent.phase = "publication"
     evidence = parent.values.get("EVIDENCE")
-    if evidence is not None and Path(evidence).is_dir():
+    if evidence is not None:
         try:
-            projection = {
-                "schema": "bifrost.test.workflow-claim-frontend/v1",
-                "before": None if parent.front_before is None else parent.front_before["observed"],
-                "after": None if parent.front_after is None else parent.front_after["observed"],
-                "matched": frontend_matched(parent),
-            }
-            publish(
-                Path(evidence) / "frontend.json",
-                (json.dumps(projection, separators=(",", ":")) + "\n").encode(),
-                4096,
-                PUBLICATION_END,
-            )
-            status = b"0\n" if first is None else b"1\n"
-            publish(Path(evidence) / "gate-exit-status.txt", status, 16, PUBLICATION_END)
-            publish(Path(evidence) / "exit-status.txt", status, 16, PUBLICATION_END)
-            summary = (
-                "project="
-                + parent.values["PROJECT"]
-                + "\ncleanup_status="
-                + str(int(bool(parent.cleanup_errors)))
-                + "\ninspection_status="
-                + str(int(bool(parent.cleanup_errors)))
-                + "\ncontainers="
-                + parent.absence["containers"]
-                + "\nvolumes="
-                + parent.absence["volumes"]
-                + "\nnetworks="
-                + parent.absence["networks"]
-                + "\n"
-            ).encode()
-            publish(Path(evidence) / "project-resources.txt", summary, 512, PUBLICATION_END)
+            if Path(evidence).is_dir():
+                projection = {
+                    "schema": "bifrost.test.workflow-claim-frontend/v1",
+                    "before": None if parent.front_before is None else parent.front_before["observed"],
+                    "after": None if parent.front_after is None else parent.front_after["observed"],
+                    "matched": frontend_matched(parent),
+                }
+                publish(
+                    Path(evidence) / "frontend.json",
+                    (json.dumps(projection, separators=(",", ":")) + "\n").encode(),
+                    4096,
+                    PUBLICATION_END,
+                )
+                status = b"0\n" if first is None else b"1\n"
+                publish(Path(evidence) / "gate-exit-status.txt", status, 16, PUBLICATION_END)
+                publish(Path(evidence) / "exit-status.txt", status, 16, PUBLICATION_END)
+                summary = (
+                    "project="
+                    + parent.values["PROJECT"]
+                    + "\ncleanup_status="
+                    + str(int(bool(parent.cleanup_errors)))
+                    + "\ninspection_status="
+                    + str(int(bool(parent.cleanup_errors)))
+                    + "\ncontainers="
+                    + parent.absence["containers"]
+                    + "\nvolumes="
+                    + parent.absence["volumes"]
+                    + "\nnetworks="
+                    + parent.absence["networks"]
+                    + "\n"
+                ).encode()
+                publish(Path(evidence) / "project-resources.txt", summary, 512, PUBLICATION_END)
         except BaseException as error:
+            freeze_failure(parent, error)
             first = first_error(first, error)
             if traceback is None:
                 traceback = first.__traceback__
     if first is not None:
+        if parent.failure_snapshot is not None and not parent.diagnostic_failed:
+            try:
+                emit_diagnostic(parent.failure_snapshot, PUBLICATION_END, os, time.monotonic)
+            except BaseException:
+                parent.diagnostic_failed = True  # No delivery claim or replacement of the retained first error.
         # No private exception/native payload is printed or reclassified as success.
-        # Preserve the actual first error privately through all cleanup; only static exit here.
+        # Preserve the actual first error privately; only a closed diagnostic and static exit here.
         if isinstance(first, Control):
             raise SystemExit(130)
         raise SystemExit(1)
