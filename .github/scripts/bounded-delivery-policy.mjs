@@ -154,9 +154,38 @@ export async function evaluate({ policy, policySha, prNumber, request }) {
   const checks = await pages(`commits/${head}/check-runs?filter=all`, "check_runs");
   const suites = await pages(`commits/${head}/check-suites`, "check_suites");
   const requiredApps = new Set([...policy.reviewers, ...policy.requiredChecks].map((source) => source.appId));
+  const requiredWorkflows = new Set(policy.requiredChecks.filter((source) => source.appId === 15368).map((source) => source.workflow));
+  const runs = await pages(`actions/runs?head_sha=${head}`, "workflow_runs");
+  if (new Set(runs.map((run) => run.id)).size !== runs.length) fail("Duplicate Actions run identity");
+  const workflows = new Map();
+  const workflowFor = async (id) => {
+    if (!integer(id)) fail("Workflow run has no trusted workflow identity");
+    if (!workflows.has(id)) workflows.set(id, await get(`actions/workflows/${id}`));
+    const workflow = workflows.get(id);
+    if (workflow.id !== id || !canonicalPath(workflow.path)) fail("Invalid workflow identity");
+    return workflow;
+  };
+  const requiredSuites = new Set();
+  for (const run of runs) {
+    if (!integer(run.id) || !integer(run.check_suite_id) || run.head_sha !== head ||
+        run.repository?.full_name !== REPOSITORY || run.head_repository?.full_name !== REPOSITORY) {
+      fail("Unresolved Actions run inventory");
+    }
+    if (requiredWorkflows.has((await workflowFor(run.workflow_id)).path)) {
+      if (!suites.some((suite) => suite.id === run.check_suite_id) ||
+          run.status !== "completed" || run.conclusion !== "success") fail("Required workflow run is incomplete");
+      requiredSuites.add(run.check_suite_id);
+    }
+  }
   for (const suite of suites.filter((item) => requiredApps.has(item.app?.id))) {
-    if (!integer(suite.id) || suite.head_sha !== head || suite.status !== "completed" ||
-        suite.conclusion !== "success") fail("Relevant check suite is pending, failed, or unresolved");
+    if (!integer(suite.id) || suite.head_sha !== head) fail("Unresolved check suite identity");
+    if (suite.app.id === 15368) {
+      if (runs.filter((run) => run.check_suite_id === suite.id).length !== 1) fail("Actions suite has no attributable workflow run");
+      if (!requiredSuites.has(suite.id)) continue;
+    }
+    if (suite.status !== "completed" || suite.conclusion !== "success") {
+      fail("Relevant check suite is pending, failed, or unresolved");
+    }
   }
   const reviewer = policy.reviewers.find((identity) => {
     const review = latest.get(identity.userId);
@@ -205,15 +234,20 @@ export async function evaluate({ policy, policySha, prNumber, request }) {
   }
   const verifiedChecks = [];
   for (const spec of policy.requiredChecks) {
-    const check = latestChecks(checks, spec, head);
+    const candidates = spec.appId === 15368 ? checks.filter((record) => {
+      if (record.app?.id !== spec.appId || record.name !== spec.name) return false;
+      const sources = runs.filter((run) => run.check_suite_id === record.check_suite?.id);
+      if (sources.length !== 1) fail("Named Actions check has an ambiguous workflow source");
+      return workflows.get(sources[0].workflow_id)?.path === spec.workflow;
+    }) : checks;
+    const check = latestChecks(candidates, spec, head);
     await verifySuite(check);
     if (spec.appId === 15368) {
       const escaped = REPOSITORY.replaceAll("/", "\\/");
       const match = check.details_url?.match(new RegExp(`^https://github\\.com/${escaped}/actions/runs/([0-9]+)/job/([0-9]+)$`));
       if (!match || Number(match[2]) !== check.id) fail(`No workflow provenance: ${spec.name}`);
       const run = await get(`actions/runs/${match[1]}`);
-      if (!integer(run.workflow_id)) fail("Workflow run has no trusted workflow identity");
-      const workflow = await get(`actions/workflows/${run.workflow_id}`);
+      const workflow = await workflowFor(run.workflow_id);
       if (workflow.id !== run.workflow_id || workflow.path !== spec.workflow ||
           run.check_suite_id !== check.check_suite.id ||
           run.id !== Number(match[1]) || run.head_sha !== head ||
@@ -228,9 +262,16 @@ export async function evaluate({ policy, policySha, prNumber, request }) {
   const refreshedReviews = await pages(`pulls/${prNumber}/reviews`);
   const refreshedChecks = await pages(`commits/${head}/check-runs?filter=all`, "check_runs");
   const refreshedSuites = await pages(`commits/${head}/check-suites`, "check_suites");
-  if (JSON.stringify(refreshedSuites) !== JSON.stringify(suites) ||
+  const refreshedRuns = await pages(`actions/runs?head_sha=${head}`, "workflow_runs");
+  if (JSON.stringify(refreshedRuns) !== JSON.stringify(runs) ||
+      JSON.stringify(refreshedSuites) !== JSON.stringify(suites) ||
       JSON.stringify(refreshedReviews) !== JSON.stringify(reviews) ||
       JSON.stringify(refreshedChecks) !== JSON.stringify(checks)) fail("Review or check evidence changed during evaluation");
+  for (const [id, workflow] of workflows) {
+    if (JSON.stringify(await get(`actions/workflows/${id}`)) !== JSON.stringify(workflow)) {
+      fail("Workflow identity changed during evaluation");
+    }
+  }
   for (const [id, suite] of verifiedSuites) {
     if (JSON.stringify(await get(`check-suites/${id}`)) !== JSON.stringify(suite)) {
       fail("Check suite changed during evaluation");
