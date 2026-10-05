@@ -4,6 +4,7 @@ from configparser import ConfigParser
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -22,7 +23,8 @@ def _filter_module():
     spec = importlib.util.spec_from_file_location(
         "sonar_coverage_filter_under_test", API_ROOT / "scripts/filter_sonar_coverage.py"
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -47,7 +49,9 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
 ):
     app = tmp_path / "app"
     repo = tmp_path / "repo"
-    data_file = tmp_path / ".coverage"
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    data_file = artifacts / ".coverage.sonar"
     measured = [
         "api/src/routers/example.py",
         "api/scripts/example.py",
@@ -131,8 +135,9 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
 
     monkeypatch.chdir(repo)
     report_path = tmp_path / "coverage.xml"
-    filtered_path = tmp_path / ".coverage-tracked"
-    listing = tmp_path / "tracked-files.nul"
+    filtered_path = artifacts / ".coverage.sonar-tracked"
+    listing = repo / ".sonar-evidence/raw/tracked-files.nul"
+    listing.parent.mkdir(parents=True)
     listing.write_bytes(("\0".join(measured + unimported + excluded + [template_name]) + "\0").encode())
     workflow_path = next(
         root / ".github/workflows/sonar-coverage.yml"
@@ -142,19 +147,21 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     filter_commands = [
         shlex.split(line.strip())
         for line in workflow_path.read_text().splitlines()
-        if line.strip().startswith("python /repo/api/scripts/filter_sonar_coverage.py ")
+        if line.strip().startswith("python /repo/api/scripts/filter_sonar_coverage.py")
     ]
-    assert len(filter_commands) == 1
-    filter_args = filter_commands[0][2:]
-    replacements = {
-        "/repo": str(repo), "/app": str(app),
-        "/repo/.sonar-evidence/raw/tracked-files.nul": str(listing),
-        "/tmp/bifrost/.coverage.sonar": str(data_file),
-        "/tmp/bifrost/.coverage.sonar-tracked": str(filtered_path),
-        "/tmp/bifrost/sonar-runtime-coverage.json": str(tmp_path / "audit.json"),
-    }
-    assert _filter_module().main([replacements.get(arg, arg) for arg in filter_args]) == 0
-    audit = json.loads((tmp_path / "audit.json").read_text())
+    assert filter_commands == [["python", "/repo/api/scripts/filter_sonar_coverage.py"]]
+    module = _filter_module()
+    assert (module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT) == (
+        Path("/repo"), Path("/app"), Path("/tmp/bifrost")
+    )
+    # Fixture-only injection; production accepts no CLI/environment overrides.
+    module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT = repo, app, artifacts
+    assert module.main(filter_commands[0][2:]) == 0
+    audit = json.loads((artifacts / module.AUDIT_NAME).read_text())
+    assert filtered_path.stat().st_mode & 0o004, "Host must be able to read published reports"
+    assert audit["input_sha256"] == hashlib.sha256(data_file.read_bytes()).hexdigest()
+    assert audit["output_sha256"] == hashlib.sha256(filtered_path.read_bytes()).hexdigest()
+    assert audit["tracked_inventory_sha256"] == hashlib.sha256(listing.read_bytes()).hexdigest()
     assert audit["discarded_runtime_only_files"] == ["api/features/archive/new_helper.py"]
     assert audit["discarded_compiled_template_source_sha256"] == {
         template_name: hashlib.sha256(template.read_bytes()).hexdigest()
@@ -208,13 +215,13 @@ def test_sonar_inventory_rejects_missing_or_unsafe_tracked_source(tmp_path: Path
                 b"missing.py\0"):
         listing.write_bytes(raw)
         with pytest.raises(ValueError):
-            module.tracked_python(root, listing)
+            module.tracked_python(root, listing.read_bytes())
     (root / "linked.py").symlink_to(root / "source.py")
     listing.write_bytes(b"linked.py\0")
     with pytest.raises(ValueError, match="Missing or unsafe"):
-        module.tracked_python(root, listing)
+        module.tracked_python(root, listing.read_bytes())
     listing.write_bytes(b"source.py\0")
-    assert module.tracked_python(root, listing)[0] == {"source.py"}
+    assert module.tracked_python(root, listing.read_bytes())[0] == {"source.py"}
 
 
 def test_sonar_compiled_template_audit_rejects_unsafe_source_or_tracer(tmp_path: Path):
@@ -234,14 +241,14 @@ def test_sonar_compiled_template_audit_rejects_unsafe_source_or_tracer(tmp_path:
     for linked in (False, True):
         if linked:
             template.symlink_to(source)
-        with pytest.raises(ValueError, match="Missing or unsafe tracked template"):
-            module.filter_data(root, tmp_path / "app", listing, data_file, tmp_path / "unused")
+        with pytest.raises(OSError):
+            module.filter_data(root, tmp_path / "app", listing.read_bytes(), data)
     template.unlink()
     template.write_text("{{ generated_python }}\n")
     data.add_file_tracers({str(template): "unreviewed-template-plugin"})
     data.write()
     with pytest.raises(ValueError, match="Custom template file tracers"):
-        module.filter_data(root, tmp_path / "app", listing, data_file, tmp_path / "unused")
+        module.filter_data(root, tmp_path / "app", listing.read_bytes(), data)
 
 
 def test_sonar_measured_paths_do_not_escape_mounts(tmp_path: Path):
@@ -263,49 +270,86 @@ def test_sonar_filter_preserves_source_and_rejects_invalid_data(tmp_path: Path):
     root.mkdir()
     source = root / "source.py"
     source.write_text(SAMPLE)
-    listing = tmp_path / "tracked.nul"
-    listing.write_bytes(b"source.py\0metadata.json\0other.py.j2\0")
-    data_file = tmp_path / "data"
-    output = tmp_path / "filtered"
-    data = coverage.CoverageData(basename=str(data_file))
+    inventory = b"source.py\0metadata.json\0other.py.j2\0"
+    data = coverage.CoverageData(no_disk=True)
     data.add_arcs({str(source): {(1, 2)}, str(tmp_path / "outside.py"): {(1, 2)}})
-    data.write()
-    audit = module.filter_data(root, tmp_path / "app", listing, data_file, output)
+    arcs, audit = module.filter_data(root, tmp_path / "app", inventory, data)
+    assert arcs == {str(source): {(1, 2)}}
     assert audit["retained_canonical_files"] == 1
     assert audit["discarded_outside_source_roots"] == 1
-    with pytest.raises(ValueError, match="fresh file"):
-        module.filter_data(root, tmp_path / "app", listing, data_file, output)
-    with pytest.raises(ValueError, match="fresh file"):
-        module.filter_data(root, tmp_path / "app", listing, data_file, data_file)
     source.unlink()
     with pytest.raises(ValueError, match="Missing or unsafe tracked"):
-        module.filter_data(root, tmp_path / "app", listing, data_file, tmp_path / "missing-output")
+        module.filter_data(root, tmp_path / "app", inventory, data)
     source.write_text(SAMPLE)
-    for name in ("missing-data", "empty-data", "linked-data"):
-        path = tmp_path / name
-        if name == "empty-data":
-            path.touch()
-        elif name == "linked-data":
-            path.symlink_to(data_file)
-        with pytest.raises(ValueError, match="missing, empty or unsafe"):
-            module.filter_data(root, tmp_path / "app", listing, path, tmp_path / "unused")
-    for name, arcs, tracer in (
+    for name, records, tracer in (
         ("virtual", {str(root / "virtual.py"): {(1, 2)}}, False),
         ("nonpython", {str(root / "metadata.json"): {(1, 2)}}, False),
         ("other-template", {str(root / "other.py.j2"): {(1, 2)}}, False),
         ("tracer", {str(source): {(1, 2)}}, True),
     ):
-        path = tmp_path / name
-        value = coverage.CoverageData(basename=str(path))
-        value.add_arcs(arcs)
+        value = coverage.CoverageData(no_disk=True)
+        value.add_arcs(records)
         if tracer:
             value.add_file_tracers({str(source): "unreviewed-plugin"})
-        value.write()
         with pytest.raises(ValueError):
-            module.filter_data(root, tmp_path / "app", listing, path, tmp_path / "unused")
-    lines = tmp_path / "lines-only"
-    value = coverage.CoverageData(basename=str(lines))
-    value.add_lines({str(source): {1, 2}})
-    value.write()
+            module.filter_data(root, tmp_path / "app", inventory, value)
+    lines = coverage.CoverageData(no_disk=True)
+    lines.add_lines({str(source): {1, 2}})
     with pytest.raises(ValueError, match="branch coverage"):
-        module.filter_data(root, tmp_path / "app", listing, lines, tmp_path / "unused")
+        module.filter_data(root, tmp_path / "app", inventory, lines)
+
+
+def test_sonar_artifact_io_cannot_traverse_follow_links_or_overwrite(tmp_path: Path):
+    module = _filter_module()
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    nested = root / "nested"
+    nested.mkdir()
+    secret = tmp_path / "outside"
+    secret.write_bytes(b"outside artifact boundary")
+    module.write_fresh(root, "nested/valid", b"valid")
+    assert module.read_bounded(root, "nested/valid") == b"valid"
+    old_umask = os.umask(0o077)
+    try:
+        module.write_fresh(root, "host-readable", b"report", mode=0o644)
+    finally:
+        os.umask(old_umask)
+    assert (root / "host-readable").stat().st_mode & 0o777 == 0o644
+    for name in ("../outside", str(secret), "a\\b", "a\nb", "", "."):
+        with pytest.raises(ValueError):
+            module.read_bounded(root, name)
+        with pytest.raises(ValueError):
+            module.write_fresh(root, name, b"invalid")
+    (root / "leaf-link").symlink_to(secret)
+    (root / "parent-link").symlink_to(nested, target_is_directory=True)
+    linked_root = tmp_path / "root-link"
+    linked_root.symlink_to(root, target_is_directory=True)
+    for directory, name in ((root, "leaf-link"), (root, "parent-link/valid"),
+                            (linked_root, "nested/valid")):
+        with pytest.raises(OSError):
+            module.read_bounded(directory, name)
+        with pytest.raises(OSError):
+            module.write_fresh(directory, name, b"invalid")
+    with pytest.raises(FileExistsError):
+        module.write_fresh(root, "nested/valid", b"replacement")
+    assert secret.read_bytes() == b"outside artifact boundary"
+    assert module.read_bounded(root, "nested/valid") == b"valid"
+    (root / "empty").touch()
+    os.mkfifo(root / "fifo")
+    for name in ("empty", "fifo", "nested"):
+        with pytest.raises(ValueError):
+            module.read_bounded(root, name)
+    with pytest.raises(FileNotFoundError):
+        module.read_bounded(root, "missing")
+    module.MAX_ARTIFACT_BYTES = 3
+    with pytest.raises(ValueError, match="bounded regular file"):
+        module.read_bounded(root, "nested/valid")
+
+
+def test_sonar_cli_rejects_all_artifact_path_overrides(tmp_path: Path):
+    module = _filter_module()
+    for option in ("--repository-root", "--api-root", "--tracked-files", "--input", "--output", "--audit"):
+        with pytest.raises(SystemExit) as error:
+            module.main([option, str(tmp_path / "untrusted")])
+        assert error.value.code == 2
+    assert list(tmp_path.iterdir()) == []
