@@ -39,7 +39,8 @@ Known provisioning failures attempt revocation of the job's deterministic nonce,
 including unknown RPC outcomes. The launcher fences revoke-before-create races.
 Hard runner loss cannot guarantee immediate cleanup: the independent absolute
 30-minute maximum deadline is the fail-safe. No scheduler slot or new service
-container is held for a tunnel's lifetime. Router restart terminates sessions.
+container is held for a tunnel's lifetime. Router restart terminates lighthouse processes; endpoint certificates retain
+their signed expiry.
 
 ## Review and rollout
 
