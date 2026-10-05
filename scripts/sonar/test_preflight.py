@@ -134,6 +134,35 @@ class EvidenceIntegrationTests(Fixture):
         self.assertEqual(result["changed_paths_requiring_human_review"],
                          [".github/config.json", "client/src/types.d.ts", "scripts/release/check.sh"])
 
+    def test_changed_generated_vendor_and_directory_alias_require_review(self):
+        self.write(".agents/skills/generated/helper.py", "print('generated mirror')\n")
+        self.write("client/dist/new-script.js", "console.log('requires review');\n")
+        self.write("client/node_modules/example/index.js", "console.log('vendor');\n")
+        self.write("client/src/lib/v1.d.ts", "declare const generated: string;\n")
+        self.write(".agents/plugins/marketplace.json", '{"plugins": []}\n')
+        (self.root / "skills").mkdir()
+        (self.root / "skills/build").symlink_to(guard.SYMLINK_ALIASES["skills/build"])
+        self.run_git("add", ".agents", "skills")
+        self.commit()
+        result = self.run_preflight()
+        self.assertEqual(result["changed_paths_requiring_human_review"], [
+            ".agents/plugins/marketplace.json", ".agents/skills/generated/helper.py",
+            "client/dist/new-script.js", "client/node_modules/example/index.js",
+            "client/src/lib/v1.d.ts", "skills/build",
+        ])
+        alias = next(item for item in result["inventory"] if item["path"] == "skills/build")
+        self.assertEqual(alias["language"], "directory_alias")
+        self.assertEqual(alias["coverage_state"], "not_measured_by_this_coverage_gate")
+
+    def test_authored_agents_file_cannot_be_hidden_by_blanket_exclusion(self):
+        self.write(".agents/custom.py", "print('authored tooling')\n")
+        self.write("sonar-project.properties", properties().replace(
+            "sonar.exclusions=", "sonar.exclusions=.agents/**,"))
+        self.run_git("add", ".agents")
+        self.commit()
+        with self.assertRaisesRegex(guard.EvidenceError, r"authored source excluded.*\.agents/custom\.py"):
+            self.run_preflight()
+
     def test_missing_report_rejected(self):
         self.reports["python"].unlink()
         with self.assertRaisesRegex(guard.EvidenceError, "missing/unreadable report"):
@@ -424,9 +453,14 @@ class ScopeUnitTests(unittest.TestCase):
 
     def test_inventory_classifications_do_not_hide_critical_surfaces(self):
         for path in ("api/bifrost/cli.py", "api/bifrost/solution_dev/proxy.py", ".github/scripts/authorize-merge-queue.mjs",
-                     "scripts/release/automatic-release.py", ".claude/skills/pack.py", "doc_renderer_service/app.py"):
+                     "scripts/release/automatic-release.py", ".claude/skills/pack.py", "doc_renderer_service/app.py",
+                     ".agents/custom.py"):
             with self.subTest(path=path):
                 self.assertEqual(guard.classification(path)[0], "authored")
+
+    def test_only_known_agents_mirrors_are_generated(self):
+        self.assertEqual(guard.classification(".agents/skills/example/helper.py")[0], "generated_or_vendor")
+        self.assertEqual(guard.classification(".agents/plugins/marketplace.json")[0], "configuration_requires_review")
 
 
 if __name__ == "__main__":
