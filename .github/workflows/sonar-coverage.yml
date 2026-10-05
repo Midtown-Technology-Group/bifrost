@@ -134,6 +134,8 @@ jobs:
           # Pure repository tools have their own scripts namespace. Run from
           # /repo with an isolated PYTHONPATH so /app/scripts cannot shadow it.
           # Exercise this wiring before booting the full application stack.
+          # Keep host ownership of results until test.sh prepares its fixtures;
+          # the image's root entrypoint otherwise chowns the bind-mounted root.
           targets=()
           while IFS= read -r -d '' file; do
             filename="${file##*/}"
@@ -145,8 +147,8 @@ jobs:
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps \
-            --workdir /repo --env PYTHONPATH=/repo test-runner \
-            pytest "${targets[@]}" -o 'python_files=test_*.py *_test.py' \
+            --user "$(id -u):$(id -g)" --workdir /repo --env PYTHONPATH=/repo test-runner \
+            pytest "${targets[@]}" -o 'python_files=test_*.py *_test.py' -o cache_dir=/tmp/sonar-pytest-cache \
             --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
             --junitxml=/tmp/bifrost/sonar-repository-junit.xml
       - name: Collect comprehensive Python coverage
@@ -180,10 +182,15 @@ jobs:
         if: always() && env.COMPOSE_FILE != ''
         run: |
           set -euo pipefail
-          ./test.sh stack down
           source scripts/lib/test_helpers.sh
-          project="$(compute_project_name .)"
-          test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          status=0
+          ./test.sh stack down || status=$?
+          # Even an early harness-initialization failure must remove this job's
+          # containers, networks and disposable volumes; preserve the failure.
+          docker compose --profile '*' -f "$COMPOSE_FILE" down -v --remove-orphans
+          test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")"
+          exit "$status"
       - name: Preserve Python diagnostics after teardown
         if: always() && env.SONAR_LOG_DIR != ''
         run: |
