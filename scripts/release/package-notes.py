@@ -35,3 +35,29 @@ gh attestation verify bifrost-{version}-source.tar.gz --owner {repository.split(
 Images are signed and carry build provenance. MTG production deployment uses
 reviewed digest pins and its separately authorized protected infrastructure lane.
 """)
+
+
+if repository == "Midtown-Technology-Group/bifrost" and "-" not in version:
+    print(f"""
+## Stable package identity
+
+`release-manifest.json` records the exact tag source, all three immutable image
+digests, CLI contracts, required database heads and rollback limits. Its
+`release-manifest.json.sigstore.json` bundle attests that identity. Verify it
+before selecting images; a checksum alone is not provenance:
+
+```bash
+sha256sum --check release-manifest.json.sha256
+gh attestation verify release-manifest.json \\
+  --bundle release-manifest.json.sigstore.json \\
+  --repo {repository} \\
+  --signer-workflow {repository}/.github/workflows/ci.yml \\
+  --source-ref refs/tags/{version} \\
+  --source-digest <verified-tag-commit>
+```
+
+Packaging acceptance executes read-only content checks on these exact
+`linux/amd64` digests. It does not claim database migration, live-service,
+production readiness or arm64 proof. Promote these accepted digests unchanged;
+never relabel a dev/RC image as a stable release.
+""")

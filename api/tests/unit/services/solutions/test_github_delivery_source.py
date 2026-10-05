@@ -563,10 +563,15 @@ async def test_authored_inventory_is_complete_immutable_and_independent_of_runti
         reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
         evidence = await reader.authored_source(SHA, "solutions/fixture", TREE)
         native = await reader.source(SID, SHA, digest)
-    assert len(evidence.source_files) == 14 and len(native.files) == 7
-    assert evidence.files == authored and native.files == runtime
-    assert evidence.commit_sha == SHA and evidence.tree_sha == TREE and evidence.subtree_sha == "c" * 40
-    assert evidence.solution_slug == "fixture" and evidence.repo_subpath == "solutions/fixture"
+    assert len(evidence.source_files) == 14
+    assert len(native.files) == 7
+    assert evidence.files == authored
+    assert native.files == runtime
+    assert evidence.commit_sha == SHA
+    assert evidence.tree_sha == TREE
+    assert evidence.subtree_sha == "c" * 40
+    assert evidence.solution_slug == "fixture"
+    assert evidence.repo_subpath == "solutions/fixture"
     assert list(evidence.files) == sorted(authored)
     manifest = evidence.file_manifest()
     assert [row["path"] for row in manifest] == ["solutions/fixture/" + path for path in sorted(authored)]

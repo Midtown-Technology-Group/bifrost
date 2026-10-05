@@ -34,7 +34,6 @@ def _allocator():
     "workflow",
     [
         "arm64-worker-compat",
-        "snyk",
         "doc-renderer",
         "dependabot-lockfile-regen",
     ],
