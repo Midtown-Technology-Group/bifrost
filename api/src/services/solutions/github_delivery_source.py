@@ -42,6 +42,7 @@ RECIPE_SCHEMA = "bifrost.solution-source-delivery/v1"
 MAX_SOURCE_BYTES = 10 * 1024 * 1024
 MAX_METADATA_BYTES = 5 * 1024 * 1024
 MAX_AUTHORED_FILES = 1000
+MAX_ANCESTRY_COMMITS = 1000
 
 
 class GitDeliverySourceError(ValueError):
@@ -184,10 +185,11 @@ class ProtectedGitReader:
     def __init__(self, policy: SolutionGitDeliveryPolicy, token: str, client: httpx.AsyncClient):
         self.policy, self.token, self.client = policy, token, client
 
-    async def document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> dict:
+    async def _document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> Any:
         if re.fullmatch(
             r"(?:branches/main|actions/runs/[1-9][0-9]*|git/(?:commits|blobs)/[0-9a-f]{40}"
-            r"|git/trees/[0-9a-f]{40}\?recursive=1)?", suffix
+            r"|git/trees/[0-9a-f]{40}\?recursive=1"
+            r"|commits\?sha=[0-9a-f]{40}&per_page=100&page=(?:[1-9]|10))?", suffix
         ) is None:
             raise GitDeliverySourceError("Protected Git endpoint is outside the delivery allowlist")
         path, _, query = suffix.partition("?")
@@ -210,38 +212,68 @@ class ProtectedGitReader:
                         raise GitDeliverySourceError("Protected Git response exceeds its size bound")
                     chunks.append(chunk)
             value = json.loads(b"".join(chunks))
-            if not isinstance(value, dict):
-                raise GitDeliverySourceError("Unexpected protected Git response")
             return value
         except ValueError as exc:
             if isinstance(exc, GitDeliverySourceError):
                 raise
             raise GitDeliverySourceError("Protected Git metadata is unavailable") from exc
 
+    async def document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> dict:
+        value = await self._document(suffix, limit=limit)
+        if not isinstance(value, dict):
+            raise GitDeliverySourceError("Unexpected protected Git response")
+        return value
+
     async def require_current_main(self, commit_sha: str) -> None:
         branch = await self.document("branches/main")
         if branch.get("protected") is not True or branch.get("commit", {}).get("sha") != commit_sha:
             raise GitDeliverySourceError("Source was superseded or main is not protected; deliver full current state")
 
-    async def verified_ancestors(self, commit_sha: str, candidates: set[str], *, limit: int = 100) -> tuple[str, ...]:
-        """Bounded first-parent Git proof for delayed accounting, not time order.
+    async def verified_ancestors(
+        self, commit_sha: str, candidates: set[str], *, limit: int = MAX_ANCESTRY_COMMITS,
+    ) -> tuple[str, ...]:
+        """Prove first-parent ancestry from bounded fixed-repository Git pages.
 
-        A truncated walk leaves older debt unresolved. Delivery is still allowed;
-        no missing ancestor is guessed from timestamps or equal source bytes.
+        Listing order is never ancestry evidence: each traversed edge must name
+        its actual parent. Missing pages, gaps or truncation leave debt open.
+        A delayed 268-commit declaration needs three reads rather than 268.
         """
+        if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
+            raise GitDeliverySourceError("Expected an exact ancestry head SHA")
+        remaining = {sha for sha in candidates if re.fullmatch(r"[0-9a-f]{40}", sha)} - {commit_sha}
+        steps = min(max(limit, 0), MAX_ANCESTRY_COMMITS - 1)
         matched: list[str] = []
         seen = {commit_sha}
+        parents: dict[str, tuple[str, ...]] = {}
         current = commit_sha
-        remaining = candidates - seen
-        for _ in range(min(max(limit, 0), 100)):
+        page = 0
+        complete = False
+        for _ in range(steps):
             if not remaining:
                 break
-            document = await self.document(f"git/commits/{current}")
-            parents = document.get("parents", [])
-            if document.get("sha") != current or not isinstance(parents, list) or len(parents) != 1:
+            while current not in parents and not complete and page < MAX_ANCESTRY_COMMITS // 100:
+                page += 1
+                rows = await self._document(f"commits?sha={commit_sha}&per_page=100&page={page}")
+                if not isinstance(rows, list) or len(rows) > 100:
+                    return tuple(matched)
+                added = {}
+                for row in rows:
+                    identity = row.get("sha") if isinstance(row, dict) else None
+                    edges = row.get("parents") if isinstance(row, dict) else None
+                    if (not isinstance(identity, str) or re.fullmatch(r"[0-9a-f]{40}", identity) is None
+                            or identity in parents or identity in added or not isinstance(edges, list)):
+                        return tuple(matched)
+                    values = tuple(edge.get("sha") if isinstance(edge, dict) else None for edge in edges)
+                    if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None
+                           for value in values) or len(set(values)) != len(values):
+                        return tuple(matched)
+                    added[identity] = values
+                parents.update(added)
+                complete = len(rows) < 100
+            if current not in parents or not parents[current]:
                 break
-            parent = parents[0].get("sha") if isinstance(parents[0], dict) else None
-            if not isinstance(parent, str) or re.fullmatch(r"[0-9a-f]{40}", parent) is None or parent in seen:
+            parent = parents[current][0]
+            if parent in seen:
                 break
             seen.add(parent)
             if parent in remaining:

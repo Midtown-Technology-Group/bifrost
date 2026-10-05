@@ -25,7 +25,8 @@ from src.services.operation_receipts import (
 )
 from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solutions.github_delivery_source import (
-    GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader, VerifiedAuthoredSolution, VerifiedGitSource,
+    MAX_ANCESTRY_COMMITS, GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader,
+    VerifiedAuthoredSolution, VerifiedGitSource,
 )
 from src.services.solutions.source_revision import (
     SolutionSourceRevisionConflict, SolutionSourceRevisionService, retain_legacy_registration_names,
@@ -45,6 +46,16 @@ def source_candidate_id(source: VerifiedGitSource, base_id: UUID, base_hash: str
         **({"workflow_artifact_digest": source.artifact_digest} if source.workflow_recipe else {})},
         sort_keys=True, separators=(",", ":"))
     return uuid5(NAMESPACE, identity)
+
+
+async def _unresolved_source_commits(db: AsyncSession, organization_id: UUID) -> set[str]:
+    """Prioritize delayed producer declarations within the same bounded proof."""
+    return set((await db.scalars(select(WorkspaceSourceRelease.source_commit_sha).where(
+        WorkspaceSourceRelease.organization_id == organization_id,
+        WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
+        WorkspaceSourceRelease.disposition.in_(("pending", "attention_required", "deferred")))
+        .order_by(WorkspaceSourceRelease.created_at, WorkspaceSourceRelease.id)
+        .limit(MAX_ANCESTRY_COMMITS))).all())
 
 
 class GitSourceDeliveryService:
@@ -72,11 +83,7 @@ class GitSourceDeliveryService:
         from src.services.github_actions_oidc import workspace_source_release_tracking_organization_id
         tracking_org = workspace_source_release_tracking_organization_id(get_settings())
         if tracking_org is not None:
-            older = set((await self.db.scalars(select(WorkspaceSourceRelease.source_commit_sha).where(
-                WorkspaceSourceRelease.organization_id == tracking_org,
-                WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
-                WorkspaceSourceRelease.disposition.in_(("pending", "attention_required", "deferred")))
-                .order_by(WorkspaceSourceRelease.created_at.desc()).limit(100))).all())
+            older = await _unresolved_source_commits(self.db, tracking_org)
             if older:
                 source = replace(source, ancestor_commit_shas=await self.reader.verified_ancestors(source.commit_sha, older))
         async with solution_write_lock(solution_id):

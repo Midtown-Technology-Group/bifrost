@@ -443,3 +443,33 @@ async def test_accounting_waits_for_admission_selected_before_pointer_activation
             await writer.execute(update(Workflow).where(Workflow.id == f.workflow_id).values(is_active=False))
             await writer.execute(update(Execution).where(Execution.id == execution_id).values(status=ExecutionStatus.CANCELLED))
             await writer.commit()
+
+
+@pytest.mark.asyncio
+async def test_delivery_ancestry_candidates_include_old_debt_behind_100_newer_declarations(
+    db_session, platform_admin,
+):
+    from src.services.solutions.github_source_delivery import _unresolved_source_commits
+
+    now = datetime.now(UTC)
+    records = []
+    for index in range(102):
+        commit = uuid4().hex + "a" * 8
+        producer = index != 101
+        records.append(WorkspaceSourceRelease(
+            id=uuid4(), organization_id=PROVIDER_ORG_ID,
+            source_commit_sha=commit, source_tree_sha="b" * 40,
+            paths={"features/retained.py": "c" * 64},
+            disposition="pending", declared_disposition="pending",
+            declaration_actor="github_actions_oidc" if producer else "platform_admin",
+            producer_oidc_commit_sha=commit if producer else None,
+            producer_event_name="push" if producer else None,
+            producer_run_id=str(index + 1) if producer else None,
+            created_by=platform_admin.user_id, created_at=now + timedelta(seconds=index),
+        ))
+    db_session.add_all(records)
+    await db_session.flush()
+    selected = await _unresolved_source_commits(db_session, PROVIDER_ORG_ID)
+    assert {row.source_commit_sha for row in records[:-1]} <= selected
+    assert records[-1].source_commit_sha not in selected
+    assert all(row.disposition == "pending" and row.completion_evidence is None for row in records)
