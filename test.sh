@@ -12,6 +12,8 @@
 #   ./test.sh unit                      Same as above.
 #   ./test.sh e2e-smoke                 PR-gating backend e2e smoke tests.
 #   ./test.sh e2e                       Backend e2e tests.
+#   ./test.sh parity                    Device contract/reference characterization.
+#   ./test.sh rust bootstrap            Rust checks against the migrated test DB.
 #   ./test.sh all                       All backend tests, including slow tests.
 #   ./test.sh reliability               Real-service execution reliability gauntlet.
 #   ./test.sh tests/path/... [args]     Pass through to pytest.
@@ -391,10 +393,23 @@ run_pytest() {
 # not the ms a unit test should cost). Those still run in `all` and nightly, so
 # no coverage is dropped — just moved off the per-PR critical path. A caller can
 # re-include them ad hoc with `./test.sh unit -m slow` or `-m ""`.
-cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ -m "not slow" -v "$@"; }
+cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -m "not slow" -v "$@"; }
 cmd_unit_targets() { run_pytest "$@" -m "not slow" -v; }
-cmd_unit_all() { run_pytest tests/ --ignore=tests/e2e/ -v "$@"; }
+cmd_unit_all() { run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -v "$@"; }
 cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
+cmd_parity() { run_pytest tests/parity/ -v "$@"; }
+cmd_rust() {
+    if [ "${1:-}" != "bootstrap" ] || [ "$#" -ne 1 ]; then
+        echo "Usage: ./test.sh rust bootstrap" >&2
+        return 1
+    fi
+    require_stack_up
+    local checks_image="${COMPOSE_PROJECT_NAME}-rust-checks"
+    docker build --target checks -f core-rs/Dockerfile -t "$checks_image" core-rs
+    docker run --rm --network "${COMPOSE_PROJECT_NAME}_default" \
+        -e BIFROST_RUST_TEST_DATABASE_URL=postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test \
+        "$checks_image" cargo test --locked --all --features live-db
+}
 cmd_e2e_targets() { run_pytest "$@" -v; }
 cmd_all()  { run_pytest tests/ -v "$@"; }
 cmd_reliability() {
@@ -899,6 +914,7 @@ cmd_ci() {
     # This still includes the slow unit tests while matching CI's isolation.
     cmd_unit_all
     cmd_e2e
+    cmd_parity
     client_unit
     client_e2e
 }
@@ -1104,6 +1120,8 @@ case "$1" in
     coverage) shift; cmd_coverage "$@" ;;
     e2e-smoke) shift; cmd_e2e_smoke "$@" ;;
     e2e) shift; cmd_e2e "$@" ;;
+    parity) shift; cmd_parity "$@" ;;
+    rust) shift; cmd_rust "$@" ;;
     all) shift; cmd_all "$@" ;;
     reliability) shift; cmd_reliability "$@" ;;
     quality) shift; cmd_quality "$@" ;;
