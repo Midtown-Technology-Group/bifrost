@@ -14,23 +14,24 @@ Both prerequisite merges (#1001 and #1112) remain ancestors. The documentation
 candidate contains this platform main; implementation candidates retain their
 separately recorded source pins until reviewed integration.
 
-Last completed claim candidate `90ea5a34056600979b0fde74fb7af39e1f2ae56d`
-passed ordinary repository CI and 48 supported Rust checks. Its dedicated
-characterization failed at a build-phase local guard before comparison;
-the exact predicate is unknown and resource custody remains held.
-The reviewed optional predicate diagnostic is now committed and current-main
-integrated at `8e32b757e286904bdfdc1e18934b2a871579f327`. Its source-check
-run37245992966 completed successfully (actual command evidence pending review),
-while final fifth characterization run37245992376 is in progress;
-no sixth cycle or unchanged rerun is authorized.
+Claim candidate `8e32b757e286904bdfdc1e18934b2a871579f327` passed
+supported source-check run37245992966 (48 tests, formatting and Clippy;
+independent evidence review pending). Its final fifth characterization
+run37245992376 failed at the exact `builder-security` guard. The particular
+HostConfig type, privilege or network field remains unknown. Resource custody
+remains UNKNOWN/HOLD. This campaign is stopped; no sixth attempt, renamed
+campaign or guard relaxation is authorized.
 
-Transport source is accepted and current-main integrated at
+Transport source is current-main integrated at
 `e419725665d95424024ddd69f57748d90ebc9800`. Initial isolated run37245566570
 failed in rust_build; actual cause, source checks and suite remain unknown/null,
-and staging disposal is unproved. A separate first existing Rust Core CI run37246038937 is in progress for
-normal foundation/tool diagnostics; its checks job failed and its cold-image
-job passed. Actual tool-error review is pending. Its results cannot
+and staging disposal is unproved. Separate first Rust Core run37246038937
+completed with failure: native formatting requires fifteen example-only hunks,
+blocking Clippy/default tests and schema bootstrap. Security/license audit and
+cold-image/invalid-configuration checks passed. These results cannot
 retroactively qualify the failed transport parser, cleanup or TLS suite.
+A two-path formatter/source-pin correction is allocated for source review only;
+no changed-candidate launch is yet authorized.
 
 Historical campaigns below retain their exact candidate/main/workspace pins.
 In particular, advances through #1048, #1056 and #1061 do not retroactively
@@ -1341,3 +1342,34 @@ Actual runs37245992966/37245992376 are live at exact8e32 attempt1. Any fifth
 failure stops that campaign; no renamed campaign, sixth cycle or guard
 relaxation follows. Prior failures/custody remain immutable. No merge,
 production deployment, actual M1 rights or full MVP acceptance occurred.
+
+
+## Final fifth claim stop and transport formatting frontier — 2026-10-05
+
+Root read complete final claim failure report
+`b4c511d1467ed2d82023ab817d5ea63b1d106fb95b3167f32e64205138e4afab`
+and normal Rust Core report
+`362630c97dbee1d28119de58047b34cd0cddd95eaa772ce6f0eb642ddc256e49`.
+The optional diagnostic genuinely identified `builder-security` in the first
+build/local guard; it did not reveal any configuration leaf or value. Its
+three-part predicate requires builtin HostConfig dict, Privileged false and
+NetworkMode default. No repair guess follows from the reported predicate.
+The five approved characterization artifacts retain both exit statuses1,
+frontend null/null/false and UNKNOWN containers. The two cleanup status fields
+share the same cleanup-errors source and are not independent inspection proof.
+The five-cycle characterization campaign is STOP. Independent source evidence
+review may proceed; it does not authorize another execution.
+
+Normal Rust Core CI ran fresh cargo fmt and produced fifteen hunks solely in
+`admission_transport_prototype.rs`. Both checks and bootstrap stopped at that
+prerequisite; bootstrap cleanup-step success is not an independent EMPTY
+certificate. The audit and cold image passed, with invalid-config exit1;
+valid service startup and transport execution remain unproved. Root allocated
+`M1-NATIVE-FMT-SOURCE-REPAIR` under
+`c3ddcf1a7181930f48014bbd489348e9e537757f016e48cd09dfdc569a2f005a`.
+It owns only the example formatter hunks and the runner's exact Rust-source
+hash literal. All semantics, limits, custody, command counts, Python source,
+Cargo graph and workflow remain fixed. Native formatting is unproved until
+supported CI checks the corrected candidate. Source review precedes any
+commit/push or separately released second transport experiment. Original
+transport failure cause remains UNKNOWN.
