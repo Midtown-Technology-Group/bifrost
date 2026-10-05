@@ -78,6 +78,23 @@ a fresh candidate UUID to obtain the complete descriptor evidence. Existing
 active deployments and their historical hashes are unchanged. No public DTO,
 SDK field, database migration or metadata PATCH is added.
 
+Captured source can also retain an author-time decorator UUID. Reviewed
+compilation accepts that UUID only when it equals the installed registration or
+resolves to it through the normal `uuid5(solution_id, str(author_time_id))`
+mapping. Other installs' namespaces and unrelated IDs remain conflicts. Source
+UUIDs and installed caller UUIDs are not rewritten during adoption.
+
+When captured tags or tool descriptions differ from the authored declaration,
+the native adapter seals those installed values alongside description/category
+under `bifrost.solution-legacy-descriptors/v2`. It selects v2 only for that
+difference; v1 artifacts retain their original shape and hashes. Both versions
+require exact fields, digest and freshly read installed values. Neither can
+contain identity, scope, authorization, parameter or runtime controls. Source
+tags/tool descriptions remain in the executable definition while installed
+registration metadata remains unchanged. Source-only successors retain the
+same evidence; ordinary reviewed registration delivery applies its normal
+projection and caller checks.
+
 ## Remaining cutover evidence
 
 The 2026-10-03 production inventory read all 45 catalog entries and active
