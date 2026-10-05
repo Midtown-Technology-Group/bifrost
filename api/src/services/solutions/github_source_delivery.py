@@ -57,7 +57,8 @@ async def _unresolved_source_commits(db: AsyncSession, organization_id: UUID) ->
         WorkspaceSourceRelease.organization_id == organization_id,
         WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
         WorkspaceSourceRelease.disposition.in_(("pending", "attention_required", "deferred")))
-        .order_by(WorkspaceSourceRelease.created_at, WorkspaceSourceRelease.id)
+        .order_by(WorkspaceSourceRelease.accounting_checked_at.asc().nulls_first(),
+            WorkspaceSourceRelease.created_at, WorkspaceSourceRelease.id)
         .limit(MAX_ANCESTRY_COMMITS))).all())
 
 

@@ -263,6 +263,42 @@ async def test_unknown_consumer_rotates_examined_obligations_without_claiming_co
 
 
 @pytest.mark.asyncio
+async def test_delivery_ancestry_candidates_rotate_checked_debt_at_the_bound(
+    db_session, platform_admin, monkeypatch,
+):
+    from src.models.orm.organizations import Organization
+    from src.services.solutions import github_source_delivery as delivery
+
+    organization_id = uuid4()
+    db_session.add(Organization(id=organization_id, name="Ancestry rotation fixture",
+        created_by=str(platform_admin.user_id)))
+    await db_session.flush()
+    # Exercise the real bounded SQL selection without creating 1,001 fixtures.
+    monkeypatch.setattr(delivery, "MAX_ANCESTRY_COMMITS", 2)
+    now = datetime.now(UTC)
+    records = []
+    for index in range(3):
+        commit = uuid4().hex + "a" * 8
+        records.append(WorkspaceSourceRelease(id=uuid4(), organization_id=organization_id,
+            source_commit_sha=commit, source_tree_sha="b" * 40,
+            paths={"features/retained.py": "c" * 64}, disposition="deferred",
+            declared_disposition="pending", declaration_actor="github_actions_oidc",
+            producer_oidc_commit_sha=commit, producer_event_name="push",
+            producer_run_id=str(index + 1), created_by=platform_admin.user_id,
+            created_at=now + timedelta(seconds=index),
+            accounting_checked_at=now + timedelta(seconds=index) if index < 2 else None))
+    db_session.add_all(records)
+    await db_session.flush()
+    assert await delivery._unresolved_source_commits(db_session, organization_id) == {
+        records[2].source_commit_sha, records[0].source_commit_sha}
+    records[2].accounting_checked_at = now + timedelta(seconds=3)
+    await db_session.flush()
+    assert await delivery._unresolved_source_commits(db_session, organization_id) == {
+        records[0].source_commit_sha, records[1].source_commit_sha}
+    assert all(row.disposition == "deferred" and row.completion_evidence is None for row in records)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("recovery", ["rotation", "exact_replay"])
 async def test_recovery_reaches_older_eligible_source_behind_100_blockers(
     db_session, platform_admin, accounting_install, recovery
