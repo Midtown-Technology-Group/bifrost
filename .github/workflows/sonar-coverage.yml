@@ -123,7 +123,7 @@ jobs:
           # later (worker, scheduler, test-runner). Preserve the complete model.
           docker compose --profile '*' -f docker-compose.test.yml -f docker-compose.sonar.yml config > "$RUNNER_TEMP/sonar-compose.yml"
           services="$(docker compose --profile '*' -f "$RUNNER_TEMP/sonar-compose.yml" config --services)"
-          for service in api api-replica worker scheduler test-runner; do
+          for service in api api-replica worker scheduler scheduler-fixtures test-runner; do
             grep -qx "$service" <<< "$services" || { echo "Missing Sonar test service: $service" >&2; exit 1; }
           done
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
