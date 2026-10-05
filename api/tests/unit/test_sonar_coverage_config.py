@@ -152,7 +152,7 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     assert filter_commands == [["python", "/repo/api/scripts/filter_sonar_coverage.py"]]
     module = _filter_module()
     assert (module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT) == (
-        Path("/repo"), Path("/app"), Path("/tmp/bifrost")
+        Path("/repo"), Path("/app"), Path("/bifrost-results")
     )
     # Fixture-only injection; production accepts no CLI/environment overrides.
     module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT = repo, app, artifacts
@@ -179,8 +179,8 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     command = report_commands[0]
     for original, replacement in (
         ("/app/.coveragerc.sonar-report", str(configs[".coveragerc.sonar-report"])),
-        ("/tmp/bifrost/.coverage.sonar-tracked", str(filtered_path)),
-        ("/tmp/bifrost/coverage-sonar.xml", str(report_path)),
+        ("/bifrost-results/.coverage.sonar-tracked", str(filtered_path)),
+        ("/bifrost-results/coverage-sonar.xml", str(report_path)),
     ):
         command = [argument.replace(original, replacement) for argument in command]
     result = subprocess.run(
