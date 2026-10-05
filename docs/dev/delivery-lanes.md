@@ -65,7 +65,7 @@ Expected flow:
 - Keep read-only inspection separate from live mutation.
 - Call out sensitive paths and rollback/verification notes in the PR.
 
-Review expectation: human review is required. Add extra reviewers only for
+Review expectation: human review is recommended. Add reviewers only for
 specific risk ownership, such as security, data model, deployment, or execution
 engine behavior. Avoid piling on generic reviewers.
 
