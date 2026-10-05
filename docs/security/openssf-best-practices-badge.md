@@ -46,7 +46,11 @@ Commit the regenerated `.bestpractices.json` to `main` before BadgeApp import.
 
 Governance-related Silver fields are justified from [GOVERNANCE.md](../../GOVERNANCE.md),
 [CODE_OF_CONDUCT.md](../../CODE_OF_CONDUCT.md), and [CONTRIBUTING.md](../../CONTRIBUTING.md)
-(DCO section).
+(the applicable contribution route). The maintainer-directed route is an alternate
+project acceptance record, not evidence that every commit has a personal DCO
+certification. Before importing contribution-related answers, reassess the exact
+criterion and its justification against the adopted policy. Do not infer badge
+compliance or DCO equivalence from an agent's authorization/provenance record.
 
 ## Submit answers (pick one path)
 
