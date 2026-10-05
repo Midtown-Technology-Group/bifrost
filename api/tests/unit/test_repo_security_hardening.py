@@ -29,6 +29,17 @@ def _load_yaml(relative_path: str) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def test_retired_snyk_gate_is_not_reintroduced_by_workflows() -> None:
+    workflow_root = REPO_ROOT / ".github" / "workflows"
+
+    assert not (workflow_root / "snyk.yml").exists()
+    workflows = sorted(workflow_root.glob("*.yml")) + sorted(
+        workflow_root.glob("*.yaml")
+    )
+    for workflow in workflows:
+        assert "snyk" not in workflow.read_text(encoding="utf-8").lower(), workflow.name
+
+
 def test_pull_request_ci_does_not_use_noop_path_ignore() -> None:
     ci = _load_yaml(".github/workflows/ci.yml")
     pull_request = ci[True]["pull_request"]
