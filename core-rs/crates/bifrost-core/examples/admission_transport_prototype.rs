@@ -79,7 +79,9 @@ impl Fixtures {
         if !directory.is_absolute()
             || spelling.len() > 512
             || !spelling.is_ascii()
-            || spelling.iter().any(|byte| matches!(byte, 0 | b'\r' | b'\n'))
+            || spelling
+                .iter()
+                .any(|byte| matches!(byte, 0 | b'\r' | b'\n'))
         {
             return Err(Fault::Startup);
         }
@@ -192,7 +194,11 @@ struct Admission {
 impl Admission {
     #[cfg(test)]
     fn replace(&self, generation: u64, allowed: Vec<CertificateDer<'static>>) -> Result<(), Fault> {
-        if allowed.len() > 2 || allowed.iter().any(|leaf| leaf.is_empty() || leaf.len() > 16_384) {
+        if allowed.len() > 2
+            || allowed
+                .iter()
+                .any(|leaf| leaf.is_empty() || leaf.len() > 16_384)
+        {
             return Err(Fault::Startup);
         }
         let mut policy = self.policy.write().map_err(|_| Fault::Transport)?;
@@ -210,7 +216,10 @@ impl Admission {
         operation: &str,
         request_id: String,
     ) -> Result<ProbeResponse, StatusCode> {
-        let policy = self.policy.read().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        let policy = self
+            .policy
+            .read()
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
         let Some(leaf) = peer.certificates.first() else {
             return Err(StatusCode::FORBIDDEN);
         };
@@ -282,7 +291,11 @@ async fn probe(
     }
 }
 
-async fn workflow(state: State<Arc<Admission>>, peer: Extension<Peer>, request: Request) -> Response {
+async fn workflow(
+    state: State<Arc<Admission>>,
+    peer: Extension<Peer>,
+    request: Request,
+) -> Response {
     probe(state, peer, request, "workflow_probe").await
 }
 
@@ -305,7 +318,10 @@ fn configuration(fixtures: &mut Fixtures) -> Result<(Arc<ServerConfig>, Arc<Admi
     let ca = CertificateDer::from(fixtures.read("ca.der", false)?);
     let a = CertificateDer::from(fixtures.read("client-a.der", false)?);
     let b = CertificateDer::from(fixtures.read("client-b.der", false)?);
-    if [&server, &ca, &a, &b].iter().any(|cert| cert.len() > 16_384) {
+    if [&server, &ca, &a, &b]
+        .iter()
+        .any(|cert| cert.len() > 16_384)
+    {
         return Err(Fault::Startup);
     }
     let provider = Arc::new(rustls::crypto::ring::default_provider());
@@ -497,7 +513,7 @@ impl Server {
                 self.task.abort();
                 let _ = timeout_at(end, &mut self.task).await;
                 Err(Fault::Cleanup)
-            },
+            }
         }
     }
 }
@@ -516,14 +532,17 @@ async fn run() -> Result<(), Fault> {
         server.address.port()
     );
     let mut first = None;
-    let mut signal = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+    let mut signal = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+    {
         Ok(signal) => Some(signal),
         Err(_) => {
             first = Some(Fault::Startup);
             None
-        },
+        }
     };
-    if first.is_none() && (ready.len() > 256 || std::io::stdout().write_all(ready.as_bytes()).is_err()) {
+    if first.is_none()
+        && (ready.len() > 256 || std::io::stdout().write_all(ready.as_bytes()).is_err())
+    {
         first = Some(Fault::Startup);
     }
     if first.is_none()
@@ -600,8 +619,13 @@ mod tests {
             let name = ServerName::try_from("localhost").map_err(|_| Fault::Startup)?;
             let connector = TlsConnector::from(Arc::new(config));
             let established = timeout_at(end, async {
-                let stream = TcpStream::connect(address).await.map_err(|_| Fault::Transport)?;
-                let tls = connector.connect(name, stream).await.map_err(|_| Fault::Transport)?;
+                let stream = TcpStream::connect(address)
+                    .await
+                    .map_err(|_| Fault::Transport)?;
+                let tls = connector
+                    .connect(name, stream)
+                    .await
+                    .map_err(|_| Fault::Transport)?;
                 hyper::client::conn::http1::handshake::<_, Body>(TokioIo::new(tls))
                     .await
                     .map_err(|_| Fault::Transport)
@@ -617,7 +641,11 @@ mod tests {
             })
         }
 
-        async fn request(&mut self, path: &str, body: &str) -> Result<(StatusCode, Vec<u8>), Fault> {
+        async fn request(
+            &mut self,
+            path: &str,
+            body: &str,
+        ) -> Result<(StatusCode, Vec<u8>), Fault> {
             let end = (Instant::now() + FIVE).min(self.end);
             let request = HttpRequest::builder()
                 .method("POST")
@@ -628,7 +656,10 @@ mod tests {
                 .map_err(|_| Fault::Transport)?;
             let sender = self.sender.as_mut().ok_or(Fault::Transport)?;
             timeout_at(end, async {
-                let response = sender.send_request(request).await.map_err(|_| Fault::Transport)?;
+                let response = sender
+                    .send_request(request)
+                    .await
+                    .map_err(|_| Fault::Transport)?;
                 let status = response.status();
                 let body = Limited::new(response.into_body(), BODY_LIMIT)
                     .collect()
@@ -655,7 +686,7 @@ mod tests {
                         return Err(Fault::Cleanup);
                     }
                     Err(Fault::Cleanup)
-                },
+                }
             }
         }
     }
@@ -717,11 +748,7 @@ mod tests {
     }
 
     fn check(value: bool) -> Result<(), Fault> {
-        if value {
-            Ok(())
-        } else {
-            Err(Fault::Transport)
-        }
+        if value { Ok(()) } else { Err(Fault::Transport) }
     }
 
     #[tokio::test]
@@ -795,14 +822,18 @@ mod tests {
             let mut fixtures = Fixtures::new(&directory)?;
             let expiry_bytes = fixtures.read("client-a-expiry.txt", false)?;
             let expiry_text = std::str::from_utf8(&expiry_bytes).map_err(|_| Fault::Startup)?;
-            check(expiry_text.len() <= 20 && expiry_text.bytes().all(|byte| byte.is_ascii_digit()))?;
+            check(
+                expiry_text.len() <= 20 && expiry_text.bytes().all(|byte| byte.is_ascii_digit()),
+            )?;
             let expiry: u64 = expiry_text.parse().map_err(|_| Fault::Startup)?;
             let end = world.client()?.end;
             timeout_at(end, async {
                 while UnixTime::now().as_secs() <= expiry {
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
-            }).await.map_err(|_| Fault::Transport)?;
+            })
+            .await
+            .map_err(|_| Fault::Transport)?;
             let (expired, _) = world
                 .client()?
                 .request("/_prototype/v1/workflow_probe", &valid_body())
