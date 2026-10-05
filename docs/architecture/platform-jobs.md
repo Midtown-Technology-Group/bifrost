@@ -236,6 +236,15 @@ Build/publication evidence alone does not attest protected Git provenance or
 enroll an App in automatic delivery. Standalone and Solution-owned App deployment
 semantics remain distinct.
 
+The inline bundler can also capture outputs from a bounded immutable App source
+snapshot. It materializes a private temporary tree, applies the SDK import
+migration there, and compiles with Live settings. It reads no editor source and
+writes neither preview nor Live storage. Evidence separates the complete authored
+file hashes (including `app.yaml`) from the migrated compiler inputs and names the
+changed paths. `app.yaml` is attested but never applied to installed App metadata,
+roles or dependencies. Snapshot bytes alone confer no Git or publication authority;
+protected source admission and the existing publication job remain required.
+
 `PlatformJobPublic` is the single status contract for HTTP and WebSocket
 delivery. Changes that break a CLI-consumed enqueue or status contract require
 a matching `CONTRACT_VERSION` bump in both the server and packaged CLI.

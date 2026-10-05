@@ -36,6 +36,7 @@ from bifrost.platform_names import PLATFORM_EXPORT_NAMES
 from src.core.log_safety import log_safe
 from src.core.malloc import trim_malloc
 from src.services.app_storage import AppStorageService
+from src.services.inline_app_source import InlineAppSourceSnapshot
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ DEFAULT_EXTERNALS = [
     "tailwind-merge",
 ]
 
-Mode = Literal["preview", "live"]
+Mode = Literal["preview", "live", "capture"]
 
 
 # Canonical set of names the `bifrost` package exposes to user code.
@@ -132,6 +133,8 @@ class BundlerService:
         repo_prefix: str,
         mode: Mode,
         dependencies: dict[str, str] | None = None,
+        *,
+        source_snapshot: InlineAppSourceSnapshot | None = None,
     ) -> BundleResult:
         """Build an app bundle.
 
@@ -139,7 +142,8 @@ class BundlerService:
             app_id: Application UUID (string)
             repo_prefix: Repo path prefix of the app source
                 (e.g. "apps/braytel-crm/"). Must end with "/".
-            mode: "preview" or "live"
+            mode: "preview", "live", or "capture". Capture returns immutable
+                output buffers without writing preview or live storage.
             dependencies: npm deps from Application.dependencies — treated
                 as externals; resolved in the browser via import map
                 pointing at esm.sh.
@@ -150,7 +154,11 @@ class BundlerService:
             manifest.json is NOT overwritten — last good bundle stays live.
         """
         try:
-            return await self._build(app_id, repo_prefix, mode, dependencies)
+            if mode not in {"preview", "live", "capture"}:
+                raise ValueError("Unknown inline App build mode")
+            if (mode == "capture") != (source_snapshot is not None):
+                raise ValueError("Captured source builds require capture mode and never write preview/live")
+            return await self._build(app_id, repo_prefix, mode, dependencies, source_snapshot=source_snapshot)
         finally:
             # Every build materializes a source tree + holds esbuild output
             # bytes in Python before uploading to S3. Glibc retains the
@@ -164,6 +172,8 @@ class BundlerService:
         repo_prefix: str,
         mode: Mode,
         dependencies: dict[str, str] | None,
+        *,
+        source_snapshot: InlineAppSourceSnapshot | None = None,
     ) -> BundleResult:
         if not repo_prefix.endswith("/"):
             repo_prefix += "/"
@@ -177,7 +187,26 @@ class BundlerService:
             out_dir.mkdir()
 
             # 1. Materialize app source from _repo to tempdir
-            sources = await self._materialize_source(src_dir, repo_prefix)
+            migrated_paths: list[str] = []
+            if source_snapshot is None:
+                sources = await self._materialize_source(src_dir, repo_prefix)
+            else:
+                # Migration operates only on this captured temp tree. Editor
+                # source and previews remain independent of production input.
+                from bifrost.migrate_imports import load_lucide_icon_names, migrate_app
+
+                sources = source_snapshot.materialize(src_dir)
+                migration = await asyncio.to_thread(
+                    migrate_app, src_dir, PLATFORM_EXPORT_NAMES, load_lucide_icon_names()
+                )
+                for item in migration:
+                    if item.changed:
+                        relative_path = item.path.resolve().relative_to(src_dir.resolve()).as_posix()
+                        if relative_path not in sources:
+                            raise ValueError("Migration output is outside the captured App source")
+                        item.path.write_text(item.updated, encoding="utf-8")
+                        migrated_paths.append(relative_path)
+                migrated_paths.sort()
             if not sources:
                 return BundleResult(
                     success=False,
@@ -232,7 +261,7 @@ class BundlerService:
                 "source_dir": str(src_dir),
                 "out_dir": str(out_dir),
                 "entry": entry_file,
-                "mode": mode,
+                "mode": "live" if mode == "capture" else mode,
                 "externals": DEFAULT_EXTERNALS + user_deps,
             }
             result = await self._run_esbuild(build_cfg)
@@ -266,9 +295,10 @@ class BundlerService:
                 data = (out_dir / rel).read_bytes()
                 output_hashes[rel] = "sha256:" + hashlib.sha256(data).hexdigest()
                 publication_files[rel] = data
-                await self._app_storage.write_preview_file(app_id, rel, data) \
-                    if mode == "preview" \
-                    else await self._write_live(app_id, rel, data)
+                if mode == "preview":
+                    await self._app_storage.write_preview_file(app_id, rel, data)
+                elif mode == "live":
+                    await self._write_live(app_id, rel, data)
                 uploaded.append(rel)
 
             # 7. Write manifest — only on success, so failures preserve
@@ -286,13 +316,21 @@ class BundlerService:
                     "output_hashes": output_hashes,
                 },
             }
+            if source_snapshot is not None:
+                manifest["source_snapshot_evidence"] = {
+                    "schema_version": "bifrost.inline-app-source-snapshot/v1",
+                    "authored_source_hashes": source_snapshot.hashes(),
+                    "compiler_source_hashes": source_hashes,
+                    "migration_changed_paths": migrated_paths,
+                    "metadata_not_applied": ["app.yaml"],
+                }
             manifest_bytes = json.dumps(manifest, indent=2).encode()
             publication_files["manifest.json"] = manifest_bytes
             if mode == "preview":
                 await self._app_storage.write_preview_file(
                     app_id, "manifest.json", manifest_bytes
                 )
-            else:
+            elif mode == "live":
                 await self._write_live(app_id, "manifest.json", manifest_bytes)
 
             logger.info(
