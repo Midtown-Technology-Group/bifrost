@@ -189,6 +189,56 @@ def test_repeat_publication_reuses_immutable_outputs(e2e_client, platform_admin,
 
 
 @pytest.mark.asyncio
+async def test_captured_source_build_preserves_real_editor_live_storage_and_app_controls(
+    e2e_client, platform_admin, app_factory,
+):
+    from src.services.app_bundler import BundlerService
+    from src.services.inline_app_source import InlineAppSourceSnapshot
+
+    app = app_factory(platform_admin.headers, f"captured-build-{uuid.uuid4().hex[:8]}")
+    headers = platform_admin.headers
+    storage = AppStorageService()
+    original_live = _captured_bundle("already-published")
+    await storage.publish(app["id"], bundle_files=original_live)
+    await storage.write_preview_file(app["id"], "editor-marker.tsx", b"independent editor state")
+    controls_before = e2e_client.get(f"/api/applications/{app['slug']}", headers=headers)
+    source_before = e2e_client.get(f"/api/applications/{app['id']}/files", headers=headers)
+    assert controls_before.status_code == source_before.status_code == 200
+    authored = {
+        "app.yaml": b"scope: global\naccess_level: public\n",
+        "pages/index.tsx": (
+            b'import { useNavigate } from "react-router-dom";\n'
+            b'export default function Page() { const navigate = useNavigate(); '
+            b'return <button onClick={() => navigate("/")}>captured protected source</button>; }\n'
+        ),
+    }
+    result = await BundlerService().build(
+        app["id"], f"apps/{app['slug']}/", "capture", source_snapshot=InlineAppSourceSnapshot(authored),
+    )
+    assert result.success, result.errors
+    assert result.publication_files is not None
+    manifest = json.loads(result.publication_files["manifest.json"])
+    evidence = manifest["source_snapshot_evidence"]
+    assert evidence["authored_source_hashes"] == {
+        path: "sha256:" + hashlib.sha256(content).hexdigest() for path, content in authored.items()
+    }
+    assert evidence["migration_changed_paths"] == ["pages/index.tsx"]
+    assert evidence["compiler_source_hashes"]["pages/index.tsx"] != evidence["authored_source_hashes"]["pages/index.tsx"]
+    assert evidence["metadata_not_applied"] == ["app.yaml"]
+    assert b"captured protected source" in result.publication_files[manifest["entry"]]
+    for path, digest in manifest["build_evidence"]["output_hashes"].items():
+        assert "sha256:" + hashlib.sha256(result.publication_files[path]).hexdigest() == digest
+    assert await storage.read_file(app["id"], "preview", "editor-marker.tsx") == b"independent editor state"
+    for path, content in original_live.items():
+        assert await storage.read_file(app["id"], "live", path) == content
+    controls_after = e2e_client.get(f"/api/applications/{app['slug']}", headers=headers)
+    source_after = e2e_client.get(f"/api/applications/{app['id']}/files", headers=headers)
+    assert controls_after.status_code == source_after.status_code == 200
+    assert controls_after.json() == controls_before.json()
+    assert source_after.json() == source_before.json()
+
+
+@pytest.mark.asyncio
 async def test_uncertain_publish_request_recovers_original_job_without_manifest_write(
     e2e_client, platform_admin, app_factory, db_session,
 ):

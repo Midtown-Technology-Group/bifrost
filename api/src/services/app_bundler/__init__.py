@@ -46,9 +46,8 @@ BUNDLE_SCRIPT = Path(__file__).parent / "bundle.js"
 # Bump this whenever the bundler or auto-migrator's output semantics change.
 # Manifest.json records this; readers compare against it and trigger a
 # rebuild (which runs auto-migration first) when they see an older value.
-# This is how a deploy transparently heals every app's bundle — the first
-# viewer after deploy pays a ~200ms migrate+rebuild cost, subsequent views
-# are cached.
+# Preview reads may migrate/rebuild stale bundles. Live reads fail closed
+# and require explicit publication; a viewer never rebuilds production source.
 SCHEMA_VERSION = 5
 
 # CSS file the bundler synthesizes from per-app Tailwind compilation.
