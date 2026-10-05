@@ -514,12 +514,13 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             raise ValueError(f"Bundle build failed during publish: {err_text}")
         if bundle_result.publication_files is None:
             raise ValueError("Bundle build did not retain its publication artifact")
-        publication_files = (dict(bundle_result.publication_files)
-                             if source_provenance is not None else bundle_result.publication_files)
+        publication_files = bundle_result.publication_files
         if source_provenance is not None:
-            manifest = json.loads(publication_files["manifest.json"])
+            captured_files = dict(publication_files)
+            manifest = json.loads(captured_files["manifest.json"])
             manifest["git_source_evidence"] = source_provenance
-            publication_files["manifest.json"] = json.dumps(manifest, indent=2).encode()
+            captured_files["manifest.json"] = json.dumps(manifest, indent=2).encode()
+            publication_files = captured_files
         if before_publication is not None:
             await before_publication()
 
