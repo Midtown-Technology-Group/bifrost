@@ -297,7 +297,8 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     assert saved[0]["manifest_write_started"] is False
     assert saved[1] == {**saved[0], "manifest_write_started": True}
     assert saved[0]["expected_live_etag"] == before_revision.etag
-    assert await storage.verify_publication(app["id"], saved[0]) == len(saved[0]["artifact_hashes"])
+    intent = {**saved[-1], "controls_hash": controls}
+    assert await storage.verify_publication(app["id"], intent) == len(intent["artifact_hashes"])
     manifest_bytes = await storage.read_file(app["id"], "live", "manifest.json")
     manifest = json.loads(manifest_bytes)
     assert manifest["git_source_evidence"] == source_proof
@@ -306,16 +307,15 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     runtime_pin = await read_app_publication_runtime_pin(storage,
         application_id=app_id, publication_job_id=original_job_id,
         organization_id=uuid.UUID(app["organization_id"]) if app.get("organization_id") else None,
-        intent={**saved[0], "controls_hash": controls}, protected_git=protected)
+        intent=intent, protected_git=protected)
     assert runtime_pin["publication_job_id"] == str(original_job_id)
     assert runtime_pin["source"] == source_proof
-    assert runtime_pin["manifest_hash"] == saved[0]["artifact_hashes"]["manifest.json"]
+    assert runtime_pin["manifest_hash"] == intent["artifact_hashes"]["manifest.json"]
     assert runtime_pin["runtime_pin_hash"] == canonical_digest({
         key: value for key, value in runtime_pin.items() if key != "runtime_pin_hash"})
     # Final accounting uses actual PostgreSQL rows and published storage bytes.
     # Immutable Git/producer admission is exercised separately; this fixture
     # supplies a prepared proof, rather than claiming a real GitHub signature.
-    intent = {**saved[0], "controls_hash": controls}
     original = PlatformJob(id=original_job_id, job_type="application.publish", status="succeeded",
         requested_by_user_id=str(SYSTEM_USER_UUID), requested_by_email="ci@bifrost.internal",
         requested_by_name="CI fixture", resource_type="application", resource_id=app["id"],
@@ -343,7 +343,7 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     await db_session.flush()
     await db_session.delete(original)
     await db_session.flush()
-    for path, expected_hash in saved[0]["artifact_hashes"].items():
+    for path, expected_hash in intent["artifact_hashes"].items():
         served = e2e_client.get(f"/api/applications/{app['id']}/bundle-asset/{path}?mode=live",
             headers=platform_admin.headers)
         assert served.status_code == 200, served.text
