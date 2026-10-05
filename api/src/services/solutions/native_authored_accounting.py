@@ -42,6 +42,15 @@ UNRESOLVED = ("pending", "attention_required")
 MAX_CACHED_NATIVE_BYTES = 64 * 1024 * 1024
 
 
+def _cached_native_evidence_size(
+    source: VerifiedAuthoredSolution, proof: dict[str, Any], runtime: _VerifiedNativeRuntime
+) -> int:
+    return (sum(len(path.encode()) + len(raw) for path, raw in source.files.items())
+        + sum(len(path.encode()) + len(raw) for path, raw in runtime.files.items())
+        + sum(len(path.encode()) + len(raw) for path, raw in runtime.resources.items())
+        + len(canonical_json(proof)))
+
+
 def intended_native_targets(registry: dict[str, Any] | None, repo_subpath: str) -> dict[str, str | None]:
     """Protected recipe mappings retain even missing and mixed-source targets."""
     if not registry or registry.get("target") != "production":
@@ -202,9 +211,7 @@ No new background job, endpoint or manual cleanup is needed.
             try:
                 collected = await _installed_evidence(db, solution, record, policy)
                 source, proof, runtime = collected
-                size = (sum(len(path.encode()) + len(raw) for path, raw in source.files.items())
-                    + sum(len(path.encode()) + len(raw) for path, raw in runtime.files.items())
-                    + len(canonical_json(proof)))
+                size = _cached_native_evidence_size(source, proof, runtime)
                 if cached_bytes + size > MAX_CACHED_NATIVE_BYTES:
                     # Omitted proof is never omitted membership. The complete
                     # target set below still prevents this family completing.
