@@ -29,6 +29,48 @@ env:
   CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
 
 jobs:
+  # Manual branch runs provide the exact clean-candidate gate when no local
+  # Docker test VM is available. Tags cannot enter this preparation-only job.
+  pre-pr-candidate:
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
+    name: Pre-PR Candidate
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - name: Run clean-candidate pre-PR gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash test.sh pre-pr 2>&1 | tee "$RUNNER_TEMP/pre-pr.log"
+      - name: Record cleanup evidence
+        if: always()
+        run: docker ps -a --format '{{.ID}} {{.Names}} {{.Status}}' > "$RUNNER_TEMP/pre-pr-containers.txt"
+      - name: Retain candidate gate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pre-pr-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/pre-pr.log
+            ${{ runner.temp }}/pre-pr-containers.txt
+            .git/bifrost-test-locks/pre-pr-stages.json
+            .git/bifrost-test-locks/pre-pr-affected-plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
   # =============================================================================
   # Change-aware plan - one exact, inspectable plan shared by every test lane.
   # =============================================================================
@@ -377,6 +419,9 @@ jobs:
         run: |
           python3 scripts/check_skill_mirrors.py
           python3 -m unittest scripts.test_skill_mirrors
+
+      - name: Release manifest regression checks
+        run: python3 scripts/release/test_release_manifest.py
 
       - name: Local stage evidence regression checks
         run: |
@@ -1453,6 +1498,8 @@ jobs:
     needs: [verify-release-manifest]
     runs-on: ubuntu-latest
     name: Build API Image
+    outputs:
+      digest: ${{ steps.build-api.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -1543,6 +1590,8 @@ jobs:
     needs: [verify-release-manifest]
     runs-on: ubuntu-latest
     name: Build Client Image
+    outputs:
+      digest: ${{ steps.build-client.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -1634,6 +1683,8 @@ jobs:
     needs: [verify-release-manifest]
     runs-on: ubuntu-latest
     name: Build Worker Image
+    outputs:
+      digest: ${{ steps.build-worker.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -1729,6 +1780,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release
     permissions:
+      packages: read       # exact-digest packaging smoke pulls
       contents: write       # upload assets to the GitHub Release
       id-token: write       # OIDC token for keyless cosign signing
       attestations: write   # actions/attest-build-provenance writes attestations
@@ -1736,6 +1788,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Get version from tag
         id: get_version
@@ -1801,6 +1855,65 @@ jobs:
         with:
           subject-path: ${{ steps.source_tarball.outputs.tarball }}
 
+      # Stable packages are built once at their final version. Accept those
+      # exact digests before attesting the machine-readable package identity.
+      - name: Generate stable release manifest
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        env:
+          RELEASE_TAG: ${{ steps.get_version.outputs.version }}
+          API_DIGEST: ${{ needs.build-api.outputs.digest }}
+          CLIENT_DIGEST: ${{ needs.build-client.outputs.digest }}
+          WORKER_DIGEST: ${{ needs.build-worker.outputs.digest }}
+        run: |
+          python3 scripts/release/release_manifest.py \
+            --tag "$RELEASE_TAG" --source "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --api-digest "$API_DIGEST" --client-digest "$CLIENT_DIGEST" \
+            --worker-digest "$WORKER_DIGEST" --output release-manifest.json
+
+      - name: Log in for exact release image acceptance
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GHCR_TOKEN && 'MTG-Thomas' || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Accept exact stable image contents
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        run: |
+          python3 scripts/release/accept_release_images.py release-manifest.json
+          sha256sum release-manifest.json > release-manifest.json.sha256
+
+      - name: Attest stable release manifest
+        id: release_manifest_attestation
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-manifest.json
+
+      - name: Retain release manifest attestation bundle
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        env:
+          BUNDLE_PATH: ${{ steps.release_manifest_attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$BUNDLE_PATH"
+          cp "$BUNDLE_PATH" release-manifest.json.sigstore.json
+          sha256sum --check release-manifest.json.sha256
+
+      - name: Upload accepted stable release manifest
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-${{ steps.get_version.outputs.version }}-attempt-${{ github.run_attempt }}
+          path: |
+            release-manifest.json
+            release-manifest.json.sha256
+            release-manifest.json.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Retain release-specific notes and verification instructions
         env:
           VERSION: ${{ steps.get_version.outputs.version }}
@@ -1833,6 +1946,9 @@ jobs:
             bifrost.pyi
             bifrost.pyi.sigstore
             stubs/DISTRIBUTION.md
+            release-manifest.json
+            release-manifest.json.sha256
+            release-manifest.json.sigstore.json
           fail_on_unmatched_files: false
           body_path: release/package-notes.md
           # Immutable releases only accept asset uploads while they are drafts.
@@ -1861,5 +1977,14 @@ jobs:
             [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
             [$name, ($name + ".sha256"), ($name + ".sigstore")] |
             all(. as $required | $assets | index($required) != null)' > /dev/null
+          if [ "$GITHUB_REPOSITORY" = Midtown-Technology-Group/bifrost ] && [ "$PRERELEASE" = false ]; then
+            # The draft must contain every attested manifest asset before the
+            # irreversible immutable publication step. Optional stubs stay optional.
+            printf '%s' "$release" | jq -e '
+              [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
+              ["release-manifest.json", "release-manifest.json.sha256", "release-manifest.json.sigstore.json"] |
+              all(. as $required | $assets | index($required) != null)' > /dev/null
+          fi
           gh release edit "$VERSION" "${args[@]}"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
+

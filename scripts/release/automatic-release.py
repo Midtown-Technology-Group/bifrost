@@ -36,6 +36,12 @@ _spec = importlib.util.spec_from_file_location(
 assert _spec and _spec.loader
 policy = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(policy)
+_manifest_spec = importlib.util.spec_from_file_location(
+    "release_manifest", ROOT / "scripts/release/release_manifest.py"
+)
+assert _manifest_spec and _manifest_spec.loader
+release_manifest = importlib.util.module_from_spec(_manifest_spec)
+_manifest_spec.loader.exec_module(release_manifest)
 
 
 class ReleaseError(ValueError):
@@ -338,7 +344,7 @@ def prepare(source: str, prs: list[dict]) -> dict | None:
         "",
         "## Upgrade notes",
         "",
-        "Use a CLI with the same server contract. Review breaking changes in the PR list before upgrading.",
+        *release_manifest.upgrade_notes(source, candidate["base_tag"]),
         f"Contract comparison requires: {candidate['contract_floor'] or 'no additional bump floor'}.",
         "This release uses the MTG fork's independent SemVer; upstream versions are not its baseline.",
         "",
@@ -547,3 +553,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
