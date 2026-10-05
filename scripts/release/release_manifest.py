@@ -132,10 +132,14 @@ def upgrade_notes(source: str, base: str | None) -> list[str]:
     previous = contract(base) if base else None
     transition = f"{previous} -> {current}" if previous is not None else str(current)
     notes = [
-        f"CLI/server contract: {transition}. Install the CLI bundled with this release; "
-        "mismatched contracts are rejected.",
-        "Before upgrading, back up the database and review the exact release's migration "
-        "heads. Apply migrations using the protected infrastructure migration lane.",
+        (
+            f"CLI/server contract: {transition}. Install the CLI bundled with this release; "
+            "mismatched contracts are rejected."
+        ),
+        (
+            "Before upgrading, back up the database and review the exact release's migration "
+            "heads. Apply migrations using the protected infrastructure migration lane."
+        ),
     ]
     paths = git("ls-tree", "-r", "--name-only", source, "--", MIGRATIONS).splitlines()
     retirement_path = MIGRATIONS + "20261003_workflow_registration_retirement.py"
@@ -145,16 +149,22 @@ def upgrade_notes(source: str, base: str | None) -> list[str]:
             raise ValueError("terminal-retirement migration identity changed; review release warnings")
         notes.extend([
             ROLLBACK_REASON,
-            "Before enabling terminal Live retirement, review actual production caller/byte "
-            "evidence. The native read-only census does not prove absence of Python, "
-            "operational file, App Source/dist, or external callers. Coordinate owners "
-            "and retain the exact reviewed evidence digest before authorizing retirement.",
-            "Read back retirement inventory to verify retained row/evidence IDs. An "
-            "uncertain outcome requires readback before any exact retry; do not replay "
-            "with fresh targets. Keep the forward schema during application-image rollback.",
-            f"Follow the [terminal-retirement runbook](https://github.com/{REPOSITORY}/blob/"
-            f"{source}/docs/architecture/rapid-workspace-promotion.md"
-            "#obsolete-registrations-in-the-same-cutover).",
+            (
+                "Before enabling terminal Live retirement, review actual production caller/byte "
+                "evidence. The native read-only census does not prove absence of Python, "
+                "operational file, App Source/dist, or external callers. Coordinate owners "
+                "and retain the exact reviewed evidence digest before authorizing retirement."
+            ),
+            (
+                "Read back retirement inventory to verify retained row/evidence IDs. An "
+                "uncertain outcome requires readback before any exact retry; do not replay "
+                "with fresh targets. Keep the forward schema during application-image rollback."
+            ),
+            (
+                f"Follow the [terminal-retirement runbook](https://github.com/{REPOSITORY}/blob/"
+                f"{source}/docs/architecture/rapid-workspace-promotion.md"
+                "#obsolete-registrations-in-the-same-cutover)."
+            ),
         ])
     else:
         notes.append("Automatic rollback is not certified; review schema compatibility before application rollback.")
