@@ -32,7 +32,8 @@ def lcov_report(filename="src/app.ts", hit=1, branch=False):
 
 
 def properties():
-    return ("sonar.sources=.\nsonar.tests=.\nsonar.scm.exclusions.disabled=true\n"
+    return ("sonar.projectKey=Midtown-Technology-Group_bifrost\nsonar.host.url=https://sonarcloud.io\n"
+            + "sonar.sources=.\nsonar.tests=.\nsonar.scm.exclusions.disabled=true\n"
             + "sonar.test.inclusions=" + ",".join(guard.TEST_PATTERNS) + "\n"
             + "sonar.exclusions=" + ",".join(guard.TEST_PATTERNS + guard.GENERATED_PATTERNS) + "\n"
             + "sonar.python.coverage.reportPaths=.sonar-evidence/python.xml\n"
@@ -434,6 +435,18 @@ class ReportParserTests(Fixture):
 
 
 class ScopeUnitTests(unittest.TestCase):
+    def test_scanner_destination_cannot_redirect_the_project_or_credential(self):
+        for key, value in (("sonar.projectKey", None), ("sonar.projectKey", "other_project"),
+                           ("sonar.host.url", None), ("sonar.host.url", "http://sonarcloud.io"),
+                           ("sonar.host.url", "https://unapproved.invalid")):
+            props = guard.read_properties(properties().encode())
+            if value is None:
+                del props[key]
+            else:
+                props[key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(guard.EvidenceError, "approved"):
+                guard.validate_scope([], props)
+
     def test_globs_cover_root_and_nested_paths(self):
         self.assertTrue(guard.glob_match("test_a.py", "**/test_*.py"))
         self.assertTrue(guard.glob_match("api/tests/test_a.py", "**/tests/**"))
