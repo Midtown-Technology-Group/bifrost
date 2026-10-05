@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
@@ -195,8 +195,13 @@ async def enqueue_platform_job(
     action_url: str | None,
     job_id: UUID | None = None,
     memory_profile_key: str | None = None,
+    readback_checkpoint_schema: str | None = None,
 ) -> tuple[PlatformJob, bool]:
-    """Create or reuse one active job under a durable deduplication key."""
+    """Create/reuse a job, optionally resuming a handler's readback-only intent.
+
+    Opt-in handlers must never replay effects when a checkpoint is present.
+    Unresolved checkpoint jobs block a fresh operation for the same resource.
+    """
     await reject_if_runtime_maintenance_sealed(db)
     parsed_payload = definition.payload_model.model_validate(payload)
     if dedupe_key is not None:
@@ -207,19 +212,40 @@ async def enqueue_platform_job(
             ),
             {"lock_key": f"{definition.job_type}:{dedupe_key}"},
         )
+        eligible = PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES)
+        if readback_checkpoint_schema is not None:
+            eligible = or_(eligible, and_(
+                PlatformJob.status.in_(("requires_action", "failed")),
+                PlatformJob.result["schema_version"].as_string() == readback_checkpoint_schema,
+            ))
         existing = (
             await db.execute(
                 select(PlatformJob)
                 .where(
                     PlatformJob.job_type == definition.job_type,
                     PlatformJob.dedupe_key == dedupe_key,
-                    PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES),
+                    eligible,
                 )
                 .order_by(PlatformJob.created_at.asc())
                 .limit(1)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if existing is not None:
+            if (existing.status in ("requires_action", "failed")
+                    and existing.requested_by_user_id == str(requested_by_user_id)
+                    and existing.organization_id == organization_id
+                    and existing.resource_type == resource_type and existing.resource_id == resource_id):
+                # One explicitly requested readback attempt, on the original
+                # row/payload/intent. Keep its previous attempt history intact.
+                existing.status = "queued"
+                existing.phase = "Reconciling publication evidence"
+                existing.available_at = _now()
+                existing.completed_at = None
+                existing.max_attempts = existing.attempt + 1
+                existing.error_code = existing.error_message = existing.error_retryable = None
+                existing.revision += 1
+                await db.flush()
             return existing, True
 
     payload_json = parsed_payload.model_dump(mode="json")

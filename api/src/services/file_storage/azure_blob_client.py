@@ -236,16 +236,24 @@ class AzureBlobStorageClient:
         Body: bytes,
         ContentType: str | None = None,
         IfNoneMatch: str | None = None,
+        IfMatch: str | None = None,
     ) -> None:
         del Bucket
         from azure.storage.blob import ContentSettings
 
+        if IfNoneMatch not in (None, "*") or (IfMatch is not None and (not IfMatch or IfNoneMatch is not None)):
+            raise ValueError("Unsupported or conflicting object write preconditions")
+        conditions = {}
+        if IfMatch is not None:
+            from azure.core import MatchConditions
+            conditions = {"etag": IfMatch, "match_condition": MatchConditions.IfNotModified}
         await self._ensure_client()
         await self._container_client.upload_blob(
             name=Key,
             data=Body,
             overwrite=IfNoneMatch != "*",
             content_settings=ContentSettings(content_type=ContentType),
+            **conditions,
         )
 
     @_owned_operation
@@ -325,7 +333,7 @@ class AzureBlobStorageClient:
                 yield chunk[offset : offset + chunk_size]
 
     @_owned_operation
-    async def get_object(self, *, Bucket: str, Key: str, Range: str | None = None) -> dict[str, _AsyncBody]:
+    async def get_object(self, *, Bucket: str, Key: str, Range: str | None = None) -> dict[str, Any]:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
 
@@ -338,7 +346,8 @@ class AzureBlobStorageClient:
             options = {"offset": int(match[1]), "length": int(match[2]) - int(match[1]) + 1}
         try:
             stream = await self._container_client.download_blob(Key, **options)
-            return {"Body": _AsyncBody(await stream.readall())}
+            return {"Body": _AsyncBody(await stream.readall()),
+                    "ETag": getattr(getattr(stream, "properties", None), "etag", None)}
         except ResourceNotFoundError as exc:
             raise self.exceptions.NoSuchKey(Key) from exc
 

@@ -214,7 +214,7 @@ async def test_publish_rejects_missing_captured_artifact_before_storage() -> Non
 
 
 @pytest.mark.asyncio
-async def test_publish_writes_captured_build_and_removes_only_stale_live(monkeypatch) -> None:
+async def test_publish_writes_captured_build_and_retains_prior_live_outputs(monkeypatch) -> None:
     outputs = {"index.js": b"entry", "components/Button.js": b"component"}
     manifest = json.dumps({
         "entry": "index.js", "outputs": list(outputs),
@@ -253,17 +253,9 @@ async def test_publish_writes_captured_build_and_removes_only_stale_live(monkeyp
         "_apps/app/live/index.js",
         "_apps/app/live/components/Button.js",
     }
-    assert client.deleted_batches == [
-        {
-            "Bucket": "bucket",
-            "Delete": {
-                "Objects": [{"Key": "_apps/app/live/old.tsx"}],
-                "Quiet": True,
-            },
-        },
-    ]
+    assert client.deleted_batches == []
     assert client.copied == []
-    assert client.list_calls == [{"Bucket": "bucket", "Prefix": "_apps/app/live/"}]
+    assert client.list_calls == []
     assert invalidated == ["app"]
 
 

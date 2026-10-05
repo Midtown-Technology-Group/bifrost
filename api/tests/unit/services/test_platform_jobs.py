@@ -203,6 +203,35 @@ def test_requires_action_status_is_terminal_and_not_active() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["requires_action", "failed"])
+@pytest.mark.parametrize("same_requester", [True, False])
+async def test_readback_checkpoint_blocks_fresh_publish_and_preserves_requester(
+    db_session: AsyncSession, status: str, same_requester: bool,
+) -> None:
+    job = await _enqueue(db_session)
+    job.status = status
+    job.attempt = job.max_attempts
+    proof = {"schema_version": "bifrost.application-publication-intent/v1", "artifact_hashes": {}}
+    job.result = proof
+    await db_session.commit()
+    original_id, original_payload = job.id, dict(job.payload)
+    resumed, reused = await service.enqueue_platform_job(
+        db_session, APPLICATION_PUBLISH_DEFINITION,
+        ApplicationPublishPayload(application_id=uuid4(), message="new source must not replace intent"),
+        dedupe_key=job.dedupe_key, organization_id=job.organization_id,
+        requested_by_user_id=job.requested_by_user_id if same_requester else uuid4(),
+        requested_by_email=job.requested_by_email, requested_by_name=job.requested_by_name,
+        resource_type=job.resource_type, resource_id=job.resource_id,
+        title="Readback", action_url=None, readback_checkpoint_schema=proof["schema_version"],
+    )
+    assert reused and resumed.id == original_id
+    assert resumed.payload == original_payload and resumed.result == proof
+    assert resumed.status == ("queued" if same_requester else status)
+    if same_requester:
+        assert resumed.max_attempts == resumed.attempt + 1
+
+
+@pytest.mark.asyncio
 async def test_handler_requires_action_finishes_with_result_and_releases_lease(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

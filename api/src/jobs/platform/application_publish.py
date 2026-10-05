@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -18,9 +19,12 @@ from src.jobs.platform.base import (
     PlatformJobDefinition,
     PlatformJobFailure,
     PlatformJobPolicy,
+    PlatformJobRequiresAction,
 )
 from src.models.orm.applications import Application
 from src.repositories.applications import ApplicationRepository
+from src.services.application_publication import publication_controls_hash
+from src.services.app_storage import AppStorageService
 
 APPLICATION_PUBLISH_JOB_TYPE = "application.publish"
 logger = logging.getLogger(__name__)
@@ -52,6 +56,7 @@ async def run_application_publish(
     raw_payload: BaseModel,
 ) -> dict[str, object]:
     payload = ApplicationPublishPayload.model_validate(raw_payload)
+    intent = context.checkpoint
     try:
         async with get_db_context() as db:
             application = await db.get(Application, payload.application_id)
@@ -60,6 +65,10 @@ async def run_application_publish(
                     "application_not_found",
                     "Application no longer exists.",
                 )
+            if (application.organization_id != context.organization_id
+                    or application.app_model != "inline_v1" or application.solution_id is not None):
+                raise ValueError("Application ownership/model changed after publication was queued")
+            controls = await publication_controls_hash(db, application.id)
 
             repo = ApplicationRepository(
                 db,
@@ -94,12 +103,37 @@ async def run_application_publish(
                 last_phase = phase
                 last_reported = current
 
-            published = await repo.publish(
-                application.id,
-                context.requested_by_email,
-                payload.message,
-                progress_callback=report,
-            )
+            storage = AppStorageService()
+            if intent is not None:
+                if intent.get("controls_hash") != controls:
+                    raise ValueError("Application controls differ from publication intent")
+                files_published = await storage.verify_publication(str(application.id), intent)
+                if await publication_controls_hash(db, application.id, lock=True) != controls:
+                    raise ValueError("Application controls changed during publication readback")
+                # Reconcile only publication bookkeeping, after exact artifact
+                # readback. No build, output write or manifest switch is replayed.
+                application.published_snapshot = {path: "" for path in intent["artifact_hashes"]}
+                application.published_at = datetime.now(timezone.utc)
+                await db.flush()
+                published = application
+            else:
+                async def checkpoint(proof: dict) -> None:
+                    nonlocal intent
+                    if await publication_controls_hash(db, application.id, lock=True) != controls:
+                        raise ValueError("Application controls changed during its build")
+                    intent = {**proof, "controls_hash": controls}
+                    await context.save_checkpoint(intent, phase="Publication intent recorded")
+
+                published = await repo.publish(
+                    application.id,
+                    context.requested_by_email,
+                    payload.message,
+                    progress_callback=report,
+                    checkpoint_callback=checkpoint,
+                )
+                if intent is None:
+                    raise ValueError("Publication did not record its intent")
+                files_published = await storage.verify_publication(str(application.id), intent)
             if published is None:
                 raise PlatformJobFailure(
                     "application_not_found",
@@ -111,13 +145,15 @@ async def run_application_publish(
                 if published.published_at is not None
                 else None
             )
-            files_published = len(published.published_snapshot or {})
             await db.commit()
 
         result: dict[str, object] = {
             "application_id": str(payload.application_id),
             "published_at": published_at,
             "files_published": files_published,
+            "publication_verified": True,
+            "publication_intent": intent,
+            "recovered_from_intent": context.checkpoint is not None,
         }
         try:
             await publish_app_published(
@@ -133,9 +169,17 @@ async def run_application_publish(
                 exc_info=True,
             )
         return result
-    except PlatformJobFailure:
+    except PlatformJobFailure as exc:
+        if intent is not None:
+            raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc
         raise
-    except ValueError as exc:
+    except Exception as exc:
+        if intent is not None:
+            # Retain durable evidence even for an unobserved storage/SQL outcome.
+            # A resumed lost attempt can only read back this intent.
+            raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc
+        if not isinstance(exc, ValueError):
+            raise
         raise PlatformJobFailure(
             "application_publish_failed",
             str(exc),

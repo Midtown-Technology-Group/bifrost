@@ -7,6 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
+from sqlalchemy import update
+
+from src.models.orm.platform_jobs import PlatformJob
+from src.services.app_storage import AppStorageService
 
 pytestmark = pytest.mark.e2e
 
@@ -72,7 +76,7 @@ def _poll(e2e_client, headers, job_id: str) -> dict:
         )
         assert response.status_code == 200, response.text
         body = response.json()
-        if body["status"] in ("succeeded", "failed", "cancelled"):
+        if body["status"] in ("succeeded", "failed", "cancelled", "requires_action"):
             return body
         time.sleep(0.25)
     raise AssertionError(f"publish job {job_id} did not finish")
@@ -125,6 +129,7 @@ def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
         response.json()["job_id"],
     )
     assert body["status"] == "succeeded", body
+    assert body["result"]["publication_verified"] is True
     assert body["result"]["files_published"] >= 2
     assert body["completed_at"] is not None
     application = e2e_client.get(
@@ -169,6 +174,50 @@ def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
         "completed",
     )
     assert notification["percent"] == 100
+
+
+def test_repeat_publication_reuses_immutable_outputs(e2e_client, platform_admin, app_factory):
+    app = app_factory(platform_admin.headers, f"repeat-publish-{uuid.uuid4().hex[:8]}")
+    for _ in range(2):
+        accepted = e2e_client.post(f"/api/applications/{app['id']}/publish", headers=platform_admin.headers)
+        assert accepted.status_code == 202, accepted.text
+        result = _poll(e2e_client, platform_admin.headers, accepted.json()["job_id"])
+        assert result["status"] == "succeeded", result
+        assert result["result"]["publication_verified"] is True
+
+
+@pytest.mark.asyncio
+async def test_uncertain_publish_request_recovers_original_job_without_manifest_write(
+    e2e_client, platform_admin, app_factory, db_session,
+):
+    app = app_factory(platform_admin.headers, f"readback-publish-{uuid.uuid4().hex[:8]}")
+    accepted = e2e_client.post(f"/api/applications/{app['id']}/publish", headers=platform_admin.headers)
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+    completed = _poll(e2e_client, platform_admin.headers, job_id)
+    assert completed["status"] == "succeeded", completed
+    intent = completed["result"]["publication_intent"]
+    storage = AppStorageService()
+    async def revision():
+        async with storage._get_client() as client:
+            result = await client.get_object(Bucket=storage._bucket, Key=storage._key(app["id"], "live", "manifest.json"))
+            await result["Body"].read()
+            return result["ETag"]
+    before = await revision()
+    # Simulate a lost terminal response after the checkpoint and storage switch.
+    # The public request must reuse this row, not publish current editable source.
+    await db_session.execute(update(PlatformJob).where(PlatformJob.id == uuid.UUID(job_id)).values(
+        status="requires_action", result=intent,
+    ))
+    await db_session.commit()
+    resumed = e2e_client.post(f"/api/applications/{app['id']}/publish", headers=platform_admin.headers)
+    assert resumed.status_code == 202, resumed.text
+    assert resumed.json()["job_id"] == job_id
+    recovered = _poll(e2e_client, platform_admin.headers, job_id)
+    assert recovered["status"] == "succeeded", recovered
+    assert recovered["result"]["recovered_from_intent"] is True
+    assert recovered["result"]["publication_intent"] == intent
+    assert await revision() == before
 
 
 def test_job_is_not_visible_to_another_user(

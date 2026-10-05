@@ -50,6 +50,7 @@ from src.jobs.platform.application_publish import (
     APPLICATION_PUBLISH_DEFINITION,
     ApplicationPublishPayload,
 )
+from src.services.app_storage import PUBLICATION_INTENT_SCHEMA
 from src.jobs.platform.application_deploy import (
     APPLICATION_DEPLOY_DEFINITION,
     ApplicationDeployPayload,
@@ -1065,7 +1066,9 @@ async def publish_application(
     ``/api/platform-jobs/{id}`` or subscribe to the caller's notification
     WebSocket channel for progress. A repeated
     request while the same app is queued or running returns the existing
-    operation instead of launching a conflicting publish.
+    operation instead of launching a conflicting publish. If that operation
+    retained uncertain publication evidence, the same requester resumes exact
+    readback on the original job. It never builds or republishes that intent.
     """
     # Publishing a solution-managed app is a deploy-owned action.
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
@@ -1091,6 +1094,7 @@ async def publish_application(
         resource_id=str(application.id),
         title=f"Publishing {application.name}",
         action_url=f"/apps/{application.slug}/edit",
+        readback_checkpoint_schema=PUBLICATION_INTENT_SCHEMA,
     )
     if reused and job.requested_by_user_id != str(user.user_id):
         raise HTTPException(

@@ -19,7 +19,8 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+import re
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 APPS_PREFIX = "_apps/"
 PUBLISH_COPY_CONCURRENCY = 16
-S3_DELETE_BATCH_SIZE = 1000
+PUBLICATION_INTENT_SCHEMA = "bifrost.application-publication-intent/v1"
 
 AppMode = Literal["preview", "live"]
 
@@ -309,6 +310,7 @@ class AppStorageService:
         *,
         bundle_files: Mapping[str, bytes],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+        checkpoint_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> int:
         """Publish the exact captured build, with its manifest written last.
 
@@ -343,6 +345,21 @@ class AppStorageService:
         live_prefix = self._key(app_id, "live")
 
         async with self._get_client() as client:
+            manifest_key = f"{live_prefix}manifest.json"
+            try:
+                prior = await client.get_object(Bucket=self._bucket, Key=manifest_key)
+            except client.exceptions.NoSuchKey:
+                etag = None
+            else:
+                await prior["Body"].read()
+                etag = prior.get("ETag")
+                if not isinstance(etag, str) or not etag:
+                    raise ValueError("Live publication has no storage revision evidence")
+            intent = {"schema_version": PUBLICATION_INTENT_SCHEMA, "application_id": app_id,
+                      "expected_live_etag": etag, "artifact_hashes": {
+                          path: "sha256:" + hashlib.sha256(data).hexdigest() for path, data in captured.items()}}
+            if checkpoint_callback:
+                await checkpoint_callback(intent)
             output_artifacts = sorted(outputs)
             total = len(artifacts)
             completed = 0
@@ -353,11 +370,19 @@ class AppStorageService:
 
             async def _write_output(rel_path: str) -> None:
                 async with semaphore:
-                    await client.put_object(
-                        Bucket=self._bucket,
-                        Key=f"{live_prefix}{rel_path}",
-                        Body=captured[rel_path],
-                    )
+                    key = f"{live_prefix}{rel_path}"
+                    try:
+                        await client.put_object(Bucket=self._bucket, Key=key,
+                                                Body=captured[rel_path], IfNoneMatch="*")
+                    except Exception as error:
+                        # Resolve an existing or uncertain create by exact byte
+                        # readback. Never overwrite or retry that output.
+                        try:
+                            existing = await client.get_object(Bucket=self._bucket, Key=key)
+                        except Exception:
+                            raise error from None
+                        if await existing["Body"].read() != captured[rel_path]:
+                            raise ValueError("Publication output conflicts with immutable storage") from None
 
             tasks = [
                 asyncio.create_task(_write_output(rel_path))
@@ -382,29 +407,17 @@ class AppStorageService:
                 Bucket=self._bucket,
                 Key=f"{live_prefix}{rel_path}",
                 Body=manifest_bytes,
+                **({"IfMatch": etag} if etag is not None else {"IfNoneMatch": "*"}),
             )
             completed += 1
             if progress_callback:
                 await progress_callback(completed, total)
 
-            live_keys = await self._list_keys(client, live_prefix)
-            stale_live = [
-                key for key in live_keys if key[len(live_prefix):] not in artifacts
-            ]
-            try:
-                await self._delete_keys(client, stale_live)
-            except Exception:
-                logger.warning(
-                    "Published current app manifest but failed to clean stale "
-                    "live objects",
-                    extra={"app_id": log_safe(app_id)},
-                    exc_info=True,
-                )
-
+            # Already-loaded browsers may still use older hashed chunks.
+            # Publication has no garbage-collection authority over those bytes.
             published = len(artifacts)
             logger.info(
                 f"Published {published} files for app {log_safe(app_id)}"
-                f" (removed {len(stale_live)} stale live objects)"
             )
 
         await self.invalidate_render_cache(app_id)
@@ -430,17 +443,33 @@ class AppStorageService:
         artifacts.add("manifest.json")
         return artifacts
 
-    async def _delete_keys(self, client: Any, keys: Iterable[str]) -> None:
-        """Delete S3 objects in batches instead of one request per object."""
-        key_list = list(keys)
-        for start in range(0, len(key_list), S3_DELETE_BATCH_SIZE):
-            batch = key_list[start : start + S3_DELETE_BATCH_SIZE]
-            if not batch:
-                continue
-            await client.delete_objects(
-                Bucket=self._bucket,
-                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
-            )
+    async def verify_publication(self, app_id: str, intent: dict[str, Any]) -> int:
+        """Read back saved intent without rebuilding or writing any artifact."""
+        hashes = intent.get("artifact_hashes")
+        if (intent.get("schema_version") != PUBLICATION_INTENT_SCHEMA
+                or intent.get("application_id") != app_id or not isinstance(hashes, dict)
+                or "manifest.json" not in hashes
+                or any(not isinstance(path, str) or not path or path.startswith("/")
+                       or "\\" in path or "\0" in path
+                       or any(part in {"", ".", ".."} for part in path.split("/"))
+                       or not isinstance(value, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+                       for path, value in hashes.items())):
+            raise ValueError("Publication checkpoint is invalid")
+        async with self._get_client() as client:
+            prefix = self._key(app_id, "live")
+            async def read(path: str) -> bytes:
+                result = await client.get_object(Bucket=self._bucket, Key=prefix + path)
+                content = await result["Body"].read()
+                if "sha256:" + hashlib.sha256(content).hexdigest() != hashes[path]:
+                    raise ValueError("Live publication differs from the saved intent")
+                return content
+            manifest = await read("manifest.json")
+            if self._bundle_artifacts(manifest) != set(hashes):
+                raise ValueError("Publication checkpoint omits runtime outputs")
+            for path in sorted(set(hashes) - {"manifest.json"}):
+                await read(path)
+            await read("manifest.json")
+        return len(hashes)
 
     # -----------------------------------------------------------------
     # Render cache (Redis → S3 fallback)

@@ -208,6 +208,29 @@ Jobs are requester-visible; platform administrators may inspect all jobs.
 Enqueue endpoints remain responsible for authorizing the underlying action and
 setting the correct organization and resource metadata.
 
+### Inline App publication recovery
+
+Inline App publication records exact captured artifact hashes and the expected
+Live manifest storage revision in the existing job checkpoint before its first
+write. Hashed output objects are create-only; existing bytes must match. The
+manifest switches conditionally after all referenced outputs are durable. Older
+outputs remain available to already-loaded browsers; publishing does not collect
+them.
+
+An uncertain outcome retains this intent in `requires_action`. A lost worker or
+the same requester's next `POST /api/applications/{id}/publish` reconciles the
+original intent by reading the manifest and every output, checking App scope,
+identity and controls, then recording publication metadata. It never rebuilds or
+replays storage writes. Changed or unavailable bytes stay unresolved and block a
+fresh publish; another requester cannot resume the original job. The shared
+enqueue service exposes this behavior only through an explicit checkpoint-schema
+opt-in for handlers that implement readback-only recovery. No new job/status
+system or App publication authority is introduced.
+
+Build/publication evidence alone does not attest protected Git provenance or
+enroll an App in automatic delivery. Standalone and Solution-owned App deployment
+semantics remain distinct.
+
 `PlatformJobPublic` is the single status contract for HTTP and WebSocket
 delivery. Changes that break a CLI-consumed enqueue or status contract require
 a matching `CONTRACT_VERSION` bump in both the server and packaged CLI.

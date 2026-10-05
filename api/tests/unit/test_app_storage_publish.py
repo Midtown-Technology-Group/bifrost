@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,6 +22,11 @@ class _Body:
 class _S3Client:
     def __init__(self, manifest: dict):
         self.manifest = manifest
+        self.objects: dict[str, bytes] = {}
+        if manifest:
+            self.objects["_apps/app-1/live/manifest.json"] = json.dumps(manifest).encode()
+        self.exceptions = SimpleNamespace(NoSuchKey=KeyError)
+        self.preconditions: list[dict] = []
         self.copy_calls: list[tuple[str, str]] = []
         self.put_calls: list[tuple[str, bytes]] = []
         self.delete_calls: list[list[str]] = []
@@ -42,8 +48,10 @@ class _S3Client:
         }
 
     async def get_object(self, *, Key: str, **_kwargs):  # noqa: N803
-        assert Key.endswith("/preview/manifest.json")
-        return {"Body": _Body(json.dumps(self.manifest).encode())}
+        if "/preview/" in Key:
+            return {"Body": _Body(json.dumps(self.manifest).encode())}
+        data = self.objects[Key]
+        return {"Body": _Body(data), "ETag": hashlib.sha256(data).hexdigest()}
 
     async def copy_object(
         self,
@@ -58,6 +66,14 @@ class _S3Client:
         self.delete_calls.append([item["Key"] for item in Delete["Objects"]])
 
     async def put_object(self, *, Key: str, Body: bytes, **_kwargs):  # noqa: N803
+        self.preconditions.append(_kwargs)
+        if _kwargs.get("IfNoneMatch") == "*" and Key in self.objects:
+            raise ValueError("precondition failed")
+        if "IfMatch" in _kwargs and (
+            Key not in self.objects or _kwargs["IfMatch"] != hashlib.sha256(self.objects[Key]).hexdigest()
+        ):
+            raise ValueError("precondition failed")
+        self.objects[Key] = Body
         self.put_calls.append((Key, Body))
 
 
@@ -117,7 +133,7 @@ async def test_publish_promotes_only_captured_outputs_and_writes_manifest_last()
     assert published_paths[-1] == "manifest.json"
     assert client.copy_calls == []
     deleted = {key.rsplit("/", 1)[-1] for call in client.delete_calls for key in call}
-    assert deleted == {"entry-old.js", "chunk-old.js"}
+    assert deleted == set()
     assert progress[0] == (0, 3)
     assert progress[-1] == (3, 3)
     storage.invalidate_render_cache.assert_awaited_once_with("app-1")
@@ -152,7 +168,7 @@ async def test_publish_rejects_snapshot_missing_declared_output_before_write():
 
 
 @pytest.mark.asyncio
-async def test_cleanup_failure_does_not_turn_promoted_manifest_into_failed_publish():
+async def test_publication_never_deletes_chunks_used_by_loaded_browsers():
     client = _S3Client(
         {
             "entry": "entry-new.js",
@@ -166,6 +182,7 @@ async def test_cleanup_failure_does_not_turn_promoted_manifest_into_failed_publi
 
     assert published == 3
     assert client.put_calls[-1][0].endswith("/manifest.json")
+    client.delete_objects.assert_not_awaited()
     storage.invalidate_render_cache.assert_awaited_once_with("app-1")
 
 
@@ -235,3 +252,83 @@ async def test_output_failure_preserves_prior_live_manifest():
                for call in client.put_object.await_args_list)
     assert client.delete_calls == []
     storage.invalidate_render_cache.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_precedes_effects_and_recovery_only_reads():
+    client = _S3Client({})
+    storage = _storage(client)
+    saved = []
+
+    async def checkpoint(intent):
+        assert client.put_calls == client.preconditions == []
+        saved.append(intent)
+
+    await storage.publish("app-1", bundle_files=_bundle(), checkpoint_callback=checkpoint)
+    writes = list(client.put_calls)
+    assert client.preconditions[-1] == {"IfNoneMatch": "*"}
+    assert await storage.verify_publication("app-1", saved[0]) == 3
+    assert client.put_calls == writes
+    assert client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_failure_stops_before_any_output_or_manifest_write():
+    client = _S3Client({})
+    with pytest.raises(TimeoutError):
+        await _storage(client).publish("app-1", bundle_files=_bundle(),
+                                      checkpoint_callback=AsyncMock(side_effect=TimeoutError("checkpoint unavailable")))
+    assert client.put_calls == client.preconditions == client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_late_publisher_cannot_replace_a_newer_live_manifest():
+    client = _S3Client({"entry": "old.js", "outputs": ["old.js"]})
+    later = json.dumps({"entry": "later.js", "outputs": ["later.js"]}).encode()
+
+    async def replace_pointer(current, _total):
+        if current == 1:
+            client.objects["_apps/app-1/live/manifest.json"] = later
+
+    with pytest.raises(ValueError, match="precondition"):
+        await _storage(client).publish("app-1", bundle_files=_bundle(), progress_callback=replace_pointer)
+    assert client.objects["_apps/app-1/live/manifest.json"] == later
+    assert client.delete_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("damage", ["missing-output", "changed-output", "changed-manifest", "cross-app", "unsafe-path"])
+async def test_incomplete_or_changed_recovery_never_writes(damage):
+    client = _S3Client({})
+    storage = _storage(client)
+    saved = []
+    async def checkpoint(intent):
+        saved.append(intent)
+    await storage.publish("app-1", bundle_files=_bundle(), checkpoint_callback=checkpoint)
+    intent = saved[0]
+    if damage == "missing-output":
+        del client.objects["_apps/app-1/live/entry-new.js"]
+    elif damage == "changed-output":
+        client.objects["_apps/app-1/live/entry-new.js"] = b"changed"
+    elif damage == "changed-manifest":
+        client.objects["_apps/app-1/live/manifest.json"] = b"{}"
+    elif damage == "cross-app":
+        intent["application_id"] = "other"
+    else:
+        intent["artifact_hashes"]["../outside.js"] = "sha256:" + "a" * 64
+    writes = list(client.put_calls)
+    with pytest.raises((ValueError, KeyError)):
+        await storage.verify_publication("app-1", intent)
+    assert client.put_calls == writes
+    assert client.delete_calls == []
+
+
+@pytest.mark.asyncio
+async def test_existing_output_with_different_bytes_is_not_overwritten():
+    client = _S3Client({})
+    key = "_apps/app-1/live/entry-new.js"
+    client.objects[key] = b"old collision"
+    with pytest.raises(ValueError, match="immutable storage"):
+        await _storage(client).publish("app-1", bundle_files=_bundle())
+    assert client.objects[key] == b"old collision"
+    assert not any(path.endswith("manifest.json") for path, _ in client.put_calls)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -458,6 +459,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         progress_callback: (
             Callable[[str, int, int | None], Awaitable[None]] | None
         ) = None,
+        checkpoint_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> Application | None:
         """
         Publish draft to live.
@@ -510,6 +512,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             str(app_id),
             bundle_files=bundle_result.publication_files,
             progress_callback=_report_promotion,
+            checkpoint_callback=checkpoint_callback,
         )
 
         if published_count == 0:
