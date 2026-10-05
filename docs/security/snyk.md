@@ -6,8 +6,10 @@ CodeQL, secret scanning, OpenSSF
 Scorecard, and other CI controls remain in place (see [SECURITY.md](../../SECURITY.md)).
 
 The rollout notes and dated findings below are retained as historical evidence,
-not current setup or promotion instructions. The root `.snyk` file is retained
-as a reviewed-exception record and is no longer consumed by an active workflow.
+not current setup or promotion instructions. The root `.snyk` file remains the
+reviewed security-exception record. Repository tests independently enforce its
+approved scope and unchanged deadline, `2026-10-14T00:00:00.000Z`. Retiring the
+scanner does not extend or waive that exception.
 No Snyk account or credentials are required for the current release process.
 
 ## Historical rollout notes
