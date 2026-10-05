@@ -1,4 +1,4 @@
-"""Diagnostic: retained Meraki source and public registration shape over HTTP.
+"""HTTP regression: retained Meraki source and public registration shape.
 
 The database/storage baseline is synthesized, not a production replica.
 Candidate-only: never activate or execute vendor code.
@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, select
+from sqlalchemy import inspect as orm_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import EventSourceType
@@ -18,6 +19,8 @@ from src.models.orm.events import EventSource, EventSubscription, WebhookSource
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
+from src.models.orm.users import Role
+from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.workflows import Workflow
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.deployment_storage import (
@@ -35,10 +38,19 @@ pytestmark = pytest.mark.e2e
 _FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "meraki_adoption_shape"
 
 
-@pytest.mark.parametrize("with_root_webhook", [False, True], ids=["no-trigger", "root-webhook-subscription"])
+def _row_key(row):
+    return (type(row).__name__, tuple(
+        str(getattr(row, column.key)) for column in orm_inspect(type(row)).primary_key
+    ))
+
+
+@pytest.mark.parametrize(
+    ("with_root_webhook", "with_role"), [(False, False), (True, False), (True, True)],
+    ids=["no-trigger", "root-webhook-subscription", "root-webhook-with-role"],
+)
 @pytest.mark.asyncio
 async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
-    e2e_client, platform_admin, async_engine, with_root_webhook,
+    e2e_client, platform_admin, async_engine, with_root_webhook, with_role,
 ):
     """Stage the exact 4-file/3-workflow public DTO; never activate or execute it."""
     baseline = json.loads((_FIXTURE_ROOT / "public_baseline.json").read_text())
@@ -48,12 +60,15 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
     table_public = baseline["table"]
 
     sid, did = uuid4(), uuid4()
+    role_id = uuid4() if with_role else None
     workflow_id_map = {UUID(item["id"]): uuid4() for item in recipe_data["workflows"]}
     recipe_data["solution_id"] = str(sid)
     for item in recipe_data["workflows"]:
         old_id = UUID(item["id"])
         item["id"] = str(workflow_id_map[old_id])
         item["organization_id"] = None
+        if role_id is not None:
+            item["controls"]["role_ids"] = [str(role_id)]
     recipe = ReviewedWorkflowRecipe.model_validate(recipe_data)
 
     files = {
@@ -68,6 +83,7 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
     created = e2e_client.post("/api/solutions", headers=platform_admin.headers, json={
         "slug": f"meraki-adoption-shape-{sid.hex[:12]}",
         "name": "Meraki Report Customer Routing fixture",
+        "organization_id": None,
     })
     assert created.status_code == 201, created.text
     sid = UUID(created.json()["id"])
@@ -97,6 +113,11 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
             solution.allow_outbound_access = False
             solution.git_connected = False
             solution.allow_inbound_access = True
+            assert solution.organization_id is None
+
+            if role_id is not None:
+                db.add(Role(id=role_id, name=f"test-adoption-{sid.hex[:12]}",
+                    created_by=str(platform_admin.user_id)))
 
             # The retained public Table DTO had a null schema and this policy.
             table = Table(
@@ -133,6 +154,9 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
                     id=new_id, solution_id=sid, path=public["source_file_path"],
                     parameters_schema=public["parameters"], **values,
                 ))
+                if role_id is not None:
+                    db.add(WorkflowRole(workflow_id=new_id, role_id=role_id,
+                        assigned_by=str(platform_admin.user_id)))
 
             if with_root_webhook:
                 # Root-owned read-only trigger metadata targeting an installed
@@ -174,9 +198,13 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
                     await db.get(EventSubscription, root_subscription_id),
                 ]
             tracked = [*rows, table, *(x for x in trigger_rows if x is not None)]
+            if role_id is not None:
+                tracked.extend((await db.scalars(select(WorkflowRole).where(
+                    WorkflowRole.role_id == role_id).order_by(WorkflowRole.workflow_id))).all())
+                tracked.append(await db.get(Role, role_id))
             for row in tracked:
                 await db.refresh(row)
-            before = {(type(row).__name__, str(row.id)): _digest_row(row) for row in tracked}
+            before = {_row_key(row): _digest_row(row) for row in tracked}
 
         # Ordinary prior baseline only: the production artifact does not include
         # Meraki's former object-store bytes. Keep the public source as the
@@ -214,7 +242,11 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
                     await db.get(EventSubscription, root_subscription_id, populate_existing=True),
                 ]
             tracked_after = [*rows, table_after, *(x for x in trigger_after if x is not None)]
-            after = {(type(row).__name__, str(row.id)): _digest_row(row) for row in tracked_after}
+            if role_id is not None:
+                tracked_after.extend((await db.scalars(select(WorkflowRole).where(
+                    WorkflowRole.role_id == role_id).order_by(WorkflowRole.workflow_id))).all())
+                tracked_after.append(await db.get(Role, role_id))
+            after = {_row_key(row): _digest_row(row) for row in tracked_after}
             assert after == before
 
     finally:
@@ -237,4 +269,6 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
             solution = await db.get(Solution, sid)
             if solution is not None:
                 await db.delete(solution)
+            if role_id is not None:
+                await db.execute(delete(Role).where(Role.id == role_id))
             await db.commit()
