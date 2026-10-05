@@ -10,8 +10,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, select
 from sqlalchemy import inspect as orm_inspect
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import EventSourceType
@@ -261,19 +261,6 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
             ]
             for key in keys:
                 await client.delete_object(Bucket=candidate._bucket, Key=key)
-        async with AsyncSession(async_engine, expire_on_commit=False) as db:
-            if root_subscription_id is not None:
-                await db.execute(delete(EventSubscription).where(EventSubscription.id == root_subscription_id))
-                await db.execute(delete(WebhookSource).where(WebhookSource.event_source_id == root_source_id))
-                await db.execute(delete(EventSource).where(EventSource.id == root_source_id))
-            # Ready deployments deliberately restrict Solution deletion. Remove
-            # only this fixture's candidate before deleting its isolated owner.
-            await db.execute(delete(SolutionDeployment).where(
-                SolutionDeployment.id == did, SolutionDeployment.solution_id == sid,
-            ))
-            solution = await db.get(Solution, sid)
-            if solution is not None:
-                await db.delete(solution)
-            if role_id is not None:
-                await db.execute(delete(Role).where(Role.id == role_id))
-            await db.commit()
+        # Immutable deployment history forbids deleting the candidate or its
+        # owner. Retain this fixture's UUID-isolated database rows; canonical
+        # test.sh stack teardown destroys the disposable database and volumes.
