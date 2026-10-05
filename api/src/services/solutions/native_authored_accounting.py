@@ -197,7 +197,12 @@ async def _installed_evidence(
         raise NativeAuthoredSourceMismatch("No successful native authored delivery is retained")
     historical = None
     if proof["commit_sha"] != record.source_commit_sha:
-        origin = await db.get(WorkspaceSourceRelease, record.source_release_id, populate_existing=True)
+        # Fetch only the original producer anchors. Loading the ORM parent
+        # would also eagerly materialize every unrelated child file manifest.
+        origin = (await db.execute(select(WorkspaceSourceRelease.id,
+            WorkspaceSourceRelease.organization_id, WorkspaceSourceRelease.source_commit_sha,
+            WorkspaceSourceRelease.source_tree_sha, WorkspaceSourceRelease.declaration_actor)
+            .where(WorkspaceSourceRelease.id == record.source_release_id))).first()
         _require_history_origin(record, origin)
         if record.source_commit_sha not in proof.get("ancestor_commit_shas", []):
             raise NativeAuthoredSourceMismatch("No verified native descendant is retained")
