@@ -170,7 +170,7 @@ jobs:
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
             python /repo/api/scripts/filter_sonar_coverage.py
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
-            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/tmp/bifrost/.coverage.sonar-tracked -o /tmp/bifrost/coverage-sonar.xml
+            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/bifrost-results/.coverage.sonar-tracked -o /bifrost-results/coverage-sonar.xml
           # Keep raw outputs private while crossing the container/runner UID boundary.
           sudo chown --no-dereference "$(id -u):$(id -g)" \
             "$SONAR_LOG_DIR/.coverage.sonar-tracked" "$SONAR_LOG_DIR/sonar-runtime-coverage.json"
