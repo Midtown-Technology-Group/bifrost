@@ -160,9 +160,11 @@ All policies otherwise inherit admission at 85% and hard termination at 95% of
 the container cgroup memory limit. Only video generation currently permits
 cancellation after its handler starts. Device lighthouse jobs complete after
 provisioning or revocation; the router independently enforces the absolute
-30-minute maximum session deadline. Session revoke requests queued cancellation
-of the original provision job and enqueues a separate revoke job, fencing an
-in-flight create RPC even when provisioning is already running.
+30-minute maximum session deadline. Session revoke first durably enqueues a
+separate revoke job, then requests cancellation of the original provision job.
+Cancellation stops queued or waiting jobs. For an already running provision job,
+the revoke job asks the launcher to stop the lighthouse and fence an in-flight
+create RPC.
 
 The public `PlatformJobPublic` contract is projected identically to HTTP and
 the `platform_job_updated` WebSocket event. Notifications are a projection of

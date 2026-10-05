@@ -4,6 +4,7 @@ import base64
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from tests.e2e.api import test_device_jobs_api as device_jobs_api
@@ -22,8 +23,9 @@ def body():
 @pytest.mark.e2e
 async def test_authorized_device_stays_disabled_without_launcher(e2e_client, platform_admin, org1, org1_user, org2_user, execute_device_role):
     device_id, _ = _enroll(e2e_client, platform_admin.headers, org1["id"], "peer-device")
-    unauthorized = e2e_client.post(f"/api/devices/{device_id}/peer-sessions", json=body())
-    assert unauthorized.status_code == 403
+    with httpx.Client(base_url=e2e_client.base_url, timeout=60.0) as anonymous_client:
+        unauthorized = anonymous_client.post(f"/api/devices/{device_id}/peer-sessions", json=body())
+    assert unauthorized.status_code == 401
     foreign = e2e_client.post(f"/api/devices/{device_id}/peer-sessions", headers=org2_user.headers, json=body())
     assert foreign.status_code == 404
     disabled = e2e_client.post(f"/api/devices/{device_id}/peer-sessions", headers=org1_user.headers, json=body())
