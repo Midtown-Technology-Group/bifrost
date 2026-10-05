@@ -38,7 +38,7 @@ def relative_parts(name: str) -> tuple[str, ...]:
     return path.parts
 
 
-def open_bounded(root: Path, name: str, flags: int, mode: int = 0o600) -> int:
+def open_bounded(root: Path, name: str, flags: int) -> int:
     """Reject symlinks at/below a fixed root; its OS ancestors are trusted."""
     parts = relative_parts(name)
     if not parts:
@@ -51,7 +51,7 @@ def open_bounded(root: Path, name: str, flags: int, mode: int = 0o600) -> int:
             os.close(directory)
             directory = child
         return os.open(parts[-1], flags | os.O_NOFOLLOW | os.O_NONBLOCK,
-                       mode, dir_fd=directory)
+                       0o600, dir_fd=directory)
     finally:
         os.close(directory)
 
@@ -71,11 +71,10 @@ def read_bounded(root: Path, name: str) -> bytes:
         os.close(descriptor)
 
 
-def write_fresh(root: Path, name: str, raw: bytes, mode: int = 0o600) -> None:
-    with os.fdopen(open_bounded(root, name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode), "wb") as stream:
-        # Published reports cross the container/host UID boundary. Set the mode
-        # on this newly-created descriptor rather than relying on process umask.
-        os.fchmod(stream.fileno(), mode)
+def write_fresh(root: Path, name: str, raw: bytes) -> None:
+    with os.fdopen(open_bounded(root, name, os.O_WRONLY | os.O_CREAT | os.O_EXCL), "wb") as stream:
+        # Reports remain private; CI transfers ownership to its runner after export.
+        os.fchmod(stream.fileno(), 0o600)
         stream.write(raw)
 
 
@@ -179,8 +178,8 @@ def run_fixed_layout(root: Path, api: Path, artifacts: Path) -> dict:
     audit.update(input_sha256=hashlib.sha256(database).hexdigest(),
                  output_sha256=hashlib.sha256(output).hexdigest(),
                  tracked_inventory_sha256=hashlib.sha256(inventory).hexdigest())
-    write_fresh(artifacts, OUTPUT_NAME, output, mode=0o644)
-    write_fresh(artifacts, AUDIT_NAME, (json.dumps(audit, indent=2, sort_keys=True) + "\n").encode(), mode=0o644)
+    write_fresh(artifacts, OUTPUT_NAME, output)
+    write_fresh(artifacts, AUDIT_NAME, (json.dumps(audit, indent=2, sort_keys=True) + "\n").encode())
     return audit
 
 

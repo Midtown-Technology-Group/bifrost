@@ -158,7 +158,8 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT = repo, app, artifacts
     assert module.main(filter_commands[0][2:]) == 0
     audit = json.loads((artifacts / module.AUDIT_NAME).read_text())
-    assert filtered_path.stat().st_mode & 0o004, "Host must be able to read published reports"
+    assert filtered_path.stat().st_mode & 0o777 == 0o600
+    assert (artifacts / module.AUDIT_NAME).stat().st_mode & 0o777 == 0o600
     assert audit["input_sha256"] == hashlib.sha256(data_file.read_bytes()).hexdigest()
     assert audit["output_sha256"] == hashlib.sha256(filtered_path.read_bytes()).hexdigest()
     assert audit["tracked_inventory_sha256"] == hashlib.sha256(listing.read_bytes()).hexdigest()
@@ -311,10 +312,10 @@ def test_sonar_artifact_io_cannot_traverse_follow_links_or_overwrite(tmp_path: P
     assert module.read_bounded(root, "nested/valid") == b"valid"
     old_umask = os.umask(0o077)
     try:
-        module.write_fresh(root, "host-readable", b"report", mode=0o644)
+        module.write_fresh(root, "private-report", b"report")
     finally:
         os.umask(old_umask)
-    assert (root / "host-readable").stat().st_mode & 0o777 == 0o644
+    assert (root / "private-report").stat().st_mode & 0o777 == 0o600
     for name in ("../outside", str(secret), "a\\b", "a\nb", "", "."):
         with pytest.raises(ValueError):
             module.read_bounded(root, name)
