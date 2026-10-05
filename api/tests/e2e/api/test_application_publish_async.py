@@ -244,7 +244,9 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
 ):
     from src.repositories.applications import ApplicationRepository
     from src.services.application_publication import publication_controls_hash
+    from src.services.application_publication_evidence import read_app_publication_runtime_pin
     from src.services.inline_app_source import InlineAppSourceSnapshot
+    from bifrost.workspace_release import canonical_digest
 
     app = app_factory(platform_admin.headers, f"captured-publish-{uuid.uuid4().hex[:8]}")
     storage = AppStorageService()
@@ -260,8 +262,17 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
         "pages/index.tsx": b'export default () => <h1>captured publication runtime</h1>;\n'})
     # This is compiler/publication integration proof. GitHub/OIDC admission has
     # separate source-bound tests; this test does not claim a real GitHub token.
-    source_proof = {"source_commit_sha": "a" * 40, "source_hashes": captured.hashes(),
+    source_proof = {"schema_version": "bifrost.inline-app-git-source/v1",
+        "application_id": app["id"], "organization_id": app.get("organization_id"),
+        "source_commit_sha": "a" * 40, "source_tree_sha": "b" * 40, "source_subtree_sha": "c" * 40,
+        "repository": "example/ci-fixture", "repository_id": 10, "repository_owner_id": 20,
+        "repo_subpath": "apps/ci-fixture", "source_hashes": captured.hashes(),
+        "file_modes": {path: "100644" for path in captured.hashes()},
         "metadata_mode": "preserve_installed_controls"}
+    protected = {"source_commit_sha": "a" * 40, "artifact_digest": canonical_digest(source_proof),
+        "ci_run_id": 30, "ci_run_attempt": 1, "producer_run_id": "40", "producer_run_attempt": 1,
+        "expected_controls_hash": controls}
+    source_proof.update({key: value for key, value in protected.items() if key != "expected_controls_hash"})
     saved = []
     guard_calls = []
 
@@ -286,6 +297,16 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     manifest = json.loads(manifest_bytes)
     assert manifest["git_source_evidence"] == source_proof
     assert manifest["source_snapshot_evidence"]["authored_source_hashes"] == captured.hashes()
+    original_job_id = uuid.uuid4()
+    runtime_pin = await read_app_publication_runtime_pin(storage,
+        application_id=app_id, publication_job_id=original_job_id,
+        organization_id=uuid.UUID(app["organization_id"]) if app.get("organization_id") else None,
+        intent={**saved[0], "controls_hash": controls}, protected_git=protected)
+    assert runtime_pin["publication_job_id"] == str(original_job_id)
+    assert runtime_pin["source"] == source_proof
+    assert runtime_pin["manifest_hash"] == saved[0]["artifact_hashes"]["manifest.json"]
+    assert runtime_pin["runtime_pin_hash"] == canonical_digest({
+        key: value for key, value in runtime_pin.items() if key != "runtime_pin_hash"})
     for path, expected_hash in saved[0]["artifact_hashes"].items():
         served = e2e_client.get(f"/api/applications/{app['id']}/bundle-asset/{path}?mode=live",
             headers=platform_admin.headers)

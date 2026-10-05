@@ -109,3 +109,9 @@ def app_publication_runtime_pin(
         "dependencies": manifest.get("dependencies")}
     evidence["runtime_pin_hash"] = canonical_digest(evidence)
     return evidence
+
+
+async def read_app_publication_runtime_pin(storage: Any, **identity: Any) -> dict[str, Any]:
+    """Read the actual live manifest after the caller's full output verification."""
+    raw = await storage.read_file(str(identity["application_id"]), "live", "manifest.json")
+    return app_publication_runtime_pin(manifest_bytes=raw, **identity)

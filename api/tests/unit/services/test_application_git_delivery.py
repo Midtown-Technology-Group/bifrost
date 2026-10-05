@@ -103,14 +103,15 @@ async def test_lost_terminal_response_returns_same_completed_job_without_effect_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", [None, "other_app", "scope", "requester", "manual_payload",
-    "job_type", "artifact_drift", "control_drift", "missing_intent"])
+    "job_type", "artifact_drift", "control_drift", "missing_intent", "runtime_pin_drift"])
 async def test_scoped_inspection_rechecks_live_outputs_and_controls_without_effects(fault):
     controls = "sha256:" + "d" * 64
     intent = {"controls_hash": controls}
-    job = SimpleNamespace(job_type=APPLICATION_PUBLISH_DEFINITION.job_type,
+    job = SimpleNamespace(id=UUID(int=40), job_type=APPLICATION_PUBLISH_DEFINITION.job_type,
         organization_id=app_policy().organization_id, requested_by_user_id=str(SYSTEM_USER_UUID),
         resource_type="application", resource_id=str(SID), payload={"protected_git": {"source_commit_sha": "a" * 40}},
-        status="succeeded", result={"publication_verified": True, "publication_intent": intent})
+        status="succeeded", result={"publication_verified": True, "publication_intent": intent,
+            "runtime_pin": {"runtime_pin_hash": "sha256:" + "e" * 64}})
     if fault == "other_app":
         job.resource_id = str(UUID(int=20))
     elif fault == "scope":
@@ -124,8 +125,11 @@ async def test_scoped_inspection_rechecks_live_outputs_and_controls_without_effe
     elif fault == "missing_intent":
         job.result["publication_intent"] = None
     db = SimpleNamespace(get=AsyncMock(return_value=job))
+    runtime_pin = {"runtime_pin_hash": "sha256:" + ("f" if fault == "runtime_pin_drift" else "e") * 64}
     verify = AsyncMock(side_effect=ValueError("changed") if fault == "artifact_drift" else None)
-    with patch("src.services.application_git_delivery.AppStorageService",
+    with patch("src.services.application_git_delivery.read_app_publication_runtime_pin",
+            new=AsyncMock(return_value=runtime_pin)), \
+         patch("src.services.application_git_delivery.AppStorageService",
             return_value=SimpleNamespace(verify_publication=verify)), \
          patch("src.services.application_git_delivery.publication_controls_hash",
             new=AsyncMock(return_value="different" if fault == "control_drift" else controls)):

@@ -27,6 +27,7 @@ from src.models.orm.applications import Application
 from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.repositories.applications import ApplicationRepository
 from src.services.application_publication import publication_controls_hash
+from src.services.application_publication_evidence import read_app_publication_runtime_pin
 from src.services.application_git_source import app_source_evidence, read_app_git_source
 from src.services.github_config import get_github_config
 from src.services.solutions.github_delivery_source import ProtectedGitReader
@@ -201,6 +202,14 @@ async def run_application_publish(
                 if published.published_at is not None
                 else None
             )
+            runtime_pin = None
+            if protected_git is not None:
+                runtime_pin = await read_app_publication_runtime_pin(storage,
+                    application_id=application.id, publication_job_id=context.job_id,
+                    organization_id=application.organization_id, intent=intent,
+                    protected_git=protected_git.model_dump(mode="json"))
+                if await publication_controls_hash(db, application.id, lock=True) != controls:
+                    raise ValueError("App controls changed during runtime pin readback")
             await db.commit()
 
         result: dict[str, object] = {
@@ -216,6 +225,7 @@ async def run_application_publish(
             # older commit reused by a newer producer. Never label that job as
             # delivery of the newer request merely because it succeeded.
             result["git_source"] = payload.protected_git.model_dump(mode="json")
+            result["runtime_pin"] = runtime_pin
         try:
             await publish_app_published(
                 app_id=str(payload.application_id),

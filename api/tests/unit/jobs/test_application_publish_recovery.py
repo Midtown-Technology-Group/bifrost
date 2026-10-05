@@ -24,6 +24,8 @@ def setup(monkeypatch):
     async def context():
         yield db
     storage = SimpleNamespace(verify_publication=AsyncMock(return_value=2))
+    monkeypatch.setattr(jobs, "read_app_publication_runtime_pin", AsyncMock(return_value={
+        "runtime_pin_hash": "sha256:" + "f" * 64}))
     publisher = AsyncMock()
     monkeypatch.setattr(jobs, "get_db_context", context)
     monkeypatch.setattr(jobs, "publication_controls_hash", AsyncMock(return_value="sha256:" + "a" * 64))
@@ -53,6 +55,7 @@ async def test_worker_loss_uses_saved_intent_without_build_or_publish(setup):
     publisher.assert_not_awaited()
     storage.verify_publication.assert_awaited_once_with(str(app.id), intent)
     db.commit.assert_awaited_once()
+    jobs.read_app_publication_runtime_pin.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -111,12 +114,36 @@ async def test_protected_git_recovery_reads_original_intent_without_git_read_bui
     source = AsyncMock(side_effect=AssertionError("Original source must not be rebuilt"))
     monkeypatch.setattr(jobs, "get_github_config", config)
     monkeypatch.setattr(jobs, "read_app_git_source", source)
-    result = await jobs.run_application_publish(_context(intent), payload)
+    context = _context(intent)
+    result = await jobs.run_application_publish(context, payload)
     assert result["recovered_from_intent"] and result["publication_intent"] == intent
     config.assert_not_awaited()
     source.assert_not_awaited()
     publisher.assert_not_awaited()
     storage.verify_publication.assert_awaited_once_with(str(app.id), intent)
+    jobs.read_app_publication_runtime_pin.assert_awaited_once_with(storage,
+        application_id=app.id, publication_job_id=context.job_id, organization_id=None,
+        intent=intent, protected_git=payload.protected_git.model_dump(mode="json"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["manifest", "controls"])
+async def test_recovery_pin_failure_preserves_intent_without_publication_or_commit(monkeypatch, setup, failure):
+    app, db, storage, publisher, intent = setup
+    payload = protected_setup(monkeypatch, app)
+    if failure == "manifest":
+        jobs.read_app_publication_runtime_pin.side_effect = ValueError("Manifest source differs")
+    else:
+        # Initial, readback and final checks. Drift at the last check must not
+        # commit publication bookkeeping even though the output bytes match.
+        jobs.publication_controls_hash.side_effect = [intent["controls_hash"], intent["controls_hash"], "changed"]
+    with pytest.raises(PlatformJobRequiresAction) as error:
+        await jobs.run_application_publish(_context(intent), payload)
+    assert error.value.result == intent
+    publisher.assert_not_awaited()
+    db.commit.assert_not_awaited()
+    storage.verify_publication.assert_awaited_once_with(str(app.id), intent)
+    jobs.read_app_publication_runtime_pin.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -148,6 +175,9 @@ async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_contr
     publisher.side_effect = captured_publish
     result = await jobs.run_application_publish(_context(), payload)
     assert result["publication_verified"] and not result["recovered_from_intent"]
+    assert result["runtime_pin"]["runtime_pin_hash"] == "sha256:" + "f" * 64
+    jobs.read_app_publication_runtime_pin.assert_awaited_once()
+    assert jobs.read_app_publication_runtime_pin.await_args.kwargs["intent"] == intent
     assert reader.verify_ci.await_count == report.await_count == 2
     save.assert_awaited_once()
     assert config.branch == "production-live"

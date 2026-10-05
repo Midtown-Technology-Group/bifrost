@@ -283,6 +283,14 @@ inspection returns that scoped original job with its original source identity.
 The producer must compare identities and commit evidence; a green old job never
 proves the new commit delivered.
 
+Protected publication and successful inspection also validate an App runtime
+pin from the actual Live manifest after verifying every output byte. The pin
+binds the original publication job, App scope, preserved control hash, complete
+Git source, migrated compiler inputs and compiled output hashes. Inspection
+requires the reconstructed pin to match the original result; missing evidence,
+changed bytes or control drift stop without rebuilding or republishing. This
+attests compiled runtime bytes, not a browser business journey or ledger closure.
+
 Workspace producer enrollment and automatic App source accounting are not yet
 implemented. These remain necessary before claiming automatic Main delivery.
 

@@ -13,6 +13,7 @@ from src.models.orm.applications import Application
 from src.models.orm.platform_jobs import PlatformJob
 from src.services.application_git_source import read_app_git_source
 from src.services.application_publication import publication_controls_hash
+from src.services.application_publication_evidence import read_app_publication_runtime_pin
 from src.services.app_storage import AppStorageService
 from src.services.platform_jobs import enqueue_platform_job
 from src.services.operation_receipts import canonical_request_fingerprint
@@ -50,7 +51,14 @@ async def inspect_app_git_publication(db: AsyncSession, *, policy: InlineAppGitD
         if not result.get("publication_verified") or not isinstance(intent, dict):
             raise GitDeliverySourceError("Original publication evidence is unavailable")
         try:
-            await AppStorageService().verify_publication(str(application_id), intent)
+            storage = AppStorageService()
+            await storage.verify_publication(str(application_id), intent)
+            pin = await read_app_publication_runtime_pin(storage,
+                application_id=application_id, publication_job_id=job.id,
+                organization_id=enrollment.organization_id, intent=intent,
+                protected_git=job.payload["protected_git"])
+            if result.get("runtime_pin") != pin:
+                raise ValueError("App runtime pin differs from the original publication")
             if await publication_controls_hash(db, application_id) != intent.get("controls_hash"):
                 raise ValueError("App controls differ from the original publication")
         except Exception as exc:
