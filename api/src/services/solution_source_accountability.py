@@ -129,6 +129,10 @@ def completion_for_source(record: Any, consumers: list[SourceConsumer], *,
                 return None
             registry = proof.get("installation_registry")
             if registry and registry.get("path") == path:
+                if registry.get("application_recipes"):
+                    # A Solution's green delivery cannot settle metadata that
+                    # also enrolls Apps without their own publication proof.
+                    return None
                 installs = registry.get("installations", {})
                 for identity, entry in installs.items():
                     if not any(other.admission and other.solution_id == identity

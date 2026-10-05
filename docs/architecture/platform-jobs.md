@@ -392,3 +392,8 @@ application environment is production.
 | Diagnostics API | `api/src/routers/scheduler_diagnostics.py` |
 | Diagnostics UI | `client/src/pages/diagnostics/components/SchedulerTab.tsx` |
 | Browser WebSocket transport | `client/src/services/websocket.ts` |
+
+The tagged package registry keeps App recipes separate from the Solution target
+family. Solution delivery can continue, while registry accounting remains open
+when App publication has no independent completion proof. A Solution receipt
+must never certify an App enrollment merely because both share one producer.

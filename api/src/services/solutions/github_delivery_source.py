@@ -23,7 +23,7 @@ import httpx
 import jwt
 from bifrost.workspace_release import canonical_digest
 
-from src.core.solution_delivery_policy import ProtectedGitRepositoryPolicy, SolutionGitDeliveryPolicy, delivery_path
+from src.core.solution_delivery_policy import ProtectedGitRepositoryPolicy, SolutionGitDeliveryPolicy, delivery_path, reviewed_package_registry
 from src.services.github_actions_oidc import (
     GITHUB_ACTIONS_ISSUER,
     GITHUB_ACTIONS_JWKS_URL,
@@ -517,23 +517,13 @@ class ProtectedGitReader:
             raw_registry = await self.blob(index[registry_path], limit=128 * 1024)
             try:
                 registry = json.loads(raw_registry, object_pairs_hook=_unique_json_object)
-                if (not isinstance(registry, dict)
-                        or set(registry) != {"schema_version", "installations"}
-                        or registry["schema_version"] != "bifrost.solution-delivery-installations/v1"
-                        or not isinstance(registry["installations"], list)
-                        or not 1 <= len(registry["installations"]) <= 100):
-                    raise ValueError("Invalid installation registry")
-                rows = registry["installations"]
-                for row in rows:
-                    if (not isinstance(row, dict) or set(row) != {"target", "recipe"}
-                            or row["target"] not in {"production", "canary"}):
-                        raise ValueError("Invalid installation registry entry")
-                    delivery_path(row["recipe"])
-                selected = [row for row in rows if row["recipe"] == recipe_path]
+                rows = reviewed_package_registry(registry)
+                solution_rows = [row for row in rows if row["kind"] == "solution"]
+                selected = [row for row in solution_rows if row["recipe"] == recipe_path]
                 if len(selected) != 1:
                     raise ValueError("Recipe has no unique registry target")
                 target = selected[0]["target"]
-                recipes = [row["recipe"] for row in rows if row["target"] == target]
+                recipes = [row["recipe"] for row in solution_rows if row["target"] == target]
                 if len(set(recipes)) != len(recipes) or set(recipes) != set(self.policy.solutions.values()):
                     raise ValueError("Registry target differs from configured installations")
                 sizes = [index.get(path, {}).get("size") for path in self.policy.solutions.values()]
@@ -574,6 +564,11 @@ class ProtectedGitReader:
                     for identity, path in self.policy.solutions.items())))
                 registry_proof = {"path": registry_path, "target": target,
                     "installations": installations}
+                app_rows = [row for row in rows if row["target"] == target and row["kind"] == "inline_app"]
+                if app_rows:
+                    # This is presence evidence only, never App publication or
+                    # accounting authority borrowed from a Solution receipt.
+                    registry_proof["application_recipes"] = sorted(row["recipe"] for row in app_rows)
                 control_hashes[registry_path] = hashlib.sha256(raw_registry).hexdigest()
             except (ValueError, TypeError, KeyError, UnicodeError) as exc:
                 raise GitDeliverySourceError("Protected installation registry is invalid") from exc

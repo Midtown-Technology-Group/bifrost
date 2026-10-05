@@ -12,6 +12,35 @@ def delivery_path(value: str) -> str:
     return value
 
 
+def reviewed_package_registry(value: object) -> list[dict[str, str]]:
+    """Validate the common registry without treating App recipes as Solutions."""
+    if (not isinstance(value, dict) or set(value) != {"schema_version", "installations"}
+            or value["schema_version"] not in {"bifrost.solution-delivery-installations/v1",
+                "bifrost.package-delivery-installations/v1"}
+            or not isinstance(value["installations"], list)
+            or not 1 <= len(value["installations"]) <= 100):
+        raise ValueError("Invalid package registry")
+    tagged = value["schema_version"] == "bifrost.package-delivery-installations/v1"
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in value["installations"]:
+        if (not isinstance(row, dict) or set(row) != ({"kind", "target", "recipe"} if tagged else {"target", "recipe"})
+                or row["target"] not in {"production", "canary"}
+                or row.get("kind", "solution") not in {"solution", "inline_app"}
+                or not isinstance(row["recipe"], str)):
+            raise ValueError("Invalid package registry entry")
+        kind, path = row.get("kind", "solution"), delivery_path(row["recipe"])
+        prefix = "config/app-delivery/" if kind == "inline_app" else "config/solution-delivery/"
+        if not path.startswith(prefix) or not path.endswith(".json") or path == "config/solution-delivery/installations.json":
+            raise ValueError("Package recipe is outside its adapter namespace")
+        key = row["target"], path
+        if key in seen:
+            raise ValueError("Duplicate package registry entry")
+        seen.add(key)
+        result.append({"kind": kind, "target": row["target"], "recipe": path})
+    return result
+
+
 class ProtectedGitRepositoryPolicy(BaseModel):
     """Pinned repository and producer identity shared by package adapters."""
 

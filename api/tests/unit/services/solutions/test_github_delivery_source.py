@@ -795,3 +795,20 @@ async def test_inline_app_file_bound_precedes_blob_reads():
         with pytest.raises(GitDeliverySourceError, match="inventory bound"):
             await ProtectedGitReader(policy(), "ephemeral-job-token", client).inline_app_source(SHA, "apps/fixture", TREE)
     assert not any(path.startswith("git/blobs/") for path in calls)
+
+
+@pytest.mark.asyncio
+async def test_solution_delivery_in_common_registry_retains_unproven_app_enrollment_separately():
+    documents, _, digest = fixture()
+    registry_path = "config/solution-delivery/installations.json"
+    rows = [
+        {"kind": "solution", "target": "production", "recipe": RECIPE},
+        {"kind": "inline_app", "target": "production", "recipe": "config/app-delivery/fixture.json"},
+    ]
+    content = json.dumps({"schema_version": "bifrost.package-delivery-installations/v1", "installations": rows}).encode()
+    add_git_document(documents, registry_path, content)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(policy(), "ephemeral-job-token", client).source(SID, SHA, digest)
+    assert set(source.installation_registry["installations"]) == {str(SID)}
+    assert source.installation_registry["application_recipes"] == ["config/app-delivery/fixture.json"]
+    assert source.control_hashes[registry_path] == hashlib.sha256(content).hexdigest()
