@@ -124,10 +124,14 @@ def test_stable_manifest_acceptance_attestation_and_upload_precede_publication()
     assert manifest_upload["name"] == "release-manifest-${{ steps.get_version.outputs.version }}-attempt-${{ github.run_attempt }}"
     assert "overwrite" not in manifest_upload
     assert "bundle-path" in by_name["Retain release manifest attestation bundle"]["env"]["BUNDLE_PATH"]
+    assert by_name["Create release"]["id"] == "release"
+    assert by_name["Publish release"]["env"]["RELEASE_ID"] == "${{ steps.release.outputs.id }}"
     publication = by_name["Publish release"]["run"]
+    assert 'endpoint="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"' in publication
+    assert "releases/tags/" not in publication
     for name in ("release-manifest.json", "release-manifest.json.sha256", "release-manifest.json.sigstore.json"):
         assert name in by_name["Create release"]["with"]["files"]
-        assert publication.index(name) < publication.index("gh release edit")
+        assert publication.index(name) < publication.index("gh api --method PATCH")
     assert '.state == "uploaded" and .size > 0' in publication
 
 
@@ -139,3 +143,4 @@ def test_manual_branch_ci_runs_clean_candidate_gate_without_tag_or_write_access(
     assert job["steps"][0]["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0}
     assert any("bash test.sh pre-pr" in step.get("run", "") for step in job["steps"])
     assert next(step for step in job["steps"] if step["name"] == "Record cleanup evidence")["if"] == "always()"
+
