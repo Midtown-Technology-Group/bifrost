@@ -10,10 +10,19 @@ Unlike app_compiler (per-file Babel), this pipeline:
   3. Runs esbuild with bundle+splitting to produce hashed chunks
   4. Uploads artifacts to _apps/{app_id}/{mode}/
   5. Writes manifest.json describing the bundle
+
+Successful manifests also carry ``bifrost.inline-app-build/v1`` evidence:
+hashes of the materialized source before generated files/Tailwind transforms,
+and hashes of every emitted output. Source excludes app.yaml and temporary
+editor files, matching materialization. Automatic migration runs before this
+capture. These are build-byte attestations, not Git, SDK/toolchain or full App
+definition provenance. Existing manifests without evidence remain renderable;
+they cannot satisfy a reviewed source-to-build verification check.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import tempfile
@@ -154,7 +163,7 @@ class BundlerService:
     ) -> BundleResult:
         if not repo_prefix.endswith("/"):
             repo_prefix += "/"
-        dependencies = dependencies or {}
+        dependencies = dict(dependencies or {})
 
         with tempfile.TemporaryDirectory(prefix="bifrost-bundle-") as tmp:
             tmp_path = Path(tmp)
@@ -172,6 +181,14 @@ class BundlerService:
                         text=f"No source files for app {app_id} at {repo_prefix}",
                     )],
                 )
+
+            # Capture exactly the bytes materialized for this build, before
+            # Tailwind and generated runtime files transform the temp tree.
+            # This proves build inputs, not a protected Git commit or app.yaml.
+            source_hashes = {
+                path: "sha256:" + hashlib.sha256((src_dir / path).read_bytes()).hexdigest()
+                for path in sorted(sources)
+            }
 
             # 2. Run the per-app Tailwind v4 pipeline. This compiles
             #    arbitrary-value utilities (bg-[color:var(--x)],
@@ -238,9 +255,11 @@ class BundlerService:
 
             # 6. Upload artifacts to S3
             uploaded: list[str] = []
+            output_hashes: dict[str, str] = {}
             for out in result["outputs"]:
                 rel = out["path"]
                 data = (out_dir / rel).read_bytes()
+                output_hashes[rel] = "sha256:" + hashlib.sha256(data).hexdigest()
                 await self._app_storage.write_preview_file(app_id, rel, data) \
                     if mode == "preview" \
                     else await self._write_live(app_id, rel, data)
@@ -255,6 +274,11 @@ class BundlerService:
                 "outputs": uploaded,
                 "duration_ms": duration_ms,
                 "dependencies": dependencies,
+                "build_evidence": {
+                    "schema_version": "bifrost.inline-app-build/v1",
+                    "materialized_source_hashes": source_hashes,
+                    "output_hashes": output_hashes,
+                },
             }
             manifest_bytes = json.dumps(manifest, indent=2).encode()
             if mode == "preview":

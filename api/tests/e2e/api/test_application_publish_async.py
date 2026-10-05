@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -132,6 +133,35 @@ def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
     )
     assert application.status_code == 200
     assert application.json()["is_published"] is True
+    # Verify the actual durable publish/build/object-storage boundary. Source
+    # reads are current authoring; the live manifest separately attests the
+    # materialized build inputs and every promoted output byte.
+    source = e2e_client.get(
+        f"/api/applications/{app['id']}/files", headers=platform_admin.headers,
+    )
+    assert source.status_code == 200, source.text
+    expected_sources = {
+        item["path"]: "sha256:" + hashlib.sha256(item["source"].encode()).hexdigest()
+        for item in source.json()["files"]
+        if item["path"] != "app.yaml" and ".tmp." not in item["path"]
+    }
+    manifest_response = e2e_client.get(
+        f"/api/applications/{app['id']}/bundle-asset/manifest.json?mode=live",
+        headers=platform_admin.headers,
+    )
+    assert manifest_response.status_code == 200, manifest_response.text
+    manifest = manifest_response.json()
+    evidence = manifest["build_evidence"]
+    assert evidence["schema_version"] == "bifrost.inline-app-build/v1"
+    assert evidence["materialized_source_hashes"] == expected_sources
+    assert set(evidence["output_hashes"]) == set(manifest["outputs"])
+    for filename, expected_hash in evidence["output_hashes"].items():
+        asset = e2e_client.get(
+            f"/api/applications/{app['id']}/bundle-asset/{filename}?mode=live",
+            headers=platform_admin.headers,
+        )
+        assert asset.status_code == 200, asset.text
+        assert "sha256:" + hashlib.sha256(asset.content).hexdigest() == expected_hash
     notification = _poll_notification(
         e2e_client,
         platform_admin.headers,
