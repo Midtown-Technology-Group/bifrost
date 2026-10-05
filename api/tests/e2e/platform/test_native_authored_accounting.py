@@ -510,6 +510,33 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
             yield session
 
     monkeypatch.setattr(operation_receipts, "get_db_context", receipt_context)
+    evidence_calls = {"prefence": 0, "fence": 0, "errors": {}}
+    original_installed_evidence = native_authored_accounting._installed_evidence
+
+    async def observe_installed_evidence(*args, collected=None, **kwargs):
+        phase = "fence" if collected is not None else "prefence"
+        evidence_calls[phase] += 1
+        try:
+            return await original_installed_evidence(*args, collected=collected, **kwargs)
+        except Exception as exc:
+            name = type(exc).__name__
+            evidence_calls["errors"][name] = evidence_calls["errors"].get(name, 0) + 1
+            raise
+
+    completions = []
+    original_complete = native_authored_accounting._complete_native_obligations
+
+    async def observe_completion(*args, **kwargs):
+        try:
+            result = await original_complete(*args, **kwargs)
+        except asyncio.CancelledError:
+            completions.append({"cancelled": True})
+            raise
+        completions.append({"cancelled": False, "settled": len(result)})
+        return result
+
+    monkeypatch.setattr(native_authored_accounting, "_installed_evidence", observe_installed_evidence)
+    monkeypatch.setattr(native_authored_accounting, "_complete_native_obligations", observe_completion)
     current_git = VerifiedGitSource(
         first.solution_id, head, current_tree, "config/solution-delivery/family.json",
         {first.path: sha256_digest(first.old_source)}, {first.path: first.old_source},
@@ -563,11 +590,17 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
     unprovable_rows = rows[:unprovable_prefix]
     disposition_counts = {state: sum(row.disposition == state for row in eligible_rows)
         for state in ("superseded", "pending", "attention_required", "released")}
+    cancellation_count = sum(item["cancelled"] for item in completions)
     unresolved_sample = [{"id": str(row.id), "commit": row.source_commit_sha[:12],
         "disposition": row.disposition, "has_evidence": row.completion_evidence is not None}
         for row in eligible_rows if row.disposition != "superseded"][:10]
     assert all(row.disposition == "superseded" for row in eligible_rows), (
-        f"Eligible disposition counts: {disposition_counts}; unresolved sample: {unresolved_sample}")
+        f"Eligible disposition counts: {disposition_counts}; unresolved sample: {unresolved_sample}; "
+        f"completions: {completions}; installed-evidence calls: {evidence_calls}")
+    assert completions, "Native accounting did not call the real tranche completion path"
+    assert cancellation_count == 0, f"Completion fence cancellations: {completions}"
+    assert evidence_calls["fence"] <= len(completions) * len(installs), (
+        f"Fence readbacks were not bounded per install: {evidence_calls}; completions: {completions}")
     assert all(row.disposition == "pending" and row.completion_evidence is None
         for row in unprovable_rows)
     expected_targets = {str(f.solution_id) for f in installs}

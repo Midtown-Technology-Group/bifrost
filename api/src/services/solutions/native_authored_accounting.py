@@ -337,6 +337,35 @@ async def _complete_native_obligations(db, query, selected_ids, packages, cache,
     records = list((await db.scalars(query.where(SolutionDeployObligation.id.in_(selected_ids))
         .order_by(SolutionDeployObligation.id).with_for_update()
         .execution_options(populate_existing=True))).all())
+    origins = {}
+    release_ids = {row.source_release_id for row in records}
+    if release_ids:
+        origin_rows = (await db.execute(select(WorkspaceSourceRelease.id,
+            WorkspaceSourceRelease.organization_id, WorkspaceSourceRelease.source_commit_sha,
+            WorkspaceSourceRelease.source_tree_sha, WorkspaceSourceRelease.declaration_actor)
+            .where(WorkspaceSourceRelease.id.in_(release_ids)))).all()
+        origins = {row.id: row for row in origin_rows}
+
+    # Under the membership fence, perform one fresh authoritative deployment,
+    # receipt, closure and runtime readback per install. The pre-fence cache
+    # holds the complete bytes; the fresh closure/readback binds those bytes to
+    # the still-active deployment. Per-row anchors are checked below against
+    # this fresh receipt digest and the locked original declaration.
+    fence_cache = {}
+    for solution in installs:
+        family_records = [row for row in records
+            if (row.solution_slug, row.repo_subpath) == (solution.slug, solution.repo_subpath)]
+        representative = next((row for row in family_records
+            if cache.get((solution.id, row.source_commit_sha, row.source_tree_sha)) is not None), None)
+        if representative is None:
+            continue
+        key = (solution.id, representative.source_commit_sha, representative.source_tree_sha)
+        try:
+            fence_cache[solution.id] = await _installed_evidence(
+                db, solution, representative, policy, collected=cache[key])
+        except (NativeAuthoredSourceMismatch, UnprovenSourceConsumers, ValueError, KeyError, TypeError):
+            fence_cache[solution.id] = None
+
     completed = []
     now = datetime.now(UTC)
     for record in records:
@@ -354,7 +383,29 @@ async def _complete_native_obligations(db, query, selected_ids, packages, cache,
                 collected = cache.get(key)
                 if collected is None:
                     raise NativeAuthoredSourceMismatch("No collected immutable bytes for this exact installation")
-                source, proof, _runtime = await _installed_evidence(db, solution, record, policy, collected=collected)
+                current = fence_cache.get(solution.id)
+                if current is None:
+                    raise NativeAuthoredSourceMismatch("No fresh fenced readback for this installation")
+                source, proof, _runtime = current
+                cached_source, cached_proof, _cached_runtime = collected
+                if cached_proof["delivery_proof_hash"] != proof["delivery_proof_hash"]:
+                    raise NativeAuthoredSourceMismatch("Collected native delivery proof changed before completion")
+                if (cached_source.source_content_id != source.source_content_id
+                        or cached_source.file_manifest() != source.file_manifest()
+                        or dict(cached_source.files) != dict(source.files)):
+                    raise NativeAuthoredSourceMismatch("Collected authored bytes differ from the fenced readback")
+                _require_history_origin(record, origins.get(record.source_release_id))
+                historical = None
+                if proof["source_commit_sha"] == record.source_commit_sha:
+                    if proof["source_tree_sha"] != record.source_tree_sha:
+                        raise NativeAuthoredSourceMismatch("Exact native declaration tree differs")
+                    require_declared_authored_source(record, source)
+                else:
+                    if record.source_commit_sha not in proof["ancestor_commit_shas"]:
+                        raise NativeAuthoredSourceMismatch("No verified native descendant is retained")
+                    historical = cached_proof["historical_authored_source"]
+                    _require_historical_inventory(record, historical)
+                proof = {**proof, "historical_authored_source": historical}
                 registry = proof["installation_registry"]
                 # Target membership comes from every protected recipe, NOT the
                 # surviving active rows. A missing/inactive intended install
