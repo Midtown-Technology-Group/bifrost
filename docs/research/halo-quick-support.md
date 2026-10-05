@@ -33,9 +33,9 @@ user roaming or service-profile locations. `FilterAdministratorToken` was
 unset. These are bounded checks, not an exhaustive disk inventory; built-in
 Administrator still needs separate testing. Do not alter UAC policy for proof.
 
-The operator will handle customer prompts. They requested evaluation of a thin
-Azure resource versus reuse; no rendezvous/relay server has been selected or
-provisioned. No endpoint software was installed or started by the baseline
+The operator will handle customer prompts. After comparing hosting costs, they
+authorized the isolated ACA Consumption WebSocket route; its deployment and
+later AGPL server patch approval are recorded below. No endpoint software was installed or started by the baseline
 probes. No debug/test stack was created. The cold skill catalog did not contain
 `mtg-bifrost-execution-ops`; endpoint probes used the available NinjaOne operator
 procedure and the repository's existing registered-workflow execution helper.
@@ -324,3 +324,29 @@ private parameters and the unused VM SSH key were removed. Thomas Bray retains
 the disposable ACA resource through the patch decision and Windows tests, with
 October 12 review tag and no automatic deletion. Evidence is in infra
 `docs/runbooks/quick-support-spike.md`, source locally signed; no push/merge/PR.
+
+## Approved WebSocket server patch (2026-10-05)
+
+The operator approved extending the server patch for registration/heartbeats.
+Separate public AGPL fork `MTG-Thomas/rustdesk-server`, pinned 1.1.16 baseline;
+PR https://github.com/MTG-Thomas/rustdesk-server/pull/1. Signed candidate
+`4df998a6fe048bb781fd8f264c37b9d6b890307c` is GitHub Verified. Locked compile
+and eight real-protocol tests pass locally (90.207 seconds): registration,
+conflicting identity rejection, malformed keys, multiple proxy clients, reconnect
+ownership, heartbeat expiry/disconnect, routing and preserved UDP behavior.
+CI run 37374470423 passed the suite and published `1.1.16-mtg.ws1`.
+Fork PR #1 merged as GitHub Verified commit
+`90c987ae152431d6ea4bdcbb65354b17e0804b22`. ACA now runs the pinned image
+`ghcr.io/mtg-thomas/rustdesk-server-quick-support@sha256:eb1f6f65b6bbd963a1335c71e198593e07cd38ba04e908a8f2aa68f1117979ec`
+in Healthy revision `ca-mtg-quick-support-spike--0000001`, with 100% traffic
+and zero container restarts. The old revision is inactive. The corresponding
+AGPL source offer and HTTPS health passed normal TLS validation. No Windows consent/UAC proof or assigned-technician
+grant implementation is claimed from these protocol tests.
+
+Public patched ACA diagnostic exited 0: registration OK with 15-second
+heartbeats sustained for 270.0 seconds; paired bidirectional relay delivery
+survived beyond 240 seconds and wrong relay keys were rejected. Temporary
+private deployment parameters and the local build container were removed.
+The hosting/transport check passes. Windows client isolation, customer
+consent/UAC, assigned-technician grants and full MVP acceptance remain gated.
+Procedure package 2026-10-05.2.
