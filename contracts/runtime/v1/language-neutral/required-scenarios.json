@@ -1,0 +1,109 @@
+{
+  "status": "required coverage; not executed scenarios",
+  "scenarios": [
+    {
+      "id": "success",
+      "requires": [
+        "adapter",
+        "capability",
+        "durable_owner"
+      ],
+      "purpose": "success"
+    },
+    {
+      "id": "invalid-input-before-capability",
+      "requires": [
+        "adapter"
+      ],
+      "purpose": "invalid input before capability"
+    },
+    {
+      "id": "missing-integration",
+      "requires": [
+        "capability"
+      ],
+      "purpose": "missing integration"
+    },
+    {
+      "id": "foreign-scope",
+      "requires": [
+        "capability"
+      ],
+      "purpose": "foreign scope"
+    },
+    {
+      "id": "secret-nondisclosure",
+      "requires": [
+        "capability"
+      ],
+      "purpose": "secret nondisclosure"
+    },
+    {
+      "id": "deterministic-output",
+      "requires": [
+        "adapter"
+      ],
+      "purpose": "deterministic output"
+    },
+    {
+      "id": "sdk-cancellation",
+      "requires": [
+        "adapter",
+        "capability"
+      ],
+      "purpose": "sdk cancellation"
+    },
+    {
+      "id": "capability-denial",
+      "requires": [
+        "capability"
+      ],
+      "purpose": "capability denial"
+    },
+    {
+      "id": "malformed-vendor-response",
+      "requires": [
+        "adapter",
+        "capability"
+      ],
+      "purpose": "malformed vendor response"
+    },
+    {
+      "id": "deadline",
+      "requires": [
+        "adapter",
+        "durable_owner"
+      ],
+      "purpose": "deadline"
+    },
+    {
+      "id": "closed-session",
+      "requires": [
+        "capability"
+      ],
+      "purpose": "closed session"
+    },
+    {
+      "id": "result-after-cancel",
+      "requires": [
+        "durable_owner"
+      ],
+      "purpose": "result after cancel"
+    },
+    {
+      "id": "wrong-attempt-session",
+      "requires": [
+        "capability",
+        "durable_owner"
+      ],
+      "purpose": "wrong attempt session"
+    },
+    {
+      "id": "lost-ack-no-replay",
+      "requires": [
+        "durable_owner"
+      ],
+      "purpose": "lost ack no replay"
+    }
+  ]
+}
