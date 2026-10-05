@@ -103,9 +103,14 @@ async def enqueue_app_git_publication(
                 or existing.resource_type != "application" or existing.resource_id != str(application_id)
                 or existing.payload != payload.model_dump(mode="json")):
             raise GitDeliverySourceError("Original App admission identity or controls differ")
-        # In particular, a completed original job must not be freshly enqueued
-        # when its accepted/terminal HTTP response was lost.
-        return existing, True
+        # A completed original admission is observation only. An unresolved
+        # original intent may use the shared kernel's explicit readback resume:
+        # it retains the original row/payload/checkpoint and cannot rebuild or
+        # republish. Do not turn a failure without a checkpoint into a retry.
+        if (existing.status not in {"requires_action", "failed", "cancelled"}
+                or not isinstance(existing.result, dict)
+                or existing.result.get("schema_version") != APPLICATION_PUBLISH_DEFINITION.readback_checkpoint_schema):
+            return existing, True
     job, reused = await enqueue_platform_job(db, APPLICATION_PUBLISH_DEFINITION, payload,
         job_id=job_id,
         dedupe_key=str(application_id), organization_id=application.organization_id,

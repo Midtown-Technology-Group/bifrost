@@ -175,7 +175,9 @@ async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_contr
     publisher.side_effect = captured_publish
     result = await jobs.run_application_publish(_context(), payload)
     assert result["publication_verified"] and not result["recovered_from_intent"]
-    assert result["runtime_pin"]["runtime_pin_hash"] == "sha256:" + "f" * 64
+    runtime_pin = result["runtime_pin"]
+    assert isinstance(runtime_pin, dict)
+    assert runtime_pin["runtime_pin_hash"] == "sha256:" + "f" * 64
     jobs.read_app_publication_runtime_pin.assert_awaited_once()
     assert jobs.read_app_publication_runtime_pin.await_args.kwargs["intent"] == intent
     assert reader.verify_ci.await_count == report.await_count == 2

@@ -282,6 +282,10 @@ anything. If admission reused an older job instead of creating the proposed ID,
 inspection returns that scoped original job with its original source identity.
 The producer must compare identities and commit evidence; a green old job never
 proves the new commit delivered.
+An explicit protected admission for an unresolved original checkpoint delegates
+to the shared kernel's readback resume on that original row. It preserves the
+payload, requester, intent and attempt history. Completed jobs and failures
+without a checkpoint are observation only; this is no automatic effect retry.
 
 Protected publication and successful inspection also validate an App runtime
 pin from the actual Live manifest after verifying every output byte. The pin

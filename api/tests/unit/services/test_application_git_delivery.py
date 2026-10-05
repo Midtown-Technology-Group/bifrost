@@ -102,6 +102,38 @@ async def test_lost_terminal_response_returns_same_completed_job_without_effect_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["requires_action", "failed", "cancelled"])
+@pytest.mark.parametrize("checkpoint", [False, True])
+async def test_original_admission_can_resume_only_sealed_readback_checkpoint(status, checkpoint):
+    from src.jobs.platform.application_publish import ApplicationPublishPayload
+    from src.models.contracts.applications import ApplicationGitPublicationInput
+    app = installed_app()
+    payload = ApplicationPublishPayload(application_id=SID, protected_git=ApplicationGitPublicationInput(
+        **request().model_dump(), expected_controls_hash="sha256:" + "d" * 64,
+        producer_run_id="456", producer_run_attempt=1))
+    identity = app_git_job_id(SID, request(), GitDeliveryIdentity("456", 1))
+    job = SimpleNamespace(id=identity, job_type=APPLICATION_PUBLISH_DEFINITION.job_type,
+        organization_id=app.organization_id, requested_by_user_id=str(SYSTEM_USER_UUID),
+        resource_type="application", resource_id=str(SID), payload=payload.model_dump(mode="json"),
+        status=status, result={"schema_version": APPLICATION_PUBLISH_DEFINITION.readback_checkpoint_schema}
+        if checkpoint else {})
+    db = SimpleNamespace(get=AsyncMock(side_effect=[app, job]))
+    enqueue = AsyncMock(return_value=(job, True))
+    with patch("src.services.application_git_delivery.read_app_git_source", new=AsyncMock()), \
+         patch("src.services.application_git_delivery.publication_controls_hash", new=AsyncMock(return_value="sha256:" + "d" * 64)), \
+         patch("src.services.application_git_delivery.enqueue_platform_job", new=enqueue):
+        result = await enqueue_app_git_publication(db, policy=app_policy(), reader=object(),
+            application_id=SID, request=request(), producer=GitDeliveryIdentity("456", 1))
+    assert result == (job, True)
+    if checkpoint:
+        enqueue.assert_awaited_once()
+        assert enqueue.await_args.kwargs["job_id"] == identity
+        assert enqueue.await_args.args[2].model_dump(mode="json") == job.payload
+    else:
+        enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fault", [None, "other_app", "scope", "requester", "manual_payload",
     "job_type", "artifact_drift", "control_drift", "missing_intent", "runtime_pin_drift"])
 async def test_scoped_inspection_rechecks_live_outputs_and_controls_without_effects(fault):
