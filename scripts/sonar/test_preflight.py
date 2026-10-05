@@ -128,12 +128,14 @@ class EvidenceIntegrationTests(Fixture):
 
     def test_changed_unsupported_config_and_declaration_require_review(self):
         self.write("scripts/release/check.sh", "#!/bin/sh\nexit 0\n")
+        self.write("api/src/services/templates/sdk.py.j2", "{{ generated_python }}\n")
         self.write("client/src/types.d.ts", "declare const name: string;\n")
         self.write(".github/config.json", '{"example": true}\n')
         self.commit()
         result = self.run_preflight()
         self.assertEqual(result["changed_paths_requiring_human_review"],
-                         [".github/config.json", "client/src/types.d.ts", "scripts/release/check.sh"])
+                         [".github/config.json", "api/src/services/templates/sdk.py.j2",
+                          "client/src/types.d.ts", "scripts/release/check.sh"])
 
     def test_changed_generated_vendor_and_directory_alias_require_review(self):
         self.write(".agents/skills/generated/helper.py", "print('generated mirror')\n")
