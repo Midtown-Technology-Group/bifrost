@@ -30,6 +30,7 @@ class _S3Client:
         self.copy_calls: list[tuple[str, str]] = []
         self.put_calls: list[tuple[str, bytes]] = []
         self.delete_calls: list[list[str]] = []
+        self.client_contexts: list[bool] = []
 
     async def list_objects_v2(self, *, Prefix: str, **_kwargs):  # noqa: N803
         if Prefix.endswith("/preview/"):
@@ -96,7 +97,8 @@ def _storage(client: _S3Client) -> AppStorageService:
     storage._settings = None
 
     @asynccontextmanager
-    async def _get_client():
+    async def _get_client(*, single_attempt: bool = False):
+        client.client_contexts.append(single_attempt)
         yield client
 
     storage._get_client = _get_client
@@ -308,13 +310,27 @@ async def test_checkpoint_precedes_effects_and_recovery_only_reads():
     saved = []
 
     async def checkpoint(intent):
-        assert client.put_calls == client.preconditions == []
+        if intent["manifest_write_started"] is False:
+            assert client.put_calls == client.preconditions == []
+        else:
+            assert intent["manifest_write_started"] is True
+            assert {key for key, _ in client.put_calls} == {
+                "_apps/app-1/live/entry-new.js", "_apps/app-1/live/chunk-new.js",
+            }
+            assert client.preconditions == [{"IfNoneMatch": "*"}] * 2
+            assert "_apps/app-1/live/manifest.json" not in client.objects
         saved.append(intent)
 
     await storage.publish("app-1", bundle_files=_bundle(), checkpoint_callback=checkpoint)
+    assert [intent["manifest_write_started"] for intent in saved] == [False, True]
+    assert {key: value for key, value in saved[0].items() if key != "manifest_write_started"} == {
+        key: value for key, value in saved[1].items() if key != "manifest_write_started"
+    }
+    assert client.client_contexts == [True]
     writes = list(client.put_calls)
     assert client.preconditions[-1] == {"IfNoneMatch": "*"}
-    assert await storage.verify_publication("app-1", saved[0]) == 3
+    assert await storage.verify_publication("app-1", saved[-1]) == 3
+    assert client.client_contexts == [True, False]
     assert client.put_calls == writes
     assert client.delete_calls == []
 
@@ -352,7 +368,7 @@ async def test_incomplete_or_changed_recovery_never_writes(damage):
     async def checkpoint(intent):
         saved.append(intent)
     await storage.publish("app-1", bundle_files=_bundle(), checkpoint_callback=checkpoint)
-    intent = saved[0]
+    intent = saved[-1]
     if damage == "missing-output":
         del client.objects["_apps/app-1/live/entry-new.js"]
     elif damage == "changed-output":
