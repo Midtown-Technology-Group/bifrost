@@ -245,6 +245,14 @@ changed paths. `app.yaml` is attested but never applied to installed App metadat
 roles or dependencies. Snapshot bytes alone confer no Git or publication authority;
 protected source admission and the existing publication job remain required.
 
+The protected Git reader supplies distinct inline App content evidence: exact
+commit/root/subtree identities, complete regular-file bytes and modes, including
+zero-byte assets and `app.yaml`. Root and subtree inventories must agree and each
+blob is verified against its Git object ID. Solution authored-tree accounting
+retains its existing identity contract; App content is not assigned a Solution ID.
+This read remains separate from producer authentication, current Main/CI checks,
+installed App enrollment and the eventual conditional publication/accounting.
+
 `PlatformJobPublic` is the single status contract for HTTP and WebSocket
 delivery. Changes that break a CLI-consumed enqueue or status contract require
 a matching `CONTRACT_VERSION` bump in both the server and packaged CLI.

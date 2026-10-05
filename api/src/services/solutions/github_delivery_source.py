@@ -28,6 +28,7 @@ from src.services.github_actions_oidc import (
     GITHUB_ACTIONS_ISSUER,
     GITHUB_ACTIONS_JWKS_URL,
 )
+from src.services.inline_app_source import InlineAppSourceSnapshot, MAX_INLINE_SOURCE_FILES
 from src.services.solutions.deployment_manifest import (
     MAX_DEPLOYMENT_RESOURCE_BYTES,
     MAX_DEPLOYMENT_RESOURCES_BYTES,
@@ -123,6 +124,18 @@ class VerifiedAuthoredSolution:
     def file_manifest(self) -> list[dict[str, object]]:
         return [{"path": item.path, "mode": item.mode, "sha256": item.sha256,
                  "size": item.size} for item in self.source_files]
+
+
+@dataclass(frozen=True)
+class VerifiedInlineAppSource:
+    """Protected tree/blob content proof, not App enrollment or publication authority."""
+
+    commit_sha: str
+    tree_sha: str
+    subtree_sha: str
+    repo_subpath: str
+    snapshot: InlineAppSourceSnapshot
+    file_modes: Mapping[str, str]
 
 
 def delivery_audience(solution_id: UUID, commit_sha: str, ci_run_id: int,
@@ -298,12 +311,56 @@ class ProtectedGitReader:
         """
         from src.services.solution_deploy_obligations import solution_source_content_id
 
-        if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None
-               for value in (commit_sha, expected_tree_sha)):
-            raise GitDeliverySourceError("Expected exact authored commit/tree SHAs")
         if (not isinstance(repo_subpath, str)
                 or re.fullmatch(r"solutions/[a-z0-9]+(?:-[a-z0-9]+)*", repo_subpath) is None):
             raise GitDeliverySourceError("Expected a canonical Solution subtree path")
+        subtree_sha, files, modes = await self._authored_subtree(commit_sha, repo_subpath, expected_tree_sha)
+        manifest = tuple(VerifiedAuthoredSolutionFile(
+            path=repo_subpath + "/" + path, mode=modes[path],
+            sha256=hashlib.sha256(content).hexdigest(), size=len(content),
+        ) for path, content in files.items())
+        manifest_values: list[dict[str, object]] = [
+            {"path": item.path, "mode": item.mode, "sha256": item.sha256, "size": item.size}
+            for item in manifest
+        ]
+        return VerifiedAuthoredSolution(
+            commit_sha=commit_sha, tree_sha=expected_tree_sha, subtree_sha=subtree_sha,
+            solution_slug=repo_subpath.split("/")[1], repo_subpath=repo_subpath,
+            source_content_id=solution_source_content_id(solution_slug=repo_subpath.split("/")[1],
+                repo_subpath=repo_subpath, source_files=manifest_values),
+            source_files=manifest, files=MappingProxyType(files),
+        )
+
+    async def inline_app_source(
+        self, commit_sha: str, repo_subpath: str, expected_tree_sha: str,
+    ) -> VerifiedInlineAppSource:
+        """Read the complete App subtree with the same Git transport verification.
+
+        Callers must independently authenticate the producer, verify current Main
+        and its CI, and preserve installed App scope/controls. This content read
+        neither applies app.yaml nor authorizes publishing an arbitrary App.
+        """
+        if (not isinstance(repo_subpath, str)
+                or re.fullmatch(r"apps/[a-z0-9]+(?:-[a-z0-9]+)*", repo_subpath) is None):
+            raise GitDeliverySourceError("Expected a canonical inline App subtree path")
+        subtree_sha, files, modes = await self._authored_subtree(
+            commit_sha, repo_subpath, expected_tree_sha, max_files=MAX_INLINE_SOURCE_FILES,
+        )
+        try:
+            snapshot = InlineAppSourceSnapshot(files)
+        except ValueError as exc:
+            raise GitDeliverySourceError(str(exc)) from exc
+        return VerifiedInlineAppSource(commit_sha, expected_tree_sha, subtree_sha,
+            repo_subpath, snapshot, MappingProxyType(modes))
+
+    async def _authored_subtree(
+        self, commit_sha: str, repo_subpath: str, expected_tree_sha: str,
+        *, max_files: int = MAX_AUTHORED_FILES,
+    ) -> tuple[str, dict[str, bytes], dict[str, str]]:
+        """Complete regular-file inventory shared by distinct package adapters."""
+        if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None
+               for value in (commit_sha, expected_tree_sha)):
+            raise GitDeliverySourceError("Expected exact authored commit/tree SHAs")
 
         def tree_index(document: dict, identity: str, *, prefix: str | None = None) -> dict[str, dict]:
             entries = document.get("tree")
@@ -335,7 +392,7 @@ class ProtectedGitReader:
         subtree_sha = subtree.get("sha")
         if (subtree.get("type") != "tree" or subtree.get("mode") != "040000"
                 or not isinstance(subtree_sha, str) or re.fullmatch(r"[0-9a-f]{40}", subtree_sha) is None):
-            raise GitDeliverySourceError("Authored Solution subtree identity is invalid")
+            raise GitDeliverySourceError("Authored subtree identity is invalid")
         selected = tree_index(await self.document(f"git/trees/{subtree_sha}?recursive=1"), subtree_sha)
         prefix = repo_subpath + "/"
         root_selected = {path[len(prefix):]: entry for path, entry in root.items() if path.startswith(prefix)}
@@ -363,10 +420,10 @@ class ProtectedGitReader:
                 raise GitDeliverySourceError("Authored source requires bounded regular Git files")
             total += entry["size"]
             blobs[path] = entry
-            if len(blobs) > MAX_AUTHORED_FILES or total > MAX_SOURCE_BYTES:
+            if len(blobs) > max_files or total > MAX_SOURCE_BYTES:
                 raise GitDeliverySourceError("Authored source exceeds its inventory bound")
         if not blobs:
-            raise GitDeliverySourceError("Authored Solution subtree is empty")
+            raise GitDeliverySourceError("Authored subtree is empty")
         slots = asyncio.Semaphore(16)
 
         async def read(path: str, entry: dict) -> tuple[str, bytes]:
@@ -374,21 +431,7 @@ class ProtectedGitReader:
                 return path, await self.blob(entry, limit=MAX_SOURCE_BYTES)
 
         files = dict(await asyncio.gather(*(read(path, blobs[path]) for path in sorted(blobs))))
-        manifest = tuple(VerifiedAuthoredSolutionFile(
-            path=prefix + path, mode=blobs[path]["mode"],
-            sha256=hashlib.sha256(content).hexdigest(), size=len(content),
-        ) for path, content in files.items())
-        manifest_values: list[dict[str, object]] = [
-            {"path": item.path, "mode": item.mode, "sha256": item.sha256, "size": item.size}
-            for item in manifest
-        ]
-        return VerifiedAuthoredSolution(
-            commit_sha=commit_sha, tree_sha=expected_tree_sha, subtree_sha=subtree_sha,
-            solution_slug=repo_subpath.split("/")[1], repo_subpath=repo_subpath,
-            source_content_id=solution_source_content_id(solution_slug=repo_subpath.split("/")[1],
-                repo_subpath=repo_subpath, source_files=manifest_values),
-            source_files=manifest, files=MappingProxyType(files),
-        )
+        return subtree_sha, files, {path: entry["mode"] for path, entry in blobs.items()}
 
     async def source(self, solution_id: UUID, commit_sha: str, artifact_digest: str) -> VerifiedGitSource:
         if solution_id not in self.policy.solutions:
