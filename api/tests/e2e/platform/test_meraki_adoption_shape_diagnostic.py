@@ -266,6 +266,11 @@ async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
                 await db.execute(delete(EventSubscription).where(EventSubscription.id == root_subscription_id))
                 await db.execute(delete(WebhookSource).where(WebhookSource.event_source_id == root_source_id))
                 await db.execute(delete(EventSource).where(EventSource.id == root_source_id))
+            # Ready deployments deliberately restrict Solution deletion. Remove
+            # only this fixture's candidate before deleting its isolated owner.
+            await db.execute(delete(SolutionDeployment).where(
+                SolutionDeployment.id == did, SolutionDeployment.solution_id == sid,
+            ))
             solution = await db.get(Solution, sid)
             if solution is not None:
                 await db.delete(solution)
