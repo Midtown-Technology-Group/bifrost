@@ -24,7 +24,9 @@ Do not disable the current method before the replacement is ready to submit.
   or the push/manual SHA, with its explicit base recorded. Existing CI still
   exercises its normal merge candidate separately.
 - All Python unit tests, including slow unit cases, and repository Python tool
-  tests. The dedicated `.coveragerc.sonar` includes authored CLI, proxy, router,
+  tests. Pure tool tests run in the same locked Docker image from `/repo` with
+  their own `PYTHONPATH`, before API tests append their coverage. This avoids the
+  API `scripts` package shadowing repository tools. The dedicated `.coveragerc.sonar` includes authored CLI, proxy, router,
   worker, scheduler, MCP, execution, API scripts, and root tools. The ordinary
   API badge's narrower `.coveragerc` is unchanged.
 - Comprehensive Vitest with the locked matching V8 provider, branch coverage,
@@ -34,13 +36,13 @@ Do not disable the current method before the replacement is ready to submit.
   files merge; it remains a human-reviewed control surface.
 - Repository-wide static-analysis scope. Tests and generated/vendor outputs
   are separated; authored source is not excluded to improve the result.
-  The `.claude/skills` originals remain in scope; generated `.agents` and
+  The `.claude/skills` originals remain in scope; generated `.agents/skills` and
   plugin skill mirrors and the four `skills/*` directory aliases are not counted twice.
 
 Unit coverage is not evidence of E2E/server-process coverage. The lane does not
 combine the existing permissive badge/server-process reports. A zero or absent
 per-file report entry is never promoted to a hit. Unmeasured or unsupported
-languages, shell/configuration changes, and generated-file changes remain
+languages, shell/configuration changes, and generated/vendor-file changes remain
 explicit in the manifest and require human review. No claim of Rust coverage
 is made; current main contains no tracked Rust source, and any future Rust
 analysis requires confirmed project support and a real producer.
