@@ -30,8 +30,10 @@ completed with failure: native formatting requires fifteen example-only hunks,
 blocking Clippy/default tests and schema bootstrap. Security/license audit and
 cold-image/invalid-configuration checks passed. These results cannot
 retroactively qualify the failed transport parser, cleanup or TLS suite.
-A two-path formatter/source-pin correction is allocated for source review only;
-no changed-candidate launch is yet authorized.
+The two-path formatter/source-pin correction received root and independent
+source acceptance. Corrected candidate461c is published only on a separate
+qualification ref; Rust Core run37247065907 is queued. The original transport
+remote remains e419 and no second transport experiment has been launched.
 
 Historical campaigns below retain their exact candidate/main/workspace pins.
 In particular, advances through #1048, #1056 and #1061 do not retroactively
@@ -1384,3 +1386,18 @@ tests, eighteen workflow-domain tests and seventeen offline example tests;
 these are not live database/consumer or full lifecycle parity results.
 Current main fetches remain a549 platform and 6dfc workspace. The stopped
 characterization has no remaining live watch handle.
+
+
+Root accepted formatter review
+`49a724cceac50a728383ca9630560a45ff3e7d7c55a66c1cfb46ff530422d5a9`
+and committed `461c2496b10ad22f0688341d64663d001845bed5`, tree
+`e9cf9481fde4dd60958c9ef713bcd11e5e411ac7`. Rust source981fac and runner1052
+are the only changes; static exact replacement reconstruction, Bash syntax
+and diff checks passed. Release
+`0665e3bb85eb46b1e2851edcb13076c5cb6c5b02066e2b75d7fc00e24360bd9e`
+authorized one push to `test/m1-native-admission-format-qualification` and one
+existing Rust Core workflow dispatch. Actual run37247065907 was queued on
+exact461c. The original transport remote still points to e419: its push-triggered
+experiment was not launched. No workflow guard change, unchanged rerun, merge,
+production deployment or broader authorization follows. Qualification must be
+read before separately considering the second changed transport experiment.
