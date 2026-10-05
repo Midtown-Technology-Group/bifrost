@@ -160,3 +160,15 @@ def test_registry_requires_each_exact_install_scope_recipe_and_current_commit():
     assert decide(declaration, [first, second]) is not None
     assert decide(declaration, [first, replace(second, organization_id=None)]) is None
     assert decide(declaration, [first, replace(second, proof={**second.proof, "commit_sha": "f" * 40})]) is None
+
+
+def test_solution_receipt_cannot_settle_registry_with_unproven_app_enrollment():
+    registry = {"path": REGISTRY, "target": "production", "installations": {
+        "install": {"organization_id": None, "recipe_path": RECIPE}},
+        "application_recipes": ["config/app-delivery/fixture.json"]}
+    current = consumer(proof={**consumer().proof, "control_hashes": {REGISTRY: HASH},
+        "installation_registry": registry})
+    assert decide(record({REGISTRY: HASH}), [current]) is None
+    # The existing Solution-only completion remains supported.
+    registry.pop("application_recipes")
+    assert decide(record({REGISTRY: HASH}), [current]) is not None
