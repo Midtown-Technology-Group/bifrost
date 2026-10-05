@@ -9,6 +9,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import textwrap
 from xml.etree import ElementTree
 
 import coverage
@@ -154,6 +155,11 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     assert (module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT) == (
         Path("/repo"), Path("/app"), Path("/bifrost-results")
     )
+    compose = workflow_path.parents[2] / "docker-compose.test.yml"
+    model = compose.read_text()
+    # Both fixed aliases refer to the same task-owned host results directory.
+    assert "- ${LOG_DIR:-/tmp/bifrost}:/tmp/bifrost" in model
+    assert "- ${LOG_DIR:-/tmp/bifrost}:/bifrost-results" in model
     # Fixture-only injection; production accepts no CLI/environment overrides.
     module.REPOSITORY_ROOT, module.API_ROOT, module.ARTIFACT_ROOT = repo, app, artifacts
     assert module.main(filter_commands[0][2:]) == 0
@@ -216,13 +222,15 @@ def test_sonar_inventory_rejects_missing_or_unsafe_tracked_source(tmp_path: Path
                 b"missing.py\0"):
         listing.write_bytes(raw)
         with pytest.raises(ValueError):
-            module.tracked_python(root, listing.read_bytes())
+            module.tracked_python(root, raw)
     (root / "linked.py").symlink_to(root / "source.py")
     listing.write_bytes(b"linked.py\0")
+    raw = listing.read_bytes()
     with pytest.raises(ValueError, match="Missing or unsafe"):
-        module.tracked_python(root, listing.read_bytes())
+        module.tracked_python(root, raw)
     listing.write_bytes(b"source.py\0")
-    assert module.tracked_python(root, listing.read_bytes())[0] == {"source.py"}
+    raw = listing.read_bytes()
+    assert module.tracked_python(root, raw)[0] == {"source.py"}
 
 
 def test_sonar_compiled_template_audit_rejects_unsafe_source_or_tracer(tmp_path: Path):
@@ -234,7 +242,9 @@ def test_sonar_compiled_template_audit_rejects_unsafe_source_or_tracer(tmp_path:
     source = root / "source.py"
     source.write_text(SAMPLE)
     listing = tmp_path / "tracked.nul"
-    listing.write_bytes(f"source.py\0{template_name}\0".encode())
+    inventory = f"source.py\0{template_name}\0".encode()
+    listing.write_bytes(inventory)
+    app = tmp_path / "app"
     data_file = tmp_path / "data"
     data = coverage.CoverageData(basename=str(data_file))
     data.add_arcs({str(source): {(1, 2)}, str(template): {(1, 2)}})
@@ -243,13 +253,13 @@ def test_sonar_compiled_template_audit_rejects_unsafe_source_or_tracer(tmp_path:
         if linked:
             template.symlink_to(source)
         with pytest.raises(OSError):
-            module.filter_data(root, tmp_path / "app", listing.read_bytes(), data)
+            module.filter_data(root, app, inventory, data)
     template.unlink()
     template.write_text("{{ generated_python }}\n")
     data.add_file_tracers({str(template): "unreviewed-template-plugin"})
     data.write()
     with pytest.raises(ValueError, match="Custom template file tracers"):
-        module.filter_data(root, tmp_path / "app", listing.read_bytes(), data)
+        module.filter_data(root, app, inventory, data)
 
 
 def test_sonar_measured_paths_do_not_escape_mounts(tmp_path: Path):
@@ -354,3 +364,57 @@ def test_sonar_cli_rejects_all_artifact_path_overrides(tmp_path: Path):
             module.main([option, str(tmp_path / "untrusted")])
         assert error.value.code == 2
     assert list(tmp_path.iterdir()) == []
+
+
+def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
+    workflow_path = next(
+        root / ".github/workflows/sonar-coverage.yml"
+        for root in (API_ROOT, *API_ROOT.parents)
+        if (root / ".github/workflows/sonar-coverage.yml").is_file()
+    )
+    workflow = workflow_path.read_text()
+    start = workflow.index("      - name: Preserve Python diagnostics after teardown")
+    end = workflow.index("      - name:", start + 1)
+    block = workflow[start:end]
+    assert "if: always() && env.SONAR_LOG_DIR != ''" in block
+    assert start > workflow.index("      - name: Tear down task-owned stack")
+    assert workflow.count("sudo chown --no-dereference") == 1
+    start = block.index("          for private_file in ")
+    end = block.index("          done\n", start) + len("          done\n")
+    script = textwrap.dedent(block[start:end])
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "calls"
+    sudo = bin_dir / "sudo"
+    sudo.write_text("#!/bin/sh\nprintf '%s\\0' \"$@\" >> \"$CAPTURE\"\n")
+    sudo.chmod(0o700)
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    environment = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                       SONAR_LOG_DIR=str(artifacts), CAPTURE=str(capture), REPORT_STATUS="failure")
+    audit = artifacts / "sonar-runtime-coverage.json"
+    audit.write_text("{}")
+    audit.chmod(0o600)
+    for files in ((audit,), (artifacts / ".coverage.sonar-tracked", audit)):
+        for path in files:
+            path.touch()
+            path.chmod(0o600)
+        capture.unlink(missing_ok=True)
+        result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=environment,
+                                cwd=tmp_path, capture_output=True, text=True, check=False)
+        assert result.returncode == 0, result.stderr
+        arguments = capture.read_bytes().decode().split("\0")[:-1]
+        expected = []
+        for path in files:
+            expected += ["chown", "--no-dereference", f"{os.getuid()}:{os.getgid()}", str(path)]
+            assert path.stat().st_mode & 0o777 == 0o600
+        assert arguments == expected
+    target = artifacts / ".coverage.sonar-tracked"
+    target.unlink()
+    target.symlink_to(audit)
+    capture.unlink()
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=environment,
+                            cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert "Unsafe private Sonar diagnostic artifact" in result.stderr
+    assert not capture.exists()
