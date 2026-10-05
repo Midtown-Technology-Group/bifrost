@@ -9,6 +9,12 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      pre_pr:
+        description: Run the unchanged pre-PR gate for this exact branch commit
+        type: boolean
+        required: false
+        default: false
 
 permissions: read-all
 
@@ -381,6 +387,136 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.CI_PLAYWRIGHT_TEST_IMAGE }}:sha-${{ github.sha }}
           cache-from: type=gha,scope=test-playwright
           cache-to: type=gha,scope=test-playwright,mode=max
+
+  # Optional evidence for the local gate, on the existing hosted CI lane.
+  # This does not replace any required check or select a different source ref.
+  pre-pr:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event_name == 'workflow_dispatch' && inputs.pre_pr &&
+      startsWith(github.ref, 'refs/heads/')
+    needs: publish-ci-test-images
+    runs-on: ubuntu-latest
+    name: Manual Pre-PR Gate
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout exact manual candidate
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          # origin/main is public; the literal gate does not need checkout credentials.
+          persist-credentials: false
+
+      - name: Set up repository-check Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up repository-check Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+
+      - name: Verify exact clean candidate and image tag
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$CI_TEST_IMAGE_TAG" = "sha-$GITHUB_SHA"
+
+      - name: Detect test image input changes
+        id: test-image-inputs
+        run: bash scripts/ci/detect-test-image-inputs.sh
+
+      - name: Prepare exact-SHA API test image
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
+        run: |
+          set -euo pipefail
+          bash api/scripts/ci/prepare-test-images.sh api
+          # Later gate stages use the prepared local image or public registries.
+          docker logout "$REGISTRY"
+          mkdir -p "$RUNNER_TEMP/bifrost-pre-pr"
+          docker image inspect bifrost-test-api-dev:latest \
+            --format '{{.Id}} {{json .RepoDigests}}' \
+            > "$RUNNER_TEMP/bifrost-pre-pr/api-image.txt"
+
+      - name: Run unchanged pre-PR gate
+        id: gate
+        env:
+          BIFROST_SKIP_BUILD: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bifrost-pre-pr"
+          trap 'printf "%s\n" "$?" > "$RUNNER_TEMP/bifrost-pre-pr/exit-status.txt"' EXIT
+          ./test.sh pre-pr 2>&1 | tee "$RUNNER_TEMP/bifrost-pre-pr/pre-pr.log"
+
+      - name: Tear down and verify project resources
+        if: always() && steps.checkout.outcome == 'success'
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/bifrost-pre-pr"
+          mkdir -p "$evidence_dir"
+          cleanup_status=0
+          ./test.sh stack down 2>&1 | tee "$evidence_dir/cleanup.log" || cleanup_status=$?
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+          networks="$(docker network ls -q --filter "label=com.docker.compose.project=$project")"
+          printf 'project=%s\ncleanup_status=%s\ncontainers=%s\nvolumes=%s\nnetworks=%s\n' \
+            "$project" "$cleanup_status" "$containers" "$volumes" "$networks" \
+            > "$evidence_dir/project-resources.txt"
+          test "$cleanup_status" -eq 0
+          test -z "$containers"
+          test -z "$volumes"
+          test -z "$networks"
+
+      - name: Collect narrow candidate and stage evidence
+        if: always() && steps.checkout.outcome == 'success'
+        env:
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/bifrost-pre-pr"
+          mkdir -p "$evidence_dir"
+          printf 'workflow_sha=%s\nhead=%s\ntree=%s\norigin_main=%s\nref=%s\nrun_url=%s\ngate_outcome=%s\n' \
+            "$GITHUB_SHA" "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" \
+            "$(git rev-parse origin/main)" "$GITHUB_REF" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$GATE_OUTCOME" \
+            > "$evidence_dir/candidate.txt"
+          stage_dir="$(git rev-parse --path-format=absolute --git-path bifrost-test-locks)"
+          for name in pre-pr-stages.json pre-pr-affected-plan.json; do
+            if [ -f "$stage_dir/$name" ]; then
+              cp "$stage_dir/$name" "$evidence_dir/$name"
+            elif [ "$GATE_OUTCOME" = "success" ]; then
+              echo "Successful pre-PR gate is missing $name." >&2
+              exit 1
+            fi
+          done
+          if [ "$GATE_OUTCOME" = "success" ]; then
+            test "$(cat "$evidence_dir/exit-status.txt")" = "0"
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            test -z "$(git status --porcelain --untracked-files=all)"
+          fi
+
+      - name: Preserve pre-PR evidence and diagnostics
+        if: always() && steps.checkout.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-pre-pr-evidence
+          path: |
+            ${{ runner.temp }}/bifrost-pre-pr/
+            /tmp/bifrost-bifrost-test-*/*.log
+            /tmp/bifrost-bifrost-test-*/test-results.xml
+          if-no-files-found: error
+          retention-days: 14
 
   # =============================================================================
   # Lint & Type Check - Run alongside client units, before expensive work.
