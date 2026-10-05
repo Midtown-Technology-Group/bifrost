@@ -26,8 +26,10 @@ import hashlib
 import json
 import logging
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES
@@ -115,6 +117,8 @@ class BundleResult:
     errors: list[BundleMessage] | None = None
     warnings: list[BundleMessage] | None = None
     duration_ms: int = 0
+    # Server-internal immutable buffers, not a new API/publication contract.
+    publication_files: Mapping[str, bytes] | None = None
 
 
 class BundlerService:
@@ -256,10 +260,12 @@ class BundlerService:
             # 6. Upload artifacts to S3
             uploaded: list[str] = []
             output_hashes: dict[str, str] = {}
+            publication_files: dict[str, bytes] = {}
             for out in result["outputs"]:
                 rel = out["path"]
                 data = (out_dir / rel).read_bytes()
                 output_hashes[rel] = "sha256:" + hashlib.sha256(data).hexdigest()
+                publication_files[rel] = data
                 await self._app_storage.write_preview_file(app_id, rel, data) \
                     if mode == "preview" \
                     else await self._write_live(app_id, rel, data)
@@ -281,6 +287,7 @@ class BundlerService:
                 },
             }
             manifest_bytes = json.dumps(manifest, indent=2).encode()
+            publication_files["manifest.json"] = manifest_bytes
             if mode == "preview":
                 await self._app_storage.write_preview_file(
                     app_id, "manifest.json", manifest_bytes
@@ -305,6 +312,7 @@ class BundlerService:
                 ),
                 warnings=warnings,
                 duration_ms=duration_ms,
+                publication_files=MappingProxyType(publication_files),
             )
 
     async def _materialize_source(

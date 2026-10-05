@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -200,29 +202,30 @@ async def test_sync_preview_copies_repo_files_and_removes_stale_preview(
 
 
 @pytest.mark.asyncio
-async def test_publish_returns_zero_without_preview_files() -> None:
+async def test_publish_rejects_missing_captured_artifact_before_storage() -> None:
     client = _FakeClient(list_pages=[{"Contents": [], "IsTruncated": False}])
     service = _service(client)
 
-    assert await service.publish("app") == 0
+    with pytest.raises(ValueError, match="immutable byte buffers"):
+        await service.publish("app", bundle_files={})
     assert client.copied == []
     assert client.deleted == []
+    assert client.puts == client.list_calls == []
 
 
 @pytest.mark.asyncio
-async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> None:
-    manifest = b'{"entry":"index.js","outputs":["index.js","components/Button.js"]}'
+async def test_publish_writes_captured_build_and_removes_only_stale_live(monkeypatch) -> None:
+    outputs = {"index.js": b"entry", "components/Button.js": b"component"}
+    manifest = json.dumps({
+        "entry": "index.js", "outputs": list(outputs),
+        "build_evidence": {
+            "schema_version": "bifrost.inline-app-build/v1",
+            "output_hashes": {path: "sha256:" + hashlib.sha256(data).hexdigest()
+                              for path, data in outputs.items()},
+        },
+    }).encode()
     client = _FakeClient(
         list_pages=[
-            {
-                "Contents": [
-                    {"Key": "_apps/app/preview/manifest.json"},
-                    {"Key": "_apps/app/preview/index.js"},
-                    {"Key": "_apps/app/preview/components/Button.js"},
-                    {"Key": "_apps/app/preview/stale.js"},
-                ],
-                "IsTruncated": False,
-            },
             {
                 "Contents": [
                     {"Key": "_apps/app/live/index.js"},
@@ -231,7 +234,6 @@ async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> Non
                 "IsTruncated": False,
             },
         ],
-        objects={"_apps/app/preview/manifest.json": manifest},
     )
     service = _service(client)
     invalidated: list[str] = []
@@ -241,8 +243,12 @@ async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> Non
 
     monkeypatch.setattr(service, "invalidate_render_cache", invalidate)
 
-    assert await service.publish("app") == 3
-    assert {copy["Key"] for copy in client.copied} == {
+    files = {**outputs, "manifest.json": manifest}
+    assert await service.publish("app", bundle_files=files) == 3
+    assert {item["Key"]: item["Body"] for item in client.puts} == {
+        f"_apps/app/live/{path}": data for path, data in files.items()
+    }
+    assert {item["Key"] for item in client.puts} == {
         "_apps/app/live/manifest.json",
         "_apps/app/live/index.js",
         "_apps/app/live/components/Button.js",
@@ -255,14 +261,9 @@ async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> Non
                 "Quiet": True,
             },
         },
-        {
-            "Bucket": "bucket",
-            "Delete": {
-                "Objects": [{"Key": "_apps/app/preview/stale.js"}],
-                "Quiet": True,
-            },
-        },
     ]
+    assert client.copied == []
+    assert client.list_calls == [{"Bucket": "bucket", "Prefix": "_apps/app/live/"}]
     assert invalidated == ["app"]
 
 

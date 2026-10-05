@@ -536,6 +536,10 @@ async def test_build_evidence_captures_source_before_tailwind_transforms(
         result = await bundler.build("app", "apps/test", "preview")
 
     assert result.success
+    assert result.publication_files is not None
+    assert dict(result.publication_files) == written
+    with pytest.raises(TypeError):
+        result.publication_files["entry.js"] = b"a later build"  # type: ignore[index]
     evidence = __import__("json").loads(written["manifest.json"])["build_evidence"]
     assert evidence["materialized_source_hashes"] == {
         "page.tsx": "sha256:" + hashlib.sha256(original_page).hexdigest(),

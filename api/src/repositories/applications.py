@@ -462,7 +462,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         """
         Publish draft to live.
 
-        Copies preview files to live in S3 via AppStorageService, then
+        Writes the captured build to live in S3 via AppStorageService, then
         captures a published_snapshot for backwards compatibility.
         """
         application = await self.get(id=app_id)
@@ -494,8 +494,10 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             first_err = (bundle_result.errors or [None])[0]
             err_text = first_err.text if first_err else "unknown error"
             raise ValueError(f"Bundle build failed during publish: {err_text}")
+        if bundle_result.publication_files is None:
+            raise ValueError("Bundle build did not retain its publication artifact")
 
-        # Promote the freshly-built preview bundle to live.
+        # Promote the captured build; editor preview may change independently.
         async def _report_promotion(current: int, total: int) -> None:
             if progress_callback:
                 await progress_callback(
@@ -506,6 +508,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
         published_count = await app_storage.publish(
             str(app_id),
+            bundle_files=bundle_result.publication_files,
             progress_callback=_report_promotion,
         )
 
@@ -513,8 +516,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             raise ValueError("No files found to publish")
 
         # Build snapshot for backwards compat
-        preview_files = await app_storage.list_files(str(app_id), "preview")
-        snapshot = {f: "" for f in preview_files}
+        snapshot = {f: "" for f in bundle_result.publication_files}
 
         application.published_snapshot = snapshot
         application.published_at = datetime.now(timezone.utc)

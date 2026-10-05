@@ -8,7 +8,7 @@ Manages the app serving store:
 Data flow:
 1. Git sync/import: copy from _repo/{app_path}/ to _apps/{app_id}/preview/
 2. Editor write: write to _apps/{app_id}/preview/
-3. Publish: copy preview → live
+3. Publish: write captured build outputs → live, then its manifest
 4. Serve draft: read from preview (Redis cache → S3 fallback)
 5. Serve live: read from live (Redis cache → S3 fallback)
 """
@@ -16,10 +16,11 @@ Data flow:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager
-from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
 from src.config import Settings, get_settings
@@ -305,49 +306,44 @@ class AppStorageService:
     async def publish(
         self,
         app_id: str,
+        *,
+        bundle_files: Mapping[str, bytes],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> int:
-        """Promote the current preview bundle to live.
+        """Publish the exact captured build, with its manifest written last.
 
-        Only artifacts declared by the freshly built ``manifest.json`` are
-        promoted. Hashed chunks from older preview builds can accumulate under
-        the preview prefix; copying all of them made publish time grow without
-        bound and could promote stale artifacts. Bundle outputs are copied with
-        bounded concurrency, then ``manifest.json`` is copied last as the live
-        pointer. Stale live and preview objects are removed in S3 batches.
-
-        Returns:
-            Number of files published.
+        Preview is editable during publication. It is neither the source of
+        these buffers nor a cleanup target for this operation.
         """
-        preview_prefix = self._key(app_id, "preview")
+        # Snapshot the mapping before any await. Values must be immutable bytes.
+        captured = dict(bundle_files)
+        if not captured or any(not isinstance(value, bytes) for value in captured.values()):
+            raise ValueError("Publication artifact must contain immutable byte buffers")
+        manifest_bytes = captured.get("manifest.json")
+        if manifest_bytes is None:
+            raise ValueError("Publication artifact is missing its manifest")
+        artifacts = self._bundle_artifacts(manifest_bytes)
+        if artifacts != set(captured):
+            raise ValueError("Publication artifact does not exactly match its manifest outputs")
+        if any(not path or path.startswith("/") or "\\" in path or "\0" in path
+               or any(part in {"", ".", ".."} for part in path.split("/")) for path in artifacts):
+            raise ValueError("Publication artifact contains an unsafe path")
+        manifest = json.loads(manifest_bytes)
+        evidence = manifest.get("build_evidence")
+        outputs = artifacts - {"manifest.json"}
+        css = manifest.get("css")
+        if (len(manifest["outputs"]) != len(outputs)
+                or css is not None and (not isinstance(css, str) or css not in outputs)):
+            raise ValueError("Publication manifest has duplicate or missing runtime outputs")
+        expected = {path: "sha256:" + hashlib.sha256(captured[path]).hexdigest() for path in outputs}
+        if (not isinstance(evidence, dict)
+                or evidence.get("schema_version") != "bifrost.inline-app-build/v1"
+                or evidence.get("output_hashes") != expected):
+            raise ValueError("Publication artifact output hashes do not match its build evidence")
         live_prefix = self._key(app_id, "live")
 
         async with self._get_client() as client:
-            preview_keys = await self._list_keys(client, preview_prefix)
-            preview_relative = {
-                key[len(preview_prefix):]
-                for key in preview_keys
-                if key[len(preview_prefix):]
-            }
-            if "manifest.json" not in preview_relative:
-                logger.warning(f"No preview files to publish for app {log_safe(app_id)}")
-                return 0
-
-            manifest_response = await client.get_object(
-                Bucket=self._bucket,
-                Key=f"{preview_prefix}manifest.json",
-            )
-            manifest_bytes = await manifest_response["Body"].read()
-            artifacts = self._bundle_artifacts(manifest_bytes)
-            missing = artifacts - preview_relative
-            if missing:
-                missing_sample = ", ".join(sorted(missing)[:5])
-                raise ValueError(
-                    "Preview bundle is incomplete; missing artifact(s): "
-                    f"{missing_sample}"
-                )
-
-            output_artifacts = sorted(artifacts - {"manifest.json"})
+            output_artifacts = sorted(outputs)
             total = len(artifacts)
             completed = 0
             if progress_callback:
@@ -355,19 +351,16 @@ class AppStorageService:
 
             semaphore = asyncio.Semaphore(PUBLISH_COPY_CONCURRENCY)
 
-            async def _copy_output(rel_path: str) -> None:
+            async def _write_output(rel_path: str) -> None:
                 async with semaphore:
-                    await client.copy_object(
+                    await client.put_object(
                         Bucket=self._bucket,
-                        CopySource={
-                            "Bucket": self._bucket,
-                            "Key": f"{preview_prefix}{rel_path}",
-                        },
                         Key=f"{live_prefix}{rel_path}",
+                        Body=captured[rel_path],
                     )
 
             tasks = [
-                asyncio.create_task(_copy_output(rel_path))
+                asyncio.create_task(_write_output(rel_path))
                 for rel_path in output_artifacts
             ]
             try:
@@ -385,10 +378,10 @@ class AppStorageService:
             # The manifest is the live bundle pointer, so publish it only after
             # every referenced output is durable.
             rel_path = "manifest.json"
-            await client.copy_object(
+            await client.put_object(
                 Bucket=self._bucket,
-                CopySource={"Bucket": self._bucket, "Key": f"{preview_prefix}{rel_path}"},
                 Key=f"{live_prefix}{rel_path}",
+                Body=manifest_bytes,
             )
             completed += 1
             if progress_callback:
@@ -408,26 +401,10 @@ class AppStorageService:
                     exc_info=True,
                 )
 
-            stale_preview = [
-                key
-                for key in preview_keys
-                if key[len(preview_prefix):] not in artifacts
-            ]
-            try:
-                await self._delete_keys(client, stale_preview)
-            except Exception:
-                logger.warning(
-                    "Published current app manifest but failed to clean stale "
-                    "preview objects",
-                    extra={"app_id": log_safe(app_id)},
-                    exc_info=True,
-                )
-
             published = len(artifacts)
             logger.info(
                 f"Published {published} files for app {log_safe(app_id)}"
-                f" (removed {len(stale_live)} stale live and "
-                f"{len(stale_preview)} stale preview objects)"
+                f" (removed {len(stale_live)} stale live objects)"
             )
 
         await self.invalidate_render_cache(app_id)
