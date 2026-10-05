@@ -295,8 +295,12 @@ requires the reconstructed pin to match the original result; missing evidence,
 changed bytes or control drift stop without rebuilding or republishing. This
 attests compiled runtime bytes, not a browser business journey or ledger closure.
 
-Workspace producer enrollment and automatic App source accounting are not yet
-implemented. These remain necessary before claiming automatic Main delivery.
+Automatic App source accounting is implemented through the existing source
+ledger. It verifies the original protected publication, current runtime bytes
+and controls, and the complete mixed App/Solution registry before settling
+delivery. Scoped inspection reports accounting without republishing the App.
+Production enrollment, reviewed deployment and actual Main delivery/accounting
+qualification remain pending; implemented code is not activated authority.
 
 `PlatformJobPublic` is the single status contract for HTTP and WebSocket
 delivery. Changes that break a CLI-consumed enqueue or status contract require
