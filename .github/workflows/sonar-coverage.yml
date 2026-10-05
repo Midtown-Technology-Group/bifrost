@@ -165,7 +165,7 @@ jobs:
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
-            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/tmp/bifrost/.coverage.sonar --output=/tmp/bifrost/coverage-sonar.xml
+            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/tmp/bifrost/.coverage.sonar -o /tmp/bifrost/coverage-sonar.xml
           cp "$SONAR_LOG_DIR/coverage-sonar.xml" .sonar-evidence/raw/python.xml
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/python.xml
       - name: Validate reports and source inventory
