@@ -89,11 +89,14 @@ All work ships with tests. The full matrix of what goes where lives in [`CLAUDE.
 Some areas of the codebase need a higher bar — auth, execution engine, multi-tenancy filters, migrations, secrets, manifest round-trip, audit logging.
 
 If your change touches any of those, expect:
-- A manual review regardless of PR size.
+- Human review is recommended, with reviewers selected for the specific risk
+  ownership described in [delivery lane 3](docs/dev/delivery-lanes.md#lane-3-platform-or-live-operations).
 - A reviewer asking about tests for the specific failure mode, not just "does it compile."
 - Higher scrutiny on any code path that could cross tenant boundaries, leak secrets, or skip an audit.
 
 Call it out in the PR description so the reviewer doesn't have to rediscover it.
+This source-review recommendation does not waive required CI, protected
+deployment approvals, or explicit authorization for high-impact operations.
 
 ## Reviewer budget
 

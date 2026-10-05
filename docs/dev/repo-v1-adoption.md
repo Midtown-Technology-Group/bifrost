@@ -37,7 +37,10 @@ They remain in the retirement inventory until those adapters are verified.
   the resulting install in reviewed protected Source delivery, verify its
   repository mapping, runtime pin and obligation readback independently.
 
-Human review and protected deployment are required by delivery lane 3. This
+Human source review is recommended by
+[delivery lane 3](delivery-lanes.md#lane-3-platform-or-live-operations), with
+reviewers selected for the adoption and migration risk. Protected deployment
+and explicit authorization for the runtime migration remain required. This
 adapter alone does not authorize retirement of Workspace Live.
 
 ## Operator path and compatibility

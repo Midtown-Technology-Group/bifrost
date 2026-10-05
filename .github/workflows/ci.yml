@@ -452,6 +452,13 @@ jobs:
           ./.venv/bin/pip install --require-hashes -r requirements.lock
           ./.venv/bin/pip install --require-hashes -r requirements-pyright.lock
 
+      - name: Language-neutral runtime document contracts
+        if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
+        run: |
+          ./.venv/bin/python contracts/runtime/v1/language-neutral/check.py
+          ./.venv/bin/python contracts/runtime/v1/language-neutral/test_check.py
+          ./.venv/bin/ruff check contracts/runtime/v1/language-neutral/check.py contracts/runtime/v1/language-neutral/test_check.py
+
       - name: Ruff
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
         working-directory: api
