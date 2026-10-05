@@ -52,13 +52,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
-  coverage:
-    needs: pre-pr
-    permissions:
-      contents: read
-      packages: read
-      actions: read
-    uses: ./.github/workflows/sonar-coverage.yml
-    with:
-      head_sha: ${{ github.sha }}
-      base_sha: ""
+  # Broad coverage is owned by the normal CI workflow on every PR head and
+  # merge-group. This preparatory workflow only supplies the clean pre-PR gate,
+  # avoiding a second identical coverage stack on every branch push.
