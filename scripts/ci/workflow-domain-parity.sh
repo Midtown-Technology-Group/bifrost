@@ -59,6 +59,20 @@ PREPR_STAGES = frozenset(
 )
 PREPR_SCHEMA = "bifrost.test.claim-prepr-stage/v1"
 PREPR_HELPER_HASH = "60da3f4c3e95cb220738d077c9dec59451bb66acde732b71067e8d44b9f5de11"
+BUILD_GUARD_SCHEMA = "bifrost.test.claim-build-guard/v1"
+BUILD_GUARD_PREDICATES = frozenset(
+    (
+        "builder-identity",
+        "builder-label",
+        "builder-command",
+        "builder-source-image",
+        "builder-current-custody",
+        "builder-security",
+        "builder-mounts",
+        "builder-state",
+        "builder-terminal",
+    )
+)
 
 SOURCE_PATHS = (
     ".github/workflows/workflow-domain-parity.yml",
@@ -747,6 +761,7 @@ class Parent:
         self.failure_native = None
         self.failure_error = None
         self.prepr_stage = None
+        self.build_guard = None
         self.diagnostic_failed = False
         self.capture_bytes = 0
         self.private = None
@@ -1820,6 +1835,25 @@ def freeze_failure(parent, error, native=None):
             native if native is not None and any(owned is native for owned in parent.natives) else None,
             error,
         )
+        try:
+            if (
+                native is None
+                and value["phase"] == "build"
+                and operation is None
+                and value["exception_class"] == "guard"
+            ):
+                predicate = "unknown"
+                if (
+                    type(error) is Failure
+                    and type(error.args) is tuple
+                    and len(error.args) == 1
+                    and type(error.args[0]) is str
+                    and error.args[0] in BUILD_GUARD_PREDICATES
+                ):
+                    predicate = error.args[0]
+                parent.build_guard = {"schema": BUILD_GUARD_SCHEMA, "predicate": predicate}
+        except BaseException:
+            pass  # Optional preparation never invalidates the genuine frozen primary.
     except BaseException:
         # Diagnostic faults are secondary; do not replace the genuine boundary error.
         parent.diagnostic_failed = True
@@ -1865,7 +1899,20 @@ def prepr_stage_bytes(value):
     return raw
 
 
-def combined_diagnostic_bytes(value, stage):
+def build_guard_bytes(value):
+    closed(value, {"schema", "predicate"})
+    require(type(value["schema"]) is str and value["schema"] == BUILD_GUARD_SCHEMA, "build-guard-schema")
+    predicate = value["predicate"]
+    require(
+        type(predicate) is str and (predicate in BUILD_GUARD_PREDICATES or predicate == "unknown"),
+        "build-guard-predicate",
+    )
+    raw = b"bifrost-claim-build-guard/v1 " + json.dumps(value, separators=(",", ":")).encode("ascii") + b"\n"
+    require(len(raw) <= 128 and raw.isascii(), "build-guard-bound")
+    return raw
+
+
+def combined_diagnostic_bytes(value, stage, build=None):
     raw = diagnostic_bytes(value)  # An optional observation can never suppress a valid primary line.
     if stage is not None:
         try:
@@ -1874,6 +1921,20 @@ def combined_diagnostic_bytes(value, stage):
             return combined
         except BaseException:
             pass  # Primary already exists; even an interrupted optional rendering keeps its delivery available.
+    if build is not None:
+        try:
+            require(
+                stage is None
+                and value["phase"] == "build"
+                and value["operation"] is None
+                and value["exception_class"] == "guard",
+                "build-guard-association",
+            )
+            combined = raw + build_guard_bytes(build)
+            require(len(combined) <= 512 and combined.isascii(), "diagnostic-combined-bound")
+            return combined
+        except BaseException:
+            pass  # A refused optional predicate cannot suppress the existing primary.
     return raw
 
 
@@ -2178,12 +2239,12 @@ def prepr_execute(parent, reader):
             raise errors[0]
 
 
-def emit_diagnostic(value, end, file_os, clock, stage=None):
+def emit_diagnostic(value, end, file_os, clock, stage=None, build=None):
     # Inherited stderr is borrowed, never closed. One nonblocking write, no retry or new end.
     first = None
     blocking = None
     try:
-        raw = combined_diagnostic_bytes(value, stage)
+        raw = combined_diagnostic_bytes(value, stage, build)
         phase_admit(end, clock, "diagnostic-deadline")
         blocking = file_os.get_blocking(2)
         require(type(blocking) is bool, "diagnostic-blocking")
@@ -3262,6 +3323,115 @@ def publication_diagnostic_controls():
                 raise self.primary
             return len(raw) - 1 if self.fault == "partial" else len(raw)
 
+    for predicate in (
+        "builder-identity",
+        "builder-label",
+        "builder-command",
+        "builder-source-image",
+        "builder-current-custody",
+        "builder-security",
+        "builder-mounts",
+        "builder-state",
+        "builder-terminal",
+    ):
+        isolated = Parent()
+        isolated.phase = "build"
+        primary = Failure(predicate)
+        freeze_failure(isolated, primary)
+        record = isolated.build_guard
+        require(record == {"schema": BUILD_GUARD_SCHEMA, "predicate": predicate}, "control-build-exact-predicate")
+        before = isolated.failure_snapshot
+        raw = diagnostic_bytes(before) + build_guard_bytes(record)
+        actual = DiagnosticOS()
+        emit_diagnostic(before, 10, actual, lambda: 0, build=record)
+        require(
+            actual.writes == [raw]
+            and len(raw) <= 512
+            and actual.events == ["get", ("set", False), "write", ("set", True)],
+            "control-build-one-combined-write",
+        )
+        isolated.phase = "cleanup"
+        freeze_failure(isolated, Failure("builder-security"))
+        require(
+            isolated.failure_snapshot is before
+            and isolated.failure_error is primary
+            and isolated.build_guard is record,
+            "control-build-first-predicate",
+        )
+
+    class PrivatePayload:
+        def __str__(self):
+            raise Control()
+
+    class ForeignFailure(Failure):
+        pass
+
+    for primary in (
+        Failure("private payload"),
+        Failure(),
+        Failure("builder-identity", "private payload"),
+        Failure(True),
+        Failure(PrivatePayload()),
+        ForeignFailure("builder-identity"),
+    ):
+        isolated = Parent()
+        isolated.phase = "build"
+        freeze_failure(isolated, primary)
+        require(
+            isolated.failure_error is primary
+            and isolated.build_guard == {"schema": BUILD_GUARD_SCHEMA, "predicate": "unknown"}
+            and b"private payload" not in build_guard_bytes(isolated.build_guard),
+            "control-build-unknown-private",
+        )
+    for primary in (Control(), SystemExit(), KeyboardInterrupt()):
+        isolated = Parent()
+        isolated.phase = "build"
+        freeze_failure(isolated, primary)
+        require(isolated.failure_error is primary and isolated.build_guard is None, "control-build-error-class")
+    for phase in FAILURE_PHASES - {"build"}:
+        isolated = Parent()
+        isolated.phase = phase
+        freeze_failure(isolated, Failure("builder-identity"))
+        require(isolated.build_guard is None, "control-build-phase")
+    for owned in (False, True):
+        isolated = Parent()
+        isolated.phase = "build"
+        selected = Native("checks.build", WORK_END, 1)
+        isolated.natives = [selected] if owned else []
+        freeze_failure(isolated, Failure("builder-identity"), selected)
+        require(isolated.build_guard is None, "control-build-no-native")
+    build = {"schema": BUILD_GUARD_SCHEMA, "predicate": "builder-current-custody"}
+    for mutation, label in (
+        ({"schema": "unknown"}, "build-guard-schema"),
+        ({"predicate": "private payload"}, "build-guard-predicate"),
+        ({"predicate": True}, "build-guard-predicate"),
+        ({"extra": "private payload"}, "closed-keys"),
+    ):
+        try:
+            build_guard_bytes({**build, **mutation})
+        except Failure as error:
+            if error.args != (label,):
+                raise
+        else:
+            raise Failure("control-build-record-grammar")
+    build_value = {**baseline, "phase": "build", "exception_class": "guard"}
+    for optional in (build, {"schema": "unknown"}, {**build, "predicate": PrivatePayload()}):
+        actual = DiagnosticOS()
+        emit_diagnostic(build_value, 10, actual, lambda: 0, build=optional)
+        expected_raw = diagnostic_bytes(build_value) + (build_guard_bytes(build) if optional is build else b"")
+        require(
+            actual.writes == [expected_raw] and actual.events == ["get", ("set", False), "write", ("set", True)],
+            "control-build-optional-primary-delivery",
+        )
+    for value in (
+        baseline,
+        {**build_value, "operation": "checks.build", "exit_code": 0, "native_settled": True},
+        {**build_value, "exception_class": "other"},
+    ):
+        actual = DiagnosticOS()
+        emit_diagnostic(value, 10, actual, lambda: 0, build=build)
+        require(actual.writes == [diagnostic_bytes(value)], "control-build-render-association")
+
     actual = DiagnosticOS()
     emit_diagnostic(baseline, 10, actual, lambda: 0)
     require(
@@ -4235,7 +4405,9 @@ def entry():
     if first is not None:
         if parent.failure_snapshot is not None and not parent.diagnostic_failed:
             try:
-                emit_diagnostic(parent.failure_snapshot, PUBLICATION_END, os, time.monotonic, parent.prepr_stage)
+                emit_diagnostic(
+                    parent.failure_snapshot, PUBLICATION_END, os, time.monotonic, parent.prepr_stage, parent.build_guard
+                )
             except BaseException:
                 parent.diagnostic_failed = True  # No delivery claim or replacement of the retained first error.
         # No private exception/native payload is printed or reclassified as success.
