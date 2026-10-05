@@ -132,6 +132,8 @@ The registered definitions at this baseline are:
 | `application.deploy` | 20m | 1 | shared | 512 MiB | Independent V2 App build and atomic activation |
 | `application.sdk_update` | 20m | 1 | 1 | 512 MiB | Rebuild retained source with the current SDK and atomically activate it |
 | `application.publish` | 20m | 2 | shared | 256 MiB | Runner-loss retry |
+| `device.peer_lighthouse.start` | 60s | 1 | 4 | 64 MiB | Recheck device permission; provision immutable router lease; known failure revokes nonce; no runner-loss retry |
+| `device.peer_lighthouse.revoke` | 60s | 1 | 4 | 64 MiB | Recheck actor/device scope; idempotent router revoke; no runner-loss retry |
 | `oauth.refresh` | 15m | 2 | 1 | 128 MiB | Singleton maintenance |
 | `webhook.renew` | 30m | 2 | 1 | 128 MiB | Singleton maintenance |
 | `solution.update_check` | 30m | 2 | 1 | 256 MiB | Singleton maintenance |
@@ -156,7 +158,11 @@ The registered definitions at this baseline are:
 scheduler host's two claim loops and memory admission remain the safety ceiling.
 All policies otherwise inherit admission at 85% and hard termination at 95% of
 the container cgroup memory limit. Only video generation currently permits
-cancellation after its handler starts.
+cancellation after its handler starts. Device lighthouse jobs complete after
+provisioning or revocation; the router independently enforces the absolute
+30-minute maximum session deadline. Session revoke requests queued cancellation
+of the original provision job and enqueues a separate revoke job, fencing an
+in-flight create RPC even when provisioning is already running.
 
 The public `PlatformJobPublic` contract is projected identically to HTTP and
 the `platform_job_updated` WebSocket event. Notifications are a projection of
