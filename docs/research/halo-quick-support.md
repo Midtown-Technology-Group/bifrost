@@ -292,8 +292,9 @@ its candidate was never applied. Infrastructure source is signed commit
 environment, one 0.25-vCPU/0.5-GiB replica (RustDesk S6 plus nginx), an app identity
 and Standard Key Vault for the stable server key. No customer VNet, paid
 load balancer/public IP, storage share or existing-app changes are declared.
-Bicep build and eight-create-only what-if passed; authorized apply has started.
-Runtime acceptance is pending.
+Bicep build and eight-create-only what-if passed. Authorized apply succeeded
+after correcting unsupported three-decimal per-container CPU requests to
+0.15/0.10 (same 0.25 total). Runtime remote-control acceptance remains blocked.
 
 The released OSS server **does not support controlled-client registration on
 this route** despite its WebSocket listener. In
@@ -309,3 +310,17 @@ release remains 1.1.16 and upstream master has the same rejection, checked
 proof. Extend server registration/heartbeat handling only if the operator
 accepts that additional patch scope, beyond the previously authorized
 technician-grant patch. The full MVP remains gated on a passing Windows spike.
+
+Runtime on 2026-10-05: revision `ca-mtg-quick-support-spike--opvj1aa` at
+`https://ca-mtg-quick-support-spike.jollymeadow-f3b17dc2.eastus2.azurecontainerapps.io`
+is running. Public HTTPS health passed normal certificate validation; the
+registration probe returned exact `NOT_SUPPORT` result 6. A wrong relay key
+was rejected; two synthetic relay clients exchanged bidirectional data for
+262 seconds, crossing 240 seconds, and both containers remained healthy with
+zero restarts. No customer Windows RustDesk session, consent, isolation or UAC
+test was performed. Readback confirmed minimum aggregate, pinned image digests,
+Key Vault identity/key match and no customer networking resources. Local
+private parameters and the unused VM SSH key were removed. Thomas Bray retains
+the disposable ACA resource through the patch decision and Windows tests, with
+October 12 review tag and no automatic deletion. Evidence is in infra
+`docs/runbooks/quick-support-spike.md`, source locally signed; no push/merge/PR.
