@@ -28,7 +28,7 @@ services:
       retries: 5
 
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.26.0-p0@sha256:e67a938ac34d7a673fa561b29d285dc6b250d1def3bd66550c3a0a2c2cfafc49  # pinned 2026-10-03: newest stable (:latest is an unmatchable floating rebuild)
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -87,7 +87,7 @@ services:
       retries: 5
 
   seaweedfs:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.48@sha256:3498e39f8f3e32eaaebc6e8c9c4b0084be3839e614d410b741a6784b77d04a52  # pinned 2026-10-03: digest == former :latest
     environment:
       AWS_ACCESS_KEY_ID: bifrost
       AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY}
@@ -373,7 +373,7 @@ services:
   # stops; no durable NetBird Admin reverse-proxy mapping or API key is needed.
   # Only started with --profile netbird.
   netbird:
-    image: netbirdio/netbird:latest
+    image: netbirdio/netbird:0.80.0@sha256:eb5b62dbd094baade4d17c94608e54f8581b50b02719886c62f638805b60ab28  # pinned 2026-10-03: digest == former :latest
     entrypoint: ["/usr/local/bin/bifrost-netbird-entrypoint.sh"]
     network_mode: "service:client"
     cap_add:
