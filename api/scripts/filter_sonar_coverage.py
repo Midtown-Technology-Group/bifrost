@@ -17,7 +17,8 @@ import coverage
 
 REPOSITORY_ROOT = Path("/repo")
 API_ROOT = Path("/app")
-ARTIFACT_ROOT = Path("/tmp/bifrost")
+# Dedicated root-level bind mount; do not place artifact lookup under public /tmp.
+ARTIFACT_ROOT = Path("/bifrost-results")
 MAX_ARTIFACT_BYTES = 128 * 1024 * 1024
 INVENTORY_NAME = ".sonar-evidence/raw/tracked-files.nul"
 INPUT_NAME = ".coverage.sonar"
