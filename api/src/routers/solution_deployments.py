@@ -21,6 +21,7 @@ from src.models.contracts.solution_deployments import (
     InitialWorkflowInstallInspectRequest,
     InitialWorkflowInstallInspectResponse,
     InitialWorkflowInstallRequest,
+    RepoWorkflowAdoptionInspectResponse,
     SharedTableBindingPreviewRequest,
     SolutionDeploymentCapabilities,
     SolutionDeploymentCreate,
@@ -68,6 +69,7 @@ from src.services.solutions.github_source_delivery import GitSourceDeliveryServi
 from src.services.solutions.initial_workflow_install import (
     InitialWorkflowInstallService,
 )
+from src.services.solutions.repo_workflow_adoption import RepoWorkflowAdoptionService
 from src.services.solutions.live_handoff_candidate import (
     WorkspaceLiveHandoffCandidateService,
 )
@@ -692,6 +694,48 @@ async def activate_initial_workflow_install(
     del user
     return await _write_initial_workflow_install(ctx, solution_id, partial(
         InitialWorkflowInstallService(ctx.db).activate,
+        solution_id, deployment_id,
+        InitialWorkflowInstallInspectRequest(reviewed_recipe=body.reviewed_recipe),
+        body.expected_evidence_id,
+    ))
+
+
+@router.post("/{deployment_id}/repo-workflow-adoption/candidate", response_model=RepoWorkflowAdoptionInspectResponse)
+async def stage_repo_workflow_adoption(
+    solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    """Stage reviewed source for a populated legacy install, preserving entities."""
+    async def stage():
+        return await RepoWorkflowAdoptionService(ctx.db).stage(
+            solution_id, deployment_id, user.user_id, body,
+            _decode_source_files(body.files), _decode_initial_workflow_resources(body),
+        )
+    return await _write_initial_workflow_install(ctx, solution_id, stage)
+
+
+@router.post("/{deployment_id}/repo-workflow-adoption/preflight", response_model=RepoWorkflowAdoptionInspectResponse)
+async def inspect_repo_workflow_adoption(
+    solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallInspectRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    del user
+    try:
+        return await RepoWorkflowAdoptionService(ctx.db).inspect(solution_id, deployment_id, body)
+    except SolutionSourceRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (SolutionSourceRevisionError, DeploymentArtifactIntegrityError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/repo-workflow-adoption/activate", response_model=RepoWorkflowAdoptionInspectResponse)
+async def activate_repo_workflow_adoption(
+    solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallCommitRequest,
+    ctx: Context, user: CurrentSuperuser,
+):
+    del user
+    return await _write_initial_workflow_install(ctx, solution_id, partial(
+        RepoWorkflowAdoptionService(ctx.db).activate,
         solution_id, deployment_id,
         InitialWorkflowInstallInspectRequest(reviewed_recipe=body.reviewed_recipe),
         body.expected_evidence_id,

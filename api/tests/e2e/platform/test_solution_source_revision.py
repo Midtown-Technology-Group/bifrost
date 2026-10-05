@@ -112,7 +112,7 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
     from src.services.solutions.deployment_manifest import DeploymentGitProvenance
@@ -211,6 +211,26 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         value=0,
         cache_ttl_seconds=0,
     )
+    recipe = None
+    if legacy_registration_name is not None:
+        from src.services.file_storage.indexers.workflow import WorkflowIndexer
+        from src.services.solutions.reviewed_workflow_artifact import build_reviewed_artifact, compile_reviewed_workflows
+        from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+
+        assert source_commit_sha is not None
+        recipe = ReviewedWorkflowRecipe.model_validate({
+            "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(solution_id),
+            "files": {path: f"solutions/{solution.slug}/{path}"},
+            "shared_tables": {name: item.model_dump(mode="json") for name, item in bindings.items()},
+            "root_file_bindings": root_file_bindings or {},
+            "workflows": [{"id": str(workflow_id), "path": path, "function_name": "run",
+                "organization_id": str(organization_id) if organization_id else None,
+                "controls": {}, "runtime_bounds": bounds}],
+        })
+        entities = compile_reviewed_workflows(recipe, {path: old_source}, {}, WorkflowIndexer(db_session),
+            legacy_registration_names={workflow_id: legacy_registration_name})
+        manifest, resolution = build_reviewed_artifact(solution_id, base_id, recipe,
+            {path: old_source}, {}, entities, source_commit_sha, "bifrost.repo-workflow-adoption/v1")
     base = SolutionDeployment(
         id=base_id,
         organization_id=organization_id,
@@ -223,6 +243,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         resolution_map_hash=manifest.resolution_map_hash,
         source_artifact_key=manifest.source.artifact_key,
         runtime_storage_prefix=base_prefix,
+        git_commit_sha=source_commit_sha if recipe is not None else None,
         created_by=platform_admin.user_id,
         validation_result={"schema_version": "bifrost.workspace-live-handoff/v1"},
     )
@@ -286,6 +307,11 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     await db_session.flush()
     db_session.add_all([workflow, base, table])
     await db_session.flush()
+    if recipe is not None:
+        # Project the sealed registration while its runtime is still a draft.
+        await workflow_revision.project_workflow_registrations(
+            db_session, solution_id, entities, {workflow_id})
+        await db_session.refresh(workflow)
     repository = SolutionDeploymentRepository(db_session)
     previous_state = "draft"
     for next_state in ("building", "validated", "ready", "activating", "active"):
@@ -300,7 +326,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     await db_session.commit()
     await db_session.refresh(base)
 
-    return SimpleNamespace(solution_id=solution_id, base_id=base_id, revision_id=revision_id, workflow_id=workflow_id, path=path, old_source=old_source, new_source=new_source, bindings=bindings, manifest=manifest, objects=objects, solution=solution, base=base, workflow=workflow, table=table)
+    return SimpleNamespace(solution_id=solution_id, base_id=base_id, revision_id=revision_id, workflow_id=workflow_id, path=path, old_source=old_source, new_source=new_source, bindings=bindings, manifest=manifest, objects=objects, solution=solution, base=base, workflow=workflow, table=table, recipe=recipe)
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,7 @@ from bifrost.workspace_release import canonical_digest
 from src.config import get_settings
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.models.enums import ExecutionStatus
-from src.models.orm.executions import Execution
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.operation_receipts import OperationReceipt
 from src.models.orm.solutions import Solution
@@ -219,7 +219,7 @@ async def _verified_delivery_proof(db: AsyncSession, deployment: Any, manifest: 
             or any(not isinstance(value, str) for value in mapping.values())):
         raise UnprovenSourceConsumers("Protected repository mapping differs from deployment closure")
     try:
-        receipt = await db.get(OperationReceipt, UUID(proof["receipt_id"]))
+        receipt = await db.get(OperationReceipt, UUID(proof["receipt_id"]), populate_existing=True)
         identity = {"repository_id": policy.repository_id, "solution_id": str(deployment.solution_id),
             "source_commit_sha": proof["commit_sha"], "artifact_digest": proof["artifact_digest"],
             "ci_run_id": proof["ci_run_id"], "ci_run_attempt": proof["ci_run_attempt"],
@@ -239,9 +239,16 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
     # the global Live fence, then all installs in stable UUID order, then source
     # rows. No one-install transaction may acquire this aggregate lock set.
     await acquire_workspace_release_lock(db, None)
-    release = await global_active_workspace_release_descriptor(db)
     solutions = list((await db.scalars(select(Solution).where(Solution.status == "active")
         .order_by(Solution.id).with_for_update().execution_options(populate_existing=True))).all())
+    # An unsupported install makes aggregate completion impossible regardless
+    # of the other installs' bytes. Detect it under the same admission fence
+    # before reading immutable bundles; UUID order must not decide how much
+    # storage work a known-incomplete accounting sweep performs.
+    if any(solution.execution_runtime_mode != "deployment-v1"
+            or solution.active_deployment_id is None for solution in solutions):
+        raise UnprovenSourceConsumers("Mutable Solution consumer remains")
+    release = await global_active_workspace_release_descriptor(db)
     repository = SolutionDeploymentRepository(db)
     consumers: dict[UUID, SourceConsumer] = {}
     visiting: set[UUID] = set()
@@ -331,8 +338,6 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
         visiting.remove(deployment_id)
 
     for solution in solutions:
-        if solution.execution_runtime_mode != "deployment-v1" or solution.active_deployment_id is None:
-            raise UnprovenSourceConsumers("Mutable Solution consumer remains")
         await visit(solution.active_deployment_id, admission=True, expected_solution=solution.id,
             expected_scope=solution.organization_id)
     # Superseded dependency/accepted pins remain real consumers until drained.
@@ -340,7 +345,10 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
         ExecutionAttempt.logical_job_type == "workflow",
         ExecutionAttempt.logical_job_id == Execution.id,
         ExecutionAttempt.completed_at.is_(None)))
-    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt)
+    accepted_workflow_attempt = exists(select(WorkflowExecutionAttempt.id).where(
+        WorkflowExecutionAttempt.execution_id == Execution.id,
+        WorkflowExecutionAttempt.completed_at.is_(None)))
+    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt, accepted_workflow_attempt)
     pins = (await db.scalars(select(Execution.solution_deployment_id).where(
         accepted_execution, Execution.solution_deployment_id.is_not(None)).distinct())).all()
     for identity in pins:
@@ -402,20 +410,28 @@ async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
     query = select(WorkspaceSourceRelease).where(
         WorkspaceSourceRelease.organization_id == accountability_organization_id,
         WorkspaceSourceRelease.disposition.in_(UNRESOLVED))
-    if await db.scalar(query.limit(1)) is None:
-        return []
-    try:
-        consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
-    except (UnprovenSourceConsumers, ValueError):
-        return []
     # Rotate unsupported records behind never/least-recently examined rows.
     # Exact declaration replay additionally targets its identity immediately.
     if source_release_id is not None:
         query = query.where(WorkspaceSourceRelease.id == source_release_id)
-    records = list((await db.scalars(query.order_by(
+    ordered = query.order_by(
         WorkspaceSourceRelease.accounting_checked_at.asc().nulls_first(),
         WorkspaceSourceRelease.created_at.asc(), WorkspaceSourceRelease.id)
-        .limit(min(max(limit, 1), 1000)).with_for_update().execution_options(populate_existing=True))).all())
+    # Select the bounded work set before the expensive aggregate readback, but
+    # acquire Source row locks only AFTER the collector's global/install locks.
+    # Re-read unresolved state under those locks before changing accounting.
+    identities = list((await db.scalars(ordered.with_only_columns(WorkspaceSourceRelease.id)
+        .limit(min(max(limit, 1), 1000)))).all())
+    if not identities:
+        return []
+    try:
+        consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
+    except (UnprovenSourceConsumers, ValueError):
+        # An unproven consumer prevents completion, not recovery rotation.
+        # Storage/infrastructure errors still propagate for the caller to retry.
+        consumers, loose_hashes, uncertain = [], {}, True
+    records = list((await db.scalars(ordered.where(WorkspaceSourceRelease.id.in_(identities))
+        .with_for_update().execution_options(populate_existing=True))).all())
     now = datetime.now(UTC)
     completed = []
     for record in records:

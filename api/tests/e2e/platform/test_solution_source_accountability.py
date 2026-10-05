@@ -68,7 +68,7 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     """Exclusive synthetic consumers inside an outer rollback transaction."""
     from src import config
     from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
-    from src.models.orm.executions import Execution
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
     from src.models.orm.execution_attempts import ExecutionAttempt
     from src.models.orm.operation_receipts import OperationReceipt
     from src.models.orm.solutions import Solution
@@ -85,6 +85,8 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     await db_session.execute(update(Workflow).values(is_active=False))
     await db_session.execute(update(Execution).values(status=ExecutionStatus.SUCCESS))
     await db_session.execute(update(ExecutionAttempt).values(completed_at=datetime.now(UTC)))
+    await db_session.execute(update(WorkflowExecutionAttempt).values(status="succeeded",
+        phase="terminal", completed_at=datetime.now(UTC)))
     commit, tree = "a" * 40, "b" * 40
     f = await _seed_adopted_revision(db_session, platform_admin, monkeypatch, source_commit_sha=commit)
     f.objects[(str(f.base_id), f.path)] = f.old_source
@@ -156,10 +158,10 @@ async def test_late_declaration_replay_settles_from_installed_readback_without_m
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", ["bytes", "mapping", "receipt", "registration", "mutable", "legacy_execution"])
+@pytest.mark.parametrize("fault", ["bytes", "mapping", "receipt", "registration", "mutable", "legacy_execution", "workflow_attempt"])
 async def test_database_consumer_drift_keeps_source_unresolved(db_session, platform_admin, accounting_install, fault):
     from src.models.enums import ExecutionStatus
-    from src.models.orm.executions import Execution
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
     from src.models.orm.solutions import Solution
     from src.models.orm.workflows import Workflow
     from src.services.solution_source_accountability import reconcile_solution_owned_source
@@ -174,6 +176,15 @@ async def test_database_consumer_drift_keeps_source_unresolved(db_session, platf
         await db_session.execute(update(Workflow).where(Workflow.id == f.workflow_id).values(name="stale registration"))
     elif fault == "mutable":
         await db_session.execute(update(Solution).where(Solution.id == f.solution_id).values(execution_runtime_mode="legacy"))
+    elif fault == "workflow_attempt":
+        accepted = Execution(id=uuid4(), workflow_name="Terminal parent with accepted attempt",
+            executed_by_name="fixture", workflow_id=f.workflow_id, status=ExecutionStatus.SUCCESS,
+            completed_at=datetime.now(UTC))
+        db_session.add(accepted)
+        await db_session.flush()
+        db_session.add(WorkflowExecutionAttempt(execution_id=accepted.id,
+            attempt_number=1, claim_token=uuid4(), status="running", phase="execution",
+            published_at=datetime.now(UTC), claimed_at=datetime.now(UTC), started_at=datetime.now(UTC)))
     else:
         db_session.add(Execution(id=uuid4(), workflow_name="unproven accepted work", executed_by_name="fixture",
             workflow_id=f.workflow_id, status=ExecutionStatus.PENDING))
@@ -186,6 +197,69 @@ async def test_database_consumer_drift_keeps_source_unresolved(db_session, platf
     await db_session.flush()
     assert await reconcile_solution_owned_source(db_session) == []
     assert record.disposition == "pending" and record.completion_evidence is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("runtime_mode", ["repo-v1", "deployment-v1"])
+async def test_later_unpinned_install_blocks_completion_before_any_bundle_read(
+    db_session, platform_admin, accounting_install, monkeypatch, runtime_mode,
+):
+    """A valid earlier install must not trigger I/O ahead of a known blocker."""
+    from unittest.mock import Mock
+    from uuid import UUID
+    from src.models.orm.solutions import Solution
+    from src.services import solution_source_accountability as accounting
+
+    f = accounting_install
+    await _attach_accounting_proof(db_session, f)
+    later_id = UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    assert f.solution_id < later_id
+    db_session.add(Solution(id=later_id, slug="accounting-unpinned-blocker",
+        name="Unpinned accounting blocker", organization_id=PROVIDER_ORG_ID,
+        status="active", execution_runtime_mode=runtime_mode, active_deployment_id=None))
+    record = WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=f.commit, source_tree_sha=f.tree,
+        paths={f.path: f.digest.removeprefix("sha256:")}, disposition="pending",
+        declared_disposition="pending", declaration_actor="platform_admin",
+        created_by=platform_admin.user_id)
+    db_session.add(record)
+    await db_session.flush()
+    storage = Mock(side_effect=AssertionError("Known blocker must precede bundle I/O"))
+    monkeypatch.setattr(accounting, "SolutionDeploymentStorage", storage)
+
+    assert await accounting.reconcile_solution_owned_source(db_session) == []
+    storage.assert_not_called()
+    assert record.disposition == "pending" and record.completion_evidence is None
+
+
+@pytest.mark.asyncio
+async def test_unknown_consumer_rotates_examined_obligations_without_claiming_completion(
+    db_session, platform_admin, accounting_install,
+):
+    """A real mutable-install blocker must not freeze the oldest debt forever."""
+    from src.models.orm.solutions import Solution
+    from src.services.solution_source_accountability import reconcile_solution_owned_source
+
+    f = accounting_install
+    await _attach_accounting_proof(db_session, f)
+    db_session.add(Solution(id=uuid4(), slug="accounting-rotation-blocker",
+        name="Unproven mutable consumer", organization_id=PROVIDER_ORG_ID,
+        status="active", execution_runtime_mode="repo-v1", active_deployment_id=None))
+    records = [WorkspaceSourceRelease(id=uuid4(), organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=uuid4().hex + "a" * 8, source_tree_sha=f.tree,
+        paths={f.path: f.digest.removeprefix("sha256:")}, disposition="pending",
+        declared_disposition="pending", declaration_actor="platform_admin",
+        created_by=platform_admin.user_id, created_at=datetime.now(UTC) + timedelta(seconds=i))
+        for i in range(2)]
+    db_session.add_all(records)
+    await db_session.flush()
+    assert await reconcile_solution_owned_source(db_session, limit=1) == []
+    assert records[0].accounting_checked_at is not None
+    assert records[1].accounting_checked_at is None
+    await db_session.commit()
+    assert await reconcile_solution_owned_source(db_session, limit=1) == []
+    assert records[1].accounting_checked_at is not None
+    assert all(row.disposition == "pending" and row.completion_evidence is None for row in records)
 
 
 @pytest.mark.asyncio

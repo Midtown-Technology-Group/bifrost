@@ -91,6 +91,11 @@ class RuntimeEntityDefinition(ImmutableContract):
     source_ref: str | None = None
     source_hash: str | None = None
     dependency_solution_id: UUID | None = None
+    # Reviewed adoption can retain the original list-shaped registry schema.
+    # The executable definition still carries the complete source-derived schema.
+    legacy_parameters_schema_hash: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$",
+    )
 
 
 class RuntimeSourceResolution(ImmutableContract):

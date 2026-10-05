@@ -15,6 +15,7 @@ from zipfile import BadZipFile, ZipFile
 
 from bifrost.solution_delivery_review import (
     WorkflowRecipeError,
+    compile_workflow_parameters,
     require_executable_bindings,
 )
 from bifrost.workspace_release import canonical_digest
@@ -32,6 +33,7 @@ from src.models.contracts.solution_deployments import (
 )
 from src.models.orm.events import EventSource, EventSubscription
 from src.models.orm.solutions import Solution
+from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
@@ -60,6 +62,8 @@ from src.services.solutions.shared_table_bindings import (
 
 _SOURCE_REVISION_MARKER = "bifrost.solution-source-revision/v1"
 _HANDOFF_MARKER = "bifrost.workspace-live-handoff/v1"
+_LEGACY_DESCRIPTORS = "bifrost.solution-legacy-descriptors/v1"
+_LEGACY_NAMES = "bifrost.solution-legacy-registration-name/v1"
 
 
 class SolutionSourceRevisionError(ValueError):
@@ -68,6 +72,59 @@ class SolutionSourceRevisionError(ValueError):
 
 class SolutionSourceRevisionConflict(SolutionSourceRevisionError):
     """The active base or review evidence changed."""
+
+
+def legacy_descriptor_evidence(snapshot: dict) -> dict:
+    """Retain installed display metadata that the source compiler cannot express."""
+    fields = {key: snapshot[key] for key in ("description", "category")}
+    if any(value is not None and not isinstance(value, str) for value in fields.values()):
+        raise SolutionSourceRevisionError("legacy workflow descriptors are invalid")
+    return {"schema_version": _LEGACY_DESCRIPTORS, "fields": fields,
+            "content_hash": canonical_digest(fields)}
+
+
+def legacy_registration_name_evidence(installed_name: str, source_name: str) -> dict:
+    """Seal the installed caller identity separately from its source declaration."""
+    if any(not isinstance(value, str) or not value.strip() for value in (installed_name, source_name)):
+        raise SolutionSourceRevisionError("legacy registration names must be nonempty strings")
+    fields = {"installed_name": installed_name, "source_name": source_name}
+    return {"schema_version": _LEGACY_NAMES, "fields": fields, "content_hash": canonical_digest(fields)}
+
+
+def require_legacy_registration_name(definition: dict) -> dict | None:
+    """Validate the complete sealed shape; this never permits a mutable rename."""
+    if "legacy_registration_name_evidence" not in definition:
+        return None
+    evidence = definition["legacy_registration_name_evidence"]
+    fields = evidence.get("fields") if isinstance(evidence, dict) else None
+    if not isinstance(fields, dict) or set(fields) != {"installed_name", "source_name"}:
+        raise SolutionSourceRevisionError("legacy registration name evidence is invalid")
+    expected = legacy_registration_name_evidence(fields["installed_name"], fields["source_name"])
+    if evidence != expected or definition.get("name") != fields["installed_name"]:
+        raise SolutionSourceRevisionError("legacy registration name differs from immutable evidence")
+    return evidence
+
+
+def retain_legacy_registration_names(
+    entities: dict[str, RuntimeEntityDefinition], previous: dict[str, RuntimeEntityDefinition],
+) -> dict[str, RuntimeEntityDefinition]:
+    """Compatible reviewed delivery preserves an already sealed caller binding."""
+    previous_by_id = {item.resolved_id: item for item in previous.values()}
+    result = dict(entities)
+    for ref, item in entities.items():
+        old = previous_by_id.get(item.resolved_id)
+        if old is None:
+            continue
+        evidence = require_legacy_registration_name(json.loads(canonical_json(old.definition)))
+        if evidence is None:
+            continue
+        payload = item.model_dump(mode="json")
+        if payload["definition"]["name"] != evidence["fields"]["source_name"]:
+            raise SolutionSourceRevisionError("source registration name changed from its sealed declaration")
+        payload["definition"]["name"] = evidence["fields"]["installed_name"]
+        payload["definition"]["legacy_registration_name_evidence"] = evidence
+        result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
 
 
 def _decode_files(request: SolutionSourceRevisionRequest) -> dict[str, bytes]:
@@ -137,6 +194,7 @@ def _workflow_snapshot(workflow: Workflow) -> dict:
 
 def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -> None:
     definition = json.loads(canonical_json(entity.definition))
+    require_legacy_registration_name(definition)
     timeout = workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
     bounds = definition.get("runtime_bounds")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
@@ -165,6 +223,25 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
     # Older handoff manifests predate a complete registration definition.
     # New workflow revisions must also match every deploy-owned projection.
     snapshot = _workflow_snapshot(workflow)
+    legacy = definition.get("legacy_descriptor_evidence")
+    if legacy is not None:
+        # The compiler's source-derived descriptors remain in the executable
+        # definition. Exact installed legacy descriptors are a separate sealed
+        # observation; no security or identity field may enter this exception.
+        expected_legacy = legacy_descriptor_evidence(snapshot)
+        if legacy != expected_legacy:
+            raise SolutionSourceRevisionError("legacy workflow descriptors differ from immutable evidence")
+        for key in ("description", "category"):
+            if not isinstance(definition.get(key), str):
+                raise SolutionSourceRevisionError("source workflow descriptor must be a string")
+            snapshot[key] = definition[key]
+    if isinstance(workflow.parameters_schema, list):
+        # Adoption attests the exact legacy representation after checking the
+        # source signature. Preserve it in the registry until reviewed delivery
+        # projects the complete schema; a changed legacy list fails closed.
+        expected_legacy_hash = canonical_digest(workflow.parameters_schema)
+        if entity.legacy_parameters_schema_hash == expected_legacy_hash:
+            snapshot["parameters_schema"] = definition.get("parameters_schema")
     for key in (
         "parameters_schema", "display_name", "description", "category", "tags",
         "endpoint_enabled", "public_endpoint", "access_level", "role_ids",
@@ -223,6 +300,10 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
             f"workflow function is missing or ambiguous: {workflow.id}"
         )
     node = matches[0]
+    try:
+        parameters = compile_workflow_parameters(files[path], workflow.function_name, path=path)
+    except WorkflowRecipeError as exc:
+        raise SolutionSourceRevisionError(str(exc)) from exc
     return (
         ast.dump(node.args, include_attributes=False)
         + ":"
@@ -230,6 +311,7 @@ def _entrypoint_signature(files: dict[str, bytes], workflow: Workflow) -> str:
             ast.dump(item, include_attributes=False) for item in node.decorator_list
         )
         + (":async" if isinstance(node, ast.AsyncFunctionDef) else ":sync")
+        + ":" + canonical_json(parameters).decode("utf-8")
     )
 
 
@@ -251,6 +333,9 @@ class SolutionSourceRevisionService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repository = SolutionDeploymentRepository(db)
+
+    async def _has_owned_tables(self, solution_id: UUID) -> bool:
+        return await self.db.scalar(select(Table.id).where(Table.solution_id == solution_id).limit(1)) is not None
 
     async def verify_current_source(
         self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest
@@ -316,6 +401,7 @@ class SolutionSourceRevisionService:
             _SOURCE_REVISION_MARKER,
             "bifrost.solution-workflow-revision/v1",
             "bifrost.initial-reviewed-workflow-install/v1",
+            "bifrost.repo-workflow-adoption/v1",
         }:
             raise SolutionSourceRevisionError(
                 "active deployment did not use the reviewed handoff path"
@@ -459,7 +545,7 @@ class SolutionSourceRevisionService:
         try:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
-                has_table_bindings=bool(old_resolution.shared_tables),
+                has_table_bindings=bool(old_resolution.shared_tables) or await self._has_owned_tables(solution_id),
                 has_root_file_bindings=bool(old_resolution.root_file_bindings),
             )
             archive = source_archive(closure)
@@ -617,7 +703,7 @@ class SolutionSourceRevisionService:
         try:
             closure = source_closure(
                 files, {row.path.replace("\\", "/").lstrip("/") for row in workflows},
-                has_table_bindings=bool(old_resolution.shared_tables),
+                has_table_bindings=bool(old_resolution.shared_tables) or await self._has_owned_tables(solution_id),
                 has_root_file_bindings=bool(old_resolution.root_file_bindings),
             )
         except LiveHandoffSourceError as exc:

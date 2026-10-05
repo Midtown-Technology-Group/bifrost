@@ -45,6 +45,8 @@ class SolutionGitSourceDeliveryRequest(BaseModel):
 
 
 class SolutionGitSourceDeliveryResponse(BaseModel):
+    # Runtime activation is distinct from complete authored Source delivery.
+    authored_source_state: Literal["unmapped", "verified", "attention_required"] = "unmapped"
     state: Literal["active", "already_active"]
     solution_id: UUID
     deployment_id: UUID
@@ -253,3 +255,13 @@ class InitialWorkflowInstallInspectResponse(BaseModel):
     source_hashes: dict[str, str]
     evidence_id: str
     state: str
+
+
+class RepoWorkflowAdoptionInspectResponse(InitialWorkflowInstallInspectResponse):
+    """Independent mutable baseline and accepted work for legacy adoption."""
+
+    legacy_source_hashes: dict[str, str]
+    installed_control_digest: str
+    retained_inactive_workflow_ids: list[UUID]
+    accepted_execution_ids: list[UUID]
+    accepted_work_exceeds_limit: bool
