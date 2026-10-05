@@ -16,7 +16,7 @@ separately recorded source pins until reviewed integration.
 
 Claim candidate `8e32b757e286904bdfdc1e18934b2a871579f327` passed
 supported source-check run37245992966 (48 tests, formatting and Clippy;
-independent evidence review pending). Its final fifth characterization
+root and independent evidence review accepted within that source-only scope). Its final fifth characterization
 run37245992376 failed at the exact `builder-security` guard. The particular
 HostConfig type, privilege or network field remains unknown. Resource custody
 remains UNKNOWN/HOLD. This campaign is stopped; no sixth attempt, renamed
@@ -1373,3 +1373,14 @@ Cargo graph and workflow remain fixed. Native formatting is unproved until
 supported CI checks the corrected candidate. Source review precedes any
 commit/push or separately released second transport experiment. Original
 transport failure cause remains UNKNOWN.
+
+
+Independent review
+`f2b4f6d5e6e2af91c9744580b38dec98e84884777eebf9c907fe2ee171ad03fe`
+accepted the final characterization evidence and absolute campaign STOP.
+Root read the complete review, executed-test JSON, actual command/DONE lines
+and complete test blocks. All48 names match seven protocol tests, six bootstrap
+tests, eighteen workflow-domain tests and seventeen offline example tests;
+these are not live database/consumer or full lifecycle parity results.
+Current main fetches remain a549 platform and 6dfc workspace. The stopped
+characterization has no remaining live watch handle.
