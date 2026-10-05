@@ -381,7 +381,7 @@ class AppStorageService:
             if expected_revision is not None and etag != expected_revision.etag:
                 raise ValueError("Live publication changed during the captured source build")
             intent = {"schema_version": PUBLICATION_INTENT_SCHEMA, "application_id": app_id,
-                      "expected_live_etag": etag, "artifact_hashes": {
+                      "expected_live_etag": etag, "manifest_write_started": False, "artifact_hashes": {
                           path: "sha256:" + hashlib.sha256(data).hexdigest() for path, data in captured.items()}}
             if checkpoint_callback:
                 await checkpoint_callback(intent)
@@ -429,6 +429,12 @@ class AppStorageService:
             # every referenced output is durable.
             if before_manifest_switch is not None:
                 await before_manifest_switch()
+            if checkpoint_callback:
+                # The job's current lease must durably cross this boundary
+                # before any pointer request. A reclaimed false checkpoint
+                # therefore proves that its old runner cannot issue a late PUT.
+                intent = {**intent, "manifest_write_started": True}
+                await checkpoint_callback(intent)
             rel_path = "manifest.json"
             await client.put_object(
                 Bucket=self._bucket,

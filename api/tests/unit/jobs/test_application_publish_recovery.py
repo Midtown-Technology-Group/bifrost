@@ -203,3 +203,82 @@ async def test_protected_git_job_fails_before_build_when_existing_credential_rou
     publisher.assert_not_awaited()
     storage.verify_publication.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["Main moved during build", "output storage unavailable"])
+async def test_stopped_before_manifest_write_releases_original_intent_without_publication_replay(
+    monkeypatch, setup, reason,
+):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, original = setup
+    intent = {**original, "manifest_write_started": False}
+    monkeypatch.setattr(PlatformJobContext, "save_checkpoint", AsyncMock())
+
+    async def stopped(*_args, **kwargs):
+        await kwargs["checkpoint_callback"]({k: v for k, v in intent.items() if k != "controls_hash"})
+        raise ValueError(reason)
+
+    publisher.side_effect = stopped
+    with pytest.raises(PlatformJobFailure) as error:
+        await jobs.run_application_publish(_context(), jobs.ApplicationPublishPayload(application_id=app.id))
+    assert error.value.code == "application_publication_not_applied"
+    assert error.value.result["publication_verified"] is False
+    assert error.value.result["original_intent"] == intent
+    assert error.value.result["schema_version"] != jobs.PUBLICATION_INTENT_SCHEMA
+    publisher.assert_awaited_once()
+    storage.verify_publication.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reclaimed_pre_manifest_intent_stops_even_after_control_drift(monkeypatch, setup):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, original = setup
+    intent = {**original, "manifest_write_started": False}
+    monkeypatch.setattr(jobs, "publication_controls_hash", AsyncMock(return_value="changed controls"))
+    with pytest.raises(PlatformJobFailure) as error:
+        await jobs.run_application_publish(_context(intent), jobs.ApplicationPublishPayload(application_id=app.id))
+    assert error.value.code == "application_publication_not_applied"
+    assert error.value.result["original_intent"] == intent
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("marker", [None, True, 0, "false"])
+async def test_unknown_write_boundary_never_releases_intent(setup, marker):
+    app, db, storage, publisher, original = setup
+    intent = dict(original)
+    if marker is not None:
+        intent["manifest_write_started"] = marker
+    storage.verify_publication.side_effect = ValueError("Old manifest still observed")
+    with pytest.raises(PlatformJobRequiresAction) as error:
+        await jobs.run_application_publish(_context(intent), jobs.ApplicationPublishPayload(application_id=app.id))
+    assert error.value.result == intent
+    publisher.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["scope", "model", "solution", "intent_identity"])
+async def test_pre_write_disposition_cannot_release_changed_ownership(setup, fault):
+    app, db, storage, publisher, original = setup
+    intent = {**original, "manifest_write_started": False}
+    if fault == "scope":
+        app.organization_id = uuid4()
+    elif fault == "model":
+        app.app_model = "other"
+    elif fault == "solution":
+        app.solution_id = uuid4()
+    else:
+        intent["application_id"] = str(uuid4())
+        storage.verify_publication.side_effect = ValueError("Wrong intent identity")
+    with pytest.raises(PlatformJobRequiresAction) as error:
+        await jobs.run_application_publish(_context(intent), jobs.ApplicationPublishPayload(application_id=app.id))
+    assert error.value.result == intent
+    publisher.assert_not_awaited()
+    db.commit.assert_not_awaited()

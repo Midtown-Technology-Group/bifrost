@@ -37,6 +37,27 @@ APPLICATION_PUBLISH_JOB_TYPE = "application.publish"
 logger = logging.getLogger(__name__)
 
 
+def _manifest_not_attempted(intent: dict | None, application_id: UUID) -> bool:
+    return (intent is not None and intent.get("schema_version") == PUBLICATION_INTENT_SCHEMA
+            and intent.get("application_id") == str(application_id)
+            and intent.get("manifest_write_started") is False)
+
+
+def _publication_not_applied(context: PlatformJobContext, intent: dict) -> PlatformJobFailure:
+    return PlatformJobFailure(
+        "application_publication_not_applied",
+        "The original attempt stopped before its Live manifest write; a new publication may be admitted.",
+        result={
+            "schema_version": "bifrost.application-publication-disposition/v1",
+            "publication_verified": False,
+            "application_id": intent["application_id"],
+            "disposition": "manifest_not_attempted",
+            "original_job_id": str(context.job_id),
+            "original_intent": intent,
+        },
+    )
+
+
 class ApplicationPublishPayload(BaseModel):
     application_id: UUID
     message: str | None = None
@@ -65,6 +86,7 @@ async def run_application_publish(
 ) -> dict[str, object]:
     payload = ApplicationPublishPayload.model_validate(raw_payload)
     intent = context.checkpoint
+    owns_application = False
     try:
         async with get_db_context() as db:
             application = await db.get(Application, payload.application_id)
@@ -76,6 +98,12 @@ async def run_application_publish(
             if (application.organization_id != context.organization_id
                     or application.app_model != "inline_v1" or application.solution_id is not None):
                 raise ValueError("Application ownership/model changed after publication was queued")
+            owns_application = True
+            if _manifest_not_attempted(intent, application.id):
+                # The reclaimed lease fences the old runner's mandatory second
+                # checkpoint, even if Main or current controls have since moved.
+                assert intent is not None
+                raise _publication_not_applied(context, intent)
             controls = await publication_controls_hash(db, application.id)
             protected_git = payload.protected_git
             policy = None
@@ -242,10 +270,14 @@ async def run_application_publish(
         return result
     except PlatformJobFailure as exc:
         if intent is not None:
+            if owns_application and _manifest_not_attempted(intent, payload.application_id):
+                raise _publication_not_applied(context, intent) from exc
             raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc
         raise
     except Exception as exc:
         if intent is not None:
+            if owns_application and _manifest_not_attempted(intent, payload.application_id):
+                raise _publication_not_applied(context, intent) from exc
             # Retain durable evidence even for an unobserved storage/SQL outcome.
             # A resumed lost attempt can only read back this intent.
             raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc

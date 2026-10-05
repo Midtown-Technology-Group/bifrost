@@ -814,3 +814,51 @@ async def test_stale_runner_cannot_defer_job(
     )
     await db_session.refresh(job)
     assert job.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_pre_manifest_disposition_fences_old_lease_and_admits_new_publication(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import UUID
+    from src.jobs.platform.application_publish import _publication_not_applied
+    from src.jobs.platform.base import PlatformJobCancelled, PlatformJobContext
+
+    job = await _enqueue(db_session)
+    first_lease, reclaimed_lease = uuid4(), uuid4()
+    app_id = UUID(job.resource_id)
+    job.status, job.lease_token = "running", first_lease
+    await db_session.commit()
+
+    @asynccontextmanager
+    async def test_context():
+        yield db_session
+
+    monkeypatch.setattr(service, "get_db_context", test_context)
+    monkeypatch.setattr(service, "publish_platform_job_update", AsyncMock())
+    first = PlatformJobContext(job.id, first_lease, job.organization_id,
+        job.requested_by_user_id, job.requested_by_email, job.requested_by_name)
+    intent = {"schema_version": APPLICATION_PUBLISH_DEFINITION.readback_checkpoint_schema,
+        "application_id": str(app_id), "manifest_write_started": False,
+        "expected_live_etag": "old-revision", "artifact_hashes": {"manifest.json": "sha256:" + "a" * 64}}
+    await first.save_checkpoint(intent, phase="Intent before output writes")
+    job.lease_token = reclaimed_lease
+    await db_session.commit()
+    # The old attempt cannot advance the durable boundary after its lease is
+    # reclaimed. The storage regression separately proves no PUT follows this.
+    with pytest.raises(PlatformJobCancelled):
+        await first.save_checkpoint({**intent, "manifest_write_started": True}, phase="Before pointer write")
+    assert job.result == intent
+    reclaimed = PlatformJobContext(job.id, reclaimed_lease, job.organization_id,
+        job.requested_by_user_id, job.requested_by_email, job.requested_by_name, intent)
+    failure = _publication_not_applied(reclaimed, intent)
+    assert await service.finish_platform_job(job.id, reclaimed_lease, status="failed",
+        result=failure.result, error_code=failure.code, error_message=failure.message)
+    new, reused = await service.enqueue_platform_job(db_session, APPLICATION_PUBLISH_DEFINITION,
+        ApplicationPublishPayload(application_id=app_id, message="New reviewed source"),
+        dedupe_key=job.dedupe_key, organization_id=job.organization_id,
+        requested_by_user_id=uuid4(), requested_by_email="next@example.com", requested_by_name="Next",
+        resource_type=job.resource_type, resource_id=job.resource_id, title="New publication", action_url=None)
+    assert not reused and new.id != job.id
+    assert job.result["original_intent"] == intent
+    assert job.result["publication_verified"] is False

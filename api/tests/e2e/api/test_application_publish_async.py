@@ -293,7 +293,9 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
         source_provenance=source_proof, before_publication=guard, checkpoint_callback=checkpoint)
     assert published is not None
     await db_session.commit()
-    assert len(saved) == 1 and len(guard_calls) == 2
+    assert len(saved) == 2 and len(guard_calls) == 2
+    assert saved[0]["manifest_write_started"] is False
+    assert saved[1] == {**saved[0], "manifest_write_started": True}
     assert saved[0]["expected_live_etag"] == before_revision.etag
     assert await storage.verify_publication(app["id"], saved[0]) == len(saved[0]["artifact_hashes"])
     manifest_bytes = await storage.read_file(app["id"], "live", "manifest.json")
@@ -406,7 +408,8 @@ async def test_storage_rejects_late_publication_without_deleting_previous_output
     await storage.publish(app["id"], bundle_files=_captured_bundle("old"))
     winner = _captured_bundle("winner")
     async def competing_publication(_intent):
-        await storage.publish(app["id"], bundle_files=winner)
+        if _intent["manifest_write_started"] is False:
+            await storage.publish(app["id"], bundle_files=winner)
     with pytest.raises(Exception):
         await storage.publish(app["id"], bundle_files=_captured_bundle("late"),
                               checkpoint_callback=competing_publication)
@@ -569,3 +572,31 @@ def test_bundle_failure_is_persisted_and_does_not_publish(
     )
     assert app_response.status_code == 200
     assert app_response.json()["is_published"] is False
+
+
+@pytest.mark.asyncio
+async def test_storage_does_not_switch_manifest_when_second_checkpoint_loses_lease(
+    platform_admin, app_factory,
+):
+    from src.jobs.platform.base import PlatformJobCancelled
+
+    app = app_factory(platform_admin.headers, f"fenced-write-{uuid.uuid4().hex[:8]}")
+    storage = AppStorageService()
+    old, proposed = _captured_bundle("before-lease-loss"), _captured_bundle("lost-lease")
+    await storage.publish(app["id"], bundle_files=old)
+    revision = await storage.live_manifest_revision(app["id"])
+    saved = []
+
+    async def checkpoint(intent):
+        if intent["manifest_write_started"] is True:
+            raise PlatformJobCancelled
+        saved.append(intent)
+
+    with pytest.raises(PlatformJobCancelled):
+        await storage.publish(app["id"], bundle_files=proposed, checkpoint_callback=checkpoint)
+    assert len(saved) == 1 and saved[0]["manifest_write_started"] is False
+    assert await storage.live_manifest_revision(app["id"]) == revision
+    assert await storage.read_file(app["id"], "live", "manifest.json") == old["manifest.json"]
+    # Durable output objects are not a publication; neither old nor orphaned
+    # outputs are deleted as part of this failed attempt.
+    assert await storage.read_file(app["id"], "live", "entry-lost-lease.js") == proposed["entry-lost-lease.js"]

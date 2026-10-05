@@ -217,6 +217,18 @@ manifest switches conditionally after all referenced outputs are durable. Older
 outputs remain available to already-loaded browsers; publishing does not collect
 them.
 
+The initial checkpoint explicitly records `manifest_write_started=false`.
+Immediately before the conditional manifest PUT, the handler saves the same
+intent with that flag set to `true`, using the current job lease. A reclaimed
+false checkpoint therefore fences the old runner before it can issue a late
+write. A stopped pre-write attempt finishes as `application_publication_not_applied`,
+retaining its original intent in a terminal disposition receipt. It receives
+no publication, runtime or accounting credit; a new request can enter the normal
+reviewed admission path even if Main or controls have changed. Ownership/model
+changes do not authorize this disposition. Legacy checkpoints without the flag
+and write-started checkpoints remain uncertain: observing the old ETag alone
+does not prove that a delayed conditional PUT cannot still succeed.
+
 An uncertain outcome retains this intent in `requires_action`. A lost worker or
 the same requester's next `POST /api/applications/{id}/publish` reconciles the
 original intent by reading the manifest and every output, checking App scope,
