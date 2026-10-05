@@ -30,7 +30,7 @@ class EvidenceError(ValueError):
 SCHEMA = 1
 MAX_REPORT_BYTES = 100 * 1024 * 1024
 JS_SUFFIXES = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
-UNSUPPORTED_SUFFIXES = {".rs", ".sh", ".bash", ".ps1", ".sql", ".go", ".java", ".c", ".h", ".cpp"}
+UNSUPPORTED_SUFFIXES = {".rs", ".sh", ".bash", ".ps1", ".sql", ".go", ".java", ".c", ".h", ".cpp", ".j2"}
 CONFIG_SUFFIXES = {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".properties"}
 TEST_PATTERNS = (
     "**/tests/**", "**/test/**", "**/*.test.*", "**/*.spec.*",
