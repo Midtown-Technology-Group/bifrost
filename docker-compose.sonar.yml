@@ -6,6 +6,4 @@ services:
       COVERAGE_FILE: /tmp/bifrost/.coverage.sonar
     volumes:
       - .:/repo:ro
-      - ./api/.coveragerc.sonar:/app/.coveragerc.sonar:ro
-      - ./api/.coveragerc.sonar-report:/app/.coveragerc.sonar-report:ro
       - ./api/bifrost.py:/app/bifrost.py:ro
