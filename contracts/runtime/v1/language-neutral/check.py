@@ -9,6 +9,29 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parent
 FORMATS = FormatChecker()
+SOURCE_DIRECTORY = "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios"
+EXPECTED_SOURCE_PATHS = {
+    f"{SOURCE_DIRECTORY}/{name}.json"
+    for name in (
+        "inventory-invalid-limit", "inventory-missing-mapping", "inventory-two-pages",
+        "verify-active-token", "verify-authorization-failure", "verify-malformed-json",
+    )
+}
+
+
+def validate_fixture_inventory(provenance, fixture_directory):
+    paths = [record["path"] for record in provenance["files"]]
+    basenames = [Path(path).name for path in paths]
+    local_names = {
+        path.name for path in fixture_directory.iterdir() if path.name != "provenance.json"
+    }
+    if (
+        len(paths) != len(EXPECTED_SOURCE_PATHS)
+        or set(paths) != EXPECTED_SOURCE_PATHS
+        or len(set(basenames)) != len(basenames)
+        or set(basenames) != local_names
+    ):
+        raise ValueError("fixture provenance set mismatch")
 
 
 @FORMATS.checks("date-time", raises=ValueError)
@@ -48,6 +71,7 @@ def main():
         if actual != vector["valid"]:
             raise ValueError(f"structural expectation failed: {key}")
     provenance = load("fixtures/provenance.json")
+    validate_fixture_inventory(provenance, ROOT / "fixtures")
     for record in provenance["files"]:
         path = ROOT / "fixtures" / Path(record["path"]).name
         if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
