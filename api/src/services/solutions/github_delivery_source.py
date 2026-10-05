@@ -233,17 +233,21 @@ class ProtectedGitReader:
             raise GitDeliverySourceError("Source was superseded or main is not protected; deliver full current state")
 
     async def verified_ancestors(
-        self, commit_sha: str, candidates: set[str], *, limit: int = MAX_ANCESTRY_COMMITS,
+        self, commit_sha: str, candidates: set[str] | None, *, limit: int = MAX_ANCESTRY_COMMITS,
     ) -> tuple[str, ...]:
         """Prove first-parent ancestry from bounded fixed-repository Git pages.
 
         Listing order is never ancestry evidence: each traversed edge must name
         its actual parent. Missing pages, gaps or truncation leave debt open.
         A delayed 268-commit declaration needs three reads rather than 268.
+        None returns the bounded verified chain so native history selection can
+        exclude unprovable declarations before applying its archive-read limit.
         """
         if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
             raise GitDeliverySourceError("Expected an exact ancestry head SHA")
-        remaining = {sha for sha in candidates if re.fullmatch(r"[0-9a-f]{40}", sha)} - {commit_sha}
+        remaining = None if candidates is None else {
+            sha for sha in candidates if re.fullmatch(r"[0-9a-f]{40}", sha)
+        } - {commit_sha}
         steps = min(max(limit, 0), MAX_ANCESTRY_COMMITS - 1)
         matched: list[str] = []
         seen = {commit_sha}
@@ -252,7 +256,7 @@ class ProtectedGitReader:
         page = 0
         complete = False
         for _ in range(steps):
-            if not remaining:
+            if remaining is not None and not remaining:
                 break
             while current not in parents and not complete and page < MAX_ANCESTRY_COMMITS // 100:
                 page += 1
@@ -279,9 +283,10 @@ class ProtectedGitReader:
             if parent in seen:
                 break
             seen.add(parent)
-            if parent in remaining:
+            if remaining is None or parent in remaining:
                 matched.append(parent)
-                remaining.remove(parent)
+                if remaining is not None:
+                    remaining.remove(parent)
             current = parent
         return tuple(matched)
 

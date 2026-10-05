@@ -104,8 +104,9 @@ class GitSourceDeliveryService:
         if tracking_org is not None:
             older = await _unresolved_source_commits(self.db, tracking_org)
             historical = []
+            history_query = None
             if authored is not None:
-                historical = list((await self.db.execute(select(SolutionDeployObligation.id,
+                history_query = (select(SolutionDeployObligation.id,
                         SolutionDeployObligation.source_commit_sha)
                     .join(WorkspaceSourceRelease, WorkspaceSourceRelease.id == SolutionDeployObligation.source_release_id)
                     .where(SolutionDeployObligation.organization_id == tracking_org,
@@ -117,14 +118,19 @@ class GitSourceDeliveryService:
                         WorkspaceSourceRelease.organization_id == tracking_org,
                         WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
                         WorkspaceSourceRelease.source_commit_sha == SolutionDeployObligation.source_commit_sha,
-                        WorkspaceSourceRelease.source_tree_sha == SolutionDeployObligation.source_tree_sha)
+                        WorkspaceSourceRelease.source_tree_sha == SolutionDeployObligation.source_tree_sha))
+            if history_query is not None and await self.db.scalar(history_query.limit(1)) is not None:
+                # The bounded verified chain filters eligible anchors in SQL;
+                # old declarations outside that chain cannot occupy archive slots.
+                source = replace(source, ancestor_commit_shas=await self.reader.verified_ancestors(source.commit_sha, None))
+                historical = list((await self.db.execute(history_query.where(
+                        SolutionDeployObligation.source_commit_sha.in_(source.ancestor_commit_shas))
                     # Every intended install must retain the same tranche until
                     # aggregate recovery settles it. Recovery rotates updated_at
                     # even for incomplete evidence, so it cannot order this read.
                     .order_by(SolutionDeployObligation.created_at, SolutionDeployObligation.id)
                     .limit(MAX_HISTORICAL_AUTHORED_SOURCES))).all())
-                older.update(row.source_commit_sha for row in historical)
-            if older:
+            elif older:
                 source = replace(source, ancestor_commit_shas=await self.reader.verified_ancestors(source.commit_sha, older))
             if historical:
                 retained = []

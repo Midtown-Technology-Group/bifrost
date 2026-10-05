@@ -393,6 +393,26 @@ async def test_delayed_source_ancestry_reaches_268_commits_in_three_bounded_read
 
 
 @pytest.mark.asyncio
+async def test_native_history_eligibility_uses_only_bounded_first_parent_chain():
+    parent, grandparent, branch = "d" * 40, "e" * 40, "f" * 40
+    documents = commit_pages([SHA, parent, grandparent])
+    rows = documents[f"commits?sha={SHA}&per_page=100&page=1"]
+    rows.insert(1, {"sha": branch, "parents": []})
+    rows[0]["parents"].append({"sha": branch})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, None) == (parent, grandparent)
+        assert await reader.verified_ancestors(SHA, None, limit=1) == (parent,)
+
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 1002)]
+    calls = []
+    async with httpx.AsyncClient(transport=transport(commit_pages(chain), calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, None, limit=10000) == tuple(chain[1:1000])
+    assert len(calls) == 10
+
+
+@pytest.mark.asyncio
 async def test_supersession_ancestry_is_first_parent_git_proof_with_a_walk_bound():
     parent, grandparent = "d" * 40, "e" * 40
     documents = commit_pages([SHA, parent, grandparent])

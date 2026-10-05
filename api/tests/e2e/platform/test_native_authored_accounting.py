@@ -133,6 +133,8 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
 
     class Reader:
         async def verified_ancestors(self, _head, candidates):
+            if candidates is None:
+                return (previous.commit_sha,) if historical else ()
             return (previous.commit_sha,) if previous.commit_sha in candidates else ()
 
         async def verify_ci(self, *_args):
@@ -341,8 +343,9 @@ async def test_solution_membership_fence_preserves_plain_reads_and_blocks_member
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("unprovable_prefix", [0, 100])
 async def test_alternating_install_replays_converge_on_immutable_historical_tranches(
-    committed_delivery_db, async_session_factory, platform_admin, monkeypatch,
+    committed_delivery_db, async_session_factory, platform_admin, monkeypatch, unprovable_prefix,
 ):
     """Two installs must retain the same bounded history tranche until both prove it."""
     from contextlib import asynccontextmanager
@@ -369,7 +372,8 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
         source_commit_sha=head, organization_id=None, solution_id=global_solution_id,
         workflow_id=solution_entity_id(global_solution_id, first.workflow_id),
         source_path=first.path, solution_slug=first.solution.slug)
-    root = f"solutions/{first.solution.slug}"
+    slug = first.solution.slug
+    root = f"solutions/{slug}"
     await db.execute(update(Solution).where(Solution.id == first.solution_id).values(repo_subpath=root))
     await db.execute(update(Solution).where(Solution.id == second.solution_id).values(
         repo_subpath=root))
@@ -441,16 +445,21 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
         source_files=entries, files=MappingProxyType(files), source_content_id=content_id)
     old_authored = {}
 
-    # Seed 200 OIDC-shaped parent/child declarations with small, identical
-    # package inventories and distinct immutable commit/tree anchors.
+    # Seed older unprovable children first, then 200 eligible OIDC parent/child
+    # declarations. A bounded Git ancestry lookup must filter by its verified
+    # chain before taking the historical tranche limit.
     origin_time = datetime.now(UTC) - timedelta(days=3)
     child_id_start = (uuid4().int >> 16) << 16
     commit_prefix, tree_prefix = uuid4().hex, uuid4().hex
-    for index in range(200):
-        commit = commit_prefix + f"{index + 1:08x}"
-        tree = tree_prefix + f"{index + 1:08x}"
-        prior = replace(authored_head, commit_sha=commit, tree_sha=tree)
-        old_authored[commit] = prior
+    unprovable_commit_prefix, unprovable_tree_prefix = uuid4().hex, uuid4().hex
+    for index in range(unprovable_prefix + 200):
+        eligible = index >= unprovable_prefix
+        anchor_index = index - unprovable_prefix + 1 if eligible else index + 1
+        commit = (commit_prefix if eligible else unprovable_commit_prefix) + f"{anchor_index:08x}"
+        tree = (tree_prefix if eligible else unprovable_tree_prefix) + f"{anchor_index:08x}"
+        if eligible:
+            prior = replace(authored_head, commit_sha=commit, tree_sha=tree)
+            old_authored[commit] = prior
         release = WorkspaceSourceRelease(
             id=uuid4(), organization_id=PROVIDER_ORG_ID, source_commit_sha=commit,
             source_tree_sha=tree, paths={}, declaration_actor="github_actions_oidc",
@@ -511,6 +520,8 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
                 recipe_path=recipe_by_solution[solution_id])
 
         async def verified_ancestors(self, _head, candidates):
+            if candidates is None:
+                return tuple(sorted(old_authored))
             return tuple(sorted(set(candidates) & set(old_authored)))
 
         async def authored_source(self, commit, *_args, **_kwargs):
@@ -537,14 +548,18 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
 
     await db.flush()
     rows = list((await db.scalars(select(SolutionDeployObligation).where(
-        SolutionDeployObligation.solution_slug == first.solution.slug,
+        SolutionDeployObligation.solution_slug == slug,
         SolutionDeployObligation.repo_subpath == root).order_by(SolutionDeployObligation.created_at,
             SolutionDeployObligation.id))).all())
-    assert len(rows) == 200
-    assert all(row.disposition == "superseded" for row in rows)
+    assert len(rows) == unprovable_prefix + 200
+    eligible_rows = rows[unprovable_prefix:]
+    unprovable_rows = rows[:unprovable_prefix]
+    assert all(row.disposition == "superseded" for row in eligible_rows)
+    assert all(row.disposition == "pending" and row.completion_evidence is None
+        for row in unprovable_rows)
     expected_targets = {str(f.solution_id) for f in installs}
-    assert all(set(row.completion_evidence["installations"]) == expected_targets for row in rows)
-    for row in rows:
+    assert all(set(row.completion_evidence["installations"]) == expected_targets for row in eligible_rows)
+    for row in eligible_rows:
         for fixture in installs:
             proof = row.completion_evidence["installations"][str(fixture.solution_id)]
             assert proof["source_commit_sha"] == head
