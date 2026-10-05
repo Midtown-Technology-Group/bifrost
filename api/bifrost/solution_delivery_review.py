@@ -12,7 +12,7 @@ import hashlib
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -413,7 +413,13 @@ def compile_workflow_registrations(
         kind, declarations = _decorator(tree, node)
         if "id" in declarations:
             try:
-                if not isinstance(declarations["id"], str) or UUID(declarations["id"]) != item.id:
+                if not isinstance(declarations["id"], str):
+                    raise ValueError("source identity must be a UUID string")
+                declared_id = UUID(declarations["id"])
+                # Captured bundles retain author-time UUIDs. Normal Solution
+                # installation resolves them in this install's namespace;
+                # reviewed delivery must preserve that same installed row.
+                if item.id not in {declared_id, uuid5(recipe.solution_id, str(declared_id))}:
                     raise WorkflowRecipeError("Legacy source identity differs from the reviewed registration UUID")
             except ValueError as exc:
                 raise WorkflowRecipeError("Legacy source identity differs from the reviewed registration UUID") from exc
