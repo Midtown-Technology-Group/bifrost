@@ -47,6 +47,8 @@ function fixture() {
       details_url: `https://github.com/${repository}/actions/runs/99/job/52` },
     check(53, "CodeQL", 57789, "github-advanced-security"),
   ];
+  state.runs = [state.run];
+  state.workflows = new Map([[77, state.workflow]]);
   state.suites = new Map(state.checks.map((c) => [c.check_suite.id, { id: c.check_suite.id, app: c.app, head_sha: head, status: "completed", conclusion: "success" }]));
   let reads = 0; let reviewReads = 0;
   state.input = { policy: state.policy, policySha: base, prNumber: 12, request: async (path) => {
@@ -60,7 +62,8 @@ function fixture() {
     if (path.includes("/check-suites?")) return { total_count: state.suites.size, check_suites: [...state.suites.values()] };
     if (path.includes("/check-runs?")) return { total_count: state.checks.length, check_runs: state.checks };
     if (path === `${root}/actions/runs/99`) return state.run;
-    if (path === `${root}/actions/workflows/77`) return state.workflow;
+    if (path.includes("/actions/workflows/")) return state.workflows.get(Number(path.split("/").at(-1)));
+    if (path.includes("/actions/runs?")) return { total_count: state.runs.length, workflow_runs: state.runs };
     if (path.includes("/check-suites/")) return state.suites.get(Number(path.split("/").at(-1)));
     throw new Error(`Unexpected evidence request: ${path}`);
   } };
@@ -179,4 +182,52 @@ test("a blanket allowlist still cannot authorize the policy itself", () => {
 test("workflow path may be ref-qualified; authenticated workflow identity owns its path", async () => {
   const state = fixture(); state.run.path += "@main";
   assert.equal((await evaluate(state.input)).source, "eligible-after-reviewed-activation");
+});
+
+
+test("an unrelated skipped Actions workflow does not deny eligible source", async () => {
+  const state = fixture();
+  state.workflows.set(78, { id: 78, path: ".github/workflows/dependabot-auto-merge.yml" });
+  state.runs.push({ ...state.run, id: 100, workflow_id: 78, check_suite_id: 160, conclusion: "skipped" });
+  state.suites.set(160, { id: 160, app: state.checks[1].app, head_sha: head, status: "completed", conclusion: "skipped" });
+  assert.equal((await evaluate(state.input)).source, "eligible-after-reviewed-activation");
+});
+
+test("a new required Actions suite with zero checks still denies eligibility", async () => {
+  const state = fixture();
+  state.runs.push({ ...state.run, id: 100, check_suite_id: 160, status: "queued", conclusion: null });
+  state.suites.set(160, { id: 160, app: state.checks[1].app, head_sha: head, status: "queued", conclusion: null });
+  await assert.rejects(evaluate(state.input), /Required workflow run is incomplete/);
+});
+
+test("an unattributed Actions suite fails closed", async () => {
+  const state = fixture();
+  state.suites.set(160, { id: 160, app: state.checks[1].app, head_sha: head, status: "queued", conclusion: null });
+  await assert.rejects(evaluate(state.input), /no attributable workflow/);
+});
+
+
+test("two Actions runs cannot ambiguously claim one suite", async () => {
+  const state = fixture(); state.runs.push({ ...state.run, id: 100 });
+  await assert.rejects(evaluate(state.input), /no attributable workflow/);
+});
+
+test("a required run cannot omit its suite from the inventory", async () => {
+  const state = fixture(); state.suites.delete(152);
+  await assert.rejects(evaluate(state.input), /Required workflow run is incomplete/);
+});
+
+
+test("an unrelated newer same-name job cannot override the required workflow", async () => {
+  const state = fixture();
+  state.workflows.set(78, { id: 78, path: ".github/workflows/dependabot-auto-merge.yml" });
+  state.runs.push({ ...state.run, id: 100, workflow_id: 78, check_suite_id: 160, conclusion: "failure" });
+  state.suites.set(160, { id: 160, app: state.checks[1].app, head_sha: head, status: "completed", conclusion: "failure" });
+  state.checks.push({ ...state.checks[1], id: 60, conclusion: "failure", check_suite: { id: 160 } });
+  assert.equal((await evaluate(state.input)).source, "eligible-after-reviewed-activation");
+});
+
+test("a named Actions check with an unknown source fails closed", async () => {
+  const state = fixture(); state.checks.push({ ...state.checks[1], id: 60, check_suite: { id: 999 } });
+  await assert.rejects(evaluate(state.input), /ambiguous workflow source/);
 });
