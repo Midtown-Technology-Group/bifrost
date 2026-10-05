@@ -194,6 +194,21 @@ RustDesk. A source-only investigation satisfies none of their runtime gates.
 
 ## Azure hosting proposal
 
+**Hosting decision revised after cost review:** evaluate ACA TCP-only before
+selecting the prepared VM. The VM candidate remains unapplied. The earlier
+inference that lack of UDP ingress rules out ACA was too strong: RustDesk
+supports `disable-udp=Y`, and pinned 1.5.0
+[`RendezvousMediator::start`](https://github.com/rustdesk/rustdesk/blob/fada664df7a294d1d1a9ca3e7cd3637069122f17/src/rendezvous_mediator.rs#L657)
+selects its TCP registration path when UDP is disabled. ACA supports external
+TCP ingress in a VNet-integrated environment and additional TCP ports.
+Spike TCP registration, direct/relay behavior, ingress timeouts, persistent
+keys/state and lifecycle on a single replica before accepting this option.
+Do not claim it forces relay or preserves normal NAT traversal without proof.
+Web Apps' native ingress exposes HTTP, not these raw TCP services; a WebSocket
+transport adaptation would be a separate, unproven hosting path.
+Compare actual ACA consumption, storage, networking and relay egress with VM
+cost; an always-running transport is not automatically free serverless compute.
+
 Read-only inventory on 2026-10-05 identified subscription `Microsoft Azure
 Sponsorship` (`a1d63b24-1202-4bfa-9086-cf32d1d352fc`). It contains one standalone
 Linux VM, `vm-mtg-bifrost-poc-app-01`, in `rg-mtg-bifrost-poc-core-centralus`,
@@ -225,8 +240,9 @@ of the private CI route. The proposed resource boundary is:
 The [RustDesk OSS Docker guide](https://rustdesk.com/docs/en/self-host/rustdesk-server-oss/docker/)
 defines these native-client ports. The
 [Azure Container Apps ingress contract](https://learn.microsoft.com/en-us/azure/container-apps/ingress-overview)
-supports HTTP and TCP, so it does not supply the required UDP listener. A Linux
-VM is the straightforward candidate. Container Instances supports UDP in its
+supports HTTP and TCP, so it does not supply the default UDP listener. TCP-only
+client configuration is a candidate workaround requiring runtime proof.
+Container Instances supports UDP in its
 schema but would need separate persistence, restart/IP and mixed-protocol
 testing; it is not a proven replacement here.
 
