@@ -1,0 +1,37 @@
+# Sonar collection only. The API badge continues to use .coveragerc unchanged.
+# The Sonar Compose override mounts the complete repository at /repo while API
+# tests retain their normal /app imports. Preserve absolute paths until reporting
+# so that api/scripts and repository scripts cannot be confused.
+[run]
+branch = True
+relative_files = False
+source =
+    /app
+    /repo
+data_file = /tmp/bifrost/.coverage.sonar
+omit =
+    # Tests and their support files do not count as implementation coverage.
+    */tests/*
+    */test_*.py
+    */*_test.py
+    */conftest.py
+    # Dependency, environment, cache, and fuzz-input files are not authored source.
+    */node_modules/*
+    */site-packages/*
+    */.venv/*
+    */venv/*
+    */virtualenv/*
+    */__pycache__/*
+    */.git/*
+    */fuzz/corpora/*
+    # Generated skill mirrors; the .claude originals remain in scope.
+    */.agents/*
+    */plugins/bifrost/skills/*
+
+[report]
+# Keep unimported modules, including directories without __init__.py, at zero.
+include_namespace_packages = True
+show_missing = True
+precision = 2
+skip_empty = False
+skip_covered = False
