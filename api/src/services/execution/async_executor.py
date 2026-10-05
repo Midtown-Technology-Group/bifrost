@@ -295,7 +295,7 @@ async def _persist_execution_pin(
             # user-declared argument. Retain it in the durable dispatch below.
             arguments = (
                 {key: value for key, value in parameters.items() if key != "_event"}
-                if event_delivery is not None
+                if event_delivery is not None and "_event" not in pinned_schema.get("properties", {})
                 else parameters
             )
             issues, schema_error = validate_arguments_against_schema(pinned_schema, arguments)

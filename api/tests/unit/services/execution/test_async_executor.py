@@ -275,15 +275,19 @@ async def test_new_execution_validates_arguments_against_the_pinned_registration
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mapping,accepted", [
-    ({"payload": "{{ payload }}", "apply": True}, True),
-    ({"payload": "{{ payload }}", "apply": True, "unexpected": 1}, False),
-    ({"payload": "{{ payload }}", "apply": True, "_other": 1}, False),
-    ({"payload": "{{ payload }}", "apply": "true"}, False),
-    ({"apply": True}, False),
+@pytest.mark.parametrize("mapping,event_type,event_required,accepted", [
+    ({"payload": "{{ payload }}", "apply": True}, None, False, True),
+    ({"payload": "{{ payload }}", "apply": True, "unexpected": 1}, None, False, False),
+    ({"payload": "{{ payload }}", "apply": True, "_other": 1}, None, False, False),
+    ({"payload": "{{ payload }}", "apply": "true"}, None, False, False),
+    ({"apply": True}, None, False, False),
+    ({"payload": "{{ payload }}", "apply": True}, "object", True, True),
+    ({"payload": "{{ payload }}", "apply": True}, "object", False, True),
+    ({"payload": "{{ payload }}", "apply": True}, "string", True, False),
+    ({"payload": "{{ payload }}", "apply": True}, "string", False, False),
 ])
 async def test_event_dispatch_obeys_strict_pinned_schema_and_retains_metadata(
-    monkeypatch, mapping, accepted,
+    monkeypatch, mapping, event_type, event_required, accepted,
 ):
     from src.models.enums import EventDeliveryStatus
     from src.services.events.processor import EventProcessor
@@ -319,6 +323,10 @@ async def test_event_dispatch_obeys_strict_pinned_schema_and_retains_metadata(
         },
         queue_evidence=lambda: {"solution_deployment_id": str(deployment_id)},
     )
+    if event_type is not None:
+        runtime.parameters_schema["properties"]["_event"] = {"type": event_type}
+        if event_required:
+            runtime.parameters_schema["required"].append("_event")
     monkeypatch.setattr("src.core.database.get_db_context", db_context)
     monkeypatch.setattr("src.services.solutions.deployment_runtime.pin_workflow_runtime", AsyncMock(return_value=runtime))
     monkeypatch.setattr("src.services.execution.retry_policy.workflow_retry_policy_snapshot", AsyncMock(return_value={}))
@@ -331,7 +339,7 @@ async def test_event_dispatch_obeys_strict_pinned_schema_and_retains_metadata(
         with pytest.raises(ValueError, match="pinned input contract"):
             await processor._queue_workflow_execution(delivery, event)
         db.add.assert_not_called()
-        publish.assert_not_awaited()
+        publish.assert_not_called()
         assert delivery.execution_id is None
         return
 
