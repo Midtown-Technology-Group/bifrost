@@ -281,3 +281,31 @@ Subscription what-if `mtg-qs-spike-preview-20261005` succeeded without diagnosti
 and lists only six Create entries in the new group, with no existing-resource
 updates or deletions. The reviewed candidate costs $33.79/month before variable
 charges and requires explicit deployment authorization under infra policy.
+
+## ACA WebSocket selection and stock-server blocker (2026-10-05)
+
+The operator authorized the smallest ACA Consumption resource and accepted
+relay-only transport costs. The earlier VM recommendation above is superseded;
+its candidate was never applied. Infrastructure source is signed commit
+`8f7e5270` in the isolated `bifrost-infra` worktree. The new
+`rg-mtg-quick-support-spike-eastus2` holds a default-network Consumption
+environment, one 0.25-vCPU/0.5-GiB replica (RustDesk S6 plus nginx), an app identity
+and Standard Key Vault for the stable server key. No customer VNet, paid
+load balancer/public IP, storage share or existing-app changes are declared.
+Bicep build and eight-create-only what-if passed; authorized apply has started.
+Runtime acceptance is pending.
+
+The released OSS server **does not support controlled-client registration on
+this route** despite its WebSocket listener. In
+[`handle_tcp`](https://github.com/rustdesk/rustdesk-server/blob/73523b31cfd25d77dee862e6fc9f5e1fb5e485ef/src/rendezvous_server.rs#L475),
+`RegisterPk` produces `RegisterPkResponse.NOT_SUPPORT` and the connection exits.
+The client's
+[`start_tcp`](https://github.com/rustdesk/rustdesk/blob/fada664df7a294d1d1a9ca3e7cd3637069122f17/src/rendezvous_mediator.rs#L601)
+requires registration and heartbeat responses. This invalidates acceptance of
+both stock TCP-only and stock WebSocket controlled-client registration; merely
+selecting `disable-udp=Y` or `allow-websocket=Y` is insufficient. Latest OSS
+release remains 1.1.16 and upstream master has the same rejection, checked
+2026-10-05. Independent relay pairing is testable but is not remote-control
+proof. Extend server registration/heartbeat handling only if the operator
+accepts that additional patch scope, beyond the previously authorized
+technician-grant patch. The full MVP remains gated on a passing Windows spike.
