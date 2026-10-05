@@ -41,7 +41,7 @@ TEST_PATTERNS = (
 GENERATED_PATTERNS = (
     "**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**",
     "**/dist/**", "**/build/**", "**/coverage/**", ".sonar-evidence/**",
-    "client/src/lib/v1.d.ts", ".agents/**", "plugins/bifrost/skills/**",
+    "client/src/lib/v1.d.ts", ".agents/skills/**", "plugins/bifrost/skills/**",
 )
 SYMLINK_ALIASES = {
     "skills/build": "../.claude/skills/bifrost-build",
@@ -554,7 +554,10 @@ def complete_inventory(items: list[dict], reports: dict[str, dict], root: Path) 
             item["coverage_state"] = "test_code_not_source_coverage"
         else:
             item["coverage_state"] = "not_measured_by_this_coverage_gate"
-        if item["changed"] and category in {"unsupported_code_requires_review", "configuration_requires_review", "declaration"}:
+        if item["changed"] and category in {
+            "unsupported_code_requires_review", "configuration_requires_review",
+            "declaration", "generated_or_vendor",
+        }:
             review.append(path)
     return review
 
@@ -647,7 +650,7 @@ def preflight(root: Path, head: str, base: str, reports: dict[str, Path],
                 "coverage_completeness": "incomplete" if omitted else "all_python_js_ts_runtime_files_reported",
                 "sonar_quality_gate": "not_observed", "security_hotspot_review": "not_observed",
                 "limitations": ["Report presence and valid bytes do not establish test success or full line coverage.",
-                                "Unsupported languages, configuration, and declaration changes require human review.",
+                                "Unsupported languages, configuration, declarations, and generated/vendor/alias changes require human review.",
                                 "Producer stamps bind report bytes and source identity, not trusted execution attestation."]}
     output.mkdir(parents=True, exist_ok=True)
     for filename, data in parsed.items():
