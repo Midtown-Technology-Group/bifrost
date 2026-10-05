@@ -58,14 +58,21 @@ Halo-specific automation or RustDesk source into the Bifrost platform binary.
 Investigation candidate: RustDesk **1.5.0**, release commit
 `fada664df7a294d1d1a9ca3e7cd3637069122f17`; its `hbb_common` submodule is
 `229b904508364c8997aad0fb5af57effac859f60`. This is a source pin, **not** an
-approved Windows binary. Binary SHA-256, signature identity and internal mirror
-URL remain unset until artifact review and Windows testing.
+approved Windows binary. Internal mirror URL and runtime approval remain unset
+until artifact review and Windows testing.
 
 Upstream release asset metadata reports `rustdesk-1.5.0-x86_64.exe`,
 25,887,600 bytes, SHA-256
 `8555777215510d83d2d61c9dc984e4fcc838bd7e79f9d18a42585431f5e8bb47`.
-This digest was read from the GitHub release API; no downloaded binary or
-Authenticode signature has yet been verified.
+The binary was downloaded into the isolated Linux scratch directory
+`/tmp/bifrost-rustdesk-spike-1.5.0` and its size/SHA-256 independently matched
+the GitHub release asset metadata. It has not been executed. Identity-verified
+Windows execution `924d76af-1d19-440d-a66d-3753cfbcb447` on 3595 independently
+matched SHA-256 and reported Authenticode `Valid`, signer `PURSLANE`, certificate
+thumbprint `4230334F8A7DD84E50D0273EF379E8B4A82F5DA5`. The temporary Windows
+artifact was removed, with readback `TemporaryArtifactRemoved=true`. This
+establishes artifact integrity/trust under that Windows trust store, not
+runtime acceptance or internal promotion.
 
 | Requirement | Evidence | Consequence |
 | --- | --- | --- |
@@ -205,8 +212,8 @@ of the private CI route. The proposed resource boundary is:
 | Environment | Disposable RustDesk Quick Support spike, not production |
 | Region | Central US, subject to subscription SKU availability |
 | Resource group | `rg-mtg-quick-support-spike-centralus` |
-| VM | `vm-mtg-quick-support-spike-01`, smallest available x86 Linux burstable SKU suitable for the two server processes |
-| OS/storage | Supported Ubuntu LTS Gen2; 32 GiB Standard SSD OS disk |
+| VM | `vm-mtg-quick-support-spike-01`, ARM64 `Standard_B2pls_v2` (2 vCPU, 4 GiB) |
+| OS/storage | Ubuntu 24.04 ARM64 Gen2, image version `24.04.202609040`; 32 GiB Standard SSD OS disk |
 | Network | Dedicated VNet/subnet/NSG/NIC and regional Standard static IPv4 |
 | Server processes | Pinned OSS `hbbs` and `hbbr` containers; persistent shared server-key/data directory |
 | Transport ingress | TCP 21115–21117; UDP 21116 |
@@ -228,14 +235,15 @@ Azure Retail Prices API, USD Central US, retrieved 2026-10-05:
 | Meter | Retail rate | Qualification |
 | --- | --- | --- |
 | Linux `Standard_B1ms` | $0.025/hour | Azure SKU readback says `NotAvailableForSubscription` in Central US; excluded from provisioning. |
-| Linux `Standard_B2ats_v2`, regular on-demand | $0.0106/hour | Availability still being checked; confirm memory suitability before selection. |
+| Linux `Standard_B2ats_v2`, regular on-demand | $0.0106/hour | Also `NotAvailableForSubscription` in Central US; excluded from provisioning. |
+| Linux `Standard_B2pls_v2`, regular on-demand | $0.038/hour | No SKU restrictions in Azure inventory; family quota 65 vCPU, zero used. |
 | E4 LRS Standard SSD | $2.40/month | Disk transactions are additional. |
 | Regional Standard static IPv4 | $0.005/hour | Remains billable while allocated. |
 
-For the B2ats candidate, 730 hours of compute/IP plus the disk would be
-**$13.79/month**, before disk transactions, relay egress, monitoring, tax and
-subscription-specific credits/discounts. This is a conditional retail estimate,
-not a bill, approved budget, or capacity guarantee. Deallocating compute does
+The selected B2pls SKU's 730 hours of compute/IP plus disk total
+**$33.79/month** before disk transactions, relay egress, monitoring, tax and
+subscription-specific credits/discounts. This is a retail estimate, not a
+spending cap or allocation guarantee. Deallocating compute does
 not remove disk/public-IP charges. Relay bandwidth depends on actual support
 usage and is not priced by this source-only spike.
 
@@ -245,4 +253,15 @@ source, run Bicep build/what-if and guest configuration checks, then obtain
 authorization for the exact candidate under the infra operating policy. Do not
 reuse the old VM Compose or retired AKS deployment lanes. After apply, read back
 ports/processes/key identity and exercise direct and relay transport from the
-selected Windows endpoints. No Azure write operation has occurred.
+selected Windows endpoints. No Azure resource apply has occurred.
+
+Prepared deployment source in isolated infra worktree
+`/home/thomas/.codex/worktrees/halo-quick-support-infra/bifrost-infra`, branch
+`codex/halo-quick-support-spike`: `bicep/environments/quick-support-spike/`,
+`ansible/playbooks/quick-support-spike.yml`, and
+`docs/runbooks/quick-support-spike.md`. The pinned RustDesk OSS 1.1.16 server
+image has an ARM64 manifest. Bicep build and Ansible syntax checks pass.
+Subscription what-if `mtg-qs-spike-preview-20261005` succeeded without diagnostics
+and lists only six Create entries in the new group, with no existing-resource
+updates or deletions. The reviewed candidate costs $33.79/month before variable
+charges and requires explicit deployment authorization under infra policy.
