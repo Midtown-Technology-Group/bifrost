@@ -2,6 +2,9 @@
 
 from configparser import ConfigParser
 from pathlib import Path
+import shlex
+import subprocess
+import sys
 from xml.etree import ElementTree
 
 import coverage
@@ -101,12 +104,35 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
         collector.save()
 
     monkeypatch.chdir(repo)
-    reporter = coverage.Coverage(
-        config_file=str(configs[".coveragerc.sonar-report"]), data_file=str(data_file)
-    )
-    reporter.load()
     report_path = tmp_path / "coverage.xml"
-    reporter.xml_report(outfile=str(report_path))
+    workflow_path = next(
+        root / ".github/workflows/sonar-coverage.yml"
+        for root in (API_ROOT, *API_ROOT.parents)
+        if (root / ".github/workflows/sonar-coverage.yml").is_file()
+    )
+    report_commands = [
+        shlex.split(line.strip())
+        for line in workflow_path.read_text().splitlines()
+        if line.strip().startswith("coverage xml ")
+    ]
+    assert len(report_commands) == 1, "Expected one workflow XML export command"
+    # Exercise the workflow's actual CLI flags, substituting only fixture paths.
+    # Calling Coverage.xml_report directly would miss unsupported CLI options.
+    command = report_commands[0]
+    for original, replacement in (
+        ("/app/.coveragerc.sonar-report", str(configs[".coveragerc.sonar-report"])),
+        ("/tmp/bifrost/.coverage.sonar", str(data_file)),
+        ("/tmp/bifrost/coverage-sonar.xml", str(report_path)),
+    ):
+        command = [argument.replace(original, replacement) for argument in command]
+    result = subprocess.run(
+        [sys.executable, "-m", *command],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
     report = ElementTree.parse(report_path)
     classes = report.findall(".//class")
     by_filename = {item.attrib["filename"]: item for item in classes}
