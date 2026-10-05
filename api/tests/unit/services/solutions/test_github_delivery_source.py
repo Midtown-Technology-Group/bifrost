@@ -372,18 +372,94 @@ async def test_other_registry_target_recipe_is_verified_and_bounded_before_assoc
             await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
 
 
+def commit_pages(chain):
+    rows = [{"sha": identity, "parents": [{"sha": chain[index + 1]}] if index + 1 < len(chain) else []}
+            for index, identity in enumerate(chain)]
+    return {f"commits?sha={chain[0]}&per_page=100&page={page + 1}": rows[index:index + 100]
+            for page, index in enumerate(range(0, len(rows), 100))}
+
+
 @pytest.mark.asyncio
-async def test_supersession_ancestry_is_git_proof_not_time_or_equal_bytes():
-    documents, _, _ = fixture()
+async def test_delayed_source_ancestry_reaches_268_commits_in_three_bounded_reads():
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 269)]
+    calls = []
+    documents = commit_pages(chain)
+    documents.update({"git/commits/" + identity: {"sha": identity, "parents": [{"sha": chain[index + 1]}]}
+                      for index, identity in enumerate(chain[:-1])})
+    async with httpx.AsyncClient(transport=transport(documents, calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {chain[-1]}) == (chain[-1],)
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_native_history_eligibility_uses_only_bounded_first_parent_chain():
+    parent, grandparent, branch = "d" * 40, "e" * 40, "f" * 40
+    documents = commit_pages([SHA, parent, grandparent])
+    rows = documents[f"commits?sha={SHA}&per_page=100&page=1"]
+    rows.insert(1, {"sha": branch, "parents": []})
+    rows[0]["parents"].append({"sha": branch})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, None) == (parent, grandparent)
+        assert await reader.verified_ancestors(SHA, None, limit=1) == (parent,)
+
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 1002)]
+    calls = []
+    async with httpx.AsyncClient(transport=transport(commit_pages(chain), calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, None, limit=10000) == tuple(chain[1:1000])
+    assert len(calls) == 10
+
+
+@pytest.mark.asyncio
+async def test_supersession_ancestry_is_first_parent_git_proof_with_a_walk_bound():
     parent, grandparent = "d" * 40, "e" * 40
-    documents["git/commits/" + SHA]["parents"] = [{"sha": parent}]
-    documents["git/commits/" + parent] = {"sha": parent, "parents": [{"sha": grandparent}]}
-    documents["git/commits/" + grandparent] = {"sha": grandparent, "parents": []}
+    documents = commit_pages([SHA, parent, grandparent])
     async with httpx.AsyncClient(transport=transport(documents, [])) as client:
         reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
         assert await reader.verified_ancestors(SHA, {grandparent}, limit=1) == ()
         assert await reader.verified_ancestors(SHA, {parent, grandparent}) == (parent, grandparent)
         assert await reader.verified_ancestors(SHA, {"f" * 40}) == ()
+    # REST history order can contain a merged branch. Only the persisted first
+    # parent edge proves the protected-main lineage, never adjacent rows.
+    branch = "f" * 40
+    documents[f"commits?sha={SHA}&per_page=100&page=1"].insert(1, {"sha": branch, "parents": []})
+    documents[f"commits?sha={SHA}&per_page=100&page=1"][0]["parents"].append({"sha": branch})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {branch, parent, grandparent}) == (parent, grandparent)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing_head", "missing_parent", "malformed_parent", "cycle", "duplicate"])
+async def test_incomplete_or_ambiguous_history_cannot_prove_an_older_source(fault):
+    parent, grandparent = "d" * 40, "e" * 40
+    rows = commit_pages([SHA, parent, grandparent])[f"commits?sha={SHA}&per_page=100&page=1"]
+    if fault == "missing_head":
+        rows.pop(0)
+    elif fault == "missing_parent":
+        rows.pop(1)
+    elif fault == "malformed_parent":
+        rows[0]["parents"] = [{"sha": "../other"}]
+    elif fault == "cycle":
+        rows[1]["parents"] = [{"sha": SHA}]
+    else:
+        rows.append(rows[0])
+    documents = {f"commits?sha={SHA}&per_page=100&page=1": rows}
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {grandparent}) == ()
+
+
+@pytest.mark.asyncio
+async def test_history_page_bound_does_not_invent_ancestry_after_truncation():
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 1002)]
+    calls = []
+    async with httpx.AsyncClient(transport=transport(commit_pages(chain), calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {chain[-1]}, limit=10000) == ()
+    assert len(calls) == 10
 
 
 @pytest.mark.asyncio
@@ -499,7 +575,11 @@ async def test_redirect_does_not_forward_job_token():
 
 
 @pytest.mark.parametrize("suffix", ["https://attacker.invalid", "//attacker.invalid", "../other",
-    "git/blobs/../../other", "branches/main?redirect=attacker", "actions/runs/1/../../other"])
+    "git/blobs/../../other", "branches/main?redirect=attacker", "actions/runs/1/../../other",
+    "commits?sha=main&per_page=100&page=1",
+    f"commits?sha={SHA}&per_page=100&page=0",
+    f"commits?sha={SHA}&per_page=100&page=11",
+    f"commits?sha={SHA}&per_page=100&page=1&repository=other"])
 @pytest.mark.asyncio
 async def test_unapproved_endpoint_never_sends_job_credentials(suffix):
     calls = []

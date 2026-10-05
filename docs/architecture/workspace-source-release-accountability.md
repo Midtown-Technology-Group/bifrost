@@ -61,6 +61,31 @@ fabricating a legacy job. The forward migration
 downgrade while native completions depend on it. Missing evidence leaves debt
 open and rotates the bounded sweep; storage/transport failures propagate.
 
+A verified descendant can automatically supersede an older native declaration.
+The original obligation must belong to its exact GitHub OIDC declaration and
+the same authored package. Delivery reads and retains that declaration's complete
+historical Git inventory, not just the changed files. Recovery verifies the old
+archive and every current intended installation before recording
+`bifrost.native-solution-deploy-supersession/v1`. This records the old commit,
+tree, subtree, content ID and file manifest alongside current delivery/readback
+evidence; it does not claim that the old version was released. No workflow or
+vendor effects are replayed.
+
+Ancestry follows validated first-parent links through at most 1,000 protected
+Git commit objects. Historical authored reads cover at most 100 unresolved
+declarations for the package, retaining at most 32 MiB of bytes and manifests.
+The historical tranche is ordered by immutable declaration creation time and
+UUID, so all intended installations retain the same inputs until aggregate
+completion removes them. Recovery check timestamps rotate the verifier's work,
+but cannot rotate installation-local history selection before that convergence.
+Selection first restricts declarations to the bounded verified first-parent
+chain, so out-of-window or non-ancestor debt cannot fill its archive-read slots.
+Unavailable or mismatching historical input leaves its obligation open while
+current source still undergoes mandatory CI and full installed verification.
+Missing ancestors, targets, archives or original producer evidence never settle
+debt. A supported delivery receipt replay can refresh this proof after a delayed
+declaration without activating the same source again.
+
 ### Solution delivery of Root source
 
 Protected Git Solution delivery retains repository-to-runtime path mappings,
