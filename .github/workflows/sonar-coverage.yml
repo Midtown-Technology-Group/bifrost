@@ -119,7 +119,13 @@ jobs:
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
           export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
           mkdir -p "$LOG_DIR"
-          docker compose -f docker-compose.test.yml -f docker-compose.sonar.yml config > "$RUNNER_TEMP/sonar-compose.yml"
+          # Rendering without all profiles drops services that test.sh activates
+          # later (worker, scheduler, test-runner). Preserve the complete model.
+          docker compose --profile '*' -f docker-compose.test.yml -f docker-compose.sonar.yml config > "$RUNNER_TEMP/sonar-compose.yml"
+          services="$(docker compose --profile '*' -f "$RUNNER_TEMP/sonar-compose.yml" config --services)"
+          for service in api api-replica worker scheduler test-runner; do
+            grep -qx "$service" <<< "$services" || { echo "Missing Sonar test service: $service" >&2; exit 1; }
+          done
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
           echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
       - name: Collect comprehensive Python coverage
