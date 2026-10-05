@@ -352,21 +352,28 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
     from datetime import timedelta
 
     from src import config
-    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.models.contracts.solution_deployments import (
+        SolutionGitSourceDeliveryRequest,
+    )
     from src.models.orm.operation_receipts import OperationReceipt
+    from src.models.orm.organizations import Organization
     from src.services import operation_receipts
-    from src.services.solutions.authored_archive import _git_subtree_sha
-    from src.services.solutions.deployment_manifest import sha256_digest
-    from src.services.solutions.github_delivery_source import GitDeliveryIdentity
-    from src.services.solutions.deploy import solution_entity_id
-    from src.services.solutions.deployment_storage import SOURCE_ARTIFACTS_ROOT
     from src.services.solutions import native_authored_accounting
+    from src.services.solutions.authored_archive import _git_subtree_sha
+    from src.services.solutions.deploy import solution_entity_id
+    from src.services.solutions.deployment_manifest import sha256_digest
+    from src.services.solutions.deployment_storage import SOURCE_ARTIFACTS_ROOT
+    from src.services.solutions.github_delivery_source import GitDeliveryIdentity
 
     db = committed_delivery_db
     head = uuid4().hex + uuid4().hex[:8]
     current_tree = uuid4().hex + uuid4().hex[:8]
+    tracking_org_id = uuid4()
+    db.add(Organization(id=tracking_org_id, name=f"native-history-{tracking_org_id.hex[:10]}",
+        created_by=str(platform_admin.user_id)))
+    await db.flush()
     first = await _seed_adopted_revision(db, platform_admin, monkeypatch,
-        source_commit_sha=head, organization_id=PROVIDER_ORG_ID)
+        source_commit_sha=head, organization_id=tracking_org_id)
     global_solution_id = uuid4()
     second = await _seed_adopted_revision(db, platform_admin, monkeypatch,
         source_commit_sha=head, organization_id=None, solution_id=global_solution_id,
@@ -461,14 +468,14 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
             prior = replace(authored_head, commit_sha=commit, tree_sha=tree)
             old_authored[commit] = prior
         release = WorkspaceSourceRelease(
-            id=uuid4(), organization_id=PROVIDER_ORG_ID, source_commit_sha=commit,
+            id=uuid4(), organization_id=tracking_org_id, source_commit_sha=commit,
             source_tree_sha=tree, paths={}, declaration_actor="github_actions_oidc",
             producer_oidc_commit_sha=commit, producer_event_name="push", producer_run_id=str(index + 1),
             disposition="pending", declared_disposition="pending", created_by=platform_admin.user_id,
             created_at=origin_time + timedelta(seconds=index),
         )
         child = SolutionDeployObligation(
-            id=UUID(int=child_id_start + index), source_release=release, organization_id=PROVIDER_ORG_ID,
+            id=UUID(int=child_id_start + index), source_release=release, organization_id=tracking_org_id,
             source_commit_sha=commit, source_tree_sha=tree, solution_slug=first.solution.slug,
             repo_subpath=root, source_subtree_sha=subtree_sha, source_content_id=content_id,
             source_files=manifest_files, changed_paths={}, declared_disposition="solution_deploy_required",
@@ -488,13 +495,13 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
     recipe_by_solution = {f.solution_id: "config/solution-delivery/family.json" for f in installs}
     policy = SolutionGitDeliveryPolicy(
         repository="MTG-Thomas/bifrost-workspace", repository_id=1, repository_owner_id=1,
-        organization_id=PROVIDER_ORG_ID, workflow_path=".github/workflows/deliver.yml",
+        organization_id=tracking_org_id, workflow_path=".github/workflows/deliver.yml",
         ci_workflow_path=".github/workflows/ci.yml", ci_workflow_id=1,
         solutions=recipe_by_solution,
         solution_organization_ids={f.solution_id: f.solution.organization_id for f in installs},
     )
     settings = config.get_settings().model_copy(update={"solution_git_delivery_policy": policy,
-        "workspace_source_release_oidc_organization_id": str(PROVIDER_ORG_ID)})
+        "workspace_source_release_oidc_organization_id": str(tracking_org_id)})
     monkeypatch.setattr(config, "get_settings", lambda: settings)
 
     @asynccontextmanager
@@ -554,7 +561,13 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
     assert len(rows) == unprovable_prefix + 200
     eligible_rows = rows[unprovable_prefix:]
     unprovable_rows = rows[:unprovable_prefix]
-    assert all(row.disposition == "superseded" for row in eligible_rows)
+    disposition_counts = {state: sum(row.disposition == state for row in eligible_rows)
+        for state in ("superseded", "pending", "attention_required", "released")}
+    unresolved_sample = [{"id": str(row.id), "commit": row.source_commit_sha[:12],
+        "disposition": row.disposition, "has_evidence": row.completion_evidence is not None}
+        for row in eligible_rows if row.disposition != "superseded"][:10]
+    assert all(row.disposition == "superseded" for row in eligible_rows), (
+        f"Eligible disposition counts: {disposition_counts}; unresolved sample: {unresolved_sample}")
     assert all(row.disposition == "pending" and row.completion_evidence is None
         for row in unprovable_rows)
     expected_targets = {str(f.solution_id) for f in installs}
