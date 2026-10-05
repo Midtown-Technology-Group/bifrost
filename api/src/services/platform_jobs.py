@@ -66,6 +66,16 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _requires_checkpoint_readback(job: PlatformJob, definition: PlatformJobDefinition | None) -> bool:
+    """An unresolved handler intent cannot be released by cancelling scheduling."""
+    return bool(
+        definition is not None
+        and definition.readback_checkpoint_schema is not None
+        and isinstance(job.result, dict)
+        and job.result.get("schema_version") == definition.readback_checkpoint_schema
+    )
+
+
 def platform_job_to_public(job: PlatformJob) -> PlatformJobPublic:
     from src.jobs.platform.registry import get_platform_job_definition
 
@@ -77,10 +87,13 @@ def platform_job_to_public(job: PlatformJob) -> PlatformJobPublic:
             retryable=bool(job.error_retryable),
         )
     definition = get_platform_job_definition(job.job_type)
-    can_cancel = job.status in ("queued", "waiting") or (
-        job.status == "running"
-        and definition is not None
-        and definition.policy.allow_running_cancellation
+    can_cancel = not _requires_checkpoint_readback(job, definition) and (
+        job.status in ("queued", "waiting")
+        or (
+            job.status == "running"
+            and definition is not None
+            and definition.policy.allow_running_cancellation
+        )
     )
     return PlatformJobPublic(
         id=job.id,
@@ -195,7 +208,6 @@ async def enqueue_platform_job(
     action_url: str | None,
     job_id: UUID | None = None,
     memory_profile_key: str | None = None,
-    readback_checkpoint_schema: str | None = None,
 ) -> tuple[PlatformJob, bool]:
     """Create/reuse a job, optionally resuming a handler's readback-only intent.
 
@@ -213,10 +225,10 @@ async def enqueue_platform_job(
             {"lock_key": f"{definition.job_type}:{dedupe_key}"},
         )
         eligible = PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES)
-        if readback_checkpoint_schema is not None:
+        if definition.readback_checkpoint_schema is not None:
             eligible = or_(eligible, and_(
-                PlatformJob.status.in_(("requires_action", "failed")),
-                PlatformJob.result["schema_version"].as_string() == readback_checkpoint_schema,
+                PlatformJob.status.in_(("requires_action", "failed", "cancelled")),
+                PlatformJob.result["schema_version"].as_string() == definition.readback_checkpoint_schema,
             ))
         existing = (
             await db.execute(
@@ -232,7 +244,7 @@ async def enqueue_platform_job(
             )
         ).scalar_one_or_none()
         if existing is not None:
-            if (existing.status in ("requires_action", "failed")
+            if (existing.status in ("requires_action", "failed", "cancelled")
                     and existing.requested_by_user_id == str(requested_by_user_id)
                     and existing.organization_id == organization_id
                     and existing.resource_type == resource_type and existing.resource_id == resource_id):
@@ -242,6 +254,7 @@ async def enqueue_platform_job(
                 existing.phase = "Reconciling publication evidence"
                 existing.available_at = _now()
                 existing.completed_at = None
+                existing.cancel_requested_at = None
                 existing.lease_owner = existing.lease_token = None
                 existing.heartbeat_at = existing.lease_expires_at = None
                 existing.max_attempts = existing.attempt + 1
@@ -628,12 +641,17 @@ async def request_platform_job_cancel(
     db: AsyncSession,
     job: PlatformJob,
 ) -> tuple[PlatformJob, bool]:
+    from src.jobs.platform.registry import get_platform_job_definition
+
+    # Re-read under the same row lock as checkpoint persistence. A previously
+    # loaded HTTP DTO must not hide an intent saved while cancellation waited.
+    await db.refresh(job, with_for_update=True)
+    definition = get_platform_job_definition(job.job_type)
+    if _requires_checkpoint_readback(job, definition):
+        return job, False
     if job.status in TERMINAL_PLATFORM_JOB_STATUSES:
         return job, False
     if job.status in ("running", "cancel_requested"):
-        from src.jobs.platform.registry import get_platform_job_definition
-
-        definition = get_platform_job_definition(job.job_type)
         if definition is None or not definition.policy.allow_running_cancellation:
             return job, False
     now = _now()

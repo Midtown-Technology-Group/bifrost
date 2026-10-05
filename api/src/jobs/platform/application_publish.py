@@ -24,7 +24,7 @@ from src.jobs.platform.base import (
 from src.models.orm.applications import Application
 from src.repositories.applications import ApplicationRepository
 from src.services.application_publication import publication_controls_hash
-from src.services.app_storage import AppStorageService
+from src.services.app_storage import AppStorageService, PUBLICATION_INTENT_SCHEMA
 
 APPLICATION_PUBLISH_JOB_TYPE = "application.publish"
 logger = logging.getLogger(__name__)
@@ -192,6 +192,7 @@ APPLICATION_PUBLISH_DEFINITION = PlatformJobDefinition(
     payload_version=1,
     payload_model=ApplicationPublishPayload,
     handler=run_application_publish,
+    readback_checkpoint_schema=PUBLICATION_INTENT_SCHEMA,
     policy=PlatformJobPolicy(
         timeout_seconds=20 * 60,
         max_attempts=2,

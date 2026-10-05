@@ -50,7 +50,6 @@ from src.jobs.platform.application_publish import (
     APPLICATION_PUBLISH_DEFINITION,
     ApplicationPublishPayload,
 )
-from src.services.app_storage import PUBLICATION_INTENT_SCHEMA
 from src.jobs.platform.application_deploy import (
     APPLICATION_DEPLOY_DEFINITION,
     ApplicationDeployPayload,
@@ -1094,7 +1093,6 @@ async def publish_application(
         resource_id=str(application.id),
         title=f"Publishing {application.name}",
         action_url=f"/apps/{application.slug}/edit",
-        readback_checkpoint_schema=PUBLICATION_INTENT_SCHEMA,
     )
     if reused and job.requested_by_user_id != str(user.user_id):
         raise HTTPException(
