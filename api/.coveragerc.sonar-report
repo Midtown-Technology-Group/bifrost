@@ -1,0 +1,53 @@
+# Run coverage xml with this config from /repo after all Sonar collection runs.
+# Bare pytest --cov and coverage run --append must use .coveragerc.sonar; neither
+# the badge data nor sibling server processes are combined into this report.
+[run]
+branch = True
+relative_files = True
+source = .
+data_file = /tmp/bifrost/.coverage.sonar
+omit =
+    # Tests and their support files do not count as implementation coverage.
+    */tests/*
+    */test_*.py
+    */*_test.py
+    */conftest.py
+    # Dependency, environment, cache, and fuzz-input files are not authored source.
+    */node_modules/*
+    */site-packages/*
+    */.venv/*
+    */venv/*
+    */virtualenv/*
+    */__pycache__/*
+    */.git/*
+    */fuzz/corpora/*
+    # Generated skill mirrors; the .claude originals remain in scope.
+    */.agents/*
+    */plugins/bifrost/skills/*
+
+[paths]
+# Order matters: the renderer and authoritative skill definitions are separate
+# repository directories, not children of api/. Only existing files are remapped.
+renderer =
+    doc_renderer_service
+    /app/doc_renderer_service
+skills =
+    .claude
+    /app/.claude
+api =
+    api
+    /app
+repository =
+    .
+    /repo
+
+[report]
+# Keep unimported modules, including directories without __init__.py, at zero.
+include_namespace_packages = True
+show_missing = True
+precision = 2
+skip_empty = False
+skip_covered = False
+
+[xml]
+output = /tmp/bifrost/coverage-sonar.xml
