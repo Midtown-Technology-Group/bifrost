@@ -15,6 +15,9 @@ See [contract](../../../../docs/architecture/runtime/contract.md) and
 | required-scenarios.json | Coverage roster, not runnable scenarios or passed tests |
 | check.py | Offline schema/vector check |
 
+Timestamps use calendar-valid UTC with a Z suffix and at most six fractional
+digits. The offline checker enforces this without optional format packages.
+
 All structural object fields are required and extra fields fail. Arbitrary
 business input/output/error details remain opaque JSON governed by accepted
 workload schemas. JSON Schema cannot detect duplicate keys, lexical 1.0/-0,
