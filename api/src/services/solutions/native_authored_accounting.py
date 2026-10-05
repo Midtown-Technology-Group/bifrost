@@ -394,13 +394,13 @@ async def _complete_native_obligations(db, query, selected_ids, packages, cache,
                         or cached_source.file_manifest() != source.file_manifest()
                         or dict(cached_source.files) != dict(source.files)):
                     raise NativeAuthoredSourceMismatch("Collected authored bytes differ from the fenced readback")
-                _require_history_origin(record, origins.get(record.source_release_id))
                 historical = None
                 if proof["source_commit_sha"] == record.source_commit_sha:
                     if proof["source_tree_sha"] != record.source_tree_sha:
                         raise NativeAuthoredSourceMismatch("Exact native declaration tree differs")
                     require_declared_authored_source(record, source)
                 else:
+                    _require_history_origin(record, origins.get(record.source_release_id))
                     if record.source_commit_sha not in proof["ancestor_commit_shas"]:
                         raise NativeAuthoredSourceMismatch("No verified native descendant is retained")
                     historical = cached_proof["historical_authored_source"]
