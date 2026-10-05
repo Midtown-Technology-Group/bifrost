@@ -19,6 +19,50 @@ from bifrost.promotion import (
     validate_submitted_bundle,
 )
 from bifrost.workspace_release import workspace_closure_id, workspace_manifest_id
+from bifrost.solution_source_closure import LiveHandoffSourceError, source_closure
+
+
+@pytest.mark.parametrize("import_source", [
+    "import modules.extensions.api",
+    "from modules.extensions.api import VALUE",
+    "from modules.extensions import api",
+    "from importlib import import_module\napi = import_module('modules.extensions.api')",
+])
+def test_sealed_closure_includes_parent_initializers_and_their_dependencies(import_source: str) -> None:
+    files = {
+        "workflows/run.py": (import_source + "\n").encode(),
+        "modules/__init__.py": b"raise AssertionError('analysis must never execute source')\n",
+        "modules/extensions/__init__.py": b"from helpers.policy import VALUE\n",
+        "modules/extensions/api.py": b"VALUE = 1\n",
+        "helpers/policy.py": b"VALUE = 2\n",
+        "modules/unrelated/__init__.py": b"from bifrost import tables\n",
+    }
+    assert dependency_edges(files)["workflows/run.py"] == {
+        "modules/__init__.py", "modules/extensions/__init__.py", "modules/extensions/api.py",
+    }
+    assert set(source_closure(files, {"workflows/run.py"})) == set(files) - {"modules/unrelated/__init__.py"}
+
+
+def test_parent_initializer_resource_import_requires_a_reviewed_binding() -> None:
+    files = {
+        "workflows/run.py": b"from modules.vendor.api import VALUE\n",
+        "modules/vendor/__init__.py": b"from bifrost import tables\n",
+        "modules/vendor/api.py": b"VALUE = 1\n",
+    }
+    with pytest.raises(LiveHandoffSourceError, match="resource bindings: modules/vendor/__init__.py"):
+        source_closure(files, {"workflows/run.py"})
+    assert source_closure(files, {"workflows/run.py"}, has_table_bindings=True) == files
+
+
+def test_relative_import_includes_available_parents_without_inventing_namespace_files() -> None:
+    files = {
+        "modules/extensions/run.py": b"from . import api\n",
+        "modules/extensions/__init__.py": b"VALUE = 1\n",
+        "modules/extensions/api.py": b"VALUE = 2\n",
+    }
+    assert dependency_edges(files)["modules/extensions/run.py"] == {
+        "modules/extensions/__init__.py", "modules/extensions/api.py",
+    }
 
 
 def test_effective_file_manifest_id_is_order_and_prefix_stable() -> None:
