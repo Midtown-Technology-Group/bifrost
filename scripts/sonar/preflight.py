@@ -230,6 +230,10 @@ def property_patterns(props: dict[str, str], key: str) -> list[str]:
 
 
 def validate_scope(items: list[dict], props: dict[str, str]) -> None:
+    if props.get("sonar.projectKey") != "Midtown-Technology-Group_bifrost":
+        fail("sonar.projectKey must remain the approved Bifrost project")
+    if props.get("sonar.host.url") != "https://sonarcloud.io":
+        fail("sonar.host.url must remain the approved HTTPS SonarQube Cloud host")
     if props.get("sonar.sources") != "." or props.get("sonar.tests") != ".":
         fail("scanner scope must use sonar.sources=. and sonar.tests=.")
     if props.get("sonar.scm.exclusions.disabled") != "true":
