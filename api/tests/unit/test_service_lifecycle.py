@@ -272,7 +272,10 @@ async def test_concurrent_claims_yield_single_attempt(async_session_factory):
                     await session.rollback()
                     return "conflict"
 
-        results = await asyncio.gather(try_claim("w1"), try_claim("w2"))
+        async with asyncio.TaskGroup() as claims:
+            first = claims.create_task(try_claim("w1"))
+            second = claims.create_task(try_claim("w2"))
+        results = [first.result(), second.result()]
         assert sorted([r is not None and r != "conflict" for r in results]) == [False, True]
 
         from sqlalchemy import func as sa_func
