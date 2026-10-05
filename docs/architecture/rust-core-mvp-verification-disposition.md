@@ -20,14 +20,16 @@ characterization failed at a build-phase local guard before comparison;
 the exact predicate is unknown and resource custody remains held.
 The reviewed optional predicate diagnostic is now committed and current-main
 integrated at `8e32b757e286904bdfdc1e18934b2a871579f327`. Its source-check
-run37245992966 and final fifth characterization run37245992376 are in progress;
+run37245992966 completed successfully (actual command evidence pending review),
+while final fifth characterization run37245992376 is in progress;
 no sixth cycle or unchanged rerun is authorized.
 
 Transport source is accepted and current-main integrated at
 `e419725665d95424024ddd69f57748d90ebc9800`. Initial isolated run37245566570
 failed in rust_build; actual cause, source checks and suite remain unknown/null,
-and staging disposal is unproved. A separate first existing Rust Core CI run
-has been dispatched for normal foundation/tool diagnostics. Its results cannot
+and staging disposal is unproved. A separate first existing Rust Core CI run37246038937 is in progress for
+normal foundation/tool diagnostics; its checks job failed and its cold-image
+job passed. Actual tool-error review is pending. Its results cannot
 retroactively qualify the failed transport parser, cleanup or TLS suite.
 
 Historical campaigns below retain their exact candidate/main/workspace pins.
