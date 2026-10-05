@@ -11628,6 +11628,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{app_id}/github-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Github App Source
+         * @description Enqueue a source-scoped App publication; a reused job proves only its original source.
+         */
+        post: operations["publish_github_app_source_api_applications__app_id__github_source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/github-source/{job_id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github App Publication
+         * @description Scoped original-job readback, including a lost accepted/terminal response.
+         *
+         *     A newer request may observe an older deduplicated job; its original source
+         *     identity is retained. This route never enqueues, resumes or publishes work.
+         */
+        post: operations["inspect_github_app_publication_api_applications__app_id__github_source__job_id__inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{app_id}/publish": {
         parameters: {
             query?: never;
@@ -11646,7 +11689,9 @@ export interface paths {
          *     ``/api/platform-jobs/{id}`` or subscribe to the caller's notification
          *     WebSocket channel for progress. A repeated
          *     request while the same app is queued or running returns the existing
-         *     operation instead of launching a conflicting publish.
+         *     operation instead of launching a conflicting publish. If that operation
+         *     retained uncertain publication evidence, the same requester resumes exact
+         *     readback on the original job. It never builds or republishes that intent.
          */
         post: operations["publish_application_api_applications__app_id__publish_post"];
         delete?: never;
@@ -14751,6 +14796,20 @@ export interface components {
             definition: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ApplicationGitSourcePublicationRequest
+         * @description Exact protected source identity; no uploaded bytes or App control edits.
+         */
+        ApplicationGitSourcePublicationRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Ci Run Id */
+            ci_run_id: number;
+            /** Ci Run Attempt */
+            ci_run_attempt: number;
+            /** Artifact Digest */
+            artifact_digest: string;
         };
         /**
          * ApplicationListResponse
@@ -57276,6 +57335,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_github_app_source_api_applications__app_id__github_source_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGitSourcePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_github_app_publication_api_applications__app_id__github_source__job_id__inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGitSourcePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
                 };
             };
             /** @description Validation Error */
