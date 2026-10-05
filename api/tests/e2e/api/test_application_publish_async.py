@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -155,6 +156,7 @@ def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
         headers=platform_admin.headers,
     )
     assert manifest_response.status_code == 200, manifest_response.text
+    assert manifest_response.headers["cache-control"] == "no-store"
     manifest = manifest_response.json()
     evidence = manifest["build_evidence"]
     assert evidence["schema_version"] == "bifrost.inline-app-build/v1"
@@ -218,6 +220,46 @@ async def test_uncertain_publish_request_recovers_original_job_without_manifest_
     assert recovered["result"]["recovered_from_intent"] is True
     assert recovered["result"]["publication_intent"] == intent
     assert await revision() == before
+
+
+def _captured_bundle(label: str, *, filename: str | None = None) -> dict[str, bytes]:
+    filename = filename or f"entry-{label}.js"
+    body = f"export default {json.dumps(label)};".encode()
+    manifest = {"entry": filename, "outputs": [filename], "build_evidence": {
+        "schema_version": "bifrost.inline-app-build/v1",
+        "output_hashes": {filename: "sha256:" + hashlib.sha256(body).hexdigest()},
+    }}
+    return {filename: body, "manifest.json": json.dumps(manifest).encode()}
+
+
+@pytest.mark.asyncio
+async def test_storage_rejects_late_publication_without_deleting_previous_outputs(
+    platform_admin, app_factory,
+):
+    app = app_factory(platform_admin.headers, f"stale-publish-{uuid.uuid4().hex[:8]}")
+    storage = AppStorageService()
+    await storage.publish(app["id"], bundle_files=_captured_bundle("old"))
+    winner = _captured_bundle("winner")
+    async def competing_publication(_intent):
+        await storage.publish(app["id"], bundle_files=winner)
+    with pytest.raises(Exception):
+        await storage.publish(app["id"], bundle_files=_captured_bundle("late"),
+                              checkpoint_callback=competing_publication)
+    assert await storage.read_file(app["id"], "live", "manifest.json") == winner["manifest.json"]
+    assert await storage.read_file(app["id"], "live", "entry-old.js") == _captured_bundle("old")["entry-old.js"]
+    assert await storage.read_file(app["id"], "live", "entry-late.js") == _captured_bundle("late")["entry-late.js"]
+
+
+@pytest.mark.asyncio
+async def test_storage_rejects_conflicting_immutable_output_bytes(platform_admin, app_factory):
+    app = app_factory(platform_admin.headers, f"collision-publish-{uuid.uuid4().hex[:8]}")
+    storage = AppStorageService()
+    original = _captured_bundle("old", filename="same-output.js")
+    await storage.publish(app["id"], bundle_files=original)
+    with pytest.raises(ValueError, match="conflicts with immutable storage"):
+        await storage.publish(app["id"], bundle_files=_captured_bundle("new", filename="same-output.js"))
+    assert await storage.read_file(app["id"], "live", "same-output.js") == original["same-output.js"]
+    assert await storage.read_file(app["id"], "live", "manifest.json") == original["manifest.json"]
 
 
 def test_job_is_not_visible_to_another_user(

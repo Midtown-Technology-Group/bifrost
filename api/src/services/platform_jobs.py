@@ -242,6 +242,8 @@ async def enqueue_platform_job(
                 existing.phase = "Reconciling publication evidence"
                 existing.available_at = _now()
                 existing.completed_at = None
+                existing.lease_owner = existing.lease_token = None
+                existing.heartbeat_at = existing.lease_expires_at = None
                 existing.max_attempts = existing.attempt + 1
                 existing.error_code = existing.error_message = existing.error_retryable = None
                 existing.revision += 1

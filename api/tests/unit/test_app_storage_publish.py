@@ -66,7 +66,7 @@ class _S3Client:
         self.delete_calls.append([item["Key"] for item in Delete["Objects"]])
 
     async def put_object(self, *, Key: str, Body: bytes, **_kwargs):  # noqa: N803
-        self.preconditions.append(_kwargs)
+        self.preconditions.append({key: value for key, value in _kwargs.items() if key in {"IfMatch", "IfNoneMatch"}})
         if _kwargs.get("IfNoneMatch") == "*" and Key in self.objects:
             raise ValueError("precondition failed")
         if "IfMatch" in _kwargs and (
