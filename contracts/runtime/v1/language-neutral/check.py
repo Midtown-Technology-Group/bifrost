@@ -1,4 +1,5 @@
 """Offline structural checks. Requires the repository's jsonschema==4.26.0."""
+import hashlib
 import json
 import re
 from datetime import datetime
@@ -46,7 +47,14 @@ def main():
         actual = validators[vector["schema"]].is_valid(vector["value"])
         if actual != vector["valid"]:
             raise ValueError(f"structural expectation failed: {key}")
-    print(f"PASS: {len(validators)} schemas; {len(vectors)} structural vectors")
+    provenance = load("fixtures/provenance.json")
+    for record in provenance["files"]:
+        path = ROOT / "fixtures" / Path(record["path"]).name
+        if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
+            raise ValueError("workspace fixture byte drift")
+        validators["compatibility"].validate(load(str(path.relative_to(ROOT))))
+    print(f"PASS: {len(validators)} schemas; {len(vectors)} structural vectors; "
+          f"{len(provenance['files'])} unchanged workspace fixture documents")
     print("No runtime, authorization, lifecycle or behavioral conformance exercised.")
 
 

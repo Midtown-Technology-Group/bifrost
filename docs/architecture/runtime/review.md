@@ -7,6 +7,11 @@ Review baseline (2026-10-05): MTG platform main `e2cbbb3702`; C1-P0
 `1783de8a3154a07d434acf76111fc53f7154a4e1`. These branches remain separate
 from main. The spike supplies evidence, not the implementation baseline.
 
+Workspace fixture source is the clean local checkout at
+`e9be8f7ff6b3eb408af51f64d0c544cf9d46edcd`; six original scenario documents
+are retained unchanged with SHA256 provenance. This is pinned source evidence,
+not a current-main or executed-runtime claim.
+
 The supplied proposal preserves the right authority boundary. Rust owns
 admission, committed Start, cancellation, process custody, durable result
 acceptance and replay policy. SDKs consume narrow bound capabilities; tenant
