@@ -25,7 +25,7 @@ omit =
     */.git/*
     */fuzz/corpora/*
     # Generated skill mirrors; the .claude originals remain in scope.
-    */.agents/*
+    */.agents/skills/*
     */plugins/bifrost/skills/*
 
 [report]
