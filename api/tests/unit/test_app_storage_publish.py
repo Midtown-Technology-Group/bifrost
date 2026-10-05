@@ -148,6 +148,53 @@ async def _record(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("initially_published", [False, True])
+async def test_manifest_changed_during_build_rejects_before_intent_or_output_write(initially_published):
+    client = _S3Client({"entry": "old.js", "outputs": ["old.js"]} if initially_published else {})
+    storage = _storage(client)
+    before_build = await storage.live_manifest_revision("app-1")
+    await storage.publish("app-1", bundle_files=_bundle())
+    winner = client.objects["_apps/app-1/live/manifest.json"]
+    client.put_calls.clear()
+    checkpoint = AsyncMock()
+    with pytest.raises(ValueError, match="changed during the captured source build"):
+        await storage.publish("app-1", bundle_files=_bundle(), expected_revision=before_build,
+            checkpoint_callback=checkpoint)
+    assert client.put_calls == []
+    assert client.objects["_apps/app-1/live/manifest.json"] == winner
+    checkpoint.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unchanged_before_build_manifest_revision_is_carried_into_saved_intent():
+    client = _S3Client({"entry": "old.js", "outputs": ["old.js"]})
+    storage = _storage(client)
+    before_build = await storage.live_manifest_revision("app-1")
+    checkpoint = AsyncMock()
+    await storage.publish("app-1", bundle_files=_bundle(), expected_revision=before_build,
+        checkpoint_callback=checkpoint)
+    assert checkpoint.await_args.args[0]["expected_live_etag"] == before_build.etag
+    assert client.preconditions[-1] == {"IfMatch": before_build.etag}
+
+
+@pytest.mark.asyncio
+async def test_source_guard_refusal_after_output_creation_does_not_switch_manifest():
+    client = _S3Client({"entry": "old.js", "outputs": ["old.js"]})
+    prior = client.objects["_apps/app-1/live/manifest.json"]
+    storage = _storage(client)
+    checkpoint = AsyncMock()
+    guard = AsyncMock(side_effect=ValueError("Protected Main superseded"))
+    with pytest.raises(ValueError, match="Main superseded"):
+        await storage.publish("app-1", bundle_files=_bundle(), checkpoint_callback=checkpoint,
+            before_manifest_switch=guard)
+    checkpoint.assert_awaited_once()
+    guard.assert_awaited_once()
+    assert client.objects["_apps/app-1/live/manifest.json"] == prior
+    assert all(not key.endswith("/manifest.json") for key, _ in client.put_calls)
+    assert client.delete_calls == []
+
+
+@pytest.mark.asyncio
 async def test_publish_rejects_snapshot_missing_declared_output_before_write():
     client = _S3Client(
         {

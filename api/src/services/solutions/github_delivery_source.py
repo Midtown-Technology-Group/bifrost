@@ -23,7 +23,7 @@ import httpx
 import jwt
 from bifrost.workspace_release import canonical_digest
 
-from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy, delivery_path
+from src.core.solution_delivery_policy import ProtectedGitRepositoryPolicy, SolutionGitDeliveryPolicy, delivery_path
 from src.services.github_actions_oidc import (
     GITHUB_ACTIONS_ISSUER,
     GITHUB_ACTIONS_JWKS_URL,
@@ -151,6 +151,15 @@ async def authenticate_git_delivery(
     if solution_id not in policy.solutions:
         raise GitDeliverySourceError("Solution is outside the delivery allowlist")
     audience = delivery_audience(solution_id, commit_sha, ci_run_id, ci_run_attempt, artifact_digest)
+    return await authenticate_protected_git_producer(token, policy=policy,
+        audience=audience, commit_sha=commit_sha, jwks=jwks)
+
+
+async def authenticate_protected_git_producer(
+    token: str, *, policy: ProtectedGitRepositoryPolicy, audience: str, commit_sha: str,
+    jwks: dict[str, Any] | None = None,
+) -> GitDeliveryIdentity:
+    """Shared signature/producer checks; the adapter must bind its exact resource audience."""
     try:
         header = jwt.get_unverified_header(token)
         if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
@@ -194,7 +203,7 @@ async def authenticate_git_delivery(
 class ProtectedGitReader:
     """Read only the configured repo; never execute code or follow Git redirects."""
 
-    def __init__(self, policy: SolutionGitDeliveryPolicy, token: str, client: httpx.AsyncClient):
+    def __init__(self, policy: ProtectedGitRepositoryPolicy, token: str, client: httpx.AsyncClient):
         self.policy, self.token, self.client = policy, token, client
 
     async def document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> dict:
@@ -434,6 +443,8 @@ class ProtectedGitReader:
         return subtree_sha, files, {path: entry["mode"] for path, entry in blobs.items()}
 
     async def source(self, solution_id: UUID, commit_sha: str, artifact_digest: str) -> VerifiedGitSource:
+        if not isinstance(self.policy, SolutionGitDeliveryPolicy):
+            raise GitDeliverySourceError("Solution delivery requires its own installed recipe policy")
         if solution_id not in self.policy.solutions:
             raise GitDeliverySourceError("Solution is outside the delivery allowlist")
         if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:

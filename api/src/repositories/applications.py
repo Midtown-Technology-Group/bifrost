@@ -7,6 +7,7 @@ HTTP-handler-only surface. See docs/plans/2026-05-26-org-scoping-consolidation.m
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from src.models.contracts.applications import (
 from src.models.orm.app_roles import AppRole
 from src.models.orm.applications import Application
 from src.repositories.org_scoped import OrgScopedRepository
+from src.services.inline_app_source import InlineAppSourceSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -460,6 +462,10 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             Callable[[str, int, int | None], Awaitable[None]] | None
         ) = None,
         checkpoint_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        *,
+        source_snapshot: InlineAppSourceSnapshot | None = None,
+        source_provenance: dict[str, Any] | None = None,
+        before_publication: Callable[[], Awaitable[None]] | None = None,
     ) -> Application | None:
         """
         Publish draft to live.
@@ -467,6 +473,12 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         Writes the captured build to live in S3 via AppStorageService, then
         captures a published_snapshot for backwards compatibility.
         """
+        if (source_snapshot is None) != (source_provenance is None):
+            raise ValueError("Captured App source requires its protected Git provenance")
+        # Keep nested source evidence independent from a caller's mutable map
+        # while the build awaits. Neither this map nor app.yaml applies controls.
+        if source_provenance is not None:
+            source_provenance = json.loads(json.dumps(source_provenance))
         application = await self.get(id=app_id)
         if not application:
             return None
@@ -477,27 +489,39 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         # hashed chunks) that matches the source being published. A failed
         # bundle MUST fail the publish — we will not promote a stale or
         # partial preview into live.
-        from src.services.app_bundler import build_with_migrate
+        from src.services.app_bundler import BundlerService, build_with_migrate
         from src.services.app_storage import AppStorageService
         app_storage = AppStorageService()
+        revision = (await app_storage.live_manifest_revision(str(app_id))
+                    if source_snapshot is not None else None)
 
         if progress_callback:
             await progress_callback("building current source", 0, None)
 
         # build_with_migrate runs auto-migration first so a publish from a
         # legacy source tree picks up the rewritten imports before bundling.
-        bundle_result, _migrated = await build_with_migrate(
-            str(app_id),
-            application.repo_prefix,
-            "preview",
-            dependencies=application.dependencies or {},
-        )
+        if source_snapshot is None:
+            bundle_result, _migrated = await build_with_migrate(
+                str(app_id), application.repo_prefix, "preview",
+                dependencies=application.dependencies or {},
+            )
+        else:
+            bundle_result = await BundlerService().build(str(app_id), application.repo_prefix,
+                "capture", dependencies=application.dependencies or {}, source_snapshot=source_snapshot)
         if not bundle_result.success:
             first_err = (bundle_result.errors or [None])[0]
             err_text = first_err.text if first_err else "unknown error"
             raise ValueError(f"Bundle build failed during publish: {err_text}")
         if bundle_result.publication_files is None:
             raise ValueError("Bundle build did not retain its publication artifact")
+        publication_files = (dict(bundle_result.publication_files)
+                             if source_provenance is not None else bundle_result.publication_files)
+        if source_provenance is not None:
+            manifest = json.loads(publication_files["manifest.json"])
+            manifest["git_source_evidence"] = source_provenance
+            publication_files["manifest.json"] = json.dumps(manifest, indent=2).encode()
+        if before_publication is not None:
+            await before_publication()
 
         # Promote the captured build; editor preview may change independently.
         async def _report_promotion(current: int, total: int) -> None:
@@ -510,16 +534,18 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
         published_count = await app_storage.publish(
             str(app_id),
-            bundle_files=bundle_result.publication_files,
+            bundle_files=publication_files,
             progress_callback=_report_promotion,
             checkpoint_callback=checkpoint_callback,
+            expected_revision=revision,
+            before_manifest_switch=before_publication,
         )
 
         if published_count == 0:
             raise ValueError("No files found to publish")
 
         # Build snapshot for backwards compat
-        snapshot = {f: "" for f in bundle_result.publication_files}
+        snapshot = {f: "" for f in publication_files}
 
         application.published_snapshot = snapshot
         application.published_at = datetime.now(timezone.utc)

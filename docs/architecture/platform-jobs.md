@@ -250,8 +250,41 @@ commit/root/subtree identities, complete regular-file bytes and modes, including
 zero-byte assets and `app.yaml`. Root and subtree inventories must agree and each
 blob is verified against its Git object ID. Solution authored-tree accounting
 retains its existing identity contract; App content is not assigned a Solution ID.
-This read remains separate from producer authentication, current Main/CI checks,
-installed App enrollment and the eventual conditional publication/accounting.
+The App adapter has an explicit App UUID/scope/subtree allowlist and its own
+artifact-bound OIDC audience, sharing the pinned repository/workflow verifier.
+A Solution token cannot authorize an App. Source admission verifies exact Main
+CI before and after the tree read and compares the complete source digest.
+
+Captured repository publication carries that Git evidence in the compiled
+manifest, captures the Live storage revision before building, and rejects a
+changed revision before writing any outputs. A caller-provided authority check
+runs after compilation and again after output writes immediately before the
+conditional manifest switch. Normal manual publication retains its existing
+behavior.
+
+`POST /api/applications/{id}/github-source` admits enrolled, already published
+inline Apps into the existing `application.publish` job. It does not upload
+source or grant producer tokens an API role. The job stores only source/CI and
+producer identities plus the installed control hash. The worker resolves the
+existing encrypted repository integration in memory, requires its repository to
+match the pinned policy, and leaves its sync branch unchanged. It verifies Git
+again before compiling and checks Main/CI, controls and its attempt lease before
+the manifest switch. A saved intent resumes only original artifact readback,
+without a new Git read, compilation or effect replay. A reused job proves its
+original source, so the producer must compare its result to the requested commit
+before claiming delivery. The additive enqueue contract reuses
+`PlatformJobAccepted`; existing clients and manual publication remain compatible.
+Admission IDs are deterministic for the App/source/producer attempt, so a lost
+terminal response cannot enqueue the same completed operation again. Scoped OIDC
+`POST /api/applications/{id}/github-source/{job_id}/inspect` reads original job
+status and re-verifies successful live artifacts and controls without resuming
+anything. If admission reused an older job instead of creating the proposed ID,
+inspection returns that scoped original job with its original source identity.
+The producer must compare identities and commit evidence; a green old job never
+proves the new commit delivered.
+
+Workspace producer enrollment and automatic App source accounting are not yet
+implemented. These remain necessary before claiming automatic Main delivery.
 
 `PlatformJobPublic` is the single status contract for HTTP and WebSocket
 delivery. Changes that break a CLI-consumed enqueue or status contract require

@@ -22,6 +22,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from src.config import Settings, get_settings
@@ -34,6 +35,13 @@ PUBLISH_COPY_CONCURRENCY = 16
 PUBLICATION_INTENT_SCHEMA = "bifrost.application-publication-intent/v1"
 
 AppMode = Literal["preview", "live"]
+
+
+@dataclass(frozen=True)
+class LiveManifestRevision:
+    """Storage revision observed before a captured publication starts building."""
+
+    etag: str | None
 
 
 class AppStorageService:
@@ -301,8 +309,21 @@ class AppStorageService:
             return [k[len(prefix):] for k in keys if k[len(prefix):]]
 
     # -----------------------------------------------------------------
-    # Publish: copy preview → live
+    # Publish: captured outputs → live
     # -----------------------------------------------------------------
+
+    async def live_manifest_revision(self, app_id: str) -> LiveManifestRevision:
+        async with self._get_client() as client:
+            try:
+                response = await client.get_object(Bucket=self._bucket,
+                    Key=self._key(app_id, "live", "manifest.json"))
+            except client.exceptions.NoSuchKey:
+                return LiveManifestRevision(None)
+            await response["Body"].read()
+            etag = response.get("ETag")
+            if not isinstance(etag, str) or not etag:
+                raise ValueError("Live publication has no storage revision evidence")
+            return LiveManifestRevision(etag)
 
     async def publish(
         self,
@@ -311,6 +332,8 @@ class AppStorageService:
         bundle_files: Mapping[str, bytes],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
         checkpoint_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        expected_revision: LiveManifestRevision | None = None,
+        before_manifest_switch: Callable[[], Awaitable[None]] | None = None,
     ) -> int:
         """Publish the exact captured build, with its manifest written last.
 
@@ -355,6 +378,8 @@ class AppStorageService:
                 etag = prior.get("ETag")
                 if not isinstance(etag, str) or not etag:
                     raise ValueError("Live publication has no storage revision evidence")
+            if expected_revision is not None and etag != expected_revision.etag:
+                raise ValueError("Live publication changed during the captured source build")
             intent = {"schema_version": PUBLICATION_INTENT_SCHEMA, "application_id": app_id,
                       "expected_live_etag": etag, "artifact_hashes": {
                           path: "sha256:" + hashlib.sha256(data).hexdigest() for path, data in captured.items()}}
@@ -402,6 +427,8 @@ class AppStorageService:
 
             # The manifest is the live bundle pointer, so publish it only after
             # every referenced output is durable.
+            if before_manifest_switch is not None:
+                await before_manifest_switch()
             rel_path = "manifest.json"
             await client.put_object(
                 Bucket=self._bucket,

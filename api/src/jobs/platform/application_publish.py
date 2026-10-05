@@ -6,8 +6,10 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+import httpx
 from pydantic import BaseModel
 
+from src.config import get_settings
 from src.core.database import get_db_context
 from src.core.pubsub import publish_app_published
 from src.jobs.execution_policy import (
@@ -22,8 +24,12 @@ from src.jobs.platform.base import (
     PlatformJobRequiresAction,
 )
 from src.models.orm.applications import Application
+from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.repositories.applications import ApplicationRepository
 from src.services.application_publication import publication_controls_hash
+from src.services.application_git_source import app_source_evidence, read_app_git_source
+from src.services.github_config import get_github_config
+from src.services.solutions.github_delivery_source import ProtectedGitReader
 from src.services.app_storage import AppStorageService, PUBLICATION_INTENT_SCHEMA
 
 APPLICATION_PUBLISH_JOB_TYPE = "application.publish"
@@ -33,6 +39,7 @@ logger = logging.getLogger(__name__)
 class ApplicationPublishPayload(BaseModel):
     application_id: UUID
     message: str | None = None
+    protected_git: ApplicationGitPublicationInput | None = None
 
 
 def _publish_percent(
@@ -69,6 +76,19 @@ async def run_application_publish(
                     or application.app_model != "inline_v1" or application.solution_id is not None):
                 raise ValueError("Application ownership/model changed after publication was queued")
             controls = await publication_controls_hash(db, application.id)
+            protected_git = payload.protected_git
+            policy = None
+            if protected_git is not None:
+                policy = get_settings().inline_app_git_delivery_policy
+                if policy is None:
+                    raise ValueError("Protected Git App publication is not configured")
+                enrollment = policy.enrollment_for(application.id)
+                if (enrollment.organization_id != application.organization_id
+                        or enrollment.repo_subpath != application.repo_path
+                        or not application.published_snapshot or application.published_at is None):
+                    raise ValueError("App is outside its enrolled published source/scope")
+                if controls != protected_git.expected_controls_hash:
+                    raise ValueError("Application controls changed after protected Git admission")
 
             repo = ApplicationRepository(
                 db,
@@ -124,13 +144,49 @@ async def run_application_publish(
                     intent = {**proof, "controls_hash": controls}
                     await context.save_checkpoint(intent, phase="Publication intent recorded")
 
-                published = await repo.publish(
-                    application.id,
-                    context.requested_by_email,
-                    payload.message,
-                    progress_callback=report,
-                    checkpoint_callback=checkpoint,
-                )
+                if protected_git is None:
+                    published = await repo.publish(
+                        application.id, context.requested_by_email, payload.message,
+                        progress_callback=report, checkpoint_callback=checkpoint,
+                    )
+                else:
+                    # Reuse the existing encrypted repository integration only
+                    # in memory. Its sync branch is untouched. Never persist the
+                    # producer's ephemeral token or copy credentials into a job.
+                    assert policy is not None
+                    config = await get_github_config(db, policy.organization_id)
+                    if (config is None or not config.token or config.repo_url not in {
+                            f"https://github.com/{policy.repository}",
+                            f"https://github.com/{policy.repository}.git"}):
+                        raise ValueError("Configured Git read credential/repository is unavailable")
+                    async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+                        reader = ProtectedGitReader(policy, config.token, client)
+                        source = await read_app_git_source(reader, policy=policy,
+                            application_id=application.id, commit_sha=protected_git.source_commit_sha,
+                            ci_run_id=protected_git.ci_run_id, ci_run_attempt=protected_git.ci_run_attempt,
+                            artifact_digest=protected_git.artifact_digest)
+                        proof = {**app_source_evidence(application.id, policy, source),
+                            "artifact_digest": protected_git.artifact_digest,
+                            "ci_run_id": protected_git.ci_run_id,
+                            "ci_run_attempt": protected_git.ci_run_attempt,
+                            "producer_run_id": protected_git.producer_run_id,
+                            "producer_run_attempt": protected_git.producer_run_attempt}
+
+                        async def guard_source() -> None:
+                            await reader.verify_ci(protected_git.source_commit_sha,
+                                protected_git.ci_run_id, protected_git.ci_run_attempt)
+                            if await publication_controls_hash(db, application.id, lock=True) != controls:
+                                raise ValueError("Application controls changed before Git publication")
+                            # Recheck the original attempt's lease before any
+                            # manifest switch, including after output writes.
+                            await context.report("Protected source reverified", percent=95)
+
+                        published = await repo.publish(
+                            application.id, context.requested_by_email, payload.message,
+                            progress_callback=report, checkpoint_callback=checkpoint,
+                            source_snapshot=source.snapshot, source_provenance=proof,
+                            before_publication=guard_source,
+                        )
                 if intent is None:
                     raise ValueError("Publication did not record its intent")
                 files_published = await storage.verify_publication(str(application.id), intent)
@@ -155,6 +211,11 @@ async def run_application_publish(
             "publication_intent": intent,
             "recovered_from_intent": context.checkpoint is not None,
         }
+        if payload.protected_git is not None:
+            # This identifies the original admission, including readback of an
+            # older commit reused by a newer producer. Never label that job as
+            # delivery of the newer request merely because it succeeded.
+            result["git_source"] = payload.protected_git.model_dump(mode="json")
         try:
             await publish_app_published(
                 app_id=str(payload.application_id),

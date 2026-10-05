@@ -239,6 +239,66 @@ async def test_captured_source_build_preserves_real_editor_live_storage_and_app_
 
 
 @pytest.mark.asyncio
+async def test_captured_repository_publication_serves_exact_build_and_preserves_editor_controls(
+    e2e_client, platform_admin, app_factory, db_session,
+):
+    from src.repositories.applications import ApplicationRepository
+    from src.services.application_publication import publication_controls_hash
+    from src.services.inline_app_source import InlineAppSourceSnapshot
+
+    app = app_factory(platform_admin.headers, f"captured-publish-{uuid.uuid4().hex[:8]}")
+    storage = AppStorageService()
+    old = _captured_bundle("before-capture")
+    await storage.publish(app["id"], bundle_files=old)
+    before_revision = await storage.live_manifest_revision(app["id"])
+    await storage.write_preview_file(app["id"], "editor-marker.tsx", b"independent draft")
+    source_before = e2e_client.get(f"/api/applications/{app['id']}/files", headers=platform_admin.headers)
+    assert source_before.status_code == 200
+    app_id = uuid.UUID(app["id"])
+    controls = await publication_controls_hash(db_session, app_id)
+    captured = InlineAppSourceSnapshot({"app.yaml": b"scope: global\naccess_level: public\n",
+        "pages/index.tsx": b'export default () => <h1>captured publication runtime</h1>;\n'})
+    # This is compiler/publication integration proof. GitHub/OIDC admission has
+    # separate source-bound tests; this test does not claim a real GitHub token.
+    source_proof = {"source_commit_sha": "a" * 40, "source_hashes": captured.hashes(),
+        "metadata_mode": "preserve_installed_controls"}
+    saved = []
+    guard_calls = []
+
+    async def guard():
+        assert await publication_controls_hash(db_session, app_id) == controls
+        guard_calls.append("checked")
+
+    async def checkpoint(intent):
+        assert await storage.read_file(app["id"], "live", "manifest.json") == old["manifest.json"]
+        saved.append(intent)
+
+    repository = ApplicationRepository(db_session, app.get("organization_id"),
+        user_id=None, is_superuser=True)
+    published = await repository.publish(app_id, "CI capture fixture", source_snapshot=captured,
+        source_provenance=source_proof, before_publication=guard, checkpoint_callback=checkpoint)
+    assert published is not None
+    await db_session.commit()
+    assert len(saved) == 1 and len(guard_calls) == 2
+    assert saved[0]["expected_live_etag"] == before_revision.etag
+    assert await storage.verify_publication(app["id"], saved[0]) == len(saved[0]["artifact_hashes"])
+    manifest_bytes = await storage.read_file(app["id"], "live", "manifest.json")
+    manifest = json.loads(manifest_bytes)
+    assert manifest["git_source_evidence"] == source_proof
+    assert manifest["source_snapshot_evidence"]["authored_source_hashes"] == captured.hashes()
+    for path, expected_hash in saved[0]["artifact_hashes"].items():
+        served = e2e_client.get(f"/api/applications/{app['id']}/bundle-asset/{path}?mode=live",
+            headers=platform_admin.headers)
+        assert served.status_code == 200, served.text
+        assert "sha256:" + hashlib.sha256(served.content).hexdigest() == expected_hash
+    assert await publication_controls_hash(db_session, app_id) == controls
+    assert await storage.read_file(app["id"], "preview", "editor-marker.tsx") == b"independent draft"
+    assert await storage.read_file(app["id"], "live", "entry-before-capture.js") == old["entry-before-capture.js"]
+    source_after = e2e_client.get(f"/api/applications/{app['id']}/files", headers=platform_admin.headers)
+    assert source_after.status_code == 200 and source_after.json() == source_before.json()
+
+
+@pytest.mark.asyncio
 async def test_uncertain_publish_request_recovers_original_job_without_manifest_write(
     e2e_client, platform_admin, app_factory, db_session,
 ):

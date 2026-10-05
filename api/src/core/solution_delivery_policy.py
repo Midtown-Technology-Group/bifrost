@@ -12,8 +12,8 @@ def delivery_path(value: str) -> str:
     return value
 
 
-class SolutionGitDeliveryPolicy(BaseModel):
-    """A producer may deliver only these exact installed Solution recipes."""
+class ProtectedGitRepositoryPolicy(BaseModel):
+    """Pinned repository and producer identity shared by package adapters."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -23,15 +23,23 @@ class SolutionGitDeliveryPolicy(BaseModel):
     workflow_path: str
     ci_workflow_path: str
     ci_workflow_id: int = Field(gt=0)
+    @model_validator(mode="after")
+    def validate_workflows(self):
+        for path in (self.workflow_path, self.ci_workflow_path):
+            delivery_path(path)
+            if not path.startswith(".github/workflows/") or not path.endswith((".yml", ".yaml")):
+                raise ValueError("Delivery and CI workflows must be pinned workflow paths")
+        return self
+
+
+class SolutionGitDeliveryPolicy(ProtectedGitRepositoryPolicy):
+    """A producer may deliver only these exact installed Solution recipes."""
+
     solutions: dict[UUID, str] = Field(min_length=1, max_length=100)
     solution_organization_ids: dict[UUID, UUID | None] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def validate_paths(self):
-        for path in (self.workflow_path, self.ci_workflow_path):
-            delivery_path(path)
-            if not path.startswith(".github/workflows/") or not path.endswith((".yml", ".yaml")):
-                raise ValueError("Delivery and CI workflows must be pinned workflow paths")
         for path in self.solutions.values():
             delivery_path(path)
             if not path.startswith("config/solution-delivery/") or not path.endswith(".json"):

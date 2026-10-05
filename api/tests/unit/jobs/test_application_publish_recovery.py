@@ -8,6 +8,11 @@ import pytest
 
 from src.jobs.platform import application_publish as jobs
 from src.jobs.platform.base import PlatformJobContext, PlatformJobRequiresAction
+from src.models.contracts.applications import ApplicationGitPublicationInput
+from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
+from src.services.inline_app_source import InlineAppSourceSnapshot
+from src.services.solutions.github_delivery_source import VerifiedInlineAppSource
+from tests.unit.services.test_application_git_source import app_policy
 
 
 @pytest.fixture
@@ -81,3 +86,88 @@ async def test_lost_response_after_intent_retains_evidence(monkeypatch, setup):
     save.assert_awaited_once_with(intent, phase="Publication intent recorded")
     db.commit.assert_not_awaited()
     storage.verify_publication.assert_not_awaited()
+
+
+def protected_setup(monkeypatch, app):
+    from datetime import datetime, timezone
+    app.repo_path = "apps/fixture"
+    app.published_snapshot = {"old.js": ""}
+    app.published_at = datetime.now(timezone.utc)
+    policy = app_policy().model_dump()
+    policy["applications"] = {app.id: {"organization_id": None, "repo_subpath": app.repo_path}}
+    policy = InlineAppGitDeliveryPolicy.model_validate(policy)
+    monkeypatch.setattr(jobs, "get_settings", lambda: SimpleNamespace(inline_app_git_delivery_policy=policy))
+    protected = ApplicationGitPublicationInput(source_commit_sha="a" * 40, ci_run_id=123, ci_run_attempt=2,
+        artifact_digest="sha256:" + "c" * 64, expected_controls_hash="sha256:" + "a" * 64,
+        producer_run_id="456", producer_run_attempt=1)
+    return jobs.ApplicationPublishPayload(application_id=app.id, protected_git=protected)
+
+
+@pytest.mark.asyncio
+async def test_protected_git_recovery_reads_original_intent_without_git_read_build_or_effect_replay(monkeypatch, setup):
+    app, db, storage, publisher, intent = setup
+    payload = protected_setup(monkeypatch, app)
+    config = AsyncMock(side_effect=AssertionError("Original intent needs no new Git credential"))
+    source = AsyncMock(side_effect=AssertionError("Original source must not be rebuilt"))
+    monkeypatch.setattr(jobs, "get_github_config", config)
+    monkeypatch.setattr(jobs, "read_app_git_source", source)
+    result = await jobs.run_application_publish(_context(intent), payload)
+    assert result["recovered_from_intent"] and result["publication_intent"] == intent
+    config.assert_not_awaited()
+    source.assert_not_awaited()
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_awaited_once_with(str(app.id), intent)
+
+
+@pytest.mark.asyncio
+async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_controls_and_lease(monkeypatch, setup):
+    app, db, storage, publisher, intent = setup
+    payload = protected_setup(monkeypatch, app)
+    config = SimpleNamespace(token="stored-credential-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace",
+        branch="production-live")
+    monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=config))
+    reader = SimpleNamespace(verify_ci=AsyncMock())
+    monkeypatch.setattr(jobs, "ProtectedGitReader", lambda *_args: reader)
+    source = VerifiedInlineAppSource("a" * 40, "b" * 40, "c" * 40, "apps/fixture",
+        InlineAppSourceSnapshot({"app.yaml": b"scope: global", "pages/index.tsx": b"captured"}),
+        {"app.yaml": "100644", "pages/index.tsx": "100644"})
+    source_read = AsyncMock(return_value=source)
+    monkeypatch.setattr(jobs, "read_app_git_source", source_read)
+    save, report = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(PlatformJobContext, "save_checkpoint", save)
+    monkeypatch.setattr(PlatformJobContext, "report", report)
+
+    async def captured_publish(*_args, **kwargs):
+        assert kwargs["source_snapshot"] is source.snapshot
+        assert kwargs["source_provenance"]["source_commit_sha"] == "a" * 40
+        await kwargs["before_publication"]()
+        await kwargs["checkpoint_callback"]({key: value for key, value in intent.items() if key != "controls_hash"})
+        await kwargs["before_publication"]()
+        return app
+
+    publisher.side_effect = captured_publish
+    result = await jobs.run_application_publish(_context(), payload)
+    assert result["publication_verified"] and not result["recovered_from_intent"]
+    assert reader.verify_ci.await_count == report.await_count == 2
+    save.assert_awaited_once()
+    assert config.branch == "production-live"
+    source_read.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["absent", "token", "repository"])
+async def test_protected_git_job_fails_before_build_when_existing_credential_route_is_invalid(monkeypatch, setup, fault):
+    app, db, storage, publisher, intent = setup
+    payload = protected_setup(monkeypatch, app)
+    config = SimpleNamespace(token="stored-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace")
+    if fault == "token":
+        config.token = None
+    elif fault == "repository":
+        config.repo_url = "https://attacker.invalid/repo"
+    monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=None if fault == "absent" else config))
+    from src.jobs.platform.base import PlatformJobFailure
+    with pytest.raises(PlatformJobFailure, match="credential/repository is unavailable"):
+        await jobs.run_application_publish(_context(), payload)
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+    db.commit.assert_not_awaited()
