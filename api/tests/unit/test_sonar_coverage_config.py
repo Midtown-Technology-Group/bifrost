@@ -1,6 +1,7 @@
 """Sonar reports retain real hits and unexecuted authored source across mounts."""
 
 from configparser import ConfigParser
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -73,6 +74,10 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
         ".agents/skills/example/helper.py",
         "plugins/bifrost/skills/example/helper.py",
     ]
+    template_name = "api/src/services/templates/sdk.py.j2"
+    template = repo / template_name
+    template.parent.mkdir(parents=True)
+    template.write_text("{{ generated_python }}\n")
     for filename in measured + unimported + excluded:
         path = repo / filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +119,9 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
         # Real unit tests execute nonexistent virtual workflow filenames. They
         # must not make XML export fail or hide missing repository source.
         exec(compile(SAMPLE, str(app / "features/archive/new_helper.py"), "exec"), {})
+        # Jinja records generated Python against the original template name;
+        # those line numbers are not template-source coverage.
+        exec(compile(SAMPLE, str(app / template_name.removeprefix("api/")), "exec"), {})
         # Both container aliases can measure the same tracked source.
         duplicate = repo / measured[0]
         exec(compile(duplicate.read_text(), str(duplicate), "exec"), {})
@@ -125,7 +133,7 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     report_path = tmp_path / "coverage.xml"
     filtered_path = tmp_path / ".coverage-tracked"
     listing = tmp_path / "tracked-files.nul"
-    listing.write_bytes(("\0".join(measured + unimported + excluded) + "\0").encode())
+    listing.write_bytes(("\0".join(measured + unimported + excluded + [template_name]) + "\0").encode())
     workflow_path = next(
         root / ".github/workflows/sonar-coverage.yml"
         for root in (API_ROOT, *API_ROOT.parents)
@@ -148,6 +156,9 @@ def test_sonar_maps_mounts_without_losing_hits_or_unimported_source(
     assert _filter_module().main([replacements.get(arg, arg) for arg in filter_args]) == 0
     audit = json.loads((tmp_path / "audit.json").read_text())
     assert audit["discarded_runtime_only_files"] == ["api/features/archive/new_helper.py"]
+    assert audit["discarded_compiled_template_source_sha256"] == {
+        template_name: hashlib.sha256(template.read_bytes()).hexdigest()
+    }
     assert audit["retained_canonical_files"] == len(measured + unimported)
     report_commands = [
         shlex.split(line.strip())
@@ -206,6 +217,33 @@ def test_sonar_inventory_rejects_missing_or_unsafe_tracked_source(tmp_path: Path
     assert module.tracked_python(root, listing)[0] == {"source.py"}
 
 
+def test_sonar_compiled_template_audit_rejects_unsafe_source_or_tracer(tmp_path: Path):
+    module = _filter_module()
+    root = tmp_path / "repo"
+    template_name = "api/src/services/templates/sdk.py.j2"
+    template = root / template_name
+    template.parent.mkdir(parents=True)
+    source = root / "source.py"
+    source.write_text(SAMPLE)
+    listing = tmp_path / "tracked.nul"
+    listing.write_bytes(f"source.py\0{template_name}\0".encode())
+    data_file = tmp_path / "data"
+    data = coverage.CoverageData(basename=str(data_file))
+    data.add_arcs({str(source): {(1, 2)}, str(template): {(1, 2)}})
+    data.write()
+    for linked in (False, True):
+        if linked:
+            template.symlink_to(source)
+        with pytest.raises(ValueError, match="Missing or unsafe tracked template"):
+            module.filter_data(root, tmp_path / "app", listing, data_file, tmp_path / "unused")
+    template.unlink()
+    template.write_text("{{ generated_python }}\n")
+    data.add_file_tracers({str(template): "unreviewed-template-plugin"})
+    data.write()
+    with pytest.raises(ValueError, match="Custom template file tracers"):
+        module.filter_data(root, tmp_path / "app", listing, data_file, tmp_path / "unused")
+
+
 def test_sonar_measured_paths_do_not_escape_mounts(tmp_path: Path):
     module = _filter_module()
     repo, app = tmp_path / "repo", tmp_path / "app"
@@ -226,7 +264,7 @@ def test_sonar_filter_preserves_source_and_rejects_invalid_data(tmp_path: Path):
     source = root / "source.py"
     source.write_text(SAMPLE)
     listing = tmp_path / "tracked.nul"
-    listing.write_bytes(b"source.py\0metadata.json\0")
+    listing.write_bytes(b"source.py\0metadata.json\0other.py.j2\0")
     data_file = tmp_path / "data"
     output = tmp_path / "filtered"
     data = coverage.CoverageData(basename=str(data_file))
@@ -254,6 +292,7 @@ def test_sonar_filter_preserves_source_and_rejects_invalid_data(tmp_path: Path):
     for name, arcs, tracer in (
         ("virtual", {str(root / "virtual.py"): {(1, 2)}}, False),
         ("nonpython", {str(root / "metadata.json"): {(1, 2)}}, False),
+        ("other-template", {str(root / "other.py.j2"): {(1, 2)}}, False),
         ("tracer", {str(source): {(1, 2)}}, True),
     ):
         path = tmp_path / name
