@@ -9,6 +9,15 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      inspect_sonar:
+        description: Read selected Sonar project metadata alongside normal CI validation
+        type: boolean
+        default: false
+      reviewed_workflow_sha:
+        description: Exact signed workflow commit reviewed for the optional Sonar diagnostic
+        type: string
+        default: ""
 
 permissions: read-all
 
@@ -29,6 +38,18 @@ env:
   CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
 
 jobs:
+  # Optional operator-reviewed inspection; no repository code runs with this token.
+  # Normal CI still runs, retaining the real required checks for this exact head.
+  sonar-readonly-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.inspect_sonar
+    permissions: {}
+    uses: ./.github/workflows/sonar-readonly-diagnostic.yml
+    with:
+      reviewed_workflow_sha: ${{ inputs.reviewed_workflow_sha }}
+      allow_visible_metadata: ${{ inputs.inspect_sonar }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
   # Separate exact-head coverage collection. Report-only until the reviewed
   # Sonar migration is activated; existing checks and approvals stay intact.
   sonar-coverage:
@@ -40,6 +61,7 @@ jobs:
       base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
   # Manual branch runs provide the exact clean-candidate gate when no local
   # Docker test VM is available. Tags cannot enter this preparation-only job.
   pre-pr-candidate:
@@ -1998,4 +2020,3 @@ jobs:
           fi
           gh release edit "$VERSION" "${args[@]}"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
-
