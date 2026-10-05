@@ -43,6 +43,8 @@ MAX_SOURCE_BYTES = 10 * 1024 * 1024
 MAX_METADATA_BYTES = 5 * 1024 * 1024
 MAX_AUTHORED_FILES = 1000
 MAX_ANCESTRY_COMMITS = 1000
+MAX_HISTORICAL_AUTHORED_SOURCES = 100
+MAX_HISTORICAL_AUTHORED_BYTES = 32 * 1024 * 1024
 
 
 class GitDeliverySourceError(ValueError):
@@ -98,6 +100,7 @@ class VerifiedGitSource:
     control_hashes: dict[str, str] = field(default_factory=dict)
     installation_registry: dict[str, Any] | None = None
     ancestor_commit_shas: tuple[str, ...] = ()
+    historical_authored_sources: tuple[VerifiedAuthoredSolution, ...] = ()
 
 
 @dataclass(frozen=True)

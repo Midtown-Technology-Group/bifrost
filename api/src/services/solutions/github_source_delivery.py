@@ -2,6 +2,8 @@
 
 import base64
 import json
+
+import httpx
 from dataclasses import replace
 from typing import Literal
 from uuid import UUID, uuid5
@@ -17,15 +19,16 @@ from src.models.contracts.solution_deployments import (
 )
 from src.models.orm.solutions import Solution
 from src.models.orm.solution_deployments import SolutionDeployment
-from src.models.orm.workspace_promotions import WorkspaceSourceRelease
+from src.models.orm.workspace_promotions import SolutionDeployObligation, WorkspaceSourceRelease
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.operation_receipts import (
     OperationReceiptDisposition, canonical_operation_scope_key, canonical_request_fingerprint,
     claim_operation_receipt, complete_operation_receipt_success,
 )
-from src.services.solutions.deployment_manifest import validate_runtime_closure
+from src.services.solutions.deployment_manifest import canonical_json, validate_runtime_closure
 from src.services.solutions.github_delivery_source import (
-    MAX_ANCESTRY_COMMITS, GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader,
+    MAX_ANCESTRY_COMMITS, MAX_HISTORICAL_AUTHORED_BYTES, MAX_HISTORICAL_AUTHORED_SOURCES,
+    GitDeliveryIdentity, GitDeliverySourceError, ProtectedGitReader,
     VerifiedAuthoredSolution, VerifiedGitSource,
 )
 from src.services.solutions.source_revision import (
@@ -58,6 +61,21 @@ async def _unresolved_source_commits(db: AsyncSession, organization_id: UUID) ->
         .limit(MAX_ANCESTRY_COMMITS))).all())
 
 
+async def _historical_authored_source(reader: ProtectedGitReader, record) -> VerifiedAuthoredSolution | None:
+    from src.services.solutions.native_authored_accounting import require_declared_authored_source
+    from src.services.solutions.native_authored_source import NativeAuthoredSourceMismatch
+
+    try:
+        prior = await reader.authored_source(record.source_commit_sha, record.repo_subpath,
+            expected_tree_sha=record.source_tree_sha)
+        require_declared_authored_source(record, prior)
+        return prior
+    except (GitDeliverySourceError, NativeAuthoredSourceMismatch, httpx.HTTPError):
+        # This optional old input cannot settle its obligation. Verification of
+        # CURRENT source/CI remains mandatory and its errors still propagate.
+        return None
+
+
 class GitSourceDeliveryService:
     def __init__(self, db: AsyncSession, policy: SolutionGitDeliveryPolicy, reader: ProtectedGitReader):
         self.db, self.policy, self.reader = db, policy, reader
@@ -84,8 +102,46 @@ class GitSourceDeliveryService:
         tracking_org = workspace_source_release_tracking_organization_id(get_settings())
         if tracking_org is not None:
             older = await _unresolved_source_commits(self.db, tracking_org)
+            historical = []
+            if authored is not None:
+                historical = list((await self.db.execute(select(SolutionDeployObligation.id,
+                        SolutionDeployObligation.source_commit_sha)
+                    .join(WorkspaceSourceRelease, WorkspaceSourceRelease.id == SolutionDeployObligation.source_release_id)
+                    .where(SolutionDeployObligation.organization_id == tracking_org,
+                        SolutionDeployObligation.repo_subpath == authored.repo_subpath,
+                        SolutionDeployObligation.solution_slug == authored.solution_slug,
+                        SolutionDeployObligation.declared_disposition == "solution_deploy_required",
+                        SolutionDeployObligation.disposition.in_(("pending", "attention_required")),
+                        SolutionDeployObligation.source_commit_sha != source.commit_sha,
+                        WorkspaceSourceRelease.organization_id == tracking_org,
+                        WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
+                        WorkspaceSourceRelease.source_commit_sha == SolutionDeployObligation.source_commit_sha,
+                        WorkspaceSourceRelease.source_tree_sha == SolutionDeployObligation.source_tree_sha)
+                    .order_by(SolutionDeployObligation.updated_at, SolutionDeployObligation.id)
+                    .limit(MAX_HISTORICAL_AUTHORED_SOURCES))).all())
+                older.update(row.source_commit_sha for row in historical)
             if older:
                 source = replace(source, ancestor_commit_shas=await self.reader.verified_ancestors(source.commit_sha, older))
+            if historical:
+                retained = []
+                retained_bytes = 0
+                for identity, commit in historical:
+                    if commit not in source.ancestor_commit_shas:
+                        continue
+                    # Load one full manifest at a time rather than materializing
+                    # 100 large JSON inventories before applying the byte cap.
+                    record = await self.db.get(SolutionDeployObligation, identity, populate_existing=True)
+                    if record is None or record.source_commit_sha != commit:
+                        continue
+                    prior = await _historical_authored_source(self.reader, record)
+                    if prior is None:
+                        continue
+                    size = sum(len(raw) for raw in prior.files.values()) + len(canonical_json(prior.file_manifest()))
+                    if retained_bytes + size > MAX_HISTORICAL_AUTHORED_BYTES:
+                        continue
+                    retained.append(prior)
+                    retained_bytes += size
+                source = replace(source, historical_authored_sources=tuple(retained))
         async with solution_write_lock(solution_id):
             result = await self._deliver_locked(source, request, producer, authored)
         # Receipt replays also reach accounting recovery. Release the one-install
@@ -225,8 +281,10 @@ class GitSourceDeliveryService:
         if authored is not None:
             from src.services.solutions.authored_archive import retain_authored_archive
             from src.services.solutions.deployment_storage import SolutionDeploymentStorage
-            proof["authored_source"] = await retain_authored_archive(
-                SolutionDeploymentStorage(source.solution_id, base.id), authored)
+            storage = SolutionDeploymentStorage(source.solution_id, base.id)
+            proof["authored_source"] = await retain_authored_archive(storage, authored)
+            proof["authored_source_history"] = [await retain_authored_archive(storage, prior)
+                for prior in source.historical_authored_sources]
             authored_state = await self._deliver_authored_readme(base, source, authored)
         recorded_id = await self.db.scalar(update(SolutionDeployment).where(
             SolutionDeployment.id == base.id,

@@ -55,10 +55,11 @@ def _source(f):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("historical", [None, "same", "changed"], ids=["exact", "descendant-revert", "descendant-change"])
 @pytest.mark.parametrize("unrelated_mutable", [False, True])
 @pytest.mark.parametrize("recovery_fault", [None, "receipt", "readme", "membership", "lock_timeout", "cache_budget"])
 async def test_successful_receipt_replay_then_late_declaration_settles_native_authored_source(
-    committed_delivery_db, async_session_factory, platform_admin, monkeypatch, unrelated_mutable, recovery_fault,
+    committed_delivery_db, async_session_factory, platform_admin, monkeypatch, unrelated_mutable, recovery_fault, historical,
 ):
     from datetime import timedelta
     from unittest.mock import AsyncMock
@@ -118,15 +119,30 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
     monkeypatch.setattr(github_source_delivery, "claim_operation_receipt", AsyncMock(return_value=
         OperationReceiptClaim(receipt_id=receipt.id, disposition=OperationReceiptDisposition.SUCCEEDED)))
 
+    previous = replace(source, commit_sha=uuid4().hex + "a" * 8, tree_sha="e" * 40)
+    if historical == "changed":
+        old_files = {**source.files, "README.md": b"Older reviewed investigation instructions\n"}
+        old_entries = tuple(replace(item,
+            sha256=hashlib.sha256(old_files[item.path.removeprefix(root + "/")]).hexdigest(),
+            size=len(old_files[item.path.removeprefix(root + "/")])) for item in source.source_files)
+        previous = replace(previous, files=MappingProxyType(old_files), source_files=old_entries,
+            subtree_sha=_git_subtree_sha(old_files, old_entries, root + "/"))
+        previous = replace(previous, source_content_id=solution_source_content_id(
+            solution_slug=previous.solution_slug, repo_subpath=root, source_files=previous.file_manifest()))
+    declaration = previous if historical else source
+
     class Reader:
+        async def verified_ancestors(self, _head, candidates):
+            return (previous.commit_sha,) if previous.commit_sha in candidates else ()
+
         async def verify_ci(self, *_args):
             return None
 
         async def source(self, *_args):
             return desired
 
-        async def authored_source(self, *_args, **_kwargs):
-            return source
+        async def authored_source(self, commit, *_args, **_kwargs):
+            return previous if commit == previous.commit_sha else source
 
     delivered = await GitSourceDeliveryService(db_session, policy, Reader()).deliver(f.solution_id,
         SolutionGitSourceDeliveryRequest(source_commit_sha=source.commit_sha, ci_run_id=1,
@@ -134,14 +150,26 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
     assert delivered.state == "already_active" and delivered.authored_source_state == "verified"
     assert delivered.deployment_id == f.base_id
     assert f.base.validation_result["github_delivery"]["receipt_id"] == str(receipt.id)
-    child = SolutionDeployObligationDeclare(solution_slug=source.solution_slug, repo_subpath=root,
-        source_subtree_sha=source.subtree_sha, source_content_id=source.source_content_id,
-        source_files=source.file_manifest(), changed_paths={root + "/README.md": hashlib.sha256(source.files["README.md"]).hexdigest()},
+    child = SolutionDeployObligationDeclare(solution_slug=declaration.solution_slug, repo_subpath=root,
+        source_subtree_sha=declaration.subtree_sha, source_content_id=declaration.source_content_id,
+        source_files=declaration.file_manifest(), changed_paths={root + "/README.md": hashlib.sha256(declaration.files["README.md"]).hexdigest()},
         disposition="solution_deploy_required")
-    request = WorkspaceSourceReleaseDeclareRequest(source_commit_sha=source.commit_sha, source_tree_sha=source.tree_sha,
+    request = WorkspaceSourceReleaseDeclareRequest(source_commit_sha=declaration.commit_sha, source_tree_sha=declaration.tree_sha,
         paths={}, disposition="non_production", reason="All authored changes belong to the explicit Solution target",
         solution_deploy_obligations=[child])
     service = WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID)
+    from src.services.github_actions_oidc import WorkspaceSourceReleaseProducer
+    producer = WorkspaceSourceReleaseProducer(organization_id=PROVIDER_ORG_ID,
+        source_commit_sha=declaration.commit_sha, oidc_commit_sha=source.commit_sha,
+        repository=policy.repository, workflow_ref=f"{policy.repository}/.github/workflows/declare.yml@refs/heads/main",
+        run_id="9", event_name="workflow_run", triggering_workflow_run_id="8") if historical else None
+
+    async def recover_history():
+        if historical:
+            await GitSourceDeliveryService(db_session, policy, Reader()).deliver(f.solution_id,
+                SolutionGitSourceDeliveryRequest(source_commit_sha=source.commit_sha, ci_run_id=1,
+                    ci_run_attempt=1, artifact_digest=digest), GitDeliveryIdentity("2", 1))
+
     original_evidence = native_authored_accounting._installed_evidence
     # Engine-bound factory uses independent PostgreSQL backends. A second
     # session bound to db_session.bind would share its existing connection.
@@ -177,12 +205,14 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
             assert await writer.scalar(text("SELECT pg_backend_pid()")) != await db_session.scalar(
                 text("SELECT pg_backend_pid()"))
             await writer.execute(text("LOCK TABLE solutions IN ROW EXCLUSIVE MODE"))
-            declared = await asyncio.wait_for(service.declare(request, created_by=platform_admin.user_id), timeout=4)
+            declared = await asyncio.wait_for(service.declare(request, created_by=platform_admin.user_id, producer=producer), timeout=4)
+            await recover_history()
             await writer.rollback()
     else:
-        declared = await service.declare(request, created_by=platform_admin.user_id)
-    assert declared.source_commit_sha == commit_sha
-    assert declared.source_tree_sha == source.tree_sha
+        declared = await service.declare(request, created_by=platform_admin.user_id, producer=producer)
+        await recover_history()
+    assert declared.source_commit_sha == declaration.commit_sha
+    assert declared.source_tree_sha == declaration.tree_sha
     assert declared.disposition == "non_production"
     child_row = (await db_session.get(WorkspaceSourceRelease, declared.id)).solution_deploy_obligations[0]
     if recovery_fault:
@@ -192,7 +222,10 @@ async def test_successful_receipt_replay_then_late_declaration_settles_native_au
             await writer.execute(update(Solution).where(Solution.id == f.solution_id).values(readme="Post-fence write"))
             await asyncio.wait_for(writer.commit(), timeout=2)
         return
-    assert child_row.disposition == "released" and child_row.deploy_job_id is None
+    assert child_row.disposition == ("superseded" if historical else "released") and child_row.deploy_job_id is None
+    if historical:
+        assert child_row.completion_evidence["superseded_source_commit_sha"] == previous.commit_sha
+        assert child_row.completion_evidence["superseded_source_files"] == previous.file_manifest()
     assert child_row.completion_evidence["source_content_id"] == source.source_content_id
     original = child_row.completion_evidence
     replay = await service.declare(request, created_by=platform_admin.user_id)
