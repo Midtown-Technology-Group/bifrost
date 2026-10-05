@@ -37,7 +37,7 @@ _FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "meraki_adoption_shape"
 
 @pytest.mark.parametrize("with_root_webhook", [False, True], ids=["no-trigger", "root-webhook-subscription"])
 @pytest.mark.asyncio
-async def test_meraki_public_recipe_candidate_is_read_only_over_http(
+async def test_meraki_public_recipe_candidate_preserves_legacy_rows_over_http(
     e2e_client, platform_admin, async_engine, with_root_webhook,
 ):
     """Stage the exact 4-file/3-workflow public DTO; never activate or execute it."""
