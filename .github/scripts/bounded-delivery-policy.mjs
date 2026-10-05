@@ -152,6 +152,12 @@ export async function evaluate({ policy, policySha, prNumber, request }) {
   }
   if ([...latest.values()].some((review) => review.state === "CHANGES_REQUESTED")) fail("Outstanding requested changes");
   const checks = await pages(`commits/${head}/check-runs?filter=all`, "check_runs");
+  const suites = await pages(`commits/${head}/check-suites`, "check_suites");
+  const requiredApps = new Set([...policy.reviewers, ...policy.requiredChecks].map((source) => source.appId));
+  for (const suite of suites.filter((item) => requiredApps.has(item.app?.id))) {
+    if (!integer(suite.id) || suite.head_sha !== head || suite.status !== "completed" ||
+        suite.conclusion !== "success") fail("Relevant check suite is pending, failed, or unresolved");
+  }
   const reviewer = policy.reviewers.find((identity) => {
     const review = latest.get(identity.userId);
     return review?.state === "APPROVED" && review.commit_id === head &&
@@ -166,7 +172,7 @@ export async function evaluate({ policy, policySha, prNumber, request }) {
   const verifiedSuites = new Map();
   const verifySuite = async (check) => {
     const id = check.check_suite?.id;
-    if (!integer(id)) fail("Check has no source suite");
+    if (!integer(id) || !suites.some((suite) => suite.id === id)) fail("Check has no inventoried source suite");
     if (!verifiedSuites.has(id)) verifiedSuites.set(id, await get(`check-suites/${id}`));
     const suite = verifiedSuites.get(id);
     if (suite.id !== id || suite.app?.id !== check.app.id || suite.app?.slug !== check.app.slug ||
@@ -221,7 +227,9 @@ export async function evaluate({ policy, policySha, prNumber, request }) {
   // Reviews, check runs and suites are mutable even when the head stays fixed.
   const refreshedReviews = await pages(`pulls/${prNumber}/reviews`);
   const refreshedChecks = await pages(`commits/${head}/check-runs?filter=all`, "check_runs");
-  if (JSON.stringify(refreshedReviews) !== JSON.stringify(reviews) ||
+  const refreshedSuites = await pages(`commits/${head}/check-suites`, "check_suites");
+  if (JSON.stringify(refreshedSuites) !== JSON.stringify(suites) ||
+      JSON.stringify(refreshedReviews) !== JSON.stringify(reviews) ||
       JSON.stringify(refreshedChecks) !== JSON.stringify(checks)) fail("Review or check evidence changed during evaluation");
   for (const [id, suite] of verifiedSuites) {
     if (JSON.stringify(await get(`check-suites/${id}`)) !== JSON.stringify(suite)) {
