@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bifrost.invalid/runtime/v1/language-neutral/compatibility.schema.json",
+  "$defs": {},
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "bifrost.workflow-runtime-compatibility/v1"
+    },
+    "scenario_set": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requires": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "artifact",
+                "codec",
+                "adapter",
+                "capability",
+                "durable_owner"
+              ]
+            }
+          },
+          "input": {},
+          "expected": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "success",
+                  "error",
+                  "denied",
+                  "cancelled",
+                  "unknown"
+                ]
+              },
+              "value": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "error_code": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "effects": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "secret_disclosure": {
+                "const": false
+              }
+            },
+            "required": [
+              "outcome",
+              "value",
+              "error_code",
+              "effects",
+              "secret_disclosure"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "requires",
+          "input",
+          "expected"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "format",
+    "scenario_set",
+    "scenarios"
+  ],
+  "additionalProperties": false
+}

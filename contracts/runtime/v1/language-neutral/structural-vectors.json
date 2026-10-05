@@ -1,0 +1,1637 @@
+[
+  {
+    "schema": "artifact",
+    "name": "native",
+    "value": {
+      "kind": "native-executable/v1",
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "build_evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      },
+      "toolchain": {
+        "implementation": "go",
+        "version": "test"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "valid": true
+  },
+  {
+    "schema": "artifact",
+    "name": "interpreted-runtime/v1",
+    "value": {
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "kind": "interpreted-runtime/v1",
+      "runtime": {
+        "implementation": "cpython",
+        "version": "test"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "source_bundle_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "valid": true
+  },
+  {
+    "schema": "artifact",
+    "name": "managed-runtime/v1",
+    "value": {
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "kind": "managed-runtime/v1",
+      "runtime": {
+        "implementation": "deno",
+        "version": "test"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "payload_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      }
+    },
+    "valid": true
+  },
+  {
+    "schema": "workload",
+    "name": "success",
+    "value": {
+      "kind": "workload-result/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "outcome": "success",
+      "value": {
+        "ready": true
+      }
+    },
+    "valid": true
+  },
+  {
+    "schema": "provision-binding",
+    "name": "bound",
+    "value": {
+      "kind": "provision-binding/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "committed_start_id": "00000000-0000-0000-0000-000000000003",
+      "grant_id": "00000000-0000-0000-0000-000000000002",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "capabilities": [
+        "integrations.read"
+      ]
+    },
+    "valid": true
+  },
+  {
+    "schema": "artifact",
+    "name": "unknown-class",
+    "value": {
+      "kind": "go-runtime/v1",
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "build_evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      },
+      "toolchain": {
+        "implementation": "go",
+        "version": "test"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "valid": false
+  },
+  {
+    "schema": "artifact",
+    "name": "authority-field",
+    "value": {
+      "kind": "native-executable/v1",
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "build_evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      },
+      "toolchain": {
+        "implementation": "go",
+        "version": "test"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "credential": "test-only"
+    },
+    "valid": false
+  },
+  {
+    "schema": "artifact",
+    "name": "bad-digest",
+    "value": {
+      "kind": "native-executable/v1",
+      "artifact_id": "sha256:no",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "build_evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      },
+      "toolchain": {
+        "implementation": "go",
+        "version": "test"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "valid": false
+  },
+  {
+    "schema": "artifact",
+    "name": "missing-toolchain",
+    "value": {
+      "kind": "native-executable/v1",
+      "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "image_digest": null,
+      "sdk": {
+        "distribution": "bifrost-go",
+        "version": "0.0.0-test"
+      },
+      "runtime_protocol": "bifrost.runtime/v1",
+      "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "build_evidence_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      },
+      "dependencies": {
+        "kind": "go-module-lock/v1",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "valid": false
+  },
+  {
+    "schema": "workload",
+    "name": "success-with-error",
+    "value": {
+      "kind": "workload-result/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "outcome": "success",
+      "value": {
+        "ready": true
+      },
+      "error": {
+        "code": "bad",
+        "message": "",
+        "details": null
+      }
+    },
+    "valid": false
+  },
+  {
+    "schema": "workload",
+    "name": "zero-attempt",
+    "value": {
+      "kind": "workload-result/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 0,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "outcome": "success",
+      "value": {
+        "ready": true
+      }
+    },
+    "valid": false
+  },
+  {
+    "schema": "provision-binding",
+    "name": "bad-expiry",
+    "value": {
+      "kind": "provision-binding/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "committed_start_id": "00000000-0000-0000-0000-000000000003",
+      "grant_id": "00000000-0000-0000-0000-000000000002",
+      "expires_at": "tomorrow",
+      "capabilities": [
+        "integrations.read"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "schema": "provision-binding",
+    "name": "duplicate-capability",
+    "value": {
+      "kind": "provision-binding/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "committed_start_id": "00000000-0000-0000-0000-000000000003",
+      "grant_id": "00000000-0000-0000-0000-000000000002",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "capabilities": [
+        "integrations.read",
+        "integrations.read"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "schema": "workload",
+    "name": "error",
+    "value": {
+      "kind": "workload-result/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "outcome": "error",
+      "error": {
+        "code": "vendor.invalid_response",
+        "message": "Invalid response",
+        "details": null
+      }
+    },
+    "valid": true
+  },
+  {
+    "schema": "workload",
+    "name": "input-null-deadline",
+    "value": {
+      "kind": "workload-input/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "input_schema_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "output_schema_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "input": {
+        "test": null
+      },
+      "deadline_utc": null
+    },
+    "valid": true
+  },
+  {
+    "schema": "workload",
+    "name": "impossible-date",
+    "value": {
+      "kind": "workload-input/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "input_schema_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "output_schema_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "input": {
+        "test": null
+      },
+      "deadline_utc": "2030-02-30T00:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "schema": "workload",
+    "name": "logs",
+    "value": {
+      "kind": "log-batch/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "batch_sequence": 1,
+      "entries": [
+        {
+          "level": "info",
+          "message": "synthetic"
+        }
+      ]
+    },
+    "valid": true
+  },
+  {
+    "schema": "workload",
+    "name": "oversized-log-batch",
+    "value": {
+      "kind": "log-batch/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "batch_sequence": 1,
+      "entries": [
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        },
+        {
+          "level": "info",
+          "message": "synthetic"
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "schema": "workload",
+    "name": "usage",
+    "value": {
+      "kind": "usage/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "measurements": [
+        {
+          "name": "requests",
+          "unit": "count",
+          "value": 1
+        }
+      ]
+    },
+    "valid": true
+  },
+  {
+    "schema": "workload",
+    "name": "negative-usage",
+    "value": {
+      "kind": "usage/v1",
+      "binding": {
+        "execution_id": "00000000-0000-0000-0000-000000000001",
+        "attempt_id": "00000000-0000-0000-0000-000000000001",
+        "session_id": "00000000-0000-0000-0000-000000000001",
+        "caller_id": "00000000-0000-0000-0000-000000000001",
+        "solution_id": "00000000-0000-0000-0000-000000000001",
+        "deployment_id": "00000000-0000-0000-0000-000000000001",
+        "execution_kind": "workflow",
+        "attempt_number": 1,
+        "organization_id": null,
+        "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "message_id": "00000000-0000-0000-0000-000000000002",
+      "start_message_id": "00000000-0000-0000-0000-000000000003",
+      "measurements": [
+        {
+          "name": "requests",
+          "unit": "count",
+          "value": -1
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "schema": "compatibility",
+    "name": "case-envelope",
+    "value": {
+      "format": "bifrost.workflow-runtime-compatibility/v1",
+      "scenario_set": "synthetic-structure-only",
+      "scenarios": [
+        {
+          "id": "synthetic",
+          "purpose": "Validate case structure only",
+          "requires": [
+            "adapter"
+          ],
+          "input": {},
+          "expected": {
+            "outcome": "success",
+            "value": null,
+            "error_code": null,
+            "effects": 0,
+            "secret_disclosure": false
+          }
+        }
+      ]
+    },
+    "valid": true
+  },
+  {
+    "schema": "compatibility",
+    "name": "secret-disclosure",
+    "value": {
+      "format": "bifrost.workflow-runtime-compatibility/v1",
+      "scenario_set": "synthetic-structure-only",
+      "scenarios": [
+        {
+          "id": "synthetic",
+          "purpose": "Validate case structure only",
+          "requires": [
+            "adapter"
+          ],
+          "input": {},
+          "expected": {
+            "outcome": "success",
+            "value": null,
+            "error_code": null,
+            "effects": 0,
+            "secret_disclosure": true
+          }
+        }
+      ]
+    },
+    "valid": false
+  }
+]
