@@ -478,3 +478,22 @@ def test_ordinary_main_merge_has_no_release_mutations(history, monkeypatch):
 
     monkeypatch.setattr(release, "api", reject)
     release.publish(source, 42, history["prs"])
+
+
+
+def test_prepared_notes_include_actual_contract_transition_and_retirement_limit(history):
+    for path in release.release_manifest.CONTRACT_PATHS:
+        Path(path).write_text("CONTRACT_VERSION: int = 13\n")
+    migration = Path(release.release_manifest.MIGRATIONS) / "20261003_workflow_registration_retirement.py"
+    migration.parent.mkdir(parents=True, exist_ok=True)
+    migration.write_text("revision = '20261003_workflow_retirement'\ndown_revision = None\n")
+    source = history["commit"]("fix: terminal registration history")
+    release.prepare(source, history["prs"])
+    notes = Path(release.NOTES).read_text()
+    assert "11 -> 13" in notes
+    assert "refuses once retirement evidence exists" in notes
+    assert "Preserve terminal workflow retirement evidence" in notes
+    assert "protected infrastructure migration lane" in notes
+    assert "production caller/byte evidence" in notes
+    assert "uncertain outcome requires readback before any exact retry" in notes
+    assert f"/blob/{source}/docs/architecture/rapid-workspace-promotion.md" in notes

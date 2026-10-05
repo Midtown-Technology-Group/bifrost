@@ -84,3 +84,19 @@ Existing SDK raw HTTP helpers can read the contract; no entity mutation command,
 manifest field or CLI contract version is changed. The existing retirement
 request and response are preserved. Generate client types from the actual CI API
 schema readback, not from a handwritten schema or sibling checkout.
+
+## Immutable source export readback
+
+An immutable Solution export reads the active deployment's complete source and
+resource closure and verifies each content hash against that deployment. Empty
+Python package initializers are valid source members and retain their empty-file
+hash. Transport reads remain bounded by the archive budget. If an object store
+rejects the prefix range with HTTP 416, the reader accepts empty bytes only after
+metadata for the exact same object key proves an integer size of zero. A nonzero
+or unknown size, failed metadata read, other download error or changed hash
+fails closed. The reader never substitutes Root bytes or issues an unbounded
+download to handle the range failure.
+
+Export source verification complements independent matching worker-pin and
+registration readback. A shareable export does not certify customer table data,
+connection secrets, retention copies or full disaster recovery.

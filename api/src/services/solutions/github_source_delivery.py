@@ -247,7 +247,16 @@ class GitSourceDeliveryService:
         # serialize it, and all other authored components must read back before
         # that write can commit. Unsupported component delivery stays explicit.
         try:
-            metadata = native_authored_metadata(authored)
+            _manifest, resolution = validate_runtime_closure(
+                base.compiled_manifest,
+                base.resolution_map,
+                base.dependencies,
+                expected_manifest_hash=base.compiled_manifest_hash,
+                expected_resolution_hash=base.resolution_map_hash,
+            )
+            metadata = native_authored_metadata(
+                authored, resource_paths=frozenset(resolution.resources)
+            )
             async with self.db.begin_nested():
                 installed = await self.db.scalar(select(Solution).where(Solution.id == source.solution_id,
                     Solution.active_deployment_id == base.id, Solution.status == "active")
