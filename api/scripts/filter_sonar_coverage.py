@@ -13,6 +13,13 @@ from pathlib import Path
 import coverage
 
 
+# Jinja compiles this authored template using its template filename. Those
+# generated Python line numbers are not coverage of the template source. Keep
+# the template in source inventory and require human review for .j2 changes.
+# Do not generalize this to arbitrary tracked non-Python files.
+COMPILED_TEMPLATE_PATHS = frozenset({"api/src/services/templates/sdk.py.j2"})
+
+
 def tracked_python(root: Path, listing: Path) -> tuple[set[str], set[str]]:
     raw = listing.read_bytes()
     if not raw or not raw.endswith(b"\0"):
@@ -69,6 +76,7 @@ def filter_data(root: Path, api: Path, listing: Path, source: Path, output: Path
         raise ValueError("Nonempty branch coverage is required")
     arcs: dict[str, set[tuple[int, int]]] = {}
     discarded = []
+    templates = {}
     outside = 0
     for filename in sorted(measured.measured_files()):
         canonical = repository_path(filename, root, api)
@@ -77,6 +85,15 @@ def filter_data(root: Path, api: Path, listing: Path, source: Path, output: Path
             continue
         if canonical not in tracked:
             if canonical in all_tracked:
+                if canonical in COMPILED_TEMPLATE_PATHS:
+                    template = root / canonical
+                    if (template.is_symlink() or not template.is_file()
+                            or not template.resolve().is_relative_to(root)):
+                        raise ValueError("Missing or unsafe tracked template source")
+                    if measured.file_tracer(filename):
+                        raise ValueError("Custom template file tracers require separate review")
+                    templates[canonical] = hashlib.sha256(template.read_bytes()).hexdigest()
+                    continue
                 raise ValueError("Measured filename refers to tracked non-Python source")
             discarded.append(canonical)
             continue
@@ -96,6 +113,7 @@ def filter_data(root: Path, api: Path, listing: Path, source: Path, output: Path
         "measured_files": len(measured.measured_files()),
         "retained_canonical_files": len(arcs),
         "discarded_runtime_only_files": sorted(set(discarded)),
+        "discarded_compiled_template_source_sha256": templates,
         "discarded_outside_source_roots": outside,
         "input_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
@@ -116,7 +134,8 @@ def main(argv: list[str] | None = None) -> int:
                          args.input, args.output)
     args.audit.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(f"Retained {result['retained_canonical_files']} measured repository Python files; "
-          f"audited {len(result['discarded_runtime_only_files'])} runtime-only filenames.")
+          f"audited {len(result['discarded_runtime_only_files'])} runtime-only filenames and "
+          f"{len(result['discarded_compiled_template_source_sha256'])} compiled templates.")
     return 0
 
 
