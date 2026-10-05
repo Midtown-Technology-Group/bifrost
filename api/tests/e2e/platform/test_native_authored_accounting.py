@@ -5,12 +5,12 @@ import hashlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import MappingProxyType
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import yaml
 from bifrost.manifest import ManifestWorkflow
-from sqlalchemy import null, text, update
+from sqlalchemy import null, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.constants import PROVIDER_ORG_ID
@@ -338,3 +338,222 @@ async def test_solution_membership_fence_preserves_plain_reads_and_blocks_member
         finally:
             await b.rollback()
             await a.rollback()
+
+
+@pytest.mark.asyncio
+async def test_alternating_install_replays_converge_on_immutable_historical_tranches(
+    committed_delivery_db, async_session_factory, platform_admin, monkeypatch,
+):
+    """Two installs must retain the same bounded history tranche until both prove it."""
+    from contextlib import asynccontextmanager
+    from datetime import timedelta
+
+    from src import config
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.models.orm.operation_receipts import OperationReceipt
+    from src.services import operation_receipts
+    from src.services.solutions.authored_archive import _git_subtree_sha
+    from src.services.solutions.deployment_manifest import sha256_digest
+    from src.services.solutions.github_delivery_source import GitDeliveryIdentity
+    from src.services.solutions.deploy import solution_entity_id
+    from src.services.solutions.deployment_storage import SOURCE_ARTIFACTS_ROOT
+    from src.services.solutions import native_authored_accounting
+
+    db = committed_delivery_db
+    head = uuid4().hex + uuid4().hex[:8]
+    current_tree = uuid4().hex + uuid4().hex[:8]
+    first = await _seed_adopted_revision(db, platform_admin, monkeypatch,
+        source_commit_sha=head, organization_id=PROVIDER_ORG_ID)
+    global_solution_id = uuid4()
+    second = await _seed_adopted_revision(db, platform_admin, monkeypatch,
+        source_commit_sha=head, organization_id=None, solution_id=global_solution_id,
+        workflow_id=solution_entity_id(global_solution_id, first.workflow_id),
+        source_path=first.path, solution_slug=first.solution.slug)
+    root = f"solutions/{first.solution.slug}"
+    await db.execute(update(Solution).where(Solution.id == first.solution_id).values(repo_subpath=root))
+    await db.execute(update(Solution).where(Solution.id == second.solution_id).values(
+        repo_subpath=root))
+    objects_by_deployment = {}
+    installs = (first, second)
+    for fixture in installs:
+        fixture.objects[(str(fixture.base_id), first.path)] = fixture.old_source
+        objects_by_deployment[str(fixture.base_id)] = fixture.objects
+    await db.commit()
+    for fixture in installs:
+        await db.refresh(fixture.solution)
+        await db.refresh(fixture.base)
+
+    class Storage:
+        def __init__(self, _solution_id, deployment_id):
+            self.solution_id = str(_solution_id)
+            self.deployment_id = str(deployment_id)
+            self.objects = objects_by_deployment[self.deployment_id]
+
+        def authored_artifact_key(self, source_content_id):
+            digest = source_content_id.removeprefix("sha256:")
+            return f"{SOURCE_ARTIFACTS_ROOT}/{self.solution_id}/{self.deployment_id}/authored/{digest}.zip"
+
+        async def read_source_artifact(self):
+            return self.objects[(self.deployment_id, "source")]
+
+        async def write_source_artifact(self, content, *, idempotent=False):
+            key = (self.deployment_id, "source")
+            assert key not in self.objects or (idempotent and self.objects[key] == content)
+            self.objects[key] = content
+
+        async def read_runtime_file(self, path):
+            return self.objects[(self.deployment_id, path)]
+
+        async def write_authored_artifact(self, source_content_id, content, *, idempotent=False):
+            key = (self.deployment_id, "authored:" + source_content_id)
+            assert key not in self.objects or (idempotent and self.objects[key] == content)
+            self.objects[key] = content
+
+        async def read_authored_artifact(self, source_content_id):
+            return self.objects[(self.deployment_id, "authored:" + source_content_id)]
+
+    monkeypatch.setattr(source_revision, "SolutionDeploymentStorage", Storage)
+    monkeypatch.setattr(native_authored_source, "SolutionDeploymentStorage", Storage)
+    monkeypatch.setattr(native_authored_accounting, "SolutionDeploymentStorage", Storage)
+    monkeypatch.setattr("src.services.solutions.deployment_storage.SolutionDeploymentStorage", Storage)
+
+    files = {
+        "bifrost.solution.yaml": yaml.safe_dump({key: getattr(first.solution, key) for key in (
+            "slug", "name", "version", "repo_subpath", "allow_inbound_access", "allow_outbound_access",
+            "git_connected", "git_repo_url", "git_ref")}).encode(),
+        "README.md": b"Shared authored-family history\n",
+        ".bifrost/workflows.yaml": yaml.safe_dump({"workflows": {
+            str(first.workflow_id): {key: value for key, value in
+                ManifestWorkflow.from_row(first.workflow, roles=[]).model_dump(mode="json", by_alias=True).items()
+                if key != "organization_id"}}}).encode(),
+        first.path: first.old_source,
+        "shared/__init__.py": b"",
+    }
+    entries = tuple(VerifiedAuthoredSolutionFile(path=root + "/" + path, mode="100644",
+        sha256=hashlib.sha256(raw).hexdigest(), size=len(raw)) for path, raw in sorted(files.items()))
+    manifest_files = [{"path": entry.path, "mode": entry.mode, "sha256": entry.sha256, "size": entry.size}
+        for entry in entries]
+    content_id = solution_source_content_id(solution_slug=first.solution.slug,
+        repo_subpath=root, source_files=manifest_files)
+    subtree_sha = _git_subtree_sha(files, entries, root + "/")
+    authored_head = VerifiedAuthoredSolution(commit_sha=head, tree_sha=current_tree,
+        subtree_sha=subtree_sha, solution_slug=first.solution.slug, repo_subpath=root,
+        source_files=entries, files=MappingProxyType(files), source_content_id=content_id)
+    old_authored = {}
+
+    # Seed 200 OIDC-shaped parent/child declarations with small, identical
+    # package inventories and distinct immutable commit/tree anchors.
+    origin_time = datetime.now(UTC) - timedelta(days=3)
+    child_id_start = (uuid4().int >> 16) << 16
+    commit_prefix, tree_prefix = uuid4().hex, uuid4().hex
+    for index in range(200):
+        commit = commit_prefix + f"{index + 1:08x}"
+        tree = tree_prefix + f"{index + 1:08x}"
+        prior = replace(authored_head, commit_sha=commit, tree_sha=tree)
+        old_authored[commit] = prior
+        release = WorkspaceSourceRelease(
+            id=uuid4(), organization_id=PROVIDER_ORG_ID, source_commit_sha=commit,
+            source_tree_sha=tree, paths={}, declaration_actor="github_actions_oidc",
+            producer_oidc_commit_sha=commit, producer_event_name="push", producer_run_id=str(index + 1),
+            disposition="pending", declared_disposition="pending", created_by=platform_admin.user_id,
+            created_at=origin_time + timedelta(seconds=index),
+        )
+        child = SolutionDeployObligation(
+            id=UUID(int=child_id_start + index), source_release=release, organization_id=PROVIDER_ORG_ID,
+            source_commit_sha=commit, source_tree_sha=tree, solution_slug=first.solution.slug,
+            repo_subpath=root, source_subtree_sha=subtree_sha, source_content_id=content_id,
+            source_files=manifest_files, changed_paths={}, declared_disposition="solution_deploy_required",
+            disposition="pending", created_at=origin_time + timedelta(seconds=index), updated_at=origin_time,
+        )
+        db.add(release)
+        db.add(child)
+    await db.commit()
+    for fixture in installs:
+        await db.refresh(fixture.solution)
+        await db.refresh(fixture.base)
+
+    registry = {"path": "config/solution-delivery/installations.json", "target": "production",
+        "installations": {str(f.solution_id): {"recipe_path": "config/solution-delivery/family.json",
+            "organization_id": str(f.solution.organization_id) if f.solution.organization_id else None,
+            "repo_subpath": root, "package_subpaths": [root]} for f in installs}}
+    recipe_by_solution = {f.solution_id: "config/solution-delivery/family.json" for f in installs}
+    policy = SolutionGitDeliveryPolicy(
+        repository="MTG-Thomas/bifrost-workspace", repository_id=1, repository_owner_id=1,
+        organization_id=PROVIDER_ORG_ID, workflow_path=".github/workflows/deliver.yml",
+        ci_workflow_path=".github/workflows/ci.yml", ci_workflow_id=1,
+        solutions=recipe_by_solution,
+        solution_organization_ids={f.solution_id: f.solution.organization_id for f in installs},
+    )
+    settings = config.get_settings().model_copy(update={"solution_git_delivery_policy": policy,
+        "workspace_source_release_oidc_organization_id": str(PROVIDER_ORG_ID)})
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
+
+    @asynccontextmanager
+    async def receipt_context():
+        async with async_session_factory() as session:
+            yield session
+
+    monkeypatch.setattr(operation_receipts, "get_db_context", receipt_context)
+    current_git = VerifiedGitSource(
+        first.solution_id, head, current_tree, "config/solution-delivery/family.json",
+        {first.path: sha256_digest(first.old_source)}, {first.path: first.old_source},
+        "sha256:" + "d" * 64,
+        repository_paths={first.path: root + "/" + first.path},
+        installation_registry=registry,
+    )
+
+    class Reader:
+        async def verify_ci(self, *_args):
+            return None
+
+        async def source(self, solution_id, *_args):
+            return replace(current_git, solution_id=solution_id,
+                recipe_path=recipe_by_solution[solution_id])
+
+        async def verified_ancestors(self, _head, candidates):
+            return tuple(sorted(set(candidates) & set(old_authored)))
+
+        async def authored_source(self, commit, *_args, **_kwargs):
+            return old_authored.get(commit, authored_head)
+
+    reader = Reader()
+    request = SolutionGitSourceDeliveryRequest(source_commit_sha=head, ci_run_id=1,
+        ci_run_attempt=1, artifact_digest="sha256:" + "d" * 64)
+    identities = {first.solution_id: GitDeliveryIdentity("family-A", 1),
+        second.solution_id: GitDeliveryIdentity("family-B", 1)}
+    for fixture in installs:
+        replay = await GitSourceDeliveryService(db, policy, reader).deliver(
+            fixture.solution_id, request, identities[fixture.solution_id])
+        assert replay.state == "already_active" and replay.authored_source_state == "verified"
+
+    # The synthetic Git reader supplies CI/ancestry evidence; each replay
+    # records durable receipts and checks the actual active pointer and archive.
+    # Alternating targets must keep the same first
+    # tranche selected until its aggregate two-install proof is complete.
+    for fixture in installs + installs[:1]:
+        replay = await GitSourceDeliveryService(db, policy, reader).deliver(
+            fixture.solution_id, request, identities[fixture.solution_id])
+        assert replay.state == "already_active" and replay.authored_source_state == "verified"
+
+    await db.flush()
+    rows = list((await db.scalars(select(SolutionDeployObligation).where(
+        SolutionDeployObligation.solution_slug == first.solution.slug,
+        SolutionDeployObligation.repo_subpath == root).order_by(SolutionDeployObligation.created_at,
+            SolutionDeployObligation.id))).all())
+    assert len(rows) == 200
+    assert all(row.disposition == "superseded" for row in rows)
+    expected_targets = {str(f.solution_id) for f in installs}
+    assert all(set(row.completion_evidence["installations"]) == expected_targets for row in rows)
+    for row in rows:
+        for fixture in installs:
+            proof = row.completion_evidence["installations"][str(fixture.solution_id)]
+            assert proof["source_commit_sha"] == head
+            assert proof["historical_authored_source"]["commit_sha"] == row.source_commit_sha
+            assert proof["readback"]["solution_id"] == str(fixture.solution_id)
+    for fixture in installs:
+        deployment = await db.get(type(fixture.base), fixture.base_id, populate_existing=True)
+        proof = deployment.validation_result["github_delivery"]
+        assert proof["authored_source"]["source_content_id"] == content_id
+        receipt_id = UUID(proof["receipt_id"])
+        receipt = await db.get(OperationReceipt, receipt_id, populate_existing=True)
+        assert receipt is not None and receipt.status == "succeeded"

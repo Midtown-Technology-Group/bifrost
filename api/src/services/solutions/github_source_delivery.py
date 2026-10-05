@@ -118,7 +118,10 @@ class GitSourceDeliveryService:
                         WorkspaceSourceRelease.declaration_actor == "github_actions_oidc",
                         WorkspaceSourceRelease.source_commit_sha == SolutionDeployObligation.source_commit_sha,
                         WorkspaceSourceRelease.source_tree_sha == SolutionDeployObligation.source_tree_sha)
-                    .order_by(SolutionDeployObligation.updated_at, SolutionDeployObligation.id)
+                    # Every intended install must retain the same tranche until
+                    # aggregate recovery settles it. Recovery rotates updated_at
+                    # even for incomplete evidence, so it cannot order this read.
+                    .order_by(SolutionDeployObligation.created_at, SolutionDeployObligation.id)
                     .limit(MAX_HISTORICAL_AUTHORED_SOURCES))).all())
                 older.update(row.source_commit_sha for row in historical)
             if older:

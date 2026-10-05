@@ -281,7 +281,7 @@ async def test_delivery_ancestry_candidates_rotate_checked_debt_at_the_bound(
         commit = uuid4().hex + "a" * 8
         records.append(WorkspaceSourceRelease(id=uuid4(), organization_id=organization_id,
             source_commit_sha=commit, source_tree_sha="b" * 40,
-            paths={"features/retained.py": "c" * 64}, disposition="deferred",
+            paths={"features/retained.py": "c" * 64}, disposition="pending",
             declared_disposition="pending", declaration_actor="github_actions_oidc",
             producer_oidc_commit_sha=commit, producer_event_name="push",
             producer_run_id=str(index + 1), created_by=platform_admin.user_id,
@@ -295,7 +295,7 @@ async def test_delivery_ancestry_candidates_rotate_checked_debt_at_the_bound(
     await db_session.flush()
     assert await delivery._unresolved_source_commits(db_session, organization_id) == {
         records[0].source_commit_sha, records[1].source_commit_sha}
-    assert all(row.disposition == "deferred" and row.completion_evidence is None for row in records)
+    assert all(row.disposition == "pending" and row.completion_evidence is None for row in records)
 
 
 @pytest.mark.asyncio

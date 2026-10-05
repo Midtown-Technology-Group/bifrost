@@ -74,6 +74,10 @@ vendor effects are replayed.
 Ancestry follows validated first-parent links through at most 1,000 protected
 Git commit objects. Historical authored reads cover at most 100 unresolved
 declarations for the package, retaining at most 32 MiB of bytes and manifests.
+The historical tranche is ordered by immutable declaration creation time and
+UUID, so all intended installations retain the same inputs until aggregate
+completion removes them. Recovery check timestamps rotate the verifier's work,
+but cannot rotate installation-local history selection before that convergence.
 Unavailable or mismatching historical input leaves its obligation open while
 current source still undergoes mandatory CI and full installed verification.
 Missing ancestors, targets, archives or original producer evidence never settle
