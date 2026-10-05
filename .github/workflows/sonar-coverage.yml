@@ -128,6 +128,27 @@ jobs:
           done
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
           echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
+      - name: Collect repository Python tool coverage
+        run: |
+          set -euo pipefail
+          # Pure repository tools have their own scripts namespace. Run from
+          # /repo with an isolated PYTHONPATH so /app/scripts cannot shadow it.
+          # Exercise this wiring before booting the full application stack.
+          targets=()
+          while IFS= read -r -d '' file; do
+            filename="${file##*/}"
+            if [[ "$filename" == test_*.py || "$filename" == *_test.py ]]; then
+              targets+=("$file")
+            fi
+          done < <(git ls-files -z -- scripts)
+          test "${#targets[@]}" -gt 0
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps \
+            --workdir /repo --env PYTHONPATH=/repo test-runner \
+            pytest "${targets[@]}" -o 'python_files=test_*.py *_test.py' \
+            --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
+            --junitxml=/tmp/bifrost/sonar-repository-junit.xml
       - name: Collect comprehensive Python coverage
         env:
           BIFROST_SKIP_BUILD: "1"
@@ -136,10 +157,9 @@ jobs:
         run: |
           set -euo pipefail
           ./test.sh stack up
-          # Explicitly include the slow unit cases; affected-only reports are not
-          # sufficient evidence for this initial repository-wide denominator.
-          ./test.sh unit -m "" --cov --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
-          ./test.sh /repo/scripts -o 'python_files=test_*.py *_test.py' --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
+          # Append the API tests to repository-tool coverage. Include slow unit
+          # cases; affected-only reports are not this initial full denominator.
+          ./test.sh unit -m "" --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
@@ -156,6 +176,27 @@ jobs:
             --python .sonar-evidence/raw/python.xml --client .sonar-evidence/raw/client.lcov \
             --node .sonar-evidence/raw/node.lcov --properties sonar-project.properties --output-dir .sonar-evidence
           echo "manifest_sha256=$(sha256sum .sonar-evidence/manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Tear down task-owned stack
+        if: always() && env.COMPOSE_FILE != ''
+        run: |
+          set -euo pipefail
+          ./test.sh stack down
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+      - name: Preserve Python diagnostics after teardown
+        if: always() && env.SONAR_LOG_DIR != ''
+        run: |
+          mkdir -p .sonar-evidence/diagnostics
+          if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then
+            cp "$SONAR_LOG_DIR/test-results.xml" .sonar-evidence/diagnostics/api-unit-junit.xml
+          fi
+          if [ -f "$SONAR_LOG_DIR/sonar-repository-junit.xml" ]; then
+            cp "$SONAR_LOG_DIR/sonar-repository-junit.xml" .sonar-evidence/diagnostics/repository-unit-junit.xml
+          fi
+          # These are isolated test-stack logs exported by stack down, not live
+          # application credentials or a valid replacement for missing reports.
+          find "$SONAR_LOG_DIR" -maxdepth 1 -name '*.log' -type f -exec cp {} .sonar-evidence/diagnostics/ \;
       - name: Retain exact-source evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -165,14 +206,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
-      - name: Tear down task-owned stack
-        if: always() && env.COMPOSE_FILE != ''
-        run: |
-          set -euo pipefail
-          ./test.sh stack down
-          source scripts/lib/test_helpers.sh
-          project="$(compute_project_name .)"
-          test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
       - name: Report staged migration
         if: steps.context.outputs.mode == 'report-only'
         run: |
