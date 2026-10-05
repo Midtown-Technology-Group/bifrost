@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from src.jobs.platform.device_peer_sessions import DEVICE_PEER_START_DEFINITION, start_peer_session
-from src.models.contracts.device_peer_sessions import DevicePeerSessionPayload
+from src.jobs.platform.device_peer_sessions import DEVICE_PEER_START_DEFINITION, revoke_peer_session, start_peer_session
+from src.models.contracts.device_peer_sessions import DevicePeerRevokePayload, DevicePeerSessionPayload
 
 
 @pytest.mark.asyncio
@@ -28,3 +28,16 @@ async def test_start_failure_revokes_unknown_outcome():
     client.stop.assert_awaited_once_with(context.job_id.hex)
     assert DEVICE_PEER_START_DEFINITION.policy.max_attempts == 1
     assert not DEVICE_PEER_START_DEFINITION.policy.retry_on_runner_loss
+
+
+@pytest.mark.asyncio
+async def test_revoke_does_not_claim_endpoint_disconnect():
+    context = MagicMock(job_id=uuid4(), report=AsyncMock())
+    payload = DevicePeerRevokePayload(device_id=uuid4(), session_job_id=uuid4())
+    client = AsyncMock()
+    with patch("src.jobs.platform.device_peer_sessions._authorize", new=AsyncMock()), patch("src.services.device_peer_launcher.PeerLauncherClient") as factory:
+        factory.return_value.__aenter__.return_value = client
+        result = await revoke_peer_session(context, payload)
+    client.stop.assert_awaited_once_with(payload.session_job_id.hex)
+    assert result["lighthouse_revoked"] is True
+    assert result["endpoint_disconnect_confirmed"] is False

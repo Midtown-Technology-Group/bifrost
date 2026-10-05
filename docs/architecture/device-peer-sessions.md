@@ -28,7 +28,11 @@ terminal provision jobs. A changed payload under the same identity conflicts;
 retry cannot mint a new lease. Use a new request UUID for a genuinely new session.
 Revocation uses `POST /api/devices/{device_id}/peer-sessions/{job_id}/revoke` and
 another shared job. Device scope plus requester ownership (or platform admin)
-is required. Revocation remains allowed when the device is disabled. Each runner
+is required. Revocation remains allowed when the device is disabled. This revokes only the
+lighthouse lease. Issued endpoint certificates remain valid until their signed
+expiry, and an established direct tunnel can continue without the lighthouse.
+Prompt disconnection requires explicitly stopping both endpoint processes;
+endpoint bootstrap/stop integration is not implemented by this change. Each runner
 rechecks current actor permission and device scope before touching the launcher.
 
 Known provisioning failures attempt revocation of the job's deterministic nonce,

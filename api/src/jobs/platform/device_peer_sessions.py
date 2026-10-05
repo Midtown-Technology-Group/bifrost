@@ -64,7 +64,9 @@ async def revoke_peer_session(context: PlatformJobContext, payload: DevicePeerRe
     await _authorize(context, payload.device_id, active=False)
     async with PeerLauncherClient(get_settings()) as client:
         await client.stop(payload.session_job_id.hex)
-    return {"session_job_id": str(payload.session_job_id), "revoked": True}
+    await context.report("Lighthouse stopped; endpoint disconnect unconfirmed", percent=100)
+    return {"session_job_id": str(payload.session_job_id), "lighthouse_revoked": True,
+            "endpoint_disconnect_confirmed": False}
 
 
 def _definition(name, model, handler):
