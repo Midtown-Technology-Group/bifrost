@@ -14,14 +14,21 @@ Both prerequisite merges (#1001 and #1112) remain ancestors. The documentation
 candidate contains this platform main; implementation candidates retain their
 separately recorded source pins until reviewed integration.
 
-Latest claim candidate `90ea5a34056600979b0fde74fb7af39e1f2ae56d`
+Last completed claim candidate `90ea5a34056600979b0fde74fb7af39e1f2ae56d`
 passed ordinary repository CI and 48 supported Rust checks. Its dedicated
 characterization failed at a build-phase local guard before comparison;
 the exact predicate is unknown and resource custody remains held.
-A bounded optional predicate diagnostic has root and independent DESIGN
-acceptance; concrete source and any further execution remain separate gates.
-The transport prototype has source acceptance, while its supported venue
-source is frozen under review and actual compiler/TLS/runtime evidence remains pending.
+The reviewed optional predicate diagnostic is now committed and current-main
+integrated at `8e32b757e286904bdfdc1e18934b2a871579f327`. Its source-check
+run37245992966 and final fifth characterization run37245992376 are in progress;
+no sixth cycle or unchanged rerun is authorized.
+
+Transport source is accepted and current-main integrated at
+`e419725665d95424024ddd69f57748d90ebc9800`. Initial isolated run37245566570
+failed in rust_build; actual cause, source checks and suite remain unknown/null,
+and staging disposal is unproved. A separate first existing Rust Core CI run
+has been dispatched for normal foundation/tool diagnostics. Its results cannot
+retroactively qualify the failed transport parser, cleanup or TLS suite.
 
 Historical campaigns below retain their exact candidate/main/workspace pins.
 In particular, advances through #1048, #1056 and #1061 do not retroactively
@@ -1302,3 +1309,33 @@ Bash syntax, embedded supervisor/readback AST and diff checks successfully.
 Full frozen code review and independent review are pending; these static
 checks do not execute the runner or establish native/TLS/resource custody.
 No launch, push, PR or production authority is approved by the handoff.
+
+
+Root completed the full frozen1111-line venue/workflow review and accepted
+independent source review `aefa5b4006cdc44d5e42ab69fbd0b3f3f87a7611b30b235dc4a69cd0961cc185`.
+Seven intended files were committed and main a549 integrated without changes
+to their pins: candidatee419/treef44bd098026f11cfd8962f4cf313f213ec1ff741.
+Initial launch release `71d8e4b137efa1d24082bfd4731784a81db0683e43b93d8cf7e7737edc94746e`
+produced actual run37245566570/job111562665453 FAILURE. Root read frozen
+evidence report `7505a03ed1f41bf5a679a6f94e58fcde8b4924487b0e21a9fe8d0129884c035f`: safe
+artifact11319146912 has source_checks/suite null, failure_phase rust_build;
+cli settlement, scoped container absence and fixture backing fields true,
+staging disposal null. Cause remains unknown; true fields do not prove TLS
+execution or full custody. A first existing four-job Rust Core qualification
+was separately dispatched under `e9b52a0260a85360458569dcf5d0909e35aa69f4d6d0a58a257d69436695eca7`.
+Root read its actual branch workflow before release; it builds local images
+and isolated foundation tests, publishes/deploys nothing, and exports its
+normal logs. This is independent tool evidence, not an unchanged M1 rerun,
+cache waiver, private capture export or retrospective experiment acceptance.
+
+The diagnostic concrete source received independent acceptance
+`6213c65cabd3961f99658510b49e3cfdf16b91b3353219cb225cf8f2e369404d`; root
+read its report/diff/shared-body controls and repeated Bash/diff checks.
+Committed and current-main integrated8e32/tree ddc55dafc6259ad017d2c2adedfda3d34ea15e0c
+retains parent53109990 and claim fixturecbf9c498 unchanged. Release
+`4ed37b432f5788d6886062e092ea140371a4c4d42495bb5fae712c3927049faa`
+permits one source-check push and one final fifth characterization attempt.
+Actual runs37245992966/37245992376 are live at exact8e32 attempt1. Any fifth
+failure stops that campaign; no renamed campaign, sixth cycle or guard
+relaxation follows. Prior failures/custody remain immutable. No merge,
+production deployment, actual M1 rights or full MVP acceptance occurred.
