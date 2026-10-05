@@ -65,6 +65,7 @@ jobs:
           printf 'head=%s\nbase=%s\nmode=%s\n' "$EXPECTED_HEAD" "$base" "$mode" >> "$GITHUB_OUTPUT"
           printf 'artifact_name=sonar-evidence-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
           mkdir -p .sonar-evidence/raw
+          git ls-files -z > .sonar-evidence/raw/tracked-files.nul
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -164,8 +165,12 @@ jobs:
           ./test.sh unit -m "" --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          # Virtual workflow filenames executed by tests are not repository
+          # source. Audit only those records out; missing tracked source fails.
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
-            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/tmp/bifrost/.coverage.sonar -o /tmp/bifrost/coverage-sonar.xml
+            python /repo/api/scripts/filter_sonar_coverage.py --repository-root /repo --api-root /app --tracked-files /repo/.sonar-evidence/raw/tracked-files.nul --input /tmp/bifrost/.coverage.sonar --output /tmp/bifrost/.coverage.sonar-tracked --audit /tmp/bifrost/sonar-runtime-coverage.json
+          docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
+            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/tmp/bifrost/.coverage.sonar-tracked -o /tmp/bifrost/coverage-sonar.xml
           cp "$SONAR_LOG_DIR/coverage-sonar.xml" .sonar-evidence/raw/python.xml
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/python.xml
       - name: Validate reports and source inventory
@@ -193,6 +198,8 @@ jobs:
           exit "$status"
       - name: Preserve Python diagnostics after teardown
         if: always() && env.SONAR_LOG_DIR != ''
+        env:
+          REPORT_STATUS: ${{ steps.validate.outcome }}
         run: |
           mkdir -p .sonar-evidence/diagnostics
           if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then
@@ -201,6 +208,17 @@ jobs:
           if [ -f "$SONAR_LOG_DIR/sonar-repository-junit.xml" ]; then
             cp "$SONAR_LOG_DIR/sonar-repository-junit.xml" .sonar-evidence/diagnostics/repository-unit-junit.xml
           fi
+          # Keep the filtering audit on every run; larger raw databases are
+          # needed only when export or report validation fails.
+          files=(sonar-runtime-coverage.json)
+          if [ "$REPORT_STATUS" != success ]; then
+            files+=(.coverage.sonar .coverage.sonar-tracked coverage-sonar.xml)
+          fi
+          for file in "${files[@]}"; do
+            if [ -f "$SONAR_LOG_DIR/$file" ]; then
+              cp "$SONAR_LOG_DIR/$file" .sonar-evidence/diagnostics/
+            fi
+          done
           # These are isolated test-stack logs exported by stack down, not live
           # application credentials or a valid replacement for missing reports.
           find "$SONAR_LOG_DIR" -maxdepth 1 -name '*.log' -type f -exec cp {} .sonar-evidence/diagnostics/ \;
