@@ -25,6 +25,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from azure.core.exceptions import HttpResponseError
+from botocore.exceptions import ClientError
+
 from src.config import Settings, get_settings
 from src.core.log_safety import log_safe
 
@@ -33,6 +36,15 @@ logger = logging.getLogger(__name__)
 APPS_PREFIX = "_apps/"
 PUBLISH_COPY_CONCURRENCY = 16
 PUBLICATION_INTENT_SCHEMA = "bifrost.application-publication-intent/v1"
+
+
+def _precondition_rejected(error: Exception) -> bool:
+    if isinstance(error, ClientError):
+        return (error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") in {409, 412}
+                and error.response.get("Error", {}).get("Code") in {
+                    "PreconditionFailed", "ConditionalRequestConflict"})
+    return (isinstance(error, HttpResponseError) and error.status_code in {409, 412}
+            and getattr(error, "error_code", None) in {"ConditionNotMet", "BlobAlreadyExists"})
 
 AppMode = Literal["preview", "live"]
 
@@ -66,8 +78,8 @@ class AppStorageService:
             raise ValueError(f"Unsupported object_storage_provider: {provider}")
 
     @asynccontextmanager
-    async def _get_client(self):
-        async with self._storage.get_client() as client:
+    async def _get_client(self, *, single_attempt: bool = False):
+        async with self._storage.get_client(**({"single_attempt": True} if single_attempt else {})) as client:
             yield client
 
     def _key(self, app_id: str, mode: AppMode, relative_path: str = "") -> str:
@@ -367,7 +379,9 @@ class AppStorageService:
             raise ValueError("Publication artifact output hashes do not match its build evidence")
         live_prefix = self._key(app_id, "live")
 
-        async with self._get_client() as client:
+        # A terminal precondition response proves no pointer switch only when
+        # the SDK did not retry an earlier request whose outcome was unknown.
+        async with self._get_client(single_attempt=True) as client:
             manifest_key = f"{live_prefix}manifest.json"
             try:
                 prior = await client.get_object(Bucket=self._bucket, Key=manifest_key)
@@ -436,12 +450,17 @@ class AppStorageService:
                 intent = {**intent, "manifest_write_started": True}
                 await checkpoint_callback(intent)
             rel_path = "manifest.json"
-            await client.put_object(
-                Bucket=self._bucket,
-                Key=f"{live_prefix}{rel_path}",
-                Body=manifest_bytes,
-                **({"IfMatch": etag} if etag is not None else {"IfNoneMatch": "*"}),
-            )
+            try:
+                await client.put_object(
+                    Bucket=self._bucket,
+                    Key=f"{live_prefix}{rel_path}",
+                    Body=manifest_bytes,
+                    **({"IfMatch": etag} if etag is not None else {"IfNoneMatch": "*"}),
+                )
+            except Exception as error:
+                if checkpoint_callback and _precondition_rejected(error):
+                    await checkpoint_callback({**intent, "manifest_write_rejected": True})
+                raise
             completed += 1
             if progress_callback:
                 await progress_callback(completed, total)

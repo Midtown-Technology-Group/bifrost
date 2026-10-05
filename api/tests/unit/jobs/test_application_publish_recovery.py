@@ -282,3 +282,20 @@ async def test_pre_write_disposition_cannot_release_changed_ownership(setup, fau
     assert error.value.result == intent
     publisher.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_durable_conditional_rejection_releases_without_replaying_publication(setup):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, original = setup
+    intent = {**original, "manifest_write_started": True, "manifest_write_rejected": True}
+    with pytest.raises(PlatformJobFailure) as error:
+        await jobs.run_application_publish(_context(intent), jobs.ApplicationPublishPayload(application_id=app.id))
+    assert error.value.code == "application_publication_not_applied"
+    assert error.value.result["disposition"] == "manifest_conditional_rejected"
+    assert error.value.result["original_intent"] == intent
+    assert error.value.result["publication_verified"] is False
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+    db.commit.assert_not_awaited()

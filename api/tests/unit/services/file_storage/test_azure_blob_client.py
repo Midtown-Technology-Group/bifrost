@@ -945,3 +945,22 @@ async def test_invalid_write_preconditions_do_not_reach_storage(conditions):
     with pytest.raises(ValueError, match="preconditions"):
         await client.put_object(Bucket="ignored", Key="manifest.json", Body=b"manifest", **conditions)
     client._container_client.upload_blob.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("single_attempt", [False, True])
+async def test_publication_owner_disables_sdk_retries_and_preserves_nested_owner(monkeypatch, single_attempt):
+    created = []
+    class Service:
+        def __init__(self, account_url, **kwargs):
+            created.append(kwargs)
+        def get_container_client(self, name):
+            return SimpleNamespace(get_container_properties=AsyncMock(return_value={}))
+        async def close(self):
+            pass
+
+    _install_azure_blob_aio(monkeypatch, Service)
+    async with AzureBlobStorageClient(_settings()).get_client(single_attempt=single_attempt) as client:
+        assert await client.head_bucket(Bucket="files") == {}
+        assert len(created) == 1
+    assert created == [{"credential":"key", **({"retry_total": 0} if single_attempt else {})}]

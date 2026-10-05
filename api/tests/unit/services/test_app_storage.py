@@ -20,7 +20,7 @@ def _service(client=None) -> AppStorageService:
 
 def _client_context(client):
     @asynccontextmanager
-    async def context():
+    async def context(**_options):
         yield client
 
     return context
@@ -446,3 +446,27 @@ class _FakeRedis:
         self.delete_calls.append(keys)
         for key in keys:
             self.values.pop(key, None)
+
+
+@pytest.mark.parametrize("provider,status,code,expected", [
+    ("s3",412,"PreconditionFailed",True),
+    ("s3",409,"ConditionalRequestConflict",True),
+    ("s3",500,"InternalError",False),
+    ("s3",412,"OtherError",False),
+    ("azure",412,"ConditionNotMet",True),
+    ("azure",409,"BlobAlreadyExists",True),
+    ("azure",500,"ConditionNotMet",False),
+    ("azure",412,"OtherError",False),
+])
+def test_publication_rejects_only_definitive_provider_preconditions(provider, status, code, expected):
+    from azure.core.exceptions import HttpResponseError
+    from botocore.exceptions import ClientError
+    from src.services.app_storage import _precondition_rejected
+
+    if provider == "s3":
+        error = ClientError({"ResponseMetadata":{"HTTPStatusCode":status},"Error":{"Code":code}},"PutObject")
+    else:
+        error = HttpResponseError(message="Storage response")
+        error.status_code, error.error_code = status, code
+    assert _precondition_rejected(error) is expected
+    assert _precondition_rejected(TimeoutError("Unknown write outcome")) is False

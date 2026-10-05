@@ -407,12 +407,16 @@ async def test_storage_rejects_late_publication_without_deleting_previous_output
     storage = AppStorageService()
     await storage.publish(app["id"], bundle_files=_captured_bundle("old"))
     winner = _captured_bundle("winner")
+    saved = []
     async def competing_publication(_intent):
+        saved.append(_intent)
         if _intent["manifest_write_started"] is False:
             await storage.publish(app["id"], bundle_files=winner)
     with pytest.raises(Exception):
         await storage.publish(app["id"], bundle_files=_captured_bundle("late"),
                               checkpoint_callback=competing_publication)
+    assert [proof["manifest_write_started"] for proof in saved] == [False, True, True]
+    assert saved[-1]["manifest_write_rejected"] is True
     assert await storage.read_file(app["id"], "live", "manifest.json") == winner["manifest.json"]
     assert await storage.read_file(app["id"], "live", "entry-old.js") == _captured_bundle("old")["entry-old.js"]
     assert await storage.read_file(app["id"], "live", "entry-late.js") == _captured_bundle("late")["entry-late.js"]

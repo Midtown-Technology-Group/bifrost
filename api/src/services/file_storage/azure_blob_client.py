@@ -85,6 +85,7 @@ class AzureBlobStorageClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._operation_owned = False
+        self._single_attempt = False
         self._credential = None
         self._service_client = None
         self._container_client = None
@@ -132,18 +133,22 @@ class AzureBlobStorageClient:
         self._service_client = BlobServiceClient(
             self.settings.azure_blob_account_url,
             credential=credential,
+            **({"retry_total": 0} if self._single_attempt else {}),
         )
         self._container_client = self._service_client.get_container_client(
             self.settings.azure_blob_container
         )
 
     @asynccontextmanager
-    async def get_client(self) -> AsyncIterator["AzureBlobStorageClient"]:
+    async def get_client(self, *, single_attempt: bool = False) -> AsyncIterator["AzureBlobStorageClient"]:
         if self._operation_owned:
+            if single_attempt and not self._single_attempt:
+                raise ValueError("An existing storage operation cannot disable its retry policy")
             yield self
             return
         client = AzureBlobStorageClient(self.settings)
         client._operation_owned = True
+        client._single_attempt = single_attempt
         try:
             await client._ensure_client()
             yield client

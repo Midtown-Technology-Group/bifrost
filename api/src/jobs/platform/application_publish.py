@@ -37,21 +37,24 @@ APPLICATION_PUBLISH_JOB_TYPE = "application.publish"
 logger = logging.getLogger(__name__)
 
 
-def _manifest_not_attempted(intent: dict | None, application_id: UUID) -> bool:
+def _manifest_not_applied(intent: dict | None, application_id: UUID) -> bool:
     return (intent is not None and intent.get("schema_version") == PUBLICATION_INTENT_SCHEMA
             and intent.get("application_id") == str(application_id)
-            and intent.get("manifest_write_started") is False)
+            and (intent.get("manifest_write_started") is False
+                 or (intent.get("manifest_write_started") is True
+                     and intent.get("manifest_write_rejected") is True)))
 
 
 def _publication_not_applied(context: PlatformJobContext, intent: dict) -> PlatformJobFailure:
     return PlatformJobFailure(
         "application_publication_not_applied",
-        "The original attempt stopped before its Live manifest write; a new publication may be admitted.",
+        "The original attempt did not switch its Live manifest; a new publication may be admitted.",
         result={
             "schema_version": "bifrost.application-publication-disposition/v1",
             "publication_verified": False,
             "application_id": intent["application_id"],
-            "disposition": "manifest_not_attempted",
+            "disposition": ("manifest_not_attempted" if intent.get("manifest_write_started") is False
+                            else "manifest_conditional_rejected"),
             "original_job_id": str(context.job_id),
             "original_intent": intent,
         },
@@ -99,7 +102,7 @@ async def run_application_publish(
                     or application.app_model != "inline_v1" or application.solution_id is not None):
                 raise ValueError("Application ownership/model changed after publication was queued")
             owns_application = True
-            if _manifest_not_attempted(intent, application.id):
+            if _manifest_not_applied(intent, application.id):
                 # The reclaimed lease fences the old runner's mandatory second
                 # checkpoint, even if Main or current controls have since moved.
                 assert intent is not None
@@ -270,13 +273,13 @@ async def run_application_publish(
         return result
     except PlatformJobFailure as exc:
         if intent is not None:
-            if owns_application and _manifest_not_attempted(intent, payload.application_id):
+            if owns_application and _manifest_not_applied(intent, payload.application_id):
                 raise _publication_not_applied(context, intent) from exc
             raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc
         raise
     except Exception as exc:
         if intent is not None:
-            if owns_application and _manifest_not_attempted(intent, payload.application_id):
+            if owns_application and _manifest_not_applied(intent, payload.application_id):
                 raise _publication_not_applied(context, intent) from exc
             # Retain durable evidence even for an unobserved storage/SQL outcome.
             # A resumed lost attempt can only read back this intent.

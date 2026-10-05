@@ -225,9 +225,12 @@ write. A stopped pre-write attempt finishes as `application_publication_not_appl
 retaining its original intent in a terminal disposition receipt. It receives
 no publication, runtime or accounting credit; a new request can enter the normal
 reviewed admission path even if Main or controls have changed. Ownership/model
-changes do not authorize this disposition. Legacy checkpoints without the flag
-and write-started checkpoints remain uncertain: observing the old ETag alone
-does not prove that a delayed conditional PUT cannot still succeed.
+changes do not authorize this disposition. A publication uses a single-attempt
+storage client (SDK retries disabled); a
+definitive conditional-write rejection records `manifest_write_rejected=true`
+under the same lease and receives a terminal, unverified disposition as well.
+Legacy checkpoints without the flag and writes without a definitive rejection
+remain uncertain: observing the old ETag alone does not prove that a delayed conditional PUT cannot still succeed.
 
 An uncertain outcome retains this intent in `requires_action`. A lost worker or
 the same requester's next `POST /api/applications/{id}/publish` reconciles the
