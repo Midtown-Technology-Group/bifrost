@@ -9,6 +9,12 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      pre_pr:
+        description: Run the unchanged pre-PR gate for this exact branch commit
+        type: boolean
+        required: false
+        default: false
 
 permissions: read-all
 
@@ -381,6 +387,136 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.CI_PLAYWRIGHT_TEST_IMAGE }}:sha-${{ github.sha }}
           cache-from: type=gha,scope=test-playwright
           cache-to: type=gha,scope=test-playwright,mode=max
+
+  # Optional evidence for the local gate, on the existing hosted CI lane.
+  # This does not replace any required check or select a different source ref.
+  pre-pr:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event_name == 'workflow_dispatch' && inputs.pre_pr &&
+      startsWith(github.ref, 'refs/heads/')
+    needs: publish-ci-test-images
+    runs-on: ubuntu-latest
+    name: Manual Pre-PR Gate
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout exact manual candidate
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          # Public Midtown/bifrost origin/main fetch is intentionally anonymous.
+          # Private visibility needs reviewed handling, never automatic credential injection.
+          persist-credentials: false
+
+      - name: Set up repository-check Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up repository-check Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+
+      - name: Verify exact clean candidate and image tag
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$CI_TEST_IMAGE_TAG" = "sha-$GITHUB_SHA"
+
+      - name: Detect test image input changes
+        id: test-image-inputs
+        run: bash scripts/ci/detect-test-image-inputs.sh
+
+      - name: Prepare exact-SHA API test image
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
+        run: |
+          set -euo pipefail
+          bash api/scripts/ci/prepare-test-images.sh api
+          mkdir -p "$RUNNER_TEMP/bifrost-pre-pr"
+          docker image inspect bifrost-test-api-dev:latest \
+            --format '{{.Id}} {{json .RepoDigests}}' \
+            > "$RUNNER_TEMP/bifrost-pre-pr/api-image.txt"
+
+      - name: Run unchanged pre-PR gate
+        id: gate
+        env:
+          BIFROST_SKIP_BUILD: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bifrost-pre-pr"
+          trap 'printf "%s\n" "$?" > "$RUNNER_TEMP/bifrost-pre-pr/exit-status.txt"' EXIT
+          ./test.sh pre-pr 2>&1 | tee "$RUNNER_TEMP/bifrost-pre-pr/pre-pr.log"
+
+      - name: Tear down and verify project resources
+        if: always() && steps.checkout.outcome == 'success'
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/bifrost-pre-pr"
+          mkdir -p "$evidence_dir"
+          cleanup_status=0
+          ./test.sh stack down 2>&1 | tee "$evidence_dir/cleanup.log" || cleanup_status=$?
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+          networks="$(docker network ls -q --filter "label=com.docker.compose.project=$project")"
+          printf 'project=%s\ncleanup_status=%s\ncontainers=%s\nvolumes=%s\nnetworks=%s\n' \
+            "$project" "$cleanup_status" "$containers" "$volumes" "$networks" \
+            > "$evidence_dir/project-resources.txt"
+          test "$cleanup_status" -eq 0
+          test -z "$containers"
+          test -z "$volumes"
+          test -z "$networks"
+
+      - name: Collect narrow candidate and stage evidence
+        if: always() && steps.checkout.outcome == 'success'
+        env:
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/bifrost-pre-pr"
+          mkdir -p "$evidence_dir"
+          printf 'workflow_sha=%s\nhead=%s\ntree=%s\norigin_main=%s\nref=%s\nrun_url=%s\ngate_outcome=%s\n' \
+            "$GITHUB_SHA" "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" \
+            "$(git rev-parse origin/main)" "$GITHUB_REF" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$GATE_OUTCOME" \
+            > "$evidence_dir/candidate.txt"
+          stage_dir="$(git rev-parse --path-format=absolute --git-path bifrost-test-locks)"
+          for name in pre-pr-stages.json pre-pr-affected-plan.json; do
+            if [ -f "$stage_dir/$name" ]; then
+              cp "$stage_dir/$name" "$evidence_dir/$name"
+            elif [ "$GATE_OUTCOME" = "success" ]; then
+              echo "Successful pre-PR gate is missing $name." >&2
+              exit 1
+            fi
+          done
+          if [ "$GATE_OUTCOME" = "success" ]; then
+            test "$(cat "$evidence_dir/exit-status.txt")" = "0"
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            test -z "$(git status --porcelain --untracked-files=all)"
+          fi
+
+      - name: Preserve pre-PR evidence and diagnostics
+        if: always() && steps.checkout.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-pre-pr-evidence
+          path: |
+            ${{ runner.temp }}/bifrost-pre-pr/
+            /tmp/bifrost-bifrost-test-*/*.log
+            /tmp/bifrost-bifrost-test-*/test-results.xml
+          if-no-files-found: error
+          retention-days: 14
 
   # =============================================================================
   # Lint & Type Check - Run alongside client units, before expensive work.
@@ -800,9 +936,228 @@ jobs:
             ./test.sh "${shard_files[@]}" -v --durations=50
           fi
 
+      - name: Capture private writer catalog receipt
+        if: always() && matrix.total != 0
+        run: |
+          set -euo pipefail
+          test "${BIFROST_PROJECT_PREFIX:-bifrost-test}" = "bifrost-test"
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          sudo -n python3 - "$project" "$RUNNER_TEMP" "$(id -u)" "$(id -g)" <<'PY_CAPTURE'
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          import sys
+          import time
+          from contextlib import ExitStack
+          from pathlib import Path
+
+          CAP = 8 * 1024 * 1024
+          deadline = time.monotonic() + 60
+          failed = False
+          control = None
+          fds = ExitStack()
+
+          def require(ok):
+              if not ok:
+                  raise ValueError("transfer-contract")
+
+          def budget():
+              require(time.monotonic() < deadline)
+
+          def record(error):
+              global failed, control
+              failed = True
+              if not isinstance(error, Exception) and control is None:
+                  control = error
+
+          def close(fd):
+              try:
+                  os.close(fd)
+                  budget()
+              except BaseException as error:
+                  record(error)
+
+          def opened(path, flags, *, parent=None):
+              budget()
+              fd = os.open(path, flags, 0o600, dir_fd=parent)
+              fds.callback(close, fd)
+              budget()
+              return fd
+
+          def directory(fd):
+              info = os.fstat(fd)
+              budget()
+              require(stat.S_ISDIR(info.st_mode))
+              return (info.st_dev, info.st_ino, info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode))
+
+          def file_facts(info):
+              budget()
+              return (info.st_dev, info.st_ino, info.st_uid, info.st_gid,
+                      stat.S_IMODE(info.st_mode), info.st_nlink, info.st_size,
+                      info.st_mtime_ns, info.st_ctime_ns)
+
+          def read(fd, limit):
+              data = bytearray()
+              while True:
+                  chunk = os.read(fd, min(65536, limit + 1 - len(data)))
+                  budget()
+                  if not chunk:
+                      return bytes(data)
+                  data.extend(chunk)
+                  require(len(data) <= limit)
+
+          def exported(name, data, parent, uid, gid):
+              fd = opened(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                          parent=parent)
+              os.fchmod(fd, 0o600)
+              budget()
+              os.fchown(fd, uid, gid)
+              budget()
+              before = file_facts(os.fstat(fd))
+              require(stat.S_ISREG(os.fstat(fd).st_mode) and before[2:6] == (uid, gid, 0o600, 1))
+              offset = 0
+              while offset < len(data):
+                  count = os.write(fd, data[offset:])
+                  budget()
+                  require(type(count) is int and 0 < count <= len(data) - offset)
+                  offset += count
+              os.fsync(fd)
+              budget()
+              os.lseek(fd, 0, os.SEEK_SET)
+              budget()
+              require(read(fd, len(data)) == data)
+              after = file_facts(os.fstat(fd))
+              require(after[:6] == before[:6] and after[6] == len(data)
+                      and after == file_facts(os.stat(name, dir_fd=parent, follow_symlinks=False)))
+              budget()
+              return after
+
+          try:
+              require(len(sys.argv) == 5 and os.geteuid() == 0)
+              project, temp, uid_text, gid_text = sys.argv[1:]
+              require(re.fullmatch(r"bifrost-test-[0-9a-f]{8}", project) is not None)
+              require(uid_text.isdecimal() and gid_text.isdecimal())
+              uid, gid = int(uid_text), int(gid_text)
+              require(uid > 0 and uid_text == os.environ.get("SUDO_UID")
+                      and gid_text == os.environ.get("SUDO_GID"))
+              require(Path(temp).is_absolute() and str(Path(temp).resolve()) == temp)
+              dflags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+              temp_fd = opened(temp, dflags)
+              temp_before = directory(temp_fd)
+              require(temp_before[2] == uid and temp_before[4] & 0o022 == 0)
+              require(file_facts(os.stat(temp, follow_symlinks=False))[:5] == temp_before)
+              os.mkdir("writer-catalog-e2e-capture", 0o700, dir_fd=temp_fd)
+              budget()
+              out_fd = opened("writer-catalog-e2e-capture", dflags, parent=temp_fd)
+              os.fchmod(out_fd, 0o700)
+              budget()
+              os.fchown(out_fd, uid, gid)
+              budget()
+              out_before = directory(out_fd)
+              require(out_before[2:] == (uid, gid, 0o700))
+              source = "/tmp/bifrost-" + project
+              source_fd = parent_fd = None
+              source_directory = source_file = exported_file = data = None
+              try:
+                  parent_fd = opened(source, dflags)
+                  source_directory = directory(parent_fd)
+                  require(source_directory[4] == 0o777)
+                  source_fd = opened("writer-catalog-receipt.log",
+                                     os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC, parent=parent_fd)
+              except FileNotFoundError:
+                  pass
+              if source_fd is not None:
+                  info = os.fstat(source_fd)
+                  source_file = file_facts(info)
+                  require(stat.S_ISREG(info.st_mode) and source_file[2] == 1000
+                          and source_file[4:6] == (0o600, 1) and 0 < info.st_size <= CAP)
+                  data = read(source_fd, CAP)
+                  require(len(data) == source_file[6] and source_file == file_facts(os.fstat(source_fd))
+                          == file_facts(os.stat("writer-catalog-receipt.log", dir_fd=parent_fd,
+                                                follow_symlinks=False)))
+                  require(source_directory == directory(parent_fd)
+                          == file_facts(os.stat(source, follow_symlinks=False))[:5])
+                  exported_file = exported("writer-catalog-receipt.log", data, out_fd, uid, gid)
+              witness = dict(schema="bifrost.writer-catalog-transfer/v1",
+                             status="copied" if data is not None else "absent", project=project,
+                             source_path=source + "/writer-catalog-receipt.log",
+                             destination_path=temp + "/writer-catalog-e2e-capture/writer-catalog-receipt.log",
+                             source_directory=source_directory, source_file=source_file,
+                             destination_directory=out_before, destination_file=exported_file,
+                             byte_count=len(data) if data is not None else None,
+                             sha256=hashlib.sha256(data).hexdigest() if data is not None else None,
+                             host_uid=uid, host_gid=gid,
+                             privilege_boundary="same-e2e-job-sudo-coordinator",
+                             verification="requires_named_testcase_pass_and_external_candidate_binding")
+              encoded = json.dumps(witness, separators=(",", ":"), allow_nan=False).encode("utf-8")
+              require(len(encoded) <= 16384)
+              exported("writer-catalog-transfer.json", encoded, out_fd, uid, gid)
+              require(out_before == directory(out_fd)
+                      == file_facts(os.stat("writer-catalog-e2e-capture", dir_fd=temp_fd,
+                                            follow_symlinks=False))[:5])
+              require(temp_before == directory(temp_fd)
+                      == file_facts(os.stat(temp, follow_symlinks=False))[:5])
+              if source_fd is not None:
+                  require(source_file == file_facts(os.fstat(source_fd))
+                          == file_facts(os.stat("writer-catalog-receipt.log", dir_fd=parent_fd,
+                                                follow_symlinks=False)))
+                  require(source_directory == directory(parent_fd)
+                          == file_facts(os.stat(source, follow_symlinks=False))[:5])
+              budget()
+          except BaseException as error:
+              record(error)
+          finally:
+              try:
+                  fds.close()
+              except BaseException as error:
+                  record(error)
+          if control is not None:
+              raise control
+          if failed:
+              raise RuntimeError("writer-catalog:transfer")
+          PY_CAPTURE
+
       - name: Export E2E service logs and stop stack
+        id: e2e-cleanup
         if: always() && matrix.total != 0
         run: ./test.sh stack down
+
+      - name: Verify E2E project cleanup
+        if: always() && matrix.total != 0
+        env:
+          CLEANUP_OUTCOME: ${{ steps.e2e-cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          evidence_dir="$RUNNER_TEMP/writer-catalog-e2e-cleanup"
+          mkdir -p "$evidence_dir"
+          containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+          networks="$(docker network ls -q --filter "label=com.docker.compose.project=$project")"
+          printf 'project=%s\ncleanup_outcome=%s\ncontainers=%s\nvolumes=%s\nnetworks=%s\n' \
+            "$project" "$CLEANUP_OUTCOME" "$containers" "$volumes" "$networks" \
+            > "$evidence_dir/project-resources.txt"
+          test "$CLEANUP_OUTCOME" = "success"
+          test -z "$containers"
+          test -z "$volumes"
+          test -z "$networks"
+
+      - name: Preserve writer catalog receipt and JUnit
+        if: always() && matrix.total != 0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: writer-catalog-receipt-shard-${{ matrix.shard }}-of-${{ matrix.total }}
+          path: |
+            ${{ runner.temp }}/writer-catalog-e2e-capture/writer-catalog-receipt.log
+            ${{ runner.temp }}/writer-catalog-e2e-capture/writer-catalog-transfer.json
+            /tmp/bifrost-bifrost-test-*/test-results.xml
+            ${{ runner.temp }}/writer-catalog-e2e-cleanup/project-resources.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Preserve E2E failure diagnostics
         if: failure() && matrix.total != 0
