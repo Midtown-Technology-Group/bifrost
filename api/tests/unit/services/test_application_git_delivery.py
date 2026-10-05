@@ -21,7 +21,7 @@ from tests.unit.services.test_application_git_source import SID, app_policy
 
 
 def installed_app():
-    return SimpleNamespace(id=SID, name="Installed App", organization_id=app_policy().organization_id,
+    return SimpleNamespace(id=SID, name="Installed App", slug="fixture", organization_id=app_policy().organization_id,
         repo_path="apps/fixture", app_model="inline_v1", solution_id=None,
         published_snapshot={"entry.js": ""}, published_at=datetime.now(timezone.utc))
 

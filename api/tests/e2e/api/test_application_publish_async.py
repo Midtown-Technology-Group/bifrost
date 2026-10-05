@@ -245,6 +245,9 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     from src.repositories.applications import ApplicationRepository
     from src.services.application_publication import publication_controls_hash
     from src.services.application_publication_evidence import read_app_publication_runtime_pin
+    from src.services.application_source_accountability import PreparedAppAccounting, verify_app_accounting
+    from src.models.orm.platform_jobs import PlatformJob
+    from src.core.constants import SYSTEM_USER_UUID
     from src.services.inline_app_source import InlineAppSourceSnapshot
     from bifrost.workspace_release import canonical_digest
 
@@ -266,7 +269,7 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
         "application_id": app["id"], "organization_id": app.get("organization_id"),
         "source_commit_sha": "a" * 40, "source_tree_sha": "b" * 40, "source_subtree_sha": "c" * 40,
         "repository": "example/ci-fixture", "repository_id": 10, "repository_owner_id": 20,
-        "repo_subpath": "apps/ci-fixture", "source_hashes": captured.hashes(),
+        "repo_subpath": app["repo_path"], "source_hashes": captured.hashes(),
         "file_modes": {path: "100644" for path in captured.hashes()},
         "metadata_mode": "preserve_installed_controls"}
     protected = {"source_commit_sha": "a" * 40, "artifact_digest": canonical_digest(source_proof),
@@ -307,6 +310,37 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     assert runtime_pin["manifest_hash"] == saved[0]["artifact_hashes"]["manifest.json"]
     assert runtime_pin["runtime_pin_hash"] == canonical_digest({
         key: value for key, value in runtime_pin.items() if key != "runtime_pin_hash"})
+    # Final accounting uses actual PostgreSQL rows and published storage bytes.
+    # Immutable Git/producer admission is exercised separately; this fixture
+    # supplies a prepared proof, rather than claiming a real GitHub signature.
+    intent = {**saved[0], "controls_hash": controls}
+    original = PlatformJob(id=original_job_id, job_type="application.publish", status="succeeded",
+        requested_by_user_id=str(SYSTEM_USER_UUID), requested_by_email="ci@bifrost.internal",
+        requested_by_name="CI fixture", resource_type="application", resource_id=app["id"],
+        organization_id=published.organization_id, title="Captured publication accounting fixture",
+        payload={"application_id": app["id"], "protected_git": protected},
+        result={"publication_verified": True, "publication_intent": intent, "runtime_pin": runtime_pin})
+    db_session.add(original)
+    await db_session.flush()
+    assert published.repo_path is not None
+    prepared = PreparedAppAccounting(app_id, original.id, published.organization_id, published.repo_path,
+        canonical_digest({"payload": original.payload, "result": original.result}), runtime_pin,
+        {"commit_sha": source_proof["source_commit_sha"], "tree_sha": source_proof["source_tree_sha"],
+            "artifact_digest": source_proof["artifact_digest"]})
+    consumers = await verify_app_accounting(db_session, [prepared])
+    assert len(consumers) == 1
+    assert consumers[0].publication_job_id == str(original_job_id)
+    assert consumers[0].runtime_pin_hash == runtime_pin["runtime_pin_hash"]
+    assert set(consumers[0].sources) == {f"{app['repo_path']}/{path}" for path in captured.files}
+    # A metadata drift must leave accounting open, with no publication replay.
+    old_scope = published.organization_id
+    published.organization_id = None if old_scope is not None else uuid.UUID("00000000-0000-0000-0000-000000000002")
+    await db_session.flush()
+    assert await verify_app_accounting(db_session, [prepared]) == []
+    published.organization_id = old_scope
+    await db_session.flush()
+    await db_session.delete(original)
+    await db_session.flush()
     for path, expected_hash in saved[0]["artifact_hashes"].items():
         served = e2e_client.get(f"/api/applications/{app['id']}/bundle-asset/{path}?mode=live",
             headers=platform_admin.headers)

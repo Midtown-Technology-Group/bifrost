@@ -94,7 +94,7 @@ async def test_app_source_binds_complete_bytes_scope_modes_and_ci_without_app_me
     configured = app_policy()
     calls = []
     async with httpx.AsyncClient(transport=transport(documents, calls)) as client:
-        reader = ProtectedGitReader(configured, "ephemeral-token", client)
+        reader = ProtectedGitReader(configured, "ephemeral-job-token", client)
         captured = await reader.inline_app_source(SHA, "apps/fixture", TREE)
         evidence = app_source_evidence(SID, configured, captured)
         result = await read_app_git_source(reader, policy=configured, application_id=SID,
@@ -114,7 +114,7 @@ async def test_app_source_drift_cannot_produce_an_authorized_capture(fault):
     documents, _ = inline_app_fixture()
     configured = app_policy()
     async with httpx.AsyncClient(transport=transport(documents, [])) as client:
-        captured = await ProtectedGitReader(configured, "token", client).inline_app_source(SHA, "apps/fixture", TREE)
+        captured = await ProtectedGitReader(configured, "ephemeral-job-token", client).inline_app_source(SHA, "apps/fixture", TREE)
     evidence = app_source_evidence(SID, configured, captured)
     if fault in {"scope", "subtree"}:
         evidence["organization_id" if fault == "scope" else "repo_subpath"] = "different"
@@ -138,5 +138,5 @@ async def test_app_source_drift_cannot_produce_an_authorized_capture(fault):
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(source_transport)) as client:
         with pytest.raises(GitDeliverySourceError):
-            await read_app_git_source(ProtectedGitReader(configured, "token", client), policy=configured,
+            await read_app_git_source(ProtectedGitReader(configured, "ephemeral-job-token", client), policy=configured,
                 application_id=SID, commit_sha=SHA, ci_run_id=123, ci_run_attempt=2, artifact_digest=digest)

@@ -85,6 +85,7 @@ from src.services.application_sdk_status import (
 )
 from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 from src.services.application_git_delivery import AppGitPublicationNotFound, enqueue_app_git_publication, inspect_app_git_publication
+from src.services.application_source_accountability import read_app_source_accounting
 from src.services.application_git_source import authenticate_app_git_delivery
 from src.services.solutions.github_delivery_source import GitDeliverySourceError, ProtectedGitReader
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
@@ -1118,7 +1119,13 @@ async def inspect_github_app_publication(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except GitDeliverySourceError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return platform_job_to_public(job)
+    public = platform_job_to_public(job)
+    if job.status == "succeeded":
+        # Keep the durable original job result immutable. This response adds
+        # fresh read-only accounting to the existing open result contract.
+        public.result = {**(public.result or {}), "accounting_readback":
+            await read_app_source_accounting(db, (job.result or {})["runtime_pin"])}
+    return public
 
 
 @router.post(

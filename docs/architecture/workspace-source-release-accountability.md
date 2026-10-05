@@ -142,6 +142,45 @@ completion evidence for the exact declared commit/tree without a Live row.
 Keep the constraint during application rollback; migration downgrade refuses
 while completed Solution accounting rows rely on it.
 
+### Inline App publication accounting
+
+Published inline Apps keep their existing App identity, organization, controls,
+source directory and publication job. Protected Git capture attests the complete
+authored subtree, including `app.yaml` without applying its metadata. The exact
+compiled manifest, compiler inputs, recorded migrations and every published
+output belong to `bifrost.inline-app-runtime-pin/v1`; this is compiled runtime
+byte proof, not a browser or customer business-success claim.
+
+The existing Root accounting sweep reads immutable registry/recipe Git blobs
+before acquiring aggregate locks. Under the final App row/control fence it
+requires the latest original System publication job to be successful, verifies
+all published bytes and the complete bookkeeping inventory, and reconstructs
+the same saved runtime pin. A later manual, partial or uncertain publication
+invalidates the older anchor. Unproven Apps leave their own source and registry
+obligations open while unrelated Solution paths may complete.
+
+App source/control paths use the existing `workspace_source_releases` ledger.
+Mixed completion retains App publication-job/runtime-pin identities alongside
+actual Solution deployment/receipt identities, using
+`bifrost.package-owned-source-completion/v1`. No fake Solution, deployment,
+receipt, new accounting table or new background job is created. A shared
+registry requires every configured App and Solution in the same protected
+commit/tree, scope and recipe target. Older OIDC debt can be superseded only by
+verified first-parent ancestry and complete replacement readback. Missing
+paths, stale consumers and uncertain loose readers remain unresolved.
+
+Apply `20261005_package_src_account` before this adapter. It retains both Live
+and Solution completion branches; downgrade refuses to discard App accounting
+evidence. The scoped original-job inspection response adds fresh read-only
+`accounting_readback` inside its existing result contract. It never changes the
+durable original result, source ledger, published bytes or job state.
+
+The Workspace batch publishes all reviewed Apps first, then checks source,
+runtime pins and automatic accounting through that inspection route. A pending
+shared registry is observed after every App has had its delivery opportunity.
+Accounting waits and failed readback never enqueue, resume, build or publish
+again; a missed deadline retains the original jobs and a failed batch result.
+
 ### Declaration producer
 
 The trusted `bifrost-workspace` workflow triggered by every push to protected

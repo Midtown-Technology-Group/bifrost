@@ -782,6 +782,19 @@ jobs:
         run: |
           chmod +x test.sh
           ./test.sh stack up
+          # Retain the served schema from this exact candidate's running API.
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          contract_dir="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+          docker compose -f docker-compose.test.yml exec -T api python -c \
+            'import sys, urllib.request; sys.stdout.buffer.write(urllib.request.urlopen("http://127.0.0.1:8000/openapi.json", timeout=30).read())' \
+            > "$contract_dir/openapi-current.json"
+          python3 - "$contract_dir/openapi-current.json" <<'PYSCHEMA'
+          import json
+          import sys
+          schema = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert schema.get("openapi") and schema.get("paths"), "API schema is incomplete"
+          PYSCHEMA
           if [ "$TEST_MODE" = "comprehensive" ]; then
             mapfile -t shard_files < <(python3 scripts/e2e_shard.py --shard-id "$SHARD_ID" --total "$SHARD_TOTAL")
           else

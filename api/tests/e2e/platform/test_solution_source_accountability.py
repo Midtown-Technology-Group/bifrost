@@ -21,11 +21,13 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("schema", ["bifrost.solution-owned-source-completion/v1",
+    "bifrost.package-owned-source-completion/v1"])
 @pytest.mark.parametrize("fault", [None, "missing_schema", "missing_commit", "missing_tree", "wrong_commit",
     "wrong_schema", "empty_paths", "missing_paths", "paths_not_object", "missing_resolution"])
-async def test_solution_completion_constraint_requires_exact_nonempty_evidence(async_engine, platform_admin, fault):
+async def test_solution_completion_constraint_requires_exact_nonempty_evidence(async_engine, platform_admin, fault, schema):
     source_sha, tree_sha = uuid4().hex + "a" * 8, "b" * 40
-    evidence = {"schema_version": "bifrost.solution-owned-source-completion/v1",
+    evidence = {"schema_version": schema,
         "source_commit_sha": source_sha, "source_tree_sha": tree_sha,
         "paths": {"features/fixture.py": {"sha256": "c" * 64}}}
     if fault == "missing_schema":
@@ -75,6 +77,7 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
     from src.models.orm.workflows import Workflow
     from src.models.enums import ExecutionStatus
     from src.services import solution_source_accountability as accounting
+    from src.services import application_source_accountability as app_accounting
     from src.services.operation_receipts import canonical_operation_scope_key, canonical_request_fingerprint
     from src.services.solutions import source_revision
 
@@ -95,13 +98,14 @@ async def accounting_install(db_session, platform_admin, monkeypatch):
         repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
         workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
         ci_workflow_id=257449914, solutions={f.solution_id: "config/solution-delivery/fixture.json"})
-    settings = SimpleNamespace(solution_git_delivery_policy=policy,
+    settings = SimpleNamespace(solution_git_delivery_policy=policy, inline_app_git_delivery_policy=None,
         workspace_source_release_oidc_organization_id=str(PROVIDER_ORG_ID),
         workspace_source_release_oidc_repository=policy.repository,
         workspace_source_release_oidc_repository_id=policy.repository_id,
         workspace_source_release_oidc_repository_owner_id=policy.repository_owner_id)
     monkeypatch.setattr(config, "get_settings", lambda: settings)
     monkeypatch.setattr(accounting, "get_settings", lambda: settings)
+    monkeypatch.setattr(app_accounting, "get_settings", lambda: settings)
     manifest = f.manifest
     identity = {"repository_id": policy.repository_id, "solution_id": str(f.solution_id),
         "source_commit_sha": commit, "artifact_digest": "sha256:" + "c" * 64,
