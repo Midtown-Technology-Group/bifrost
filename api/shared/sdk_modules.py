@@ -36,9 +36,9 @@ from src.core.log_safety import log_safe
 from src.core.module_cache import (
     get_module,
     get_module_resolution_cache,
-    module_resolution_cache_key,
     set_module_resolution_cache,
 )
+from src.core.module_cache_contract import module_resolution_cache_key
 from src.services.repo_storage import RepoStorage
 from src.services.solutions.storage import SOLUTIONS_ROOT, SolutionStorage
 
