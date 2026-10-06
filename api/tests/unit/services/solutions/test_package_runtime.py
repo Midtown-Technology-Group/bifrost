@@ -70,6 +70,14 @@ async def test_complete_package_publishes_workflow_resources_app_and_full_source
             expected_organization_id=None)
         assert result["source_verified"] and result["registrations_verified"] and result["runtime_verified"]
         assert len(result["workflow_runtime_pins"]) == len(result["app_runtime_pins"]) == 1
+        assert result["entity_id_map"]["apps"] == {
+            str(original["id"]): str(resolved["id"])
+            for original, resolved in zip(prepared.source_bundle.apps, prepared.bundle.apps, strict=True)
+        }
+        assert result["entity_id_map"]["workflows"] == {
+            str(original["id"]): str(resolved["id"])
+            for original, resolved in zip(prepared.source_bundle.workflows, prepared.bundle.workflows, strict=True)
+        }
         assert len(manifest.tables) == len(manifest.file_locations) == 1
         assert set(resolution.sources) == set(source.authored.files)
         assert await SolutionDeploymentStorage(solution.id, manifest.deployment_id).read_runtime_file(

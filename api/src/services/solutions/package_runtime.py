@@ -9,7 +9,7 @@ import io
 import json
 import zipfile
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from bifrost.solution_delivery_review import _decorator
 from bifrost.workspace_release import canonical_digest
@@ -141,10 +141,17 @@ async def compile_package_runtime(
     )
     controls = await capture_package_controls(db, sid)
     projection = await capture_package_projection(db, sid)
+    entity_id_map = {kind: {str(original["id"]): str(resolved["id"])
+        for original, resolved in zip(getattr(prepared.source_bundle, kind), getattr(bundle, kind), strict=True)}
+        for kind in ("workflows", "apps", "tables", "forms", "agents", "claims", "config_schemas", "events", "file_policies")}
+    for mapping in entity_id_map.values():
+        if any(resolved not in {original, str(uuid5(sid, original))} for original, resolved in mapping.items()):
+            raise ValueError("Package entity identity differs from installed or portable identity")
     package = {"schema_version": PACKAGE_RUNTIME_SCHEMA, "source": evidence,
                "publication_job_id": str(publication_job_id) if publication_job_id else None,
                "controls": controls, "controls_digest": canonical_digest(controls),
                "projection": projection, "projection_digest": canonical_digest(projection),
+               "entity_id_map": entity_id_map,
                "claims": _json_value(bundle.claims), "file_policies": _json_value(bundle.file_policies)}
     manifest = CompiledDeploymentManifest(
         solution_id=sid, deployment_id=deployment_id, bundle_hash=source.artifact_digest,
@@ -328,4 +335,5 @@ async def readback_package_runtime(
         "source_artifact_sha256": expected_source_sha256, "compiled_manifest_hash": manifest.content_hash(),
         "source_verified": True, "registrations_verified": True, "runtime_verified": True,
         "workflow_runtime_pins": pins, "app_runtime_pins": app_pins,
-        "inactive_workflow_ids": sorted(str(row.id) for row in rows if not row.is_active)}
+        "inactive_workflow_ids": sorted(str(row.id) for row in rows if not row.is_active),
+        "entity_id_map": package["entity_id_map"]}
