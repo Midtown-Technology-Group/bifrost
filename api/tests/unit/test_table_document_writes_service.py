@@ -4,7 +4,7 @@ Pins the extracted HTTP mutation orchestration: attribution privilege,
 pre/post-image policy checks, replace-versus-merge semantics, transport-
 neutral error mapping (422/403/409 details), commit-before-publish
 ordering, atomic batch denial, duplicate IDs, and batch delete ordering.
-Also covers thin HTTP adapter delegation + error mapping.
+Also covers the fork's canonical HTTP mutation path and error mapping.
 """
 
 from __future__ import annotations
@@ -692,7 +692,7 @@ async def test_batch_delete_denied_aborts_without_writes(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_router_insert_delegates_and_maps_document(monkeypatch):
+async def test_router_insert_commits_and_maps_document(monkeypatch):
     import src.routers.tables as router
     from src.models.contracts.tables import DocumentCreate
 
@@ -709,18 +709,27 @@ async def test_router_insert_delegates_and_maps_document(monkeypatch):
     async def fake_gate(*args, **kwargs):
         return None
 
-    async def fake_insert(db_arg, table_arg, user_arg, **kwargs):
-        seen.update(kwargs)
-        assert db_arg is db
-        assert table_arg is table
-        assert user_arg is user
-        return doc
+    class FakeRepo:
+        def __init__(self, db_arg, table_arg):
+            assert db_arg is db
+            assert table_arg is table
+
+        async def get(self, doc_id):
+            assert doc_id == "doc-1"
+            return None
+
+        async def insert(self, data, **kwargs):
+            seen.update(kwargs, data=data)
+            return doc
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(
         router, "_assert_solution_write_targets_owned_table", fake_gate
     )
-    monkeypatch.setattr(router, "insert_table_document", fake_insert)
+    monkeypatch.setattr(router, "DocumentRepository", FakeRepo)
+    monkeypatch.setattr(router, "_check_action_or_403", AsyncMock())
+    publish = AsyncMock()
+    monkeypatch.setattr(router, "publish_document_change", publish)
 
     response = await router.insert_document(
         "t", DocumentCreate(id="doc-1", data={"a": 1}, upsert=True), ctx=ctx, scope=None
@@ -729,17 +738,18 @@ async def test_router_insert_delegates_and_maps_document(monkeypatch):
     assert response.id == "doc-1"
     assert seen["doc_id"] == "doc-1"
     assert seen["data"] == {"a": 1}
-    assert seen["upsert"] is True
+    assert db.calls == ["commit"]
+    assert publish.await_args.kwargs["new_row"]["id"] == "doc-1"
 
 
 @pytest.mark.asyncio
-async def test_router_batch_maps_neutral_forbidden_to_http_403(monkeypatch):
+async def test_router_batch_maps_policy_denial_to_http_403(monkeypatch):
     from fastapi import HTTPException
 
     import src.routers.tables as router
     from src.models.contracts.tables import DocumentBatchCreate
 
-    table = SimpleNamespace(id=uuid4(), name="t")
+    table = _table()
     ctx = SimpleNamespace(db=_FakeDb(), user=_user())
 
     async def fake_get_table_or_404(*args, **kwargs):
@@ -749,7 +759,7 @@ async def test_router_batch_maps_neutral_forbidden_to_http_403(monkeypatch):
         return None
 
     async def fake_batch(*args, **kwargs):
-        raise writes.TableWriteForbidden({"denied_row_indices": [0]})
+        raise BatchPolicyDenied([0])
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(
@@ -758,7 +768,9 @@ async def test_router_batch_maps_neutral_forbidden_to_http_403(monkeypatch):
     monkeypatch.setattr(
         router, "_assert_explicit_scope_targets_table", AsyncMock()
     )
-    monkeypatch.setattr(router, "batch_write_table_documents", fake_batch)
+    monkeypatch.setattr(router, "load_resolved_table_policies", AsyncMock())
+    monkeypatch.setattr(router, "preresolve_for_policies", AsyncMock())
+    monkeypatch.setattr(router, "write_table_batch", fake_batch)
 
     with pytest.raises(HTTPException) as exc_info:
         await router.batch_documents(
