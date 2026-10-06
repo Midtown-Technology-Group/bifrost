@@ -2,13 +2,15 @@
 
 ## State and ownership
 
-This is a **Lane 3, human-reviewed, report-only migration**. It does not enable
+This is a **Lane 3 migration staged behind an operator activation variable**. It does not enable
 an approval producer, authorize queue admission, change required checks, dismiss
 findings, or review security hotspots. The existing SonarCloud Code Analysis
 GitHub App check and automatic analysis remain active during preparation.
 
-`.github/sonar-ci.json` starts in `report-only` mode. CI executes the evidence
-job and uploads reports; the scanner job is skipped. A successful evidence job
+`.github/sonar-ci.json` declares `ci` mode for the Free adapter. CI executes the
+evidence job and uploads reports; submissions stay disabled until the repository
+variable `SONAR_CI_ENABLED` is exactly `true`. Merge this reviewed adapter with
+the variable unset, preserving Automatic Analysis. A successful evidence job
 means the reports and their source identity passed local checks. It does **not**
 mean Sonar analyzed those files or its quality gate passed.
 
@@ -78,7 +80,7 @@ configuration from a trusted base and authenticate provider/run identity.
 
 ## Controlled cutover checklist
 
-1. Keep the PR draft until exact-head pre-PR and comprehensive CI pass. Inspect
+1. Require exact-head pre-PR and comprehensive CI before queue admission. Inspect
    all three reports, normalized paths and the manifest. Confirm release-policy
    and authored proxy/CLI files are indexed and have honest coverage entries.
    Keep every current required CI/queue/candidate control in place.
@@ -98,9 +100,10 @@ configuration from a trusted base and authenticate provider/run identity.
    credential creation is authorized by this draft.
 4. Schedule the switch with the accountable maintainer. Keep the current gate
    thresholds/profile unchanged for this input migration. Prepare a fresh
-   exact-head report run and a main-branch baseline run. Change the reviewed
-   mode to `ci` and turn off Automatic Analysis under Project Administration →
-   Analysis Method only when the replacement can run immediately. Never remove
+   exact-head report run and a main-branch baseline run. With this reviewed adapter merged and a fresh main workflow ready to run,
+   turn off Automatic Analysis under Project Administration →
+   Analysis Method only when the replacement can run immediately. Set `SONAR_CI_ENABLED=true`
+   and dispatch CI on main immediately. Never remove
    protections to get through the switch.
 5. Run main baseline and an exact-head PR scan. Confirm scanner task ID,
    completed analysis ID, repository/PR/head/base binding, report imports,
@@ -113,9 +116,11 @@ configuration from a trusted base and authenticate provider/run identity.
    and approve a supported credential/analysis route before enabling this for
    those PRs, without exposing a token to untrusted code.
 
-   Exercise a merge-group run on its combined head and actual base. If the plan
-   cannot analyze that branch, leave the migration blocked and maintain human
-   review; do not relabel an unrelated PR result as merge-group evidence.
+   The owner selected the Free adapter on 2026-10-06. Main and PRs targeting
+   main receive actual analysis. Merge groups retain exact combined-head/base
+   coverage evidence and an explicit unsupported-provider disposition, with
+   existing queue gates preserved. They have no Sonar quality gate; never
+   relabel a PR result or disposition job as a merge-group analysis.
 7. Re-run negative probes: missing report, omitted changed source, stale SHA,
    tampered source/config/report and full-versus-affected input. A missing or
    inconclusive scan must fail closed. Confirm the replacement's GitHub check
@@ -125,7 +130,7 @@ configuration from a trusted base and authenticate provider/run identity.
    Keep actual approval/merge-queue activation separate.
 
 Rollback if CI cannot produce a trustworthy analysis: stop CI submissions by
-returning mode to `report-only`, restore Automatic Analysis, record the failed
+setting `SONAR_CI_ENABLED=false`, restore Automatic Analysis, record the failed
 migration, and keep the PR/control change blocked. Do not claim the old green
 badge contains coverage or covers the expanded source scope.
 

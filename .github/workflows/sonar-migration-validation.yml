@@ -2,7 +2,7 @@ name: Sonar Migration Validation
 
 on:
   push:
-    branches: [codex/sonar-ci-coverage]
+    branches: [codex/sonar-ci-coverage, codex/sonar-free-ci-cutover]
   workflow_dispatch:
 
 permissions:
@@ -27,8 +27,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
-      - name: Require report-only staging
-        run: python3 -c 'import json; assert json.load(open(".github/sonar-ci.json"))["mode"] == "report-only"'
+      - name: Require unactivated CI staging
+        run: python3 -c 'import json; assert json.load(open(".github/sonar-ci.json"))["mode"] in ("report-only", "ci")'
       - name: Run clean-candidate pre-PR gate
         env:
           GH_TOKEN: ${{ github.token }}
