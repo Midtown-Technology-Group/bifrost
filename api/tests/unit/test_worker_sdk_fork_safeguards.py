@@ -85,11 +85,16 @@ def test_cold_local_module_index_eviction_has_no_legacy_fallback(monkeypatch):
     monkeypatch.setattr(cache, "get_workspace_release_context", lambda: None)
     monkeypatch.setattr(cache, "_get_sync_redis", lambda: redis)
     monkeypatch.setattr(cache, "workspace_generation_for_import", lambda: "pinned")
-    monkeypatch.setattr(cache, "_get_engine_client", lambda: object())
+    from bifrost import client as sdk
+
+    monkeypatch.setattr(sdk, "_engine_socket_path", "/private/worker.sock")
+    credentials = MagicMock(side_effect=AssertionError("index probe must not load credentials"))
+    monkeypatch.setattr(cache, "_get_engine_client", credentials)
     network = MagicMock(side_effect=AssertionError("legacy network listing"))
     storage = MagicMock(side_effect=AssertionError("child storage listing"))
     monkeypatch.setattr(cache, "_fetch_module_index_from_api", network)
     monkeypatch.setattr(cache, "_list_object_storage_modules", storage)
     assert cache.get_module_index_sync() == set()
+    credentials.assert_not_called()
     network.assert_not_called()
     storage.assert_not_called()
