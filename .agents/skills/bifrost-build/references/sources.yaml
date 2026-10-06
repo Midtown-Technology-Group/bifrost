@@ -72,7 +72,7 @@ references:
   - file: references/python-sdk.md
     source_globs:
       - api/bifrost/*.py
-    verified_at_sha: 15575c43c4d5b0617ca247d6f59046cf0ca6ef03
+    verified_at_sha: ed7d440198d61a826a538e5536c557b2a669f10f
 
   - file: references/repository.md
     source_globs:

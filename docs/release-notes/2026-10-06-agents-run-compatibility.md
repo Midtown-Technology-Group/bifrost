@@ -34,3 +34,9 @@ still end before the execution deadline, preserving the return margin.
 The canonical route currently persists dictionary outputs. SDK decoding also
 accepts legacy string output shapes; this change does not widen the server
 response contract. No long Redis-blocking execute request is restored.
+
+The candidate includes merged PR #1087 (`91a760fb93b875d26248131c88ed4eda079305f6`).
+`enqueue()` and `get_run()` retain `BifrostClient.engine_request`: ordinary HTTP
+without an injected socket, and private Unix-socket HTTP with worker injection.
+Compatibility result/error tests exercise both against persisted database rows;
+the socket path runs with the network API unreachable.
