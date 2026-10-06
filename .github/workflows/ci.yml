@@ -65,7 +65,8 @@ jobs:
   # Manual branch runs provide the exact clean-candidate gate when no local
   # Docker test VM is available. Tags cannot enter this preparation-only job.
   pre-pr-candidate:
-    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')
+    needs: lint
+    if: ${{ !cancelled() && needs.lint.result == 'success' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/') }}
     runs-on: ubuntu-latest
     name: Pre-PR Candidate
     permissions:
@@ -324,8 +325,9 @@ jobs:
             --expected-digest "$EXPECTED_DIGEST"
 
   candidate-images:
+    # Diagnose failed builds, but do not launch a new runner after cancellation.
     if: >-
-      always() &&
+      !cancelled() &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     needs: build-candidate-images
@@ -421,9 +423,10 @@ jobs:
   # =============================================================================
   lint:
     needs: affected-test-plan
+    # Failed planning must remain red; cancelled snapshots need no diagnostics.
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Lint & Type Check
     permissions:
@@ -568,7 +571,7 @@ jobs:
     needs: affected-test-plan
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client Unit Tests
     steps:
@@ -1002,7 +1005,7 @@ jobs:
   # Fails if any backend or browser shard failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     needs: [affected-test-plan, lint, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests

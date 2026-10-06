@@ -146,10 +146,12 @@ def _admitted(
     ref="refs/pull/1/merge",
     cancelled=False,
     same_repo=True,
+    planner="success",
 ):
     """Evaluate the small boolean admission language used by these CI jobs."""
     values = {
         "needs.lint.result": lint,
+        "needs.affected-test-plan.result": planner,
         "needs.publish-ci-test-images.result": publisher,
         "github.event_name": event,
         "github.ref": ref,
@@ -162,9 +164,56 @@ def _admitted(
     for key, value in sorted(values.items(), key=lambda pair: -len(pair[0])):
         expression = expression.replace(key, repr(value))
     expression = expression.replace("cancelled()", repr(cancelled))
+    expression = expression.replace("startsWith(", "starts_with(")
     expression = expression.replace("&&", " and ").replace("||", " or ")
     expression = re.sub(r"!(?!=)", "not ", expression)
-    return eval(f"({expression})", {"__builtins__": {}}, {})
+    return eval(
+        f"({expression})",
+        {"__builtins__": {}, "starts_with": str.startswith},
+        {},
+    )
+
+
+@pytest.mark.parametrize("planner", ["success", "failure", "cancelled", "skipped"])
+def test_required_diagnostics_respect_cancellation_without_hiding_failed_plans(planner):
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    for name in ("lint", "test-client-unit", "candidate-images", "test-e2e-gate"):
+        args = {"lint": "failure", "planner": planner}
+        assert _admitted(jobs[name]["if"], **args)
+        assert not _admitted(jobs[name]["if"], **args, cancelled=True)
+
+
+@pytest.mark.parametrize("name", ["lint", "test-client-unit"])
+def test_uncancelled_failed_plan_keeps_required_checks_red(name):
+    job = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"][name]
+    step = next(s for s in job["steps"] if s["name"] == "Require a valid affected test plan")
+    assert step["if"] == "needs.affected-test-plan.result != 'success'"
+    result = subprocess.run(
+        ["bash", "-c", step["run"]], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 1
+
+
+@pytest.mark.parametrize("lint", ["success", "failure", "cancelled", "skipped"])
+@pytest.mark.parametrize(
+    "event,ref",
+    [
+        ("workflow_dispatch", "refs/heads/codex/test"),
+        ("workflow_dispatch", "refs/tags/v1.0.0"),
+        ("pull_request", "refs/pull/1/merge"),
+        ("merge_group", "refs/heads/gh-readonly-queue/main/pr-1"),
+        ("push", "refs/heads/main"),
+    ],
+)
+def test_manual_pre_pr_gate_requires_quality_and_an_uncancelled_branch_run(lint, event, ref):
+    job = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"][
+        "pre-pr-candidate"
+    ]
+    assert "lint" in job["needs"]
+    args = {"lint": lint, "event": event, "ref": ref}
+    expected = lint == "success" and event == "workflow_dispatch" and ref.startswith("refs/heads/")
+    assert _admitted(job["if"], **args) == expected
+    assert not _admitted(job["if"], **args, cancelled=True)
 
 
 @pytest.mark.parametrize("lint", ["failure", "cancelled", "skipped"])

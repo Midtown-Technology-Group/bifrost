@@ -151,7 +151,7 @@ def check_ci_workflow(path: Path) -> list[str]:
                 ]
 
     expected_skip = (
-        "always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')"
+        "${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
     )
     for job in QUEUE_SKIPPED_ON_MAIN:
         parsed = _job_block(lines, job)
