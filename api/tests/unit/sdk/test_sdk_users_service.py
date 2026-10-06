@@ -314,6 +314,9 @@ class TestUsersRouterBoundary:
 
     async def _seed(self, db_session, **kwargs):
         from src.models.orm.users import User
+        if "organization_id" not in kwargs:
+            org = await _seed_org(db_session)
+            kwargs["organization_id"] = org.id
         row = User(email=f"boundary-{uuid4().hex}@example.com", name="Boundary", **kwargs)
         db_session.add(row)
         await db_session.flush()
@@ -340,8 +343,10 @@ class TestUsersRouterBoundary:
     async def test_create_returns_pending_invite(self, db_session):
         from src.models import UserCreate
         from src.routers.users import create_user
-        request = UserCreate(email=f"new-{uuid4().hex}@example.com", name="N")
-        result = await create_user(request, _principal(), db_session)
+        org = await _seed_org(db_session)
+        actor = await self._seed(db_session, is_superuser=True)
+        request = UserCreate(email=f"new-{uuid4().hex}@example.com", name="N", organization_id=org.id)
+        result = await create_user(request, _principal(user_id=actor.id), db_session)
         assert result.email == request.email
         assert result.name == "N"
         assert result.invite_status == "pending"

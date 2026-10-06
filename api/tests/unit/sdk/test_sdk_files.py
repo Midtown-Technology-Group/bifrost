@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from fastapi import HTTPException
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
