@@ -87,6 +87,86 @@ def solution_group() -> None:
     pass
 
 
+@solution_group.command(
+    name="review-package",
+    help="Review a complete Solution package at an exact local Git commit; no deployment.",
+)
+@click.argument(
+    "recipe", type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path)
+)
+@click.option(
+    "--source-commit", required=True, help="Exact 40-character Git commit SHA."
+)
+@click.option(
+    "--repository-root",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=pathlib.Path),
+)
+def solution_review_package_cmd(
+    recipe: pathlib.Path, source_commit: str, repository_root: pathlib.Path
+) -> None:
+    from bifrost.solution_package_delivery import (
+        MAX_PACKAGE_BYTES,
+        MAX_PACKAGE_FILES,
+        load_solution_package_recipe,
+        review_solution_package_source,
+    )
+    import re
+
+    if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
+        raise click.ClickException("An exact source commit SHA is required")
+    deadline = time.monotonic() + 200
+
+    def git(*arguments: str) -> bytes:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("Package source review budget exhausted")
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+            timeout=remaining,
+        ).stdout
+
+    try:
+        contract = load_solution_package_recipe(recipe.read_bytes())
+        tree = git("rev-parse", f"{source_commit}^{{tree}}").decode().strip()
+        rows = git(
+            "ls-tree", "-r", "-l", "-z", f"{source_commit}:{contract.repo_subpath}"
+        )
+        entries = [entry for entry in rows.split(b"\0") if entry]
+        if not 1 <= len(entries) <= MAX_PACKAGE_FILES:
+            raise ValueError("Complete package inventory exceeds its file bound")
+        files, modes = {}, {}
+        size = 0
+        for entry in entries:
+            metadata, path = entry.split(b"\t", 1)
+            mode, kind, blob, length = metadata.split()
+            if kind != b"blob" or mode not in {b"100644", b"100755"}:
+                raise ValueError("Package source must contain only regular Git files")
+            size += int(length)
+            if size > MAX_PACKAGE_BYTES:
+                raise ValueError("Package source exceeds its byte bound")
+            relative = path.decode("utf-8")
+            if relative in files:
+                raise ValueError("Package inventory is ambiguous")
+            raw = git("cat-file", "blob", blob.decode("ascii"))
+            if len(raw) != int(length):
+                raise ValueError("Source blob size differs from its tree")
+            files[relative], modes[relative] = raw, mode.decode("ascii")
+        proof = review_solution_package_source(
+            contract.model_dump(mode="json"),
+            files,
+            modes,
+            source_commit_sha=source_commit,
+            source_tree_sha=tree,
+        )
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(proof, indent=2, sort_keys=True))
+
+
 def _write_solution_descriptor(
     workspace: pathlib.Path,
     slug: str,

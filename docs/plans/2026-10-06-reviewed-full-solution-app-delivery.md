@@ -57,7 +57,36 @@ production enrollment, source accounting closure or runtime proof.
   Root access; do not infer resource grants from the source manifest.
 - QuickSupport: Provider Solution 76cb30af-bad6-4d79-9f99-d59bced8fe1c,
   subtree solutions/quick-support. Fresh installed descriptor/source review must
-  authorize its initial App definition and publication.
+  authorize its initial App definition and publication, eleven workflows, two
+  admin-bypass evidence tables and the session-audits file location. The current
+  empty install is not evidence that its complete authored package is App-only.
+
+The ordinary repo-v1 workflow dispatch currently has no immutable runtime pin.
+QuickSupport therefore also needs the supported full-package runtime projection;
+App output pins alone do not satisfy its workflow acceptance criteria. The
+existing CompiledDeploymentManifest already represents Apps, workflows and
+tables. Keep publication of the corresponding App and Solution pointers coherent
+and preserve the workflow-only Source adapter's restrictions.
+
+## Source preparation command
+
+`bifrost solution review-package RECIPE --source-commit SHA --repository-root DIR`
+reads Git blobs at the exact commit, including all authored manifests, binary
+assets and empty initializers. It never reads dirty source bytes, logs in,
+imports authored Python or calls production. Its recipe requires an explicit
+organization scope and hashes of the complete descriptor/entity manifest set.
+Output binds source modes/hashes, deterministic full archive and declared
+entity identities. CI, installed controls and runtime verification remain false.
+
+This is the first implemented preparation seam. Scoped server admission,
+worker publication/recovery and common producer enrollment remain unimplemented.
+
+Offline review of committed Workspace Main `6793385de20071acc85ab749fbe83c3b6dd22706`
+retained all 147 Meraki package files and all 39 QuickSupport files. QuickSupport
+includes eleven workflows, two tables and one file location; none were filtered
+out as App build inputs. The source preparation has thirteen passing isolated
+Docker checks. This does not certify that Main CI passed, installed controls
+match, the Apps build successfully, or any runtime was published.
 
 The recorded inventories are preparation evidence. Refresh live descriptors,
 App identity/control/resource DTOs, captures, callers and outside references
