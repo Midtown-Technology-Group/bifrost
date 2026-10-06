@@ -111,8 +111,9 @@ configuration from a trusted base and authenticate provider/run identity.
    tools and `.github/scripts` in Sonar's file view, and inspect Python/TS/JS
    line and branch coverage. A completed upload alone is insufficient.
 6. Validate fork and Dependabot PR behavior: ordinary Actions secrets are
-   withheld for those events. The current scanner fails closed without its
-   credential; it must not silently report a skipped gate as success. Choose
+   withheld for those events. The scanner excludes these PRs; after activation, the Free scope disposition
+   fails explicitly for the unsupported credential route. It never claims
+   a skipped analysis is a successful gate. Choose
    and approve a supported credential/analysis route before enabling this for
    those PRs, without exposing a token to untrusted code.
 

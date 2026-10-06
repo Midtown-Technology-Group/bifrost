@@ -261,8 +261,17 @@ jobs:
           ACTIVATED: ${{ vars.SONAR_CI_ENABLED }}
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.base_ref }}
+          PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          if [ "$EVENT" = merge_group ]; then
+          if [ "$ACTIVATED" = true ] && [ "$EVENT" = pull_request ] &&
+             { [ "$PR_REPOSITORY" != "$REPOSITORY" ] || [ "$ACTOR" = "dependabot[bot]" ] || [ "$PR_AUTHOR" = "dependabot[bot]" ]; }; then
+            echo "::error::Sonar CI analysis is unavailable for fork or Dependabot PRs until an approved credential route exists."
+            echo "Blocked: no Sonar analysis or gate is claimed for this unsupported credential route." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          elif [ "$EVENT" = merge_group ]; then
             echo 'Free plan: combined merge-group coverage evidence is available; no Sonar analysis or quality gate is claimed for this tree.' >> "$GITHUB_STEP_SUMMARY"
           elif [ "$ACTIVATED" != true ]; then
             echo 'CI submission is awaiting coordinated activation. Automatic analysis remains the existing provider until cutover.' >> "$GITHUB_STEP_SUMMARY"
@@ -277,7 +286,9 @@ jobs:
     # Free supports main and PRs targeting main; merge groups retain evidence only.
     if: >-
       needs.evidence.outputs.mode == 'ci' && vars.SONAR_CI_ENABLED == 'true' &&
-      ((github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      ((github.event_name == 'pull_request' && github.base_ref == 'main' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]') ||
        ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     permissions:
