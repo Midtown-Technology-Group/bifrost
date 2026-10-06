@@ -5544,9 +5544,6 @@ export interface paths {
          *     org. The optional ``org_id`` query parameter lets platform admins and
          *     provider-org members target another org for the session — gated by
          *     the same C2 rule the scope resolver applies elsewhere.
-         *
-         *     Context behavior lives in the shared service (``shared.sdk_context``),
-         *     which a worker-local engine child can call with the same inputs.
          */
         get: operations["get_dev_context_api_sdk_context_get"];
         put?: never;
@@ -5689,10 +5686,6 @@ export interface paths {
          *     2. Org-specific mapping: Returns mapping entity_id, config, and OAuth data
          *     3. Fallback to integration defaults: When no org mapping exists, returns
          *        integration.default_entity_id, integration-level config, and OAuth data
-         *
-         *     Scope resolution and response construction live in the shared
-         *     integrations service (``shared.sdk_integrations``), which the
-         *     worker-local engine child calls for the same inputs.
          */
         post: operations["sdk_integrations_get_api_sdk_integrations_get_post"];
         delete?: never;
@@ -5713,10 +5706,6 @@ export interface paths {
         /**
          * List all mappings for an integration
          * @description List all mappings for an integration via SDK.
-         *
-         *     Scope resolution and response construction live in the shared
-         *     integrations service (``shared.sdk_integrations``), which the
-         *     worker-local engine child calls for the same inputs.
          */
         post: operations["sdk_integrations_list_mappings_api_sdk_integrations_list_mappings_post"];
         delete?: never;
@@ -5737,10 +5726,6 @@ export interface paths {
         /**
          * Get a specific mapping by org_id or entity_id
          * @description Get a specific integration mapping by org_id or entity_id via SDK.
-         *
-         *     Scope resolution and response construction live in the shared
-         *     integrations service (``shared.sdk_integrations``), which the
-         *     worker-local engine child calls for the same inputs.
          */
         post: operations["sdk_integrations_get_mapping_api_sdk_integrations_get_mapping_post"];
         delete?: never;
@@ -5761,10 +5746,6 @@ export interface paths {
         /**
          * Create or update a mapping for an organization
          * @description Create or update an integration mapping for an organization via SDK.
-         *
-         *     Mutation rules live in the shared integrations service
-         *     (``shared.sdk_integrations``), which the worker-local engine child calls
-         *     for the same inputs.
          */
         post: operations["sdk_integrations_upsert_mapping_api_sdk_integrations_upsert_mapping_post"];
         delete?: never;
@@ -5785,10 +5766,6 @@ export interface paths {
         /**
          * Delete a mapping for an organization
          * @description Delete an integration mapping for an organization via SDK.
-         *
-         *     Mutation rules live in the shared integrations service
-         *     (``shared.sdk_integrations``), which the worker-local engine child calls
-         *     for the same inputs.
          */
         post: operations["sdk_integrations_delete_mapping_api_sdk_integrations_delete_mapping_post"];
         delete?: never;
@@ -5816,11 +5793,9 @@ export interface paths {
          *     The new token is persisted to the database so subsequent integrations.get() calls
          *     also benefit from the refreshed token.
          *
-         *     The refresh rules live in the shared integrations service
-         *     (``shared.sdk_integrations``), which a worker-local engine child calls
-         *     for the same inputs. The HTTP refresh itself is delegated to the shared
-         *     primitive :func:`src.services.oauth_provider.refresh_oauth_token_http`
-         *     via that service; this handler only maps transport errors.
+         *     The HTTP refresh itself is delegated to the shared primitive
+         *     :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
+         *     only owns the provider lookup, context build, and persistence.
          */
         post: operations["sdk_integrations_refresh_token_api_sdk_integrations_refresh_token_post"];
         delete?: never;
