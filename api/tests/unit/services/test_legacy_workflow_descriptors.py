@@ -63,6 +63,20 @@ def test_nullable_descriptors_require_separate_exact_immutable_evidence():
         fields["description"] = ""
 
 
+def test_larger_source_bound_cannot_exceed_retained_registration_timeout():
+    from src.services.solutions.workflow_revision import retain_installed_timeouts
+
+    row, definition = _registration()
+    definition.update(timeout_seconds=120, runtime_bounds={"max_duration_seconds": 120},
+        legacy_descriptor_evidence=legacy_descriptor_evidence(_workflow_snapshot(row)))
+    before = {"task": _entity(row, definition)}
+    with pytest.raises(SolutionSourceRevisionError, match="registration differs"):
+        _require_registration(row, before["task"])
+    retained = retain_installed_timeouts(before, [row])
+    _require_registration(row, retained["task"])
+    assert retained["task"].definition["timeout_seconds"] == row.timeout_seconds == 60
+
+
 @pytest.mark.asyncio
 async def test_workflow_successor_retains_legacy_metadata_timeout_and_new_effects():
     from src.services.solutions.workflow_revision import project_workflow_registrations, retain_legacy_descriptors

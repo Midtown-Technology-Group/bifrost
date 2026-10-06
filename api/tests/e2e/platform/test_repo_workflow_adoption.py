@@ -384,6 +384,7 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
     assert definition["category"] == "Reviewed category"
     assert definition["legacy_descriptor_evidence"]["fields"] == {"description": None, "category": "General"}
     assert row.description is None and row.category == "General"
+    retained_timeout = row.timeout_seconds
     expected = SolutionSourceRevisionInspectRequest(
         expected_active_deployment_id=did, expected_active_manifest_hash=base.compiled_manifest_hash)
     new_source = legacy_store[solution.id][row.path].replace(b"'old'", b"'new'")
@@ -406,7 +407,8 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
     accepted = await resolve_pinned_workflow_runtime(db_session, did, row.id)
     assert accepted.queue_evidence() == old_pin.queue_evidence()
     assert isinstance(row.parameters_schema, dict)
-    assert row.description == "Reviewed description" and row.category == "Reviewed category"
+    assert row.description is None and row.category == "General"
+    assert row.timeout_seconds == retained_timeout
     assert row.api_key_hash == "a" * 64 and row.api_key_enabled
     for item in (inactive, table, config):
         await db_session.refresh(item)
@@ -416,7 +418,9 @@ async def test_adoption_then_source_successor_preserves_owned_controls_and_old_p
     successor = await db_session.get(SolutionDeployment, next_id)
     assert successor is not None
     successor_definition = next(iter(successor.resolution_map["workflows"].values()))["definition"]
-    assert "legacy_descriptor_evidence" not in successor_definition
+    assert successor_definition["legacy_descriptor_evidence"] == definition["legacy_descriptor_evidence"]
+    assert successor_definition["description"] == "Reviewed description"
+    assert successor_definition["category"] == "Reviewed category"
     assert successor.compiled_manifest["tables"] == {} and table.solution_id == solution.id
     assert successor.resolution_map["sources"][row.path]["content_hash"] != base.resolution_map["sources"][row.path]["content_hash"]
 

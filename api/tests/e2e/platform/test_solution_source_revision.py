@@ -779,6 +779,7 @@ async def test_owned_table_effect_successor_preserves_registry_data_and_accepted
     committed_delivery_db, platform_admin, monkeypatch,
 ):
     from src.models.orm.tables import Document
+    from src.services.solutions.repo_workflow_adoption import _digest_row
     from src.services.solutions.guard import install_solution_write_guard
     from src.services.solutions.source_revision import _workflow_snapshot
     from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
@@ -794,7 +795,7 @@ async def test_owned_table_effect_successor_preserves_registry_data_and_accepted
     await db.commit()
     await db.refresh(f.workflow, attribute_names=["roles"])
     baseline = _workflow_snapshot(f.workflow)
-    metadata_hash = table_metadata_hash(f.table)
+    metadata_hash = _digest_row(f.table)
     accepted = await pin_workflow_runtime(db, f.workflow_id)
     assert accepted is not None
     expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.base_id,
@@ -815,7 +816,7 @@ async def test_owned_table_effect_successor_preserves_registry_data_and_accepted
     await db.refresh(f.workflow, attribute_names=["roles"])
     assert _workflow_snapshot(f.workflow) == baseline
     await db.refresh(f.table)
-    assert table_metadata_hash(f.table) == metadata_hash and f.table.solution_id == f.solution_id
+    assert _digest_row(f.table) == metadata_hash and f.table.solution_id == f.solution_id
     await db.refresh(document)
     assert document.data == {"receipt": "do not replay"}
     current = await pin_workflow_runtime(db, f.workflow_id)

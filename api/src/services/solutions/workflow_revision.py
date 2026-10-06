@@ -99,6 +99,24 @@ def retain_legacy_descriptors(
     return result
 
 
+def retain_installed_timeouts(
+    entities: dict[str, RuntimeEntityDefinition], rows: list[Workflow],
+) -> dict[str, RuntimeEntityDefinition]:
+    """Keep the runtime limit compatible with retained registry controls."""
+    by_id = {row.id: row for row in rows}
+    result = dict(entities)
+    for ref, item in entities.items():
+        row = by_id.get(item.resolved_id)
+        if row is not None:
+            payload = item.model_dump(mode="json")
+            payload["definition"]["timeout_seconds"] = min(
+                row.timeout_seconds if row.timeout_seconds is not None else 1800,
+                payload["definition"]["timeout_seconds"],
+            )
+            result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
+
+
 async def project_workflow_registrations(
     db: AsyncSession, solution_id: UUID, entities: dict[str, RuntimeEntityDefinition],
     current_ids: set[UUID],
@@ -156,9 +174,9 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         indexer = WorkflowIndexer(self.db)
         try:
             validate_resource_files(recipe, resources, files)
-            desired = retain_legacy_descriptors(retain_legacy_registration_names(
+            desired = retain_installed_timeouts(retain_legacy_descriptors(retain_legacy_registration_names(
                 compile_workflow_registrations(recipe, files, indexer), dict(previous.workflows)),
-                dict(previous.workflows))
+                dict(previous.workflows)), rows)
             closure = source_closure(files, {item.path for item in recipe.workflows},
                 has_table_bindings=bool(recipe.shared_tables) or await self._has_owned_tables(solution_id),
                 has_resource_bindings=bool(recipe.resources),
@@ -343,7 +361,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
     async def verify_current_workflows(self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest,
                                         recipe: ReviewedWorkflowRecipe) -> None:
         _solution, base, resolution = await self._base(solution_id, request, allow_resources=True)
-        await self._registrations(solution_id, resolution, lock=False)
+        rows = await self._registrations(solution_id, resolution, lock=False)
         files = await self._base_files(solution_id, base.id, resolution)
         resources = await read_deployment_resources(solution_id, base.id, resolution)
         storage = SolutionDeploymentStorage(solution_id, base.id)
@@ -354,9 +372,9 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                     raise SolutionSourceRevisionError("Current workflow runtime bytes differ from immutable source")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
         validate_resource_files(recipe, resources, files)
-        desired = retain_legacy_descriptors(retain_legacy_registration_names(
+        desired = retain_installed_timeouts(retain_legacy_descriptors(retain_legacy_registration_names(
             compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db)), dict(resolution.workflows)),
-            dict(resolution.workflows))
+            dict(resolution.workflows)), rows)
         if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
                 or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionConflict("Current registrations or table bindings differ from reviewed Git")
