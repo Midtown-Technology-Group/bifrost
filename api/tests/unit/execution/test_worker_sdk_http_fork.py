@@ -466,6 +466,9 @@ creds = OAuthCredentials(
     access_token=None, refresh_token=None, expires_at=None,
 )
 await creds.refresh()
+# Refresh returns expiry only; read the rotated credential through the
+# authorized integration read, which also registers it for log redaction.
+fresh_data = await integrations.get({name!r})
 _registered = get_execution_context()._collect_secret_values()
 
 missing = OAuthCredentials(
@@ -507,7 +510,7 @@ result = {{
     "list_count": len(mappings),
     "list_entity": mappings[0].entity_id,
     "mapping_entity": mapping.entity_id,
-    "refresh_ok": creds.access_token == {access!r},
+    "refresh_ok": (creds.expires_at == "2030-01-01T00:00:00+00:00" and fresh_data.oauth.access_token == {access!r}),
     "refresh_registered": {access!r} in _registered,
     "missing_refresh": missing_out,
     "created_entity": created.entity_id,
@@ -1053,7 +1056,7 @@ async def test_forked_child_files_over_worker_socket(monkeypatch):
         assert result["signed_path"].endswith("blob.bin")
         assert set(result["search_keys"]) == {
             "query", "total_matches", "files_searched", "results",
-            "truncated", "search_time_ms",
+            "truncated", "search_time_ms", "source_authority", "workspace_release_id",
         }
         # 2 MiB binary payload round-trips intact.
         assert result["big_len"] == 2 * 1024 * 1024
