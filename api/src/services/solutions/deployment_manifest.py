@@ -281,7 +281,12 @@ def _validate_manifest_resolution_agreement(
             if resource.object_key != f"{expected_prefix}_resources/{path}":
                 raise ValueError("resource object is outside its immutable deployment")
     require_shared_table_bindings(manifest.shared_tables)
-    if set(manifest.shared_tables) & set(manifest.tables):
+    owned_table_names = set(manifest.tables)
+    for entity in manifest.tables.values():
+        name = entity.definition.get("name")
+        if isinstance(name, str):
+            owned_table_names.add(name)
+    if set(manifest.shared_tables) & owned_table_names:
         raise ValueError("shared table binding conflicts with an owned table")
 
 

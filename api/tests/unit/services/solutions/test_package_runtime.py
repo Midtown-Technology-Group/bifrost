@@ -10,6 +10,7 @@ from bifrost.root_file_bindings import RootFileBinding
 from src.models.contracts.solution_deployments import SolutionDeploymentCreate
 from src.models.orm.applications import Application
 from src.models.orm.solutions import Solution
+from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.tables import Document, Table
 from src.services.solutions.app_build import SolutionAppBuilder
 from src.services.solutions.deploy import SolutionDeployer
@@ -151,8 +152,9 @@ async def test_package_successor_cannot_add_a_required_parameter_to_existing_cal
 
 
 @pytest.mark.e2e
+@pytest.mark.parametrize("grant_access", ["read", "read-write"])
 async def test_workflow_package_schema_successor_and_revert_preserve_documents_and_controls(
-    db_session, seed_user, monkeypatch,
+    db_session, seed_user, monkeypatch, grant_access,
 ):
     def unexpected_app_build(*args, **kwargs):
         pytest.fail("A workflow-only package must not compile or publish an App")
@@ -171,7 +173,11 @@ async def test_workflow_package_schema_successor_and_revert_preserve_documents_a
         schema={"columns": [{"name": "key", "type": "string"}]})
     db_session.add(root_table)
     await db_session.flush()
-    shared = {root_table.name: SharedRootTableBinding(table_id=root_table.id, metadata_hash=table_metadata_hash(root_table))}
+    shared = {root_table.name: SharedRootTableBinding(table_id=root_table.id,
+        metadata_hash=table_metadata_hash(root_table), access=grant_access)}
+    root_data = {"key": "root-retained"}
+    db_session.add(Document(id="root-retained-row", table_id=root_table.id, data=root_data))
+    await db_session.flush()
     raw = b'{"reviewed": true}'
     root_file = RootFileBinding(location="workspace", path=f"features/package-{uuid4().hex}.json",
         operations=("read",), max_bytes=1024, expected_read_sha256=sha256_digest(raw))
@@ -213,7 +219,8 @@ async def test_workflow_package_schema_successor_and_revert_preserve_documents_a
             db_session.add(Document(id="retained-row", table_id=UUID(table_id), data=data))
             await db_session.flush()
         for value in current_controls["tables"].values():
-            assert value.pop("schema") == schema
+            observed_schema = value.pop("schema")
+            assert observed_schema == schema
         if controls is None:
             controls = current_controls
         else:
@@ -224,6 +231,32 @@ async def test_workflow_package_schema_successor_and_revert_preserve_documents_a
         document = await db_session.scalar(select(Document).where(Document.table_id == table.id))
         assert document is not None and document.data == data
         previous = manifest.deployment_id
+
+    # Preparation and compilation share the publisher's SQL transaction. A new
+    # owned table must not shadow an inherited Root name under either grant.
+    sid = solution.id
+    root_id = root_table.id
+    before = await capture_package_controls(db_session, sid)
+    collision_id = uuid4()
+    with pytest.raises(ValueError, match="shared table binding conflicts with an owned table"):
+        async with db_session.begin_nested():
+            collision = _reviewed_package_source(solution, runtime=True, include_app=False,
+                table_schema=original, additional_table_name=root_table.name)
+            attempted = await SolutionDeployer(db_session).prepare_reviewed_package(
+                collision, expected_active_deployment_id=previous,
+                expected_controls_digest=canonical_digest(before),
+            )
+            await compile_package_runtime(db_session, collision, attempted, collision_id)
+    assert await capture_package_controls(db_session, sid) == before
+    assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sid)) == previous
+    assert await db_session.get(SolutionDeployment, collision_id) is None
+    root_document = await db_session.scalar(select(Document).where(Document.table_id == root_id))
+    owned_document = await db_session.scalar(select(Document).where(Document.table_id == UUID(table_id)))
+    assert root_document is not None and root_document.data == root_data
+    assert owned_document is not None and owned_document.data == data
+    await db_session.refresh(solution)
+    await db_session.refresh(root_table)
+    assert table_metadata_hash(root_table) == shared[root_table.name].metadata_hash
 
     # Readback seals metadata as well as Python bytes. An out-of-band schema
     # change cannot be accepted as the published package.

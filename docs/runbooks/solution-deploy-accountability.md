@@ -70,3 +70,6 @@ shared-table bindings, Root-file bindings and dependency pins. They do not
 introduce new Root grants from package source. Shared-table scope/metadata and
 required Root asset bytes are revalidated during preparation, before activation
 and during independent readback; drift requires reconciliation without replay.
+An owned table's declared name cannot overlap an inherited shared-table alias,
+including when the manifest stores owned tables under UUID keys. Ambiguous
+table resolution rejects the candidate before staging or switching pointers.
