@@ -403,7 +403,10 @@ class SolutionDeployer:
         # A savepoint also rolls back metadata/role/shell preparation if the
         # post-prepare control comparison fails and an outer caller catches it.
         async with self.db.begin_nested():
-            solution = await self.db.scalar(select(Solution).where(Solution.id == sid).with_for_update())
+            solution = await self.db.scalar(
+                select(Solution).where(Solution.id == sid).with_for_update()
+                .execution_options(populate_existing=True)
+            )
             if solution is None or (
                 str(solution.organization_id) if solution.organization_id is not None else None
             ) != proof["organization_id"]:

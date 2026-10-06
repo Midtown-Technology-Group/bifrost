@@ -248,6 +248,32 @@ class TestSolutionAppDeploy:
         assert await capture_package_controls(db_session, sol.id) == before
         assert _stub_app_build == {}
 
+    async def test_reviewed_package_scope_check_refreshes_a_cached_target(
+        self, db_session, _stub_app_build
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import update
+        from src.models.orm.organizations import Organization
+        from src.services.solutions.package_controls import capture_package_controls
+
+        sol = await self._install(db_session)
+        source = _reviewed_package_source(sol)
+        organization = Organization(id=uuid.uuid4(), name="Changed scope", created_by="test@example.com")
+        db_session.add(organization)
+        await db_session.flush()
+        await db_session.execute(update(Solution).where(Solution.id == sol.id).values(
+            organization_id=organization.id,
+        ).execution_options(synchronize_session=False))
+        # The ORM identity map is deliberately stale, while the explicit-column
+        # snapshot observes the current database scope.
+        assert sol.organization_id is None
+        digest = canonical_digest(await capture_package_controls(db_session, sol.id))
+        with pytest.raises(SolutionDeployConflict, match="target/scope differs"):
+            await SolutionDeployer(db_session).prepare_reviewed_package(
+                source, expected_active_deployment_id=None, expected_controls_digest=digest,
+            )
+        assert _stub_app_build == {}
+
     async def test_preparation_retains_the_complete_mixed_bundle_before_upload(
         self, db_session, _stub_app_build
     ):
