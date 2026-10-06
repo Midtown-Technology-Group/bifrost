@@ -843,7 +843,7 @@ class TestRouterBoundaries:
         ctx = SimpleNamespace(user=principal, org_id=None, solution_id=None,
             app_id=None, caller_solution_id=None, db=db_session)
         sentinel = _pending_response()
-        with patch("src.services.execution.run_code", new=AsyncMock(return_value=sentinel)) as dispatch:
+        with patch("src.services.execution.service.run_code", new=AsyncMock(return_value=sentinel)) as dispatch:
             result = await execute_workflow(_request(code="return {'ok': True}"), ctx, db_session, principal)
         assert result == sentinel
         assert dispatch.await_args.kwargs["context"].is_platform_admin is True
