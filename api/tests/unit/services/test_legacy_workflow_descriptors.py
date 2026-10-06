@@ -86,8 +86,12 @@ async def test_workflow_successor_retains_legacy_metadata_timeout_and_new_effect
     assert parameters["description"] is None and parameters["category"] == "General"
     assert "legacy_descriptor_evidence" not in parameters and "effects" not in parameters
     assert parameters["endpoint_enabled"] is False and parameters["public_endpoint"] is False
-    assert entity.definition["effects"][0]["target"] == "microsoft_csp"
-    assert entity.definition["runtime_bounds"]["max_duration_seconds"] == 30
+    effect_list = entity.definition["effects"]
+    runtime_bounds = entity.definition["runtime_bounds"]
+    assert isinstance(effect_list, list | tuple) and isinstance(effect_list[0], dict)
+    assert isinstance(runtime_bounds, dict)
+    assert effect_list[0]["target"] == "microsoft_csp"
+    assert runtime_bounds["max_duration_seconds"] == 30
     assert row.timeout_seconds == 60
     assert retain_legacy_descriptors({"task": _entity(row, desired)}, successor) == successor
 
