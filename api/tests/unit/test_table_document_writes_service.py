@@ -548,9 +548,11 @@ async def test_batch_commits_before_invalidate_and_preserves_order(monkeypatch):
             insert_conflicts=[],
         )
 
-    async def fake_publish(table_id):
+    async def fake_publish(table_id, *, mutations):
         events.append(db.calls[:])
         assert table_id == str(table.id)
+        assert [mutation["new_row"]["id"] for mutation in mutations] == ["alpha", "beta"]
+        assert all(mutation["old_row"] is None for mutation in mutations)
 
     monkeypatch.setattr(writes, "write_table_batch", fake_write)
     monkeypatch.setattr(writes, "publish_table_invalidated", fake_publish)
@@ -631,8 +633,10 @@ async def test_batch_delete_skips_missing_and_returns_input_order(monkeypatch):
     monkeypatch.setattr(writes, "preresolve_for_policies", AsyncMock())
     monkeypatch.setattr(writes, "evaluate_action", lambda *args: True)
 
-    async def fake_publish(table_id):
+    async def fake_publish(table_id, *, mutations):
         events.append(db.calls[:])
+        assert [mutation["old_row"]["id"] for mutation in mutations] == ["beta", "alpha"]
+        assert all(mutation["new_row"] is None for mutation in mutations)
 
     monkeypatch.setattr(writes, "publish_table_invalidated", fake_publish)
 

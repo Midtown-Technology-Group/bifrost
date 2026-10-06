@@ -460,7 +460,15 @@ async def batch_write_table_documents(
 
     await db.commit()
     if ordered_documents:
-        await publish_table_invalidated(str(table.id))
+        mutations = [
+            {
+                "old_row": result.previous_rows_by_index.get(row.submission_index),
+                "new_row": _row_from_doc(result.documents_by_index[row.submission_index]),
+            }
+            for row in rows
+            if row.submission_index in result.documents_by_index
+        ]
+        await publish_table_invalidated(str(table.id), mutations=mutations)
     return BatchWriteOutcome(
         ordered_documents=ordered_documents,
         insert_conflicts=result.insert_conflicts,
@@ -507,16 +515,19 @@ async def batch_delete_table_documents(
 
     deleted = 0
     deleted_ids: list[str] = []
+    mutations: list[dict[str, Any]] = []
     for i, doc_id in enumerate(ids):
         existing = existing_by_index.get(i)
         if existing is None:
             continue
+        old_row = _row_from_doc(existing)
         ok = await repo.delete(doc_id)
         if ok:
             deleted += 1
             deleted_ids.append(doc_id)
+            mutations.append({"old_row": old_row, "new_row": None})
 
     await db.commit()
     if deleted > 0:
-        await publish_table_invalidated(str(table.id))
+        await publish_table_invalidated(str(table.id), mutations=mutations)
     return BatchDeleteOutcome(deleted=deleted, deleted_ids=deleted_ids)

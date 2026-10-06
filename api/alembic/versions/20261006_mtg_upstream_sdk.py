@@ -13,8 +13,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Both parent revisions own their DDL; joining them needs no schema change.
     pass
 
 
 def downgrade() -> None:
+    # Splitting the revision graph leaves both parent schemas intact.
     pass
