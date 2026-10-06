@@ -261,6 +261,20 @@ async def test_package_retains_named_immutable_resources_on_update_revert_and_fa
         previous = did
 
     before = await capture_package_controls(db_session, sid)
+    collision_id = uuid4()
+    with pytest.raises(ValueError, match="source object conflicts with immutable resource storage"):
+        async with db_session.begin_nested():
+            collision = _reviewed_package_source(solution, runtime=True, include_app=False,
+                immutable_resource=b'{"v":1}', reads_resource=True,
+                additional_files={"_resources/config/policy.json": b'{"v":9}'})
+            attempted = await SolutionDeployer(db_session).prepare_reviewed_package(collision,
+                expected_active_deployment_id=previous, expected_controls_digest=canonical_digest(before))
+            await compile_package_runtime(db_session, collision, attempted, collision_id)
+    assert await capture_package_controls(db_session, sid) == before
+    assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sid)) == previous
+    assert await db_session.get(SolutionDeployment, collision_id) is None
+    assert await read_deployment_resources(sid, previous, resolution) == {path: b'{"v":1}'}
+    await db_session.refresh(solution)
     with pytest.raises(ValueError, match="omits an inherited immutable resource"):
         async with db_session.begin_nested():
             missing = _reviewed_package_source(solution, runtime=True, include_app=False)

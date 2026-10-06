@@ -268,6 +268,9 @@ def _validate_manifest_resolution_agreement(
         raise ValueError("manifest/resolution resource mismatch")
     if set(resolution.resources) & set(resolution.sources):
         raise ValueError("resource path conflicts with executable source")
+    if ({item.object_key for item in resolution.resources.values()}
+            & {item.object_key for item in resolution.sources.values()}):
+        raise ValueError("source object conflicts with immutable resource storage")
     if sum(item.size_bytes for item in resolution.resources.values()) > MAX_DEPLOYMENT_RESOURCES_BYTES:
         raise ValueError("deployment resources exceed their total byte bound")
     if resolution.resources:

@@ -10,12 +10,32 @@ from src.services.solutions.deployment_manifest import (
     DeploymentResolutionMap,
     DeploymentSource,
     RuntimeEntityDefinition,
+    RuntimeResourceResolution,
     RuntimeSourceResolution,
     SharedRootTableBinding,
     canonical_json,
     sha256_digest,
     validate_runtime_closure,
 )
+
+
+@pytest.mark.parametrize("same_bytes", [False, True])
+def test_authored_source_cannot_alias_relocated_resource_object(same_bytes):
+    sid, did = uuid4(), uuid4()
+    prefix = f"_solutions/{sid}/{did}/"
+    key = prefix + "_resources/config/policy.json"
+    resource_hash = sha256_digest(b'{"v":1}')
+    resources = {"config/policy.json": RuntimeResourceResolution(
+        object_key=key, content_hash=resource_hash, size_bytes=7)}
+    resolution = DeploymentResolutionMap(resources=resources, sources={
+        "_resources/config/policy.json": RuntimeSourceResolution(
+            object_key=key, content_hash=resource_hash if same_bytes else sha256_digest(b'{"v":9}'))})
+    manifest = CompiledDeploymentManifest(solution_id=sid, deployment_id=did, bundle_hash="sha256:bundle",
+        resources=resources, resolution_map_hash=sha256_digest(canonical_json(resolution)),
+        source=DeploymentSource(artifact_key="source.zip", runtime_prefix=prefix))
+    with pytest.raises(ValueError, match="source object conflicts with immutable resource storage"):
+        validate_runtime_closure(manifest, resolution, [], expected_manifest_hash=manifest.content_hash(),
+            expected_resolution_hash=manifest.resolution_map_hash)
 
 
 @pytest.mark.parametrize("access", ["read", "read-write"])
