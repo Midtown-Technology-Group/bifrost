@@ -136,18 +136,16 @@ do not qualify subsequent changes.
 Automatic enrollment remains unfinished. The package policy defaults to absent,
 so the newly implemented admission path is disabled unless explicitly enrolled.
 
-The shared Solution job now records a lease-fenced intent immediately before
-its first database commit. A reclaimed attempt reads the original completion,
-source archive, registrations, Python runtime/cache and compiled App pins;
-it never invokes deployment or installation again. Uncertain commits retain
-the staged input and install rather than deleting them. An identical request
-from the original actor can resume that same job for readback; changed bytes,
-options or scope cannot replace an unresolved intent. A missing original
-completion or newer deployment fails closed for reconciliation. This does not
-repair partially completed resource writes or qualify the future immutable
-package worker. Its 19 focused recovery regressions passed in the exact
-`5308f1176` unit lane (12,568 passed, three skipped); all four API shards also
-passed. Browser/coverage lanes were still running at the recorded readback.
+The shared Solution job dispatches protected Main packages to their own
+immutable publication handler. The experimental extension of this PR to generic
+manual deployment recovery was removed after review: mutable storage finalizers
+do not retain a durable finalization plan and are not needed by Main delivery.
+The existing manual adapter remains unchanged except for the interlock that
+refuses a new writer while a package's original publication requires recovery.
+The package handler retains its own sealed intent, original input, same-job
+recovery and lease-fenced commit. Its recovery never calls the manual deploy or
+install finalizer. Earlier manual recovery test results describe superseded
+source and do not qualify the current implementation.
 
 Complete package preparation now calls the existing deployer from the verified
 Git archive, with an exact initial or successor deployment pointer and retained
@@ -209,8 +207,14 @@ qualification of these subsequent changes remains required.
 
 Common producer enrollment,
 rapid-merge/revert qualification, actual served assets and production worker
-execution remain acceptance gates. QuickSupport literal bound declarations still
-need Source alignment; no workflow compiler restriction has been relaxed.
+execution remain acceptance gates. QuickSupport's eleven decorators now use identical literal bound declarations
+in Workspace PR1184; function bodies, signatures and effects remain unchanged.
+The public compiler and complete Workspace gate passed at its signed head
+`f536c52bcb1e266acf1a744e93efa4333c3770ec`; no workflow compiler restriction
+has been relaxed. Production's existing QuickSupport install is populated
+(11 workflows, one App, two tables) with a null immutable pointer and repo-v1
+runtime. Its initial package publication must preserve those installed controls
+and resources; an empty-install assumption would be incorrect.
 
 Protected package delivery treats the reviewed current Main tree as version
 authority, including a revert to a lower declared PEP 440 version. Its preparation
@@ -242,10 +246,14 @@ Accounting skips an install whose existing writer lock is held and continues
 other installations. Its obligation stays pending for the normal next sweep;
 the declaration is neither rejected after saving nor falsely marked released.
 
-The legacy manual repo-v1 finalizer has a different recovery limit. Its deferred
-storage closure and generated App outputs are not a durable replay plan. An
-incomplete committed finalization remains `requires_action` and blocks later
-writers; the retained input ZIP alone never authorizes repeating resource writes
-or certifying a failed projection. This path is not the automatic Main package
-adapter, which stages immutable output before its joined transaction. No repair
-of partially completed manual finalization is claimed by this change.
+The ordinary manual repo-v1 finalizer is outside the automatic Main adapter.
+This PR no longer adds a generic manual checkpoint, callback, status projection
+or resume protocol. Main delivery stages immutable source and App outputs before
+its joined transaction, then reads back the original publication on uncertainty.
+Manual admission still blocks an unresolved package writer. The new regression
+covers manual deploy, initial repository install and package admission refusing
+that interlock before staging or enqueueing a replacement. No manual-finalizer
+repair or automatic replay of partially completed resource effects is claimed.
+Fresh production inspection found no outstanding sealed Solution intent among
+83 retained deployment jobs; this is read-only rollout evidence, not proof that
+all historical manual failures were repaired.

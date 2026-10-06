@@ -18,7 +18,6 @@ import os
 import re
 import tempfile
 import zipfile
-from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -107,11 +106,9 @@ from src.jobs.platform.solution_export import (
 )
 from src.jobs.platform.solution_deploy import (
     SOLUTION_DEPLOY_DEFINITION,
-    SOLUTION_DEPLOY_INTENT_SCHEMA,
     SolutionDeployPayload,
     unresolved_solution_deploy,
 )
-from src.jobs.platform.base import PlatformJobCancelled
 from src.services.github_actions_oidc import (
     workspace_source_release_tracking_organization_id,
 )
@@ -666,39 +663,11 @@ async def _enqueue_solution_deploy_job(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An App SDK update is already in progress for this Solution.",
             )
-        unresolved = await unresolved_solution_deploy(db, install_id)
-        if unresolved is not None:
-            from src.core.security import decrypt_secret
-
-            if unresolved.encrypted_payload is None:
-                raise HTTPException(status_code=409, detail="Original Solution deployment input is unavailable for readback.")
-            original = SolutionDeployPayload.model_validate_json(decrypt_secret(unresolved.encrypted_payload))
-            requested_digest = (
-                _solution_candidate_id(input_path).removeprefix("sha256:")
-                if input_path is not None else hashlib.sha256(input_bytes or b"").hexdigest()
+        if await unresolved_solution_deploy(db, install_id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An original reviewed package delivery requires recovery before another Solution writer.",
             )
-            if (
-                original.kind != kind or original.install_id != install_id
-                or original.input_sha256 != requested_digest
-                or original.options != {**options, "candidate_id": f"sha256:{requested_digest}"}
-                or unresolved.organization_id != organization_id
-                or unresolved.requested_by_user_id != str(requested_by_user_id)
-            ):
-                raise HTTPException(status_code=409, detail="An original Solution deployment requires readback; a new operation cannot replace it.")
-            await enqueue_platform_job(
-                db, SOLUTION_DEPLOY_DEFINITION, original,
-                dedupe_key=unresolved.dedupe_key, resource_lock_key=unresolved.resource_lock_key,
-                priority=unresolved.priority, organization_id=organization_id,
-                requested_by_user_id=requested_by_user_id,
-                requested_by_email=requested_by_email, requested_by_name=requested_by_name,
-                resource_type=unresolved.resource_type, resource_id=unresolved.resource_id,
-                title=unresolved.title, action_url=unresolved.action_url,
-            )
-            await db.commit()
-            projection = await db.get(SolutionDeployJob, original.deploy_job_id)
-            if projection is None:
-                raise HTTPException(status_code=409, detail="Original Solution deployment status is unavailable.")
-            return projection
     job_id = publication_id or uuid4()
     storage = SolutionDeployJobStorage(job_id)
     if input_path is not None:
@@ -2420,7 +2389,6 @@ async def _run_deploy_job(
     candidate_id: str = "",
     accountability_organization_id: UUID | None = None,
     allow_connected_install: bool = False,
-    before_commit: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> None:
     """Execute the deploy under a fresh session (background task).
 
@@ -2491,8 +2459,6 @@ async def _run_deploy_job(
                 result = await deploy_zip_to_solution_path(
                     db, solution, zip_path, force=force
                 )
-                if before_commit is not None:
-                    await before_commit(solution_id)
                 await db.commit()
                 # S3 only after the DB is durable — a failed commit changes no running
                 # code (P1-c). Still inside the lock so finalize can't race another deploy.
@@ -2567,10 +2533,6 @@ async def _run_deploy_job(
             _execute(),
             timeout=DEPLOY_JOB_TIMEOUT_SECONDS,
         )
-    except PlatformJobCancelled:
-        # A stale runner cannot mark the current attempt failed or remove its
-        # freshly created install after losing its pre-commit lease fence.
-        raise
     except TimeoutError:
         await _set_status("failed", DEPLOY_JOB_TIMEOUT_ERROR)
     except SolutionWriteLockHeld:
@@ -2579,12 +2541,12 @@ async def _run_deploy_job(
             "A deploy is already in progress for this install; retry shortly.",
         )
     except SolutionFinalizeIncomplete:
-        # The commit may already be durable. Reconcile its original intent;
-        # full replacement is not permission to replay resource effects.
+        # Storage failed every retry (a real outage). The DB is committed and the
+        # deploy is full-replace + idempotent, so re-running heals it.
         await _set_status(
             "failed",
             "Deploy committed but storage was unavailable after retries. "
-            "Reconcile the original deployment before any new deploy.",
+            "Re-run the deploy to complete it (it is idempotent).",
         )
     except (
         SolutionDowngradeBlocked,
@@ -2618,7 +2580,6 @@ async def _run_install_job(
     reactivate: bool,
     candidate_id: str = "",
     accountability_organization_id: UUID | None = None,
-    before_commit: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> None:
     """Execute a zip install under a fresh session (background task).
 
@@ -2684,7 +2645,6 @@ async def _run_install_job(
                 replace_secrets=replace_secrets,
                 replace_data=replace_data,
                 reactivate=reactivate,
-                before_commit=before_commit,
             )
             accountability = {"state": "not_tracked"}
             if accountability_organization_id is not None:
@@ -2720,8 +2680,6 @@ async def _run_install_job(
             _execute(),
             timeout=DEPLOY_JOB_TIMEOUT_SECONDS,
         )
-    except PlatformJobCancelled:
-        raise
     except TimeoutError:
         await _set_status("failed", DEPLOY_JOB_TIMEOUT_ERROR)
     except InactiveInstallExists as exc:
@@ -2743,7 +2701,7 @@ async def _run_install_job(
         await _set_status(
             "failed",
             "Install committed but storage was unavailable after retries. "
-            "Reconcile the original installation before any new install.",
+            "Re-run the install to complete it (it is idempotent).",
         )
     except (
         UnmetDependency,
@@ -2901,23 +2859,7 @@ async def get_deploy_job(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deploy job not found"
         )
-    public = SolutionDeployJobStatus.model_validate(job)
-    central = await ctx.db.get(PlatformJob, job_id)
-    if central is not None and central.job_type == "solution.deploy":
-        result = central.result or {}
-        if result.get("schema_version") == SOLUTION_DEPLOY_INTENT_SCHEMA:
-            if central.status in ACTIVE_PLATFORM_JOB_STATUSES:
-                return public.model_copy(update={
-                    "status": "queued" if central.status == "queued" else "running",
-                    "error": None, "result": {"phase": "Reconciling original Solution deployment"},
-                })
-            return public.model_copy(update={
-                "status": "failed", "result": result,
-                "error": "Original Solution deployment requires readback; no effects were replayed.",
-            })
-        if central.status == "succeeded" and result.get("recovered_from_intent") is True:
-            return public.model_copy(update={"status": "succeeded", "error": None, "result": result})
-    return public
+    return SolutionDeployJobStatus.model_validate(job)
 
 
 @router.post(

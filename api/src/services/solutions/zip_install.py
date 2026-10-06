@@ -26,7 +26,7 @@ import logging
 import os
 import tempfile
 import zipfile
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -527,7 +527,6 @@ async def install_zip_path(
     replace_secrets: bool = False,
     replace_data: bool = False,
     reactivate: bool = False,
-    before_commit: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> Solution:
     """Install a Solution zip from disk without buffering the upload."""
     with tempfile.TemporaryDirectory(prefix="bifrost-zip-install-") as tmp:
@@ -544,7 +543,6 @@ async def install_zip_path(
             replace_data=replace_data,
             reactivate=reactivate,
             source_artifact=zip_path,
-            before_commit=before_commit,
         )
 
 
@@ -609,7 +607,6 @@ async def _install_workspace(
     replace_data: bool,
     reactivate: bool,
     source_artifact: bytes | Path,
-    before_commit: Callable[[UUID], Awaitable[None]] | None = None,
 ) -> Solution:
     from src.services.solutions.write_lock import solution_write_lock
 
@@ -692,8 +689,6 @@ async def _install_workspace(
         result = await deployer.deploy(
             bundle, force=force, source_artifact=source_artifact
         )
-        if before_commit is not None:
-            await before_commit(solution.id)
         await db.commit()
         # S3 only after the DB is durable; still inside the lock so finalize
         # can't race another writer.

@@ -18,7 +18,6 @@ from src.routers.solutions import (
     _solution_candidate_id,
     _source_accountability_organization_id,
     install_from_repo,
-    get_deploy_job,
 )
 
 
@@ -153,74 +152,28 @@ async def test_deploy_job_rejects_candidate_changed_during_staging(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changed", [None, "source", "actor", "scope", "options"])
-async def test_original_intent_admission_resumes_only_identical_readback(monkeypatch, changed):
-    from src.core.security import encrypt_secret
-    from src.jobs.platform.solution_deploy import SolutionDeployPayload
-
-    job_id, install_id, actor = uuid4(), uuid4(), uuid4()
-    content = b"exact original archive"
-    digest = hashlib.sha256(content).hexdigest()
-    options = {"force": False, "candidate_id": f"sha256:{digest}"}
-    original = SolutionDeployPayload(deploy_job_id=job_id, install_id=install_id,
-        kind="deploy", input_sha256=digest, options=options)
-    row = PlatformJob(id=job_id, job_type="solution.deploy", status="requires_action",
-        organization_id=None, requested_by_user_id=str(actor),
-        encrypted_payload=encrypt_secret(original.model_dump_json()),
-        dedupe_key=str(job_id), resource_lock_key=f"solution:{install_id}",
-        resource_type="solution_deploy", resource_id=str(job_id),
-        priority=500, title="Solution deploy", action_url=f"/solutions/{install_id}")
-    projection = SolutionDeployJob(id=job_id, install_id=install_id, status="failed")
-    db = SimpleNamespace(commit=AsyncMock(), get=AsyncMock(return_value=projection))
+@pytest.mark.parametrize("kind", ["deploy", "install_from_repo", "deliver_package"])
+async def test_unresolved_package_blocks_another_solution_writer(monkeypatch, kind):
+    install_id = uuid4()
+    row = PlatformJob(id=uuid4(), job_type="solution.deploy", status="requires_action")
+    db = SimpleNamespace(commit=AsyncMock())
     enqueue, staging = AsyncMock(), AsyncMock()
     monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
     monkeypatch.setattr("src.routers.solutions._active_solution_sdk_update_exists", AsyncMock(return_value=False))
     monkeypatch.setattr("src.routers.solutions.unresolved_solution_deploy", AsyncMock(return_value=row))
     monkeypatch.setattr("src.routers.solutions.enqueue_platform_job", enqueue)
     monkeypatch.setattr("src.routers.solutions.SolutionDeployJobStorage.write_bytes", staging)
-    requested_options = dict(options)
-    request = dict(kind="deploy", install_id=install_id, organization_id=None,
-        requested_by_user_id=actor, requested_by_email="admin@example.com", requested_by_name="Admin",
-        input_bytes=content, options=requested_options)
-    if changed == "source":
-        request["input_bytes"] = b"new archive"
-    if changed == "actor":
-        request["requested_by_user_id"] = uuid4()
-    if changed == "scope":
-        request["organization_id"] = uuid4()
-    if changed == "options":
-        requested_options["force"] = True
-    if changed is None:
-        returned = await _enqueue_solution_deploy_job(db, **request)
-        assert returned is projection
-        assert enqueue.await_args.args[2] == original
-        assert enqueue.await_args.kwargs["dedupe_key"] == str(job_id)
-        db.commit.assert_awaited_once()
-    else:
-        with pytest.raises(HTTPException) as stopped:
-            await _enqueue_solution_deploy_job(db, **request)
-        assert stopped.value.status_code == 409
-        enqueue.assert_not_awaited()
-        db.commit.assert_not_awaited()
+    with pytest.raises(HTTPException) as stopped:
+        await _enqueue_solution_deploy_job(
+            db, kind=kind, install_id=install_id, organization_id=None,
+            requested_by_user_id=uuid4(), requested_by_email="admin@example.com", requested_by_name="Admin",
+            input_bytes=b"another archive", options={},
+        )
+    assert stopped.value.status_code == 409
+    assert "original reviewed package" in stopped.value.detail
+    enqueue.assert_not_awaited()
     staging.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status,expected", [("queued", "queued"), ("running", "running"), ("requires_action", "failed")])
-async def test_legacy_poll_does_not_report_green_before_original_readback(status, expected):
-    from datetime import datetime, timezone
-    from src.jobs.platform.solution_deploy import SOLUTION_DEPLOY_INTENT_SCHEMA
-
-    job_id = uuid4()
-    timestamp = datetime.now(timezone.utc)
-    projection = SolutionDeployJob(id=job_id, status="succeeded", result={"solution_id": str(uuid4())},
-        created_at=timestamp, updated_at=timestamp)
-    central = PlatformJob(id=job_id, job_type="solution.deploy", status=status,
-        result={"schema_version": SOLUTION_DEPLOY_INTENT_SCHEMA})
-    ctx = SimpleNamespace(db=SimpleNamespace(get=AsyncMock(side_effect=[projection, central])))
-    public = await get_deploy_job(job_id, ctx, SimpleNamespace())
-    assert public.status == expected
-    assert projection.status == "succeeded"  # Preserve the original completion for readback.
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
