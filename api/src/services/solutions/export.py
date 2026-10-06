@@ -377,10 +377,11 @@ def _copy_source_members(
     *,
     readme: str | None,
     exclude_runtime: bool,
+    replace_readme: bool = True,
 ) -> None:
     """Copy immutable source members while replacing the editable README."""
     for name in src.namelist():
-        if name == "README.md" or (
+        if (replace_readme and name == "README.md") or (
             exclude_runtime
             and (name == ".bifrost/secrets.enc" or name.startswith(".bifrost/file-payloads/"))
         ):
@@ -390,7 +391,7 @@ def _copy_source_members(
         with src.open(name, "r") as inp, dst.open(info, "w") as out:
             while chunk := inp.read(8 * 1024 * 1024):
                 out.write(chunk)
-    if readme:
+    if replace_readme and readme:
         _put_zip_member(dst, "README.md", readme)
 
 
@@ -409,12 +410,14 @@ async def add_live_content_to_workspace_zip_file(
     dest: Path,
     *,
     password: str,
+    preserve_source_readme: bool = False,
 ) -> None:
     """Overlay live README and encrypted runtime data onto stored source."""
     with zipfile.ZipFile(source_zip, "r") as src, zipfile.ZipFile(
         dest, "w", zipfile.ZIP_DEFLATED
     ) as dst:
-        _copy_source_members(src, dst, readme=bundle.readme, exclude_runtime=True)
+        _copy_source_members(src, dst, readme=bundle.readme, exclude_runtime=True,
+            replace_readme=not preserve_source_readme)
 
         file_sidecar_entries: list[dict[str, Any]] = []
         if bundle.solution_files:

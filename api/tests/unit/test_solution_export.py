@@ -443,6 +443,7 @@ async def test_immutable_export_uses_complete_active_source_not_legacy_artifact(
                 source,
                 {"assets/schema.json": b"reviewed"},
                 DeploymentResolutionMap(),
+                None,
             )
         ),
     )

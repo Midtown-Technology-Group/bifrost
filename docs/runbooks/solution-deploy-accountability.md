@@ -49,3 +49,45 @@ facts without rebuilding the App or switching its pointer.
 Do not directly edit database evidence, bypass Solution ownership protection, or
 redeploy a working application merely to retry bookkeeping. Review any remaining
 source difference and handle its actual release requirement separately.
+
+## Complete authored packages
+
+The protected complete-package publisher also accepts Solutions without Apps.
+It publishes the full authored inventory through the existing `solution.deploy`
+PlatformJob and verifies immutable source, registrations and runtime pins before
+settling delivery accounting. Packages with Apps still compile and verify each
+App's separate output and publication pin; workflow-only packages publish no App.
+
+Reviewed table schema changes update document metadata in place. They preserve
+table IDs, names, ownership, scope, access policies and existing documents. The
+complete post-publication snapshot includes the exact new schema, so stale
+admission and later metadata drift still fail readback. A schema revert restores
+metadata without deleting stored document fields. Existing caller compatibility,
+workflow control and resource ownership checks remain required.
+
+Complete-package successors retain the active immutable deployment's reviewed
+shared-table bindings, Root-file bindings and dependency pins. They do not
+introduce new Root grants from package source. Shared-table scope/metadata and
+required Root asset bytes are revalidated during preparation, before activation
+and during independent readback; drift requires reconciliation without replay.
+An owned table's declared name cannot overlap an inherited shared-table alias,
+including when the manifest stores owned tables under UUID keys. Ambiguous
+table resolution rejects the candidate before staging or switching pointers.
+
+Successors also retain the exact names of already-reviewed immutable resources.
+Their bytes come from protected authored source and receive new deployment-local
+hash and size pins. The publisher verifies the parent archive and resource
+objects, rejects missing names or undeclared SDK reads, and checks the new
+archive and runtime objects before activation and during independent readback.
+An arbitrary authored asset does not create a new resource permission. Resource
+updates and reverts preserve grants and never substitute mutable Root storage.
+Authored runtime objects cannot alias relocated `_resources/` objects, even
+when both byte sets are equal. Compilation rejects that ambiguity before
+publication intent or staging, preserving the existing active runtime.
+
+Complete-package export uses the same independent runtime verifier and carries
+the retained authored archive, including manifests, App sources, binary assets
+and empty files. It does not capture mutable App/Root source to reconstruct that
+archive. Full exports retain the existing encrypted runtime-content overlay;
+config values, table rows and operational files remain opt-in. The authored
+README is preserved in both modes, and pointer drift still rejects the export.

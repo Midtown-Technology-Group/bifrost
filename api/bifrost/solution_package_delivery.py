@@ -195,8 +195,6 @@ def review_solution_package_source(
                         )
                 identities.append(str(key))
             entities[kind] = sorted(identities)
-    if not entities.get("apps"):
-        raise ValueError("Use the workflow source adapter for a package without Apps")
     proof = {
         "schema_version": PACKAGE_RECIPE_SCHEMA,
         "solution_id": str(recipe.solution_id),

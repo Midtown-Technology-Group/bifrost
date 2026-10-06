@@ -11,7 +11,7 @@ import zipfile
 from typing import Any
 from uuid import UUID, uuid5
 
-from bifrost.solution_delivery_review import _decorator
+from bifrost.solution_delivery_review import _decorator, validate_resource_files
 from bifrost.workspace_release import canonical_digest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,13 +28,16 @@ from src.services.solutions.deploy import PreparedSolutionDeployment, SolutionDe
 from src.services.solutions.deployment_activation import SolutionDeploymentActivationService
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest, DeploymentGitProvenance, DeploymentResolutionMap,
-    DeploymentSource, RuntimeEntityDefinition, RuntimeSourceResolution,
+    DeploymentSource, RuntimeEntityDefinition, RuntimeResourceResolution, RuntimeSourceResolution,
     canonical_json, sha256_digest, validate_runtime_closure,
 )
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
-from src.services.solutions.live_handoff_source import source_closure
+from src.services.solutions.live_handoff_source import source_archive, source_closure
 from src.services.solutions.package_controls import _json_value, capture_package_controls, capture_package_projection
 from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
+from src.services.solutions.root_file_bindings import require_root_workspace_files
+from src.services.solutions.resource_delivery import read_deployment_resources
+from src.services.solutions.shared_table_bindings import require_shared_tables
 from src.services.solutions.source_revision import _require_registration, _workflow_snapshot
 from src.services.solutions.workflow_revision_recipe import (
     ReviewedWorkflowRecipe, WorkflowRecipeError, compile_workflow_registrations,
@@ -55,19 +58,51 @@ async def compile_package_runtime(
     if str(sid) != evidence["package"]["solution_id"]:
         raise ValueError("Package runtime target differs from protected source")
     storage = SolutionDeploymentStorage(sid, deployment_id)
+    shared_tables = {}
+    root_file_bindings = {}
+    dependencies = {}
+    dependency_edges = []
+    resource_paths = set()
+    if bundle.solution.active_deployment_id is not None:
+        parent = await SolutionDeploymentRepository(db).get_by_id_for_runtime(bundle.solution.active_deployment_id)
+        if parent is None or parent.solution_id != sid or parent.organization_id != bundle.solution.organization_id:
+            raise ValueError("Package base runtime target/scope differs")
+        _, parent_resolution = validate_runtime_closure(
+            parent.compiled_manifest, parent.resolution_map, parent.dependencies,
+            expected_manifest_hash=parent.compiled_manifest_hash,
+            expected_resolution_hash=parent.resolution_map_hash,
+        )
+        shared_tables = parent_resolution.shared_tables
+        root_file_bindings = parent_resolution.root_file_bindings
+        dependencies = parent_resolution.dependencies
+        dependency_edges = parent.dependencies
+        # Preserve already-reviewed resource capability, never infer a new
+        # grant from an arbitrary non-Python authored file. Verify the old
+        # runtime before replacing its bytes with the reviewed package source.
+        await read_deployment_resources(sid, parent.id, parent_resolution)
+        resource_paths = set(parent_resolution.resources)
+    await require_shared_tables(db, shared_tables, solution_organization_id=bundle.solution.organization_id)
+    await require_root_workspace_files(db, root_file_bindings)
     files = source.authored.files
+    if not resource_paths <= set(files):
+        raise ValueError("Package source omits an inherited immutable resource")
+    resources = {path: RuntimeResourceResolution(
+        object_key=storage.runtime_prefix + "_resources/" + path,
+        content_hash=sha256_digest(files[path]), size_bytes=len(files[path]),
+    ) for path in resource_paths}
     python = {path: raw.encode() for path, raw in bundle.python_files.items()}
     sources = {path: RuntimeSourceResolution(
         object_key=storage.runtime_prefix + path, content_hash=sha256_digest(raw),
-    ) for path, raw in files.items()}
+    ) for path, raw in files.items() if path not in resource_paths}
     workflows: dict[str, RuntimeEntityDefinition] = {}
     if bundle.workflows:
         # The ordinary dependency backstop cannot certify immutable SDK table
         # or file capability. Require the public closure analyser as well.
         source_closure(
             python, {item["path"] for item in bundle.workflows},
-            has_table_bindings=bool(bundle.tables),
-            has_root_file_bindings=bool(bundle.file_locations),
+            has_table_bindings=bool(bundle.tables or shared_tables),
+            has_root_file_bindings=bool(bundle.file_locations or root_file_bindings),
+            has_resource_bindings=bool(resources),
         )
         rows = (await db.scalars(select(Workflow).where(
             Workflow.solution_id == sid,
@@ -104,7 +139,9 @@ async def compile_package_runtime(
         recipe = ReviewedWorkflowRecipe.model_validate({
             "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": sid,
             "files": {path: source.authored.repo_subpath + "/" + path for path in python}, "workflows": declarations,
+            "resources": {path: source.authored.repo_subpath + "/" + path for path in resources},
         })
+        validate_resource_files(recipe, {path: files[path] for path in resources}, python)
         from bifrost.workflow_parameters import WorkflowParameterCompiler
         workflows = compile_workflow_registrations(recipe, python, WorkflowParameterCompiler())
         for ref, entity in list(workflows.items()):
@@ -135,6 +172,9 @@ async def compile_package_runtime(
         applications[str(item.app_id)] = RuntimeEntityDefinition.model_validate(payload)
     resolution = DeploymentResolutionMap(
         workflows=workflows, applications=applications,
+        shared_tables=shared_tables, root_file_bindings=root_file_bindings,
+        dependencies=dependencies,
+        resources=resources,
         agents=entities(bundle.agents, ".bifrost/agents.yaml"),
         forms=entities(bundle.forms, ".bifrost/forms.yaml"),
         events=entities(bundle.events, ".bifrost/events.yaml"), sources=sources,
@@ -158,6 +198,9 @@ async def compile_package_runtime(
         resolution_map_hash=sha256_digest(canonical_json(resolution)),
         source=DeploymentSource(artifact_key=storage.source_artifact_key, runtime_prefix=storage.runtime_prefix),
         workflows=workflows, applications=applications, agents=resolution.agents,
+        shared_tables=shared_tables, root_file_bindings=root_file_bindings,
+        dependencies=dependencies,
+        resources=resources,
         forms=resolution.forms, events=resolution.events,
         tables=entities(bundle.tables, ".bifrost/tables.yaml"),
         file_locations={name: {"location": name} for name in bundle.file_locations},
@@ -166,7 +209,7 @@ async def compile_package_runtime(
         git=DeploymentGitProvenance(repository=evidence.get("repository"), resolved_ref="main", commit_sha=source.authored.commit_sha),
         package_evidence=package,
     )
-    validate_runtime_closure(manifest, resolution, [], expected_manifest_hash=manifest.content_hash(),
+    validate_runtime_closure(manifest, resolution, dependency_edges, expected_manifest_hash=manifest.content_hash(),
                              expected_resolution_hash=manifest.resolution_map_hash)
     return manifest, resolution
 
@@ -184,7 +227,16 @@ async def stage_package_runtime(
         async with slots:
             await storage.write_runtime_file(path, raw, idempotent=True)
 
-    await asyncio.gather(*(write(path, raw) for path, raw in source.authored.files.items()))
+    await asyncio.gather(*(write(path, raw) for path, raw in source.authored.files.items()
+                           if path not in manifest.resources))
+    if manifest.resources:
+        resources = {path: source.authored.files[path] for path in manifest.resources}
+        for path, raw in resources.items():
+            contract = manifest.resources[path]
+            if len(raw) != contract.size_bytes or sha256_digest(raw) != contract.content_hash:
+                raise ValueError("Package immutable resource differs from reviewed source")
+        await storage.write_resources_artifact(source_archive(resources), idempotent=True)
+        await asyncio.gather(*(write("_resources/" + path, raw) for path, raw in resources.items()))
     builder = SolutionAppBuilder()
     for item in prepared.compiled_apps:
         verify_compiled_app_runtime_pin(item.runtime_pin, solution_id=item.solution_id,
@@ -201,10 +253,19 @@ class PackageActivationHooks:
     async def verify_finalized(self, deployment: SolutionDeployment) -> None:
         if deployment.compiled_manifest_hash != self.manifest.content_hash():
             raise ValueError("Package candidate manifest differs")
+        await require_shared_tables(self.db, self.manifest.shared_tables,
+            solution_organization_id=deployment.organization_id)
+        await require_root_workspace_files(self.db, self.manifest.root_file_bindings)
         storage = SolutionDeploymentStorage(deployment.solution_id, deployment.id)
         if await storage.read_source_artifact() != self.source.source_archive:
             raise ValueError("Package source archive differs")
+        resources = await read_deployment_resources(deployment.solution_id, deployment.id,
+            DeploymentResolutionMap(resources=self.manifest.resources))
+        if resources != {path: self.source.authored.files[path] for path in self.manifest.resources}:
+            raise ValueError("Package immutable resources differ from reviewed source")
         for path, raw in self.source.authored.files.items():
+            if path in self.manifest.resources:
+                continue
             if await storage.read_runtime_file(path, max_bytes=len(raw)) != raw:
                 raise ValueError(f"Package runtime source differs: {path}")
         if canonical_digest(await capture_package_controls(self.db, deployment.solution_id)) != (
@@ -256,6 +317,8 @@ async def readback_package_runtime(
     manifest, resolution = validate_runtime_closure(deployment.compiled_manifest, deployment.resolution_map,
         deployment.dependencies, expected_manifest_hash=deployment.compiled_manifest_hash,
         expected_resolution_hash=deployment.resolution_map_hash)
+    await require_shared_tables(db, manifest.shared_tables, solution_organization_id=solution.organization_id)
+    await require_root_workspace_files(db, manifest.root_file_bindings)
     package = json.loads(canonical_json(manifest.package_evidence or {}))
     if package.get("schema_version") != PACKAGE_RUNTIME_SCHEMA:
         raise ValueError("Original complete package evidence is missing")
@@ -277,19 +340,24 @@ async def readback_package_runtime(
     if hashlib.sha256(archive).hexdigest() != expected_source_sha256:
         raise ValueError("Original package stored archive differs")
     expected = {item["path"]: item for item in source_proof["source_files"]}
+    resources = await read_deployment_resources(solution_id, deployment_id, resolution)
     with zipfile.ZipFile(io.BytesIO(archive)) as source_zip:
         members = source_zip.infolist()
         if len(members) != len(expected) or {item.filename for item in members} != set(expected):
             raise ValueError("Original package stored inventory differs")
         if sum(item.file_size for item in members) > 10 * 1024 * 1024:
             raise ValueError("Original package byte limit differs")
-        if set(resolution.sources) != set(expected):
+        if set(resolution.sources) | set(resources) != set(expected):
             raise ValueError("Original package runtime inventory differs")
         for item in members:
             raw = source_zip.read(item)
             record = expected[item.filename]
             if len(raw) != record["size"] or hashlib.sha256(raw).hexdigest() != record["sha256"]:
                 raise ValueError("Original package authored bytes differ")
+            if item.filename in resources:
+                if resources[item.filename] != raw:
+                    raise ValueError("Original package immutable resource differs from authored bytes")
+                continue
             reference = resolution.sources[item.filename]
             if (reference.object_key != storage.runtime_prefix + item.filename
                     or reference.content_hash != sha256_digest(raw)

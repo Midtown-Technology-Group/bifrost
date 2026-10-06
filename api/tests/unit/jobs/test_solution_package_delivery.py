@@ -28,12 +28,13 @@ from tests.unit.test_solution_app_deploy import _reviewed_package_source
 
 
 @pytest.mark.e2e
+@pytest.mark.parametrize("include_app", [False, True])
 @pytest.mark.parametrize("interruption", [
     "lost_ack", "stage_failure", "superseded_before_retry",
     "main_changed_during_stage", "ci_attempt_changed_during_stage",
 ])
 async def test_package_recovery_distinguishes_committed_and_rolled_back_transactions(
-    db_session, async_session_factory, seed_user, compile_app, monkeypatch, interruption,
+    db_session, async_session_factory, seed_user, compile_app, monkeypatch, interruption, include_app,
 ):
     from src.jobs.platform import solution_package_delivery as worker
     from src.services import platform_jobs
@@ -45,7 +46,7 @@ async def test_package_recovery_distinguishes_committed_and_rolled_back_transact
     await db_session.flush()
     solution_id = solution.id
     source = _reviewed_package_source(solution, runtime=True, source_commit_sha=uuid4().hex + uuid4().hex[:8],
-        source_version="1.0.0")
+        source_version="1.0.0", include_app=include_app)
     policy = SolutionPackageGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
         repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
         workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
@@ -169,7 +170,8 @@ async def test_package_recovery_distinguishes_committed_and_rolled_back_transact
         assert recovered["recovered_from_rollback"] is True
         assert recovered["deployment_id"] != unknown.value.result["deployment_id"]
     assert recovered["runtime_verified"] and recovered["registrations_verified"]
-    assert len(recovered["workflow_runtime_pins"]) == len(recovered["app_runtime_pins"]) == 1
+    assert len(recovered["workflow_runtime_pins"]) == 1
+    assert len(recovered["app_runtime_pins"]) == int(include_app)
     expected_calls = {"compile": 1, "stage": 1} if interruption == "lost_ack" else {"compile": 2, "stage": 2}
     assert calls == expected_calls
     assert await platform_jobs.finish_platform_job(job_id, lease_token, status="succeeded", result=recovered)

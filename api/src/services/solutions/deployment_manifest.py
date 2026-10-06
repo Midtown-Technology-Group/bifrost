@@ -268,6 +268,9 @@ def _validate_manifest_resolution_agreement(
         raise ValueError("manifest/resolution resource mismatch")
     if set(resolution.resources) & set(resolution.sources):
         raise ValueError("resource path conflicts with executable source")
+    if ({item.object_key for item in resolution.resources.values()}
+            & {item.object_key for item in resolution.sources.values()}):
+        raise ValueError("source object conflicts with immutable resource storage")
     if sum(item.size_bytes for item in resolution.resources.values()) > MAX_DEPLOYMENT_RESOURCES_BYTES:
         raise ValueError("deployment resources exceed their total byte bound")
     if resolution.resources:
@@ -281,7 +284,12 @@ def _validate_manifest_resolution_agreement(
             if resource.object_key != f"{expected_prefix}_resources/{path}":
                 raise ValueError("resource object is outside its immutable deployment")
     require_shared_table_bindings(manifest.shared_tables)
-    if set(manifest.shared_tables) & set(manifest.tables):
+    owned_table_names = set(manifest.tables)
+    for entity in manifest.tables.values():
+        name = entity.definition.get("name")
+        if isinstance(name, str):
+            owned_table_names.add(name)
+    if set(manifest.shared_tables) & owned_table_names:
         raise ValueError("shared table binding conflicts with an owned table")
 
 

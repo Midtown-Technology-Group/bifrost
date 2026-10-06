@@ -25,6 +25,8 @@ def test_snapshot_fields_exist_and_exclude_credentials_and_operational_data():
     assert "connection_id" in CHILD_FIELDS["agent_mcp_connections"][2]
     assert "state" not in CHILD_FIELDS["webhook_sources"][2]
     assert "documents" not in CONTROL_FIELDS
+    assert {"id", "solution_id", "organization_id", "name", "access"} <= set(CONTROL_FIELDS["tables"])
+    assert "schema" in CONTROL_FIELDS["tables"]
 
 
 @pytest.mark.parametrize("kind", [
@@ -51,3 +53,18 @@ def test_reviewed_new_entities_and_declarations_do_not_replace_existing_controls
     after["tables"]["new"] = {"policy": "admin-only"}
     after["solution_file_locations"] = {"audit-evidence": {"location": "audit-evidence"}}
     require_preserved_package_controls(before, after)
+
+
+def test_reviewed_document_schema_is_content_but_scope_policy_and_identity_are_controls():
+    before = {"tables": {"retained": {"id": "retained", "organization_id": "provider",
+        "solution_id": "owner", "name": "evidence", "access": {"policies": ["admin"]},
+        "schema": {"columns": [{"name": "key", "type": "string"}]}}}}
+    after = copy.deepcopy(before)
+    after["tables"]["retained"]["schema"]["columns"].append({"name": "native_backup", "type": "object"})
+    require_preserved_package_controls(before, after)
+    require_preserved_package_controls(after, before)  # A metadata revert does not remove documents.
+    for field in ("id", "organization_id", "solution_id", "name", "access"):
+        changed = copy.deepcopy(after)
+        changed["tables"]["retained"][field] = "different"
+        with pytest.raises(ValueError, match="installed controls: tables"):
+            require_preserved_package_controls(before, changed)
