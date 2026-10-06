@@ -28,6 +28,8 @@ import contextlib
 import os
 import time
 from uuid import uuid4
+from collections.abc import Awaitable
+from typing import cast
 
 import pytest
 import pytest_asyncio
@@ -286,7 +288,7 @@ async def {name}():
     redis = await get_redis_client()._get_redis()
     await redis.delete(MODULE_INDEX_KEY, MODULE_INDEX_GENERATION_KEY)
     if stale_index:
-        await redis.sadd(MODULE_INDEX_KEY, "stale-service-module.py")
+        await cast(Awaitable[int], redis.sadd(MODULE_INDEX_KEY, "stale-service-module.py"))
         await redis.set(MODULE_INDEX_GENERATION_KEY, "stale-service-generation")
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
     for key in ("BIFROST_ACCESS_TOKEN", "BIFROST_REFRESH_TOKEN"):
