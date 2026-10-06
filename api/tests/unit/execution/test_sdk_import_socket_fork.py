@@ -255,7 +255,7 @@ async def test_service_cold_bootstrap_uses_handed_token_and_socket(
     db_session.add(org)
     await db_session.flush()
     workflow = Workflow(name=name, function_name=name, path=path, type="service",
-                        organization_id=org.id, created_by="test")
+                        organization_id=org.id)
     db_session.add(workflow)
     await db_session.flush()
     definition = ServiceDefinition(workflow_id=workflow.id, organization_id=org.id,
