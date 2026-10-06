@@ -6,16 +6,24 @@ on:
     paths:
       - .github/workflows/**
       - .github/actions/**
+      - '**/action.yml'
+      - '**/action.yaml'
       - scripts/workflow_security_report.py
       - scripts/test_workflow_security_report.py
+      - scripts/workflow-security-scan.sh
+      - scripts/test-workflow-security-scan.sh
       - docs/security/workflow-scanner-pilot.md
   push:
     branches: [main]
     paths:
       - .github/workflows/**
       - .github/actions/**
+      - '**/action.yml'
+      - '**/action.yaml'
       - scripts/workflow_security_report.py
       - scripts/test_workflow_security_report.py
+      - scripts/workflow-security-scan.sh
+      - scripts/test-workflow-security-scan.sh
       - docs/security/workflow-scanner-pilot.md
   workflow_dispatch:
 
@@ -56,15 +64,18 @@ jobs:
           tar -xzf "$RUNNER_TEMP/zizmor/archive.tar.gz" -C "$RUNNER_TEMP/zizmor"
           "$RUNNER_TEMP/zizmor/zizmor" --version
 
+      - name: Probe tracked inputs and finding suppression
+        run: |
+          bash scripts/test-workflow-security-scan.sh \
+            "$RUNNER_TEMP/zizmor/zizmor" "$RUNNER_TEMP/workflow-security-regression"
+
       # SARIF exits successfully for findings; audit/collection errors still fail.
       - name: Scan workflows and local actions offline
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          "$RUNNER_TEMP/zizmor/zizmor" --offline --strict-collection \
-            --collect=workflows,actions --format=sarif . \
-            > "$RUNNER_TEMP/workflow-security/results.sarif" \
-            2> "$RUNNER_TEMP/workflow-security/zizmor.stderr"
+          bash scripts/workflow-security-scan.sh \
+            "$RUNNER_TEMP/zizmor/zizmor" "$RUNNER_TEMP/workflow-security"
           python3 scripts/workflow_security_report.py \
             --sarif "$RUNNER_TEMP/workflow-security/results.sarif" \
             --head-sha "$SOURCE_SHA" --scanner-version "$ZIZMOR_VERSION" \

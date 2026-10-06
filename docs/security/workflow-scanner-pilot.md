@@ -15,7 +15,10 @@ checkout credentials, no repository secrets, no SARIF upload permission and no
 PR comments. It uses `pull_request`, checks out the exact PR head, and never
 uses `pull_request_target`. It statically reads definitions without executing
 their referenced actions or run blocks. Offline mode avoids GitHub API access
-and omits online-only audits. See [Zizmor usage](https://docs.zizmor.sh/usage/).
+and omits online-only audits. The scanner receives every tracked workflow and
+`action.yml`/`action.yaml` definition explicitly, including gitignored tracked
+files. Repository configuration and inline ignore comments are disabled with
+`--no-config --no-ignores`. See [Zizmor usage](https://docs.zizmor.sh/usage/).
 
 SARIF findings do not fail the job. Download, checksum, collection, scanner and
 report errors do fail it so missing evidence cannot look like a clean audit.
@@ -23,7 +26,9 @@ No `continue-on-error`, baseline suppression or automatic fixes are used.
 
 Each successful run publishes a count summary and a 14-day
 `workflow-security-<head SHA>` artifact containing `results.sarif`,
-`zizmor.stderr`, `metadata.json` and `summary.md`. Metadata records the exact
+`zizmor.stderr`, `scanned-files.nul`, `metadata.json` and `summary.md`. The input
+inventory uses NUL-separated paths so unusual filenames remain unambiguous.
+Metadata records the exact
 scanned head, scanner version and offline scope. A failed run may have only
 partial diagnostic artifacts; absence of a successful report is not zero
 findings. These artifacts are advisory evidence, not contribution admission,
@@ -40,3 +45,9 @@ Verify report behavior with
 run the normal clean-candidate pre-PR gate and comprehensive CI because workflow
 changes are broad-impact inputs. The scanner workflow also runs its report
 contracts. No platform runtime or UI behavior changes in this pilot.
+
+After installing the pinned scanner, the workflow also runs
+`bash scripts/test-workflow-security-scan.sh <scanner> <fresh-fixture-directory>`.
+This real scanner probe verifies that a tracked but gitignored definition,
+repository configuration and an inline ignore cannot hide its synthetic finding.
+The runner owns and discards the disposable fixture directory.
