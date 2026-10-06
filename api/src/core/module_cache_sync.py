@@ -1413,6 +1413,12 @@ def get_module_index_sync() -> set[str]:
         if paths and index_generation == generation:
             return {p if isinstance(p, str) else p.decode() for p in paths}
 
+        # Children resolve individual imports on the socket. With no current
+        # index, clear_workspace_modules treats loaded workspace modules as
+        # stale; never send an unscoped legacy listing to the public API/S3.
+        if _get_engine_client() is not None:
+            return set()
+
         # Redis index is empty — try API first
         logger.debug("Module index empty in Redis, falling back to API listing")
         ctx = get_solution_context()
@@ -1466,6 +1472,13 @@ def solution_has_submodules(base_path: str) -> bool:
         return False
     root = ctx.runtime_storage_prefix or f"{SOLUTIONS_ROOT}/{ctx.solution_id}/"
     prefix = f"{root}{base_path.rstrip('/')}/"
+    if ctx.runtime_storage_prefix and ctx.source_hashes is not None:
+        logical_prefix = base_path.rstrip("/") + "/"
+        return any(path.startswith(logical_prefix) for path in ctx.source_hashes)
+    engine_client = _get_engine_client()
+    if engine_client is not None:
+        resolution = _resolve_via_engine_socket(engine_client, base_path.replace("/", "."))
+        return resolution.kind in {"package", "namespace"}
     api_paths = _fetch_module_index_from_api(solution_id=ctx.solution_id)
     if any(path.startswith(prefix) for path in api_paths):
         return True

@@ -11,6 +11,8 @@ import pytest
 def test_local_module_fetch_never_uses_network_or_storage(monkeypatch, outcome):
     from src.core import module_cache_sync as cache
 
+    monkeypatch.setattr(cache, "get_solution_context", lambda: None)
+    monkeypatch.setattr(cache, "get_workspace_release_context", lambda: None)
     redis = MagicMock()
     redis.get.return_value = None
     monkeypatch.setattr(cache, "_get_sync_redis", lambda: redis)
@@ -72,3 +74,22 @@ async def test_process_token_renewal_stays_on_socket(monkeypatch):
     finally:
         await client.close()
         sdk._refresh_coordinators.clear()
+
+
+def test_cold_local_module_index_eviction_has_no_legacy_fallback(monkeypatch):
+    from src.core import module_cache_sync as cache
+
+    redis = MagicMock()
+    redis.get.return_value = "old"
+    redis.smembers.return_value = {"stale.py"}
+    monkeypatch.setattr(cache, "get_workspace_release_context", lambda: None)
+    monkeypatch.setattr(cache, "_get_sync_redis", lambda: redis)
+    monkeypatch.setattr(cache, "workspace_generation_for_import", lambda: "pinned")
+    monkeypatch.setattr(cache, "_get_engine_client", lambda: object())
+    network = MagicMock(side_effect=AssertionError("legacy network listing"))
+    storage = MagicMock(side_effect=AssertionError("child storage listing"))
+    monkeypatch.setattr(cache, "_fetch_module_index_from_api", network)
+    monkeypatch.setattr(cache, "_list_object_storage_modules", storage)
+    assert cache.get_module_index_sync() == set()
+    network.assert_not_called()
+    storage.assert_not_called()
