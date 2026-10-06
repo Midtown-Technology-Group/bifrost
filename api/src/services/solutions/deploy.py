@@ -234,6 +234,21 @@ class CompiledSolutionAppDeployment:
     source_available: bool = False
 
 
+@dataclass(frozen=True)
+class PreparedSolutionDeployment:
+    """Transaction-local inputs for publication through the existing deployer.
+
+    The complete source bundle, remapped entity projection and compiled outputs
+    are retained so a reviewed package worker can stage them before committing
+    any publication pointer.
+    This is not durable intent, a runtime receipt, or permission to publish.
+    """
+
+    source_bundle: SolutionBundle = field(repr=False)
+    bundle: SolutionBundle = field(repr=False)
+    compiled_apps: tuple[CompiledSolutionAppDeployment, ...] = field(repr=False)
+
+
 @dataclass
 class DeployResult:
     """Counts from one full-replace deploy.
@@ -264,6 +279,11 @@ class DeployResult:
     roles_created: list[str] = field(default_factory=list)
     finalize_s3: Callable[[], Awaitable[None]] = field(
         default=_noop_finalize, compare=False, repr=False
+    )
+    # Append without changing existing positional arguments or public counters.
+    # Raw source and compiled outputs are excluded from repr/equality transport.
+    prepared: PreparedSolutionDeployment | None = field(
+        default=None, compare=False, repr=False
     )
 
 
@@ -558,6 +578,9 @@ class SolutionDeployer:
             claims_deleted=claim_deleted,
             integrations_shell_created=shells_created,
             roles_created=sorted(self._created_roles),
+            prepared=PreparedSolutionDeployment(
+                source_bundle=bundle, bundle=rb, compiled_apps=tuple(compiled)
+            ),
             finalize_s3=_finalize_s3,
         )
 
@@ -1405,72 +1428,88 @@ class SolutionDeployer:
         rebuild advanced the pointer since the DB reconciliation phase.
         """
         async with _solution_app_activation_db_context() as db:
-            app_ids = [item.app_id for item in compiled]
-            rows = (
-                await db.execute(
-                    select(
-                        Application.id,
-                        Application.solution_id,
-                        Application.active_deployment_id,
-                    ).where(Application.id.in_(app_ids))
+            await self._activate_compiled_dists_in_transaction(db, compiled)
+
+    async def _activate_compiled_dists_in_transaction(
+        self,
+        db: AsyncSession,
+        compiled: list[CompiledSolutionAppDeployment],
+    ) -> None:
+        """Apply the existing all-App CAS inside the caller's transaction.
+
+        A reviewed full-package worker can move the Solution pointer in this
+        same transaction after staging and verifying every immutable artifact.
+        This method never commits, uploads, or authorizes a package by itself.
+        Ordinary deploys keep their existing fresh-transaction wrapper above.
+        """
+        if not compiled:
+            return
+        app_ids = [item.app_id for item in compiled]
+        rows = (
+            await db.execute(
+                select(
+                    Application.id,
+                    Application.solution_id,
+                    Application.active_deployment_id,
+                ).where(Application.id.in_(app_ids))
+            )
+        ).all()
+        by_id = {row[0]: row for row in rows}
+        if len(by_id) != len(app_ids):
+            raise SolutionFinalizeIncomplete("solution app disappeared before activation")
+
+        solution_ids = {row[1] for row in rows}
+        if len(solution_ids) != 1:
+            raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+        solution_id = next(iter(solution_ids))
+        expected_solution_ids = {item.solution_id for item in compiled}
+        if solution_ids != expected_solution_ids:
+            raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+
+        for item in compiled:
+            row = by_id[item.app_id]
+            active = row[2]
+            if active == item.deployment_id:
+                continue
+            if active != item.expected_old_deployment_id:
+                raise SolutionFinalizeIncomplete(
+                    f"app {item.app_id} active deployment changed before activation"
                 )
-            ).all()
-            by_id = {row[0]: row for row in rows}
-            if len(by_id) != len(app_ids):
-                raise SolutionFinalizeIncomplete("solution app disappeared before activation")
 
-            solution_ids = {row[1] for row in rows}
-            if len(solution_ids) != 1:
-                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
-            solution_id = next(iter(solution_ids))
-            expected_solution_ids = {item.solution_id for item in compiled}
-            if solution_ids != expected_solution_ids:
-                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
-
-            for item in compiled:
-                row = by_id[item.app_id]
-                active = row[2]
-                if active == item.deployment_id:
-                    continue
-                if active != item.expected_old_deployment_id:
-                    raise SolutionFinalizeIncomplete(
-                        f"app {item.app_id} active deployment changed before activation"
+        now = datetime.now(timezone.utc)
+        for item in compiled:
+            meta = item.sdk_metadata
+            values = {
+                "active_deployment_id": item.deployment_id,
+                "deployed_at": now,
+                "sdk_package_version": meta.package_version if meta else None,
+                "sdk_fingerprint": meta.fingerprint if meta else None,
+                "sdk_contract_version": meta.contract_version if meta else None,
+                "sdk_built_at": now if meta else None,
+                "published_snapshot": {
+                    "deployed_by": "solution",
+                    "app_model": "standalone_v2",
+                    "sdk_source_available": item.source_available,
+                    "runtime_pin": item.runtime_pin,
+                },
+            }
+            result = await db.execute(
+                update(Application)
+                .where(
+                    Application.id == item.app_id,
+                    Application.solution_id == solution_id,
+                    (
+                        Application.active_deployment_id
+                        == item.expected_old_deployment_id
                     )
-
-            now = datetime.now(timezone.utc)
-            for item in compiled:
-                meta = item.sdk_metadata
-                values = {
-                    "active_deployment_id": item.deployment_id,
-                    "deployed_at": now,
-                    "sdk_package_version": meta.package_version if meta else None,
-                    "sdk_fingerprint": meta.fingerprint if meta else None,
-                    "sdk_contract_version": meta.contract_version if meta else None,
-                    "sdk_built_at": now if meta else None,
-                    "published_snapshot": {
-                        "deployed_by": "solution",
-                        "app_model": "standalone_v2",
-                        "sdk_source_available": item.source_available,
-                        "runtime_pin": item.runtime_pin,
-                    },
-                }
-                result = await db.execute(
-                    update(Application)
-                    .where(
-                        Application.id == item.app_id,
-                        Application.solution_id == solution_id,
-                        (
-                            Application.active_deployment_id
-                            == item.expected_old_deployment_id
-                        )
-                        | (Application.active_deployment_id == item.deployment_id),
-                    )
-                    .values(**values)
+                    | (Application.active_deployment_id == item.deployment_id),
                 )
-                if result.rowcount != 1:
-                    raise SolutionFinalizeIncomplete(
-                        f"app {item.app_id} active deployment changed before activation"
-                    )
+                .values(**values)
+            )
+            if result.rowcount != 1:
+                raise SolutionFinalizeIncomplete(
+                    f"app {item.app_id} active deployment changed before activation"
+                )
 
     async def _delete_stale_app_dist(self, app_ids: set[UUID]) -> None:
         """S3 phase: delete the dist artifacts of apps reconciled away."""

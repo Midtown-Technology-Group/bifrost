@@ -129,6 +129,68 @@ class TestSolutionAppDeploy:
         await db.flush()
         return sol
 
+    async def test_preparation_retains_the_complete_mixed_bundle_before_upload(
+        self, db_session, _stub_app_build
+    ):
+        sol = await self._install(db_session)
+        portable_app, portable_workflow, portable_table = (
+            uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
+        code = "def run():\n    return {'ok': True}\n"
+        bundle = SolutionBundle(
+            solution=sol,
+            python_files={"workflows/run.py": code},
+            workflows=[{
+                "id": str(portable_workflow), "name": "Run", "function_name": "run",
+                "path": "workflows/run.py",
+            }],
+            apps=[_app_entry(str(portable_app), "mixed-" + sol.slug)],
+            tables=[{
+                "id": str(portable_table), "name": "evidence", "schema": {},
+                "policies": None,
+            }],
+            file_locations=["audit-evidence"],
+        )
+        result = await SolutionDeployer(db_session).deploy(bundle)
+        assert _stub_app_build == {}  # No runtime object uploaded or activated.
+        assert result.prepared is not None
+        prepared = result.prepared
+        assert prepared.source_bundle is bundle
+        assert prepared.source_bundle.apps[0]["id"] == str(portable_app)
+        assert prepared.bundle.python_files == {"workflows/run.py": code}
+        assert prepared.bundle.file_locations == ["audit-evidence"]
+        for rows, portable in (
+            (prepared.bundle.apps, portable_app),
+            (prepared.bundle.workflows, portable_workflow),
+            (prepared.bundle.tables, portable_table),
+        ):
+            assert len(rows) == 1
+            assert uuid.UUID(rows[0]["id"]) == solution_entity_id(sol.id, portable)
+        assert len(prepared.compiled_apps) == 1
+        compiled = prepared.compiled_apps[0]
+        assert compiled.app_id == solution_entity_id(sol.id, portable_app)
+        assert compiled.solution_id == sol.id
+        assert compiled.expected_old_deployment_id is None
+        assert compiled.runtime_pin["deployment_id"] == str(compiled.deployment_id)
+        assert compiled.runtime_pin["output_hashes"] == {
+            path: hashlib.sha256(raw).hexdigest() for path, raw in compiled.dist.items()
+        }
+        app = await db_session.get(Application, compiled.app_id)
+        assert app.active_deployment_id is None
+        # The caller controls the complete publication transaction. Rolling it
+        # back also rolls back the App pointer; the helper cannot commit alone.
+        nested = await db_session.begin_nested()
+        await SolutionDeployer(db_session)._activate_compiled_dists_in_transaction(
+            db_session, list(prepared.compiled_apps)
+        )
+        await db_session.refresh(app)
+        assert app.active_deployment_id == compiled.deployment_id
+        await nested.rollback()
+        await db_session.refresh(app)
+        assert app.active_deployment_id is None
+        assert _stub_app_build == {}
+        assert result.workflows_upserted == result.tables_upserted == result.apps_upserted == 1
+
     @pytest.mark.parametrize("source_files,source_available", [
         ({}, False),
         ({"package.json": "{}"}, False),

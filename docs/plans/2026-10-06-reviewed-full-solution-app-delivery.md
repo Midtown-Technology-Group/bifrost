@@ -116,9 +116,20 @@ Retiring loose Live still requires complete live consumer and accounting proof.
 
 ## Current validation boundary
 
-Local Docker lint and six synchronous enrollment checks passed. The pve Docker
-host denies asyncio socketpair creation before fourteen async tests can execute;
-those errors remain retained, not classified as passing source validation. Use
-the authorized CI Docker lane for the committed protected-source candidate.
-Additional scope/target/manifest negatives are included in that candidate. No
-new publication endpoint or production capability is enabled by these helpers.
+The authorized CI Docker lane at committed `ce4fd20b3` passed the clean pre-PR
+gate, all 24 protected-package source checks, all 13 offline preparation checks,
+and 12,548 unit tests (three skipped). Real HTTP/database/object-storage App
+checks passed, including a transaction that commits before its acknowledgement
+is lost: the active pointer, runtime pin and every served output remain readable
+without another activation. The earlier local asyncio socketpair setup errors
+and fixture/mirror failures remain retained; none were waived or called passing.
+
+The next shared-deployer refactor retains both the original complete bundle and
+its remapped projection alongside compiled App outputs. Its all-App CAS can run
+inside the caller's transaction, enabling the package worker to move Solution
+and App pointers together. A mixed App/workflow/table/file-location test checks
+pre-publication retention and rollback of the App pointer. This new refactor
+requires its own current-head CI; the `ce4fd20b3` results do not qualify it.
+
+HTTP admission, the complete worker and automatic enrollment remain unfinished.
+No new publication endpoint or production capability is enabled by these helpers.
