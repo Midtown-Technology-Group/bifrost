@@ -100,7 +100,8 @@ class TestCLIAIStreamAndInfo:
     async def test_stream_yields_delta_done_and_done_sentinel(self) -> None:
         async def stream(**kwargs):
             yield SimpleNamespace(type="delta", content="hel")
-            yield SimpleNamespace(type="done", input_tokens=2, output_tokens=4)
+            yield SimpleNamespace(type="done", input_tokens=2, output_tokens=4,
+                                  cache_read_tokens=0, cache_write_tokens=0, provider_cost=None)
 
         client = SimpleNamespace(
             provider_name="test-provider",

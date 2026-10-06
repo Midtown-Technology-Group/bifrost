@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -448,129 +448,63 @@ class TestHistoryCursor:
 
 @pytest.mark.asyncio
 class TestRouterBoundaries:
-    """Handlers delegate to the shared service and map its errors."""
+    """Worker SDK reads use the fork's canonical handlers and auth dependencies."""
 
-    async def test_list_workflows_delegates_and_maps_403(self):
-        from src.routers.workflows import list_workflows
-
-        principal = _admin()
-        sentinel = ["WF"]
-        with patch(
-            "shared.sdk_execution_reads.list_sdk_workflows",
-            new=AsyncMock(return_value=sentinel),
-        ) as mock_list:
-            result = await list_workflows(
-                principal,
-                AsyncMock(),
-                type="tool",
-                is_tool=None,
-                scope=None,
-                filter_by_form=None,
-                filter_by_app=None,
-                filter_by_agent=None,
-            )
-        assert result == sentinel
-        mock_list.assert_awaited_once()
-        assert mock_list.call_args[1]["type"] == "tool"
-
-        with patch(
-            "shared.sdk_execution_reads.list_sdk_workflows",
-            new=AsyncMock(side_effect=SdkExecutionReadError(403, "denied")),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await list_workflows(
-                    principal,
-                    AsyncMock(),
-                    type=None,
-                    is_tool=None,
-                    scope=None,
-                    filter_by_form=None,
-                    filter_by_app=None,
-                    filter_by_agent=None,
-                )
-        assert exc_info.value.status_code == 403
+    async def test_list_workflows_delegates_and_maps_403(self, db_session):
+        from src.routers.workflows import list_workflows, router
+        from src.core.auth import get_current_user
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        row = await _seed_workflow(db_session, "boundary-workflow", type="tool")
+        result = await list_workflows(_admin(), db_session, type="tool", is_tool=None,
+            scope=None, filter_by_form=None, filter_by_app=None, filter_by_agent=None)
+        assert row.id in {UUID(item.id) for item in result}
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_current_user] = lambda: _user(uuid4())
+        with TestClient(app) as client:
+            response = client.get("/api/workflows")
+        assert response.status_code == 403
 
     async def test_list_executions_handler_maps_422(self):
         from src.routers.executions import list_executions
-
         ctx = SimpleNamespace(user=_admin(), db=AsyncMock())
         request = SimpleNamespace(query_params={})
-        with patch(
-            "shared.sdk_execution_reads.list_sdk_executions",
-            new=AsyncMock(return_value=([], None)),
-        ) as mock_list:
-            result = await list_executions(
-                ctx,
-                request,
-                scope=None,
-                workflowName=None,
-                workflowId=None,
-                status_filter=None,
-                startDate=None,
-                endDate=None,
-                excludeLocal=True,
-                limit=25,
-                continuationToken=None,
-            )
-        assert result.executions == []
-        mock_list.assert_awaited_once()
-        assert mock_list.call_args[1]["scope"] is None
-
-        with patch(
-            "shared.sdk_execution_reads.list_sdk_executions",
-            new=AsyncMock(side_effect=SdkExecutionReadError(422, "bad scope")),
-        ):
+        with patch("src.routers.executions.ExecutionRepository") as repo:
+            repo.return_value.list_executions = AsyncMock(return_value=([], None))
+            result = await list_executions(ctx, request, scope=None, workflowName=None,
+                workflowId=None, status_filter=None, startDate=None, endDate=None,
+                excludeLocal=True, limit=25, continuationToken=None)
+            assert result.executions == []
+            assert repo.return_value.list_executions.await_args.kwargs["org_id"] is None
             with pytest.raises(HTTPException) as exc_info:
-                await list_executions(
-                    ctx,
-                    request,
-                    scope="bad",
-                    workflowName=None,
-                    workflowId=None,
-                    status_filter=None,
-                    startDate=None,
-                    endDate=None,
-                    excludeLocal=True,
-                    limit=25,
-                    continuationToken=None,
-                )
+                await list_executions(ctx, request, scope="bad", workflowName=None,
+                    workflowId=None, status_filter=None, startDate=None, endDate=None,
+                    excludeLocal=True, limit=25, continuationToken=None)
         assert exc_info.value.status_code == 422
 
     async def test_get_execution_handler_maps_404_and_403(self):
         from src.routers.executions import get_execution
-
         execution_id = uuid4()
         ctx = SimpleNamespace(user=_admin(), db=AsyncMock())
-        with patch(
-            "shared.sdk_execution_reads.get_sdk_execution",
-            new=AsyncMock(return_value="EXEC"),
-        ) as mock_get:
+        with patch("src.routers.executions.ExecutionRepository") as repo, patch(
+            "src.routers.executions.get_pending_execution_fallback",
+            new=AsyncMock(return_value=(None, "NotFound"))):
+            repo.return_value.get_execution = AsyncMock(return_value=("EXEC", None))
             assert await get_execution(execution_id, ctx) == "EXEC"
-        mock_get.assert_awaited_once_with(ctx.db, ctx.user, execution_id)
+            repo.return_value.get_execution.assert_awaited_once_with(execution_id, ctx.user)
+            for error, code in [("NotFound", 404), ("Forbidden", 403)]:
+                repo.return_value.get_execution.return_value = (None, error)
+                with pytest.raises(HTTPException) as exc_info:
+                    await get_execution(execution_id, ctx)
+                assert exc_info.value.status_code == code
 
-        with patch(
-            "shared.sdk_execution_reads.get_sdk_execution",
-            new=AsyncMock(side_effect=SdkExecutionReadError(404, "missing")),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_execution(execution_id, ctx)
-        assert exc_info.value.status_code == 404
-
-        with patch(
-            "shared.sdk_execution_reads.get_sdk_execution",
-            new=AsyncMock(side_effect=SdkExecutionReadError(403, "denied")),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_execution(execution_id, ctx)
-        assert exc_info.value.status_code == 403
-
-    async def test_execution_repository_exposes_no_read_compatibility_shims(self):
-        """SDK reads have one public implementation in the shared service."""
-        from src.routers.executions import ExecutionRepository
-
-        assert not hasattr(ExecutionRepository, "list_executions")
-        assert not hasattr(ExecutionRepository, "get_execution")
-        assert not hasattr(ExecutionRepository, "_to_summary")
+    async def test_socket_reuses_canonical_execution_read_routes(self):
+        from src.routers import executions
+        from src.services.execution.worker_sdk_http import build_worker_sdk_app
+        routes = {route.path: route for route in build_worker_sdk_app().routes}
+        assert routes["/api/executions"].endpoint is executions.list_executions
+        assert routes["/api/executions/{execution_id}"].endpoint is executions.get_execution
 
 
 def test_shared_service_has_no_transport_imports():

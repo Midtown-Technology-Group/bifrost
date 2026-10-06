@@ -835,90 +835,53 @@ class TestHelpers:
 
 @pytest.mark.asyncio
 class TestRouterBoundaries:
-    """Handlers delegate to the shared service and map its errors."""
+    """The fork retains its canonical execution, claim, and source-pin pipeline."""
 
-    async def test_execute_delegates_and_maps_errors(self):
+    async def test_execute_delegates_and_maps_errors(self, db_session):
         from src.routers.workflows import execute_workflow
-
         principal = _admin()
-        request = _request(workflow_id=str(uuid4()), input_data={})
-        ctx = SimpleNamespace(
-            user=principal,
-            org_id=None,
-            solution_id=None,
-            app_id=None,
-            caller_solution_id=None,
-        )
+        ctx = SimpleNamespace(user=principal, org_id=None, solution_id=None,
+            app_id=None, caller_solution_id=None, db=db_session)
         sentinel = _pending_response()
-        with patch(
-            "shared.sdk_workflow_execution.execute_sdk_workflow",
-            new=AsyncMock(return_value=sentinel),
-        ) as mock_exec:
-            result = await execute_workflow(request, ctx, AsyncMock(), principal)
+        with patch("src.routers.workflows.run_code", new=AsyncMock(return_value=sentinel)) as dispatch:
+            result = await execute_workflow(_request(code="return {'ok': True}"), ctx, db_session, principal)
         assert result == sentinel
-        mock_exec.assert_awaited_once()
-        assert mock_exec.call_args[1]["caller_org_id"] is None
-
-        with patch(
-            "shared.sdk_workflow_execution.execute_sdk_workflow",
-            new=AsyncMock(
-                side_effect=SdkWorkflowExecutionError(404, {"message": "nope"})
-            ),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await execute_workflow(request, ctx, AsyncMock(), principal)
+        assert dispatch.await_args.kwargs["context"].is_platform_admin is True
+        with pytest.raises(HTTPException) as exc_info:
+            await execute_workflow(_request(workflow_id=str(uuid4())), ctx, db_session, principal)
         assert exc_info.value.status_code == 404
-        assert exc_info.value.detail == {"message": "nope"}
 
-    async def test_cancel_delegates_and_maps_errors(self):
+    async def test_cancel_delegates_and_maps_errors(self, db_session):
         from src.routers.workflows import cancel_scheduled_execution
-
-        principal = _admin()
-        execution_id = uuid4()
+        user = await _seed_user(db_session, is_superuser=True)
+        principal = _admin(user_id=user.id)
         ctx = SimpleNamespace(user=principal, org_id=None)
-        sentinel = {"execution_id": str(execution_id), "status": "Cancelled"}
-        with patch(
-            "shared.sdk_workflow_execution.cancel_scheduled_sdk_execution",
-            new=AsyncMock(return_value=sentinel),
-        ) as mock_cancel:
-            result = await cancel_scheduled_execution(
-                execution_id, ctx, AsyncMock(), principal
-            )
-        assert result == sentinel
-        mock_cancel.assert_awaited_once()
-        assert mock_cancel.call_args[1]["caller_org_id"] is None
-
-        for status_code in (404, 403, 409):
-            with patch(
-                "shared.sdk_workflow_execution.cancel_scheduled_sdk_execution",
-                new=AsyncMock(
-                    side_effect=SdkWorkflowExecutionError(status_code, "err")
-                ),
-            ):
-                with pytest.raises(HTTPException) as exc_info:
-                    await cancel_scheduled_execution(
-                        execution_id, ctx, AsyncMock(), principal
-                    )
-            assert exc_info.value.status_code == status_code
+        row = await _seed_execution(db_session, "boundary-cancel", user_id=user.id)
+        result = await cancel_scheduled_execution(row.id, ctx, db_session, principal)
+        assert result == {"execution_id": str(row.id), "status": "Cancelled"}
+        with pytest.raises(HTTPException) as exc_info:
+            await cancel_scheduled_execution(row.id, ctx, db_session, principal)
+        assert exc_info.value.status_code == 409
+        with pytest.raises(HTTPException) as exc_info:
+            await cancel_scheduled_execution(uuid4(), ctx, db_session, principal)
+        assert exc_info.value.status_code == 404
+        foreign_user = _user(uuid4())
+        foreign_ctx = SimpleNamespace(user=foreign_user, org_id=foreign_user.organization_id)
+        foreign_row = await _seed_execution(db_session, "boundary-foreign", user_id=user.id)
+        with pytest.raises(HTTPException) as exc_info:
+            await cancel_scheduled_execution(foreign_row.id, foreign_ctx, db_session, foreign_user)
+        assert exc_info.value.status_code == 403
 
     async def test_scheduled_insert_is_shared_with_forms(self):
-        """forms.py consumes the same canonical insert (no router import)."""
+        """Scheduled forms retain the fork's canonical source-pin and attempt writer."""
         import ast
         from pathlib import Path
-
         import src.routers.forms as forms_module
-
         tree = ast.parse(Path(forms_module.__file__).read_text())
-        imports = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.Import, ast.ImportFrom))
-        ]
-        assert not any(
-            "src.routers.workflows" in (node.module or "")
-            for node in imports
-            if isinstance(node, ast.ImportFrom)
-        )
+        imports = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+        assert any(node.module == "src.routers.workflows" and
+            any(alias.name == "_insert_scheduled_execution" for alias in node.names)
+            for node in imports)
 
 
 def test_shared_service_has_no_transport_imports():

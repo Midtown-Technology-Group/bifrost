@@ -395,16 +395,7 @@ class TestCreateHandler:
                 db_session,
             )
 
-        create_spy.assert_awaited_once()
-        _, kwargs = create_spy.call_args
-        assert kwargs == {
-            "name": name,
-            "table_schema": None,
-            "description": None,
-            "org_id": org.id,
-            "actor_email": user.email,
-            "solution_present": False,
-        }
+        create_spy.assert_not_awaited()
         row = await _row_by_name(db_session, name, org_id=org.id)
         assert row is not None
         assert result == SDKTableInfo(
@@ -640,6 +631,5 @@ class TestDeleteHandler:
                 )
             ) is None
 
-        delete_spy.assert_awaited_once()
-        _, kwargs = delete_spy.call_args
-        assert kwargs == {"table_id": row.id, "org_id": org.id}
+        delete_spy.assert_not_awaited()
+        assert await _row_by_name(db_session, row.name, org_id=org.id) is None

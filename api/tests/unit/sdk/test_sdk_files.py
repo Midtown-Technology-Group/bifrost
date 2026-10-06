@@ -366,56 +366,26 @@ async def test_from_context_carries_trusted_principal_fields() -> None:
 
 @pytest.mark.asyncio
 async def test_http_read_adapter_encodes_and_maps_errors(monkeypatch) -> None:
-    """The HTTP route stays a thin adapter: base64/text encoding preserved,
-    service errors mapped to HTTP status."""
-    import base64
-
-    from fastapi import HTTPException
-
     from src.routers import files as files_module
-
     caller = _caller()
-    monkeypatch.setattr(
-        "src.routers.files.FileCaller",
-        MagicMock(from_context=MagicMock(return_value=caller)),
-    )
-    monkeypatch.setattr(
-        "shared.sdk_files.sdk_read_file",
-        AsyncMock(return_value=MagicMock(content=b"hi", binary=False)),
-    )
-    response = await files_module.read_file(
-        files_module.FileReadRequest(path="a.txt", location="reports"),
-        MagicMock(),
-        MagicMock(),
-        MagicMock(),
-    )
+    _tiers(monkeypatch, [FileTier("global", "global", None, None)])
+    backend = _backend(monkeypatch, files={("a.txt", "global"): b"hi", ("a.bin", "global"): b"\xff\x00"})
+    monkeypatch.setattr(files_module, "get_backend", lambda *_args: backend)
+    monkeypatch.setattr(files_module, "_authorize_file_policy", AsyncMock(return_value=True))
+    monkeypatch.setattr(files_module, "_require_declared_solution_file_location", AsyncMock())
+    response = await files_module.read_file(files_module.FileReadRequest(path="a.txt", location="reports"),
+        caller, caller.user, caller.db)
     assert response.content == "hi"
     assert response.binary is False
-
-    monkeypatch.setattr(
-        "shared.sdk_files.sdk_read_file",
-        AsyncMock(return_value=MagicMock(content=b"\xff\x00", binary=True)),
-    )
-    response = await files_module.read_file(
-        files_module.FileReadRequest(path="a.bin", location="reports", binary=True),
-        MagicMock(),
-        MagicMock(),
-        MagicMock(),
-    )
+    response = await files_module.read_file(files_module.FileReadRequest(path="a.bin", location="reports", binary=True),
+        caller, caller.user, caller.db)
     assert response.content == base64.b64encode(b"\xff\x00").decode()
     assert response.binary is True
-
-    async def _denied(*args, **kwargs):
-        raise FileServiceError(403, {"message": "File policy denied"})
-
-    monkeypatch.setattr("shared.sdk_files.sdk_read_file", _denied)
+    monkeypatch.setattr(files_module, "_authorize_file_policy", AsyncMock(return_value=False))
+    monkeypatch.setattr(files_module, "emit_file_policy_deny", AsyncMock())
     with pytest.raises(HTTPException) as exc:
-        await files_module.read_file(
-            files_module.FileReadRequest(path="a.txt", location="reports"),
-            MagicMock(),
-            MagicMock(),
-            MagicMock(),
-        )
+        await files_module.read_file(files_module.FileReadRequest(path="a.txt", location="reports"),
+            caller, caller.user, caller.db)
     assert exc.value.status_code == 403
 
 

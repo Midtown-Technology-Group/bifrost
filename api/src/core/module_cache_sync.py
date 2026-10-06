@@ -653,7 +653,9 @@ def _fetch_via_engine_socket(client: Any, storage_path: str) -> CachedModule | N
         raise ModuleResolutionError(
             f"Engine-local module fetch returned invalid content for {storage_path}"
         )
-    return cast(CachedModule, dict(module))
+    fetched = dict(module)
+    fetched["storage_path"] = storage_path
+    return cast(CachedModule, fetched)
 
 
 def _resolution_redis_key(name: str) -> str:

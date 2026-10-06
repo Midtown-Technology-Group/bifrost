@@ -80,9 +80,16 @@ class TestForkedWorkflowMutationsSocket:
         from src.models.enums import ExecutionStatus
         from src.models.orm.executions import Execution as ExecutionModel
         from src.models.orm.workflows import Workflow as WorkflowModel
+        from src.models.orm.users import User as UserModel
 
         wf_name = f"fork-wf-{uuid4().hex[:8]}"
         async with async_session_factory() as session:
+            caller = UserModel(
+                email=f"{wf_name}@example.com", name="Fork caller",
+                is_superuser=True, is_active=True,
+            )
+            session.add(caller)
+            await session.flush()
             wf = WorkflowModel(
                 name=wf_name,
                 function_name=f"{wf_name}_fn",
@@ -133,6 +140,10 @@ class TestForkedWorkflowMutationsSocket:
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,
+            delegated_user_id=str(caller.id),
+            delegated_email=caller.email,
+            delegated_name=caller.name,
+            delegated_is_superuser=True,
         )
 
         server = WorkerSdkHttpServer()
@@ -193,4 +204,5 @@ class TestForkedWorkflowMutationsSocket:
                 await session.execute(
                     delete(WorkflowModel).where(WorkflowModel.id == wf_id)
                 )
+                await session.execute(delete(UserModel).where(UserModel.id == caller.id))
                 await session.commit()

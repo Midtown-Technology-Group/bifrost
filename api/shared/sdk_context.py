@@ -119,6 +119,8 @@ async def get_sdk_context(
             "email": principal.email,
             "name": principal.name,
             "is_superuser": principal.is_superuser,
+            "is_provider_org": principal.is_provider_org,
+            "is_external": principal.is_external,
         },
         "organization": org_data,
         "default_parameters": {},

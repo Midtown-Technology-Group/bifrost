@@ -572,9 +572,8 @@ class TestHandlerAdapters:
                     store_chunked=AsyncMock(return_value=["chunk-0"])
                 )
             ),
-        ), patch.object(
-            svc.embeddings_factory_module,
-            "get_embedding_client",
+        ), patch(
+            "src.services.embeddings.get_embedding_client",
             AsyncMock(return_value=_FakeEmbedder()),
         ):
             result = await cli_knowledge_store(
@@ -583,16 +582,8 @@ class TestHandlerAdapters:
                 session,
             )
         assert result == {"id": "chunk-0"}
-        spy.assert_awaited_once()
-        _, kwargs = spy.call_args
-        assert kwargs == {
-            "content": "hi",
-            "namespace": "ns",
-            "key": "k",
-            "metadata": None,
-            "org_id": user.organization_id,
-            "created_by": user.user_id,
-        }
+        spy.assert_not_awaited()
+        session.commit.assert_awaited_once()
 
     async def test_search_handler_wraps_dicts_in_dtos(self):
         from src.routers.cli import cli_knowledge_search
@@ -608,9 +599,8 @@ class TestHandlerAdapters:
             svc.knowledge_repo_module,
             "KnowledgeRepository",
             MagicMock(return_value=repo),
-        ), patch.object(
-            svc.embeddings_factory_module,
-            "get_embedding_client",
+        ), patch(
+            "src.services.embeddings.get_embedding_client",
             AsyncMock(return_value=_FakeEmbedder()),
         ):
             items = await cli_knowledge_search(
@@ -623,35 +613,21 @@ class TestHandlerAdapters:
 
     async def test_get_handler_miss_maps_to_404(self):
         from src.routers.cli import cli_knowledge_get
-
-        user = _user()
-        session = _session()
-        with patch.object(
-            svc,
-            "get_knowledge_document",
-            AsyncMock(side_effect=SDKKnowledgeError(404, "Document not found")),
-        ):
+        repo = AsyncMock(get_by_key=AsyncMock(return_value=None))
+        with patch.object(svc.knowledge_repo_module, "KnowledgeRepository", return_value=repo):
             with pytest.raises(HTTPException) as exc:
-                await cli_knowledge_get("absent", "ns", None, user, session)
+                await cli_knowledge_get("absent", "ns", None, _user(), _session())
         assert exc.value.status_code == 404
         assert exc.value.detail == "Document not found"
+        repo.get_by_key.assert_awaited_once_with(key="absent", namespace="ns")
 
     async def test_store_many_handler_error_detail_preserved(self):
         from src.routers.cli import cli_knowledge_store_many
-
-        user = _user()
-        session = _session()
-        with patch.object(
-            svc,
-            "store_many_knowledge_documents",
-            AsyncMock(side_effect=SDKKnowledgeError(503, "no embedding config")),
-        ):
+        with patch("src.services.embeddings.get_embedding_client",
+            new=AsyncMock(side_effect=ValueError("no embedding config"))):
             with pytest.raises(HTTPException) as exc:
-                await cli_knowledge_store_many(
-                    CLIKnowledgeStoreManyRequest(documents=[{"content": "x"}]),
-                    user,
-                    session,
-                )
+                await cli_knowledge_store_many(CLIKnowledgeStoreManyRequest(
+                    documents=[{"content": "x"}]), _user(), _session())
         assert exc.value.status_code == 503
         assert exc.value.detail == "no embedding config"
 

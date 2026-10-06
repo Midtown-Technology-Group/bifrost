@@ -318,131 +318,72 @@ class TestUserService:
 
 @pytest.mark.asyncio
 class TestUsersRouterBoundary:
-    """Handlers delegate to ``shared.sdk_users`` and map its errors."""
+    """The fork's canonical handlers retain user contracts and error precedence."""
 
-    async def test_list_sets_total_header(self):
+    async def _seed(self, db_session, **kwargs):
+        from src.models.orm.users import User
+        row = User(email=f"boundary-{uuid4().hex}@example.com", name="Boundary", **kwargs)
+        db_session.add(row)
+        await db_session.flush()
+        return row
+
+    async def test_list_sets_total_header(self, db_session):
         from src.routers.users import list_users
-
-        items = ["U1"]
+        row = await self._seed(db_session, is_active=True)
         response = Response()
-        with patch(
-            "shared.sdk_users.list_users",
-            new=AsyncMock(return_value=(items, 7)),
-        ) as mock_list:
-            result = await list_users(
-                _stub_actor(), AsyncMock(), response,
-                type=None, scope=None, include_inactive=False,
-                search=None, sort_by=None, sort_direction="asc",
-                limit=None, offset=0,
-            )
-        assert result == items
-        assert response.headers["X-Total-Count"] == "7"
-        mock_list.assert_awaited_once()
+        result = await list_users(_principal(), db_session, response,
+            type=None, scope=None, include_inactive=False, search=row.email,
+            sort_by=None, sort_direction="asc", limit=None, offset=0)
+        assert [u.id for u in result] == [row.id]
+        assert response.headers["X-Total-Count"] == "1"
 
-    async def test_list_maps_422(self):
+    async def test_list_maps_422(self, db_session):
         from src.routers.users import list_users
-
-        with patch(
-            "shared.sdk_users.list_users",
-            new=AsyncMock(side_effect=UserServiceError(422, "bad scope")),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await list_users(
-                    _stub_actor(), AsyncMock(), Response(),
-                    type=None, scope="bad", include_inactive=False,
-                    search=None, sort_by=None, sort_direction="asc",
-                    limit=None, offset=0,
-                )
+        with pytest.raises(HTTPException) as exc_info:
+            await list_users(_principal(), db_session, Response(),
+                type=None, scope="bad", include_inactive=False, search=None,
+                sort_by=None, sort_direction="asc", limit=None, offset=0)
         assert exc_info.value.status_code == 422
 
-    async def test_create_delegates(self):
+    async def test_create_delegates(self, db_session):
         from src.models import UserCreate
         from src.routers.users import create_user
+        request = UserCreate(email=f"new-{uuid4().hex}@example.com", name="N")
+        result = await create_user(request, _principal(), db_session)
+        assert result.email == request.email
+        assert result.name == "N"
+        assert result.invite_status == "pending"
+        assert result.registration_url is not None
 
-        actor_id = uuid4()
-        request = UserCreate(email="n@example.com", name="N")
-        with patch(
-            "shared.sdk_users.create_user", new=AsyncMock(return_value="USER")
-        ) as mock_create:
-            assert (
-                await create_user(request, _stub_actor(user_id=actor_id), AsyncMock())
-                == "USER"
-            )
-        kwargs = mock_create.call_args[1]
-        assert kwargs == {
-            "email": "n@example.com",
-            "name": "N",
-            "is_active": True,
-            "is_superuser": False,
-            "is_external": False,
-            "organization_id": None,
-            "actor_user_id": actor_id,
-        }
-
-    async def test_get_maps_404(self):
+    async def test_get_maps_404(self, db_session):
         from src.routers.users import get_user
-
-        with patch(
-            "shared.sdk_users.get_user", new=AsyncMock(return_value="USER")
-        ) as mock_get:
-            assert await get_user("u", _stub_actor(), AsyncMock()) == "USER"
-        mock_get.assert_awaited_once()
-        assert mock_get.call_args[1] == {"user_id": "u"}
-
-        with patch(
-            "shared.sdk_users.get_user",
-            new=AsyncMock(side_effect=UserServiceError(404, "User not found")),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_user("u", _stub_actor(), AsyncMock())
+        row = await self._seed(db_session)
+        assert (await get_user(str(row.id), _principal(), db_session)).id == row.id
+        with pytest.raises(HTTPException) as exc_info:
+            await get_user(str(uuid4()), _principal(), db_session)
         assert exc_info.value.status_code == 404
 
-    async def test_update_delegates_and_maps_403(self):
+    async def test_update_delegates_and_maps_403(self, db_session):
         from src.models import UserUpdate
         from src.routers.users import update_user
-
-        request = UserUpdate(name="new")
-        with patch(
-            "shared.sdk_users.update_user", new=AsyncMock(return_value="USER")
-        ) as mock_update:
-            assert (
-                await update_user("u", request, _stub_actor(), AsyncMock()) == "USER"
-            )
-        kwargs = mock_update.call_args[1]
-        assert kwargs["user_id"] == "u"
-        assert kwargs["name"] == "new"
-        assert kwargs["is_active"] is None
-
-        with patch(
-            "shared.sdk_users.update_user",
-            new=AsyncMock(side_effect=UserServiceError(403, "System user cannot be modified")),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await update_user("u", request, _stub_actor(), AsyncMock())
+        row = await self._seed(db_session)
+        result = await update_user(str(row.id), UserUpdate(name="new"), _principal(), db_session)
+        assert result.name == "new"
+        row.is_system = True
+        await db_session.flush()
+        with pytest.raises(HTTPException) as exc_info:
+            await update_user(str(row.id), UserUpdate(name="blocked"), _principal(), db_session)
         assert exc_info.value.status_code == 403
+        assert row.name == "new"
 
-    async def test_delete_maps_400_404_403(self):
+    async def test_delete_maps_400_404_403(self, db_session):
         from src.routers.users import delete_user
-
-        actor = _stub_actor()
-        with patch(
-            "shared.sdk_users.delete_user",
-            new=AsyncMock(return_value=actor.user_id),
-        ) as mock_delete:
-            assert (
-                await delete_user("u", actor, AsyncMock()) is None
-            )
-        assert mock_delete.call_args[1] == {
-            "user_id": "u",
-            "actor_user_id": actor.user_id,
-            "actor_email": actor.email,
-        }
-
-        for code in (400, 404, 403):
-            with patch(
-                "shared.sdk_users.delete_user",
-                new=AsyncMock(side_effect=UserServiceError(code, "err")),
-            ):
-                with pytest.raises(HTTPException) as exc_info:
-                    await delete_user("u", actor, AsyncMock())
+        actor = _principal()
+        system = await self._seed(db_session, is_system=True)
+        cases = [(str(actor.user_id), 400), (str(uuid4()), 404), (str(system.id), 403)]
+        for target, code in cases:
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_user(target, actor, db_session)
             assert exc_info.value.status_code == code
+        row = await self._seed(db_session, is_active=False)
+        assert await delete_user(str(row.id), actor, db_session) is None
