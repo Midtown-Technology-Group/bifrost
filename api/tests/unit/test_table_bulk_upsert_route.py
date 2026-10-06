@@ -39,6 +39,7 @@ async def test_batch_upsert_rolls_back_and_409s_on_guarded_count_mismatch(monkey
         name="bulk_race",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -73,9 +74,9 @@ async def test_batch_upsert_rolls_back_and_409s_on_guarded_count_mismatch(monkey
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(router, "_assert_solution_write_targets_owned_table", fake_solution_gate)
-    monkeypatch.setattr(writes, "load_resolved_table_policies", fake_load_policies)
-    monkeypatch.setattr(writes, "preresolve_for_policies", fake_preresolve)
-    monkeypatch.setattr(writes, "write_table_batch", fake_write_table_batch)
+    monkeypatch.setattr(router, "load_resolved_table_policies", fake_load_policies)
+    monkeypatch.setattr(router, "preresolve_for_policies", fake_preresolve)
+    monkeypatch.setattr(router, "write_table_batch", fake_write_table_batch)
 
     body = DocumentBatchCreate(
         write_mode="replace_upsert",
@@ -105,6 +106,7 @@ async def test_batch_documents_invalidates_table_once_after_commit(monkeypatch):
         name="batch_events",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -171,10 +173,10 @@ async def test_batch_documents_invalidates_table_once_after_commit(monkeypatch):
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(router, "_assert_solution_write_targets_owned_table", fake_solution_gate)
-    monkeypatch.setattr(writes, "load_resolved_table_policies", fake_load_policies)
-    monkeypatch.setattr(writes, "preresolve_for_policies", fake_preresolve)
-    monkeypatch.setattr(writes, "write_table_batch", fake_write_table_batch)
-    monkeypatch.setattr(writes, "publish_table_invalidated", fake_publish_table_invalidated)
+    monkeypatch.setattr(router, "load_resolved_table_policies", fake_load_policies)
+    monkeypatch.setattr(router, "preresolve_for_policies", fake_preresolve)
+    monkeypatch.setattr(router, "write_table_batch", fake_write_table_batch)
+    monkeypatch.setattr(router, "publish_table_invalidated", fake_publish_table_invalidated)
 
     body = DocumentBatchCreate(
         documents=[
@@ -201,6 +203,7 @@ async def test_batch_documents_does_not_invalidate_for_conflict_only_no_change(m
         name="batch_no_change",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -243,10 +246,10 @@ async def test_batch_documents_does_not_invalidate_for_conflict_only_no_change(m
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(router, "_assert_solution_write_targets_owned_table", fake_solution_gate)
-    monkeypatch.setattr(writes, "load_resolved_table_policies", fake_load_policies)
-    monkeypatch.setattr(writes, "preresolve_for_policies", fake_preresolve)
-    monkeypatch.setattr(writes, "write_table_batch", fake_write_table_batch)
-    monkeypatch.setattr(writes, "publish_table_invalidated", fake_publish_table_invalidated)
+    monkeypatch.setattr(router, "load_resolved_table_policies", fake_load_policies)
+    monkeypatch.setattr(router, "preresolve_for_policies", fake_preresolve)
+    monkeypatch.setattr(router, "write_table_batch", fake_write_table_batch)
+    monkeypatch.setattr(router, "publish_table_invalidated", fake_publish_table_invalidated)
 
     body = DocumentBatchCreate(
         write_mode="insert",
@@ -272,6 +275,7 @@ async def test_batch_delete_documents_invalidates_table_once_after_commit(monkey
         name="batch_delete_events",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -341,11 +345,11 @@ async def test_batch_delete_documents_invalidates_table_once_after_commit(monkey
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(router, "_assert_solution_write_targets_owned_table", fake_solution_gate)
-    monkeypatch.setattr(writes, "DocumentRepository", FakeRepo)
-    monkeypatch.setattr(writes, "load_resolved_table_policies", fake_load_policies)
-    monkeypatch.setattr(writes, "preresolve_for_policies", fake_preresolve)
-    monkeypatch.setattr(writes, "evaluate_action", lambda *args, **kwargs: True)
-    monkeypatch.setattr(writes, "publish_table_invalidated", fake_publish_table_invalidated)
+    monkeypatch.setattr(router, "DocumentRepository", FakeRepo)
+    monkeypatch.setattr(router, "load_resolved_table_policies", fake_load_policies)
+    monkeypatch.setattr(router, "preresolve_for_policies", fake_preresolve)
+    monkeypatch.setattr(router, "evaluate_action", lambda *args, **kwargs: True)
+    monkeypatch.setattr(router, "publish_table_invalidated", fake_publish_table_invalidated)
 
     body = DocumentBatchDeleteRequest(ids=["alpha", "beta"])
 
@@ -373,6 +377,7 @@ async def test_batch_delete_documents_does_not_invalidate_noop(monkeypatch):
         name="batch_delete_noop",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -418,10 +423,10 @@ async def test_batch_delete_documents_does_not_invalidate_noop(monkeypatch):
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
     monkeypatch.setattr(router, "_assert_solution_write_targets_owned_table", fake_solution_gate)
-    monkeypatch.setattr(writes, "DocumentRepository", FakeRepo)
-    monkeypatch.setattr(writes, "load_resolved_table_policies", fake_load_policies)
-    monkeypatch.setattr(writes, "preresolve_for_policies", fake_preresolve)
-    monkeypatch.setattr(writes, "publish_table_invalidated", fake_publish_table_invalidated)
+    monkeypatch.setattr(router, "DocumentRepository", FakeRepo)
+    monkeypatch.setattr(router, "load_resolved_table_policies", fake_load_policies)
+    monkeypatch.setattr(router, "preresolve_for_policies", fake_preresolve)
+    monkeypatch.setattr(router, "publish_table_invalidated", fake_publish_table_invalidated)
 
     body = DocumentBatchDeleteRequest(ids=["missing"])
 

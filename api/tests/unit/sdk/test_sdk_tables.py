@@ -427,6 +427,10 @@ class FakeTablesClient:
         self.responses = responses
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
+    async def engine_request(self, method, url, json=None, **kwargs):
+        self.calls.append((method, url, json))
+        return self.responses.pop(0)
+
     async def post(
         self,
         url: str,

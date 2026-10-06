@@ -149,7 +149,7 @@ def _wait_for_pid_to_die(pid: int, timeout: float = 10.0) -> None:
 @pytest.mark.asyncio
 class TestForkedColdImportOverSocket:
     async def test_cold_entry_and_dynamic_import_over_socket(
-        self, db_session, monkeypatch
+        self, db_session, monkeypatch, claimed_sdk_execution
     ):
         """Cold entry fetch + dynamic resolve ride the socket, no credentials."""
         from src.core.security import mint_engine_token
@@ -182,9 +182,10 @@ class TestForkedColdImportOverSocket:
         # so success proves the engine socket served both.
         monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
-        execution_id = f"exec-{tag}"
+        execution_id, claim_token = await claimed_sdk_execution()
         engine_token, _ = mint_engine_token(
             execution_id=execution_id,
+            attempt_token=claim_token,
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,

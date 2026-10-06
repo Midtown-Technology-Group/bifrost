@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import hashlib
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -29,6 +30,8 @@ def _redis_mock(modules: dict[str, dict] | None = None) -> MagicMock:
     store = dict(modules or {})
 
     def _get(key: str) -> str | None:
+        if key == mcs.WORKSPACE_GENERATION_KEY:
+            return "socket-test-generation"
         value = store.get(key)
         return json.dumps(value) if value is not None else None
 
@@ -86,6 +89,8 @@ class TestExternalFallback:
 
     def test_fetch_without_engine_socket_keeps_api_fallback(self):
         module = {"content": "VALUE = 3\n", "path": "cold/dep.py", "hash": "h"}
+        module["hash"] = hashlib.sha256(module["content"].encode()).hexdigest()
+        module["generation"] = "socket-test-generation"
         redis = _redis_mock()
         with (
             patch.object(mcs, "_get_sync_redis", return_value=redis),
@@ -138,6 +143,8 @@ class TestEngineSocketWarmHit:
 
     def test_fetch_redis_hit_never_touches_engine_socket(self):
         module = {"content": "VALUE = 1\n", "path": "cold/dep.py", "hash": "abc"}
+        module["hash"] = hashlib.sha256(module["content"].encode()).hexdigest()
+        module["generation"] = "socket-test-generation"
         redis = _redis_mock({"bifrost:module:cold/dep.py": module})
         client = _EngineSocketClient([])
         with (
@@ -228,6 +235,8 @@ class TestEngineSocketColdPath:
 
     def test_cold_fetch_uses_engine_socket_and_recaches(self):
         module = {"content": "VALUE = 1\n", "path": "cold/dep.py", "hash": "h"}
+        module["hash"] = hashlib.sha256(module["content"].encode()).hexdigest()
+        module["generation"] = "socket-test-generation"
         client = _EngineSocketClient([_json_response(dict(module))])
         redis = _redis_mock()
         with (
@@ -258,6 +267,8 @@ class TestEngineSocketColdPath:
         mcs.set_solution_context(solution_id, global_repo_access=True)
         rooted = f"_solutions/{solution_id}/cold/dep.py"
         module = {"content": "VALUE = 9\n", "path": "cold/dep.py", "hash": "h"}
+        module["hash"] = hashlib.sha256(module["content"].encode()).hexdigest()
+        module["generation"] = "socket-test-generation"
         client = _EngineSocketClient(
             [_json_response({"detail": "miss"}, 404), _json_response(dict(module))]
         )
@@ -349,7 +360,7 @@ class TestEngineSocketColdPath:
     def test_large_module_round_trips_unchanged(self):
         content = "# large\n" + ("value = 1\n" * 50000)
         client = _EngineSocketClient(
-            [_json_response({"content": content, "path": "big.py", "hash": "h"})]
+            [_json_response({"content": content, "path": "big.py", "hash": hashlib.sha256(content.encode()).hexdigest(), "generation": "socket-test-generation"})]
         )
         redis = _redis_mock()
         with (

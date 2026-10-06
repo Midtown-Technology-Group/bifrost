@@ -25,6 +25,8 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.security import decode_token
+
 from src.services.execution.template_process import TemplateProcess
 from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
 
@@ -37,7 +39,7 @@ def _script_b64(source: str) -> str:
 
 def _context_for(code_b64: str, engine_token: str) -> dict:
     return {
-        "execution_id": f"workflows-fork-{uuid4().hex[:8]}",
+        "execution_id": decode_token(engine_token)["engine_execution_id"],
         "name": "sdk-workflows-local-fork-test",
         "code": code_b64,
         "parameters": {},
@@ -70,7 +72,7 @@ def _wait_for_pid_to_die(pid: int, timeout: float = 10.0) -> None:
 @pytest.mark.asyncio
 class TestForkedWorkflowMutationsSocket:
     async def test_scheduled_execute_and_cancel_over_worker_socket_without_channel(
-        self, async_session_factory, monkeypatch
+        self, async_session_factory, monkeypatch, claimed_sdk_execution
     ):
         """A real forked child schedules and cancels over the socket, HTTP dead."""
         from sqlalchemy import delete, select
@@ -124,8 +126,10 @@ class TestForkedWorkflowMutationsSocket:
 
         from src.core.security import mint_engine_token
 
+        execution_id, claim_token = await claimed_sdk_execution()
         engine_token, _ = mint_engine_token(
-            execution_id="gate-c5a-workflows-fork",
+            execution_id=execution_id,
+            attempt_token=claim_token,
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,
@@ -145,7 +149,7 @@ class TestForkedWorkflowMutationsSocket:
             try:
                 work_queue.put(
                     (
-                        "exec-workflows-fork",
+                        execution_id,
                         _context_for(_script_b64(source), engine_token),
                     )
                 )

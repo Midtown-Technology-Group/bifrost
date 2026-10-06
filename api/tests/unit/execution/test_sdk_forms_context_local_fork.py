@@ -28,6 +28,8 @@ import time
 from uuid import UUID, uuid4
 
 import pytest
+
+from src.core.security import decode_token
 from sqlalchemy import select
 
 from src.services.execution.template_process import TemplateProcess
@@ -46,7 +48,7 @@ def _script_b64(source: str) -> str:
 
 def _context_for(code_b64: str, engine_token: str) -> dict:
     return {
-        "execution_id": f"exec-forms-fork-{uuid4().hex[:8]}",
+        "execution_id": decode_token(engine_token)["engine_execution_id"],
         "name": "sdk-forms-context-local-fork-test",
         "code": code_b64,
         "parameters": {},
@@ -79,7 +81,7 @@ def _wait_for_pid_to_die(pid: int, timeout: float = 10.0) -> None:
 @pytest.mark.asyncio
 class TestForkedFormsContextTransport:
     async def test_forms_and_context_over_socket_without_http(
-        self, db_session, monkeypatch
+        self, db_session, monkeypatch, claimed_sdk_execution
     ):
         """A real forked child reads forms and context over the socket."""
         from src.core.principal import UserPrincipal
@@ -192,10 +194,12 @@ class TestForkedFormsContextTransport:
             "    'had_sqlalchemy': 'sqlalchemy' in sys.modules,",
             "}",
         ]
+        execution_id, claim_token = await claimed_sdk_execution()
         context = _context_for(
             _script_b64("\n".join(lines) + "\n"),
             mint_engine_token(
-                execution_id="gate-c5h-forms-fork",
+                execution_id=execution_id,
+                attempt_token=claim_token,
                 solution_id=None,
                 global_repo_access=True,
                 timeout_seconds=120,
@@ -217,7 +221,7 @@ class TestForkedFormsContextTransport:
                 worker_id="sdk-forms-context-fork",
                 sdk_socket_path=server.socket_path,
             )
-            work_queue.put(("exec-forms-context-fork", context))
+            work_queue.put((context["execution_id"], context))
             envelope = await asyncio.to_thread(result_queue.get, True, 120.0)
             assert envelope["success"] is True, envelope
             result = envelope["result"]

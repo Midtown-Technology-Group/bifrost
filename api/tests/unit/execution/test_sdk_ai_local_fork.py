@@ -123,7 +123,7 @@ _AI_SOURCE = (
 @pytest.mark.asyncio
 class TestForkedAISocket:
     async def test_complete_and_model_info_over_socket_and_committed(
-        self, async_session_factory, monkeypatch
+        self, async_session_factory, monkeypatch, claimed_sdk_execution
     ):
         """A real forked child completes + reads model info over the socket."""
         from src.core.constants import SYSTEM_USER_UUID
@@ -184,8 +184,10 @@ class TestForkedAISocket:
             ),
         )
 
+        execution_id, claim_token = await claimed_sdk_execution(execution_id)
         engine_token, _ = mint_engine_token(
-            execution_id="gate-c5f-ai-fork",
+            execution_id=execution_id,
+            attempt_token=claim_token,
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,

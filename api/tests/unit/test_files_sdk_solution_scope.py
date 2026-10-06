@@ -131,7 +131,7 @@ async def test_file_sdk_preserves_positional_scope_argument(monkeypatch):
         status_code = 204
 
     class FakeClient:
-        async def post(self, url, json=None):
+        async def engine_request(self, method, url, json=None):
             captured["url"] = url
             captured["body"] = json
             return FakeResponse()

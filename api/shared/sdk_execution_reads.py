@@ -113,6 +113,7 @@ def convert_workflow_orm_to_schema(
     from src.models import WorkflowMetadata, WorkflowParameter
     from src.models.contracts.workflows import ExecutableType
     from src.services.workflow_validation import _extract_relative_path
+    from src.services.execution.retry_policy import normalize_retry_policy
 
     parameters = []
     for param in workflow.parameters_schema or []:
@@ -141,7 +142,7 @@ def convert_workflow_orm_to_schema(
         parameters=parameters,
         execution_mode=execution_mode,
         timeout_seconds=workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800,
-        retry_policy=None,
+        retry_policy=normalize_retry_policy(getattr(workflow, "retry_policy", None)),
         endpoint_enabled=workflow.endpoint_enabled or False,
         allowed_methods=workflow.allowed_methods or ["POST"],
         disable_global_key=workflow.disable_global_key or False,

@@ -92,7 +92,7 @@ class TestEngineRequestFacade:
             "parameters": [],
             "execution_mode": "sync",
             "timeout_seconds": 1800,
-            "retry_policy": None,
+            "retry_policy": {},
             "endpoint_enabled": False,
             "allowed_methods": None,
             "disable_global_key": False,

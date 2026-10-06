@@ -789,8 +789,7 @@ async def test_require_file_policy_denial_emits_audit(monkeypatch, db_session) -
     had no callers; it now fires from the shared helper on every real denial
     (shared.file_access raises transport-neutral FileServiceError; the HTTP
     router maps it to 403)."""
-    import shared.file_access as file_access_module
-    from shared.file_access import FileServiceError
+    from fastapi import HTTPException
 
     from src.routers import files as files_module
 
@@ -812,7 +811,7 @@ async def test_require_file_policy_denial_emits_audit(monkeypatch, db_session) -
     async def fake_emit(db, **kwargs):
         emitted.update(kwargs)
 
-    monkeypatch.setattr(file_access_module, "emit_file_policy_deny", fake_emit)
+    monkeypatch.setattr(files_module, "emit_file_policy_deny", fake_emit)
 
     solution_id = uuid4()
 
@@ -823,7 +822,7 @@ async def test_require_file_policy_denial_emits_audit(monkeypatch, db_session) -
         solution_id=solution_id,
     )
 
-    with pytest.raises(FileServiceError) as exc:
+    with pytest.raises(HTTPException) as exc:
         await files_module._require_file_policy(
             ctx,  # type: ignore[arg-type]
             action="read",

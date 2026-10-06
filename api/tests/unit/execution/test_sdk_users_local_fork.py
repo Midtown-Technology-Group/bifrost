@@ -27,6 +27,8 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.security import decode_token
+
 from src.services.execution.template_process import TemplateProcess
 from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
 
@@ -44,7 +46,7 @@ def _context_for(
     is_platform_admin: bool,
 ) -> dict:
     return {
-        "execution_id": f"exec-users-fork-{uuid4().hex[:8]}",
+        "execution_id": decode_token(engine_token)["engine_execution_id"],
         "name": "sdk-users-local-fork-test",
         "code": code_b64,
         "parameters": {},
@@ -84,7 +86,7 @@ async def _run_socket_fork(server: WorkerSdkHttpServer, context: dict) -> dict:
             sdk_socket_path=server.socket_path,
         )
         try:
-            work_queue.put(("exec-users-fork", context))
+            work_queue.put((context["execution_id"], context))
             envelope = await asyncio.to_thread(result_queue.get, True, 120.0)
         finally:
             work_queue.close()
@@ -98,7 +100,7 @@ async def _run_socket_fork(server: WorkerSdkHttpServer, context: dict) -> dict:
 @pytest.mark.asyncio
 class TestForkedUsersSocket:
     async def test_crud_and_scoped_list_over_socket(
-        self, async_session_factory, monkeypatch
+        self, async_session_factory, monkeypatch, claimed_sdk_execution
     ):
         """A real forked child runs the users facade on the worker socket."""
         from src.core.security import mint_engine_token
@@ -153,8 +155,10 @@ class TestForkedUsersSocket:
             "    'had_sqlalchemy': 'sqlalchemy' in sys.modules,",
             "}",
         ]
+        execution_id, claim_token = await claimed_sdk_execution()
         engine_token, _ = mint_engine_token(
-            execution_id="gate-c5d-users-fork",
+            execution_id=execution_id,
+            attempt_token=claim_token,
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,
@@ -220,7 +224,7 @@ class TestForkedUsersSocket:
                 await cleanup.commit()
 
     async def test_non_admin_initiator_uses_engine_superuser_over_socket(
-        self, async_session_factory, monkeypatch
+        self, async_session_factory, monkeypatch, claimed_sdk_execution
     ):
         """The socket authority is the engine token, not the child's claims."""
         from src.core.security import mint_engine_token
@@ -235,8 +239,10 @@ class TestForkedUsersSocket:
             "    'listed': isinstance(_listed, list),",
             "}",
         ]
+        execution_id, claim_token = await claimed_sdk_execution()
         engine_token, _ = mint_engine_token(
-            execution_id="gate-c5d-users-fork-nonadmin",
+            execution_id=execution_id,
+            attempt_token=claim_token,
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,

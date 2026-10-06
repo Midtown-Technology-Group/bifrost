@@ -150,7 +150,7 @@ class TestFacadeEngineRequestMutations:
         assert client.engine_request.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_refresh_registers_secret_through_engine_request(self):
+    async def test_refresh_updates_expiry_through_engine_request(self):
         from bifrost._context import (
             clear_execution_context,
             set_execution_context,
@@ -169,7 +169,7 @@ class TestFacadeEngineRequestMutations:
             client.engine_request = AsyncMock(
                 return_value=httpx.Response(
                     200,
-                    json={"access_token": "fresh-tok-live", "expires_at": None},
+                    json={"expires_at": "2030-01-01T00:00:00Z"},
                     request=httpx.Request(
                         "POST",
                         "http://api/api/sdk/integrations/refresh_token",
@@ -186,8 +186,8 @@ class TestFacadeEngineRequestMutations:
                 out = await creds.refresh()
 
             assert out is creds
-            assert creds.access_token == "fresh-tok-live"
-            assert "fresh-tok-live" in ctx._collect_secret_values()
+            assert creds.access_token == "stale"
+            assert creds.expires_at == "2030-01-01T00:00:00Z"
             client.engine_request.assert_awaited_once_with(
                 "POST",
                 "/api/sdk/integrations/refresh_token",

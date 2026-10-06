@@ -269,15 +269,16 @@ async def _call_stream_route(async_session_factory, prompt: str) -> list[dict]:
 @pytest.mark.asyncio
 class TestForkedAIStream:
     async def test_ai_stream_over_socket_with_network_dead(
-        self, async_session_factory, monkeypatch
+        self, async_session_factory, monkeypatch, claimed_sdk_execution
     ):
         """A real child streams AI over the socket with HTTP disabled."""
         from src.core.security import mint_engine_token
 
-        execution_id = str(uuid4())
+        execution_id, claim_token = await claimed_sdk_execution()
         org_id = str(uuid4())
         engine_token, _ = mint_engine_token(
             execution_id=execution_id,
+            attempt_token=claim_token,
             solution_id=None,
             global_repo_access=True,
             timeout_seconds=120,
