@@ -119,7 +119,7 @@ def _app_entry(app_id: str, slug: str) -> dict:
     }
 
 
-def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40, source_version=None):
+def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40, source_version=None, include_app=True, table_schema=None):
     from bifrost.solution_package_delivery import build_solution_package_archive, review_solution_package_source
     from bifrost.workspace_release import canonical_digest
     from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution, VerifiedAuthoredSolutionFile
@@ -142,6 +142,14 @@ def main():
     for app in app_manifest["apps"].values():
         app.update(name="Example", slug=f"example-{sol.id.hex[:8]}", access_level=app_access_level)
     files[".bifrost/apps.yaml"] = yaml.safe_dump(app_manifest).encode()
+    if not include_app:
+        files = {path: raw for path, raw in files.items()
+                 if path != ".bifrost/apps.yaml" and not path.startswith("apps/")}
+    if table_schema is not None:
+        tables = yaml.safe_load(files[".bifrost/tables.yaml"])
+        for table in tables["tables"].values():
+            table["schema"] = table_schema
+        files[".bifrost/tables.yaml"] = yaml.safe_dump(tables).encode()
     contract = recipe(files)
     subpath = f"solutions/{sol.slug}"
     contract.update(solution_id=str(sol.id), repo_subpath=subpath)

@@ -123,6 +123,18 @@ def test_complete_mixed_package_keeps_resources_and_empty_binary_source():
         assert {name: package.read(name) for name in package.namelist()} == files
 
 
+def test_workflow_package_keeps_complete_resource_source_without_an_app():
+    files = {path: raw for path, raw in source().items()
+             if path != ".bifrost/apps.yaml" and not path.startswith("apps/")}
+    proof = review(files)
+    assert "apps" not in proof["entities"]
+    assert proof["entities"]["workflows"] == [WORKFLOW]
+    assert proof["entities"]["tables"] == [TABLE]
+    assert proof["entities"]["file_locations"] == ["audit-evidence"]
+    assert {item["path"] for item in proof["source_files"]} == set(files)
+    assert proof["runtime_verified"] is False
+
+
 @pytest.mark.parametrize(
     "path", [".bifrost/tables.yaml", ".bifrost/workflows.yaml", ".bifrost/files.yaml"]
 )

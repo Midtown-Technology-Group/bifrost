@@ -49,3 +49,18 @@ facts without rebuilding the App or switching its pointer.
 Do not directly edit database evidence, bypass Solution ownership protection, or
 redeploy a working application merely to retry bookkeeping. Review any remaining
 source difference and handle its actual release requirement separately.
+
+## Complete authored packages
+
+The protected complete-package publisher also accepts Solutions without Apps.
+It publishes the full authored inventory through the existing `solution.deploy`
+PlatformJob and verifies immutable source, registrations and runtime pins before
+settling delivery accounting. Packages with Apps still compile and verify each
+App's separate output and publication pin; workflow-only packages publish no App.
+
+Reviewed table schema changes update document metadata in place. They preserve
+table IDs, names, ownership, scope, access policies and existing documents. The
+complete post-publication snapshot includes the exact new schema, so stale
+admission and later metadata drift still fail readback. A schema revert restores
+metadata without deleting stored document fields. Existing caller compatibility,
+workflow control and resource ownership checks remain required.

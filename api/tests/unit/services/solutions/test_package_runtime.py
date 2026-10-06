@@ -1,6 +1,6 @@
 """Mixed immutable package publication against real database/object storage."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -9,6 +9,7 @@ from bifrost.workspace_release import canonical_digest
 from src.models.contracts.solution_deployments import SolutionDeploymentCreate
 from src.models.orm.applications import Application
 from src.models.orm.solutions import Solution
+from src.models.orm.tables import Document, Table
 from src.services.solutions.app_build import SolutionAppBuilder
 from src.services.solutions.deploy import SolutionDeployer
 from src.services.solutions.deploy import SolutionDeployConflict
@@ -143,3 +144,63 @@ async def test_package_successor_cannot_add_a_required_parameter_to_existing_cal
         await SolutionDeployer(db_session).prepare_reviewed_package(
             _reviewed_package_source(solution, runtime=True, function_args="tenant_id: str"),
             expected_active_deployment_id=None, expected_controls_digest=canonical_digest(controls))
+
+
+@pytest.mark.e2e
+async def test_workflow_package_schema_successor_and_revert_preserve_documents_and_controls(
+    db_session, seed_user, monkeypatch,
+):
+    def unexpected_app_build(*args, **kwargs):
+        pytest.fail("A workflow-only package must not compile or publish an App")
+
+    monkeypatch.setattr(SolutionAppBuilder, "compile_dist", unexpected_app_build)
+    solution = Solution(id=uuid4(), slug=f"package-{uuid4().hex[:8]}", name="Package", organization_id=None)
+    db_session.add(solution)
+    await db_session.flush()
+    original = {"columns": [{"name": "canonical_key", "type": "string"}]}
+    expanded = {"columns": [*original["columns"], {"name": "native_backup", "type": "object"}]}
+    controls = None
+    table_id = None
+    previous = None
+    data = {"canonical_key": "example", "native_backup": {"retained": True}}
+    for schema in (original, expanded, original):
+        source = _reviewed_package_source(solution, runtime=True, include_app=False, table_schema=schema)
+        prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
+            source, expected_active_deployment_id=previous,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, solution.id)),
+        )
+        manifest, resolution = await compile_package_runtime(db_session, source, prepared, uuid4())
+        await stage(db_session, seed_user, solution, source, prepared, manifest, resolution)
+        await activate_package_runtime(db_session, source, prepared, manifest, previous)
+        result = await readback_package_runtime(db_session, solution.id, manifest.deployment_id,
+            expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
+            expected_organization_id=None)
+        assert result["source_verified"] and result["registrations_verified"] and result["runtime_verified"]
+        assert len(result["workflow_runtime_pins"]) == 1
+        assert result["app_runtime_pins"] == {}
+        assert manifest.applications == {}
+        current_controls = await capture_package_controls(db_session, solution.id)
+        if controls is None:
+            table_id = next(iter(current_controls["tables"]))
+            db_session.add(Document(id="retained-row", table_id=UUID(table_id), data=data))
+            await db_session.flush()
+        for value in current_controls["tables"].values():
+            assert value.pop("schema") == schema
+        if controls is None:
+            controls = current_controls
+        else:
+            assert current_controls == controls
+        table = await db_session.scalar(select(Table).where(Table.solution_id == solution.id))
+        assert table is not None and str(table.id) == table_id
+        assert table.schema == schema
+        document = await db_session.scalar(select(Document).where(Document.table_id == table.id))
+        assert document is not None and document.data == data
+        previous = manifest.deployment_id
+
+    # Readback seals metadata as well as Python bytes. An out-of-band schema
+    # change cannot be accepted as the published package.
+    await db_session.execute(update(Table).where(Table.solution_id == solution.id).values(schema=expanded))
+    with pytest.raises(ValueError, match="controls/resources"):
+        await readback_package_runtime(db_session, solution.id, previous,
+            expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
+            expected_organization_id=None)

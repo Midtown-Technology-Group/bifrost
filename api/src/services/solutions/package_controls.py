@@ -161,5 +161,14 @@ def require_preserved_package_controls(before: dict[str, Any], after: dict[str, 
     for kind, entities in before.items():
         current = after.get(kind, {})
         for identity, expected in entities.items():
-            if identity not in current or canonical_digest(current[identity]) != canonical_digest(expected):
+            observed = current.get(identity)
+            if kind == "tables" and isinstance(expected, dict) and isinstance(observed, dict):
+                # Document schema is authored JSON metadata, not a physical
+                # database migration. Deploy updates it without touching
+                # Documents. Keep it in the sealed snapshot for stale-source
+                # admission and exact post-publication/legacy readback, but
+                # permit a reviewed successor to publish different metadata.
+                expected = {key: value for key, value in expected.items() if key != "schema"}
+                observed = {key: value for key, value in observed.items() if key != "schema"}
+            if identity not in current or canonical_digest(observed) != canonical_digest(expected):
                 raise ValueError(f"Package changes installed controls: {kind}/{identity}")
