@@ -296,13 +296,13 @@ class TestRouteReuse:
             (route.path, method): route
             for route in mounted
             if route.path in ARTIFACT_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_ai = {
             (route.path, method): route
             for route in mounted
             if route.path in AI_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_files = {
             route.path: route for route in mounted if route.path in FILES_ROUTE_PATHS
@@ -311,67 +311,67 @@ class TestRouteReuse:
             (route.path, method): route
             for route in mounted
             if route.path in TABLE_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_platform_jobs = {
             (route.path, method): route
             for route in mounted
             if route.path in PLATFORM_JOB_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_workflows = {
             (route.path, method): route
             for route in mounted
             if route.path in WORKFLOW_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_executions = {
             (route.path, method): route
             for route in mounted
             if route.path in EXECUTION_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_agent_runs = {
             (route.path, method): route
             for route in mounted
             if route.path in AGENT_RUN_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_events = {
             (route.path, method): route
             for route in mounted
             if route.path in EVENT_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_forms = {
             (route.path, method): route
             for route in mounted
             if route.path in FORM_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_organizations = {
             (route.path, method): route
             for route in mounted
             if route.path in ORGANIZATION_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_users = {
             (route.path, method): route
             for route in mounted
             if route.path in USER_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_roles = {
             (route.path, method): route
             for route in mounted
             if route.path in ROLES_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
         mounted_sdk_modules = {
             (route.path, method): route
             for route in mounted
             if route.path in SDK_MODULES_ROUTE_METHODS
-            for method in route.methods
+            for method in (route.methods or set())
         }
 
         # Only the selected routes, and the exact registered objects — no
