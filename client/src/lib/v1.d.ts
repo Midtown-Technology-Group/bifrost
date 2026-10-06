@@ -31420,6 +31420,19 @@ export interface components {
             readme?: string | null;
         };
         /**
+         * SolutionPackageRecoveryResponse
+         * @description An object envelope even when there is no older intent to reconcile.
+         */
+        SolutionPackageRecoveryResponse: {
+            /**
+             * Schema Version
+             * @default bifrost.solution-package-recovery/v1
+             * @constant
+             */
+            schema_version: "bifrost.solution-package-recovery/v1";
+            job: components["schemas"]["PlatformJobPublic"] | null;
+        };
+        /**
          * SolutionReadme
          * @description GET/PUT response shape for an install's README markdown.
          */
@@ -55857,7 +55870,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlatformJobPublic"] | null;
+                    "application/json": components["schemas"]["SolutionPackageRecoveryResponse"];
                 };
             };
             /** @description Validation Error */

@@ -77,7 +77,7 @@ async def test_changed_original_intent_cannot_resume(monkeypatch, drift):
     elif drift == "resource":
         job.resource_id = str(uuid4())
     elif drift == "intent":
-        job.result = {**job.result, "payload_digest": "sha256:" + "0" * 64}
+        job.result = {**(job.result or {}), "payload_digest": "sha256:" + "0" * 64}
     elif drift == "source":
         payload.options["package_source"]["package"]["source_archive_sha256"] = "0" * 64
     else:
@@ -170,3 +170,26 @@ async def test_recovery_rejects_stale_current_main_before_any_readback_enqueue(m
     ci.assert_awaited_once_with(body.source_commit_sha, body.ci_run_id, body.ci_run_attempt)
     recovery.assert_not_awaited()
     db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_http_recovery_without_an_original_returns_a_versioned_object(monkeypatch):
+    import httpx
+    from fastapi import FastAPI
+    from src.core.database import get_db
+    from src.routers import solution_deployments as routes
+
+    policy = package_policy()
+    monkeypatch.setattr(routes, "_authenticate_package", AsyncMock(return_value=policy))
+    monkeypatch.setattr("src.services.solutions.github_delivery_source.ProtectedGitReader.verify_ci", AsyncMock())
+    monkeypatch.setattr("src.services.solutions.package_admission.recover_pending_package", AsyncMock(return_value=None))
+    app = FastAPI()
+    app.include_router(routes.router)
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(rollback=AsyncMock())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(f"/api/solutions/{SID}/deployments/github-package/recover",
+            headers={"Authorization": "Bearer test-identity", "X-GitHub-Job-Token": "test-only-token"},
+            json={"source_commit_sha": "e" * 40, "ci_run_id": 2, "ci_run_attempt": 1,
+                "artifact_digest": "sha256:" + "f" * 64})
+    assert response.status_code == 200
+    assert response.json() == {"schema_version": "bifrost.solution-package-recovery/v1", "job": None}

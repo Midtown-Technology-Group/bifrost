@@ -29,6 +29,7 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentRuntimeState,
     SolutionGitSourceDeliveryRequest,
     SolutionGitSourceDeliveryResponse,
+    SolutionPackageRecoveryResponse,
     SolutionSourceRevisionCommitRequest,
     SolutionSourceRevisionInspectRequest,
     SolutionSourceRevisionInspectResponse,
@@ -169,7 +170,7 @@ async def inspect_github_package(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.post("/github-package/recover", response_model=PlatformJobPublic | None)
+@router.post("/github-package/recover", response_model=SolutionPackageRecoveryResponse)
 async def recover_github_package(
     solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -192,13 +193,13 @@ async def recover_github_package(
                 body.source_commit_sha, body.ci_run_id, body.ci_run_attempt)
         job = await recover_pending_package(db, policy, solution_id)
         if job is None:
-            return None
+            return SolutionPackageRecoveryResponse(job=None)
         if job.encrypted_payload is None:
             raise ValueError("Original package payload is unavailable")
         payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
         public = platform_job_to_public(job)
         public.result = {**(public.result or {}), "original_artifact_digest": payload.options["artifact_digest"]}
-        return public
+        return SolutionPackageRecoveryResponse(job=public)
     except (ValueError, GitDeliverySourceError) as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
