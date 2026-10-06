@@ -30,7 +30,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from src.core.security import decode_token
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from src.services.execution.template_process import TemplateProcess
 from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
@@ -273,3 +273,14 @@ class TestForkedFormsContextTransport:
         finally:
             template.shutdown()
             await server.stop()
+            # The socket needs committed fixtures, so rollback cannot remove
+            # them. Delete only this test's rows before later scope tests run.
+            await db_session.execute(
+                delete(FormModel).where(
+                    FormModel.name.in_([global_name, org_name, inactive_name])
+                )
+            )
+            await db_session.execute(
+                delete(OrganizationModel).where(OrganizationModel.id == org.id)
+            )
+            await db_session.commit()
