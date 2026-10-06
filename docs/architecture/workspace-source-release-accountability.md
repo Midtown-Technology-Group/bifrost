@@ -9,6 +9,116 @@ production keeps running older bytes.
 
 ## Contract
 
+### Native Solution authored Source
+
+The reviewed Git delivery path keeps the complete `solutions/<slug>/` authored
+tree separately from its executable closure. A fourteen-file authored package
+may legitimately have a seven-file runtime closure; a green runtime cannot
+credit the other seven files. Protected commit/tree/subtree identities, regular
+Git modes, every file hash and the authored content ID are retained in a
+content-addressed, create-only authored archive alongside the deployment.
+Runtime `source.zip`, queued pins and historical manifests remain unchanged.
+
+The native adapter checks descriptor fields, README text, all owned workflow
+identities and controls, all owned table metadata/policies, and exact immutable
+archive/runtime bytes. Only unused empty Python package initializers may remain
+outside the positive executable dependency closure. Apps, assets and unsupported
+components require their own delivery contract; this adapter cannot credit them
+as workflow source.
+
+README delivery uses the existing installation writer, a pointer/README CAS and
+a SQL savepoint. It commits only when every other authored component reads back.
+A descriptor, control, table, source or dependency mismatch rolls that metadata
+write back. `authored_source_state=verified` is separate from runtime activation;
+`attention_required` preserves partial runtime success without claiming complete
+authored delivery. Neither state asserts a real worker execution.
+
+Production target membership comes from all protected registry recipes,
+including mappings that mix Root and package files. A missing/inactive Provider
+installation cannot disappear from the target set. Recovery checks the complete
+relevant family in exact scopes, including unexpected active siblings; unrelated
+mutable Solutions are not a prerequisite. Storage proof is collected and cached
+before the shared Solutions table fence, with a 64 MiB aggregate proof budget.
+Budget exhaustion leaves affected targets visible and debt unresolved.
+Acquisition waits at most one second, and the fenced database phase has a
+five-second cooperative cancellation deadline; a timeout
+rolls back without completing debt. The fence rechecks family membership,
+durable receipts, closure identity and all metadata, binding the previously
+verified bytes to every current source hash without remote storage calls.
+Installations are read without row locks. Membership/status and pointer writes
+wait only for this bounded database phase; workflow admissions
+and historical execution pins continue without a Live fence. Reviewed shared
+Root table verification retains its existing shared row locks. Native accounting
+commits its checkpoint and releases the membership fence before the separate
+Root accounting pass starts.
+
+Delivery success/replay, late declaration/replay and the existing overdue sweep
+use the same verifier and the existing child obligation. Native completion uses
+`bifrost.native-solution-deploy-completion/v1`, with per-install actual deployment,
+receipt and fresh readback evidence. It leaves `deploy_job_id` null rather than
+fabricating a legacy job. The forward migration
+`20261003_native_src_account` preserves the legacy completion branch and refuses
+downgrade while native completions depend on it. Missing evidence leaves debt
+open and rotates the bounded sweep; storage/transport failures propagate.
+
+### Solution delivery of Root source
+
+Protected Git Solution delivery retains repository-to-runtime path mappings,
+runtime hashes, recipe and installation-registry blob hashes, selected install
+scopes, Git commit/tree, CI identity and a successful operation receipt. These
+come from the protected Git reader; a producer cannot submit mappings or source
+bytes as accounting evidence.
+
+The accounting adapter runs after durable declaration (including exact replay),
+after verified delivery (including a successful receipt replay), and before the
+existing overdue sweep. It takes the global Live fence, all active installation
+rows in UUID order, and then source rows. Delivery releases its one-install
+writer before this aggregate reconciliation. Accounting does not activate a
+deployment or retire Live.
+
+Immediate and scheduled execution admission take a shared form of the same
+global fence before selecting a runtime pin and retain it through durable
+execution insertion. Admissions can run concurrently. The exclusive accounting
+scan waits for those inserts, so a deployment selected just before a pointer
+change cannot appear after completion as an unseen old consumer.
+
+Each bounded recovery batch selects never/least-recently checked declarations
+first, retaining `accounting_checked_at` even for unsupported paths. Repeated
+sweeps advance past blockers without disposing them. Declaration and exact
+replay additionally target their own Source identity rather than a front page.
+
+Completion requires **every** declared path. The adapter checks active install
+pointers, exact scopes, compiled closures, current workflow registrations and
+immutable runtime bytes. It follows exact dependency pins and includes accepted
+executions and unfinished workflow attempts, including superseded deployments.
+A stale sibling, accepted pin, unknown mapping, mutable install, uncertain loose
+import/file read or unpinned execution leaves the declaration unresolved. A
+worker success is not completion evidence. Recipe changes remain production
+controls; registry changes require each configured installation to have matching
+scope, recipe and protected commit/tree readback.
+
+Completion uses `bifrost.solution-owned-source-completion/v1`. A different newer
+commit cannot release an old declaration merely because bytes match. The
+protected Git reader can retain bounded first-parent ancestor attestations;
+only a verified descendant with complete per-path replacement readback can
+supersede old OIDC declarations, using
+`bifrost.solution-owned-source-supersession/v1`. Missing ancestors, removed or
+unmapped paths and ambiguous historical admin declarations remain unresolved
+for explicit review. Reverts create new declarations and new deployment pins.
+
+Reconciliation is idempotent and never reopens completed entries. A crash after
+durable activation can be recovered by exact delivery replay, declaration
+replay or the scheduler without manual accounting changes. Read failures retain
+the debt; transport failures propagate rather than falsely reporting closure.
+
+Apply `20261001_solution_src_account` before deploying the accounting adapter.
+The constraint preserves Live completion and accepts only nonempty Solution
+completion evidence for the exact declared commit/tree without a Live row.
+Keep the constraint during application rollback; migration downgrade refuses
+while completed Solution accounting rows rely on it.
+
+### Declaration producer
+
 The trusted `bifrost-workspace` workflow triggered by every push to protected
 `main` must call `POST /api/workspace-promotions/source-releases/github` for
 that commit. Human administrators may use
@@ -61,6 +171,24 @@ if the same commit is redeclared with different evidence. The producer must
 fail its GitHub Actions job when declaration fails. This removes operator
 memory from record creation while retaining an exact audit trail.
 
+Declarations now retain a canonical request digest independently of producer
+provenance and mutable operational status. Replaying an identical declaration
+after a deadline sweep, delivery or disposition returns the same record and
+preserves its current diagnostic. Changing the original reason, path hashes,
+tree, disposition or child obligations returns 409. Admin declarations retain
+the digest too, without inventing a GitHub producer identity.
+
+The nullable `declaration_digest` migration does not backfill old diagnostics as
+original declarations. Historical producer digests remain valid replay
+anchors. Legacy records with neither digest reject replay. Equality of current
+and declared status cannot establish original identity: a disposition edit can
+change the reason without changing status, or later return to the original
+status. Original reasons cannot be reconstructed from current operational text,
+and a declaration must never be accepted by guessing an empty or current reason.
+Historical recovery needs retained original evidence, not a diagnostic backfill.
+This schema change follows the
+fixed-target migration lane before a compatible runtime image is deployed.
+
 `GET /api/workspace-promotions/source-releases` returns
 `tracking_state=not_configured` until the producer configuration begins or the
 first declaration arrives. Operators and monitors must treat that state as
@@ -92,6 +220,22 @@ An operator may explicitly mark a record `deferred` or `non_production`, but
 must provide a reason. A later exact release may still replace `deferred` with
 verified `released` evidence. Records containing deletions remain open until a
 release path can prove runtime absence as well as signed-history absence.
+
+An old source commit may instead be `superseded` after a later source record is
+`released` or a reviewed Solution deployment is active. This manual decision
+requires a production readback from the last day, a readback digest, and a
+decision for every path in the old record. Each path records the current
+protected-Git hash, current runtime owner, runtime
+source hash and runtime reference, or records that the source was removed. The
+platform checks the later released source record or active immutable Solution
+pointer, checks source hashes against the corresponding release or Solution
+closure and the current Live pointer for Workspace-owned paths, and requires
+every old path to be reviewed. It stores an immutable
+digest of the review. The operator must independently
+compare those stated hashes and runtime references with live source,
+registration, dependency, and signed-history readback. A changed Git hash alone
+does not establish supersession. Use `deferred` while that proof is missing;
+`non_production` is only for changes that truly had no production effect.
 
 ## Retired releases
 

@@ -6,7 +6,6 @@ import time
 
 import aiohttp
 import httpx
-import pytest
 import yarl
 from aiohttp import web
 
@@ -97,31 +96,6 @@ def test_join_upstream_retains_non_default_ports():
         _join_upstream("https://example.test:8443", yarl.URL("/api/auth/me"))
         == "https://example.test:8443/api/auth/me"
     )
-
-
-_reserved_ports: dict[int, socket.socket] = {}
-
-
-@pytest.fixture(autouse=True)
-def _release_unused_ports():
-    """Close reservations for intentionally unavailable upstreams after each test."""
-    yield
-    for reserved in _reserved_ports.values():
-        reserved.close()
-    _reserved_ports.clear()
-
-
-def _reserve_port(port: int = 0) -> int:
-    s = socket.socket()
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("127.0.0.1", port))
-    assigned_port = s.getsockname()[1]
-    _reserved_ports[assigned_port] = s
-    return assigned_port
-
-
-def _free_port() -> int:
-    return _reserve_port()
 
 
 class _StubHost:
@@ -224,28 +198,31 @@ def _make_auth_refresh_upstream(record):
     return app
 
 
-async def _serve(app, port):
-    sock = _reserved_ports.pop(port)
+async def _serve(app, *, sock=None):
     runner = web.AppRunner(app)
+    await runner.setup()
+    # Bind once. Releasing a temporary reservation before starting the server
+    # lets another listener take the same port. A duplicate preserves the
+    # explicitly retained listener for the same-origin restart test.
+    site = (
+        web.SockSite(runner, sock.dup())
+        if sock is not None
+        else web.TCPSite(runner, "127.0.0.1", 0)
+    )
     try:
-        sock.listen(socket.SOMAXCONN)
-        await runner.setup()
-        site = web.SockSite(runner, sock)
         await site.start()
-    except Exception:
+    except BaseException:
         await runner.cleanup()
-        sock.close()
         raise
-    return runner
+    return runner, runner.addresses[0][1]
 
 
 async def test_local_path_ref_runs_in_function_host():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost({"functions/hello.py::main"})
     cfg = DevProxyConfig(upstream_url=f"http://127.0.0.1:{up_port}", token="t", app_id="A", org_id="O")
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             responses = [
@@ -279,8 +256,7 @@ async def test_local_path_ref_runs_in_function_host():
 
 async def test_dev_session_gate_protects_proxy_and_uses_httponly_cookie():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="cli-token",
@@ -288,10 +264,7 @@ async def test_dev_session_gate_protects_proxy_and_uses_httponly_cookie():
         org_id="O",
         session_token="private-session-token",
     )
-    dev_runner = await _serve(
-        build_dev_app(cfg, _StubHost(set()), vite_url="http://127.0.0.1:1"),
-        dev_port,
-    )
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, _StubHost(set()), vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as client:
             denied = await client.get(f"http://127.0.0.1:{dev_port}/api/test")
@@ -330,8 +303,7 @@ async def test_dev_session_gate_protects_proxy_and_uses_httponly_cookie():
 
 async def test_app_start_forwards_workflow_to_live_platform_with_separate_scope():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t",
@@ -339,9 +311,7 @@ async def test_app_start_forwards_workflow_to_live_platform_with_separate_scope(
         org_id="runtime-org",
         local_workflows=False,
     )
-    dev_runner = await _serve(
-        build_dev_app(cfg, None, vite_url="http://127.0.0.1:1"), dev_port
-    )
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, None, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -374,10 +344,10 @@ async def test_local_error_returns_inline_terminal_failure():
     # statusText. The response is terminal so the streaming SDK does not poll
     # an execution that exists only inside this process. A pre-streaming SDK
     # still rejects the unchanged `error` field.
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream({}), up_port)
+
+    up_runner, up_port = await _serve(_make_upstream({}))
     cfg = DevProxyConfig(upstream_url=f"http://127.0.0.1:{up_port}", token="t", app_id="A", org_id="O")
-    dev_runner = await _serve(build_dev_app(cfg, _RaisingHost(), vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, _RaisingHost(), vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.post(f"http://127.0.0.1:{dev_port}/api/workflows/execute",
@@ -397,8 +367,7 @@ async def test_local_error_returns_inline_terminal_failure():
 
 async def test_local_name_ref_resolves_before_execute():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(
         {"functions/preview.py::recipients"},
         aliases={"Preview Recipients": "functions/preview.py::recipients"},
@@ -407,7 +376,7 @@ async def test_local_name_ref_resolves_before_execute():
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t", app_id="A", org_id="O", solution_id="S",
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.post(
@@ -433,15 +402,15 @@ async def test_resolution_errors_surface_as_200_error_body():
         (LocalWorkflowImportError("local workflow 'x' failed to import: boom"), "boom"),
     ]:
         record = {}
-        up_port, dev_port = _free_port(), _free_port()
-        up_runner = await _serve(_make_upstream(record), up_port)
+
+        up_runner, up_port = await _serve(_make_upstream(record))
         host = _StubHost(set(), error=error)
         cfg = DevProxyConfig(
             upstream_url=f"http://127.0.0.1:{up_port}",
             token="t", app_id="A", org_id="O", solution_id="S",
             global_repo_access=True,
         )
-        dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+        dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
         try:
             async with httpx.AsyncClient() as c:
                 r = await c.post(
@@ -462,15 +431,14 @@ async def test_resolution_errors_surface_as_200_error_body():
 
 async def test_unknown_ref_without_global_access_errors_locally():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost({"functions/hello.py::main"})
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t", app_id="A", org_id="O", solution_id="S",
         global_repo_access=False,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.post(
@@ -493,15 +461,14 @@ async def test_unknown_ref_without_global_access_errors_locally():
 
 async def test_unknown_ref_with_global_access_proxies_without_scope_signals():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t", app_id="A", org_id="O", solution_id="S",
         global_repo_access=True,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.post(
@@ -536,14 +503,13 @@ async def test_unknown_ref_with_global_access_proxies_without_scope_signals():
 async def test_local_uuid_ref_warns_once(capsys):
     uuid_ref = "11111111-1111-1111-1111-111111111111"
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost({"functions/a.py::main"}, aliases={uuid_ref: "functions/a.py::main"})
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t", app_id="A", org_id="O",
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r1 = await c.post(
@@ -564,8 +530,7 @@ async def test_local_uuid_ref_warns_once(capsys):
 
 async def test_other_api_path_proxies_with_org_header():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
@@ -574,7 +539,7 @@ async def test_other_api_path_proxies_with_org_header():
         org_id="O",
         solution_id="S",
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.get(f"http://127.0.0.1:{dev_port}/api/tables/foo?limit=10")
@@ -596,8 +561,7 @@ async def test_browser_accept_encoding_is_not_forwarded_upstream():
     # compressed bytes labeled as plain JSON and fails to parse. The proxy must
     # strip the browser's Accept-Encoding and let httpx negotiate for itself.
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
@@ -606,7 +570,7 @@ async def test_browser_accept_encoding_is_not_forwarded_upstream():
         org_id="O",
         solution_id="S",
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.get(
@@ -622,8 +586,7 @@ async def test_browser_accept_encoding_is_not_forwarded_upstream():
 
 async def test_api_proxy_refreshes_cli_token_once_after_401():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
     host = _StubHost(set())
 
     async def refresh_token(observed_token):
@@ -637,7 +600,7 @@ async def test_api_proxy_refreshes_cli_token_once_after_401():
         org_id="O",
         refresh_token=refresh_token,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.get(f"http://127.0.0.1:{dev_port}/api/auth/me")
@@ -652,8 +615,7 @@ async def test_api_proxy_refreshes_cli_token_once_after_401():
 
 async def test_active_preview_proactively_renews_token_before_a_request_401():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
     refreshed = asyncio.Event()
 
     async def refresh_token(observed_token):
@@ -669,10 +631,7 @@ async def test_active_preview_proactively_renews_token_before_a_request_401():
         org_id="O",
         refresh_token=refresh_token,
     )
-    dev_runner = await _serve(
-        build_dev_app(cfg, _StubHost(set()), vite_url="http://127.0.0.1:1"),
-        dev_port,
-    )
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, _StubHost(set()), vite_url="http://127.0.0.1:1"))
     try:
         await asyncio.wait_for(refreshed.wait(), timeout=1)
         await asyncio.sleep(0)
@@ -691,8 +650,7 @@ async def test_active_preview_proactively_renews_token_before_a_request_401():
 
 async def test_api_proxy_returns_dev_auth_expired_json_when_refresh_fails():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
     host = _StubHost(set())
 
     async def refresh_token(observed_token):
@@ -706,7 +664,7 @@ async def test_api_proxy_returns_dev_auth_expired_json_when_refresh_fails():
         org_id="O",
         refresh_token=refresh_token,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.get(f"http://127.0.0.1:{dev_port}/api/auth/me")
@@ -725,15 +683,14 @@ async def test_api_proxy_returns_dev_auth_expired_json_when_refresh_fails():
 
 async def test_document_reload_recovers_after_credentials_are_replaced():
     record = {}
-    up_port, vite_port, dev_port = _free_port(), _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
 
     async def index(_request):
         return web.Response(text="<html><body>Vite app</body></html>", content_type="text/html")
 
     vite = web.Application()
     vite.router.add_get("/", index)
-    vite_runner = await _serve(vite, vite_port)
+    vite_runner, vite_port = await _serve(vite)
     can_refresh = False
 
     async def refresh_token(_observed_token):
@@ -746,10 +703,7 @@ async def test_document_reload_recovers_after_credentials_are_replaced():
         org_id="O",
         refresh_token=refresh_token,
     )
-    dev_runner = await _serve(
-        build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"),
-        dev_port,
-    )
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"))
     try:
         async with httpx.AsyncClient() as c:
             failed = await c.get(f"http://127.0.0.1:{dev_port}/api/auth/me")
@@ -777,15 +731,14 @@ async def test_document_reload_recovers_after_credentials_are_replaced():
 
 async def test_vite_proxy_authenticates_before_serving_the_app():
     record = {}
-    up_port, vite_port, dev_port = _free_port(), _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
 
     async def index(_request):
         return web.Response(text="<html><body>Vite app</body></html>", content_type="text/html")
 
     vite = web.Application()
     vite.router.add_get("/", index)
-    vite_runner = await _serve(vite, vite_port)
+    vite_runner, vite_port = await _serve(vite)
     host = _StubHost(set())
 
     async def refresh_token(observed_token):
@@ -799,7 +752,7 @@ async def test_vite_proxy_authenticates_before_serving_the_app():
         org_id="O",
         refresh_token=refresh_token,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url=f"http://127.0.0.1:{vite_port}"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url=f"http://127.0.0.1:{vite_port}"))
     try:
         async with httpx.AsyncClient() as c:
             page = await c.get(f"http://127.0.0.1:{dev_port}/", headers={"Accept": "text/html"})
@@ -815,8 +768,7 @@ async def test_vite_proxy_authenticates_before_serving_the_app():
 
 async def test_vite_proxy_serves_branded_auth_expired_page_before_the_app():
     record = {}
-    up_port, vite_port, dev_port = _free_port(), _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
 
     async def index(_request):
         return web.Response(text="<html><body>Vite app</body></html>", content_type="text/html")
@@ -827,7 +779,7 @@ async def test_vite_proxy_serves_branded_auth_expired_page_before_the_app():
     vite = web.Application()
     vite.router.add_get("/", index)
     vite.router.add_get("/logo.svg", logo)
-    vite_runner = await _serve(vite, vite_port)
+    vite_runner, vite_port = await _serve(vite)
     host = _StubHost(set())
 
     async def refresh_token(_observed_token):
@@ -840,7 +792,7 @@ async def test_vite_proxy_serves_branded_auth_expired_page_before_the_app():
         org_id="O",
         refresh_token=refresh_token,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url=f"http://127.0.0.1:{vite_port}"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url=f"http://127.0.0.1:{vite_port}"))
     try:
         async with httpx.AsyncClient() as c:
             page = await c.get(f"http://127.0.0.1:{dev_port}/", headers={"Accept": "text/html"})
@@ -876,24 +828,21 @@ async def test_vite_proxy_refuses_to_render_app_when_auth_preflight_cannot_reach
     # into itself instead of receiving a connection refusal.
     with socket.socket() as unreachable:
         unreachable.bind(("127.0.0.1", 0))
-        vite_port, dev_port = _free_port(), _free_port()
+
 
         async def index(_request):
             return web.Response(text="<html><body>Vite app</body></html>", content_type="text/html")
 
         vite = web.Application()
         vite.router.add_get("/", index)
-        vite_runner = await _serve(vite, vite_port)
+        vite_runner, vite_port = await _serve(vite)
         cfg = DevProxyConfig(
             upstream_url=f"http://127.0.0.1:{unreachable.getsockname()[1]}",
             token="token",
             app_id="A",
             org_id="O",
         )
-        dev_runner = await _serve(
-            build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"),
-            dev_port,
-        )
+        dev_runner, dev_port = await _serve(build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"))
         try:
             async with httpx.AsyncClient() as c:
                 page = await c.get(
@@ -910,8 +859,7 @@ async def test_vite_proxy_refuses_to_render_app_when_auth_preflight_cannot_reach
 
 async def test_ws_upgrade_replaces_baked_token_with_live_cli_token():
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
@@ -919,7 +867,7 @@ async def test_ws_upgrade_replaces_baked_token_with_live_cli_token():
         app_id="A",
         org_id="O",
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(
@@ -939,8 +887,7 @@ async def test_ws_upgrade_replaces_baked_token_with_live_cli_token():
 
 async def test_browser_session_reload_signal_changes_after_same_origin_restart():
     record = {}
-    up_port, vite_port, dev_port = _free_port(), _free_port(), _free_port()
-    up_runner = await _serve(_make_auth_refresh_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_auth_refresh_upstream(record))
 
     async def index(_request):
         return web.Response(text="<html><head></head><body>Vite app</body></html>",
@@ -948,7 +895,12 @@ async def test_browser_session_reload_signal_changes_after_same_origin_restart()
 
     vite = web.Application()
     vite.router.add_get("/", index)
-    vite_runner = await _serve(vite, vite_port)
+    vite_runner, vite_port = await _serve(vite)
+
+    proxy_socket = socket.socket()
+    proxy_socket.bind(("127.0.0.1", 0))
+    proxy_socket.listen()
+    proxy_socket.setblocking(False)
 
     async def _start_proxy():
         cfg = DevProxyConfig(
@@ -957,14 +909,11 @@ async def test_browser_session_reload_signal_changes_after_same_origin_restart()
             app_id="A",
             org_id="O",
         )
-        runner = await _serve(
-            build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"),
-            dev_port,
-        )
-        return cfg, runner
+        runner, dev_port = await _serve(build_dev_app(cfg, _StubHost(set()), vite_url=f"http://127.0.0.1:{vite_port}"), sock=proxy_socket)
+        return cfg, runner, dev_port
 
+    first_cfg, first_runner, dev_port = await _start_proxy()
     origin = f"http://127.0.0.1:{dev_port}"
-    first_cfg, first_runner = await _start_proxy()
     try:
         async with httpx.AsyncClient() as c:
             first_page = await c.get(f"{origin}/", headers={"Accept": "text/html"})
@@ -972,8 +921,8 @@ async def test_browser_session_reload_signal_changes_after_same_origin_restart()
     finally:
         await first_runner.cleanup()
 
-    _reserve_port(dev_port)
-    second_cfg, second_runner = await _start_proxy()
+    second_cfg, second_runner, second_port = await _start_proxy()
+    assert second_port == dev_port
     try:
         async with httpx.AsyncClient() as c:
             second_page = await c.get(f"{origin}/", headers={"Accept": "text/html"})
@@ -992,6 +941,7 @@ async def test_browser_session_reload_signal_changes_after_same_origin_restart()
         assert str(second_page.url).startswith(origin)
     finally:
         await second_runner.cleanup()
+        proxy_socket.close()
         await vite_runner.cleanup()
         await up_runner.cleanup()
 
@@ -1002,11 +952,10 @@ async def test_ws_proxy_echoes_subprotocol():
     # subprotocol, so the proxy has to echo it on the client handshake and
     # forward it upstream.
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(upstream_url=f"http://127.0.0.1:{up_port}", token="t", app_id="A", org_id="O")
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(
@@ -1023,15 +972,14 @@ async def test_code_only_request_forwards_upstream_with_scope():
     # Inline `code` execution has no workflow ref to resolve locally — it must
     # forward even with global_repo_access off, keeping the install context.
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t", app_id="A", org_id="O", solution_id="S",
         global_repo_access=False,
     )
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.post(
@@ -1054,11 +1002,11 @@ async def test_ws_proxy_closes_upstream_when_client_disconnects():
         "upstream_connected": asyncio.Event(),
         "upstream_closed": asyncio.Event(),
     }
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(upstream_url=f"http://127.0.0.1:{up_port}", token="t", app_id="A", org_id="O")
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"))
     try:
         async with aiohttp.ClientSession() as session:
             ws = await session.ws_connect(f"http://127.0.0.1:{dev_port}/ws/hold")
@@ -1075,15 +1023,16 @@ async def test_vite_proxy_returns_502_when_vite_is_down():
     """A dead Vite child must surface as an explained 502, not a bare 500 —
     the API proxy handler already does this; the vite handler didn't (issue #460)."""
     record = {}
-    up_port, dev_port = _free_port(), _free_port()
-    up_runner = await _serve(_make_upstream(record), up_port)
+    up_runner, up_port = await _serve(_make_upstream(record))
     host = _StubHost(set())
     cfg = DevProxyConfig(
         upstream_url=f"http://127.0.0.1:{up_port}",
         token="t", app_id="A", org_id="O",
     )
-    dead_vite = f"http://127.0.0.1:{_free_port()}"
-    dev_runner = await _serve(build_dev_app(cfg, host, vite_url=dead_vite), dev_port)
+    unreachable_vite = socket.socket()
+    unreachable_vite.bind(("127.0.0.1", 0))
+    dead_vite = f"http://127.0.0.1:{unreachable_vite.getsockname()[1]}"
+    dev_runner, dev_port = await _serve(build_dev_app(cfg, host, vite_url=dead_vite))
     try:
         async with httpx.AsyncClient() as c:
             r = await c.get(f"http://127.0.0.1:{dev_port}/")
@@ -1091,4 +1040,5 @@ async def test_vite_proxy_returns_502_when_vite_is_down():
         assert "vite" in r.json()["detail"].lower()
     finally:
         await dev_runner.cleanup()
+        unreachable_vite.close()
         await up_runner.cleanup()

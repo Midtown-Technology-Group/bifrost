@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -34,6 +35,8 @@ async def test_only_tagged_terminal_execution_emits() -> None:
     )()
     db = AsyncMock()
     db.get.return_value = row
+    solution_id = uuid4()
+    db.scalar.return_value = solution_id
     processor = SimpleNamespace(
         emit_topic=AsyncMock(return_value=(uuid4(), 1)),
         queue_event_deliveries=AsyncMock(),
@@ -59,6 +62,7 @@ async def test_only_tagged_terminal_execution_emits() -> None:
         assert processor.emit_topic.await_args.kwargs["topic"] == (
             "microsoft_teams.action_completed"
         )
+        assert processor.emit_topic.await_args.kwargs["solution_id"] == solution_id
         assert processor.emit_topic.await_args.kwargs["data"]["execution_id"] == str(
             execution_id
         )
@@ -251,7 +255,18 @@ async def test_transient_registration_failure_remains_recoverable() -> None:
         with pytest.raises(RuntimeError, match="transient"):
             await emit_teams_chat_completion(run)
         assert "teams_completion_emitted_at" not in run.run_metadata
+        prior_queries = db.scalars.await_count
         assert await recover_teams_chat_completions() == 1
+        query = db.scalars.await_args_list[prior_queries].args[0]
+        cutoffs = [
+            value
+            for value in query.compile().params.values()
+            if isinstance(value, datetime)
+        ]
+        assert any(
+            timedelta(hours=23) < datetime.now(UTC) - cutoff < timedelta(hours=25)
+            for cutoff in cutoffs
+        )
         assert "teams_completion_emitted_at" in run.run_metadata
         assert register.await_count == 2
 

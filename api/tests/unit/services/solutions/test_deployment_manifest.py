@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
+from bifrost.root_file_bindings import RootFileBinding
 
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
@@ -119,6 +120,46 @@ def test_contract_rejects_unknown_mutable_projection_fields():
 def test_canonical_json_rejects_non_json_numbers():
     with pytest.raises(ValueError):
         canonical_json({"bad": float("nan")})
+
+
+def test_empty_root_grants_preserve_existing_serialized_hashes():
+    resolution = DeploymentResolutionMap()
+    manifest = CompiledDeploymentManifest(
+        solution_id=uuid4(), deployment_id=uuid4(), bundle_hash="sha256:bundle",
+        resolution_map_hash=sha256_digest(canonical_json(resolution)),
+        source=DeploymentSource(artifact_key="source.zip", runtime_prefix="runtime/"),
+    )
+    for contract in (resolution, manifest):
+        old_document = contract.model_dump(mode="json", exclude_none=True)
+        assert "root_file_bindings" not in old_document
+        assert sha256_digest(canonical_json(old_document)) == sha256_digest(canonical_json(contract))
+        explicit_empty = type(contract).model_validate({**old_document, "root_file_bindings": {}})
+        assert canonical_json(explicit_empty) == canonical_json(contract)
+
+
+def test_root_grants_are_immutable_and_must_agree_with_resolution():
+    grant = RootFileBinding(location="workspace", path="features/bsn/data/clients.json",
+        operations=["read"], max_bytes=65536)
+    resolution = DeploymentResolutionMap(root_file_bindings={"clients": grant})
+    manifest = CompiledDeploymentManifest(
+        solution_id=uuid4(), deployment_id=uuid4(), bundle_hash="sha256:bundle",
+        resolution_map_hash=sha256_digest(canonical_json(resolution)),
+        source=DeploymentSource(artifact_key="source.zip", runtime_prefix="runtime/"),
+        root_file_bindings={"clients": grant},
+    )
+    resolution_hash = sha256_digest(canonical_json(resolution))
+    validate_runtime_closure(manifest, resolution, [],
+        expected_manifest_hash=manifest.content_hash(), expected_resolution_hash=resolution_hash)
+    original_hash = manifest.content_hash()
+    with pytest.raises(TypeError, match="immutable"):
+        manifest.root_file_bindings["another"] = grant
+    with pytest.raises(ValidationError):
+        grant.max_bytes = 999999
+    assert manifest.content_hash() == original_hash
+    changed = manifest.model_copy(update={"root_file_bindings": {}})
+    with pytest.raises(ValueError, match="Root file binding contracts"):
+        validate_runtime_closure(changed, resolution, [],
+            expected_manifest_hash=changed.content_hash(), expected_resolution_hash=resolution_hash)
 
 
 def test_runtime_closure_anchors_resolution_and_supports_id_lookup():

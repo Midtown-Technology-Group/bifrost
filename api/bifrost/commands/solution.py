@@ -531,9 +531,20 @@ def _workspace_from_path_arg(path: str) -> pathlib.Path:
 def _client_for_solution_workspace(
     workspace: pathlib.Path,
     api_url: str | None,
+    *,
+    require_explicit_url: bool = False,
 ) -> BifrostClient:
     """Use --url, the workspace selector, or the normal default profile."""
     selected_url = api_url or resolve_environment_url(workspace)
+    if require_explicit_url:
+        selected_url = (selected_url or "").strip().rstrip("/")
+    if require_explicit_url and not selected_url:
+        raise click.ClickException(
+            "Local development requires an explicit API target. "
+            "Set BIFROST_API_URL in the environment or this workspace's .env, "
+            "or pass --url <dev-api-url>. "
+            "Stored default profiles are not used by solution start."
+        )
     return BifrostClient.get_instance(require_auth=True, api_url=selected_url)
 
 
@@ -3376,7 +3387,8 @@ def _vite_child_env(
 )
 @click.argument("app_slug", required=False)
 @click.option("--solution", "solution_ref", default=None, help="Install id or unique slug.")
-@click.option("--url", "api_url", default=None, help="Bifrost instance URL (default: current profile).")
+@click.option("--url", "api_url", default=None,
+              help="Explicit API target; otherwise BIFROST_API_URL in environment or workspace .env.")
 @click.option(
     "--port",
     default=3000,
@@ -3388,6 +3400,8 @@ def _vite_child_env(
               help="Address for the local origin to bind.")
 @click.option("--public-url", default=None,
               help="Browser-visible origin for the local proxy, e.g. https://dev.example.")
+@click.option("--resource-recipe", type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
+              default=None, help="Workflow delivery recipe declaring local checkout resources; no HTTP fallback.")
 def start_cmd(
     app_slug: str | None,
     solution_ref: str | None,
@@ -3395,6 +3409,7 @@ def start_cmd(
     port: int,
     bind_host: str,
     public_url: str | None,
+    resource_recipe: pathlib.Path | None,
 ) -> None:
     import shutil
 
@@ -3419,7 +3434,7 @@ def start_cmd(
         )
     descriptor = load_descriptor(workspace)
 
-    client = _client_for_solution_workspace(workspace, api_url)
+    client = _client_for_solution_workspace(workspace, api_url, require_explicit_url=True)
     binding = asyncio.run(
         _resolve_solution_install(client, workspace, descriptor, solution_ref)
     )
@@ -3448,7 +3463,8 @@ def start_cmd(
         user=client.user, org=org_info, solution_id=binding.solution_id
     )
 
-    host = FunctionHost(workspace)
+    host = (FunctionHost(workspace, resource_recipe=resource_recipe.absolute())
+            if resource_recipe is not None else FunctionHost(workspace))
     host.reload()
     refs = host.refs()
     click.echo(f"Discovered {len(refs)} local function(s):")

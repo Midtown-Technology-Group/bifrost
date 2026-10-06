@@ -219,8 +219,12 @@ async def _persist_execution_pin(
     from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
     from src.services.solutions.deployment_runtime import pin_workflow_runtime
     from src.services.workspace_release_runtime import pin_workspace_runtime
+    from src.services.workspace_release_projection import acquire_runtime_admission_lock
 
     async with get_db_context() as db:
+        # A selected old deployment must be visible as accepted work before
+        # aggregate accounting can declare all old consumers drained.
+        await acquire_runtime_admission_lock(db)
         event_delivery = None
         event_delivery_id = (dispatch_metadata or {}).get("event_delivery_id")
         if event_delivery_id is not None:
@@ -283,6 +287,15 @@ async def _persist_execution_pin(
         )
         if pinned_runtime is None:
             pinned_runtime = await pin_workspace_runtime(db, uuid.UUID(workflow_id))
+        pinned_schema = getattr(pinned_runtime, "parameters_schema", None)
+        if pinned_schema is not None:
+            from src.services.tool_schema import validate_arguments_against_schema
+
+            issues, schema_error = validate_arguments_against_schema(pinned_schema, parameters)
+            if issues or schema_error:
+                # The API may have read registration metadata before a pointer
+                # switch. Validate again against the exact accepted deployment.
+                raise ValueError("Workflow arguments differ from the pinned input contract")
         runtime_evidence = pinned_runtime.queue_evidence() if pinned_runtime else None
         runtime_mode = (
             pinned_runtime.runtime_mode

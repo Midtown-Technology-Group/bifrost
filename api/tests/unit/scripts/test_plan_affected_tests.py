@@ -492,6 +492,10 @@ def test_lane_fallback_serializes_full_e2e_matrix_and_reasons(graph_repo: Path) 
     affected.write_summary(summary, plan)
     assert "api_e2e_mode=comprehensive" in output.read_text()
     assert '"shard":4,"total":4' in output.read_text()
+    assert (
+        'client_e2e_matrix={"include":[{"shard":1,"total":2},{"shard":2,"total":2}]}'
+        in output.read_text()
+    )
     assert "compatibility is not proven" in summary.read_text()
     assert plan.to_dict()["lane_reasons"] == plan.lane_reasons
 

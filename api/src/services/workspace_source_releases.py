@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,15 +18,26 @@ from src.models.contracts.workspace_promotions import (
     WorkspaceSourceReleaseDeclareRequest,
     WorkspaceSourceReleaseListResponse,
     WorkspaceSourceReleaseResponse,
+    WorkspaceSourceSupersessionEvidence,
 )
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionRelease,
     WorkspaceSourceRelease,
 )
+from src.models.orm.solutions import Solution
+from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.file_index import FileIndex
+from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.github_actions_oidc import WorkspaceSourceReleaseProducer
+from src.services.repo_storage import RepoStorage
+from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solution_deploy_obligations import (
     declare_solution_deploy_obligations,
     solution_deploy_obligation_declaration,
+)
+from src.services.workspace_release_runtime import (
+    WorkspaceReleaseRuntimeError,
+    active_workspace_release,
 )
 
 DEFAULT_RELEASE_DUE_AFTER = timedelta(minutes=30)
@@ -42,25 +53,18 @@ def _assert_compatible_replay(
     request: WorkspaceSourceReleaseDeclareRequest,
     paths: dict[str, str | None],
 ) -> None:
-    existing_solution_obligations = [
-        solution_deploy_obligation_declaration(item).model_dump(
-            mode="json", exclude_none=True
-        )
-        for item in record.solution_deploy_obligations
-    ]
-    requested_solution_obligations = [
-        item.model_dump(mode="json", exclude_none=True)
-        for item in (request.solution_deploy_obligations or [])
-    ]
+    # Operational status can change and return to its original value. Only a
+    # retained digest binds the original reason and Solution obligations.
+    digest = record.declaration_digest or record.producer_declaration_digest
     if (
-        record.source_tree_sha != request.source_tree_sha
+        digest is None
+        or digest != source_release_declaration_digest(request)
+        or record.source_tree_sha != request.source_tree_sha
         or dict(record.paths or {}) != paths
         or record.declared_disposition != request.disposition
-        or record.reason != request.reason
-        or existing_solution_obligations != requested_solution_obligations
     ):
         raise WorkspaceSourceReleaseConflict(
-            "source commit already has different release accountability evidence"
+            "source commit has different or unproven release accountability evidence"
         )
 
 
@@ -186,6 +190,9 @@ class WorkspaceSourceReleaseService:
         )
         if existing is not None:
             _assert_compatible_replay(existing, request, paths)
+            if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
+                await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
 
         now = _utc_now()
@@ -215,6 +222,7 @@ class WorkspaceSourceReleaseService:
             producer_declaration_digest=(
                 producer.declaration_digest if producer is not None else None
             ),
+            declaration_digest=source_release_declaration_digest(request),
             producer_actor=(producer.actor if producer is not None else None),
             producer_actor_id=(producer.actor_id if producer is not None else None),
             disposition=disposition,
@@ -251,9 +259,27 @@ class WorkspaceSourceReleaseService:
             if existing is None:
                 raise
             _assert_compatible_replay(existing, request, paths)
+            if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
+                await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
+        await self._reconcile_solution_delivery(record.id)
+        # A bounded accounting fence may roll back and expire the caller's
+        # committed declaration. Reload scalars before synchronous DTO access.
+        await self.db.refresh(record)
         await self.db.refresh(record, attribute_names=["solution_deploy_obligations"])
         return source_release_response(record, now=now)
+
+    async def _reconcile_solution_delivery(self, source_release_id: UUID) -> bool:
+        from src.config import get_settings
+        if get_settings().solution_git_delivery_policy is None:
+            return False
+        from src.services.solution_source_accountability import reconcile_solution_owned_source
+        from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+        await reconcile_native_solution_deploy_obligations(self.db, source_release_id=source_release_id)
+        await reconcile_solution_owned_source(self.db, source_release_id=source_release_id)
+        await self.db.commit()
+        return True
 
     async def set_manual_disposition(
         self,
@@ -261,18 +287,248 @@ class WorkspaceSourceReleaseService:
         *,
         disposition: str,
         reason: str,
+        supersession_evidence: WorkspaceSourceSupersessionEvidence | None = None,
     ) -> WorkspaceSourceReleaseResponse:
+        if disposition == "superseded":
+            # Supersession inspects Solution pointers after its source row.
+            # Serialize with the aggregate accounting fence before either row
+            # set, preventing Source -> Solution / Solution -> Source deadlock.
+            from src.services.workspace_release_projection import acquire_workspace_release_lock
+            await acquire_workspace_release_lock(self.db, None)
         record = await self._get(record_id, for_update=True)
         if record is None:
             raise KeyError(record_id)
-        if record.disposition == "released":
-            raise WorkspaceSourceReleaseConflict(
-                "released source accountability evidence is immutable"
-            )
-        if record.disposition == disposition and record.reason == reason:
+        if disposition == "superseded":
+            if supersession_evidence is None:
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession requires per-path production readback"
+                )
+            if set(supersession_evidence.paths) != set(record.paths or {}):
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession must review every declared source path"
+                )
+            now = _utc_now()
+            verified_at = supersession_evidence.verified_at
+            if (
+                verified_at.tzinfo is None
+                or verified_at > now + timedelta(minutes=5)
+                or verified_at < now - timedelta(days=1)
+            ):
+                raise WorkspaceSourceReleaseConflict(
+                    "supersession needs production readback from the last day"
+                )
+            later = None
+            if supersession_evidence.superseding_source_release_id is not None:
+                later = await self._get(
+                    supersession_evidence.superseding_source_release_id
+                )
+                if (
+                    later is None
+                    or later.id == record.id
+                    or later.disposition != "released"
+                    or later.created_at <= record.created_at
+                    or not later.completion_evidence
+                    or later.completion_evidence.get("schema_version")
+                    != COMPLETION_EVIDENCE_SCHEMA
+                ):
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession requires a later verified source release"
+                    )
+            deployments = {}
+            reviewed_globals = set(supersession_evidence.reviewed_global_solution_ids)
+            observed_globals = set()
+            repository = SolutionDeploymentRepository(self.db)
+            for (
+                deployment_id
+            ) in supersession_evidence.superseding_solution_deployment_ids:
+                deployment = await repository.get_by_id_for_runtime(deployment_id)
+                if (
+                    deployment is None
+                    or (
+                        deployment.organization_id != self.organization_id
+                        and not (
+                            deployment.organization_id is None
+                            and deployment.solution_id in reviewed_globals
+                        )
+                    )
+                    or deployment.state != "active"
+                    or deployment.activated_at is None
+                    or deployment.activated_at <= record.created_at
+                    or (deployment.validation_result or {}).get("schema_version")
+                    not in {
+                        "bifrost.workspace-live-handoff/v1",
+                        "bifrost.solution-source-revision/v1",
+                        "bifrost.repo-workflow-adoption/v1",
+                        "bifrost.solution-workflow-revision/v1",
+                    }
+                ):
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Solution deployment is not active and reviewed"
+                    )
+                solution = await self.db.scalar(
+                    select(Solution)
+                    .where(Solution.id == deployment.solution_id)
+                    .with_for_update()
+                )
+                if (
+                    solution is None
+                    or solution.organization_id != deployment.organization_id
+                    or solution.status != "active"
+                    or solution.active_deployment_id != deployment_id
+                ):
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Solution pointer changed"
+                    )
+                if deployment.organization_id is None:
+                    observed_globals.add(solution.id)
+                try:
+                    _, resolution = validate_runtime_closure(
+                        deployment.compiled_manifest,
+                        deployment.resolution_map,
+                        deployment.dependencies,
+                        expected_manifest_hash=deployment.compiled_manifest_hash,
+                        expected_resolution_hash=deployment.resolution_map_hash,
+                    )
+                except ValueError as exc:
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Solution closure is invalid"
+                    ) from exc
+                deployments[deployment_id] = resolution
+            if reviewed_globals != observed_globals:
+                raise WorkspaceSourceReleaseConflict(
+                    "reviewed global Solution identities differ from active anchors"
+                )
+            live = None
+            removed_paths = {
+                path
+                for path, review in supersession_evidence.paths.items()
+                if review.runtime_owner == "removed"
+            }
+            root_paths = set(await RepoStorage().list()) if removed_paths else set()
+            if any(
+                path.runtime_owner in {"workspace", "removed"}
+                for path in supersession_evidence.paths.values()
+            ):
+                try:
+                    live = await active_workspace_release(self.db, self.organization_id)
+                except WorkspaceReleaseRuntimeError as exc:
+                    raise WorkspaceSourceReleaseConflict(
+                        "supersession Live release is invalid"
+                    ) from exc
+            for old_path, path_review in supersession_evidence.paths.items():
+                if path_review.runtime_owner == "workspace":
+                    completion = (later.completion_evidence or {}) if later else {}
+                    runtime_path = path_review.runtime_path or old_path
+                    if (
+                        later is None
+                        or path_review.runtime_ref
+                        != completion.get("workspace_release_id")
+                        or (completion.get("runtime_sha256") or {}).get(runtime_path)
+                        != path_review.runtime_source_sha256
+                        or live is None
+                        or live.release_id != path_review.runtime_ref
+                        or live.source_hashes.get(runtime_path)
+                        != path_review.runtime_source_sha256
+                    ):
+                        raise WorkspaceSourceReleaseConflict(
+                            f"Workspace runtime source is unverified: {old_path}"
+                        )
+                elif path_review.runtime_owner == "solution":
+                    try:
+                        deployment_id = UUID(path_review.runtime_ref or "")
+                    except ValueError as exc:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"Solution runtime reference is invalid: {old_path}"
+                        ) from exc
+                    resolution = deployments.get(deployment_id)
+                    runtime_path = path_review.runtime_path or old_path
+                    runtime_source = None
+                    if resolution is not None:
+                        runtime_source = resolution.sources.get(runtime_path)
+                        if runtime_source is None:
+                            runtime_source = resolution.resources.get(runtime_path)
+                    if (
+                        runtime_source is None
+                        or runtime_source.content_hash
+                        != f"sha256:{path_review.runtime_source_sha256}"
+                    ):
+                        raise WorkspaceSourceReleaseConflict(
+                            f"Solution runtime hash is unverified: {old_path}"
+                        )
+                elif path_review.runtime_owner == "removed":
+                    if (
+                        old_path in root_paths
+                        or await self.db.scalar(
+                            select(FileIndex.path).where(FileIndex.path == old_path)
+                        )
+                        is not None
+                    ):
+                        raise WorkspaceSourceReleaseConflict(
+                            f"removed source is still present in Root or its index: {old_path}"
+                        )
+                    if live is not None and old_path in live.source_hashes:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"removed source is still present in Live: {old_path}"
+                        )
+                    installed = await self.db.scalar(
+                        select(SolutionDeployment.id)
+                        .join(
+                            Solution,
+                            Solution.active_deployment_id == SolutionDeployment.id,
+                        )
+                        .where(
+                            Solution.status == "active",
+                            or_(
+                                SolutionDeployment.resolution_map["sources"].op("?")(
+                                    old_path
+                                ),
+                                SolutionDeployment.resolution_map["resources"].op("?")(
+                                    old_path
+                                ),
+                            ),
+                        )
+                        .limit(1)
+                    )
+                    if installed is not None:
+                        raise WorkspaceSourceReleaseConflict(
+                            f"removed source is still present in a Solution: {old_path}"
+                        )
+            evidence = {
+                "schema_version": "bifrost.workspace-source-release-supersession/v1",
+                "source_release_id": str(record.id),
+                "source_commit_sha": record.source_commit_sha,
+                "superseding_source_release_id": str(later.id) if later else None,
+                "superseding_source_commit_sha": (
+                    later.source_commit_sha if later else None
+                ),
+                "superseding_completion_evidence_id": (
+                    later.completion_evidence.get("evidence_id") if later else None
+                ),
+                "review": supersession_evidence.model_dump(
+                    mode="json", exclude_none=True
+                ),
+                "reason": reason,
+            }
+            evidence["evidence_id"] = canonical_digest(evidence)
+        else:
+            if supersession_evidence is not None:
+                raise WorkspaceSourceReleaseConflict(
+                    "review evidence is only valid for supersession"
+                )
+            evidence = None
+        if (
+            record.disposition == disposition
+            and record.reason == reason
+            and record.completion_evidence == evidence
+        ):
             return source_release_response(record)
+        if record.disposition in {"released", "superseded"}:
+            raise WorkspaceSourceReleaseConflict(
+                "completed source accountability evidence is immutable"
+            )
         record.disposition = disposition
         record.reason = reason
+        record.completion_evidence = evidence
         record.resolved_at = _utc_now()
         await self.db.commit()
         await self.db.refresh(record)
@@ -469,6 +725,10 @@ async def sweep_overdue_workspace_releases(
 ) -> dict[str, list[str]]:
     """Turn missed source and history deadlines into durable attention state."""
     now = now or _utc_now()
+    from src.services.solution_source_accountability import reconcile_solution_owned_source
+    from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+    await reconcile_native_solution_deploy_obligations(db)
+    await reconcile_solution_owned_source(db)
     # Projection takes the Live release row before source-accountability rows.
     # Keep the scheduler in the same order so the two transactions cannot
     # deadlock while a history lock completes at the attention deadline.

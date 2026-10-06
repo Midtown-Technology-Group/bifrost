@@ -29,6 +29,48 @@ env:
   CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
 
 jobs:
+  # Manual branch runs provide the exact clean-candidate gate when no local
+  # Docker test VM is available. Tags cannot enter this preparation-only job.
+  pre-pr-candidate:
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
+    name: Pre-PR Candidate
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - name: Run clean-candidate pre-PR gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash test.sh pre-pr 2>&1 | tee "$RUNNER_TEMP/pre-pr.log"
+      - name: Record cleanup evidence
+        if: always()
+        run: docker ps -a --format '{{.ID}} {{.Names}} {{.Status}}' > "$RUNNER_TEMP/pre-pr-containers.txt"
+      - name: Retain candidate gate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pre-pr-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/pre-pr.log
+            ${{ runner.temp }}/pre-pr-containers.txt
+            .git/bifrost-test-locks/pre-pr-stages.json
+            .git/bifrost-test-locks/pre-pr-affected-plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
   # =============================================================================
   # Change-aware plan - one exact, inspectable plan shared by every test lane.
   # =============================================================================
@@ -52,6 +94,7 @@ jobs:
       client_unit_targets: ${{ steps.plan.outputs.client_unit_targets }}
       client_e2e_mode: ${{ steps.plan.outputs.client_e2e_mode }}
       client_e2e_targets: ${{ steps.plan.outputs.client_e2e_targets }}
+      client_e2e_matrix: ${{ steps.plan.outputs.client_e2e_matrix }}
       mcp_conformance_mode: ${{ steps.plan.outputs.mcp_conformance_mode }}
     steps:
       - name: Checkout repository
@@ -97,10 +140,12 @@ jobs:
   # immutable inputs for the post-merge publisher and never select a runtime.
   # =============================================================================
   build-candidate-images:
+    needs: lint
     if: >-
+      ${{ !cancelled() && needs.lint.result == 'success' &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
       (github.event_name == 'merge_group' ||
-       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     name: Build candidate ${{ matrix.component }} image
     permissions:
@@ -120,7 +165,6 @@ jobs:
             dockerfile: ./api/Dockerfile
             target: runtime
             version_arg: BIFROST_VERSION
-            cache_scope: dev-api
           - component: worker
             image: midtown-technology-group/bifrost-worker
             platforms: linux/amd64,linux/arm64
@@ -128,7 +172,6 @@ jobs:
             dockerfile: ./api/Dockerfile
             target: runtime
             version_arg: BIFROST_VERSION
-            cache_scope: dev-worker
           - component: client
             image: midtown-technology-group/bifrost-client
             platforms: linux/amd64
@@ -136,7 +179,6 @@ jobs:
             dockerfile: ./client/Dockerfile
             target: production
             version_arg: VITE_BIFROST_VERSION
-            cache_scope: dev-client
     steps:
       - name: Checkout exact pull-request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -150,6 +192,8 @@ jobs:
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
@@ -160,6 +204,12 @@ jobs:
           version="$(./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
           echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # PRs can read the queue cache but must never overwrite it.
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            echo "cache_tag=buildcache-queue" >> "$GITHUB_OUTPUT"
+          else
+            echo "cache_tag=buildcache-pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up ARM64 emulation for worker candidate
         if: matrix.component == 'worker'
@@ -197,8 +247,12 @@ jobs:
             org.opencontainers.image.version=${{ steps.identity.outputs.version }}
             com.midtowntg.bifrost.source-tree=${{ steps.identity.outputs.tree_sha }}
             com.midtowntg.bifrost.candidate=true
-          cache-from: type=gha,scope=${{ matrix.cache_scope }}
-          cache-to: type=gha,scope=${{ matrix.cache_scope }},mode=max
+          # Registry caches survive temporary queue refs. Keep intermediate
+          # dependency layers (mode=max), including the ARM64 builder stage.
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ matrix.image }}:buildcache-queue
+            type=registry,ref=ghcr.io/${{ matrix.image }}:${{ steps.identity.outputs.cache_tag }}
+          cache-to: type=registry,ref=ghcr.io/${{ matrix.image }}:${{ steps.identity.outputs.cache_tag }},mode=max
 
       - name: Sign immutable candidate
         env:
@@ -261,11 +315,15 @@ jobs:
   # Source code is still mounted from each PR checkout by docker-compose.test.yml.
   # =============================================================================
   publish-ci-test-images:
+    needs: lint
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      ${{ !cancelled() &&
+      (needs.lint.result == 'success' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      (github.event_name == 'workflow_dispatch' ||
       github.event_name == 'merge_group' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     name: Publish CI Test Images
     permissions:
@@ -325,7 +383,8 @@ jobs:
           cache-to: type=gha,scope=test-playwright,mode=max
 
   # =============================================================================
-  # Lint & Type Check - Fast, gates all builds alongside unit tests
+  # Lint & Type Check - Run alongside client units, before expensive work.
+  # A failed agent iteration must not launch image builds or full test stacks.
   # =============================================================================
   lint:
     needs: affected-test-plan
@@ -353,14 +412,16 @@ jobs:
 
       - name: Check MTG CI boundaries
         run: python3 api/scripts/check_mtg_ci_boundaries.py
-      - name: Check E2E shard allocation
-        run: python3 -m unittest scripts.test_e2e_shard
 
-      # Codex skill mirrors (plugins/bifrost/skills/, .codex/skills/) are
+      # Public plugin and repository mirrors (plugins/bifrost/skills/, .agents/skills/) are
       # generated from the canonical .claude/skills/ source.
       - name: Codex skill mirrors in sync
         run: |
           python3 scripts/check_skill_mirrors.py
+          python3 -m unittest scripts.test_skill_mirrors
+
+      - name: Release manifest regression checks
+        run: python3 scripts/release/test_release_manifest.py
 
       - name: Local stage evidence regression checks
         run: |
@@ -390,6 +451,13 @@ jobs:
           python -m venv .venv
           ./.venv/bin/pip install --require-hashes -r requirements.lock
           ./.venv/bin/pip install --require-hashes -r requirements-pyright.lock
+
+      - name: Language-neutral runtime document contracts
+        if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
+        run: |
+          ./.venv/bin/python contracts/runtime/v1/language-neutral/check.py
+          ./.venv/bin/python contracts/runtime/v1/language-neutral/test_check.py
+          ./.venv/bin/ruff check contracts/runtime/v1/language-neutral/check.py contracts/runtime/v1/language-neutral/test_check.py
 
       - name: Ruff
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
@@ -521,8 +589,8 @@ jobs:
   # Unit Tests - Fast, gates all builds
   # =============================================================================
   test-unit:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Unit Tests
     permissions:
@@ -602,8 +670,8 @@ jobs:
   # stateless checks remain visible in the uploaded advisory artifact.
   # =============================================================================
   mcp-conformance:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: MCP Conformance
     permissions:
@@ -666,8 +734,8 @@ jobs:
   # =============================================================================
   # E2E Tests - Sharded across 4 parallel runners. Each shard boots its own
   # isolated test stack (no xdist, no shared services between shards).
-  # scripts/e2e_shard.py deterministically assigns larger source files first
-  # to the shard with the least assigned source, with no maintained timing map.
+  # scripts/e2e_shard.py balances every file using full-suite JUnit timings.
+  # Unknown files receive the measured median weight; no file is excluded.
   #
   # The internal matrix job (test-e2e) uses shard names like
   # "E2E Tests (shard 1/4)". The aggregate gate job below (test-e2e-gate)
@@ -675,8 +743,8 @@ jobs:
   # no ruleset edits needed.
   # =============================================================================
   test-e2e:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     permissions:
@@ -754,6 +822,17 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Preserve public API schema readback
+        if: always() && matrix.total != 0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-openapi-contract-${{ matrix.shard }}
+          path: |
+            /tmp/bifrost-bifrost-test-*/openapi-current.json
+            /tmp/bifrost-bifrost-test-*/openapi-digest.md
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Preserve E2E coverage evidence
         if: needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -768,16 +847,20 @@ jobs:
         run: echo "API e2e tests are outside the affected closure."
 
   # =============================================================================
-  # Client E2E Tests - Playwright browser coverage in the Docker test stack.
+  # Client E2E Tests - two independent Docker stacks for comprehensive coverage.
+  # Keep one browser worker per stack: specs mutate shared workspace/global state.
   # Source and specs are bind-mounted from the checkout; dependency-heavy
   # API, client, and browser images are pulled from main or rebuilt with
   # persistent BuildKit caches when their baked inputs change.
   # =============================================================================
   test-client-e2e:
-    needs: [affected-test-plan, publish-ci-test-images]
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [affected-test-plan, lint, publish-ci-test-images]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
-    name: Client E2E Tests
+    name: Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.affected-test-plan.outputs.client_e2e_matrix || '{"include":[{"shard":0,"total":0}]}') }}
     permissions:
       contents: read
       packages: read
@@ -813,6 +896,8 @@ jobs:
       - name: Run Playwright tests
         if: needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         env:
+          SHARD_ID: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ matrix.total }}
           TEST_MODE: ${{ needs.affected-test-plan.outputs.client_e2e_mode }}
           TEST_TARGETS: ${{ needs.affected-test-plan.outputs.client_e2e_targets }}
         run: |
@@ -821,7 +906,10 @@ jobs:
           chmod +x test.sh
           ./test.sh stack up
           if [ "$TEST_MODE" = "comprehensive" ]; then
-            ./test.sh client e2e
+            ./test.sh client e2e \
+              --project=platform-admin --project=org-user \
+              --project=unauthenticated --project=chromium \
+              --shard="$SHARD_ID/$SHARD_TOTAL"
           else
             mapfile -t targets <<< "$TEST_TARGETS"
             if (( ${#targets[@]} == 0 )); then
@@ -835,11 +923,11 @@ jobs:
         if: always() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         run: ./test.sh stack down
 
-      - name: Upload Playwright failure artifacts
-        if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
+      - name: Preserve Playwright shard results
+        if: always() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: client/playwright-results
           if-no-files-found: warn
           retention-days: 7
@@ -848,7 +936,7 @@ jobs:
         if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-service-logs
+          name: browser-service-logs-${{ matrix.shard }}
           path: /tmp/bifrost-bifrost-test-*/*.log
           if-no-files-found: warn
           retention-days: 7
@@ -865,16 +953,20 @@ jobs:
           COMPOSE_PROJECT_NAME="$bifrost_test_project" docker compose -f docker-compose.test.yml logs --tail=300 api
 
   # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
-  # Fails if any backend shard or the Playwright job failed or was cancelled.
+  # Fails if any backend or browser shard failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
-    needs: [affected-test-plan, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
+    needs: [affected-test-plan, lint, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
     steps:
       - name: Check shard results
         run: |
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "Lint/type checking failed or was cancelled; expensive test lanes were not admitted (result: ${{ needs.lint.result }})."
+            exit 1
+          fi
           if [ "${{ needs.affected-test-plan.result }}" != "success" ]; then
             echo "Affected test planning failed or was cancelled (result: ${{ needs.affected-test-plan.result }})"
             exit 1
@@ -1371,6 +1463,18 @@ jobs:
       # runs `scripts/update-plugin-version.sh <version>` locally before
       # tagging, so when this fails the maintainer either forgot the skill step
       # or the bump commit didn't make it onto the tagged ref.
+      - name: Refuse rebuilding a published immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          releases="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
+          published="$(printf '%s' "$releases" | jq --arg tag "$GITHUB_REF_NAME" '[.[][] | select(.tag_name == $tag and .draft == false)] | length')"
+          if [ "$published" -ne 0 ]; then
+            echo 'This release is already published. Verify it; never rebuild its versioned images or replace assets.' >&2
+            exit 1
+          fi
+
       - name: Verify plugin manifest matches tag
         run: |
           TAG_VERSION="${{ steps.version.outputs.version }}"
@@ -1401,6 +1505,8 @@ jobs:
     needs: [verify-release-manifest]
     runs-on: ubuntu-latest
     name: Build API Image
+    outputs:
+      digest: ${{ steps.build-api.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -1491,6 +1597,8 @@ jobs:
     needs: [verify-release-manifest]
     runs-on: ubuntu-latest
     name: Build Client Image
+    outputs:
+      digest: ${{ steps.build-client.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -1582,6 +1690,8 @@ jobs:
     needs: [verify-release-manifest]
     runs-on: ubuntu-latest
     name: Build Worker Image
+    outputs:
+      digest: ${{ steps.build-worker.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -1677,6 +1787,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release
     permissions:
+      packages: read       # exact-digest packaging smoke pulls
       contents: write       # upload assets to the GitHub Release
       id-token: write       # OIDC token for keyless cosign signing
       attestations: write   # actions/attest-build-provenance writes attestations
@@ -1684,6 +1795,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Get version from tag
         id: get_version
@@ -1749,6 +1862,85 @@ jobs:
         with:
           subject-path: ${{ steps.source_tarball.outputs.tarball }}
 
+      # Stable packages are built once at their final version. Accept those
+      # exact digests before attesting the machine-readable package identity.
+      - name: Generate stable release manifest
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        env:
+          RELEASE_TAG: ${{ steps.get_version.outputs.version }}
+          API_DIGEST: ${{ needs.build-api.outputs.digest }}
+          CLIENT_DIGEST: ${{ needs.build-client.outputs.digest }}
+          WORKER_DIGEST: ${{ needs.build-worker.outputs.digest }}
+        run: |
+          python3 scripts/release/release_manifest.py \
+            --tag "$RELEASE_TAG" --source "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --api-digest "$API_DIGEST" --client-digest "$CLIENT_DIGEST" \
+            --worker-digest "$WORKER_DIGEST" --output release-manifest.json
+
+      - name: Log in for exact release image acceptance
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GHCR_TOKEN && 'MTG-Thomas' || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Accept exact stable image contents
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        run: |
+          python3 scripts/release/accept_release_images.py release-manifest.json
+          sha256sum release-manifest.json > release-manifest.json.sha256
+
+      - name: Attest stable release manifest
+        id: release_manifest_attestation
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-manifest.json
+
+      - name: Retain release manifest attestation bundle
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        env:
+          BUNDLE_PATH: ${{ steps.release_manifest_attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$BUNDLE_PATH"
+          cp "$BUNDLE_PATH" release-manifest.json.sigstore.json
+          sha256sum --check release-manifest.json.sha256
+
+      - name: Upload accepted stable release manifest
+        if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-${{ steps.get_version.outputs.version }}-attempt-${{ github.run_attempt }}
+          path: |
+            release-manifest.json
+            release-manifest.json.sha256
+            release-manifest.json.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Retain release-specific notes and verification instructions
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          if [ -f release/notes.md ] && grep -Fxq "# Bifrost $VERSION" release/notes.md; then
+            cp release/notes.md release/package-notes.md
+          else
+            # Manual pre-releases still use the tag-bound PR inventory. Stable
+            # MTG automatic releases always have matching reviewed notes.
+            if [ "$GITHUB_REPOSITORY" = Midtown-Technology-Group/bifrost ] && [[ "$VERSION" != *-* ]]; then
+              echo 'Stable MTG release has no matching reviewed notes.' >&2
+              exit 1
+            fi
+            gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$VERSION" --jq .body > release/package-notes.md
+          fi
+          python3 scripts/release/package-notes.py "$VERSION" >> release/package-notes.md
+
       - name: Create release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
@@ -1761,73 +1953,11 @@ jobs:
             bifrost.pyi
             bifrost.pyi.sigstore
             stubs/DISTRIBUTION.md
+            release-manifest.json
+            release-manifest.json.sha256
+            release-manifest.json.sigstore.json
           fail_on_unmatched_files: false
-          body: |
-            ## Bifrost ${{ steps.get_version.outputs.version }}
-
-            ### Highlights
-
-            - Immutable Solution deployments with compare-and-swap activation and runtime pinning.
-            - Standalone v2 applications, SDK streaming, and a more capable local development workflow.
-            - Security hardening across authentication, multi-tenancy boundaries, path containment, and dependency supply chains.
-            - Expanded diagnostics, OpenTelemetry coverage, and worker-capacity controls.
-
-            ### Upgrade notes
-
-            This is a major-version release candidate. The legacy `bifrost export` and
-            `bifrost import` commands have been removed; Solutions are their
-            lifecycle-aware replacement. CLI consumers must use a CLI build matching
-            the server contract version.
-
-            ### Contributors
-
-            Thomas Bray, Jack Musick, and Paul Szatkowski.
-
-            ### Docker Images
-
-            **API:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:${{ steps.get_version.outputs.image_tag }}
-            ```
-
-            **Client:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.CLIENT_IMAGE }}:${{ steps.get_version.outputs.image_tag }}
-            ```
-
-            **Worker:**
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE }}:${{ steps.get_version.outputs.image_tag }}
-            ```
-
-            ### Type Stubs for IDEs
-            Download `bifrost.pyi` from the assets below and place it in your workspace directory for IDE autocomplete and type checking support.
-
-            See `DISTRIBUTION.md` for instructions.
-
-            ### Signed artifacts (Sigstore / cosign — keyless)
-
-            Each release asset has a matching `.sigstore` bundle (Sigstore's
-            self-contained signature + certificate + Rekor inclusion proof,
-            produced via keyless OIDC — no maintainer-held keys involved).
-
-            Verify with cosign (>= v2.4):
-
-            ```bash
-            cosign verify-blob \
-              --bundle bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz.sigstore \
-              --certificate-identity-regexp 'https://github\.com/${{ github.repository }}/.*' \
-              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz
-            ```
-
-            A SLSA build-provenance attestation is also published and verifiable via:
-
-            ```bash
-            gh attestation verify bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz \
-              --owner ${{ github.repository_owner }}
-            ```
-
+          body_path: release/package-notes.md
           # Immutable releases only accept asset uploads while they are drafts.
           # Publish in the next step after every asset has been uploaded.
           draft: true
@@ -1848,4 +1978,20 @@ jobs:
           else
             args+=(--latest)
           fi
+          # Do not publish until every required source asset is uploaded.
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
+          printf '%s' "$release" | jq -e --arg name "bifrost-$VERSION-source.tar.gz" '
+            [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
+            [$name, ($name + ".sha256"), ($name + ".sigstore")] |
+            all(. as $required | $assets | index($required) != null)' > /dev/null
+          if [ "$GITHUB_REPOSITORY" = Midtown-Technology-Group/bifrost ] && [ "$PRERELEASE" = false ]; then
+            # The draft must contain every attested manifest asset before the
+            # irreversible immutable publication step. Optional stubs stay optional.
+            printf '%s' "$release" | jq -e '
+              [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
+              ["release-manifest.json", "release-manifest.json.sha256", "release-manifest.json.sigstore.json"] |
+              all(. as $required | $assets | index($required) != null)' > /dev/null
+          fi
           gh release edit "$VERSION" "${args[@]}"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
+

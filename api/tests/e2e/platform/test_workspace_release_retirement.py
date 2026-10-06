@@ -6,20 +6,24 @@ from uuid import UUID, uuid4
 
 import pytest
 from bifrost.workspace_release import (
+    canonical_digest,
     workspace_manifest_id,
     workspace_registration_manifest_id,
 )
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from src.core.constants import PROVIDER_ORG_ID
 from src.models.contracts.workspace_promotions import WorkspaceLiveRetireRequest
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
+    WorkspaceSourceRelease,
 )
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
 from src.services.audit_context import ActorContext, clear_actor, set_actor
 from src.services.workspace_release_retirement import (
+    WorkspaceReleaseRetirementError,
     WorkspaceReleaseRetirementService,
 )
 from src.services.workspace_release_runtime import (
@@ -387,6 +391,220 @@ async def test_workspace_release_retirement_unblocks_legacy_lane_and_preserves_p
 
 
 @pytest.mark.e2e
+async def test_workspace_release_retirement_requires_live_handoff_and_resolved_history(
+    platform_admin,
+    db_session,
+) -> None:
+    suffix = uuid4().hex
+    source_path = f"governed_retirement_guard_{suffix}/workflow.py"
+    function_name = f"guard_{suffix}"
+    release_row_id = None
+    job_id = None
+    workflow_id = None
+    source_record_id = None
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session,
+            source_path=source_path,
+            function_name=function_name,
+            user_id=platform_admin.user_id,
+        )
+        release_row_id = release.id
+        job_id = job.id
+        _, workflow_id = _pinned_evidence(artifact, release, source_path, function_name)
+        db_session.add(
+            Workflow(
+                id=workflow_id,
+                name=function_name,
+                function_name=function_name,
+                path=source_path,
+                organization_id=PROVIDER_ORG_ID,
+            )
+        )
+        await db_session.commit()
+
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="loose workflow registrations"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="guarded handoff pending",
+            )
+        await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        source_record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID,
+            source_commit_sha="3" * 40,
+            source_tree_sha="4" * 40,
+            paths={source_path: "a" * 64},
+            declaration_actor="platform_admin",
+            declared_disposition="pending",
+            disposition="attention_required",
+            reason="reviewed source has not reached verified production",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(source_record)
+        await db_session.commit()
+        source_record_id = source_record.id
+
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="source-release obligations"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="source obligations pending",
+            )
+        await db_session.execute(
+            update(WorkspaceSourceRelease)
+            .where(WorkspaceSourceRelease.id == source_record_id)
+            .values(
+                disposition="deferred",
+                reason="handoff evidence still pending",
+                resolved_at=datetime.now(UTC),
+            )
+        )
+        await db_session.commit()
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="source-release obligations"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="deferred source obligations still pending",
+            )
+        await db_session.execute(
+            delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id
+            )
+        )
+        release.lock_state = "attention_required"
+        await db_session.commit()
+
+        with pytest.raises(
+            WorkspaceReleaseRetirementError, match="history is not locked"
+        ):
+            await _retire(
+                db_session,
+                artifact,
+                release,
+                user_id=platform_admin.user_id,
+                reason="history recovery pending",
+            )
+        await db_session.refresh(release)
+        release.lock_state = "locked"
+        await db_session.commit()
+        retired = await _retire(
+            db_session,
+            artifact,
+            release,
+            user_id=platform_admin.user_id,
+            reason="handoff proved",
+        )
+        assert retired.release_id == artifact.release_id
+    finally:
+        await db_session.rollback()
+        if workflow_id is not None:
+            await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        if source_record_id is not None:
+            await db_session.execute(
+                delete(WorkspaceSourceRelease).where(
+                    WorkspaceSourceRelease.id == source_record_id
+                )
+            )
+        await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
+async def test_workspace_release_retirement_preserves_disjoint_source_obligation(
+    platform_admin, db_session,
+) -> None:
+    source_path = f"governed_retirement_disjoint_{uuid4().hex}/workflow.py"
+    obligation_path = f"unrelated_source_obligation_{uuid4().hex}/settings.json"
+    release_row_id = job_id = None
+    source_record_id = None
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session,
+            source_path=source_path,
+            function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID,
+            source_commit_sha="3" * 40,
+            source_tree_sha="4" * 40,
+            paths={obligation_path: "b" * 64},
+            declaration_actor="platform_admin",
+            declared_disposition="attention_required",
+            disposition="attention_required",
+            reason="Independent source evidence remains unresolved",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(record)
+        await db_session.commit()
+        source_record_id = record.id
+        await db_session.refresh(record)
+        before = {
+            "disposition": record.disposition,
+            "paths": dict(record.paths),
+            "reason": record.reason,
+            "completion_evidence": record.completion_evidence,
+            "resolved_at": record.resolved_at,
+            "accounting_checked_at": record.accounting_checked_at,
+        }
+
+        retired = await _retire(
+            db_session,
+            artifact,
+            release,
+            user_id=platform_admin.user_id,
+            reason="Retire Live while preserving unrelated source evidence",
+        )
+
+        await db_session.refresh(record)
+        await db_session.refresh(release)
+        assert retired.release_id == artifact.release_id
+        assert release.activation_state == "retired"
+        assert {
+            "disposition": record.disposition,
+            "paths": dict(record.paths),
+            "reason": record.reason,
+            "completion_evidence": record.completion_evidence,
+            "resolved_at": record.resolved_at,
+            "accounting_checked_at": record.accounting_checked_at,
+        } == before
+        evidence = release.retirement_evidence
+        assert evidence["excluded_source_obligations"] == [{
+            "source_release_id": str(record.id),
+            "path_map_digest": canonical_digest({obligation_path: "b" * 64}),
+        }]
+        assert evidence["source_obligation_boundary_digest"] == canonical_digest({
+            "release_row_id": str(release.id),
+            "artifact_id": str(artifact.id),
+            "release_id": artifact.release_id,
+            "effective_manifest_id": artifact.manifest["effective_manifest_id"],
+            "source_hashes": artifact.manifest["effective_files"],
+        })
+    finally:
+        await db_session.rollback()
+        if source_record_id is not None:
+            await db_session.execute(delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id
+            ))
+            await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
 async def test_workspace_release_retirement_emits_audit_event(
     e2e_client,
     platform_admin,
@@ -437,4 +655,191 @@ async def test_workspace_release_retirement_emits_audit_event(
         assert entry["details"]["governed_path_count"] == 1
         assert entry["details"]["retirement_evidence_id"] == retired.evidence_id
     finally:
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("path_style", ["canonical", "backslash", "leading_slash"])
+@pytest.mark.parametrize("active", [True, False])
+async def test_uncaptured_runtime_equivalent_row_blocks_retirement(
+    platform_admin, db_session, path_style, active,
+) -> None:
+    """Retirement must not turn an uncaptured mismatch into mutable execution."""
+    from src.services.workspace_release_runtime import (
+        inspect_workspace_release_registration_bindings,
+    )
+
+    source_path = f"features/retirement_{uuid4().hex}/workflow.py"
+    workflow_id = uuid4()  # Deliberately absent from effective registration IDs.
+    release_row_id = job_id = None
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session, source_path=source_path, function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        path = (source_path.replace("/", "\\") if path_style == "backslash"
+                else "/" + source_path if path_style == "leading_slash" else source_path)
+        db_session.add(Workflow(id=workflow_id, name="Uncaptured leftover",
+            function_name="run", path=path, organization_id=PROVIDER_ORG_ID,
+            is_active=active))
+        await db_session.commit()
+        descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
+        bindings = await inspect_workspace_release_registration_bindings(db_session, descriptor)
+        assert [item.workflow_id for item in bindings] == ([workflow_id] if active else [])
+        if active:
+            assert bindings[0].status == "mismatch"
+            assert "workflow_id" in bindings[0].mismatch_fields
+        with pytest.raises(WorkspaceReleaseRetirementError, match="loose workflow registrations"):
+            await _retire(db_session, artifact, release, user_id=platform_admin.user_id,
+                          reason="Uncaptured row has no reviewed retirement disposition")
+        await db_session.refresh(release)
+        assert release.activation_state == "live"
+    finally:
+        await db_session.rollback()
+        await db_session.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+
+
+@pytest.mark.e2e
+async def test_retirement_cannot_hide_owner_obligations_with_another_context(
+    platform_admin, db_session,
+) -> None:
+    """The global Live row's owner, not a chosen context, owns its journal."""
+    from src.models.orm.audit import AuditLog
+    from src.models.orm.organizations import Organization
+
+    other_org = uuid4()
+    source_path = f"features/retirement_scope_{uuid4().hex}/run.py"
+    release_row_id = job_id = source_record_id = None
+    try:
+        db_session.add(Organization(id=other_org, name="Retirement scope regression",
+            created_by=str(platform_admin.user_id)))
+        await db_session.commit()
+        artifact, release, job = await _seed_live_release(
+            db_session, source_path=source_path, function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID,
+            source_commit_sha=uuid4().hex + "3" * 8,
+            source_tree_sha="4" * 40,
+            paths={source_path: "a" * 64}, declaration_actor="platform_admin",
+            declared_disposition="pending", disposition="attention_required",
+            reason="Owner's production evidence is unresolved",
+            created_by=platform_admin.user_id,
+        )
+        db_session.add(record)
+        await db_session.commit()
+        source_record_id = record.id
+        request = WorkspaceLiveRetireRequest(
+            expected_release_id=artifact.release_id, expected_artifact_id=artifact.id,
+            governed_manifest_id=artifact.manifest["governed_manifest_id"],
+            reason="An unrelated context must not hide production obligations",
+            acknowledgement="retire-live-workspace-release",
+        )
+        token = set_actor(ActorContext(user_id=platform_admin.user_id,
+            organization_id=other_org, source="http"))
+        try:
+            with pytest.raises(WorkspaceReleaseRetirementError, match="owner context"):
+                await WorkspaceReleaseRetirementService(db_session, other_org).retire(
+                    request, user_id=platform_admin.user_id)
+        finally:
+            clear_actor(token)
+        await db_session.refresh(release)
+        await db_session.refresh(record)
+        assert release.activation_state == "live" and release.retirement_evidence is None
+        assert record.disposition == "attention_required"
+    finally:
+        await db_session.rollback()
+        if source_record_id is not None:
+            await db_session.execute(delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id))
+            await db_session.commit()
+        await _cleanup(db_session, release_id=release_row_id, job_id=job_id)
+        await db_session.execute(delete(AuditLog).where(AuditLog.organization_id == other_org))
+        await db_session.execute(delete(Organization).where(Organization.id == other_org))
+        await db_session.commit()
+
+
+@pytest.mark.e2e
+async def test_retirement_inventory_reads_inactive_uncaptured_rows_without_mutation(
+    e2e_client, platform_admin, non_admin_user, db_session,
+) -> None:
+    from src.models.orm.solutions import Solution
+    from src.services.solutions.repo_workflow_adoption import _digest_row
+
+    source_path = f"features/retirement_inventory_{uuid4().hex}/run.py"
+    release_row_id = job_id = source_record_id = None
+    owner_id = uuid4()
+    workflow_ids = []
+    try:
+        artifact, release, job = await _seed_live_release(
+            db_session, source_path=source_path, function_name="run",
+            user_id=platform_admin.user_id,
+        )
+        release_row_id, job_id = release.id, job.id
+        _, inherited_id = _pinned_evidence(artifact, release, source_path, "run")
+        db_session.add(Solution(id=owner_id, slug=f"retirement-owner-{owner_id.hex}",
+            name="Already owned counterpart", organization_id=PROVIDER_ORG_ID))
+        await db_session.flush()
+        cases = [
+            (inherited_id, "different/source.py", True, None),
+            (uuid4(), source_path.replace("/", "\\"), False, None),
+            (uuid4(), source_path, True, None),
+            (uuid4(), source_path, True, owner_id),
+            (uuid4(), "unrelated/inactive.py", False, None),
+        ]
+        rows = [Workflow(id=wid, path=path, function_name="run",
+            name=f"Inventory {wid}", organization_id=PROVIDER_ORG_ID,
+            is_active=active, solution_id=sid) for wid, path, active, sid in cases]
+        workflow_ids = [row.id for row in rows]
+        db_session.add_all(rows)
+        record = WorkspaceSourceRelease(
+            organization_id=PROVIDER_ORG_ID, source_commit_sha=uuid4().hex + "3" * 8,
+            source_tree_sha="4" * 40, paths={source_path:"a" * 64},
+            declaration_actor="platform_admin", declared_disposition="pending",
+            disposition="deferred", reason="Independent evidence remains unresolved",
+            resolved_at=datetime.now(UTC), created_by=platform_admin.user_id,
+        )
+        db_session.add(record)
+        await db_session.commit()
+        source_record_id = record.id
+        # Compare persisted rows on both sides. ORM defaults such as Workflow.value
+        # start as int 0 but are materialized as Decimal('0.00') by PostgreSQL.
+        for row in [release, record, *rows]:
+            await db_session.refresh(row)
+        before = {row.id: _digest_row(row) for row in [release, record, *rows]}
+        route = "/api/workspace-promotions/live/retirement-inventory"
+        denied = e2e_client.get(route, headers=non_admin_user.headers)
+        assert denied.status_code == 403, denied.text
+        for _ in range(2):
+            response = e2e_client.get(route, headers=platform_admin.headers)
+            assert response.status_code == 200, response.text
+            census = response.json()
+            assert census["read_only"] is True
+            assert census["release_row_id"] == str(release_row_id)
+            assert census["organization_id"] == str(PROVIDER_ORG_ID)
+            assert census["unresolved_source_obligations"] == {"deferred":1}
+            by_id = {item["workflow_id"]:item for item in census["loose_registrations"]}
+            assert set(by_id) == {str(case[0]) for case in cases[:3]}
+            assert by_id[str(inherited_id)]["matched_by"] == ["effective_registration"]
+            assert by_id[str(cases[1][0])]["is_active"] is False
+            assert by_id[str(cases[1][0])]["path"] == source_path
+            assert by_id[str(cases[1][0])]["matched_by"] == ["governed_path"]
+            assert "retirement_ready" not in census
+        for row in [release, record, *rows]:
+            await db_session.refresh(row)
+            assert _digest_row(row) == before[row.id], (type(row).__name__, str(row.id))
+    finally:
+        await db_session.rollback()
+        if source_record_id is not None:
+            await db_session.execute(delete(WorkspaceSourceRelease).where(
+                WorkspaceSourceRelease.id == source_record_id))
+        if workflow_ids:
+            await db_session.execute(delete(Workflow).where(Workflow.id.in_(workflow_ids)))
+        await db_session.execute(delete(Solution).where(Solution.id == owner_id))
+        await db_session.commit()
         await _cleanup(db_session, release_id=release_row_id, job_id=job_id)

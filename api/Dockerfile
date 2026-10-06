@@ -35,7 +35,6 @@ RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requireme
 FROM python:3.14-slim@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5 AS runtime
 
 WORKDIR /app
-ARG BIFROST_VERSION=unknown
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -56,6 +55,15 @@ RUN npm install --global npm@10.9.3 --ignore-scripts --no-audit --no-fund
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Keep dependency installation ahead of source and version changes so builds
+# can reuse these layers on both worker architectures.
+COPY api/src/services/app_compiler/package.json api/src/services/app_compiler/package-lock.json /app/src/services/app_compiler/
+RUN cd /app/src/services/app_compiler && npm ci --ignore-scripts --omit=dev
+COPY api/src/services/app_bundler/package.json api/src/services/app_bundler/package-lock.json /app/src/services/app_bundler/
+RUN cd /app/src/services/app_bundler && npm ci --ignore-scripts --omit=dev
+COPY api/src/services/sdk_package/package.json api/src/services/sdk_package/package-lock.json /app/src/services/sdk_package/
+RUN cd /app/src/services/sdk_package && npm ci --ignore-scripts --omit=dev
 
 # Install `bifrost` CLI shim. The bifrost Python package is mounted at
 # /app/bifrost/ via PYTHONPATH=/app, so `python -m bifrost` works. The shim
@@ -80,28 +88,16 @@ RUN chmod -R a+rX /app/assets
 
 # Build the CLI once as an immutable image artifact. The API serves this file;
 # it never packages the live source tree in a request handler.
+ARG BIFROST_VERSION=unknown
 RUN PYTHONPATH=/app python /app/scripts/build_cli_artifact.py \
       --source /app/bifrost \
       --output /app/artifacts \
       --version "${BIFROST_VERSION}"
 
-# Install app compiler Node.js dependencies
-COPY api/src/services/app_compiler/package.json api/src/services/app_compiler/package-lock.json* /app/src/services/app_compiler/
-COPY api/src/services/app_compiler/compile.js /app/src/services/app_compiler/
-COPY api/src/services/app_compiler/tailwind.js /app/src/services/app_compiler/
-RUN cd /app/src/services/app_compiler && npm ci --ignore-scripts --omit=dev
-
-# Install app bundler Node.js dependencies (esbuild)
-COPY api/src/services/app_bundler/package.json api/src/services/app_bundler/package-lock.json* /app/src/services/app_bundler/
-RUN cd /app/src/services/app_bundler && npm ci --ignore-scripts --omit=dev
-
 # SDK package builder (esbuild) + the v2 `bifrost` SDK source it bundles. The
 # SDK source of truth lives in client/src/lib/app-sdk; it is copied here so
 # /api/sdk/download can bundle + serve the installable `bifrost` package without
 # the client/ tree at runtime. A unit test enforces this file list stays in sync.
-COPY api/src/services/sdk_package/package.json api/src/services/sdk_package/package-lock.json /app/src/services/sdk_package/
-COPY api/src/services/sdk_package/build_sdk.js /app/src/services/sdk_package/
-RUN cd /app/src/services/sdk_package && npm ci --ignore-scripts --omit=dev
 COPY client/src/lib/app-sdk/provider.tsx \
      client/src/lib/app-sdk/tables.ts \
      client/src/lib/app-sdk/transport.ts \

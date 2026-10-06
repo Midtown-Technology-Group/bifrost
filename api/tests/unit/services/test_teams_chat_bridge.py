@@ -14,6 +14,7 @@ EVENT_ID = UUID("92f93bcd-03c3-4948-8c0d-f309edbc87f8")
 ORG_ID = UUID("00000000-0000-0000-0000-000000000002")
 USER_ID = UUID("e7f3cdad-1c8b-45d8-a813-7e33bd9590f9")
 AGENT_ID = UUID("83fe1e44-7c4e-43be-aaab-7684ebc23810")
+SOLUTION_ID = UUID("a45c7984-e72f-4b23-a2e5-c8d2b71d7338")
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +24,24 @@ def canonical_event(monkeypatch):
         "resolve_canonical_teams_event_id",
         AsyncMock(side_effect=lambda _db, event_id: event_id),
     )
+
+
+@pytest.fixture
+def completion_solution(monkeypatch):
+    from src.core import database
+
+    lookup = AsyncMock(return_value=SOLUTION_ID)
+    monkeypatch.setattr(bridge, "teams_solution_id_for_event", lookup)
+
+    class _Session:
+        async def __aenter__(self):
+            return SimpleNamespace()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(database, "get_session_factory", lambda: lambda: _Session())
+    return lookup
 
 
 def _event_row(*, adapter="microsoft_bot_framework", sender_id="aad-user"):
@@ -162,14 +181,16 @@ async def test_linked_sender_runs_chat_with_their_own_principal(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
+async def test_chat_terminal_emits_only_bound_teams_run(
+    monkeypatch, completion_solution
+):
     from src.services import events
 
     emit = AsyncMock(return_value=(UUID(int=4), 0))
     monkeypatch.setattr(events, "emit_event", emit)
     run = SimpleNamespace(
         id=UUID(int=3),
-        status="completed",
+        status="failed",
         org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
     )
@@ -180,6 +201,8 @@ async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
         "webhook_event_id": str(EVENT_ID),
         "organization_id": str(ORG_ID),
     }
+    assert emit.await_args.kwargs["solution_id"] == SOLUTION_ID
+    completion_solution.assert_awaited_once()
     emit.reset_mock()
     run.input = {}
     await bridge.emit_teams_chat_completion(run)
@@ -187,7 +210,9 @@ async def test_chat_terminal_emits_only_bound_teams_run(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_completion_emit_failure_leaves_run_eligible_for_recovery(monkeypatch):
+async def test_completion_emit_failure_leaves_run_eligible_for_recovery(
+    monkeypatch, completion_solution
+):
     from src.services import events
 
     emit = AsyncMock(side_effect=RuntimeError("topic unavailable"))
@@ -205,7 +230,9 @@ async def test_completion_emit_failure_leaves_run_eligible_for_recovery(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(monkeypatch):
+async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(
+    monkeypatch, completion_solution
+):
     from src.core import database
     from src.models.enums import EventDeliveryStatus
     from src.services import events
@@ -236,6 +263,45 @@ async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(monke
     await bridge.emit_teams_chat_completion(run)
     db.get.assert_not_awaited()
     assert "teams_completion_emitted_at" not in run.run_metadata
+
+
+@pytest.mark.asyncio
+async def test_successful_completion_locks_only_agent_run(
+    monkeypatch, completion_solution
+):
+    from src.core import database
+    from src.models.enums import EventDeliveryStatus
+    from src.models.orm.agent_runs import AgentRun
+    from src.services import events
+
+    run = SimpleNamespace(
+        id=UUID(int=3),
+        status="failed",
+        org_id=ORG_ID,
+        input={"teams_event_id": str(EVENT_ID)},
+        run_metadata={},
+    )
+    monkeypatch.setattr(events, "emit_event", AsyncMock(return_value=(UUID(int=4), 1)))
+    db = SimpleNamespace(
+        scalars=AsyncMock(return_value=_Result([EventDeliveryStatus.SUCCESS])),
+        get=AsyncMock(return_value=run),
+        commit=AsyncMock(),
+    )
+
+    class _Session:
+        async def __aenter__(self):
+            return db
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(database, "get_session_factory", lambda: lambda: _Session())
+    await bridge.emit_teams_chat_completion(run)
+    db.get.assert_awaited_once_with(
+        AgentRun, run.id, with_for_update={"of": AgentRun}
+    )
+    assert "teams_completion_emitted_at" in run.run_metadata
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -32,9 +32,11 @@ function formatBytes(bytes: number): string {
 
 export function getPoolCounts(pool: PoolData) {
     if ("processes" in pool && Array.isArray(pool.processes)) {
-        const processes = pool.processes as ProcessInfo[];
+        const processes = (pool.processes ?? []) as ProcessInfo[];
         const detail = pool as PoolDetail;
-        const active = detail.active_process_count ?? detail.pool_size ?? processes.length;
+        // The detail DTO carries no pool_size/active_process_count fields
+        // (backend PoolDetail omits them), so the count is the process list.
+        const active = processes.length;
         const capacity =
             detail.configured_capacity ?? detail.max_workers ?? null;
         return {

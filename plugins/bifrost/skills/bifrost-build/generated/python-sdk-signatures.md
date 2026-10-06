@@ -89,9 +89,12 @@ Event publishing operations (async).
 
 **`executions.get(execution_id: str) -> WorkflowExecution`**
 
-**`executions.get_current_logs(execution_id: str | None = None, start: str = '0', count: int = 100) -> 'list[ExecutionLog]'`**
+**`executions.get_current_logs(execution_id: str | None = None, start: str = '0', count: int = 100) -> list[ExecutionLog]`**
 
 **`executions.list(workflow_name: str | None = None, status: str | None = None, start_date: str | None = None, end_date: str | None = None, limit: int = 50, workflow_id: str | None = None, exclude_local: bool | None = None, continuation_token: str | None = None) -> ExecutionList`**
+
+**`executions.redact_sensitive_fields(execution_id: str, scope: str | None = None) -> ExecutionRedactionResult`**
+  Sanitize stored payloads of one terminal execution (platform admin only).
 
 ### files
 
@@ -163,6 +166,17 @@ Event publishing operations (async).
 
 **`knowledge.store_many(documents: list[dict[str, Any]], namespace: str = 'default', scope: str | None = None, timeout: float | None = 300.0) -> list[str]`**
 
+### oauth_admin
+
+**`oauth_admin.inspect(connection_name: str, scope: str = 'global') -> OAuthDiagnostics`**
+  Inspect token presence and metadata without returning credentials.
+
+**`oauth_admin.reconcile(connection_name: str, scope: str = 'global') -> OAuthReconciliationResult`**
+  Reconcile duplicate token rows within one connection and exact org scope.
+
+**`oauth_admin.recover(connection_name: str, scope: str = 'global', refresh_token: Union = None, code: Union = None, redirect_uri: Union = None) -> OAuthRecoveryResult`**
+  Recover server-side. Omit credentials to refresh the stored token.
+
 ### organizations
 
 
@@ -176,6 +190,16 @@ Event publishing operations (async).
 **`organizations.list() -> list[Organization]`**
 
 **`organizations.update(org_id: str, updates: Any) -> Organization`**
+
+### resources
+
+Deployment source bytes. Operational files continue to use ``files``.
+
+**`resources.read(path: str) -> str`**
+  Read a reviewed UTF-8 source resource from the accepted deployment.
+
+**`resources.read_bytes(path: str) -> bytes`**
+  Read a reviewed resource pinned when this workflow was accepted.
 
 ### roles
 

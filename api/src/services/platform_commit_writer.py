@@ -501,23 +501,34 @@ class GitHubAppCommitWriter:
         paths: tuple[str, ...],
         ref: str,
     ) -> dict[str, str | None]:
-        result: dict[str, str | None] = {}
-        for path in paths:
-            encoded_path = urllib.parse.quote(path, safe="/")
-            response = await client.get(
-                f"{_REST_URL}/repos/{self.owner}/{self.repository}/contents/{encoded_path}",
-                headers=self._headers(token, accept="application/vnd.github.raw+json"),
-                params={"ref": ref},
-            )
-            if response.status_code == 404:
-                result[path] = None
-                continue
-            if response.is_error:
-                raise PlatformCommitError(
-                    f"GitHub could not inspect file {path}: HTTP {response.status_code}"
+        semaphore = asyncio.Semaphore(8)
+
+        async def read_hash(path: str) -> tuple[str, str | None]:
+            async with semaphore:
+                encoded_path = urllib.parse.quote(path, safe="/")
+                response = await client.get(
+                    f"{_REST_URL}/repos/{self.owner}/{self.repository}/contents/{encoded_path}",
+                    headers=self._headers(
+                        token, accept="application/vnd.github.raw+json"
+                    ),
+                    params={"ref": ref},
                 )
-            result[path] = hashlib.sha256(response.content).hexdigest()
-        return result
+                if response.status_code == 404:
+                    return path, None
+                if response.is_error:
+                    raise PlatformCommitError(
+                        f"GitHub could not inspect file {path}: HTTP {response.status_code}"
+                    )
+                return path, hashlib.sha256(response.content).hexdigest()
+
+        tasks = [asyncio.create_task(read_hash(path)) for path in paths]
+        try:
+            return dict(await asyncio.gather(*tasks))
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     async def _file_contents(
         self,

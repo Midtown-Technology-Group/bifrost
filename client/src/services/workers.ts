@@ -8,116 +8,46 @@
  * - Queue status
  * - Pool statistics
  *
- * Note: These API endpoints are not yet in the OpenAPI spec, so we use
- * manual types and the authFetch function instead of the generated $api.
+ * Response types come from the generated OpenAPI client (`@/lib/v1`,
+ * refreshed with `npm run generate:types` from a running stack). The hooks
+ * below keep using `authFetch` because these endpoints use path/query shapes
+ * that predate the generated `$api` wrappers, not because the schemas are
+ * missing from generation.
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
 
 // =============================================================================
-// Manual Type Definitions (until types are generated)
+// Generated Type Aliases (api/src/models/contracts/platform.py)
 // =============================================================================
 
 // Process states from ProcessPoolManager: idle, busy, killed
-export type ProcessState = "idle" | "busy" | "killed";
+export type ProcessState = components["schemas"]["ProcessInfo"]["state"];
 
-export interface ProcessInfo {
-	process_id: string;
-	pid: number;
-	state: ProcessState;
-	current_execution_id: string | null;
-	executions_completed: number;
-	started_at: string | null;
-	uptime_seconds: number;
-	memory_mb: number;
-	is_alive: boolean;
+export type ProcessInfo = components["schemas"]["ProcessInfo"] & {
+	/**
+	 * WebSocket-only enrichment from the worker heartbeat. This field is not
+	 * part of the REST DTO; it is attached by `useWorkerWebSocket` when
+	 * converting heartbeat processes.
+	 */
 	pending_recycle?: boolean;
-}
+};
 
-export interface PoolSummary {
-	worker_id: string;
-	hostname: string | null;
-	runtime?: string | null;
-	runtime_label?: string | null;
-	status: string | null;
-	started_at: string | null;
-	pool_size: number;
-	active_process_count?: number;
-	configured_capacity?: number | null;
-	max_workers?: number | null;
-	idle_count: number;
-	busy_count: number;
-	last_heartbeat: string | null;
-	requirements_installed: number | null;
-	requirements_total: number | null;
-}
-
-export interface PoolDetail {
-	worker_id: string;
-	hostname: string | null;
-	runtime?: string | null;
-	runtime_label?: string | null;
-	status: string | null;
-	started_at: string | null;
-	last_heartbeat: string | null;
-	pool_size?: number;
-	active_process_count?: number;
-	configured_capacity?: number | null;
-	max_workers?: number | null;
-	processes: ProcessInfo[];
-	requirements_installed: number | null;
-	requirements_total: number | null;
-	memory_current_bytes?: number;
-	memory_max_bytes?: number;
-}
-
-export interface PoolsListResponse {
-	pools: PoolSummary[];
-	total: number;
-}
-
-export interface PoolStatsResponse {
-	total_pools: number;
-	total_processes: number;
-	total_configured_capacity?: number | null;
-	total_idle: number;
-	total_busy: number;
-}
-
-export interface QueueItem {
-	execution_id: string;
-	position: number;
-	queued_at: string | null;
-}
-
-export interface QueueStatusResponse {
-	total: number;
-	items: QueueItem[];
-}
-
-export interface RecycleRequest {
-	reason?: string;
-}
-
-export interface RecycleResponse {
-	success: boolean;
-	message: string;
-	worker_id: string;
-	process_id: string | null;
-	pid: number | null;
-}
-
-export interface RecycleAllRequest {
-	reason?: string;
-}
-
-export interface RecycleAllResponse {
-	success: boolean;
-	message: string;
-	worker_id: string;
-	processes_affected: number;
-}
+export type PoolSummary = components["schemas"]["PoolSummary"];
+export type PoolDetail = components["schemas"]["PoolDetail"];
+export type PoolsListResponse = components["schemas"]["PoolsListResponse"];
+export type PoolStatsResponse = components["schemas"]["PoolStatsResponse"];
+export type QueueItem = components["schemas"]["QueueItem"];
+export type QueueStatusResponse = components["schemas"]["QueueStatusResponse"];
+export type RecycleRequest =
+	components["schemas"]["RecycleProcessRequest"];
+export type RecycleResponse =
+	components["schemas"]["RecycleProcessResponse"];
+export type RecycleAllRequest = components["schemas"]["RecycleAllRequest"];
+export type RecycleAllResponse =
+	components["schemas"]["RecycleAllResponse"];
 
 // =============================================================================
 // Pool Hooks
@@ -268,20 +198,10 @@ export function useRecycleAllProcesses() {
 // Worker Metrics (Time-Series for Diagnostics Chart)
 // =============================================================================
 
-export interface WorkerMetricPoint {
-    group: string;
-    worker_id: string;
-    memory_current: number;
-    memory_max: number;
-    fork_count: number;
-    busy_count: number;
-    idle_count: number;
-}
-
-export interface WorkerMetricsResponse {
-    range: string;
-    points: WorkerMetricPoint[];
-}
+export type WorkerMetricPoint =
+	components["schemas"]["WorkerMetricPoint"];
+export type WorkerMetricsResponse =
+	components["schemas"]["WorkerMetricsResponse"];
 
 export function useWorkerMetrics(range: string = "1h") {
     return useQuery<WorkerMetricsResponse>({

@@ -15,7 +15,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bifrost.workspace_release import canonical_digest, workspace_manifest_id
-from src.core.module_cache import inspect_module_coherence, workspace_source_update
+from src.core.module_cache import (
+    inspect_module_coherence,
+    reconcile_module_coherence,
+    workspace_source_update,
+)
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
     WorkspacePromotionRelease,
@@ -104,6 +108,17 @@ async def acquire_workspace_release_lock(
     del organization_id  # The compatibility _repo and production-live are global.
     await db.execute(
         text("SELECT pg_advisory_xact_lock(hashtext('bifrost:workspace-release'))"),
+    )
+
+
+async def acquire_runtime_admission_lock(db: AsyncSession) -> None:
+    """Allow concurrent admissions; fence their pins until durable insertion.
+
+    Accounting and Live transitions take the exclusive form of this same lock.
+    Acquire before event/execution locks and hold through the execution commit.
+    """
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock_shared(hashtext('bifrost:workspace-release'))"),
     )
 
 
@@ -604,33 +619,43 @@ class WorkspaceReleaseProjectionService:
             if item.path in projection_by_path and item.disposition == "base"
         ]
         await self._ensure_still_live(release.id)
-        storage = self.file_storage_factory(self.db)
-        async with workspace_source_update(
-            reason="workspace_release_projection",
-            changed_paths=list(paths),
-            broadcast=True,
-        ):
-            for item in repo_writes:
-                await self._ensure_still_live(release.id)
-                result = await storage.write_file(
-                    item.path,
-                    immutable[item.path],
-                    updated_by=f"workspace-release:{operator}",
-                    skip_dirty_flag=True,
-                )
-                if getattr(result, "pending_deactivations", None):
-                    raise WorkspaceReleaseProjectionError(
-                        "workspace_release_projection_metadata_changed",
-                        "Compatibility projection changed deactivation intent for "
-                        f"{item.path}.",
-                        evidence={
-                            "phase": "repo_projection",
-                            **classification_evidence,
-                        },
+        if repo_writes:
+            storage = self.file_storage_factory(self.db)
+            async with workspace_source_update(
+                reason="workspace_release_projection",
+                changed_paths=[item.path for item in repo_writes],
+                broadcast=True,
+            ):
+                for item in repo_writes:
+                    await self._ensure_still_live(release.id)
+                    result = await storage.write_file(
+                        item.path,
+                        immutable[item.path],
+                        updated_by=f"workspace-release:{operator}",
+                        skip_dirty_flag=True,
                     )
-            # The context exit rotates the shared generation and repairs cache state.
-            # Fence that external mutation just as tightly as each durable write.
-            await self._ensure_still_live(release.id)
+                    if getattr(result, "pending_deactivations", None):
+                        raise WorkspaceReleaseProjectionError(
+                            "workspace_release_projection_metadata_changed",
+                            "Compatibility projection changed deactivation intent for "
+                            f"{item.path}.",
+                            evidence={
+                                "phase": "repo_projection",
+                                **classification_evidence,
+                            },
+                        )
+                # The context exit rotates the shared generation and repairs cache state.
+                # Fence that external mutation just as tightly as each durable write.
+                await self._ensure_still_live(release.id)
+
+        # Cache entries expire independently of durable source. Rehydrate the
+        # unchanged governed paths without rotating the source generation.
+        written_paths = {item.path for item in repo_writes}
+        unchanged_paths = sorted(set(paths) - written_paths)
+        if unchanged_paths:
+            await reconcile_module_coherence(
+                unchanged_paths, invalidate_resolutions=False
+            )
 
         repo_after = await self._repo_hashes(paths)
         repo_mismatches = [

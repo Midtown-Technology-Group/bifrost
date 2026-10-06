@@ -33,6 +33,30 @@ _ALLOWED_HOSTS = (
 )
 
 
+def _token_url(value: str | None) -> str:
+    url = (value or _TOKEN_URL).strip()
+    parsed = urlparse(url)
+    parts = parsed.path.split("/")
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "login.microsoftonline.com"
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.port not in (None, 443)
+        or len(parts) != 5
+        or parts[2:] != ["oauth2", "v2.0", "token"]
+    ):
+        raise ValueError("Untrusted Bot Framework token URL")
+    if parts[1] != "botframework.com":
+        try:
+            UUID(parts[1])
+        except ValueError as exc:
+            raise ValueError("Untrusted Bot Framework token URL") from exc
+    return url
+
+
 def _receipt_scope(event: Event) -> str | None:
     actor = event.authenticated_actor or {}
     data = event.data or {}
@@ -96,7 +120,7 @@ def _service_url(value: str) -> str:
 
 
 async def _send_receipt(
-    *, app_id: str, client_secret: str, service_url: str,
+    *, app_id: str, client_secret: str, token_url: str | None = None, service_url: str,
     conversation_id: str, inbound_activity_id: str,
     update_activity_id: str | None = None,
     message: str = "Received. Working on it…",
@@ -124,7 +148,7 @@ async def _send_receipt(
     }
     async with httpx.AsyncClient(timeout=3.0) as client:
         token_response = await client.post(
-            _TOKEN_URL,
+            _token_url(token_url),
             data={
                 "grant_type": "client_credentials", "client_id": app_id,
                 "client_secret": client_secret,
@@ -187,6 +211,7 @@ async def send_fast_teams_receipt(
             raise ValueError("Teams bot credentials are missing")
         reply_id = await _send_receipt(
             app_id=app_id, client_secret=client_secret,
+            token_url=config.get("token_url"),
             service_url=receipt["service_url"],
             conversation_id=receipt["conversation_id"],
             inbound_activity_id=receipt["inbound_activity_id"],
@@ -232,6 +257,7 @@ async def finish_rejected_teams_receipt(
         await _send_receipt(
             app_id=str(config.get("app_id") or ""),
             client_secret=str(config.get("client_secret") or ""),
+            token_url=config.get("token_url"),
             service_url=receipt["service_url"],
             conversation_id=receipt["conversation_id"],
             inbound_activity_id=receipt["inbound_activity_id"],

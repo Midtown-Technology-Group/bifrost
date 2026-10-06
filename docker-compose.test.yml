@@ -410,7 +410,7 @@ services:
       - ./doc_renderer_service:/app/doc_renderer_service:ro
       - ./api/fuzz:/app/fuzz:ro
       - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities
-      - ./api/benchmarks:/app/benchmarks:ro  # CodSpeed fixture smoke tests
+      - ./api/benchmarks:/app/benchmarks:ro  # Execution serialization fixture smoke tests
       - ./api/tests:/app/tests:ro
       - ./docs/architecture/execution-operations.md:/app/docs/architecture/execution-operations.md:ro
       - ./scripts:/repo/scripts:ro
@@ -422,6 +422,7 @@ services:
       - ./api/pyrightconfig.json:/app/pyrightconfig.json:ro
       - ./api/pyrightconfig.docker.json:/app/pyrightconfig.docker.json:ro
       - ./api/Dockerfile.dev:/app/api/Dockerfile.dev:ro
+      - ./api/Dockerfile:/app/api/Dockerfile:ro  # Production dependency-cache contract.
       - ./.github/workflows:/app/.github/workflows:ro  # CI topology contract tests
       - ./test.sh:/app/test.sh:ro
       - ./docker-compose.yml:/app/docker-compose.yml:ro

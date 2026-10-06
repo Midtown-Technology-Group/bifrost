@@ -24,10 +24,12 @@ from src.models.contracts.workspace_promotions import (
     WorkspaceLiveStatusResponse,
     WorkspaceReleaseActivateRequest,
     WorkspaceReleaseHistoryStatus,
+    WorkspaceReleaseLockRetryRequest,
     WorkspaceReleaseRuntimeStatus,
     WorkspaceReleaseStatusResponse,
 )
 from src.models.orm.executions import Execution
+from src.models.orm.platform_jobs import PlatformJob
 from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import (
     WorkspacePromotionArtifact,
@@ -50,6 +52,7 @@ from src.services.workspace_draft_canary import (
 )
 from src.services.workspace_promotions import (
     WorkspacePromotionInvalid,
+    WorkspacePromotionPreviewService,
     overlay_governed_base,
     read_generation_stable_executable_snapshot,
 )
@@ -623,6 +626,100 @@ class WorkspaceReleaseActivationService:
         await self.db.refresh(release)
         return release_status(release, artifact), job, reused
 
+    async def retry_projection(
+        self,
+        release_row_id: UUID,
+        request: WorkspaceReleaseLockRetryRequest,
+        *,
+        requested_by_user_id: UUID,
+        requested_by_email: str,
+        requested_by_name: str,
+    ) -> tuple[PlatformJob, bool]:
+        """Retry only the failed history projection of the exact current Live."""
+        from src.jobs.platform.workspace_release_lock import (
+            WORKSPACE_RELEASE_LOCK_JOB_TYPE,
+            enqueue_workspace_release_lock,
+        )
+
+        try:
+            await acquire_workspace_release_lock(self.db, self.organization_id)
+            current = await self._current_live_any_organization(for_update=True)
+            if current is None or current[0].id != release_row_id:
+                raise WorkspaceReleaseActivationError(
+                    "requested release is not the current global Live Workspace release"
+                )
+            release, artifact = current
+            try:
+                descriptor = WorkspaceReleaseDescriptor.from_rows(release, artifact)
+            except WorkspaceReleaseRuntimeError as exc:
+                raise WorkspaceReleaseActivationError(
+                    "Live Workspace release evidence is invalid"
+                ) from exc
+            if descriptor.release_id != request.expected_release_id:
+                raise WorkspaceReleaseActivationError(
+                    "Live Workspace release digest differs from retry request"
+                )
+            failed_job = await self.db.get(PlatformJob, request.failed_job_id)
+            if (
+                failed_job is None
+                or failed_job.status != "failed"
+                or failed_job.job_type != WORKSPACE_RELEASE_LOCK_JOB_TYPE
+                or failed_job.resource_id != str(release_row_id)
+                or failed_job.organization_id != self.organization_id
+            ):
+                raise WorkspaceReleaseActivationError(
+                    "Workspace release history job is not a failed lock job"
+                )
+            if release.lock_in_job_id != request.failed_job_id:
+                current_job = (
+                    await self.db.get(PlatformJob, release.lock_in_job_id)
+                    if release.lock_in_job_id is not None
+                    else None
+                )
+                if (
+                    current_job is None
+                    or current_job.job_type != WORKSPACE_RELEASE_LOCK_JOB_TYPE
+                    or current_job.resource_id != str(release_row_id)
+                    or current_job.organization_id != self.organization_id
+                    or (
+                        release.lock_state in {"queued", "in_progress"}
+                        and current_job.status
+                        not in {"queued", "running", "waiting", "cancel_requested"}
+                    )
+                    or (
+                        release.lock_state == "locked"
+                        and current_job.status != "succeeded"
+                    )
+                    or release.lock_state
+                    not in {"queued", "in_progress", "locked"}
+                ):
+                    raise WorkspaceReleaseActivationError(
+                        "Workspace release history no longer references the failed job"
+                    )
+                await self.db.commit()
+                return current_job, True
+            if release.lock_state != "attention_required":
+                raise WorkspaceReleaseActivationError(
+                    "Workspace release history is not ready for retry"
+                )
+            job, reused = await enqueue_workspace_release_lock(
+                self.db,
+                release=release,
+                artifact=artifact,
+                requested_by_user_id=requested_by_user_id,
+                requested_by_email=requested_by_email,
+                requested_by_name=requested_by_name,
+            )
+            if reused:
+                raise WorkspaceReleaseActivationError(
+                    "Workspace release history retry unexpectedly reused a job"
+                )
+            await self.db.commit()
+            return job, False
+        except Exception:
+            await self.db.rollback()
+            raise
+
     async def mark_projection_queue_failed(
         self, release_row_id: UUID, message: str
     ) -> WorkspaceReleaseStatusResponse:
@@ -991,6 +1088,19 @@ class WorkspaceReleaseActivationService:
         ):
             raise WorkspaceReleaseActivationError(
                 "Live Workspace base changed after preview"
+            )
+        # Re-prove omissions under the release fence and native Solution locks.
+        # A preview receipt cannot authorize mutable/reclaimed ownership later.
+        try:
+            registrations = await WorkspacePromotionPreviewService(
+                self.db, self.organization_id
+            )._current_registration_snapshot(current_descriptor, lock_handoffs=True)
+        except WorkspacePromotionInvalid as exc:
+            raise WorkspaceReleaseActivationError(str(exc)) from exc
+        handed_off = set(current_descriptor.effective_registrations) - set(registrations)
+        if handed_off.intersection((artifact.manifest or {}).get("effective_registrations", {})):
+            raise WorkspaceReleaseActivationError(
+                "prepared loose release attempts to reclaim a Solution handoff"
             )
 
     async def _canary_attestation(

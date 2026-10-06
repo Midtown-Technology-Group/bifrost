@@ -65,7 +65,7 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function documentData(document: DocumentPublic | undefined) {
-	return ((document?.data ?? {}) as Record<string, unknown>) ?? {};
+	return (document?.data ?? {}) as Record<string, unknown>;
 }
 
 function Metadata({ document }: { document: DocumentPublic | undefined }) {

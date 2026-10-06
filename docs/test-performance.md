@@ -11,6 +11,12 @@
 - `./test.sh ci` runs the isolated full local CI path, with backend unit and
   E2E suites in separate pytest processes before client unit and Playwright.
 
+An ignored worktree `.env.test` may set `COMPOSE_FILE` to a local Compose
+configuration when the host needs a test-stack override. The test runner and
+template initialization use the same selection; the default remains
+`docker-compose.test.yml`. Pre-PR evidence includes the selected configuration.
+Keep host-specific security settings out of production and committed CI files.
+
 GitHub Actions runs Playwright on every pull request and merge-queue ref. The
 client job is part of the required `E2E Tests` aggregate gate, uploads traces,
 screenshots, videos, and the HTML report when it fails, and uses the baked

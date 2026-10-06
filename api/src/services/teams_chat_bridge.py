@@ -32,6 +32,15 @@ INTEGRATION_NAME = "Microsoft Teams Bot"
 _LEADING_MENTION = re.compile(r"^\s*<at\b[^>]*>.*?</at>\s*", re.IGNORECASE | re.DOTALL)
 
 
+async def teams_solution_id_for_event(db, event_id: UUID) -> UUID | None:
+    """Emit terminal topics into the install that owns the verified webhook."""
+    return await db.scalar(
+        select(EventSource.solution_id)
+        .join(Event, Event.event_source_id == EventSource.id)
+        .where(Event.id == event_id)
+    )
+
+
 async def emit_teams_chat_completion(run) -> None:
     """Notify the Teams Solution after a linked chat run reaches a terminal state."""
     event_id = (run.input or {}).get("teams_event_id")
@@ -44,8 +53,11 @@ async def emit_teams_chat_completion(run) -> None:
         "timeout",
     }:
         return
+    from src.core.database import get_session_factory
     from src.services.events import emit_event
 
+    async with get_session_factory()() as db:
+        solution_id = await teams_solution_id_for_event(db, UUID(str(event_id)))
     completion_event_id, subscribers = await emit_event(
         "microsoft_teams.chat_run_completed",
         {
@@ -54,6 +66,7 @@ async def emit_teams_chat_completion(run) -> None:
             "organization_id": str(run.org_id),
         },
         organization_id=run.org_id,
+        solution_id=solution_id,
         triggered_by=f"agent_run:{run.id}",
     )
     if run.status == "completed":
@@ -78,7 +91,7 @@ async def emit_teams_chat_completion(run) -> None:
             ).all()
             if not statuses or EventDeliveryStatus.FAILED in statuses:
                 return
-            stored = await db.get(AgentRun, run.id, with_for_update=True)
+            stored = await db.get(AgentRun, run.id, with_for_update={"of": AgentRun})
             if stored is not None:
                 stored.run_metadata = {
                     **(stored.run_metadata or {}),
@@ -110,6 +123,7 @@ async def recover_teams_chat_completions(*, limit: int = 50) -> int:
                     AgentRun.input.has_key("teams_event_id"),
                     ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
                     AgentRun.completed_at < datetime.now(UTC) - timedelta(seconds=15),
+                    AgentRun.completed_at > datetime.now(UTC) - timedelta(hours=24),
                 )
                 .order_by(AgentRun.completed_at)
                 .limit(limit)

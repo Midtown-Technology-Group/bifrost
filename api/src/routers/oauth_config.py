@@ -7,9 +7,10 @@ Platform admin only - used in the Settings page.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
 from src.core.log_safety import log_safe
@@ -35,12 +36,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings/oauth", tags=["OAuth SSO Config"])
 
 
-def _get_callback_url(request: Request) -> str:
-    """Get the OAuth callback URL based on the request origin."""
-    # Use X-Forwarded headers if behind a proxy, otherwise use request base URL
-    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = request.headers.get("x-forwarded-host", request.headers.get("host", "localhost"))
-    return f"{proto}://{host}/auth/oauth/callback"
+def _get_callback_url() -> str:
+    """Get the deployment-owned OAuth callback URL.
+
+    Derived from the configured ``BIFROST_PUBLIC_URL`` (``settings.public_url``).
+    Client-supplied ``Host`` / ``X-Forwarded-Host`` values are never trusted —
+    they are attacker-controlled whenever the trusted proxy boundary is not
+    explicitly established, and this admin-only display value must match the
+    single redirect URI registered with the OAuth provider.
+    """
+    return f"{get_settings().public_url.rstrip('/')}/auth/oauth/callback"
 
 
 @router.get(
@@ -50,7 +55,6 @@ def _get_callback_url(request: Request) -> str:
     description="Get configuration status for all OAuth SSO providers (Platform admin only)",
 )
 async def list_oauth_configs(
-    request: Request,
     ctx: Context,
     user: CurrentSuperuser,
     db: AsyncSession = Depends(get_db),
@@ -64,7 +68,7 @@ async def list_oauth_configs(
     service = OAuthConfigService(db)
     providers = await service.get_all_provider_configs()
     login_preference = await service.get_login_preference()
-    callback_url = _get_callback_url(request)
+    callback_url = _get_callback_url()
 
     return OAuthConfigListResponse(
         providers=providers,

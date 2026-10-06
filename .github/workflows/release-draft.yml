@@ -1,96 +1,124 @@
-name: Release draft
-
-# Keeps one "Release vNEXT" issue open while merged PRs accumulate, so nobody
-# has to remember to ask for a release. The version comes from semver:* labels,
-# falling back to conventional-commit types (scripts/next-version.py). Tagging
-# stays a human gate -- see docs/VERSIONING.md.
+name: Release PR
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Catch merges that arrived while the preceding release was packaging.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 concurrency:
-  group: release-draft
-  cancel-in-progress: true
+  group: release-pr
+  cancel-in-progress: false
 
 permissions:
-  contents: read
-  issues: write
-  pull-requests: read
+  contents: write
+  pull-requests: write
+  actions: write
 
 jobs:
-  draft:
-    name: Draft the next release
+  prepare:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.conclusion == 'success' &&
+        startsWith(github.event.workflow_run.head_branch, 'v')))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Compute the next version and merged PRs
-        id: next
+      - name: Prepare the complete reviewed release interval
+        id: candidate
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          last_tag="$(git describe --tags --abbrev=0 \
-            --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude 'v*-*' 2>/dev/null || true)"
-          if [[ -n "$last_tag" ]]; then
-            since_date="$(git log -1 --format=%cs "$last_tag")"
-          else
-            since_date="1970-01-01"
-          fi
-          if version="$(./scripts/release/next-release-version.sh)"; then
-            echo "version=$version" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            if [[ "$status" -eq 3 ]]; then
-              echo "Nothing to release since ${last_tag:-the first tag}."
-              exit 0
-            fi
-            echo "::error::next-release-version.sh failed with status $status"
-            exit "$status"
-          fi
-          {
-            echo "prs<<EOF"
-            gh pr list --state merged --base main --limit 1000 \
-              --search "merged:>=$since_date" \
-              --json number,title \
-              --jq '.[] | "- #\(.number) \(.title)"'
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/release/automatic-release.py prepare
+          # Never write an older preparation over a newer main merge.
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 
-      - name: Open or update the release issue
-        if: steps.next.outputs.version != ''
+      - name: Open or update the signed release PR
+        if: steps.candidate.outputs.version != ''
+        id: release_pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ github.token }}
+          sign-commits: true
+          branch: automation/release
+          base: main
+          delete-branch: false
+          add-paths: |
+            .claude-plugin/plugin.json
+            .codex-plugin/plugin.json
+            plugins/bifrost/.codex-plugin/plugin.json
+            release/candidate.json
+            release/notes.md
+          commit-message: 'chore(release): prepare ${{ steps.candidate.outputs.version }}'
+          title: 'chore(release): ${{ steps.candidate.outputs.version }}'
+          body: |
+            ## Release review
+
+            This PR prepares `${{ steps.candidate.outputs.version }}` from exact
+            source `${{ steps.candidate.outputs.source }}`. Review the retained
+            `release/candidate.json` interval, bump and `release/notes.md`.
+            Edit the notes to identify verified security fixes and upgrade steps.
+
+            A human maintainer must approve this exact PR head and an admin must
+            enqueue it through the normal native merge queue. This workflow does
+            not enqueue or merge it. If main advances outside the reviewed release
+            interval, refresh this PR before merging.
+
+            After exact main CI passes, Release tag verifies the signed source,
+            approved PR, manifests and candidate; it tags that commit and explicitly
+            dispatches CI on the immutable tag. CI tests, signs and publishes the
+            packages and immutable GitHub Release. Production deployment remains
+            separately authorized through bifrost-infra.
+
+            ## Recovery
+
+            For stale candidates, rerun Release PR and review its new head.
+            For publication failures, read back the tag and CI run before retrying.
+            Never move a tag or replace a published immutable release.
+
+      - name: Require verified signed PR commits
+        if: steps.release_pr.outputs.pull-request-number != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.next.outputs.version }}
-          PRS: ${{ steps.next.outputs.prs }}
+          PR_OUTPUTS: ${{ toJson(steps.release_pr.outputs) }}
         run: |
           set -euo pipefail
-          title="Release $VERSION"
-          body="$(printf '%s\n' \
-            "Auto-drafted from the merged pull requests below. The version" \
-            "follows \`semver:*\` labels, then conventional-commit types." \
-            "" \
-            "Before releasing (docs/VERSIONING.md):" \
-            "- [ ] \`./scripts/release-check.sh $VERSION\`" \
-            "- [ ] docs freshness: \`./scripts/release/check-docs-freshness.sh\`" \
-            "- [ ] merge the plugin-manifest bump: \`./scripts/update-plugin-version.sh ${VERSION#v}\`" \
-            "- [ ] close this issue as completed to tag \`$VERSION\` automatically" \
-            "- [ ] after CI, edit the GitHub Release draft: Fixed vulnerabilities + upstream baseline" \
-            "" \
-            "### Merged PRs since the last tag" \
-            "" \
-            "$PRS")"
-          existing="$(gh issue list --state open --limit 50 \
-            --search 'in:title "Release v"' \
-            --json number,title \
-            --jq '.[] | select(.title | startswith("Release v")) | .number' | head -1)"
-          if [[ -n "$existing" ]]; then
-            gh issue edit "$existing" --title "$title" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
-          fi
+          test "$(printf '%s' "$PR_OUTPUTS" | jq -r '."pull-request-commits-verified"')" = true
+
+      - name: Start approval-required PR checks as the trusted workflow
+        if: steps.release_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.release_pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+          deadline=$((SECONDS + 120))
+          while true; do
+            runs="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$head_sha&event=pull_request&per_page=100")"
+            ci_count="$(printf '%s' "$runs" | jq '[.[].workflow_runs[] | select(.path == ".github/workflows/ci.yml")] | length')"
+            if [ "$ci_count" -gt 0 ]; then
+              while IFS= read -r run_id; do
+                [ -n "$run_id" ] || continue
+                gh run rerun "$run_id" --repo "$GITHUB_REPOSITORY"
+              done < <(printf '%s' "$runs" | jq -r '.[].workflow_runs[] | select(.conclusion == "action_required") | .id')
+              break
+            fi
+            if (( SECONDS >= deadline )); then
+              echo 'PR checks not observed. Inspect the exact PR head; do not bypass checks.' >&2
+              exit 1
+            fi
+            sleep 2
+          done

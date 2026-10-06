@@ -14,16 +14,22 @@ When a release is cut (e.g. `v0.8.1`), the next merge to main produces
 release tag was last cut — no script changes required.
 
 Both annotated and lightweight `vMAJOR.MINOR.PATCH` tags are valid. Dev versions
-use **MTG-Thomas/bifrost tags only** — see [VERSIONING.md](../VERSIONING.md).
+use **Midtown-Technology-Group/bifrost tags only** — see [VERSIONING.md](../VERSIONING.md).
 Before the first stable MTG release (`v1.0.0`), the script bootstraps to
 `1.0.0-dev.<commit-count>`.
 
 ## Where it's computed
 
-- `scripts/compute-dev-version.sh` — pure shell, takes no args, prints
-  the version to stdout. Exits non-zero on missing/malformed latest tag.
-- `.github/workflows/ci.yml` "Compute version" step in the
-  `build-dev-images` job calls the script and feeds the output into
+- `scripts/compute-dev-version.sh --next-after <parent>` computes the candidate
+  and main-publication version from commits since the stable tag plus one.
+  Both image paths use this mode so the tested candidate and published images
+  carry the same version.
+- Invoking the script without arguments instead uses the exact HEAD committer
+  timestamp as its dev sequence; this standalone mode is not the current
+  candidate/main publication sequence. No stable tag bootstraps to
+  `1.0.0-dev.<commit-count>`; malformed stable tags fail.
+- `.github/workflows/ci.yml` candidate identity and "Compute candidate-compatible
+  version" steps call the script and feed the output into
   `BIFROST_VERSION` and `VITE_BIFROST_VERSION` build args.
 - Tested by `scripts/test-compute-dev-version.sh`.
 
@@ -35,8 +41,9 @@ Before the first stable MTG release (`v1.0.0`), the script bootstraps to
 | `:dev` | Yes | Floating pointer for Keel + dev consumers |
 | `:sha-1a2b3c4` | No (immutable) | Direct commit traceability |
 
-Release builds (on `v*` tag push) push semver tags (`:0.8.1`, `:0.8`,
-`:0`) and `:latest` (only for release tags). See `ci.yml:436-449`.
+Release builds on `v*` tags push semver tags (`:0.8.1`, `:0.8`, `:0`)
+and `:latest` only for stable release tags. The `build-api`, `build-client`
+and `build-worker` jobs in `ci.yml` own those tags.
 
 ## Where the version is consumed
 
@@ -46,8 +53,10 @@ Release builds (on `v*` tag push) push semver tags (`:0.8.1`, `:0.8`,
   at build time (`client/src/lib/version.ts`).
 - **CLI**: `BIFROST_VERSION` baked into the wheel at build time, exposed
   as `bifrost.__version__`.
-- **CLI version check**: strict string equality between `__version__`
-  and `/api/version`. Format is irrelevant.
+- **CLI compatibility**: reported server and installed CLI contract versions
+  must match. A different build version with a matching contract produces a
+  deduplicated update notice, not a hard block. For migration operations use
+  the authoritative SDK served by the selected instance.
 - **Browser banner**: same — strict equality between `APP_VERSION` and
   `/api/version` poll response.
 
@@ -57,8 +66,9 @@ After this change ships, in-flight users will see exactly one of:
 
 1. **Browser tab open during cutover**: poll detects mismatch, banner
    appears, user reloads, gets new bundle. Normal path.
-2. **CLI installed before cutover**: `bifrost <command>` errors with
-   "CLI out of date", user upgrades. Normal path.
+2. **CLI installed before cutover**: an incompatible contract blocks commands
+   and requires an upgrade. A matching contract with different build bytes
+   remains compatible and shows an update notice.
 3. **Flux re-enable** (separate follow-up): old `0.8.0-N-g…` tags
    remain in GHCR; new `0.8.1-dev.N` tags outrank them by semver base
    comparison. Flux will only ever pick new-format tags.
@@ -67,7 +77,7 @@ After this change ships, in-flight users will see exactly one of:
 
 **Symptom: dev version shows `1.0.0-dev.N` but you expected a higher base**
 
-No stable `vMAJOR.MINOR.PATCH` tag exists on `MTG-Thomas/bifrost` yet. Cut the
+No stable `vMAJOR.MINOR.PATCH` tag exists on `Midtown-Technology-Group/bifrost` yet. Cut the
 first release (for example `v1.0.0`) or verify `fetch-depth: 0` on checkout so
 tag history is visible.
 

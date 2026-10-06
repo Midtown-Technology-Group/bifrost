@@ -37,6 +37,7 @@ def settings() -> SimpleNamespace:
         redis_url="redis://example/0",
         deferred_execution_promoter_interval_seconds=7,
         platform_build_backend="local",
+        external_worker_scaling_enabled=False,
     )
 
 
@@ -48,10 +49,13 @@ def scheduler(monkeypatch: pytest.MonkeyPatch, settings: SimpleNamespace):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("external_enabled", [False, True])
 async def test_start_initializes_control_loops_and_waits_for_shutdown(
     monkeypatch: pytest.MonkeyPatch,
     scheduler,
+    external_enabled: bool,
 ) -> None:
+    scheduler.settings.external_worker_scaling_enabled = external_enabled
     init_db = AsyncMock()
     monkeypatch.setattr(scheduler_main, "init_db", init_db)
     monkeypatch.setattr(scheduler_main, "close_db", AsyncMock())
@@ -64,6 +68,11 @@ async def test_start_initializes_control_loops_and_waits_for_shutdown(
     async def diagnostics_loop() -> None:
         scheduler._shutdown_event.set()
 
+    async def external_loop(_stop):
+        await leadership_gate.wait()
+    external = AsyncMock(side_effect=external_loop)
+    monkeypatch.setattr("src.services.external_worker_scaling.controller_loop", external)
+
     scheduler._job_slots = 0
     scheduler._leadership_loop = leadership_loop  # type: ignore[method-assign]
     scheduler._diagnostics_heartbeat_loop = diagnostics_loop  # type: ignore[method-assign]
@@ -73,7 +82,14 @@ async def test_start_initializes_control_loops_and_waits_for_shutdown(
 
     init_db.assert_awaited_once()
     assert scheduler.running is True
+    if external_enabled:
+        external.assert_awaited_once_with(scheduler._shutdown_event)
+        assert scheduler._external_workers_task.get_name() == "external-worker-scaling"
+    else:
+        external.assert_not_called()
+        assert scheduler._external_workers_task is None
     await scheduler.stop()
+    assert scheduler._external_workers_task is None
 
 
 @pytest.mark.asyncio

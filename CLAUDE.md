@@ -81,9 +81,9 @@ Tips:
 
 ## Technologies
 
--   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, RabbitMQ, Redis
+-   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, Redis (RabbitMQ retained for compatibility/test coverage)
 -   **Frontend**: TypeScript 4.9+, React, Vite
--   **Storage**: PostgreSQL (data), Redis (cache/sessions), RabbitMQ (message queue)
+-   **Storage**: PostgreSQL (data + production work delivery via `work_deliveries`, selected by promoted production configuration; the checked-in default in `api/src/config.py` is still `rabbitmq` and the deployed value is not verified from this repo), Redis (cache/sessions/ephemeral execution context), RabbitMQ (legacy/compatibility transport, still covered by the test stack)
 -   **Infrastructure**: Docker, Docker Compose, GitHub Actions for CI/CD
 
 ## Development Environment (CRITICAL - READ FIRST)
@@ -99,6 +99,8 @@ Start the development stack (per-worktree isolated):
 ./debug.sh down        # Tear down + remove volumes for THIS worktree
 ./debug.sh logs api    # Follow logs for one service
 ```
+
+Follow [debug environment ownership and cleanup](docs/dev/agent-platform-rules.md#debug-environment-ownership-and-cleanup): clean up disposable task-created resources before final issue/PR handoff; preserve pre-existing resources and report verified teardown or an explicit retained owner/reason.
 
 `./debug.sh` derives its Compose project name from the worktree path, so multiple worktrees can run debug stacks in parallel. URL and login are printed at the end of `up`. Port mode uses `dev@gobifrost.com` / `password`; Netbird mode uses the same email with a strong generated per-worktree password. MFA is off.
 

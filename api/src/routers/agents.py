@@ -589,7 +589,12 @@ async def create_agent(
     # Sync agent roles to referenced workflows (tools) - additive
     await sync_agent_roles_to_workflows(db, agent, assigned_by=user.email)
 
-    return _agent_to_public(agent)
+    # Commit before returning: get_db only commits during dependency teardown,
+    # which runs after the response is sent, so a client acting on the 201
+    # could miss the new row (POST /api/chat/conversations -> 404).
+    response = _agent_to_public(agent)
+    await db.commit()
+    return response
 
 
 @router.get("/accessible-tools")

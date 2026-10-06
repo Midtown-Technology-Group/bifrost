@@ -48,6 +48,22 @@ def _find_compose() -> pathlib.Path:
 _COMPOSE = _find_compose()
 
 
+def test_full_gate_shared_backend_build_covers_every_backend_consumer():
+    """Building api must refresh all images frozen by the full gate."""
+    services = yaml.safe_load(_COMPOSE.read_text())["services"]
+    api = services["api"]
+    for name in (
+        "init",
+        "api-replica",
+        "worker",
+        "scheduler",
+        "scheduler-fixtures",
+        "test-runner",
+    ):
+        assert services[name]["image"] == api["image"], name
+        assert services[name]["build"] == api["build"], name
+
+
 def _find_repo_file(path: str) -> pathlib.Path:
     """Locate a repo-root file in-container or on host."""
     candidates = [
@@ -248,8 +264,10 @@ def test_pre_pr_preserves_full_browser_gate_and_explicit_ci_deferral():
     script = _find_repo_file("test.sh").read_text()
     gate = script.split("cmd_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
     workflow = _find_repo_file(".github/workflows/ci.yml").read_text()
-    assert './test.sh client e2e\n' in workflow
-    full = gate.split('if [ "$full_run" = "1" ]; then')[-1].split("\n    else", 1)[0]
+    assert '--shard="$SHARD_ID/$SHARD_TOTAL"' in workflow
+    full_dispatch = gate.split('if [ "$full_run" = "1" ]; then')[-1].split("\n    else", 1)[0]
+    assert "run_full_pre_pr" in full_dispatch
+    full = script.split("run_full_pre_pr() {", 1)[1].split("\n}\n", 1)[0]
     assert "run_pre_pr_stage browser client_e2e" in full
     assert "client_smoke" not in full
     scoped = script.split("run_scoped_pre_pr() {", 1)[1].split("\n}\n", 1)[0]

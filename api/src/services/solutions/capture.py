@@ -131,6 +131,19 @@ class SolutionCaptureService:
         ``captured_by`` is the acting user, recorded on each ``pending_captures``
         queue row so a deploy can name who captured an un-pulled entity.
         """
+        # The route loads its Solution before taking the install write lock.
+        # Read the pointer from the database so a stale ORM object cannot allow
+        # capture after a concurrent immutable deployment activation.
+        active_deployment_id = await self.db.scalar(
+            select(Solution.active_deployment_id)
+            .where(Solution.id == solution.id)
+            .with_for_update()
+        )
+        if active_deployment_id is not None:
+            raise SolutionCaptureConflict(
+                "Solution has an active immutable deployment; capture requires a "
+                "reviewed deployment that includes the new entities"
+            )
         await self._reject_inline_apps(selectors.apps)
         await self._reject_governed_workflows(solution, selectors.workflows)
         await self._capture_model(Workflow, solution, selectors.workflows)
@@ -381,6 +394,7 @@ class SolutionCaptureService:
         include_values: bool = False,
         include_data: bool = False,
         include_files: bool = False,
+        source_files: dict[str, str] | None = None,
     ) -> SolutionBundle:
         workflows = await self._workflow_entries(solution.id)
         tables = await self._table_entries(solution.id)
@@ -389,11 +403,11 @@ class SolutionCaptureService:
         agents = await self._agent_entries(solution.id)
         claims = await self._claim_entries(solution.id)
         config_schemas = await self._config_entries(solution.id)
-        connection_schemas = await self._connection_entries(solution.id)
+        connection_schemas = await self._connection_entries(solution.id, source_files=source_files)
         file_locations = await self._file_location_entries(solution.id)
         file_policies = await self._file_policy_entries(solution.id)
         events = await self._event_entries(solution.id)
-        python_files = await self._python_files(
+        python_files = source_files if source_files is not None else await self._python_files(
             workflows, include_imports=include_imports
         )
         config_values: dict[str, str] = {}
@@ -667,7 +681,9 @@ class SolutionCaptureService:
             for c in rows
         ]
 
-    async def _connection_entries(self, solution_id: UUID) -> list[dict[str, Any]]:
+    async def _connection_entries(
+        self, solution_id: UUID, *, source_files: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Return the install's integration declarations.
 
         Source of truth is the persisted ``SolutionConnectionSchema`` rows
@@ -687,6 +703,7 @@ class SolutionCaptureService:
         from src.models.orm.solution_connection_schema import SolutionConnectionSchema
         from src.services.solutions.integration_template import (
             build_integration_template,
+            scrub_integration_template,
         )
         from src.services.solutions.ref_scanner import scan_integration_refs
 
@@ -701,28 +718,31 @@ class SolutionCaptureService:
             return [
                 {
                     "integration_name": r.integration_name,
-                    "template": r.template,
+                    "template": scrub_integration_template(r.template),
                     "position": r.position,
                 }
                 for r in persisted
             ]
 
-        wfs = (
-            await self.db.execute(
-                select(Workflow).where(Workflow.solution_id == solution_id)
-            )
-        ).scalars().all()
         names: set[str] = set()
-        for wf in wfs:
-            if not wf.path:
-                continue
-            try:
-                src = (await self.repo.read(wf.path)).decode("utf-8")
-            except Exception:
-                # Source not in _repo/ (already-deployed under _solutions/) —
-                # mirror _python_files: skip rather than fail the capture.
-                continue
-            names |= scan_integration_refs(src)
+        if source_files is not None:
+            for source in source_files.values():
+                names |= scan_integration_refs(source)
+        else:
+            wfs = (
+                await self.db.execute(
+                    select(Workflow).where(Workflow.solution_id == solution_id)
+                )
+            ).scalars().all()
+            for wf in wfs:
+                if not wf.path:
+                    continue
+                try:
+                    source = (await self.repo.read(wf.path)).decode("utf-8")
+                except Exception:
+                    # Legacy captures may lack readable workspace source.
+                    continue
+                names |= scan_integration_refs(source)
 
         entries: list[dict[str, Any]] = []
         for pos, name in enumerate(sorted(names)):
@@ -740,6 +760,9 @@ class SolutionCaptureService:
             entries.append(
                 {"integration_name": name, "template": template, "position": pos}
             )
+            # Immutable export must not create declarations while reading bytes.
+            if source_files is not None:
+                continue
             existing = (
                 await self.db.execute(
                     select(SolutionConnectionSchema).where(

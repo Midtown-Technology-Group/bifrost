@@ -14,6 +14,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+
 
 def default_temp_location() -> str:
     return str(Path(tempfile.gettempdir()) / "bifrost")
@@ -35,6 +37,14 @@ class Settings(BaseSettings):
     Environment variables can be set directly or via .env file.
     All secrets should be provided via environment variables in production.
     """
+
+    solution_git_delivery_policy: SolutionGitDeliveryPolicy | None = Field(
+        default=None,
+        description=(
+            "Explicit protected-Git deployment trust policy. Separate from source "
+            "declaration OIDC; absent disables automated Solution delivery."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="BIFROST_",
@@ -104,6 +114,21 @@ class Settings(BaseSettings):
             "same backend; drain and verify the old backend before changing it."
         ),
     )
+
+    external_worker_scaling_enabled: bool = False
+    external_worker_app_resource_id: str = ""
+    external_worker_max_replicas: int = Field(default=2, ge=1, le=10)
+    external_worker_queue_account: str = ""
+    external_worker_queue_name: str = ""
+    external_worker_tenant_id: str = ""
+    external_worker_client_id: str = ""
+    external_worker_principal_id: str = ""
+    external_worker_enrollment_audience: str = ""
+    external_worker_defined_network_id: str = ""
+    external_worker_defined_role_id: str = ""
+    external_worker_idle_seconds: int = Field(default=120, ge=120, le=3600)
+    worker_workflow_queue_scope: Literal["canary", "production"] = "canary"
+    service_claim_enabled: bool = True
 
     # ==========================================================================
     # Workflow Execution

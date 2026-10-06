@@ -1112,7 +1112,8 @@ async def test_next_activation_waits_for_current_live_history_lock() -> None:
 
 
 @pytest.mark.asyncio
-async def test_activation_rebuilds_hybrid_base_under_lock(monkeypatch) -> None:
+@pytest.mark.parametrize("handoff_state", ["valid", "reclaim", "drift"])
+async def test_activation_rebuilds_hybrid_base_under_lock(monkeypatch, handoff_state) -> None:
     governed_path = "modules/shared.py"
     ungoverned_path = "workflows/legacy.py"
     immutable_source = b"VALUE = 'reviewed'\n"
@@ -1125,6 +1126,7 @@ async def test_activation_rebuilds_hybrid_base_under_lock(monkeypatch) -> None:
         runtime_storage_prefix="_workspace_releases/org/release/files/",
         governed_paths=(governed_path,),
         governed_source_hashes={governed_path: governed_hash},
+        effective_registrations={"handed_off.py::run": {}},
     )
     hybrid_hashes = {
         governed_path: governed_hash,
@@ -1133,6 +1135,7 @@ async def test_activation_rebuilds_hybrid_base_under_lock(monkeypatch) -> None:
     artifact = SimpleNamespace(
         base_release_id=release_id,
         base_manifest_id=workspace_manifest_id(hybrid_hashes),
+        manifest={"effective_registrations": ({"handed_off.py::run": {}} if handoff_state == "reclaim" else {})},
     )
     request = SimpleNamespace(expected_active_release_id=release_id)
     current = (SimpleNamespace(lock_state="locked"), SimpleNamespace())
@@ -1161,9 +1164,18 @@ async def test_activation_rebuilds_hybrid_base_under_lock(monkeypatch) -> None:
         lambda _prefix: storage,
     )
 
-    await WorkspaceReleaseActivationService(
-        SimpleNamespace(), uuid4()
-    )._validate_base_cas(request, artifact, current)
+    readback = AsyncMock(return_value={})
+    if handoff_state == "drift":
+        readback.side_effect = activation_module.WorkspacePromotionInvalid("handoff drift")
+    monkeypatch.setattr(activation_module.WorkspacePromotionPreviewService, "_current_registration_snapshot", readback)
+    service = WorkspaceReleaseActivationService(SimpleNamespace(), uuid4())
+    if handoff_state == "valid":
+        await service._validate_base_cas(request, artifact, current)
+    else:
+        message = "reclaim" if handoff_state == "reclaim" else "handoff drift"
+        with pytest.raises(WorkspaceReleaseActivationError, match=message):
+            await service._validate_base_cas(request, artifact, current)
+    readback.assert_awaited_once_with(descriptor, lock_handoffs=True)
 
     storage.read_many.assert_awaited_once_with([governed_path])
 

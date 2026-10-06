@@ -1,6 +1,6 @@
 ---
 name: bifrost-secupdate
-description: Drain the Bifrost Security tab — work through open Dependabot PRs (auto-merge eligible vs needs-review classification), Dependabot alerts (with/without PR), CodeQL alerts (severity-first triage with subagent fan-out for class-level rules), secret-scanning alerts (real vs FP). Use when user says "drain the security queue", "work through alerts", or after `/loop` triggers from bifrost-secaudit.
+description: Triage and resolve Bifrost security alerts and Dependabot pull requests using the repository security policy and required verification.
 ---
 
 # Bifrost Security Update Loop
