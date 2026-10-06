@@ -1,17 +1,9 @@
 """Service unit tests + router thin-boundary tests for user operations.
 
-The business behavior behind the five ``api/bifrost/users.py`` SDK
-methods (``list``, ``create``, ``get``, ``update``, ``delete``) lives in
-``shared.sdk_users``; the HTTP handlers in ``api/src/routers/users.py``
-are thin delegates. These tests pin:
-
-- the service against a real DB: success paths, error precedence
-  (self-delete 400 before 404/403, 404 before 403), system-user
-  protection, provider-org promotion on superuser grant, invite
-  creation on create, and list filtering/pagination;
-- the router boundary with the service mocked: delegation arguments,
-  ``UserServiceError`` -> ``HTTPException`` mapping, and the
-  ``X-Total-Count`` header.
+Tests cover the upstream shared service and the fork's canonical HTTP handlers.
+They verify list pagination, invite creation, user response shapes, system-user
+protection, and self-delete / missing-user error precedence against a real DB.
+The fork retains its own handlers to preserve its authorization contracts.
 """
 
 from __future__ import annotations
@@ -345,7 +337,7 @@ class TestUsersRouterBoundary:
                 sort_by=None, sort_direction="asc", limit=None, offset=0)
         assert exc_info.value.status_code == 422
 
-    async def test_create_delegates(self, db_session):
+    async def test_create_returns_pending_invite(self, db_session):
         from src.models import UserCreate
         from src.routers.users import create_user
         request = UserCreate(email=f"new-{uuid4().hex}@example.com", name="N")
@@ -363,7 +355,7 @@ class TestUsersRouterBoundary:
             await get_user(str(uuid4()), _principal(), db_session)
         assert exc_info.value.status_code == 404
 
-    async def test_update_delegates_and_maps_403(self, db_session):
+    async def test_update_preserves_system_user_protection(self, db_session):
         from src.models import UserUpdate
         from src.routers.users import update_user
         row = await self._seed(db_session)

@@ -1,8 +1,7 @@
 """Shared SDK knowledge service (``shared.sdk_knowledge``).
 
-The HTTP handlers (``/api/sdk/knowledge/*`` in ``api/src/routers/cli.py``)
-delegate to this service. These tests pin the service contract and the
-thin-adapter parity:
+The fork retains canonical HTTP handlers. These tests pin the upstream shared
+service contract and the fork handler response and authorization behavior:
 
 - one embedder and one repository across ``store_many``,
 - commit ordering and failure rollback (one final commit; a failure

@@ -1,6 +1,6 @@
 """Focused unit tests for the SDK workflow-mutations shared service.
 
-Covers ``shared.sdk_workflow_execution`` — the single implementation behind
+Covers ``shared.sdk_workflow_execution`` and the fork canonical handlers for
 ``workflows.execute()`` (``POST /api/workflows/execute``) and
 ``workflows.cancel()`` (``POST /api/workflows/executions/{id}/cancel``):
 
@@ -14,7 +14,7 @@ Covers ``shared.sdk_workflow_execution`` — the single implementation behind
 - publish ordering (execution update before history update) and the
   transient skip,
 - cancel 404/403/409 precedence and the status-guarded UPDATE,
-- router thin-boundary delegation for both handlers.
+- canonical handler dispatch, cancellation, and scheduled-form authority.
 
 DB-backed via the ``db_session`` fixture. Queue/Redis/WebSocket side
 effects are patched at their source modules (the service imports them
@@ -837,7 +837,7 @@ class TestHelpers:
 class TestRouterBoundaries:
     """The fork retains its canonical execution, claim, and source-pin pipeline."""
 
-    async def test_execute_delegates_and_maps_errors(self, db_session):
+    async def test_execute_dispatches_inline_code_and_rejects_missing_workflow(self, db_session):
         from src.routers.workflows import execute_workflow
         principal = _admin()
         ctx = SimpleNamespace(user=principal, org_id=None, solution_id=None,
@@ -851,7 +851,7 @@ class TestRouterBoundaries:
             await execute_workflow(_request(workflow_id=str(uuid4())), ctx, db_session, principal)
         assert exc_info.value.status_code == 404
 
-    async def test_cancel_delegates_and_maps_errors(self, db_session):
+    async def test_cancel_persists_status_and_maps_errors(self, db_session):
         from src.routers.workflows import cancel_scheduled_execution
         user = await _seed_user(db_session, is_superuser=True)
         principal = _admin(user_id=user.id)

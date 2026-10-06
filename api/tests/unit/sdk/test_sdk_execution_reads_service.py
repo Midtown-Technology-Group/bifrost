@@ -1,6 +1,6 @@
 """Focused unit tests for the SDK execution-reads shared service.
 
-Covers ``shared.sdk_execution_reads`` — the single implementation behind
+Covers ``shared.sdk_execution_reads`` and the fork canonical handlers for
 ``workflows.list()`` (``GET /api/workflows``), ``executions.list()``
 (``GET /api/executions``), and ``executions.get()`` / ``workflows.get()``
 (``GET /api/executions/{id}``):
@@ -12,7 +12,7 @@ Covers ``shared.sdk_execution_reads`` — the single implementation behind
   workflow_id-wins, and owner-only visibility,
 - execution detail shape, admin-only fields, and 403/404 precedence,
 - cursor encode/decode round-trip,
-- router thin-boundary delegation for the three handlers.
+- canonical handler response, authorization, and socket route parity.
 
 DB-backed via the ``db_session`` fixture.
 """
@@ -450,7 +450,7 @@ class TestHistoryCursor:
 class TestRouterBoundaries:
     """Worker SDK reads use the fork's canonical handlers and auth dependencies."""
 
-    async def test_list_workflows_delegates_and_maps_403(self, db_session):
+    async def test_list_workflows_returns_metadata_and_requires_admin(self, db_session):
         from src.routers.workflows import list_workflows, router
         from src.core.auth import get_current_user
         from fastapi import FastAPI

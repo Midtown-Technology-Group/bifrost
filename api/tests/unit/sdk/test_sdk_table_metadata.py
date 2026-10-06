@@ -1,9 +1,7 @@
 """Shared SDK table metadata service (``shared.sdk_table_metadata``).
 
-The HTTP handlers (``POST /api/sdk/tables/create``, ``POST
-/api/sdk/tables/list``, ``DELETE /api/tables/{table_id}``) delegate to
-this service. These tests pin the service contract and the thin-adapter
-parity:
+The fork retains canonical HTTP handlers. These tests pin the upstream shared
+service contract and the fork handler response and authorization behavior:
 
 - exact-scope duplicate vs global name cascade on create,
 - Solution execution-context rejection on create,
