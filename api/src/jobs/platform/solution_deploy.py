@@ -9,6 +9,8 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
 from src.jobs.execution_policy import (
@@ -22,18 +24,35 @@ from src.jobs.platform.base import (
     PlatformJobPolicy,
 )
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
+from src.models.orm.platform_jobs import PlatformJob
 from src.models.orm.solutions import Solution
 from src.services.solutions.deploy_job_storage import SolutionDeployJobStorage
 
 logger = logging.getLogger(__name__)
+SOLUTION_DEPLOY_INTENT_SCHEMA = "bifrost.solution-deploy-intent/v1"
 
 
 class SolutionDeployPayload(BaseModel):
     deploy_job_id: UUID
-    kind: Literal["deploy", "install", "install_from_repo"]
+    kind: Literal["deploy", "install", "install_from_repo", "deliver_package"]
     install_id: UUID | None = None
     input_sha256: str
     options: dict[str, Any]
+
+
+async def unresolved_solution_deploy(
+    db: AsyncSession, solution_id: UUID, *, exclude_job_id: UUID | None = None,
+) -> PlatformJob | None:
+    """An original commit intent must be reconciled before another writer."""
+    query = select(PlatformJob).where(
+        PlatformJob.job_type == "solution.deploy",
+        PlatformJob.status != "succeeded",
+        PlatformJob.result["schema_version"].as_string() == SOLUTION_DEPLOY_INTENT_SCHEMA,
+        PlatformJob.result["solution_id"].as_string() == str(solution_id),
+    )
+    if exclude_job_id is not None:
+        query = query.where(PlatformJob.id != exclude_job_id)
+    return await db.scalar(query.order_by(PlatformJob.created_at.asc()).limit(1))
 
 
 async def run_solution_deploy(
@@ -41,6 +60,13 @@ async def run_solution_deploy(
     payload: SolutionDeployPayload,
 ) -> dict:
     from src.routers.solutions import _run_deploy_job, _run_install_job
+
+    if payload.kind == "deliver_package":
+        from src.jobs.platform.solution_package_delivery import run_solution_package_delivery
+        return await run_solution_package_delivery(context, payload)
+
+    if payload.deploy_job_id != context.job_id:
+        raise PlatformJobFailure("solution_deploy_identity_mismatch", "Solution job identity differs from its payload.")
 
     storage = SolutionDeployJobStorage(payload.deploy_job_id)
     await context.report("Loading staged Solution input", percent=2)
@@ -152,4 +178,5 @@ SOLUTION_DEPLOY_DEFINITION = PlatformJobDefinition(
         workload_class=WorkloadClass.PLATFORM_INTERACTIVE,
     ),
     encrypt_payload=True,
+    readback_checkpoint_schema=SOLUTION_DEPLOY_INTENT_SCHEMA,
 )

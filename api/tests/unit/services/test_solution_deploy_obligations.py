@@ -302,7 +302,8 @@ def test_app_without_active_compiled_runtime_cannot_complete_solution_accounting
         return SimpleNamespace(all=lambda: values)
 
     database = SimpleNamespace(
-        scalars=scalars, execute=AsyncMock(return_value=SimpleNamespace(all=lambda: []))
+        scalars=scalars, execute=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),
+        get=AsyncMock(return_value=None),
     )
     monkeypatch.setattr(
         "src.services.solutions.storage.SolutionStorage.list",

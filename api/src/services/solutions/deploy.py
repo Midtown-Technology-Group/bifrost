@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -63,6 +64,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+    from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
 
 def _decode_logo(
     label: str, b64: str | None, content_type: str | None
@@ -234,6 +236,21 @@ class CompiledSolutionAppDeployment:
     source_available: bool = False
 
 
+@dataclass(frozen=True)
+class PreparedSolutionDeployment:
+    """Transaction-local inputs for publication through the existing deployer.
+
+    The complete source bundle, remapped entity projection and compiled outputs
+    are retained so a reviewed package worker can stage them before committing
+    any publication pointer.
+    This is not durable intent, a runtime receipt, or permission to publish.
+    """
+
+    source_bundle: SolutionBundle = field(repr=False)
+    bundle: SolutionBundle = field(repr=False)
+    compiled_apps: tuple[CompiledSolutionAppDeployment, ...] = field(repr=False)
+
+
 @dataclass
 class DeployResult:
     """Counts from one full-replace deploy.
@@ -264,6 +281,11 @@ class DeployResult:
     roles_created: list[str] = field(default_factory=list)
     finalize_s3: Callable[[], Awaitable[None]] = field(
         default=_noop_finalize, compare=False, repr=False
+    )
+    # Append without changing existing positional arguments or public counters.
+    # Raw source and compiled outputs are excluded from repr/equality transport.
+    prepared: PreparedSolutionDeployment | None = field(
+        default=None, compare=False, repr=False
     )
 
 
@@ -333,6 +355,112 @@ class SolutionDeployer:
         file_mode: str = "replace",
         source_artifact: bytes | Path | None = None,
     ) -> DeployResult:
+        # Manual/legacy callers never obtain permission to replace an active
+        # immutable runtime. Only the reviewed package preparation entry below
+        # accepts an exact existing deployment as its base.
+        return await self._prepare_bundle(bundle, force, file_mode, source_artifact)
+
+    async def prepare_reviewed_package(
+        self,
+        source: VerifiedSolutionPackageSource,
+        *,
+        expected_active_deployment_id: UUID | None,
+        expected_controls_digest: str,
+    ) -> PreparedSolutionDeployment:
+        """Prepare the complete Git package in the caller's transaction.
+
+        This does not commit, upload, activate, or return the legacy mutable
+        finalizer. The package worker must stage immutable bytes and join the
+        Solution and App pointer switches in the same transaction. Existing
+        controls/resources are retained; deliberate control changes require a
+        separate reviewed contract, not a force switch.
+        """
+        import tempfile
+
+        from bifrost.solution_package_delivery import review_solution_package_source
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import (
+            capture_package_controls,
+            require_preserved_package_controls,
+        )
+        from src.services.solutions.zip_install import _build_bundle, _parse_workspace, _safe_extract
+
+        evidence = source.evidence()
+        proof = evidence["package"]
+        prefix = source.authored.repo_subpath + "/"
+        modes = {item.path.removeprefix(prefix): item.mode for item in source.authored.source_files}
+        verified = review_solution_package_source(
+            proof["reviewed_recipe"], source.authored.files, modes,
+            source_commit_sha=source.authored.commit_sha,
+            source_tree_sha=source.authored.tree_sha,
+        )
+        if (
+            canonical_digest(evidence) != source.artifact_digest or verified != proof
+            or hashlib.sha256(source.source_archive).hexdigest() != proof["source_archive_sha256"]
+        ):
+            raise SolutionDeployConflict("Reviewed package source evidence differs")
+        sid = UUID(proof["solution_id"])
+        # A savepoint also rolls back metadata/role/shell preparation if the
+        # post-prepare control comparison fails and an outer caller catches it.
+        async with self.db.begin_nested():
+            solution = await self.db.scalar(
+                select(Solution).where(Solution.id == sid).with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if solution is None or (
+                str(solution.organization_id) if solution.organization_id is not None else None
+            ) != proof["organization_id"]:
+                raise SolutionDeployConflict("Reviewed package target/scope differs")
+            if solution.active_deployment_id != expected_active_deployment_id:
+                raise SolutionDeployConflict("Reviewed package base deployment changed")
+            before = await capture_package_controls(self.db, sid)
+            if canonical_digest(before) != expected_controls_digest:
+                raise SolutionDeployConflict("Reviewed package installed controls changed")
+            previous_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
+                Workflow.id, Workflow.parameters_schema,
+            ).where(Workflow.solution_id == sid))).all()}
+            with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
+                workspace = Path(directory)
+                _safe_extract(source.source_archive, directory)
+                preview = _parse_workspace(workspace)
+                if preview.requires_password or preview.slug != solution.slug:
+                    raise SolutionDeployConflict("Reviewed package identity or secret tier differs")
+                bundle = _build_bundle(solution, preview, workspace)
+                result = await self._prepare_bundle(
+                    bundle, source_artifact=source.source_archive,
+                    expected_active_deployment_id=expected_active_deployment_id,
+                    allow_reviewed_version_revert=True,
+                )
+            await self.db.flush()
+            from src.services.solutions.workflow_revision import require_compatible_parameters
+            current_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
+                Workflow.id, Workflow.parameters_schema,
+            ).where(Workflow.solution_id == sid))).all()}
+            for identity, parameters in previous_parameters.items():
+                if not isinstance(parameters, dict) or not isinstance(current_parameters.get(identity), dict):
+                    raise SolutionDeployConflict("Legacy workflow parameters require reviewed adoption before package delivery")
+                try:
+                    require_compatible_parameters(parameters, current_parameters[identity])
+                except ValueError as exc:
+                    raise SolutionDeployConflict(str(exc)) from exc
+            try:
+                require_preserved_package_controls(before, await capture_package_controls(self.db, sid))
+            except ValueError as exc:
+                raise SolutionDeployConflict(str(exc)) from exc
+            if result.prepared is None:
+                raise SolutionDeployConflict("Reviewed package preparation is incomplete")
+            return result.prepared
+
+    async def _prepare_bundle(
+        self,
+        bundle: SolutionBundle,
+        force: bool = False,
+        file_mode: str = "replace",
+        source_artifact: bytes | Path | None = None,
+        *,
+        expected_active_deployment_id: UUID | None = None,
+        allow_reviewed_version_revert: bool = False,
+    ) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
         ``file_mode`` controls how bundle file sidecars are written on deploy:
@@ -363,7 +491,7 @@ class SolutionDeployer:
             .where(Solution.id == sid)
             .with_for_update()
         )
-        if active_deployment_id is not None:
+        if active_deployment_id != expected_active_deployment_id:
             raise SolutionDeployConflict(
                 "Solution has an active immutable deployment; stage and review a "
                 "successor deployment before changing its workflows"
@@ -399,7 +527,11 @@ class SolutionDeployer:
         # ── Downgrade gate (Task 20) — before ANY writes ─────────────────────
         # An older bundle (both versions PEP 440-ordered) is refused unless
         # forced. Unparseable/absent versions are unordered and never block.
-        if not force and _is_downgrade(bundle.version, solution.version):
+        # Current protected Main is the publication authority for the reviewed
+        # package path, including a reviewed source revert with a lower version.
+        # This exemption affects only version ordering; CAS, scope, resource and
+        # control checks remain required. Manual deployment keeps its force gate.
+        if not force and not allow_reviewed_version_revert and _is_downgrade(bundle.version, solution.version):
             raise SolutionDowngradeBlocked(
                 f"bundle version {bundle.version} is older than installed "
                 f"{solution.version}; re-run with force to downgrade"
@@ -558,6 +690,9 @@ class SolutionDeployer:
             claims_deleted=claim_deleted,
             integrations_shell_created=shells_created,
             roles_created=sorted(self._created_roles),
+            prepared=PreparedSolutionDeployment(
+                source_bundle=bundle, bundle=rb, compiled_apps=tuple(compiled)
+            ),
             finalize_s3=_finalize_s3,
         )
 
@@ -1372,16 +1507,15 @@ class SolutionDeployer:
         try:
             await self._activate_compiled_dists(compiled)
         except Exception:
-            for item in compiled:
-                try:
-                    await builder.delete_deployment(item.app_id, item.deployment_id)
-                except Exception:  # noqa: BLE001 - best-effort cleanup before retry
-                    logger.warning(
-                        "failed to delete unactivated app deployment %s for app %s",
-                        item.deployment_id,
-                        item.app_id,
-                        exc_info=True,
-                    )
+            # The transaction may have committed before its acknowledgement was
+            # lost. Deleting these immutable outputs could remove the now-active
+            # App. Retain them for independent pointer/byte readback; an exception
+            # is not proof that activation rolled back.
+            logger.warning(
+                "Solution App activation outcome is unresolved; retaining uploaded "
+                "deployments for readback",
+                exc_info=True,
+            )
             raise
         for item in compiled:
             old = item.superseded_deployment_id
@@ -1406,72 +1540,88 @@ class SolutionDeployer:
         rebuild advanced the pointer since the DB reconciliation phase.
         """
         async with _solution_app_activation_db_context() as db:
-            app_ids = [item.app_id for item in compiled]
-            rows = (
-                await db.execute(
-                    select(
-                        Application.id,
-                        Application.solution_id,
-                        Application.active_deployment_id,
-                    ).where(Application.id.in_(app_ids))
+            await self._activate_compiled_dists_in_transaction(db, compiled)
+
+    async def _activate_compiled_dists_in_transaction(
+        self,
+        db: AsyncSession,
+        compiled: list[CompiledSolutionAppDeployment],
+    ) -> None:
+        """Apply the existing all-App CAS inside the caller's transaction.
+
+        A reviewed full-package worker can move the Solution pointer in this
+        same transaction after staging and verifying every immutable artifact.
+        This method never commits, uploads, or authorizes a package by itself.
+        Ordinary deploys keep their existing fresh-transaction wrapper above.
+        """
+        if not compiled:
+            return
+        app_ids = [item.app_id for item in compiled]
+        rows = (
+            await db.execute(
+                select(
+                    Application.id,
+                    Application.solution_id,
+                    Application.active_deployment_id,
+                ).where(Application.id.in_(app_ids))
+            )
+        ).all()
+        by_id = {row[0]: row for row in rows}
+        if len(by_id) != len(app_ids):
+            raise SolutionFinalizeIncomplete("solution app disappeared before activation")
+
+        solution_ids = {row[1] for row in rows}
+        if len(solution_ids) != 1:
+            raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+        solution_id = next(iter(solution_ids))
+        expected_solution_ids = {item.solution_id for item in compiled}
+        if solution_ids != expected_solution_ids:
+            raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+
+        for item in compiled:
+            row = by_id[item.app_id]
+            active = row[2]
+            if active == item.deployment_id:
+                continue
+            if active != item.expected_old_deployment_id:
+                raise SolutionFinalizeIncomplete(
+                    f"app {item.app_id} active deployment changed before activation"
                 )
-            ).all()
-            by_id = {row[0]: row for row in rows}
-            if len(by_id) != len(app_ids):
-                raise SolutionFinalizeIncomplete("solution app disappeared before activation")
 
-            solution_ids = {row[1] for row in rows}
-            if len(solution_ids) != 1:
-                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
-            solution_id = next(iter(solution_ids))
-            expected_solution_ids = {item.solution_id for item in compiled}
-            if solution_ids != expected_solution_ids:
-                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
-
-            for item in compiled:
-                row = by_id[item.app_id]
-                active = row[2]
-                if active == item.deployment_id:
-                    continue
-                if active != item.expected_old_deployment_id:
-                    raise SolutionFinalizeIncomplete(
-                        f"app {item.app_id} active deployment changed before activation"
+        now = datetime.now(timezone.utc)
+        for item in compiled:
+            meta = item.sdk_metadata
+            values = {
+                "active_deployment_id": item.deployment_id,
+                "deployed_at": now,
+                "sdk_package_version": meta.package_version if meta else None,
+                "sdk_fingerprint": meta.fingerprint if meta else None,
+                "sdk_contract_version": meta.contract_version if meta else None,
+                "sdk_built_at": now if meta else None,
+                "published_snapshot": {
+                    "deployed_by": "solution",
+                    "app_model": "standalone_v2",
+                    "sdk_source_available": item.source_available,
+                    "runtime_pin": item.runtime_pin,
+                },
+            }
+            result = await db.execute(
+                update(Application)
+                .where(
+                    Application.id == item.app_id,
+                    Application.solution_id == solution_id,
+                    (
+                        Application.active_deployment_id
+                        == item.expected_old_deployment_id
                     )
-
-            now = datetime.now(timezone.utc)
-            for item in compiled:
-                meta = item.sdk_metadata
-                values = {
-                    "active_deployment_id": item.deployment_id,
-                    "deployed_at": now,
-                    "sdk_package_version": meta.package_version if meta else None,
-                    "sdk_fingerprint": meta.fingerprint if meta else None,
-                    "sdk_contract_version": meta.contract_version if meta else None,
-                    "sdk_built_at": now if meta else None,
-                    "published_snapshot": {
-                        "deployed_by": "solution",
-                        "app_model": "standalone_v2",
-                        "sdk_source_available": item.source_available,
-                        "runtime_pin": item.runtime_pin,
-                    },
-                }
-                result = await db.execute(
-                    update(Application)
-                    .where(
-                        Application.id == item.app_id,
-                        Application.solution_id == solution_id,
-                        (
-                            Application.active_deployment_id
-                            == item.expected_old_deployment_id
-                        )
-                        | (Application.active_deployment_id == item.deployment_id),
-                    )
-                    .values(**values)
+                    | (Application.active_deployment_id == item.deployment_id),
                 )
-                if result.rowcount != 1:
-                    raise SolutionFinalizeIncomplete(
-                        f"app {item.app_id} active deployment changed before activation"
-                    )
+                .values(**values)
+            )
+            if result.rowcount != 1:
+                raise SolutionFinalizeIncomplete(
+                    f"app {item.app_id} active deployment changed before activation"
+                )
 
     async def _delete_stale_app_dist(self, app_ids: set[UUID]) -> None:
         """S3 phase: delete the dist artifacts of apps reconciled away."""

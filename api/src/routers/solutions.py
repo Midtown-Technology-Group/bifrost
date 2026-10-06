@@ -107,6 +107,7 @@ from src.jobs.platform.solution_export import (
 from src.jobs.platform.solution_deploy import (
     SOLUTION_DEPLOY_DEFINITION,
     SolutionDeployPayload,
+    unresolved_solution_deploy,
 )
 from src.services.github_actions_oidc import (
     workspace_source_release_tracking_organization_id,
@@ -614,18 +615,60 @@ async def _enqueue_solution_deploy_job(
     input_path: Path | None = None,
     input_bytes: bytes | None = None,
     memory_profile_key: str | None = None,
+    publication_id: UUID | None = None,
 ) -> SolutionDeployJob:
     """Stage one validated input and atomically expose its central job row."""
     if (input_path is None) == (input_bytes is None):
         raise ValueError("exactly one staged input is required")
     if install_id is not None:
         await _lock_solution_operation(db, install_id)
+        if publication_id is not None:
+            # Protected package admission supplies a deterministic identity.
+            # A lost enqueue response must locate this original operation,
+            # rather than write a second input or create a second publisher.
+            from src.models.orm.platform_jobs import PlatformJob
+            from src.core.security import decrypt_secret
+            retained = await db.get(PlatformJob, publication_id)
+            if retained is not None:
+                original = SolutionDeployPayload.model_validate_json(decrypt_secret(retained.encrypted_payload or ""))
+                requested_digest = hashlib.sha256(input_bytes or b"").hexdigest()
+                immutable_options = ("package_source", "artifact_digest")
+                if (kind != "deliver_package" or original.kind != kind
+                        or original.install_id != install_id or original.input_sha256 != requested_digest
+                        or retained.organization_id != organization_id
+                        or retained.requested_by_user_id != str(requested_by_user_id)
+                        or any(original.options.get(key) != options.get(key) for key in immutable_options)):
+                    raise HTTPException(status_code=409, detail="Original package job identity differs.")
+                projection = await db.get(SolutionDeployJob, publication_id)
+                if projection is None:
+                    raise HTTPException(status_code=409, detail="Original package status is unavailable.")
+                if retained.status == "succeeded":
+                    from src.services.solutions.package_runtime import readback_package_runtime
+                    await readback_package_runtime(db, install_id, UUID((projection.result or {})["deployment_id"]),
+                        expected_source_sha256=original.input_sha256, expected_organization_id=organization_id)
+                elif retained.status in ("failed", "cancelled", "requires_action"):
+                    from src.jobs.platform.solution_deploy import SOLUTION_DEPLOY_INTENT_SCHEMA
+                    if (retained.result or {}).get("schema_version") != SOLUTION_DEPLOY_INTENT_SCHEMA:
+                        raise HTTPException(status_code=409, detail="Original pre-publication failure requires diagnosis before a fresh operation.")
+                    await enqueue_platform_job(db, SOLUTION_DEPLOY_DEFINITION, original,
+                        dedupe_key=retained.dedupe_key, resource_lock_key=retained.resource_lock_key,
+                        priority=retained.priority, organization_id=organization_id,
+                        requested_by_user_id=requested_by_user_id, requested_by_email=requested_by_email,
+                        requested_by_name=requested_by_name, resource_type=retained.resource_type,
+                        resource_id=retained.resource_id, title=retained.title, action_url=retained.action_url)
+                    await db.commit()
+                return projection
         if await _active_solution_sdk_update_exists(db, install_id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An App SDK update is already in progress for this Solution.",
             )
-    job_id = uuid4()
+        if await unresolved_solution_deploy(db, install_id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An original reviewed package delivery requires recovery before another Solution writer.",
+            )
+    job_id = publication_id or uuid4()
     storage = SolutionDeployJobStorage(job_id)
     if input_path is not None:
         digest, _ = await storage.write_path(input_path)
@@ -680,7 +723,8 @@ async def _enqueue_solution_deploy_job(
         await db.refresh(projection)
     except Exception:
         await db.rollback()
-        await storage.delete()
+        if kind != "deliver_package":
+            await storage.delete()
         raise
     await publish_platform_job_update(platform_job)
     return projection
