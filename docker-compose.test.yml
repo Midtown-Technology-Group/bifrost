@@ -417,6 +417,9 @@ services:
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/.coveragerc:/app/.coveragerc:ro
+      # Configuration regression tests run in every unit-test lane.
+      - ./api/.coveragerc.sonar:/app/.coveragerc.sonar:ro
+      - ./api/.coveragerc.sonar-report:/app/.coveragerc.sonar-report:ro
       - ./api/pytest.ini:/app/pytest.ini:ro
       - ./api/pyproject.toml:/app/pyproject.toml:ro
       - ./api/pyrightconfig.json:/app/pyrightconfig.json:ro

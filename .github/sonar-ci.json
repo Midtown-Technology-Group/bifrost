@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "mode": "report-only",
+  "project_key": "Midtown-Technology-Group_bifrost",
+  "migration_note": "Keep automatic analysis enabled until report generation is verified and an operator coordinates the reviewed cutover. This file does not authorize autonomous approvals."
+}

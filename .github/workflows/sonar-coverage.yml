@@ -1,0 +1,321 @@
+name: Sonar Coverage
+
+on:
+  workflow_call:
+    inputs:
+      head_sha:
+        required: true
+        type: string
+      base_sha:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      SONAR_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  CI_API_TEST_IMAGE: midtown-technology-group/bifrost-ci-api-dev
+  CI_CLIENT_TEST_IMAGE: midtown-technology-group/bifrost-ci-client-dev
+  CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', inputs.head_sha) }}
+
+jobs:
+  evidence:
+    name: Sonar Coverage Evidence
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      head: ${{ steps.context.outputs.head }}
+      base: ${{ steps.context.outputs.base }}
+      mode: ${{ steps.context.outputs.mode }}
+      manifest_sha256: ${{ steps.validate.outputs.manifest_sha256 }}
+      artifact_name: ${{ steps.context.outputs.artifact_name }}
+    steps:
+      - name: Checkout exact analysis source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind analysis context
+        id: context
+        env:
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+          REQUESTED_BASE: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          if [ -n "$REQUESTED_BASE" ] && ! [[ "$REQUESTED_BASE" =~ ^0+$ ]]; then
+            [[ "$REQUESTED_BASE" =~ ^[0-9a-f]{40}$ ]]
+            base="$REQUESTED_BASE"
+          elif [ "$GITHUB_REF" = refs/heads/main ]; then
+            base="$(git rev-parse HEAD^)"
+          else
+            base="$(git rev-parse origin/main)"
+          fi
+          git cat-file -e "$base^{commit}"
+          mode="$(python3 -c 'import json; c=json.load(open(".github/sonar-ci.json")); assert c["schema_version"] == 1; assert c["project_key"] == "Midtown-Technology-Group_bifrost"; assert c["mode"] in ("report-only", "ci"); print(c["mode"])')"
+          printf 'head=%s\nbase=%s\nmode=%s\n' "$EXPECTED_HEAD" "$base" "$mode" >> "$GITHUB_OUTPUT"
+          printf 'artifact_name=sonar-evidence-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          mkdir -p .sonar-evidence/raw
+          git ls-files -z > .sonar-evidence/raw/tracked-files.nul
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            scripts/docs/package-lock.json
+      - name: Set up Python for source-aware validation
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Run preflight fault probes
+        run: python3 -m unittest discover -s scripts/sonar -p 'test_*.py'
+      - name: Install client and repository test dependencies
+        run: |
+          npm ci --prefix client
+          npm ci --prefix scripts/docs --ignore-scripts
+      - name: Collect comprehensive client coverage
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: |
+          set -euo pipefail
+          (cd client && npm run test:coverage)
+          cp client/coverage/lcov.info .sonar-evidence/raw/client.lcov
+          python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
+      - name: Collect repository Node test coverage
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' tests < <(git ls-files -z '*.test.mjs' '*.test.cjs')
+          test "${#tests[@]}" -gt 0
+          node --test --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=.sonar-evidence/raw/node.lcov \
+            "${tests[@]}"
+          python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/node.lcov
+      - name: Prepare exact-source test images
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+          API_IMAGE_CHANGED: "true"
+          CLIENT_IMAGE_CHANGED: "true"
+        run: bash api/scripts/ci/prepare-test-images.sh api client
+      - name: Prepare isolated Sonar test stack
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+          mkdir -p "$LOG_DIR"
+          # Rendering without all profiles drops services that test.sh activates
+          # later (worker, scheduler, test-runner). Preserve the complete model.
+          docker compose --profile '*' -f docker-compose.test.yml -f docker-compose.sonar.yml config > "$RUNNER_TEMP/sonar-compose.yml"
+          services="$(docker compose --profile '*' -f "$RUNNER_TEMP/sonar-compose.yml" config --services)"
+          for service in api api-replica worker scheduler scheduler-fixtures test-runner; do
+            grep -qx "$service" <<< "$services" || { echo "Missing Sonar test service: $service" >&2; exit 1; }
+          done
+          echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
+          echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
+      - name: Collect repository Python tool coverage
+        run: |
+          set -euo pipefail
+          # Pure repository tools have their own scripts namespace. Run from
+          # /repo with an isolated PYTHONPATH so /app/scripts cannot shadow it.
+          # Exercise this wiring before booting the full application stack.
+          # Keep host ownership of results until test.sh prepares its fixtures;
+          # the image's root entrypoint otherwise chowns the bind-mounted root.
+          targets=()
+          while IFS= read -r -d '' file; do
+            filename="${file##*/}"
+            if [[ "$filename" == test_*.py || "$filename" == *_test.py ]]; then
+              targets+=("$file")
+            fi
+          done < <(git ls-files -z -- scripts)
+          test "${#targets[@]}" -gt 0
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps \
+            --user "$(id -u):$(id -g)" --workdir /repo --env PYTHONPATH=/repo test-runner \
+            pytest "${targets[@]}" -o 'python_files=test_*.py *_test.py' -o cache_dir=/tmp/sonar-pytest-cache \
+            --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
+            --junitxml=/tmp/bifrost/sonar-repository-junit.xml
+      - name: Collect comprehensive Python coverage
+        env:
+          BIFROST_SKIP_BUILD: "1"
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: |
+          set -euo pipefail
+          ./test.sh stack up
+          # Append the API tests to repository-tool coverage. Include slow unit
+          # cases; affected-only reports are not this initial full denominator.
+          ./test.sh unit -m "" --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          # Virtual workflow filenames executed by tests are not repository
+          # source. Audit only those records out; missing tracked source fails.
+          docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
+            python /repo/api/scripts/filter_sonar_coverage.py
+          docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
+            coverage xml --rcfile=/app/.coveragerc.sonar-report --data-file=/bifrost-results/.coverage.sonar-tracked -o /bifrost-results/coverage-sonar.xml
+          cp "$SONAR_LOG_DIR/coverage-sonar.xml" .sonar-evidence/raw/python.xml
+          python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/python.xml
+      - name: Validate reports and source inventory
+        id: validate
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: |
+          python3 scripts/sonar/preflight.py --head "$HEAD_SHA" --base "$BASE_SHA" \
+            --python .sonar-evidence/raw/python.xml --client .sonar-evidence/raw/client.lcov \
+            --node .sonar-evidence/raw/node.lcov --properties sonar-project.properties --output-dir .sonar-evidence
+          echo "manifest_sha256=$(sha256sum .sonar-evidence/manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Tear down task-owned stack
+        if: always() && env.COMPOSE_FILE != ''
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          status=0
+          ./test.sh stack down || status=$?
+          # Even an early harness-initialization failure must remove this job's
+          # containers, networks and disposable volumes; preserve the failure.
+          docker compose --profile '*' -f "$COMPOSE_FILE" down -v --remove-orphans
+          test -z "$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")"
+          exit "$status"
+      - name: Preserve Python diagnostics after teardown
+        if: always() && env.SONAR_LOG_DIR != ''
+        env:
+          REPORT_STATUS: ${{ steps.validate.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p .sonar-evidence/diagnostics
+          # Export can fail after creating private files. Transfer only these
+          # existing regular outputs, even on failure, before host-side copies.
+          for private_file in .coverage.sonar-tracked sonar-runtime-coverage.json; do
+            file="$SONAR_LOG_DIR/$private_file"
+            if [ -e "$file" ] || [ -L "$file" ]; then
+              if [ ! -f "$file" ] || [ -L "$file" ]; then
+                echo 'Unsafe private Sonar diagnostic artifact' >&2
+                exit 1
+              fi
+              sudo chown --no-dereference "$(id -u):$(id -g)" "$file"
+            fi
+          done
+          if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then
+            cp "$SONAR_LOG_DIR/test-results.xml" .sonar-evidence/diagnostics/api-unit-junit.xml
+          fi
+          if [ -f "$SONAR_LOG_DIR/sonar-repository-junit.xml" ]; then
+            cp "$SONAR_LOG_DIR/sonar-repository-junit.xml" .sonar-evidence/diagnostics/repository-unit-junit.xml
+          fi
+          # Keep the filtering audit on every run; larger raw databases are
+          # needed only when export or report validation fails.
+          files=(sonar-runtime-coverage.json)
+          if [ "$REPORT_STATUS" != success ]; then
+            files+=(.coverage.sonar .coverage.sonar-tracked coverage-sonar.xml)
+          fi
+          for file in "${files[@]}"; do
+            if [ -f "$SONAR_LOG_DIR/$file" ]; then
+              cp "$SONAR_LOG_DIR/$file" .sonar-evidence/diagnostics/
+            fi
+          done
+          # These are isolated test-stack logs exported by stack down, not live
+          # application credentials or a valid replacement for missing reports.
+          find "$SONAR_LOG_DIR" -maxdepth 1 -name '*.log' -type f -exec cp {} .sonar-evidence/diagnostics/ \;
+      - name: Retain exact-source evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.context.outputs.artifact_name }}
+          path: .sonar-evidence/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      - name: Report staged migration
+        if: steps.context.outputs.mode == 'report-only'
+        run: |
+          echo 'Coverage evidence is staged. No CI analysis was submitted to SonarQube Cloud. Automatic analysis and current approval controls remain unchanged.' >> "$GITHUB_STEP_SUMMARY"
+
+  scan:
+    name: Sonar CI Analysis
+    needs: evidence
+    if: needs.evidence.outputs.mode == 'ci'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout exact analysis source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.evidence.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download this run's evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.evidence.outputs.artifact_name }}
+          path: .sonar-evidence
+      - name: Verify evidence before analysis
+        env:
+          HEAD_SHA: ${{ needs.evidence.outputs.head }}
+          BASE_SHA: ${{ needs.evidence.outputs.base }}
+        run: python3 scripts/sonar/preflight.py verify --head "$HEAD_SHA" --base "$BASE_SHA" --output-dir .sonar-evidence --manifest-sha256 "${{ needs.evidence.outputs.manifest_sha256 }}"
+      - name: Require coordinated migration prerequisites
+        id: scan-context
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.head_ref }}
+          PR_BASE: ${{ github.base_ref }}
+          HEAD_SHA: ${{ needs.evidence.outputs.head }}
+        run: |
+          set -euo pipefail
+          test -n "$SONAR_TOKEN" || { echo 'Approved Sonar CI credential is missing.' >&2; exit 1; }
+          [[ "$ORGANIZATION" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo 'Verified Sonar organization key is missing or invalid.' >&2; exit 1; }
+          args="-Dsonar.organization=$ORGANIZATION -Dsonar.scm.revision=$HEAD_SHA"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+            [[ "$PR_BRANCH" =~ ^[A-Za-z0-9_./-]+$ ]]
+            [[ "$PR_BASE" =~ ^[A-Za-z0-9_./-]+$ ]]
+            args="$args -Dsonar.pullrequest.key=$PR_NUMBER -Dsonar.pullrequest.branch=$PR_BRANCH -Dsonar.pullrequest.base=$PR_BASE"
+          else
+            [[ "$GITHUB_REF_NAME" =~ ^[A-Za-z0-9_./-]+$ ]]
+            args="$args -Dsonar.branch.name=$GITHUB_REF_NAME"
+          fi
+          printf 'args=%s\n' "$args" >> "$GITHUB_OUTPUT"
+      - name: Analyze exact source and wait for its quality gate
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          scannerVersion: 8.1.0.6389
+          args: ${{ steps.scan-context.outputs.args }}
+      - name: Verify evidence after analysis
+        env:
+          HEAD_SHA: ${{ needs.evidence.outputs.head }}
+          BASE_SHA: ${{ needs.evidence.outputs.base }}
+        run: python3 scripts/sonar/preflight.py verify --head "$HEAD_SHA" --base "$BASE_SHA" --output-dir .sonar-evidence --manifest-sha256 "${{ needs.evidence.outputs.manifest_sha256 }}"
+      - name: Retain scanner task identity
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sonar-task-${{ inputs.head_sha }}-${{ github.run_attempt }}
+          path: .scannerwork/report-task.txt
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
