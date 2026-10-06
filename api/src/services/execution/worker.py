@@ -60,6 +60,7 @@ class ResourceMetrics:
     """Resource usage metrics captured during execution."""
     # Memory metrics (bytes)
     peak_memory_bytes: int  # Maximum RSS during execution
+    peak_process_rss_bytes: int  # One-shot child process high-water RSS
     # CPU metrics (seconds)
     cpu_user_seconds: float  # User-mode CPU time
     cpu_system_seconds: float  # Kernel-mode CPU time
@@ -101,6 +102,7 @@ def _capture_metrics(start_rss: int, start_utime: float, start_stime: float) -> 
 
     return ResourceMetrics(
         peak_memory_bytes=end_rss,  # Peak is cumulative from process start
+        peak_process_rss_bytes=end_rss,
         cpu_user_seconds=round(cpu_user, 4),
         cpu_system_seconds=round(cpu_system, 4),
         cpu_total_seconds=round(cpu_user + cpu_system, 4),
@@ -409,6 +411,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                     "variables": None,
                     "metrics": {
                         "peak_memory_bytes": metrics.peak_memory_bytes,
+                        "peak_process_rss_bytes": metrics.peak_process_rss_bytes,
                         "cpu_user_seconds": metrics.cpu_user_seconds,
                         "cpu_system_seconds": metrics.cpu_system_seconds,
                         "cpu_total_seconds": metrics.cpu_total_seconds,
@@ -432,6 +435,10 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             name=context_data.get("name"),
             tags=context_data.get("tags", []),
             timeout_seconds=context_data.get("timeout_seconds", 1800),
+            workflow_deadline=(
+                datetime.fromisoformat(context_data["workflow_deadline"])
+                if context_data.get("workflow_deadline") else None
+            ),
             cache_ttl_seconds=context_data.get("cache_ttl_seconds", 300),
             parameters=context_data.get("parameters", {}),
             startup=context_data.get("startup"),  # Launch workflow results
@@ -475,6 +482,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             "execution_context": exec_result.execution_context,
             "metrics": {
                 "peak_memory_bytes": metrics.peak_memory_bytes,
+                "peak_process_rss_bytes": metrics.peak_process_rss_bytes,
                 "cpu_user_seconds": metrics.cpu_user_seconds,
                 "cpu_system_seconds": metrics.cpu_system_seconds,
                 "cpu_total_seconds": metrics.cpu_total_seconds,
@@ -500,6 +508,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             "traceback": traceback.format_exc(),
             "metrics": {
                 "peak_memory_bytes": metrics.peak_memory_bytes,
+                "peak_process_rss_bytes": metrics.peak_process_rss_bytes,
                 "cpu_user_seconds": metrics.cpu_user_seconds,
                 "cpu_system_seconds": metrics.cpu_system_seconds,
                 "cpu_total_seconds": metrics.cpu_total_seconds,
