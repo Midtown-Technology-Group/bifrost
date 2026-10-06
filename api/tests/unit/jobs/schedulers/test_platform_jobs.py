@@ -860,15 +860,22 @@ async def test_cancelling_worker_stops_active_child(
 @pytest.mark.asyncio
 async def test_settings_concurrency_override_replaces_policy_default(
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from src.jobs.platform.application_deploy import (
         ApplicationDeployPayload,
     )
     from src.services.kubernetes_execution import KubernetesExecutionService
 
+    # Claiming commits the remaining rows too. Keep them unavailable to the
+    # real stack scheduler while advancing only this test's eligibility clock.
+    available_at = datetime.now(timezone.utc) + timedelta(days=1)
+    claim_time = available_at + timedelta(days=1)
+    job_ids = []
+
     async def _enqueue_deploy() -> None:
         app_id = uuid4()
-        await enqueue_platform_job(
+        job, _ = await enqueue_platform_job(
             db_session,
             APPLICATION_DEPLOY_DEFINITION,
             ApplicationDeployPayload(
@@ -886,31 +893,43 @@ async def test_settings_concurrency_override_replaces_policy_default(
             title="Deploying Test",
             action_url=None,
         )
-
-    await db_session.execute(delete(PlatformJob))
-    await _enqueue_deploy()
-    await _enqueue_deploy()
+        job.available_at = available_at
+        job_ids.append(job.id)
+        await db_session.flush()
 
     service = KubernetesExecutionService(db_session)
-    await service.set_job_type_concurrency(
-        "application.deploy", 2, updated_by="test"
-    )
+    try:
+        await db_session.execute(delete(PlatformJob))
+        await _enqueue_deploy()
+        await _enqueue_deploy()
+        # Wall-clock claims cannot consume this test's queued jobs.
+        assert await scheduler.claim_platform_job() is None
+        monkeypatch.setattr(scheduler, "_now", lambda: claim_time)
+        await service.set_job_type_concurrency(
+            "application.deploy", 2, updated_by="test"
+        )
 
-    assert await scheduler.claim_platform_job() is not None
-    assert await scheduler.claim_platform_job() is not None
+        first = await scheduler.claim_platform_job()
+        second = await scheduler.claim_platform_job()
+        assert first is not None and second is not None
+        assert {first.id, second.id} == set(job_ids)
 
-    await db_session.execute(delete(PlatformJob))
-    await _enqueue_deploy()
-    await _enqueue_deploy()
-    await service.set_job_type_concurrency(
-        "application.deploy", 1, updated_by="test"
-    )
+        await db_session.execute(delete(PlatformJob).where(PlatformJob.id.in_(job_ids)))
+        await _enqueue_deploy()
+        await _enqueue_deploy()
+        await service.set_job_type_concurrency(
+            "application.deploy", 1, updated_by="test"
+        )
 
-    assert await scheduler.claim_platform_job() is not None
-    assert await scheduler.claim_platform_job() is None
-
-    # Restore the code default so later suites see a pristine state.
-    await service.set_job_type_concurrency(
-        "application.deploy", None, updated_by="test"
-    )
-    await db_session.commit()
+        claim = await scheduler.claim_platform_job()
+        assert claim is not None and claim.id in job_ids[-2:]
+        assert await scheduler.claim_platform_job() is None
+    finally:
+        # Claims commit settings and rows. Restore them even when an assertion
+        # fails, so the round-trip settings test cannot inherit this override.
+        await db_session.rollback()
+        await db_session.execute(delete(PlatformJob).where(PlatformJob.id.in_(job_ids)))
+        await service.set_job_type_concurrency(
+            "application.deploy", None, updated_by="test"
+        )
+        await db_session.commit()
