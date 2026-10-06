@@ -283,7 +283,7 @@ async def {name}():
 '''
     await _seed_s3_only(path, source)
     await _seed_s3_only(dep_path, f"VALUE = 'service-{tag}'\n")
-    redis = await get_redis_client()
+    redis = await get_redis_client()._get_redis()
     await redis.delete(MODULE_INDEX_KEY, MODULE_INDEX_GENERATION_KEY)
     if stale_index:
         await redis.sadd(MODULE_INDEX_KEY, "stale-service-module.py")
