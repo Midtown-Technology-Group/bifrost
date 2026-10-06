@@ -2,6 +2,7 @@
 
 from uuid import UUID, uuid5
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import SYSTEM_USER_EMAIL, SYSTEM_USER_UUID
@@ -62,3 +63,44 @@ async def inspect_package_job(db: AsyncSession, solution_id: UUID, artifact_dige
         if result["compiled_manifest_hash"] != proof["compiled_manifest_hash"]:
             raise ValueError("Original complete package completion differs")
     return job
+
+
+async def read_package_accounting(db: AsyncSession, job: PlatformJob) -> dict:
+    """Fresh ledger readback, including declarations after the job completed.
+
+    The status endpoint cannot settle records or reuse a stale job-result flag.
+    Runtime readback must already have verified this original publication.
+    """
+    from src.config import get_settings
+    from src.models.orm.workspace_promotions import SolutionDeployObligation
+    from src.services.solution_deploy_obligations import solution_source_content_id
+
+    policy = get_settings().solution_package_git_delivery_policy
+    if policy is None or job.encrypted_payload is None or job.status != "succeeded":
+        return {"state": "not_tracked", "verified": False}
+    payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
+    source = payload.options["package_source"]["package"]
+    prefix = source["repo_subpath"] + "/"
+    content_id = solution_source_content_id(solution_slug=source["repo_subpath"].split("/")[-1],
+        repo_subpath=source["repo_subpath"], source_files=[{**row, "path": prefix + row["path"]}
+            for row in source["source_files"]])
+    records = (await db.scalars(select(SolutionDeployObligation).where(
+        SolutionDeployObligation.organization_id == policy.organization_id,
+        SolutionDeployObligation.repo_subpath == source["repo_subpath"],
+        SolutionDeployObligation.source_content_id == content_id,
+    ).execution_options(populate_existing=True))).all()
+    pending = [record for record in records if record.disposition in {"pending", "attention_required"}]
+    if pending:
+        return {"state": "attention_required", "verified": False,
+            "obligation_ids": sorted(str(record.id) for record in pending)}
+    released = [record for record in records if record.disposition == "released"]
+    if not released:
+        return {"state": "not_tracked", "verified": False}
+    for record in released:
+        evidence = record.completion_evidence or {}
+        if (record.solution_id != payload.install_id or record.source_artifact_sha256 != payload.input_sha256
+                or evidence.get("evidence_id") != canonical_digest({key: value for key, value in evidence.items()
+                    if key != "evidence_id"})):
+            return {"state": "accounting_evidence_differs", "verified": False}
+    return {"state": "released", "verified": True,
+        "source_content_id": content_id, "obligation_ids": sorted(str(record.id) for record in released)}

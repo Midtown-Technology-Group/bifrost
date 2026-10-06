@@ -327,4 +327,5 @@ async def readback_package_runtime(
         "source_commit_sha": source_proof["source_commit_sha"], "source_tree_sha": source_proof["source_tree_sha"],
         "source_artifact_sha256": expected_source_sha256, "compiled_manifest_hash": manifest.content_hash(),
         "source_verified": True, "registrations_verified": True, "runtime_verified": True,
-        "workflow_runtime_pins": pins, "app_runtime_pins": app_pins}
+        "workflow_runtime_pins": pins, "app_runtime_pins": app_pins,
+        "inactive_workflow_ids": sorted(str(row.id) for row in rows if not row.is_active)}

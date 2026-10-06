@@ -138,7 +138,7 @@ def main():
     files["bifrost.solution.yaml"] = f"slug: {sol.slug}\nname: APP\n".encode()
     app_manifest = yaml.safe_load(files[".bifrost/apps.yaml"])
     for app in app_manifest["apps"].values():
-        app.update(name="Example", slug="example", access_level=app_access_level)
+        app.update(name="Example", slug=f"example-{sol.id.hex[:8]}", access_level=app_access_level)
     files[".bifrost/apps.yaml"] = yaml.safe_dump(app_manifest).encode()
     contract = recipe(files)
     subpath = f"solutions/{sol.slug}"

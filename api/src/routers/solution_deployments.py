@@ -154,11 +154,15 @@ async def inspect_github_package(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ):
     """Same source-scoped identity, independently verified original-job result."""
-    from src.services.solutions.package_admission import inspect_package_job
+    from src.services.solutions.package_admission import inspect_package_job, read_package_accounting
     from src.services.platform_jobs import platform_job_to_public
     await _authenticate_package(solution_id, body, credentials)
     try:
-        return platform_job_to_public(await inspect_package_job(db, solution_id, body.artifact_digest))
+        job = await inspect_package_job(db, solution_id, body.artifact_digest)
+        public = platform_job_to_public(job)
+        if job.status == "succeeded":
+            public.result = {**(public.result or {}), "accounting_readback": await read_package_accounting(db, job)}
+        return public
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

@@ -52,7 +52,8 @@ async def test_committed_package_lost_ack_recovers_without_reprepare_or_republic
     settings = get_settings().model_copy(update={"solution_package_git_delivery_policy": policy})
     monkeypatch.setattr(worker, "get_settings", lambda: settings)
     monkeypatch.setattr("src.services.solutions.github_delivery_source.ProtectedGitReader.verify_ci", AsyncMock())
-    job_id, lease_token = uuid4(), uuid4()
+    from src.services.solutions.package_admission import package_publication_id
+    job_id, lease_token = package_publication_id(solution.id, source.artifact_digest), uuid4()
     payload = SolutionDeployPayload(deploy_job_id=job_id, kind="deliver_package", install_id=solution.id,
         input_sha256=hashlib.sha256(source.source_archive).hexdigest(), options={
             "package_source": source.evidence(), "artifact_digest": source.artifact_digest,
@@ -138,5 +139,19 @@ async def test_committed_package_lost_ack_recovers_without_reprepare_or_republic
         reason="Only complete Solution source changed", solution_deploy_obligations=[child])
     response = await WorkspaceSourceReleaseService(db_session, PROVIDER_ORG_ID).declare(
         declaration, created_by=seed_user.id)
-    assert response.solution_deploy_obligations[0].disposition == "released"
+    # Parent response retains the immutable declaration; child status lives in
+    # the canonical obligation row, rather than the declaration DTO.
+    from sqlalchemy import select
+    from src.models.orm.workspace_promotions import SolutionDeployObligation
+    receipt = await db_session.scalar(select(SolutionDeployObligation).where(
+        SolutionDeployObligation.source_release_id == response.id))
+    assert receipt is not None and receipt.disposition == "released"
+    assert calls == {"compile": 1, "stage": 1}
+    from src.services.solutions.package_admission import inspect_package_job, read_package_accounting
+    inspected = await inspect_package_job(db_session, solution.id, source.artifact_digest)
+    # Its old completion was not tracked before the declaration. Inspection
+    # uses the current ledger without mutating the old job result or publishing.
+    old_result = dict(inspected.result)
+    assert (await read_package_accounting(db_session, inspected))["verified"] is True
+    assert inspected.result == old_result
     assert calls == {"compile": 1, "stage": 1}

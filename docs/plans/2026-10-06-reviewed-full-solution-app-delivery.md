@@ -178,11 +178,20 @@ are checked before accounting. Existing declaration/scheduler hooks also inspect
 completed packages for late declarations. Duplicate active scope installations
 remain an accounting conflict until every intended target has qualified proof.
 
-These publication changes have only static/import/OpenAPI checks so far. New
-database/object-storage tests cover initial/successor mixed packages, App CAS
-rollback, authored-byte tampering, incompatible signatures, a real commit whose
-acknowledgement is lost, readback without publication replay, and late accounting.
-Their exact-head Docker run is required. Common producer support/enrollment,
+Run `37457331076` at `b607ac7a0` passed lint/type, MCP and all four API integration
+shards. Its unit lane passed 12,590 tests and failed eleven: generated API digest
+drift, an outdated database stub, one declaration-versus-status DTO assertion,
+and eight fixture collisions after the committed-job test retained its App.
+The failing logs are retained. The successor regenerates endpoint/type artifacts,
+gives each fixture its own visible App slug, and checks canonical child status.
+The actual commit/lost-ack/readback path reached its late-declaration assertion;
+the failed assertion does not qualify the whole test. Fresh status also reads
+the ledger instead of reusing accounting captured before a late declaration.
+Inactive workflow identities are explicit in the runtime receipt, so missing
+execution pins cannot be silently treated as inactive registrations.
+
+The corrected candidate still requires its own clean pre-PR and comprehensive
+Docker run. Common producer support/enrollment,
 rapid-merge/revert qualification, actual served assets and production worker
 execution remain acceptance gates. QuickSupport literal bound declarations still
 need Source alignment; no workflow compiler restriction has been relaxed.
