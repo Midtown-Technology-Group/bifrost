@@ -378,9 +378,14 @@ test.describe("Execution History", () => {
 		await expect(
 			page.getByRole("region", { name: "History", exact: true }),
 		).toBeVisible({ timeout: 10_000 });
-		await page
-			.getByRole("switch", { name: "Logs view", exact: true })
-			.check();
+		const logsView = page.getByRole("switch", {
+			name: "Logs view",
+			exact: true,
+		});
+		// The URL-backed view change commits after the click returns.
+		await logsView.click();
+		await expect(page).toHaveURL(/\/history\?view=logs$/);
+		await expect(logsView).toBeChecked();
 
 		const logRow = page.getByRole("row").filter({
 			hasText: "execution acceptance output exec-04",
