@@ -151,13 +151,15 @@ def check_ci_workflow(path: Path) -> list[str]:
                 ]
 
     expected_skip = (
-        "always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')"
+        "${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
     )
     for job in QUEUE_SKIPPED_ON_MAIN:
         parsed = _job_block(lines, job)
         expected_if = (
             EXPENSIVE_TEST_IF if job in ACTION_FREE_REQUIRED_TEST_JOBS else expected_skip
         )
+        if job == "test-e2e-gate":
+            expected_if = "always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')"
         if parsed is None or _parse_if_line(parsed[1]) != expected_if:
             return [f"{path}: {job!r} must skip the redundant main-push rerun after queue validation."]
 

@@ -65,7 +65,8 @@ jobs:
   # Manual branch runs provide the exact clean-candidate gate when no local
   # Docker test VM is available. Tags cannot enter this preparation-only job.
   pre-pr-candidate:
-    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')
+    needs: lint
+    if: ${{ !cancelled() && needs.lint.result == 'success' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/') }}
     runs-on: ubuntu-latest
     name: Pre-PR Candidate
     permissions:
@@ -421,9 +422,10 @@ jobs:
   # =============================================================================
   lint:
     needs: affected-test-plan
+    # Failed planning must remain red; cancelled snapshots need no diagnostics.
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Lint & Type Check
     permissions:
@@ -568,7 +570,7 @@ jobs:
     needs: affected-test-plan
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client Unit Tests
     steps:
