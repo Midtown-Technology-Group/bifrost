@@ -56,6 +56,36 @@ from src.services.execution.worker_sdk_http import (
 )
 
 
+_ENGINE_EXECUTION_ID = uuid4()
+_ENGINE_ATTEMPT_TOKEN = uuid4()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _committed_engine_attempt(async_session_factory):
+    """Socket credentials identify a real live fork attempt, as production does."""
+    from datetime import datetime, timezone
+    from sqlalchemy import delete
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+
+    now = datetime.now(timezone.utc)
+    async with async_session_factory() as db:
+        db.add(Execution(
+            id=_ENGINE_EXECUTION_ID, workflow_name="worker-sdk-route-proof",
+            executed_by_name="Engine", attempt_tracking_version="v1",
+        ))
+        await db.flush()
+        db.add(WorkflowExecutionAttempt(
+            execution_id=_ENGINE_EXECUTION_ID, attempt_number=1,
+            claim_token=_ENGINE_ATTEMPT_TOKEN, status="claimed", phase="claim",
+            published_at=now, claimed_at=now,
+        ))
+        await db.commit()
+    yield
+    async with async_session_factory() as db:
+        await db.execute(delete(Execution).where(Execution.id == _ENGINE_EXECUTION_ID))
+        await db.commit()
+
+
 @pytest.fixture(autouse=True)
 def _reset_engine_transport_globals():
     """Keep the trusted-injection globals from leaking across tests."""
@@ -135,7 +165,8 @@ def _engine_token() -> str:
     from src.core.security import mint_engine_token
 
     token, _ = mint_engine_token(
-        execution_id="gate-a-route-reuse",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=300,
