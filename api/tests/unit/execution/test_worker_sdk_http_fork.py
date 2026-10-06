@@ -214,7 +214,7 @@ async def test_forked_child_config_crud_over_worker_socket(
             try:
                 work_queue.put(
                     (
-                        "exec-wsdk-socket",
+                        str(_ENGINE_EXECUTION_ID),
                         _context_for(_script_for(key), engine_token),
                     )
                 )
@@ -570,7 +570,7 @@ async def test_forked_child_integrations_over_worker_socket(
             try:
                 work_queue.put(
                     (
-                        "exec-wsdk-integ",
+                        str(_ENGINE_EXECUTION_ID),
                         _context_for(
                             _integrations_script(
                                 name=seed["name"],
@@ -830,7 +830,7 @@ async def test_forked_child_tables_over_worker_socket(
         try:
             work_queue.put(
                 (
-                    "exec-wsdk-tables",
+                    str(_ENGINE_EXECUTION_ID),
                     _context_for(
                         _table_script(
                             scope=org_id,
@@ -1017,7 +1017,7 @@ async def test_forked_child_files_over_worker_socket(monkeypatch):
         try:
             work_queue.put(
                 (
-                    "exec-wsdk-files",
+                    str(_ENGINE_EXECUTION_ID),
                     _context_for(
                         _files_script(prefix=prefix),
                         engine_token,
@@ -1171,7 +1171,7 @@ async def test_forked_child_artifacts_over_worker_socket(monkeypatch):
             )
             # A valid workspace id: the artifact routes validate it as a UUID.
             context["artifact_workspace_id"] = str(uuid4())
-            work_queue.put(("exec-wsdk-artifacts", context))
+            work_queue.put((str(_ENGINE_EXECUTION_ID), context))
             envelope = await asyncio.to_thread(result_queue.get, True, 90.0)
         finally:
             work_queue.close()
@@ -1345,7 +1345,7 @@ async def test_forked_child_events_and_forms_over_worker_socket(
         try:
             work_queue.put(
                 (
-                    "exec-wsdk-events-forms",
+                    str(_ENGINE_EXECUTION_ID),
                     _context_for(
                         _events_forms_script(
                             topic=topic, form_name=form_name, form_id=form_id
