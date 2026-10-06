@@ -24,9 +24,13 @@ production enrollment, source accounting closure or runtime proof.
 
 1. Add a distinct full Solution package kind to the existing producer/registry
    with exact Solution UUID, explicit organization scope and canonical subtree.
-   Admit only an operator-enrolled repo-v1 install with no immutable Solution
-   pointer. Reuse pinned repository/workflow OIDC and exact current Main CI;
-   never grant the producer a platform administrator role.
+   Initial publication admits an operator-enrolled repo-v1 install with no
+   immutable Solution pointer. Later publications require an exact active
+   package deployment/pointer CAS, preserving the workflow-only adapter boundary.
+   Reuse pinned repository/workflow OIDC and exact current Main CI; never grant
+   the producer a platform administrator role. The ordinary manual deploy guard
+   stays closed for immutable installs; the reviewed package path needs a
+   supported successor operation rather than becoming a one-shot migration.
 2. Build the archive server-side from the complete verified Git subtree. Accept
    no uploaded source or locally generated dist overlay. Use the existing
    Solution compiler and deploy job rather than another publisher or job system.
