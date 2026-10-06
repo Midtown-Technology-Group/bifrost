@@ -164,6 +164,7 @@ def _admitted(
     for key, value in sorted(values.items(), key=lambda pair: -len(pair[0])):
         expression = expression.replace(key, repr(value))
     expression = expression.replace("cancelled()", repr(cancelled))
+    expression = expression.replace("always()", "True")
     expression = expression.replace("startsWith(", "starts_with(")
     expression = expression.replace("&&", " and ").replace("||", " or ")
     expression = re.sub(r"!(?!=)", "not ", expression)
@@ -177,10 +178,16 @@ def _admitted(
 @pytest.mark.parametrize("planner", ["success", "failure", "cancelled", "skipped"])
 def test_required_diagnostics_respect_cancellation_without_hiding_failed_plans(planner):
     jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
-    for name in ("lint", "test-client-unit", "candidate-images", "test-e2e-gate"):
+    for name in ("lint", "test-client-unit"):
         args = {"lint": "failure", "planner": planner}
         assert _admitted(jobs[name]["if"], **args)
         assert not _admitted(jobs[name]["if"], **args, cancelled=True)
+
+
+def test_required_aggregates_still_reject_incomplete_cancelled_candidates():
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    for name in ("candidate-images", "test-e2e-gate"):
+        assert _admitted(jobs[name]["if"], lint="cancelled", cancelled=True)
 
 
 @pytest.mark.parametrize("name", ["lint", "test-client-unit"])

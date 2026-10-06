@@ -325,9 +325,8 @@ jobs:
             --expected-digest "$EXPECTED_DIGEST"
 
   candidate-images:
-    # Diagnose failed builds, but do not launch a new runner after cancellation.
     if: >-
-      !cancelled() &&
+      always() &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     needs: build-candidate-images
@@ -1003,9 +1002,9 @@ jobs:
 
   # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
   # Fails if any backend or browser shard failed or was cancelled.
-  # Diagnose failed dependencies unless the entire workflow was cancelled.
+  # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
-    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
+    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
     needs: [affected-test-plan, lint, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
