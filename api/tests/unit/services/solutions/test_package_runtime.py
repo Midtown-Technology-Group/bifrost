@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from bifrost.workspace_release import canonical_digest
 from src.models.contracts.solution_deployments import SolutionDeploymentCreate
@@ -100,8 +100,10 @@ async def test_failed_app_cas_rolls_back_solution_pointer_and_original_app_point
     app = await db_session.get(Application, prepared.compiled_apps[0].app_id)
     assert app is not None
     changed = uuid4()
-    app.active_deployment_id = changed
-    await db_session.flush()
+    # Simulate a competing deploy CAS through the same Core write surface.
+    # Direct ORM mutation is rightly rejected by the managed-entity backstop.
+    await db_session.execute(update(Application).where(Application.id == app.id)
+                             .values(active_deployment_id=changed))
     with pytest.raises(ValueError, match="activation was not established"):
         await activate_package_runtime(db_session, source, prepared, manifest, None)
     assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sid)) is None

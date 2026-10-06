@@ -190,8 +190,24 @@ the ledger instead of reusing accounting captured before a late declaration.
 Inactive workflow identities are explicit in the runtime receipt, so missing
 execution pins cannot be silently treated as inactive registrations.
 
-The corrected candidate still requires its own clean pre-PR and comprehensive
-Docker run. Common producer support/enrollment,
+The corrected `fdf90b342` candidate passed its clean pre-PR, lint/type, MCP,
+client-unit and all four API shards in run `37460222139`. Its unit lane passed
+12,600 tests and exposed one remaining conflict-fixture error: an ORM mutation
+was correctly refused by the Solution-managed entity guard. The successor uses
+the actual Core deployment write surface to introduce a competing App pointer;
+the production guard is unchanged. Original failed logs remain retained.
+
+The common Workspace producer now supports complete-package preparation and
+runtime verification. Its focused producer suites passed 105 tests, including
+older-job recovery before a newer Main admission. A fresh current-Main OIDC/CI
+request can requeue only the target's original sealed checkpoint through the
+existing shared scheduler. It cannot replace the retained payload or stage new
+source. The producer inspects that original artifact to resolve uncertainty,
+then separately admits the requested newer source; an older completion cannot
+certify newer Main. The status operation remains read-only. Source and runtime
+qualification of these subsequent changes remains required.
+
+Common producer enrollment,
 rapid-merge/revert qualification, actual served assets and production worker
 execution remain acceptance gates. QuickSupport literal bound declarations still
 need Source alignment; no workflow compiler restriction has been relaxed.

@@ -590,6 +590,7 @@
 | GET | `/api/solutions/{solution_id}/deployments/active` |
 | GET | `/api/solutions/{solution_id}/deployments/capabilities` |
 | POST | `/api/solutions/{solution_id}/deployments/github-package` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package/recover` |
 | POST | `/api/solutions/{solution_id}/deployments/github-package/status` |
 | POST | `/api/solutions/{solution_id}/deployments/github-source` |
 | POST | `/api/solutions/{solution_id}/deployments/shared-tables/preview` |

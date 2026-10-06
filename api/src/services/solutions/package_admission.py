@@ -65,6 +65,66 @@ async def inspect_package_job(db: AsyncSession, solution_id: UUID, artifact_dige
     return job
 
 
+async def recover_pending_package(db: AsyncSession, policy: SolutionPackageGitDeliveryPolicy,
+                                  solution_id: UUID) -> PlatformJob | None:
+    """Resume only the original retained intent, even after Main advances.
+
+    This does not capture source, renew its token, stage bytes or create a job.
+    Its caller authenticates the current protected producer and CI first.
+    """
+    from src.jobs.platform.solution_deploy import (
+        SOLUTION_DEPLOY_DEFINITION, SOLUTION_DEPLOY_INTENT_SCHEMA, unresolved_solution_deploy,
+    )
+    from src.routers.solutions import _lock_solution_operation
+    from src.services.platform_jobs import enqueue_platform_job
+
+    enrollment = policy.enrollment_for(solution_id)
+    await _lock_solution_operation(db, solution_id)
+    job = await unresolved_solution_deploy(db, solution_id)
+    if job is None:
+        return None
+    if (job.job_type != "solution.deploy" or job.requested_by_user_id != str(SYSTEM_USER_UUID)
+            or job.organization_id != enrollment.organization_id or job.encrypted_payload is None):
+        raise ValueError("Original publication is outside complete package recovery")
+    payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
+    intent = job.result or {}
+    source = payload.options.get("package_source", {})
+    package = source.get("package", {})
+    artifact_digest = payload.options.get("artifact_digest")
+    if (payload.kind != "deliver_package" or payload.install_id != solution_id
+            or payload.deploy_job_id != job.id
+            or artifact_digest != canonical_digest(source)
+            or job.id != package_publication_id(solution_id, artifact_digest)
+            or job.dedupe_key != str(job.id)
+            or job.resource_type != "solution_deploy" or job.resource_id != str(job.id)
+            or job.resource_lock_key != f"solution:{solution_id}"
+            or source.get("repository") != policy.repository
+            or source.get("repository_id") != policy.repository_id
+            or source.get("repository_owner_id") != policy.repository_owner_id
+            or source.get("recipe_path") != enrollment.recipe_path
+            or package.get("repo_subpath") != enrollment.repo_subpath
+            or package.get("solution_id") != str(solution_id)
+            or package.get("organization_id") != (str(job.organization_id) if job.organization_id else None)
+            or package.get("source_archive_sha256") != payload.input_sha256
+            or intent.get("schema_version") != SOLUTION_DEPLOY_INTENT_SCHEMA
+            or intent.get("delivery_kind") != "package"
+            or intent.get("original_job_id") != str(job.id)
+            or intent.get("solution_id") != str(solution_id)
+            or intent.get("payload_digest") != canonical_digest(payload.model_dump(mode="json"))):
+        raise ValueError("Original complete package intent/enrollment differs")
+    if job.status in {"requires_action", "failed", "cancelled"}:
+        resumed, reused = await enqueue_platform_job(db, SOLUTION_DEPLOY_DEFINITION, payload,
+            dedupe_key=job.dedupe_key, resource_lock_key=job.resource_lock_key,
+            priority=job.priority, organization_id=job.organization_id,
+            requested_by_user_id=SYSTEM_USER_UUID, requested_by_email=SYSTEM_USER_EMAIL,
+            requested_by_name="Protected Workspace package recovery", resource_type=job.resource_type,
+            resource_id=job.resource_id, title=job.title, action_url=job.action_url)
+        if not reused or resumed.id != job.id:
+            raise ValueError("Recovery cannot create a replacement publication")
+        await db.commit()
+    return job
+
+
 async def read_package_accounting(db: AsyncSession, job: PlatformJob) -> dict:
     """Fresh ledger readback, including declarations after the job completed.
 

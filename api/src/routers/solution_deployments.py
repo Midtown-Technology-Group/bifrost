@@ -169,6 +169,44 @@ async def inspect_github_package(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/github-package/recover", response_model=PlatformJobPublic | None)
+async def recover_github_package(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+):
+    """Current Main may request readback of the target's original uncertain job.
+
+    A returned older job does not certify this request's newer source. There is
+    no fresh source capture or publication in this operation.
+    """
+    from src.core.security import decrypt_secret
+    from src.jobs.platform.solution_deploy import SolutionDeployPayload
+    from src.services.platform_jobs import platform_job_to_public
+    from src.services.solutions.package_admission import recover_pending_package
+
+    policy = await _authenticate_package(solution_id, body, credentials)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            await ProtectedGitReader(policy, github_token, client).verify_ci(
+                body.source_commit_sha, body.ci_run_id, body.ci_run_attempt)
+        job = await recover_pending_package(db, policy, solution_id)
+        if job is None:
+            return None
+        if job.encrypted_payload is None:
+            raise ValueError("Original package payload is unavailable")
+        payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
+        public = platform_job_to_public(job)
+        public.result = {**(public.result or {}), "original_artifact_digest": payload.options["artifact_digest"]}
+        return public
+    except (ValueError, GitDeliverySourceError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Original package recovery remains unresolved") from exc
+
+
 @router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse)
 async def deliver_github_source(
     solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
