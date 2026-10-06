@@ -5,6 +5,7 @@ import copy
 import hashlib
 import io
 import json
+import subprocess
 import zipfile
 from uuid import UUID
 
@@ -40,6 +41,16 @@ from tests.unit.test_solution_package_delivery import recipe, source
 RECIPE_PATH = "config/solution-package-delivery/fixture.json"
 
 
+def git_blob_oid(content: bytes) -> str:
+    """Ask Git for its protocol identifier, not a security digest."""
+    return subprocess.run(
+        ["git", "hash-object", "--stdin"],
+        input=content,
+        check=True,
+        capture_output=True,
+    ).stdout.decode().strip()
+
+
 def package_policy():
     values = policy().model_dump(exclude={"solutions", "solution_organization_ids"})
     return SolutionPackageGitDeliveryPolicy(
@@ -66,9 +77,7 @@ def package_fixture():
         RECIPE_PATH: raw_recipe,
         **{"solutions/fixture/" + path: content for path, content in files.items()},
     }.items():
-        oid = hashlib.sha1(
-            b"blob " + str(len(raw)).encode() + b"\0" + raw, usedforsecurity=False
-        ).hexdigest()
+        oid = git_blob_oid(raw)
         entries.append(
             {
                 "path": path,
@@ -100,7 +109,7 @@ def package_fixture():
             "path": path,
             "type": "tree",
             "mode": "040000",
-            "sha": hashlib.sha1(path.encode(), usedforsecurity=False).hexdigest(),
+            "sha": hashlib.sha256(path.encode()).hexdigest()[:40],
         }
         subtree.append(row)
         entries.append({**row, "path": "solutions/fixture/" + path})
@@ -307,9 +316,7 @@ async def test_protected_package_capture_fails_closed_before_any_publication(fau
         else:
             changed["manifest_hashes"][".bifrost/tables.yaml"] = "sha256:" + "0" * 64
         raw = json.dumps(changed).encode()
-        oid = hashlib.sha1(
-            b"blob " + str(len(raw)).encode() + b"\0" + raw, usedforsecurity=False
-        ).hexdigest()
+        oid = git_blob_oid(raw)
         entry.update(sha=oid, size=len(raw))
         documents["git/blobs/" + oid] = {
             "sha": oid,
