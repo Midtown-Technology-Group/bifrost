@@ -221,6 +221,13 @@ async def _execute_async(
 
     baseline_pss = _get_pss_bytes()
 
+    # Cold module-index/import checks may use the injected worker socket.
+    # Install the parent-owned token before those checks create an SDK client,
+    # while no Solution namespace hook is active.
+    from src.services.execution.worker import _set_process_engine_credentials
+
+    _set_process_engine_credentials(context)
+
     # Activate THIS execution's Solution import root, THEN evict workspace
     # modules — in that order. The cross-solution eviction in
     # _clear_workspace_modules keys off the active install (get_solution_context);

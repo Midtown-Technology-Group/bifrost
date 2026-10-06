@@ -239,6 +239,7 @@ def test_template_process_fork_sends_command_and_wraps_queues() -> None:
         child_pid, work_queue, result_queue = template.fork(
             worker_id="worker-1",
             persistent=True,
+            sdk_socket_path="/tmp/worker-sdk-proof.sock",
         )
 
     assert child_pid == 4321
@@ -249,6 +250,7 @@ def test_template_process_fork_sends_command_and_wraps_queues() -> None:
             "action": CMD_FORK,
             "worker_id": "worker-1",
             "persistent": True,
+            "sdk_socket_path": "/tmp/worker-sdk-proof.sock",
             "work_recv": work_recv,
             "result_send": result_send,
         }

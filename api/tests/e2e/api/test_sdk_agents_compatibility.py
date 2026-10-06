@@ -12,16 +12,26 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from bifrost.client import (
+    BifrostClient,
+    _clear_engine_socket,
+    _install_engine_socket,
+    get_engine_socket_path,
+)
 from bifrost.models import AgentRunHandle
 from sqlalchemy import delete
+from src.core.security import mint_engine_token
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
 
 mod = importlib.import_module("bifrost.agents")
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
+@pytest.mark.parametrize("transport", ["http", "socket"])
 @pytest.mark.parametrize("output,status,error", [
     ({"text": "persisted answer"}, "completed", None),
     ({"answer": 42}, "completed", None),
@@ -29,7 +39,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
     ({"text": "partial"}, "cancelled", "Cancelled by caller"),
 ])
 async def test_run_consumes_canonical_persisted_result(
-    db_session, e2e_api_url, platform_admin, monkeypatch, output, status, error,
+    db_session, e2e_api_url, platform_admin, monkeypatch, output, status, error, transport,
 ):
     agent = Agent(
         id=uuid4(), name=f"SDK Compatibility {uuid4().hex[:8]}",
@@ -51,9 +61,40 @@ async def test_run_consumes_canonical_persisted_result(
     run_id = str(run.id)
     enqueue = AsyncMock(return_value=AgentRunHandle(run_id=run_id))
     monkeypatch.setattr(mod.agents, "enqueue", enqueue)
+    server = None
+    sdk = None
+    execution = None
+    attempt = None
+    previous_socket = get_engine_socket_path()
     try:
+        _clear_engine_socket()
+        access_token = platform_admin.headers["Authorization"].removeprefix("Bearer ")
+        api_url = e2e_api_url
+        if transport == "socket":
+            execution = Execution(id=uuid4(), workflow_name="sdk-compatibility-proof", executed_by_name="Engine")
+            execution.attempt_tracking_version = "v1"
+            db_session.add(execution)
+            await db_session.flush()
+            now = datetime.now(UTC)
+            attempt = WorkflowExecutionAttempt(
+                execution_id=execution.id, attempt_number=1, claim_token=uuid4(),
+                status="claimed", phase="claim", published_at=now, claimed_at=now,
+            )
+            db_session.add(attempt)
+            await db_session.commit()
+            access_token, _ = mint_engine_token(
+                execution_id=str(execution.id), attempt_token=str(attempt.claim_token),
+                solution_id=None, global_repo_access=True, timeout_seconds=120,
+            )
+            server = WorkerSdkHttpServer()
+            await server.start()
+            assert server.socket_path is not None
+            _install_engine_socket(server.socket_path)
+            # A socket success cannot be a silent network fallback.
+            api_url = "http://127.0.0.1:9"
+        sdk = BifrostClient(api_url, access_token)
+        monkeypatch.setattr(mod, "get_client", lambda: sdk)
         async with httpx.AsyncClient(base_url=e2e_api_url, headers=platform_admin.headers) as client:
-            monkeypatch.setattr(mod, "get_client", lambda: client)
             # Literal canonical route also records this test's API ownership.
             response = await client.get(f"/api/agent-runs/{run_id}")
             assert response.status_code == 200, response.text
@@ -72,6 +113,17 @@ async def test_run_consumes_canonical_persisted_result(
             assert persisted.status == status
             assert persisted.caller_email == "caller@example.com"
     finally:
+        if sdk is not None:
+            await sdk.close()
+        _clear_engine_socket()
+        if previous_socket is not None:
+            _install_engine_socket(previous_socket)
+        if server is not None:
+            await server.stop()
+        if attempt is not None:
+            await db_session.execute(delete(WorkflowExecutionAttempt).where(WorkflowExecutionAttempt.id == attempt.id))
+        if execution is not None:
+            await db_session.execute(delete(Execution).where(Execution.id == execution.id))
         await db_session.execute(delete(AgentRun).where(AgentRun.id == run.id))
         await db_session.execute(delete(Agent).where(Agent.id == agent.id))
         await db_session.commit()

@@ -41,7 +41,7 @@ async def test_sdk_conditional_endpoint_never_falls_back(monkeypatch, status):
         json={"detail": "rejected"},
         request=httpx.Request("PATCH", "https://test/"),
     )
-    client = SimpleNamespace(patch=AsyncMock(return_value=response))
+    client = SimpleNamespace(engine_request=AsyncMock(return_value=response))
     monkeypatch.setattr(sdk, "get_client", lambda: client)
     monkeypatch.setattr(sdk, "resolve_scope", lambda scope: scope)
     with pytest.raises(httpx.HTTPStatusError):
@@ -53,7 +53,8 @@ async def test_sdk_conditional_endpoint_never_falls_back(monkeypatch, status):
             expected_updated_at=REVISION,
             expected_data={},
         )
-    client.patch.assert_awaited_once_with(
+    client.engine_request.assert_awaited_once_with(
+        "PATCH",
         "/api/tables/rows/documents/doc/conditional?scope=global",
         json={
             "data": {"status": "closed"},
@@ -67,7 +68,7 @@ async def test_sdk_conditional_endpoint_never_falls_back(monkeypatch, status):
 @pytest.mark.asyncio
 async def test_sdk_uncertain_transport_is_not_replayed(monkeypatch):
     client = SimpleNamespace(
-        patch=AsyncMock(side_effect=httpx.ReadTimeout("uncertain"))
+        engine_request=AsyncMock(side_effect=httpx.ReadTimeout("uncertain"))
     )
     monkeypatch.setattr(sdk, "get_client", lambda: client)
     monkeypatch.setattr(sdk, "resolve_scope", lambda scope: scope)
@@ -75,7 +76,7 @@ async def test_sdk_uncertain_transport_is_not_replayed(monkeypatch):
         await sdk.tables.update(
             "rows", "doc", {}, expected_updated_at=REVISION.isoformat()
         )
-    assert client.patch.await_count == 1
+    assert client.engine_request.await_count == 1
 
 
 @pytest.mark.asyncio
