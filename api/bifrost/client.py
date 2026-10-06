@@ -294,10 +294,13 @@ async def refresh_connection_access_token(
         refresh_token = coordinator.latest_refresh_token or stored_refresh_token
 
         local_socket = _engine_socket_path if process_backed else None
-        transport = httpx.AsyncHTTPTransport(uds=local_socket) if local_socket else None
+        transport_kwargs = (
+            {"transport": httpx.AsyncHTTPTransport(uds=local_socket)}
+            if local_socket else {}
+        )
         async with httpx.AsyncClient(
             base_url=_ENGINE_SOCKET_BASE_URL if local_socket else normalized_url,
-            transport=transport, timeout=30.0, trust_env=False,
+            timeout=30.0, trust_env=False, **transport_kwargs,
         ) as client:
             response = await client.post(
                 "/auth/refresh",
