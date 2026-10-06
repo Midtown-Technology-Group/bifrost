@@ -111,6 +111,38 @@ def test_review_allows_nullable_parameter_without_rejecting_existing_string_call
             previous_recipe_value=recipe, previous_files=nullable, previous_resources=resources)
 
 
+def test_owned_table_context_reviews_effect_successor_without_grant_or_live_claim():
+    value, _files, _resources = fixture()
+    value["resources"] = {}
+    old = b'from bifrost import workflow, tables\n@workflow(effects=[])\nasync def run(user: str = "root"):\n return await tables.get("existing", user)\n'
+    new = old.replace(b"effects=[]", b'effects=[{"kind":"integration.read","target":"microsoft_csp"}]')
+    with pytest.raises(ValueError, match="table/file resource bindings"):
+        review_solution_recipe(value, {"run.py": new}, {})
+    table_ids = (uuid4(), uuid4(), uuid4())
+    reviewed = review_solution_recipe(value, {"run.py": new}, {}, owned_table_ids=table_ids,
+        previous_recipe_value=value, previous_files={"run.py": old})
+    assert reviewed["owned_table_review_ids"] == sorted(str(identity) for identity in table_ids)
+    assert reviewed["previous_recipe_checked"] is True
+    assert reviewed["live_state_verified"] is False and reviewed["runtime_verified"] is False
+    assert value.get("shared_tables", {}) == {}
+
+
+@pytest.mark.parametrize("invalid", ["not-a-uuid", "duplicate"])
+def test_owned_table_review_rejects_invalid_context(invalid):
+    value, files, resources = fixture()
+    identity = uuid4()
+    ids = (identity, identity) if invalid == "duplicate" else (invalid,)
+    with pytest.raises(WorkflowRecipeError, match="Owned-table review context"):
+        review_solution_recipe(value, files, resources, owned_table_ids=ids)
+
+
+def test_owned_table_context_cannot_enable_body_only_decorator_transition():
+    value = {"schema_version": "bifrost.solution-source-delivery/v1", "solution_id": str(uuid4()),
+        "files": {"run.py": "run.py"}}
+    with pytest.raises(WorkflowRecipeError, match="reviewed workflow adapter"):
+        review_solution_recipe(value, {"run.py": b""}, {}, owned_table_ids=(uuid4(),))
+
+
 @pytest.mark.parametrize("damage", ["rename", "break_type", "required", "remove", "expose", "missing_resource", "extra_source"])
 def test_known_unsupported_transitions_fail_before_merge(damage):
     old, files, resources = fixture()

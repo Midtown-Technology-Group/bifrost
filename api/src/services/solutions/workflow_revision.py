@@ -66,6 +66,7 @@ from src.services.solutions.source_revision import (
     SolutionSourceRevisionService,
     _archive_files,
     _workflow_snapshot,
+    legacy_descriptor_evidence,
     retain_legacy_registration_names,
 )
 from src.services.solutions.workflow_revision_recipe import (
@@ -83,6 +84,21 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
         raise SolutionSourceRevisionError(str(exc)) from exc
 
 
+def retain_legacy_descriptors(
+    entities: dict[str, RuntimeEntityDefinition], previous: dict[str, RuntimeEntityDefinition],
+) -> dict[str, RuntimeEntityDefinition]:
+    previous_by_id = {item.resolved_id: item for item in previous.values()}
+    result = dict(entities)
+    for ref, item in entities.items():
+        old = previous_by_id.get(item.resolved_id)
+        if old is not None and "legacy_descriptor_evidence" in old.definition:
+            payload = item.model_dump(mode="json")
+            payload["definition"]["legacy_descriptor_evidence"] = json.loads(
+                canonical_json(old.definition["legacy_descriptor_evidence"]))
+            result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
+
+
 async def project_workflow_registrations(
     db: AsyncSession, solution_id: UUID, entities: dict[str, RuntimeEntityDefinition],
     current_ids: set[UUID],
@@ -95,6 +111,22 @@ async def project_workflow_registrations(
                     "parameters_schema_contract"):
             definition.pop(key)
         definition.pop("legacy_registration_name_evidence", None)
+        legacy = definition.pop("legacy_descriptor_evidence", None)
+        if legacy is not None:
+            if not isinstance(legacy, dict) or not isinstance(legacy.get("fields"), dict):
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence is invalid")
+            try:
+                expected = legacy_descriptor_evidence(legacy["fields"],
+                    extended=legacy.get("schema_version") == "bifrost.solution-legacy-descriptors/v2")
+            except (KeyError, TypeError) as exc:
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence is invalid") from exc
+            if legacy != expected:
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence changed")
+            definition.update(legacy["fields"])
+        if entity.resolved_id in current_ids:
+            # Runtime bounds stay in the immutable definition. Existing registry
+            # timeouts are controls, not the compiler's effective runtime limit.
+            definition.pop("timeout_seconds")
         values = {**definition, "is_active": True, "is_orphaned": False,
             "updated_at": datetime.now(UTC)}
         values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
@@ -124,8 +156,9 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         indexer = WorkflowIndexer(self.db)
         try:
             validate_resource_files(recipe, resources, files)
-            desired = retain_legacy_registration_names(
-                compile_workflow_registrations(recipe, files, indexer), dict(previous.workflows))
+            desired = retain_legacy_descriptors(retain_legacy_registration_names(
+                compile_workflow_registrations(recipe, files, indexer), dict(previous.workflows)),
+                dict(previous.workflows))
             closure = source_closure(files, {item.path for item in recipe.workflows},
                 has_table_bindings=bool(recipe.shared_tables) or await self._has_owned_tables(solution_id),
                 has_resource_bindings=bool(recipe.resources),
@@ -321,8 +354,9 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                     raise SolutionSourceRevisionError("Current workflow runtime bytes differ from immutable source")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
         validate_resource_files(recipe, resources, files)
-        desired = retain_legacy_registration_names(
-            compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db)), dict(resolution.workflows))
+        desired = retain_legacy_descriptors(retain_legacy_registration_names(
+            compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db)), dict(resolution.workflows)),
+            dict(resolution.workflows))
         if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
                 or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionConflict("Current registrations or table bindings differ from reviewed Git")

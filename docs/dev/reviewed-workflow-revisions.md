@@ -15,6 +15,20 @@ hash. Derive the bytes from reviewed protected Git. The operator attests this
 provenance; these endpoints do not independently authenticate a Git producer.
 Initial ownership adoption still uses the guarded Live handoff.
 
+For an install with existing owned tables, offline `review_workflow_recipe` and
+`review_solution_recipe` accept `owned_table_ids`, taken from the exact current
+Solution inventory. This is review context, not a resource grant or live proof;
+the result retains `live_state_verified=false`. Leave `shared_tables` empty when
+no Root binding exists. Native candidate and preflight derive table capability
+from actual Solution ownership independently. Read back the same table UUIDs,
+metadata, policies and ownership before and after activation; this workflow
+adapter does not deploy tables or rewrite their data.
+
+Existing sealed legacy descriptors remain in the successor's immutable evidence
+and registry projection. Existing registry timeouts are retained while the new
+immutable runtime bounds remain enforced. Reviewed effect declarations can
+change through this adapter; the body-only source adapter still rejects them.
+
 Staging creates immutable candidate objects without changing registrations or
 the installed pointer. Preflight independently reads the stored bytes, current
 registration and trigger snapshots, reviewed bindings and active base. Activation
