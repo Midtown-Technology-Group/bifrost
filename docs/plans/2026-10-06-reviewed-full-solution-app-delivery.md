@@ -211,3 +211,30 @@ Common producer enrollment,
 rapid-merge/revert qualification, actual served assets and production worker
 execution remain acceptance gates. QuickSupport literal bound declarations still
 need Source alignment; no workflow compiler restriction has been relaxed.
+
+### Recovery review disposition
+
+A retained complete-package intent is resolved against the original deployment
+row. The draft, resource/registration changes and Solution/App pointer switches
+share one lease-fenced database transaction. If that row exists, recovery only
+reads back that publication; it cannot prepare or activate again. If the row is
+absent, the original transaction did not publish. Recovery saves that rollback
+receipt on the same shared job before an ordinary fresh attempt with a new
+revision ID and renewed Main/CI/control/pointer checks. Already staged, unreferenced
+immutable objects are retained; they are not mistaken for active runtime.
+If fresh checks refuse a superseded source, status can independently prove the
+old transaction absent. This permits separate current-Main admission without
+calling absence a successful source delivery. A malformed or inconsistent
+rollback receipt fails closed.
+
+Accounting skips an install whose existing writer lock is held and continues
+other installations. Its obligation stays pending for the normal next sweep;
+the declaration is neither rejected after saving nor falsely marked released.
+
+The legacy manual repo-v1 finalizer has a different recovery limit. Its deferred
+storage closure and generated App outputs are not a durable replay plan. An
+incomplete committed finalization remains `requires_action` and blocks later
+writers; the retained input ZIP alone never authorizes repeating resource writes
+or certifying a failed projection. This path is not the automatic Main package
+adapter, which stages immutable output before its joined transaction. No repair
+of partially completed manual finalization is claimed by this change.

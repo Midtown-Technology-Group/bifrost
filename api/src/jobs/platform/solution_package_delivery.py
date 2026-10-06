@@ -8,6 +8,7 @@ import json
 import tempfile
 import zipfile
 import httpx
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -18,7 +19,7 @@ from sqlalchemy import func, select
 
 from src.core.database import get_db_context
 from src.config import get_settings
-from src.jobs.platform.base import PlatformJobContext, PlatformJobRequiresAction
+from src.jobs.platform.base import PlatformJobContext, PlatformJobFailure, PlatformJobRequiresAction
 from src.models.contracts.solution_deployments import SolutionDeploymentCreate
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.platform_jobs import PlatformJob
@@ -32,7 +33,10 @@ from src.services.solutions.package_git_source import PACKAGE_GIT_SOURCE_SCHEMA,
 from src.services.solutions.package_runtime import (
     activate_package_runtime, compile_package_runtime, stage_package_runtime,
 )
-from src.services.solutions.write_lock import solution_write_lock
+from src.services.solutions.write_lock import SolutionWriteLockHeld, solution_write_lock
+
+PACKAGE_ROLLBACK_SCHEMA = "bifrost.solution-package-rollback/v1"
+
 
 if TYPE_CHECKING:
     from src.jobs.platform.solution_deploy import SolutionDeployPayload
@@ -111,16 +115,21 @@ async def reconcile_reviewed_package_obligations(db, *, source_release_id=None, 
         ).limit(1))
         if other is not None:
             continue
-        async with solution_write_lock(sid):
-            archive = await SolutionDeploymentStorage(sid, deployment.id).read_source_artifact()
-            source = staged_package_source(archive, payload.options["package_source"], payload.options["artifact_digest"])
-            result = await reconcile_solution_deploy_obligation(db, solution_id=sid,
-                solution_slug=source.authored.solution_slug, accountability_organization_id=policy.organization_id,
-                deploy_job_id=job.id, candidate_id=f"sha256:{payload.input_sha256}", artifact=archive,
-                repo_subpath=enrollment.repo_subpath, source_content_id=source.authored.source_content_id,
-                complete_all_matches=True, source_release_id=source_release_id)
-            await db.commit()
-            completed.extend(UUID(identity) for identity in result.get("obligation_ids", []))
+        try:
+            async with solution_write_lock(sid):
+                archive = await SolutionDeploymentStorage(sid, deployment.id).read_source_artifact()
+                source = staged_package_source(archive, payload.options["package_source"], payload.options["artifact_digest"])
+                result = await reconcile_solution_deploy_obligation(db, solution_id=sid,
+                    solution_slug=source.authored.solution_slug, accountability_organization_id=policy.organization_id,
+                    deploy_job_id=job.id, candidate_id=f"sha256:{payload.input_sha256}", artifact=archive,
+                    repo_subpath=enrollment.repo_subpath, source_content_id=source.authored.source_content_id,
+                    complete_all_matches=True, source_release_id=source_release_id)
+                await db.commit()
+                completed.extend(UUID(identity) for identity in result.get("obligation_ids", []))
+        except SolutionWriteLockHeld:
+            # A declaration may race a publication. Other packages can settle;
+            # this one stays pending for the ordinary next sweep/replay.
+            continue
     return completed
 
 
@@ -164,28 +173,66 @@ async def run_solution_package_delivery(context: PlatformJobContext, payload: So
             candidate_id=f"sha256:{payload.input_sha256}", artifact=archive,
             repo_subpath=enrollment.repo_subpath, source_content_id=authored.source_content_id,
             complete_all_matches=True)
+    rollback = None
     intent = context.checkpoint
+    rolled_back_checkpoint = isinstance(intent, dict) and intent.get("schema_version") == PACKAGE_ROLLBACK_SCHEMA
+    if rolled_back_checkpoint:
+        intent = intent.get("original_intent")
+        if not isinstance(intent, dict):
+            raise ValueError("Original package rollback evidence is missing")
     if intent is not None:
+        original_intent = intent
         try:
             if (intent.get("schema_version") != SOLUTION_DEPLOY_INTENT_SCHEMA
                     or intent.get("delivery_kind") != "package"
                     or intent.get("original_job_id") != str(context.job_id)
                     or intent.get("solution_id") != str(sid)
+                    or intent.get("organization_id") != package["organization_id"]
                     or intent.get("payload_digest") != canonical_digest(payload.model_dump(mode="json"))):
                 raise ValueError("Original package intent differs")
             async with solution_write_lock(sid):
                 async with get_db_context() as db:
-                    proof = await readback_package_runtime(db, sid, UUID(intent["deployment_id"]),
-                        expected_source_sha256=payload.input_sha256,
-                        expected_organization_id=context.organization_id)
-                    if proof["compiled_manifest_hash"] != intent["manifest_hash"]:
-                        raise ValueError("Original complete package manifest differs from intent")
-                    from src.services.solutions.deployment_storage import SolutionDeploymentStorage
-                    archive = await SolutionDeploymentStorage(sid, UUID(intent["deployment_id"])).read_source_artifact()
-                    proof["accounting"] = await settle(db, archive)
-            return {**proof, "original_job_id": str(context.job_id), "recovered_from_intent": True}
+                    from src.models.orm.solution_deployments import SolutionDeployment
+                    deployment = await db.get(SolutionDeployment, UUID(intent["deployment_id"]))
+                    if deployment is not None:
+                        if rolled_back_checkpoint:
+                            raise ValueError("Original package rollback evidence differs")
+                        proof = await readback_package_runtime(db, sid, UUID(intent["deployment_id"]),
+                            expected_source_sha256=payload.input_sha256,
+                            expected_organization_id=context.organization_id)
+                        if proof["compiled_manifest_hash"] != intent["manifest_hash"]:
+                            raise ValueError("Original complete package manifest differs from intent")
+                        from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+                        archive = await SolutionDeploymentStorage(sid, UUID(intent["deployment_id"])).read_source_artifact()
+                        proof["accounting"] = await settle(db, archive)
+                        return {**proof, "original_job_id": str(context.job_id), "recovered_from_intent": True}
+                    # The deployment row and all pointer/resource changes share
+                    # one transaction, fenced by the shared job lease. A new
+                    # lease can prove that transaction absent without replaying
+                    # any committed publication. Retain that disposition before
+                    # ordinary fresh Main/CI/controls/CAS checks run again.
+                    rollback = {"schema_version": PACKAGE_ROLLBACK_SCHEMA,
+                        "original_job_id": str(context.job_id), "solution_id": str(sid),
+                        "original_intent": intent, "publication_not_committed": True}
+                    await context.save_checkpoint(rollback, phase="Original package transaction rolled back")
         except Exception as exc:
-            raise PlatformJobRequiresAction("Original package publication requires readback", intent) from exc
+            raise PlatformJobRequiresAction("Original package publication requires readback", original_intent) from exc
+        if rollback is not None:
+            try:
+                # No publication occurred. Only now may the same shared job
+                # perform an ordinary fresh attempt with a new deployment ID.
+                # It revalidates Main/CI/controls and exact pointer CAS first.
+                result = await run_solution_package_delivery(replace(context, checkpoint=None), payload)
+                return {**result, "recovered_from_rollback": True}
+            except PlatformJobRequiresAction:
+                raise  # Keep any NEW uncertain publication intent intact.
+            except Exception as exc:
+                # A superseded Main, expired original token or changed control
+                # may refuse that fresh attempt. Preserve the proven absence,
+                # allowing a newer protected producer to publish separately.
+                raise PlatformJobFailure("package_prepublication_refused",
+                    "Original package transaction rolled back; fresh publication was refused.",
+                    result=rollback) from exc
 
     storage = SolutionDeployJobStorage(context.job_id)
     await context.report("Loading reviewed package", percent=2)

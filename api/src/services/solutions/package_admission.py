@@ -65,6 +65,34 @@ async def inspect_package_job(db: AsyncSession, solution_id: UUID, artifact_dige
     return job
 
 
+async def read_package_rollback(db: AsyncSession, job: PlatformJob) -> dict | None:
+    """Certify no publication, never convert that into a delivery completion."""
+    from src.jobs.platform.solution_deploy import SOLUTION_DEPLOY_INTENT_SCHEMA
+    from src.jobs.platform.solution_package_delivery import PACKAGE_ROLLBACK_SCHEMA
+    from src.models.orm.solution_deployments import SolutionDeployment
+
+    result = job.result or {}
+    if result.get("schema_version") != PACKAGE_ROLLBACK_SCHEMA:
+        return None
+    if job.encrypted_payload is None:
+        raise ValueError("Original rollback input is missing")
+    payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
+    intent = result.get("original_intent") or {}
+    if (result.get("publication_not_committed") is not True
+            or result.get("original_job_id") != str(job.id)
+            or result.get("solution_id") != str(payload.install_id)
+            or intent.get("schema_version") != SOLUTION_DEPLOY_INTENT_SCHEMA
+            or intent.get("delivery_kind") != "package"
+            or intent.get("original_job_id") != str(job.id)
+            or intent.get("solution_id") != str(payload.install_id)
+            or intent.get("organization_id") != (str(job.organization_id) if job.organization_id else None)
+            or intent.get("payload_digest") != canonical_digest(payload.model_dump(mode="json"))
+            or await db.get(SolutionDeployment, UUID(intent["deployment_id"])) is not None):
+        raise ValueError("Original package rollback readback differs")
+    return {"verified": True, "original_job_id": str(job.id),
+        "solution_id": str(payload.install_id), "deployment_id": intent["deployment_id"]}
+
+
 async def recover_pending_package(db: AsyncSession, policy: SolutionPackageGitDeliveryPolicy,
                                   solution_id: UUID) -> PlatformJob | None:
     """Resume only the original retained intent, even after Main advances.

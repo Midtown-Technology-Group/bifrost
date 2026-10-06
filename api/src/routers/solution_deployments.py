@@ -155,7 +155,7 @@ async def inspect_github_package(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ):
     """Same source-scoped identity, independently verified original-job result."""
-    from src.services.solutions.package_admission import inspect_package_job, read_package_accounting
+    from src.services.solutions.package_admission import inspect_package_job, read_package_accounting, read_package_rollback
     from src.services.platform_jobs import platform_job_to_public
     await _authenticate_package(solution_id, body, credentials)
     try:
@@ -163,10 +163,16 @@ async def inspect_github_package(
         public = platform_job_to_public(job)
         if job.status == "succeeded":
             public.result = {**(public.result or {}), "accounting_readback": await read_package_accounting(db, job)}
+        elif job.status == "failed":
+            rollback = await read_package_rollback(db, job)
+            if rollback is not None:
+                public.result = {**(public.result or {}), "rollback_readback": rollback}
         return public
     except LookupError as exc:
+        await db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

@@ -193,3 +193,48 @@ async def test_http_recovery_without_an_original_returns_a_versioned_object(monk
                 "artifact_digest": "sha256:" + "f" * 64})
     assert response.status_code == 200
     assert response.json() == {"schema_version": "bifrost.solution-package-recovery/v1", "job": None}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [LookupError("missing job"), ValueError("runtime differs")])
+async def test_failed_status_inspection_releases_its_database_lock(monkeypatch, failure):
+    from fastapi import HTTPException
+    from src.models.contracts.solution_deployments import SolutionGitSourceDeliveryRequest
+    from src.routers import solution_deployments as routes
+
+    monkeypatch.setattr(routes, "_authenticate_package", AsyncMock())
+    monkeypatch.setattr("src.services.solutions.package_admission.inspect_package_job", AsyncMock(side_effect=failure))
+    db = SimpleNamespace(rollback=AsyncMock())
+    body = SolutionGitSourceDeliveryRequest(source_commit_sha="e" * 40, ci_run_id=2,
+        ci_run_attempt=1, artifact_digest="sha256:" + "f" * 64)
+    with pytest.raises(HTTPException) as stopped:
+        await routes.inspect_github_package(SID, body, db, None)
+    assert stopped.value.status_code == (404 if isinstance(failure, LookupError) else 409)
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drift", [None, "committed", "payload", "target", "unverified"])
+async def test_rollback_readback_proves_absence_not_runtime_delivery(monkeypatch, drift):
+    from src.jobs.platform.solution_package_delivery import PACKAGE_ROLLBACK_SCHEMA
+    from src.services.solutions.package_admission import read_package_rollback
+
+    _, job, _payload = retained_job(status="failed")
+    intent = job.result
+    job.result = {"schema_version": PACKAGE_ROLLBACK_SCHEMA, "publication_not_committed": True,
+        "original_job_id": str(job.id), "solution_id": str(SID), "original_intent": intent}
+    if drift == "payload":
+        intent["payload_digest"] = "sha256:" + "0" * 64
+    elif drift == "target":
+        job.result["solution_id"] = str(uuid4())
+    elif drift == "unverified":
+        job.result["publication_not_committed"] = False
+    db = SimpleNamespace(get=AsyncMock(return_value=object() if drift == "committed" else None))
+    if drift is None:
+        proof = await read_package_rollback(db, job)
+        assert proof == {"verified": True, "original_job_id": str(job.id),
+            "solution_id": str(SID), "deployment_id": intent["deployment_id"]}
+        assert "source_verified" not in proof and "runtime_verified" not in proof
+    else:
+        with pytest.raises(ValueError, match="rollback readback differs"):
+            await read_package_rollback(db, job)

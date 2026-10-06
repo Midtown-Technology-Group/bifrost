@@ -28,8 +28,9 @@ from tests.unit.test_solution_app_deploy import _reviewed_package_source
 
 
 @pytest.mark.e2e
-async def test_committed_package_lost_ack_recovers_without_reprepare_or_republication(
-    db_session, async_session_factory, seed_user, compile_app, monkeypatch,
+@pytest.mark.parametrize("interruption", ["lost_ack", "stage_failure"])
+async def test_package_recovery_distinguishes_committed_and_rolled_back_transactions(
+    db_session, async_session_factory, seed_user, compile_app, monkeypatch, interruption,
 ):
     from src.jobs.platform import solution_package_delivery as worker
     from src.services import platform_jobs
@@ -88,7 +89,7 @@ async def test_committed_package_lost_ack_recovers_without_reprepare_or_republic
                 raise TimeoutError("Acknowledgment lost after actual package commit")
 
     monkeypatch.setattr(platform_jobs, "get_db_context", ordinary_context)
-    monkeypatch.setattr(worker, "get_db_context", commit_then_lose_ack)
+    monkeypatch.setattr(worker, "get_db_context", commit_then_lose_ack if interruption == "lost_ack" else ordinary_context)
     calls = {"compile": 0, "stage": 0}
     original_compile, original_stage = worker.compile_package_runtime, worker.stage_package_runtime
 
@@ -98,26 +99,41 @@ async def test_committed_package_lost_ack_recovers_without_reprepare_or_republic
 
     async def count_stage(*args, **kwargs):
         calls["stage"] += 1
-        return await original_stage(*args, **kwargs)
+        result = await original_stage(*args, **kwargs)
+        if interruption == "stage_failure" and calls["stage"] == 1:
+            raise TimeoutError("Storage failure before actual package commit")
+        return result
 
     monkeypatch.setattr(worker, "compile_package_runtime", count_compile)
     monkeypatch.setattr(worker, "stage_package_runtime", count_stage)
     context = PlatformJobContext(job_id, lease_token, None, str(SYSTEM_USER_UUID), SYSTEM_USER_EMAIL, "Package test")
     with pytest.raises(PlatformJobRequiresAction) as unknown:
         await run_solution_deploy(context, payload)
-    assert lost
+    assert lost is (interruption == "lost_ack")
     async with async_session_factory() as independent:
         active = await independent.get(Solution, solution.id)
-        assert active is not None and active.active_deployment_id is not None
-        assert active.execution_runtime_mode == "deployment-v1"
+        assert active is not None
         projection = await independent.get(SolutionDeployJob, job_id)
-        assert projection is not None and projection.status == "succeeded"
+        assert projection is not None
+        if interruption == "lost_ack":
+            assert active.active_deployment_id is not None and active.execution_runtime_mode == "deployment-v1"
+            assert projection.status == "succeeded"
+        else:
+            from uuid import UUID
+            from src.models.orm.solution_deployments import SolutionDeployment
+            assert active.active_deployment_id is None and active.execution_runtime_mode == "repo-v1"
+            assert await independent.get(SolutionDeployment, UUID(unknown.value.result["deployment_id"])) is None
     monkeypatch.setattr(worker, "get_db_context", ordinary_context)
     recovered = await run_solution_deploy(replace(context, checkpoint=unknown.value.result), payload)
-    assert recovered["recovered_from_intent"] and recovered["source_verified"]
+    assert recovered["source_verified"]
+    assert recovered.get("recovered_from_intent", False) is (interruption == "lost_ack")
+    if interruption == "stage_failure":
+        assert recovered["recovered_from_rollback"] is True
+        assert recovered["deployment_id"] != unknown.value.result["deployment_id"]
     assert recovered["runtime_verified"] and recovered["registrations_verified"]
     assert len(recovered["workflow_runtime_pins"]) == len(recovered["app_runtime_pins"]) == 1
-    assert calls == {"compile": 1, "stage": 1}
+    expected_calls = {"compile": 1, "stage": 1} if interruption == "lost_ack" else {"compile": 2, "stage": 2}
+    assert calls == expected_calls
     assert await platform_jobs.finish_platform_job(job_id, lease_token, status="succeeded", result=recovered)
 
     # Declaration arrives AFTER publication/recovery. The ordinary declaration
@@ -146,7 +162,7 @@ async def test_committed_package_lost_ack_recovers_without_reprepare_or_republic
     receipt = await db_session.scalar(select(SolutionDeployObligation).where(
         SolutionDeployObligation.source_release_id == response.id))
     assert receipt is not None and receipt.disposition == "released"
-    assert calls == {"compile": 1, "stage": 1}
+    assert calls == expected_calls
     from src.services.solutions.package_admission import inspect_package_job, read_package_accounting
     inspected = await inspect_package_job(db_session, solution.id, source.artifact_digest)
     # Its old completion was not tracked before the declaration. Inspection
@@ -154,4 +170,62 @@ async def test_committed_package_lost_ack_recovers_without_reprepare_or_republic
     old_result = dict(inspected.result)
     assert (await read_package_accounting(db_session, inspected))["verified"] is True
     assert inspected.result == old_result
-    assert calls == {"compile": 1, "stage": 1}
+    assert calls == expected_calls
+
+
+@pytest.mark.asyncio
+async def test_busy_solution_does_not_abort_other_package_accounting(monkeypatch):
+    from types import SimpleNamespace
+    from src.jobs.platform import solution_package_delivery as worker
+    from src.jobs.platform.solution_deploy import SolutionDeployPayload
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.package_runtime import PACKAGE_RUNTIME_SCHEMA
+    from src.services.solutions.write_lock import SolutionWriteLockHeld
+
+    busy, available, child = uuid4(), uuid4(), uuid4()
+    policy = SolutionPackageGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
+        repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
+        workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
+        ci_workflow_id=257449914, packages={sid: {"organization_id": None,
+            "repo_subpath": f"solutions/package-{sid.hex[:8]}",
+            "recipe_path": f"config/solution-package-delivery/{sid}.json"} for sid in [busy, available]})
+    settings = get_settings().model_copy(update={"solution_package_git_delivery_policy": policy})
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    rows, released = {}, []
+    for sid in [busy, available]:
+        did, jid = uuid4(), uuid4()
+        envelope = {"package": {"solution_id": str(sid)}}
+        payload = SolutionDeployPayload(deploy_job_id=jid, kind="deliver_package", install_id=sid,
+            input_sha256="c" * 64, options={"package_source": envelope, "artifact_digest": "sha256:" + "f" * 64})
+        rows[Solution, sid] = SimpleNamespace(status="active", active_deployment_id=did,
+            organization_id=None, slug=f"package-{sid.hex[:8]}")
+        rows[SolutionDeployment, did] = SimpleNamespace(id=did, compiled_manifest={"package_evidence": {
+            "schema_version": PACKAGE_RUNTIME_SCHEMA, "publication_job_id": str(jid), "source": envelope}})
+        rows[PlatformJob, jid] = SimpleNamespace(id=jid, status="succeeded", organization_id=None,
+            requested_by_user_id=str(SYSTEM_USER_UUID), encrypted_payload=encrypt_secret(payload.model_dump_json()),
+            result={"deployment_id": str(did)})
+
+    async def lookup(model, identity, **_kwargs):
+        return rows.get((model, identity))
+
+    @asynccontextmanager
+    async def lock(sid):
+        if sid == busy:
+            raise SolutionWriteLockHeld(str(sid))
+        try:
+            yield
+        finally:
+            released.append(sid)
+
+    db = SimpleNamespace(get=AsyncMock(side_effect=lookup), scalar=AsyncMock(return_value=None), commit=AsyncMock())
+    monkeypatch.setattr(worker, "solution_write_lock", lock)
+    monkeypatch.setattr("src.services.solutions.deployment_storage.SolutionDeploymentStorage.read_source_artifact",
+        AsyncMock(return_value=b"retained package"))
+    monkeypatch.setattr(worker, "staged_package_source", lambda *_: SimpleNamespace(authored=SimpleNamespace(
+        solution_slug="available", source_content_id="sha256:" + "c" * 64)))
+    settle = AsyncMock(return_value={"obligation_ids": [str(child)]})
+    monkeypatch.setattr("src.services.solution_deploy_obligations.reconcile_solution_deploy_obligation", settle)
+    assert await worker.reconcile_reviewed_package_obligations(db) == [child]
+    assert settle.await_args.kwargs["solution_id"] == available
+    assert released == [available]
+    db.commit.assert_awaited_once()
