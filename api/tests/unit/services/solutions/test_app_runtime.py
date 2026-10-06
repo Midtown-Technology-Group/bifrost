@@ -32,6 +32,17 @@ def test_complete_app_runtime_pin_matches_actual_outputs():
     assert verify_compiled_app_runtime_pin(proof, **identity) == proof
 
 
+def test_vite_relative_urls_reference_the_same_compiled_files():
+    identity = inputs()
+    identity["outputs"]["index.html"] = (
+        b'<script type="module" src="./assets/main.js"></script>'
+        b'<link rel="stylesheet" href="./assets/main.css">'
+    )
+    identity["outputs"]["assets/main.css"] = b"body { color: blue; }"
+    proof = compiled_app_runtime_pin(**identity)
+    assert verify_compiled_app_runtime_pin(proof, **identity) == proof
+
+
 @pytest.mark.parametrize(
     "field",
     ["solution_id", "application_id", "deployment_id", "source_sha256", "source_built"],

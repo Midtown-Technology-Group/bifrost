@@ -40,8 +40,19 @@ def compiled_index_assets(html: str) -> tuple[str | None, str | None]:
 
     parser = IndexAssetParser()
     parser.feed(html)
-    entry = parser.entry.split("/dist/")[-1].lstrip("/") if parser.entry else None
-    css = parser.css.split("/dist/")[-1].lstrip("/") if parser.css else None
+    # Vite's base="./" emits ./assets/...; the browser resolves that to the
+    # same deployment-relative object as assets/.... Preserve that identity
+    # when comparing against the compiled output inventory.
+    entry = (
+        parser.entry.split("/dist/")[-1].lstrip("/").removeprefix("./")
+        if parser.entry
+        else None
+    )
+    css = (
+        parser.css.split("/dist/")[-1].lstrip("/").removeprefix("./")
+        if parser.css
+        else None
+    )
     return entry, css
 
 
