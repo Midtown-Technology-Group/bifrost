@@ -228,7 +228,7 @@ class CompiledSolutionAppDeployment:
     expected_old_deployment_id: UUID | None
     superseded_deployment_id: UUID | None
     dist: dict[str, bytes]
-    runtime_pin: dict[str, Any]
+    runtime_pin: dict[str, Any] | None
     sdk_metadata: CurrentApplicationSdkMetadata | None = None
     source_built: bool = False
     source_available: bool = False
@@ -500,7 +500,11 @@ class SolutionDeployer:
 
         compiled = await self._compile_app_dists(
             builds,
-            source_sha256=source_archive_sha256(source_artifact) if builds else "",
+            source_sha256=(
+                source_archive_sha256(source_artifact)
+                if builds and source_artifact is not None
+                else None
+            ),
         )
 
         # ── S3 phase, DEFERRED until after the caller's commit (cheap PUTs) ───
@@ -1263,7 +1267,7 @@ class SolutionDeployer:
         return builds
 
     async def _compile_app_dists(
-        self, builds: list[dict[str, Any]], *, source_sha256: str
+        self, builds: list[dict[str, Any]], *, source_sha256: str | None
     ) -> list[CompiledSolutionAppDeployment]:
         """PRE-COMMIT: compile each app's dist to memory (npm install + vite
         build, or a shipped prebuilt dist). This is the failure-prone step — a
@@ -1326,13 +1330,17 @@ class SolutionDeployer:
                     expected_old_deployment_id=expected_old,
                     superseded_deployment_id=expected_old,
                     dist=dist,
-                    runtime_pin=compiled_app_runtime_pin(
-                        solution_id=b["solution_id"],
-                        application_id=b["app_id"],
-                        deployment_id=deployment_id,
-                        source_sha256=source_sha256,
-                        outputs=dist,
-                        source_built=source_built,
+                    runtime_pin=(
+                        compiled_app_runtime_pin(
+                            solution_id=b["solution_id"],
+                            application_id=b["app_id"],
+                            deployment_id=deployment_id,
+                            source_sha256=source_sha256,
+                            outputs=dist,
+                            source_built=source_built,
+                        )
+                        if source_sha256 is not None
+                        else None
                     ),
                     sdk_metadata=current_metadata if source_built else None,
                     source_built=source_built,

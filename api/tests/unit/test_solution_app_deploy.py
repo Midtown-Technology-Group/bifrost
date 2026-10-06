@@ -160,6 +160,9 @@ class TestSolutionAppDeploy:
         assert app.deployed_at is not None
         assert app.repo_path is not None
         assert app.published_snapshot["sdk_source_available"] is source_available
+        # The service supports callers without an original zip. Such a build
+        # can publish, but must not invent protected-source accounting proof.
+        assert app.published_snapshot["runtime_pin"] is None
         assert app.sdk_fingerprint is None
 
     async def test_source_build_uploads_versioned_dist_and_stamps_sdk_after_upload(

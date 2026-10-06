@@ -45,6 +45,8 @@ its active deployment ID, and verifies the full output inventory, byte hashes,
 package archive digest and build mode. Missing artifacts, unexpected output,
 changed ownership or a changed pointer cannot earn credit. Recovery reads these
 facts without rebuilding the App or switching its pointer.
+An internal deploy without a retained source archive preserves its existing
+publication behavior but cannot establish this pin or earn source credit.
 
 Do not directly edit database evidence, bypass Solution ownership protection, or
 redeploy a working application merely to retry bookkeeping. Review any remaining
