@@ -149,6 +149,9 @@ class CompiledDeploymentManifest(ImmutableContract):
     config_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
     dependencies: dict[str, DependencyResolution] = Field(default_factory=dict)
     git: DeploymentGitProvenance = Field(default_factory=DeploymentGitProvenance)
+    # Complete authored package and retained control evidence. Absent on older
+    # workflow-only deployments, preserving their canonical bytes and hashes.
+    package_evidence: dict[str, JsonValue] | None = None
 
     def canonical_bytes(self) -> bytes:
         return canonical_json(self)
