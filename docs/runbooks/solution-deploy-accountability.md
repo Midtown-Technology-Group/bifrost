@@ -34,7 +34,17 @@ exact bytes against the declared Git file, then allows only `dist_files` and
 must remain unchanged. An older overlay without this retained manifest cannot
 prove those facts and stays `attention_required`; do not clear it manually or
 replay a deployment just to obtain accounting credit. This manifest check is
-source evidence, not proof of the active compiled App runtime.
+source evidence, not proof that locally prebuilt output was compiled from Git.
+An altered build overlay with locally supplied output stays `attention_required`
+until protected build provenance exists; current automatic delivery must build
+from the protected source or carry output checked into that exact source.
+
+Full Solution deployments now retain an App runtime pin in their existing
+publication snapshot. Accounting locks the App row, reads every object under
+its active deployment ID, and verifies the full output inventory, byte hashes,
+package archive digest and build mode. Missing artifacts, unexpected output,
+changed ownership or a changed pointer cannot earn credit. Recovery reads these
+facts without rebuilding the App or switching its pointer.
 
 Do not directly edit database evidence, bypass Solution ownership protection, or
 redeploy a working application merely to retry bookkeeping. Review any remaining

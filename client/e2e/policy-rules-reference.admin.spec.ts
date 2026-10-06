@@ -64,8 +64,10 @@ async function policyEditorText(page: Page, modelPath: string) {
 		const model = monaco?.editor
 			?.getModels?.()
 			.find((item) => item.uri.path.endsWith(targetPath));
-		if (!model) throw new Error(`${targetPath} Monaco model not found`);
-		return model.getValue();
+		// The toolbar can be used before Monaco's asynchronous loader mounts
+		// its model. Keep the existing content assertion polling until then;
+		// a missing model must still fail that assertion at its normal deadline.
+		return model?.getValue() ?? "";
 	}, modelPath);
 }
 

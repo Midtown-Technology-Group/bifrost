@@ -612,6 +612,60 @@ async def _runtime_and_registration_readback(
             },
         )
 
+    app_runtime_pins = {}
+    if entity_readback["apps"]:
+        from src.services.solutions.app_build import SolutionAppBuilder
+        from src.services.solutions.app_runtime import verify_compiled_app_runtime_pin
+
+        builder = SolutionAppBuilder()
+        applications = list(
+            (await db.scalars(
+                select(Application)
+                .where(Application.solution_id == solution_id)
+                .with_for_update()
+            )).all()
+        )
+        if sorted(str(app.id) for app in applications) != entity_readback["apps"]:
+            return False, "App ownership changed during runtime readback", {}
+        for app in applications:
+            if app.app_model != "standalone_v2" or app.active_deployment_id is None:
+                return False, "Solution App lacks an active compiled runtime", {
+                    "application_id": str(app.id)
+                }
+            deployment_id = app.active_deployment_id
+            paths = await builder.list_dist(app.id, deployment_id=deployment_id)
+            if len(paths) != len(set(paths)):
+                return False, "Compiled App inventory contains duplicate paths", {
+                    "application_id": str(app.id)
+                }
+            outputs = {
+                path: await builder.read_dist(app.id, path, deployment_id=deployment_id)
+                for path in paths
+            }
+            snapshot = app.published_snapshot or {}
+            pin = verify_compiled_app_runtime_pin(
+                snapshot.get("runtime_pin"),
+                solution_id=solution_id,
+                application_id=app.id,
+                deployment_id=deployment_id,
+                source_sha256=hashlib.sha256(artifact).hexdigest(),
+                outputs=outputs,
+                source_built=app.sdk_fingerprint is not None,
+            )
+            # Detect an independent rebuild before crediting the original job.
+            await db.refresh(app, attribute_names=[
+                "solution_id", "active_deployment_id", "published_snapshot"
+            ])
+            if (
+                app.solution_id != solution_id
+                or app.active_deployment_id != deployment_id
+                or (app.published_snapshot or {}).get("runtime_pin") != pin
+            ):
+                return False, "App runtime changed during readback", {
+                    "application_id": str(app.id)
+                }
+            app_runtime_pins[str(app.id)] = pin
+
     with tempfile.TemporaryDirectory(prefix="bifrost-solution-accountability-") as tmp:
         _safe_extract(artifact, tmp)
         from bifrost.commands.solution import _collect_python_files
@@ -710,6 +764,7 @@ async def _runtime_and_registration_readback(
             "runtime_cache_files": cache_hashes,
             "entity_ids": entity_readback,
             "workflow_registrations": [list(item) for item in actual_workflows],
+            "app_runtime_pins": app_runtime_pins,
         },
     )
 
@@ -772,6 +827,16 @@ async def reconcile_solution_deploy_obligation(
                 solution_id=solution_id,
                 artifact=artifact,
             )
+            if (
+                valid
+                and artifact_evidence["derived_paths"]
+                and any(
+                    pin["build_mode"] == "prebuilt"
+                    for pin in readback.get("app_runtime_pins", {}).values()
+                )
+            ):
+                valid = False
+                reason = "Locally derived App outputs lack protected build provenance; runtime byte verification alone cannot settle source"
         except Exception as exc:  # noqa: BLE001 - accountability must persist failure
             record.disposition = "attention_required"
             record.reason = f"Solution deployment readback failed: {type(exc).__name__}"
