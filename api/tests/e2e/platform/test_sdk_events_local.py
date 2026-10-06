@@ -31,7 +31,7 @@ def live_events_keys():
 
 
 @pytest.fixture(scope="module")
-def live_events_source(e2e_client, platform_admin, live_events_keys):
+def live_events_source(e2e_client, platform_admin, org1, live_events_keys):
     """Pre-create the topic source so the emit materializes an event row."""
     resp = e2e_client.post(
         "/api/events/sources",
@@ -40,6 +40,7 @@ def live_events_source(e2e_client, platform_admin, live_events_keys):
             "name": f"E2E events local {live_events_keys['tag']}",
             "source_type": "topic",
             "event_type": live_events_keys["topic"],
+            "organization_id": org1["id"],
         },
     )
     assert resp.status_code == 201, resp.text

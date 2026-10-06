@@ -465,6 +465,10 @@ def live_tables_service(e2e_client, platform_admin, live_table_keys, live_table)
     definition = _service_definition(
         e2e_client, platform_admin.headers, registered["id"]
     )
+    started = e2e_client.post(
+        f"/api/services/{definition['id']}/start", headers=platform_admin.headers
+    )
+    assert started.status_code == 200, started.text
     yield definition
     e2e_client.post(
         f"/api/services/{definition['id']}/stop", headers=platform_admin.headers
