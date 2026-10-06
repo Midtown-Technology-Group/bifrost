@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -63,6 +64,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+    from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
 
 def _decode_logo(
     label: str, b64: str | None, content_type: str | None
@@ -353,6 +355,93 @@ class SolutionDeployer:
         file_mode: str = "replace",
         source_artifact: bytes | Path | None = None,
     ) -> DeployResult:
+        # Manual/legacy callers never obtain permission to replace an active
+        # immutable runtime. Only the reviewed package preparation entry below
+        # accepts an exact existing deployment as its base.
+        return await self._prepare_bundle(bundle, force, file_mode, source_artifact)
+
+    async def prepare_reviewed_package(
+        self,
+        source: VerifiedSolutionPackageSource,
+        *,
+        expected_active_deployment_id: UUID | None,
+        expected_controls_digest: str,
+    ) -> PreparedSolutionDeployment:
+        """Prepare the complete Git package in the caller's transaction.
+
+        This does not commit, upload, activate, or return the legacy mutable
+        finalizer. The package worker must stage immutable bytes and join the
+        Solution and App pointer switches in the same transaction. Existing
+        controls/resources are retained; deliberate control changes require a
+        separate reviewed contract, not a force switch.
+        """
+        import tempfile
+
+        from bifrost.solution_package_delivery import review_solution_package_source
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import (
+            capture_package_controls,
+            require_preserved_package_controls,
+        )
+        from src.services.solutions.zip_install import _build_bundle, _parse_workspace, _safe_extract
+
+        evidence = source.evidence()
+        proof = evidence["package"]
+        prefix = source.authored.repo_subpath + "/"
+        modes = {item.path.removeprefix(prefix): item.mode for item in source.authored.source_files}
+        verified = review_solution_package_source(
+            proof["reviewed_recipe"], source.authored.files, modes,
+            source_commit_sha=source.authored.commit_sha,
+            source_tree_sha=source.authored.tree_sha,
+        )
+        if (
+            canonical_digest(evidence) != source.artifact_digest or verified != proof
+            or hashlib.sha256(source.source_archive).hexdigest() != proof["source_archive_sha256"]
+        ):
+            raise SolutionDeployConflict("Reviewed package source evidence differs")
+        sid = UUID(proof["solution_id"])
+        # A savepoint also rolls back metadata/role/shell preparation if the
+        # post-prepare control comparison fails and an outer caller catches it.
+        async with self.db.begin_nested():
+            solution = await self.db.scalar(select(Solution).where(Solution.id == sid).with_for_update())
+            if solution is None or (
+                str(solution.organization_id) if solution.organization_id is not None else None
+            ) != proof["organization_id"]:
+                raise SolutionDeployConflict("Reviewed package target/scope differs")
+            if solution.active_deployment_id != expected_active_deployment_id:
+                raise SolutionDeployConflict("Reviewed package base deployment changed")
+            before = await capture_package_controls(self.db, sid)
+            if canonical_digest(before) != expected_controls_digest:
+                raise SolutionDeployConflict("Reviewed package installed controls changed")
+            with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
+                workspace = Path(directory)
+                _safe_extract(source.source_archive, directory)
+                preview = _parse_workspace(workspace)
+                if preview.requires_password or preview.slug != solution.slug:
+                    raise SolutionDeployConflict("Reviewed package identity or secret tier differs")
+                bundle = _build_bundle(solution, preview, workspace)
+                result = await self._prepare_bundle(
+                    bundle, source_artifact=source.source_archive,
+                    expected_active_deployment_id=expected_active_deployment_id,
+                )
+            await self.db.flush()
+            try:
+                require_preserved_package_controls(before, await capture_package_controls(self.db, sid))
+            except ValueError as exc:
+                raise SolutionDeployConflict(str(exc)) from exc
+            if result.prepared is None:
+                raise SolutionDeployConflict("Reviewed package preparation is incomplete")
+            return result.prepared
+
+    async def _prepare_bundle(
+        self,
+        bundle: SolutionBundle,
+        force: bool = False,
+        file_mode: str = "replace",
+        source_artifact: bytes | Path | None = None,
+        *,
+        expected_active_deployment_id: UUID | None = None,
+    ) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
         ``file_mode`` controls how bundle file sidecars are written on deploy:
@@ -383,7 +472,7 @@ class SolutionDeployer:
             .where(Solution.id == sid)
             .with_for_update()
         )
-        if active_deployment_id is not None:
+        if active_deployment_id != expected_active_deployment_id:
             raise SolutionDeployConflict(
                 "Solution has an active immutable deployment; stage and review a "
                 "successor deployment before changing its workflows"

@@ -8,10 +8,13 @@ THIS install only; an id collision with a ``_repo/`` or other-install app raises
 no real Node toolchain runs in unit tests.
 """
 from contextlib import asynccontextmanager
+from dataclasses import replace
 import hashlib
+import json
 import uuid
 
 import pytest
+import yaml
 
 from src.models.orm.applications import Application
 from src.models.orm.solutions import Solution
@@ -116,6 +119,37 @@ def _app_entry(app_id: str, slug: str) -> dict:
     }
 
 
+def _reviewed_package_source(sol, *, app_access_level="authenticated"):
+    from bifrost.solution_package_delivery import build_solution_package_archive, review_solution_package_source
+    from bifrost.workspace_release import canonical_digest
+    from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution, VerifiedAuthoredSolutionFile
+    from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
+    from tests.unit.test_solution_package_delivery import recipe, source
+
+    files = source()
+    files["bifrost.solution.yaml"] = f"slug: {sol.slug}\nname: APP\n".encode()
+    app_manifest = yaml.safe_load(files[".bifrost/apps.yaml"])
+    for app in app_manifest["apps"].values():
+        app.update(name="Example", slug="example", access_level=app_access_level)
+    files[".bifrost/apps.yaml"] = yaml.safe_dump(app_manifest).encode()
+    contract = recipe(files)
+    contract.update(solution_id=str(sol.id), repo_subpath=f"solutions/{sol.slug}")
+    modes = {path: "100644" for path in files}
+    proof = review_solution_package_source(contract, files, modes, source_commit_sha="a" * 40, source_tree_sha="b" * 40)
+    authored = VerifiedAuthoredSolution(
+        commit_sha="a" * 40, tree_sha="b" * 40, subtree_sha="c" * 40,
+        solution_slug=sol.slug, repo_subpath=contract["repo_subpath"], source_content_id="sha256:" + "d" * 64,
+        source_files=tuple(VerifiedAuthoredSolutionFile(
+            path=contract["repo_subpath"] + "/" + path, mode="100644",
+            sha256=hashlib.sha256(raw).hexdigest(), size=len(raw),
+        ) for path, raw in files.items()), files=files,
+    )
+    evidence = {"schema_version": "bifrost.solution-package-git-source/v1", "package": proof}
+    return VerifiedSolutionPackageSource(
+        authored, build_solution_package_archive(files, modes), json.dumps(evidence).encode(), canonical_digest(evidence)
+    )
+
+
 @pytest.mark.e2e
 class TestSolutionAppDeploy:
     async def _install(self, db, org_id=None) -> Solution:
@@ -128,6 +162,89 @@ class TestSolutionAppDeploy:
         db.add(sol)
         await db.flush()
         return sol
+
+    @pytest.mark.parametrize("successor", [False, True])
+    async def test_reviewed_complete_package_prepares_without_mutable_publication(
+        self, db_session, _stub_app_build, seed_user, successor
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from src.models.orm.solution_deployments import SolutionDeployment
+        from src.services.solutions.package_controls import capture_package_controls
+        from src.services.solutions.storage import SolutionStorage
+
+        sol = await self._install(db_session)
+        previous = None
+        if successor:
+            previous = uuid.uuid4()
+            db_session.add(SolutionDeployment(
+                id=previous, solution_id=sol.id, organization_id=None, created_by=seed_user.id,
+                state="active", bundle_hash="sha256:" + "1" * 64, compiled_manifest={},
+                compiled_manifest_hash="sha256:" + "2" * 64, resolution_map={},
+                resolution_map_hash="sha256:" + "3" * 64, source_artifact_key="test/source.zip",
+                runtime_storage_prefix="test/runtime/",
+            ))
+            await db_session.flush()
+            sol.active_deployment_id = previous
+            await db_session.flush()
+        source = _reviewed_package_source(sol)
+        controls = await capture_package_controls(db_session, sol.id)
+        prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
+            source, expected_active_deployment_id=previous,
+            expected_controls_digest=canonical_digest(controls),
+        )
+        assert len(prepared.bundle.workflows) == len(prepared.bundle.tables) == len(prepared.bundle.apps) == 1
+        assert prepared.bundle.file_locations == ["audit-evidence"]
+        assert len(prepared.compiled_apps) == 1
+        assert prepared.source_bundle.python_files["modules/__init__.py"] == ""
+        assert sol.active_deployment_id == previous
+        assert _stub_app_build == {}
+        assert await SolutionStorage(sol.id).list("") == []
+        assert not hasattr(prepared, "finalize_s3")
+
+    @pytest.mark.parametrize("drift", ["controls", "pointer", "archive"])
+    async def test_reviewed_package_rejects_changed_preflight_before_preparation(
+        self, db_session, _stub_app_build, drift
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import capture_package_controls
+
+        sol = await self._install(db_session)
+        source = _reviewed_package_source(sol)
+        digest = canonical_digest(await capture_package_controls(db_session, sol.id))
+        expected_pointer = None
+        if drift == "controls":
+            sol.allow_inbound_access = False
+            await db_session.flush()
+        elif drift == "pointer":
+            expected_pointer = uuid.uuid4()
+        else:
+            source = replace(source, source_archive=source.source_archive + b"extra")
+        with pytest.raises(SolutionDeployConflict):
+            await SolutionDeployer(db_session).prepare_reviewed_package(
+                source, expected_active_deployment_id=expected_pointer, expected_controls_digest=digest,
+            )
+        assert _stub_app_build == {}
+
+    async def test_reviewed_package_control_change_rolls_back_complete_preparation(
+        self, db_session, _stub_app_build
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import capture_package_controls
+
+        sol = await self._install(db_session)
+        deployer = SolutionDeployer(db_session)
+        await deployer.prepare_reviewed_package(
+            _reviewed_package_source(sol), expected_active_deployment_id=None,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sol.id)),
+        )
+        before = await capture_package_controls(db_session, sol.id)
+        with pytest.raises(SolutionDeployConflict, match="installed controls: applications"):
+            await deployer.prepare_reviewed_package(
+                _reviewed_package_source(sol, app_access_level="everyone"),
+                expected_active_deployment_id=None, expected_controls_digest=canonical_digest(before),
+            )
+        assert await capture_package_controls(db_session, sol.id) == before
+        assert _stub_app_build == {}
 
     async def test_preparation_retains_the_complete_mixed_bundle_before_upload(
         self, db_session, _stub_app_build

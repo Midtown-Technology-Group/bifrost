@@ -87,7 +87,7 @@ implemented. The latter reuses the existing repository/CI reader and OIDC
 verifier, binds an explicitly scoped enrolled target and complete reviewed
 manifest set, and rechecks current Main/CI after reading all blobs. Its audience
 cannot reuse workflow-only or inline-App tokens. This is source verification
-only: HTTP admission, installed-control checks, worker publication/recovery,
+only: HTTP admission, worker publication/recovery,
 immutable workflow projection and common producer enrollment remain unimplemented.
 
 Offline review of committed Workspace Main `6793385de20071acc85ab749fbe83c3b6dd22706`
@@ -124,12 +124,14 @@ is lost: the active pointer, runtime pin and every served output remain readable
 without another activation. The earlier local asyncio socketpair setup errors
 and fixture/mirror failures remain retained; none were waived or called passing.
 
-The next shared-deployer refactor retains both the original complete bundle and
+The shared-deployer refactor at `dd37f45a6` retains both the original complete bundle and
 its remapped projection alongside compiled App outputs. Its all-App CAS can run
 inside the caller's transaction, enabling the package worker to move Solution
 and App pointers together. A mixed App/workflow/table/file-location test checks
 pre-publication retention and rollback of the App pointer. This new refactor
-requires its own current-head CI; the `ce4fd20b3` results do not qualify it.
+passed its own comprehensive CI run `37442686961`, including 12,549 unit tests
+and the actual mixed-package preparation/transaction rollback test. These results
+do not qualify subsequent changes.
 
 HTTP admission, the complete worker and automatic enrollment remain unfinished.
 No new publication endpoint or production capability is enabled by these helpers.
@@ -143,4 +145,26 @@ from the original actor can resume that same job for readback; changed bytes,
 options or scope cannot replace an unresolved intent. A missing original
 completion or newer deployment fails closed for reconciliation. This does not
 repair partially completed resource writes or qualify the future immutable
-package worker. New recovery checks still require their exact-head CI.
+package worker. Its 19 focused recovery regressions passed in the exact
+`5308f1176` unit lane (12,568 passed, three skipped); all four API shards also
+passed. Browser/coverage lanes were still running at the recorded readback.
+
+Complete package preparation now calls the existing deployer from the verified
+Git archive, with an exact initial or successor deployment pointer and retained
+control digest. It compares installed controls before and after preparation,
+including role/MCP grants, endpoint/API-key exposure, entity scope/identity,
+event bindings, table policies, file locations and connection declarations.
+The comparison reads explicit columns rather than invoking capture methods that
+can create connection declarations. Secret values and operational data are
+excluded. Existing controls/resources cannot be silently replaced or removed;
+new reviewed entities/declarations may be created. A failed comparison rolls the
+complete metadata preparation back to its savepoint.
+
+This entry returns only the original/remapped bundles and compiled App outputs;
+it does not expose the mutable-source finalizer, commit, upload or activate.
+The normal manual deploy guard remains closed for active immutable installations.
+New initial/successor, stale-pointer/source/control and rollback tests require
+the new exact-head CI. HTTP admission, immutable artifact publication, joined
+Solution/App activation, complete readback/accounting and producer enrollment
+are still unfinished; this preparation entry must not be advertised as a
+working publication endpoint.
