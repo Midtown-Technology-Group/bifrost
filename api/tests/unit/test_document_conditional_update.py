@@ -60,7 +60,7 @@ async def test_sdk_conditional_endpoint_never_falls_back(monkeypatch, status):
             "expected_updated_at": REVISION.isoformat(),
             "expected_data": {},
         },
-        retry_safe=False,
+        retry_transient=False,
     )
 
 

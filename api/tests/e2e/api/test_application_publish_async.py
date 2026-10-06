@@ -100,23 +100,47 @@ def _poll_notification(e2e_client, headers, notification_id: str, status: str) -
     )
 
 
-def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
+def test_publish_success_deduplication_and_requester_visibility(
+    e2e_client, platform_admin, org1, org1_user, app_factory
+):
     app = app_factory(
         platform_admin.headers,
         f"async-publish-{uuid.uuid4().hex[:8]}",
+        organization_id=org1["id"],
     )
+    barrier = Barrier(2)
 
-    response = e2e_client.post(
+    def enqueue():
+        barrier.wait()
+        return e2e_client.post(
+            f"/api/applications/{app['id']}/publish",
+            headers=platform_admin.headers,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _index: enqueue(), range(2)))
+
+    assert all(response.status_code == 202 for response in responses), [
+        response.text for response in responses
+    ]
+    bodies = [response.json() for response in responses]
+    assert len({body["job_id"] for body in bodies}) == 1
+    assert len({body["notification_id"] for body in bodies}) == 1
+    assert sorted(body["reused"] for body in bodies) == [False, True]
+    accepted = bodies[0]
+    assert all(
+        response.headers["location"].endswith(f"/{accepted['job_id']}")
+        for response in responses
+    )
+    assert accepted["notification_id"]
+    duplicate = e2e_client.post(
         f"/api/applications/{app['id']}/publish",
-        headers=platform_admin.headers,
+        headers=org1_user.headers,
     )
-
-    assert response.status_code == 202, response.text
-    assert response.headers["location"].endswith(
-        f"/{response.json()['job_id']}"
+    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.json()["detail"] == (
+        "An application publish is already in progress"
     )
-    assert response.json()["notification_id"]
-    accepted = response.json()
     visible = e2e_client.get(
         f"/api/platform-jobs/{accepted['job_id']}",
         headers=platform_admin.headers,
@@ -124,10 +148,15 @@ def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
     assert visible.status_code == 200, visible.text
     assert "payload" not in visible.json()
     assert visible.json()["job_type"] == "application.publish"
+    hidden = e2e_client.get(
+        f"/api/platform-jobs/{accepted['job_id']}",
+        headers=org1_user.headers,
+    )
+    assert hidden.status_code == 404
     body = _poll(
         e2e_client,
         platform_admin.headers,
-        response.json()["job_id"],
+        accepted["job_id"],
     )
     assert body["status"] == "succeeded", body
     assert body["result"]["publication_verified"] is True
@@ -172,10 +201,11 @@ def test_enqueue_poll_and_success(e2e_client, platform_admin, app_factory):
     notification = _poll_notification(
         e2e_client,
         platform_admin.headers,
-        response.json()["notification_id"],
+        accepted["notification_id"],
         "completed",
     )
     assert notification["percent"] == 100
+
 
 
 def test_repeat_publication_reuses_immutable_outputs(e2e_client, platform_admin, app_factory):
@@ -434,103 +464,10 @@ async def test_storage_rejects_conflicting_immutable_output_bytes(platform_admin
     assert await storage.read_file(app["id"], "live", "manifest.json") == original["manifest.json"]
 
 
-def test_job_is_not_visible_to_another_user(
-    e2e_client,
-    platform_admin,
-    org1_user,
-    app_factory,
-):
-    app = app_factory(
-        platform_admin.headers,
-        f"private-publish-{uuid.uuid4().hex[:8]}",
-    )
-    response = e2e_client.post(
-        f"/api/applications/{app['id']}/publish",
-        headers=platform_admin.headers,
-    )
-    assert response.status_code == 202, response.text
-    hidden = e2e_client.get(
-        f"/api/platform-jobs/{response.json()['job_id']}",
-        headers=org1_user.headers,
-    )
-    assert hidden.status_code == 404
-    terminal = _poll(
-        e2e_client,
-        platform_admin.headers,
-        response.json()["job_id"],
-    )
-    assert terminal["status"] == "succeeded", terminal
 
 
-def test_concurrent_enqueue_reuses_active_job(
-    e2e_client,
-    platform_admin,
-    app_factory,
-):
-    app = app_factory(
-        platform_admin.headers,
-        f"concurrent-publish-{uuid.uuid4().hex[:8]}",
-    )
-    barrier = Barrier(2)
-
-    def enqueue():
-        barrier.wait()
-        return e2e_client.post(
-            f"/api/applications/{app['id']}/publish",
-            headers=platform_admin.headers,
-        )
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        responses = list(pool.map(lambda _index: enqueue(), range(2)))
-
-    assert all(response.status_code == 202 for response in responses), [
-        response.text for response in responses
-    ]
-    bodies = [response.json() for response in responses]
-    assert len({body["job_id"] for body in bodies}) == 1
-    assert len({body["notification_id"] for body in bodies}) == 1
-    assert sorted(body["reused"] for body in bodies) == [False, True]
-    terminal = _poll(
-        e2e_client,
-        platform_admin.headers,
-        bodies[0]["job_id"],
-    )
-    assert terminal["status"] == "succeeded", terminal
 
 
-def test_different_requester_gets_conflict_for_active_job(
-    e2e_client,
-    platform_admin,
-    org1,
-    org1_user,
-    app_factory,
-):
-    app = app_factory(
-        platform_admin.headers,
-        f"cross-user-publish-{uuid.uuid4().hex[:8]}",
-        organization_id=org1["id"],
-    )
-    first = e2e_client.post(
-        f"/api/applications/{app['id']}/publish",
-        headers=platform_admin.headers,
-    )
-    assert first.status_code == 202, first.text
-
-    duplicate = e2e_client.post(
-        f"/api/applications/{app['id']}/publish",
-        headers=org1_user.headers,
-    )
-    assert duplicate.status_code == 409, duplicate.text
-    assert duplicate.json()["detail"] == (
-        "An application publish is already in progress"
-    )
-
-    terminal = _poll(
-        e2e_client,
-        platform_admin.headers,
-        first.json()["job_id"],
-    )
-    assert terminal["status"] == "succeeded", terminal
 
 
 def test_bundle_failure_is_persisted_and_does_not_publish(

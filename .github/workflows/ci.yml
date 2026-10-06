@@ -475,7 +475,7 @@ jobs:
       # targets a different Python minor (3.12 here vs 3.14 in production)
       # so it can't share requirements.lock.
       #
-      # We deliberately do NOT `pip install --upgrade pip` — actions/setup-python
+      # We deliberately do NOT `pip install --upgrade pip` â€” actions/setup-python
       # already ships a current pip into the venv and any explicit upgrade
       # would be flagged by Scorecard as an unpinned install.
       - name: Install Python deps into .venv
@@ -561,7 +561,7 @@ jobs:
         run: echo "No executable API or client source is in the affected closure."
 
   # =============================================================================
-  # Client Unit Tests (Vitest) - Fast, runs on host Node — no Docker needed.
+  # Client Unit Tests (Vitest) - Fast, runs on host Node â€” no Docker needed.
   # Parallel to Unit Tests; does NOT become the critical path.
   # =============================================================================
   test-client-unit:
@@ -772,7 +772,7 @@ jobs:
   #
   # The internal matrix job (test-e2e) uses shard names like
   # "E2E Tests (shard 1/4)". The aggregate gate job below (test-e2e-gate)
-  # is named EXACTLY "E2E Tests" to match the required status check name —
+  # is named EXACTLY "E2E Tests" to match the required status check name â€”
   # no ruleset edits needed.
   # =============================================================================
   test-e2e:
@@ -998,7 +998,7 @@ jobs:
           bifrost_test_project="$(compute_project_name .)"
           COMPOSE_PROJECT_NAME="$bifrost_test_project" docker compose -f docker-compose.test.yml logs --tail=300 api
 
-  # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
+  # Aggregate gate â€” required check named "E2E Tests" (matches ruleset 15329014).
   # Fails if any backend or browser shard failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
@@ -1073,7 +1073,7 @@ jobs:
           echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
 
       # Surface manifest drift to the job summary. Plugin manifests are updated
-      # at tag time (see bifrost-release skill) — between tags the `version`
+      # at tag time (see bifrost-release skill) â€” between tags the `version`
       # field reflects the last released version, not the current dev version.
       # This step is informational only; it does not fail the build and does
       # not commit anything back. See PR #246 for the rationale (branch
@@ -1366,7 +1366,7 @@ jobs:
           kubectl cluster-info
           echo "::endgroup::"
 
-          echo "::group::RBAC — can I patch deployments in the bifrost namespace?"
+          echo "::group::RBAC â€” can I patch deployments in the bifrost namespace?"
           kubectl auth can-i patch deployment -n bifrost
           echo "::endgroup::"
 
@@ -1900,7 +1900,7 @@ jobs:
               "${f}"
           done
 
-      # SLSA build provenance — stored in GitHub's transparency log and
+      # SLSA build provenance â€” stored in GitHub's transparency log and
       # discoverable via `gh attestation verify`. Independent signal from the
       # cosign blob signatures above.
       - name: Generate SLSA build provenance attestation
@@ -1988,6 +1988,7 @@ jobs:
           python3 scripts/release/package-notes.py "$VERSION" >> release/package-notes.md
 
       - name: Create release
+        id: release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
@@ -2013,19 +2014,26 @@ jobs:
 
       - name: Publish release
         env:
+          RELEASE_ID: ${{ steps.release.outputs.id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.get_version.outputs.version }}
           PRERELEASE: ${{ steps.get_version.outputs.prerelease }}
         run: |
           set -euo pipefail
-          args=(--draft=false)
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]
+          endpoint="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          args=(-F draft=false)
           if [ "$PRERELEASE" = "true" ]; then
-            args+=(--prerelease)
+            args+=(-F prerelease=true)
           else
-            args+=(--latest)
+            args+=(-f make_latest=true)
           fi
           # Do not publish until every required source asset is uploaded.
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
+          # Tag lookup exposes published releases only. Use the draft's returned
+          # identity, then bind it to the expected tag before any publication.
+          release="$(gh api "$endpoint")"
+          printf '%s' "$release" | jq -e --arg tag "$VERSION" --argjson id "$RELEASE_ID" '
+            .id == $id and .tag_name == $tag and .draft == true' > /dev/null
           printf '%s' "$release" | jq -e --arg name "bifrost-$VERSION-source.tar.gz" '
             [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
             [$name, ($name + ".sha256"), ($name + ".sigstore")] |
@@ -2038,5 +2046,8 @@ jobs:
               ["release-manifest.json", "release-manifest.json.sha256", "release-manifest.json.sigstore.json"] |
               all(. as $required | $assets | index($required) != null)' > /dev/null
           fi
-          gh release edit "$VERSION" "${args[@]}"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
+          gh api --method PATCH "$endpoint" "${args[@]}" > /dev/null
+          gh api "$endpoint" --jq '.draft == false and .immutable == true' | grep -Fxq true
+
+
+

@@ -20,7 +20,9 @@ from src.routers.solutions import export_solution
 from src.services.solutions.deploy import SolutionBundle
 from src.services.solutions.export import (
     add_encrypted_content_to_workspace_zip,
+    add_live_content_to_workspace_zip_file,
     build_workspace_zip,
+    copy_workspace_zip_with_readme,
 )
 from src.services.solutions.secrets_blob import SolutionContent, decode_secrets_blob
 from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
@@ -268,18 +270,61 @@ def test_full_export_replaces_any_existing_encrypted_content() -> None:
     assert content.config_values == {"NEW": "value"}
 
 
+@pytest.mark.parametrize("current_readme", ["# Updated\n", None])
+def test_stored_source_export_uses_current_readme(tmp_path: Path, current_readme: str | None) -> None:
+    bundle = _bundle()
+    bundle.readme = "# Deploy-time\n"
+    source = tmp_path / "source.zip"
+    dest = tmp_path / "export.zip"
+    source.write_bytes(build_workspace_zip(bundle))
+
+    copy_workspace_zip_with_readme(source, dest, current_readme)
+
+    with zipfile.ZipFile(dest) as exported:
+        assert exported.read("workflows/main.py") == bundle.python_files["workflows/main.py"].encode()
+        if current_readme is None:
+            assert "README.md" not in exported.namelist()
+        else:
+            assert exported.namelist().count("README.md") == 1
+            assert exported.read("README.md") == current_readme.encode()
+
+
+async def test_full_stored_source_export_overlays_readme_and_runtime(tmp_path: Path) -> None:
+    bundle = _bundle()
+    bundle.readme = "# Updated\n"
+    bundle.config_values = {"API_KEY": "secret-value"}
+    source = tmp_path / "source.zip"
+    dest = tmp_path / "export.zip"
+    source_bundle = _bundle()
+    source_bundle.readme = "# Deploy-time\n"
+    source.write_bytes(build_workspace_zip(source_bundle))
+
+    await add_live_content_to_workspace_zip_file(source, bundle, None, dest, password="pw")
+
+    with zipfile.ZipFile(dest) as exported:
+        assert exported.namelist().count("README.md") == 1
+        assert exported.read("README.md") == b"# Updated\n"
+        content = decode_secrets_blob(exported.read(".bifrost/secrets.enc").decode(), password="pw")
+        assert content.config_values == {"API_KEY": "secret-value"}
+
+
 @pytest.mark.e2e
-async def test_shareable_export_returns_stored_source_artifact(db_session) -> None:
+@pytest.mark.parametrize("current_readme", ["# Current README\n", None])
+async def test_shareable_export_returns_stored_source_artifact(
+    db_session, current_readme: str | None,
+) -> None:
     sol = Solution(
         id=uuid.uuid4(),
         slug=f"stored-{uuid.uuid4().hex[:8]}",
         name="Stored Source",
+        readme=current_readme,
         organization_id=None,
         execution_runtime_mode="repo-v1",
     )
     db_session.add(sol)
     await db_session.flush()
     source_bundle = _bundle()
+    source_bundle.readme = "# Deploy-time README\n"
     source_bundle.python_files["workflows/main.py"] = (
         "def run():\n    return 'artifact'\n"
     )
@@ -289,7 +334,17 @@ async def test_shareable_export_returns_stored_source_artifact(db_session) -> No
     ctx, user = _admin(db_session)
     response = await export_solution(sol.id, ctx, user, mode="shareable")
 
-    assert _response_bytes(response) == source_zip
+    with zipfile.ZipFile(io.BytesIO(source_zip)) as stored, zipfile.ZipFile(
+        io.BytesIO(_response_bytes(response))
+    ) as exported:
+        source_names = set(stored.namelist()) - {"README.md"}
+        assert set(exported.namelist()) == source_names | (
+            {"README.md"} if current_readme else set()
+        )
+        for name in source_names:
+            assert exported.read(name) == stored.read(name)
+        if current_readme:
+            assert exported.read("README.md") == current_readme.encode()
 
 
 @pytest.mark.e2e

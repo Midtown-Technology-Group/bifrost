@@ -180,7 +180,7 @@ class GitRepoManager:
             return
 
         s3_uri = self._s3_uri()
-        cmd = self._build_sync_cmd(source=s3_uri, dest=str(target))
+        cmd = self._build_sync_cmd(source=s3_uri, dest=str(target), delete=True)
         logger.info(f"sync_down: {s3_uri} -> {target}")
         await self._run_aws_cli(cmd)
 
