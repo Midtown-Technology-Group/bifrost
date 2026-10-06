@@ -33,15 +33,16 @@ reason to discard coverage or restore the old coverage-free green badge.
 
 ## State and ownership
 
-This is a **Lane 3 migration staged behind an operator activation variable**. It does not enable
-an approval producer, authorize queue admission, change required checks, dismiss
-findings, or review security hotspots. The existing SonarCloud Code Analysis
-GitHub App check and automatic analysis remain active during preparation.
+This **Lane 3 migration now uses CI analysis behind an operator activation
+variable**. It does not authorize queue admission, change required checks, dismiss
+findings, or review security hotspots. Automatic Analysis was preserved during
+preparation and is now disabled following the verified main import above.
 
 `.github/sonar-ci.json` declares `ci` mode for the Free adapter. CI executes the
 evidence job and uploads reports; submissions stay disabled until the repository
-variable `SONAR_CI_ENABLED` is exactly `true`. Merge this reviewed adapter with
-the variable unset, preserving Automatic Analysis. A successful evidence job
+variable `SONAR_CI_ENABLED` is exactly `true`. The reviewed adapter merged while
+the variable was unset and Automatic Analysis was still active; activation
+followed that merge. Keep the variable set for the current CI method. A successful evidence job
 means the reports and their source identity passed local checks. It does **not**
 mean Sonar analyzed those files or its quality gate passed.
 
