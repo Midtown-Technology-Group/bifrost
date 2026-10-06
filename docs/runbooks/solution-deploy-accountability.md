@@ -27,6 +27,15 @@ or runtime mismatch remains `attention_required` with its evidence. In particula
 a later README change can differ from an earlier deployed artifact even when the
 running application is healthy.
 
+For a locally prebuilt App, the CLI retains the original `.bifrost/apps.yaml`
+as `authored_manifest` inside the uploaded build overlay. Accounting checks its
+exact bytes against the declared Git file, then allows only `dist_files` and
+`bin_dist_files` to differ. App identity, source path, scope and access metadata
+must remain unchanged. An older overlay without this retained manifest cannot
+prove those facts and stays `attention_required`; do not clear it manually or
+replay a deployment just to obtain accounting credit. This manifest check is
+source evidence, not proof of the active compiled App runtime.
+
 Do not directly edit database evidence, bypass Solution ownership protection, or
 redeploy a working application merely to retry bookkeeping. Review any remaining
 source difference and handle its actual release requirement separately.

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Awaitable, cast
 from uuid import UUID
 
+import yaml
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -412,7 +413,12 @@ def verify_solution_artifact(
         if expected_by_path[path] != observed_by_path[path]
     )
     derived_manifest = f"{record.repo_subpath}/.bifrost/apps.yaml"
-    invalid_modified = [path for path in modified if path != derived_manifest]
+    invalid_modified = list(modified)
+    if derived_manifest in modified:
+        with zipfile.ZipFile(io.BytesIO(artifact)) as archive:
+            derived = archive.read(".bifrost/apps.yaml")
+        if _verified_app_build_overlay(derived, expected_by_path[derived_manifest]):
+            invalid_modified.remove(derived_manifest)
     extras = sorted(set(observed_by_path) - set(expected_by_path))
     invalid_extras = extras
     if missing or invalid_modified or invalid_extras:
@@ -439,6 +445,38 @@ def verify_solution_artifact(
             "derived_paths": sorted([*extras, *modified]),
         },
     )
+
+
+def _verified_app_build_overlay(derived: bytes, expected: dict[str, Any]) -> bool:
+    """Build outputs may change; all authored manifest metadata must match Git."""
+    try:
+        observed = yaml.safe_load(derived)
+        if not isinstance(observed, dict):
+            return False
+        original = observed.pop("authored_manifest", None)
+        if not isinstance(original, str):
+            return False
+        raw = original.encode("utf-8")
+        if (
+            len(raw) != expected["size"]
+            or hashlib.sha256(raw).hexdigest() != expected["sha256"]
+        ):
+            return False
+        authored = yaml.safe_load(raw)
+        for manifest in (authored, observed):
+            if not isinstance(manifest, dict) or not isinstance(
+                manifest.get("apps"), dict
+            ):
+                return False
+            for app in manifest["apps"].values():
+                if not isinstance(app, dict):
+                    return False
+                app.pop("dist_files", None)
+                app.pop("bin_dist_files", None)
+        # Canonical JSON preserves type differences such as true versus 1.
+        return canonical_digest(authored) == canonical_digest(observed)
+    except (ValueError, TypeError, yaml.YAMLError):
+        return False
 
 
 async def _effective_entity_id_map(

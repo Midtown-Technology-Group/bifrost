@@ -2253,7 +2253,8 @@ def _apps_manifest_with_prebuilt_dist(
     apps_file = _bifrost_manifest(workspace, "apps.yaml")
     if apps_file is None or not apps_file.is_file():
         raise click.ClickException("cannot add local builds: .bifrost/apps.yaml is missing")
-    data = yaml.safe_load(apps_file.read_text(encoding="utf-8")) or {}
+    original_manifest = apps_file.read_text(encoding="utf-8")
+    data = yaml.safe_load(original_manifest) or {}
     entries = data.get("apps") or {}
     if not isinstance(entries, dict):
         raise click.ClickException(".bifrost/apps.yaml: apps must contain an object")
@@ -2274,6 +2275,9 @@ def _apps_manifest_with_prebuilt_dist(
             "local build output has no apps.yaml entry for: "
             + ", ".join(sorted(remaining))
         )
+    # Accounting verifies this exact authored input against protected Git,
+    # then permits only dist_files/bin_dist_files changes in the build overlay.
+    data["authored_manifest"] = original_manifest
     return yaml.safe_dump(data, sort_keys=False)
 
 

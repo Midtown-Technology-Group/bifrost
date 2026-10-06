@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from src.models.contracts.workspace_promotions import (
@@ -155,6 +156,100 @@ def test_unreviewed_non_runtime_artifact_file_cannot_close_reviewed_source() -> 
     assert valid is False
     assert reason == "stored source artifact file manifest differs from reviewed Git"
     assert len(evidence["observed_files"]) == 3
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("id", "00000000-0000-0000-0000-000000000002"),
+        ("path", "apps/other"),
+        ("access_level", "authenticated"),
+        ("role_ids", []),
+        ("app_model", "inline_v1"),
+        ("slug", "other"),
+    ],
+)
+def test_derived_app_manifest_preserves_reviewed_identity_and_controls(field, value):
+    app_id = "00000000-0000-0000-0000-000000000001"
+    manifest = {
+        "apps": {
+            app_id: {
+                "id": app_id,
+                "path": "apps/example",
+                "slug": "example",
+                "app_model": "standalone_v2",
+                "access_level": "role_based",
+                "role_ids": ["00000000-0000-0000-0000-000000000003"],
+            }
+        }
+    }
+    original = yaml.safe_dump(manifest).encode()
+    manifest["authored_manifest"] = original.decode()
+    manifest["apps"][app_id][field] = value
+    manifest["apps"][app_id]["dist_files"] = {"index.html": "built"}
+    entries = [(".bifrost/apps.yaml", original)]
+    artifact = _zip([(".bifrost/apps.yaml", yaml.safe_dump(manifest).encode())])
+
+    valid, _, _ = verify_solution_artifact(
+        _record(entries),
+        artifact=artifact,
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+    )
+
+    assert valid is False
+
+
+def test_derived_app_manifest_accepts_only_build_overlay(tmp_path):
+    from bifrost.commands.solution import _apps_manifest_with_prebuilt_dist
+
+    app_id = "00000000-0000-0000-0000-000000000001"
+    manifest = {
+        "apps": {
+            "example": {
+                "id": app_id,
+                "path": "apps/example",
+                "app_model": "standalone_v2",
+            }
+        }
+    }
+    original = yaml.safe_dump(manifest).encode()
+    source_path = tmp_path / ".bifrost" / "apps.yaml"
+    source_path.parent.mkdir()
+    source_path.write_bytes(original)
+    derived = _apps_manifest_with_prebuilt_dist(
+        tmp_path,
+        {
+            app_id: {
+                "dist_files": {"index.html": "built"},
+                "bin_dist_files": {"logo.png": "aW1hZ2U="},
+            }
+        },
+    )
+    assert source_path.read_bytes() == original
+    artifact = _zip([(".bifrost/apps.yaml", derived.encode())])
+    valid, reason, _ = verify_solution_artifact(
+        _record([(".bifrost/apps.yaml", original)]),
+        artifact=artifact,
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+    )
+    assert valid is True
+    assert reason is None
+
+
+@pytest.mark.parametrize("retained", [None, "apps: {}\n"])
+def test_derived_app_manifest_requires_exact_retained_authored_bytes(retained):
+    original = b"apps: {example: {path: apps/example}}\n"
+    manifest = yaml.safe_load(original)
+    manifest["apps"]["example"]["dist_files"] = {"index.html": "built"}
+    if retained is not None:
+        manifest["authored_manifest"] = retained
+    artifact = _zip([(".bifrost/apps.yaml", yaml.safe_dump(manifest).encode())])
+    valid, _, _ = verify_solution_artifact(
+        _record([(".bifrost/apps.yaml", original)]),
+        artifact=artifact,
+        candidate_id=f"sha256:{hashlib.sha256(artifact).hexdigest()}",
+    )
+    assert valid is False
 
 
 def test_unreviewed_vendored_python_cannot_close_obligation() -> None:
