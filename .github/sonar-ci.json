@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "mode": "report-only",
+  "mode": "ci",
   "project_key": "Midtown-Technology-Group_bifrost",
-  "migration_note": "Keep automatic analysis enabled until report generation is verified and an operator coordinates the reviewed cutover. This file does not authorize autonomous approvals."
+  "migration_note": "Free plan: main and PRs targeting main only. SONAR_CI_ENABLED must be true after coordinated automatic-analysis cutover; merge groups retain coverage evidence without a Sonar gate claim."
 }
