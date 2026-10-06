@@ -134,6 +134,7 @@ async def test_mapping_crud_scope_and_missing_entity_contract(storage):
     )
     assert created["id"] == updated["id"]
     own = await sdk_integrations.list_sdk_integration_mappings(db, **args)
+    assert own is not None
     assert [row["entity_id"] for row in own] == ["tenant-updated"]
     assert await sdk_integrations.get_sdk_integration_mapping_dict(db, **args) == updated
     other = {**args, "caller_org_id": orgs[1].id}
