@@ -8,6 +8,7 @@ THIS install only; an id collision with a ``_repo/`` or other-install app raises
 no real Node toolchain runs in unit tests.
 """
 from contextlib import asynccontextmanager
+import hashlib
 import uuid
 
 import pytest
@@ -140,6 +141,18 @@ class TestSolutionAppDeploy:
         sol = await self._install(db)
         app_id = str(uuid.uuid4())
 
+        from src.services.solutions import export as solution_export
+
+        build_zip = solution_export.build_workspace_zip
+        archives = []
+
+        def retain_actual_archive(bundle):
+            archive = build_zip(bundle)
+            archives.append(archive)
+            return archive
+
+        monkeypatch.setattr(solution_export, "build_workspace_zip", retain_actual_archive)
+
         entry = {**_app_entry(app_id, "dash"), "src_files": source_files}
         result = await SolutionDeployer(db).deploy(SolutionBundle(solution=sol, apps=[entry]))
         await db.flush()
@@ -160,6 +173,13 @@ class TestSolutionAppDeploy:
         assert app.deployed_at is not None
         assert app.repo_path is not None
         assert app.published_snapshot["sdk_source_available"] is source_available
+        # The existing service synthesizes and retains a zip for callers that
+        # supply a bundle directly. The pin must bind that actual archive.
+        assert len(archives) == 1
+        pin = app.published_snapshot["runtime_pin"]
+        assert pin["source_artifact_sha256"] == hashlib.sha256(archives[0]).hexdigest()
+        assert pin["application_id"] == str(app.id)
+        assert pin["deployment_id"] == str(app.active_deployment_id)
         assert app.sdk_fingerprint is None
 
     async def test_source_build_uploads_versioned_dist_and_stamps_sdk_after_upload(

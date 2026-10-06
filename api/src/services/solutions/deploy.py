@@ -228,6 +228,7 @@ class CompiledSolutionAppDeployment:
     expected_old_deployment_id: UUID | None
     superseded_deployment_id: UUID | None
     dist: dict[str, bytes]
+    runtime_pin: dict[str, Any]
     sdk_metadata: CurrentApplicationSdkMetadata | None = None
     source_built: bool = False
     source_available: bool = False
@@ -495,7 +496,12 @@ class SolutionDeployer:
 
         # ── COMPILE app dists to memory NOW (pre-commit) — a vite/npm failure
         #    raises here and rolls back the whole deploy, no S3 touched. ───────
-        compiled = await self._compile_app_dists(builds)
+        from src.services.solutions.app_runtime import source_archive_sha256
+
+        compiled = await self._compile_app_dists(
+            builds,
+            source_sha256=source_archive_sha256(source_artifact) if builds else "",
+        )
 
         # ── S3 phase, DEFERRED until after the caller's commit (cheap PUTs) ───
         # Every step is FULL-REPLACE (idempotent), so a transient storage blip is
@@ -1257,7 +1263,7 @@ class SolutionDeployer:
         return builds
 
     async def _compile_app_dists(
-        self, builds: list[dict[str, Any]]
+        self, builds: list[dict[str, Any]], *, source_sha256: str
     ) -> list[CompiledSolutionAppDeployment]:
         """PRE-COMMIT: compile each app's dist to memory (npm install + vite
         build, or a shipped prebuilt dist). This is the failure-prone step — a
@@ -1271,6 +1277,7 @@ class SolutionDeployer:
 
         from src.services.application_sdk_status import current_sdk_metadata
         from src.services.solutions.app_build import SolutionAppBuilder
+        from src.services.solutions.app_runtime import compiled_app_runtime_pin
 
         if not builds:
             return []
@@ -1319,6 +1326,14 @@ class SolutionDeployer:
                     expected_old_deployment_id=expected_old,
                     superseded_deployment_id=expected_old,
                     dist=dist,
+                    runtime_pin=compiled_app_runtime_pin(
+                        solution_id=b["solution_id"],
+                        application_id=b["app_id"],
+                        deployment_id=deployment_id,
+                        source_sha256=source_sha256,
+                        outputs=dist,
+                        source_built=source_built,
+                    ),
                     sdk_metadata=current_metadata if source_built else None,
                     source_built=source_built,
                     source_available={"package.json", "index.html"}.issubset(src_bytes),
@@ -1437,6 +1452,7 @@ class SolutionDeployer:
                         "deployed_by": "solution",
                         "app_model": "standalone_v2",
                         "sdk_source_available": item.source_available,
+                        "runtime_pin": item.runtime_pin,
                     },
                 }
                 result = await db.execute(

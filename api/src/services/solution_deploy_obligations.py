@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Awaitable, cast
 from uuid import UUID
 
+import yaml
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -412,7 +413,12 @@ def verify_solution_artifact(
         if expected_by_path[path] != observed_by_path[path]
     )
     derived_manifest = f"{record.repo_subpath}/.bifrost/apps.yaml"
-    invalid_modified = [path for path in modified if path != derived_manifest]
+    invalid_modified = list(modified)
+    if derived_manifest in modified:
+        with zipfile.ZipFile(io.BytesIO(artifact)) as archive:
+            derived = archive.read(".bifrost/apps.yaml")
+        if _verified_app_build_overlay(derived, expected_by_path[derived_manifest]):
+            invalid_modified.remove(derived_manifest)
     extras = sorted(set(observed_by_path) - set(expected_by_path))
     invalid_extras = extras
     if missing or invalid_modified or invalid_extras:
@@ -439,6 +445,38 @@ def verify_solution_artifact(
             "derived_paths": sorted([*extras, *modified]),
         },
     )
+
+
+def _verified_app_build_overlay(derived: bytes, expected: dict[str, Any]) -> bool:
+    """Build outputs may change; all authored manifest metadata must match Git."""
+    try:
+        observed = yaml.safe_load(derived)
+        if not isinstance(observed, dict):
+            return False
+        original = observed.pop("authored_manifest", None)
+        if not isinstance(original, str):
+            return False
+        raw = original.encode("utf-8")
+        if (
+            len(raw) != expected["size"]
+            or hashlib.sha256(raw).hexdigest() != expected["sha256"]
+        ):
+            return False
+        authored = yaml.safe_load(raw)
+        for manifest in (authored, observed):
+            if not isinstance(manifest, dict) or not isinstance(
+                manifest.get("apps"), dict
+            ):
+                return False
+            for app in manifest["apps"].values():
+                if not isinstance(app, dict):
+                    return False
+                app.pop("dist_files", None)
+                app.pop("bin_dist_files", None)
+        # Canonical JSON preserves type differences such as true versus 1.
+        return canonical_digest(authored) == canonical_digest(observed)
+    except (ValueError, TypeError, yaml.YAMLError):
+        return False
 
 
 async def _effective_entity_id_map(
@@ -574,6 +612,60 @@ async def _runtime_and_registration_readback(
             },
         )
 
+    app_runtime_pins = {}
+    if entity_readback["apps"]:
+        from src.services.solutions.app_build import SolutionAppBuilder
+        from src.services.solutions.app_runtime import verify_compiled_app_runtime_pin
+
+        builder = SolutionAppBuilder()
+        applications = list(
+            (await db.scalars(
+                select(Application)
+                .where(Application.solution_id == solution_id)
+                .with_for_update()
+            )).all()
+        )
+        if sorted(str(app.id) for app in applications) != entity_readback["apps"]:
+            return False, "App ownership changed during runtime readback", {}
+        for app in applications:
+            if app.app_model != "standalone_v2" or app.active_deployment_id is None:
+                return False, "Solution App lacks an active compiled runtime", {
+                    "application_id": str(app.id)
+                }
+            deployment_id = app.active_deployment_id
+            paths = await builder.list_dist(app.id, deployment_id=deployment_id)
+            if len(paths) != len(set(paths)):
+                return False, "Compiled App inventory contains duplicate paths", {
+                    "application_id": str(app.id)
+                }
+            outputs = {
+                path: await builder.read_dist(app.id, path, deployment_id=deployment_id)
+                for path in paths
+            }
+            snapshot = app.published_snapshot or {}
+            pin = verify_compiled_app_runtime_pin(
+                snapshot.get("runtime_pin"),
+                solution_id=solution_id,
+                application_id=app.id,
+                deployment_id=deployment_id,
+                source_sha256=hashlib.sha256(artifact).hexdigest(),
+                outputs=outputs,
+                source_built=app.sdk_fingerprint is not None,
+            )
+            # Detect an independent rebuild before crediting the original job.
+            await db.refresh(app, attribute_names=[
+                "solution_id", "active_deployment_id", "published_snapshot"
+            ])
+            if (
+                app.solution_id != solution_id
+                or app.active_deployment_id != deployment_id
+                or (app.published_snapshot or {}).get("runtime_pin") != pin
+            ):
+                return False, "App runtime changed during readback", {
+                    "application_id": str(app.id)
+                }
+            app_runtime_pins[str(app.id)] = pin
+
     with tempfile.TemporaryDirectory(prefix="bifrost-solution-accountability-") as tmp:
         _safe_extract(artifact, tmp)
         from bifrost.commands.solution import _collect_python_files
@@ -672,6 +764,7 @@ async def _runtime_and_registration_readback(
             "runtime_cache_files": cache_hashes,
             "entity_ids": entity_readback,
             "workflow_registrations": [list(item) for item in actual_workflows],
+            "app_runtime_pins": app_runtime_pins,
         },
     )
 
@@ -734,6 +827,16 @@ async def reconcile_solution_deploy_obligation(
                 solution_id=solution_id,
                 artifact=artifact,
             )
+            if (
+                valid
+                and artifact_evidence["derived_paths"]
+                and any(
+                    pin["build_mode"] == "prebuilt"
+                    for pin in readback.get("app_runtime_pins", {}).values()
+                )
+            ):
+                valid = False
+                reason = "Locally derived App outputs lack protected build provenance; runtime byte verification alone cannot settle source"
         except Exception as exc:  # noqa: BLE001 - accountability must persist failure
             record.disposition = "attention_required"
             record.reason = f"Solution deployment readback failed: {type(exc).__name__}"

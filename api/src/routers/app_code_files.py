@@ -643,21 +643,8 @@ async def get_bundle_manifest(
     # index.html.
     app_model = getattr(app, "app_model", "inline_v1")
     if app_model == "standalone_v2":
-        from html.parser import HTMLParser
         from src.services.solutions.app_build import SolutionAppBuilder
-
-        class _IndexAssetParser(HTMLParser):
-            def __init__(self) -> None:
-                super().__init__()
-                self.entry: str | None = None
-                self.css: str | None = None
-
-            def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-                attr_map = dict(attrs)
-                if tag == "script" and attr_map.get("type") == "module" and attr_map.get("src"):
-                    self.entry = attr_map["src"]
-                if tag == "link" and attr_map.get("rel") == "stylesheet" and attr_map.get("href"):
-                    self.css = attr_map["href"]
+        from src.services.solutions.app_runtime import compiled_index_assets
 
         # The entry chunk + CSS are whatever index.html references — Vite may emit
         # several .js chunks (vendor splits), so the <script type=module src> and
@@ -674,12 +661,7 @@ async def get_bundle_manifest(
                     deployment_id=app.active_deployment_id,
                 )
             ).decode()
-            parser = _IndexAssetParser()
-            parser.feed(html)
-            if parser.entry:
-                entry = parser.entry.split("/dist/")[-1].lstrip("/")
-            if parser.css:
-                css = parser.css.split("/dist/")[-1].lstrip("/")
+            entry, css = compiled_index_assets(html)
             runtime_contract = standalone_v2_runtime_contract(html)
         except Exception:  # noqa: BLE001 - missing/unbuilt dist → entry stays None, shell shows a clear error
             pass
