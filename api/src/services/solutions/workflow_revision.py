@@ -67,6 +67,7 @@ from src.services.solutions.source_revision import (
     _archive_files,
     _workflow_snapshot,
     legacy_descriptor_evidence,
+    registration_runtime_timeout,
     retain_legacy_registration_names,
 )
 from src.services.solutions.workflow_revision_recipe import (
@@ -109,10 +110,11 @@ def retain_installed_timeouts(
         row = by_id.get(item.resolved_id)
         if row is not None:
             payload = item.model_dump(mode="json")
-            payload["definition"]["timeout_seconds"] = min(
-                row.timeout_seconds if row.timeout_seconds is not None else 1800,
-                payload["definition"]["timeout_seconds"],
-            )
+            timeout = registration_runtime_timeout(row, payload["definition"])
+            if payload["definition"]["timeout_seconds"] < timeout:
+                raise SolutionSourceRevisionError(
+                    "Recipe timeout conflicts with retained registry controls and Source runtime bounds")
+            payload["definition"]["timeout_seconds"] = timeout
             result[ref] = RuntimeEntityDefinition.model_validate(payload)
     return result
 

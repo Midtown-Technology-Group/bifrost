@@ -28,6 +28,9 @@ Existing sealed legacy descriptors remain in the successor's immutable evidence
 and registry projection. Existing registry timeouts are retained while the new
 immutable runtime bounds remain enforced. Reviewed effect declarations can
 change through this adapter; the body-only source adapter still rejects them.
+For existing workflows, a recipe timeout below the retained-control/Source-bound
+limit is rejected before staging. Compilation and registration verification use
+the same timeout invariant; this adapter does not change registry timeouts.
 
 Staging creates immutable candidate objects without changing registrations or
 the installed pointer. Preflight independently reads the stored bytes, current

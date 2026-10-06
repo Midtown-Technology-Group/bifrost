@@ -112,7 +112,7 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None, solution_id=None, workflow_id=None, source_path=None, solution_slug=None, owned_legacy=False):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None, solution_id=None, workflow_id=None, source_path=None, solution_slug=None, owned_legacy=False, owned_registry_timeout=1800):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
     from src.services.solutions.deployment_manifest import DeploymentGitProvenance
@@ -227,7 +227,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
             workflow.description = None
             workflow.category = "General"
             workflow.tags = []
-            workflow.timeout_seconds = 1800
+            workflow.timeout_seconds = owned_registry_timeout
         recipe = ReviewedWorkflowRecipe.model_validate({
             "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(solution_id),
             "files": {path: f"solutions/{solution.slug}/{path}"},
@@ -832,6 +832,64 @@ async def test_owned_table_effect_successor_preserves_registry_data_and_accepted
     await service.verify_current_workflows(f.solution_id,
         SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.revision_id,
             expected_active_manifest_hash=successor.compiled_manifest_hash), f.recipe)
+
+
+@pytest.mark.asyncio
+async def test_lower_recipe_timeout_is_rejected_and_supported_successors_remain_verifiable(
+    committed_delivery_db, platform_admin, monkeypatch,
+):
+    from src.services.solutions.guard import install_solution_write_guard
+    from src.services.solutions.source_revision import _workflow_snapshot
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+    from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+
+    install_solution_write_guard()
+    db = committed_delivery_db
+    old = b'from bifrost import workflow, tables\n@workflow(name="Revision test", effects=[])\nasync def run():\n    return 1\n'
+    new = old.replace(b"effects=[]", b'effects=[{"kind":"integration.read","target":"microsoft_csp"}]')
+    f = await _seed_adopted_revision(db, platform_admin, monkeypatch, source_pair=(old, new),
+        organization_id=None, source_commit_sha="a" * 40, owned_legacy=True, owned_registry_timeout=60)
+    await db.refresh(f.workflow, attribute_names=["roles"])
+    baseline = _workflow_snapshot(f.workflow)
+    expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.base_id,
+        expected_active_manifest_hash=f.base.compiled_manifest_hash)
+    spec = f.recipe.model_dump(mode="json")
+    spec["workflows"][0]["runtime_bounds"]["max_duration_seconds"] = 60
+    spec["workflows"][0]["controls"]["timeout_seconds"] = 30
+    invalid = ReviewedWorkflowRecipe.model_validate(spec)
+    service = SolutionWorkflowRevisionService(db)
+    rejected_id = uuid4()
+    with pytest.raises(SolutionSourceRevisionError, match="Recipe timeout conflicts"):
+        await service.stage_workflows(f.solution_id, rejected_id, platform_admin.user_id,
+            expected, invalid, {f.path: new}, "b" * 40)
+    assert await db.get(SolutionDeployment, rejected_id) is None
+    await db.refresh(f.solution)
+    assert f.solution.active_deployment_id == f.base_id
+
+    spec["workflows"][0]["controls"]["timeout_seconds"] = 60
+    recipe = ReviewedWorkflowRecipe.model_validate(spec)
+    staged = await service.stage_workflows(f.solution_id, f.revision_id, platform_admin.user_id,
+        expected, recipe, {f.path: new}, "b" * 40)
+    checked = await service.inspect_workflows(f.solution_id, f.revision_id, expected, recipe)
+    assert checked.evidence_id == staged.evidence_id
+    await service.activate_workflows(f.solution_id, f.revision_id,
+        SolutionSourceRevisionCommitRequest(**expected.model_dump(), expected_evidence_id=checked.evidence_id), recipe)
+    await db.commit()
+    await db.refresh(f.workflow)
+    await db.refresh(f.workflow, attribute_names=["roles"])
+    assert _workflow_snapshot(f.workflow) == baseline and f.workflow.timeout_seconds == 60
+    active = await db.get(SolutionDeployment, f.revision_id)
+    assert active is not None
+    next_expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=active.id,
+        expected_active_manifest_hash=active.compiled_manifest_hash)
+    await service.verify_current_workflows(f.solution_id, next_expected, recipe)
+    another_id = uuid4()
+    next_staged = await service.stage_workflows(f.solution_id, another_id, platform_admin.user_id,
+        next_expected, recipe, {f.path: new}, "c" * 40)
+    next_checked = await service.inspect_workflows(f.solution_id, another_id, next_expected, recipe)
+    assert next_staged.evidence_id == next_checked.evidence_id
+    await db.refresh(f.solution)
+    assert f.solution.active_deployment_id == f.revision_id
 
 
 @pytest.mark.asyncio

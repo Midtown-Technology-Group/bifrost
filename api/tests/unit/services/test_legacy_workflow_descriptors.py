@@ -77,6 +77,28 @@ def test_larger_source_bound_cannot_exceed_retained_registration_timeout():
     assert retained["task"].definition["timeout_seconds"] == row.timeout_seconds == 60
 
 
+@pytest.mark.parametrize("duration,compiled_timeout", [(60, 30), (120, 30)])
+def test_lower_recipe_timeout_cannot_leave_an_unverifiable_retained_registration(duration, compiled_timeout):
+    from src.services.solutions.workflow_revision import retain_installed_timeouts
+
+    row, definition = _registration()
+    definition.update(timeout_seconds=compiled_timeout, runtime_bounds={"max_duration_seconds": duration},
+        legacy_descriptor_evidence=legacy_descriptor_evidence(_workflow_snapshot(row)))
+    with pytest.raises(SolutionSourceRevisionError, match="Recipe timeout conflicts"):
+        retain_installed_timeouts({"task": _entity(row, definition)}, [row])
+
+
+def test_reviewed_shorter_source_bound_matches_retained_registration_verification():
+    from src.services.solutions.workflow_revision import retain_installed_timeouts
+
+    row, definition = _registration()
+    definition.update(timeout_seconds=30, runtime_bounds={"max_duration_seconds": 30},
+        legacy_descriptor_evidence=legacy_descriptor_evidence(_workflow_snapshot(row)))
+    retained = retain_installed_timeouts({"task": _entity(row, definition)}, [row])
+    _require_registration(row, retained["task"])
+    assert retained["task"].definition["timeout_seconds"] == 30 and row.timeout_seconds == 60
+
+
 @pytest.mark.asyncio
 async def test_workflow_successor_retains_legacy_metadata_timeout_and_new_effects():
     from src.services.solutions.workflow_revision import project_workflow_registrations, retain_legacy_descriptors
