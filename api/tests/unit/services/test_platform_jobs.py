@@ -319,6 +319,8 @@ async def test_requires_action_phase_is_bounded_to_two_hundred_characters(
     token = uuid4()
     job.status = "running"
     job.lease_token = token
+    # Keep the stack scheduler from recovering this test-owned running attempt.
+    job.lease_expires_at = datetime.now(timezone.utc) + timedelta(minutes=1)
     await db_session.commit()
 
     @asynccontextmanager
