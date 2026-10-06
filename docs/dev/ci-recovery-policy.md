@@ -11,7 +11,9 @@ This is the platform adapter for [shared scoped CI recovery](https://github.com/
 
 ## Platform gates and provenance
 
-Before opening or queueing a PR, run `./test.sh pre-pr` on the exact clean candidate containing current `origin/main`. Existing successful-stage reuse requires identical clean source and environment/configuration identity; failed stages never count. Focused diagnostic tests do not replace this gate or deferred required CI.
+Before opening or queueing a PR, run `./test.sh pre-pr` on the exact clean candidate containing current `origin/main`. Existing successful-stage reuse requires identical clean source, environment/configuration identity and a proven unchanged actual base; failed stages never count. Focused diagnostic tests do not replace this gate or deferred required CI.
+
+The current local stage cache does not bind the actual base SHA: its context hashes the affected plan, and the ledger records HEAD and environment identity. A base change can leave both HEAD and that plan unchanged. Until a separately approved runtime repair binds base identity, record the actual base SHA with the validation evidence and run `./test.sh pre-pr --fresh` whenever the actual base changes or you cannot prove it matches the base of the reusable stages. Do not infer unchanged-base identity from an identical plan or a prior pass. This is a documentation-level operating requirement using the existing `--fresh` option, not a claim that the cache already enforces it.
 
 `api/scripts/plan_affected_tests.py` owns dependency-aware selection, including transitive consumers and contract boundaries. Review its `affected-test-plan` evidence. Unknown/unmodeled impact uses the full fallback. Shared configuration, lockfiles/dependencies, CI and selector changes are broad-impact inputs. Never edit selection, ownership, exclusions or gate conditions merely to obtain green. Planner or enforcement changes need their own explicit approval, review and regression coverage.
 
