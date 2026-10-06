@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -75,8 +76,23 @@ DECLARATION_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "solution_config_schema": ("key", ("key", "type", "required", "position")),
 }
 
+# Deploy-owned presentation/behavior may change through reviewed Source, but
+# must remain equal to the sealed projection during independent readback.
+# Runtime state, secrets, configuration values and operational data are absent.
+PROJECTION_FIELDS: dict[str, tuple[str, ...]] = {
+    "solutions": ("id", "name", "version", "readme", "logo_data", "logo_content_type"),
+    "applications": ("id", "name", "description", "dependencies", "icon", "repo_path", "logo_data", "logo_content_type"),
+    "tables": ("id", "description"),
+    "forms": ("id", "name", "description", "module_path", "logo_data", "logo_content_type"),
+    "agents": ("id", "name", "description", "system_prompt", "logo_data", "logo_content_type"),
+    "event_sources": ("id", "name"),
+    "solution_config_schema": ("id", "description", "default"),
+}
+
 
 def _json_value(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return {"sha256": hashlib.sha256(value).hexdigest(), "size": len(value)}
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, datetime):
@@ -88,6 +104,23 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [_json_value(item) for item in value]
     return value
+
+
+async def capture_package_projection(db: AsyncSession, solution_id: UUID) -> dict[str, Any]:
+    result = {}
+    for name, fields in PROJECTION_FIELDS.items():
+        table = Base.metadata.tables[name]
+        scope = table.c.id == solution_id if name == "solutions" else table.c.solution_id == solution_id
+        rows = (await db.execute(select(*(table.c[field] for field in fields)).where(scope))).mappings()
+        result[name] = {str(row["id"]): _json_value(dict(row)) for row in rows}
+    # Form presentation belongs to the same installed field set, without
+    # bringing embed secrets or publication state into the Source projection.
+    fields = Base.metadata.tables["form_fields"]
+    parents = result["forms"]
+    rows = (await db.execute(select(fields.c.id, fields.c.label, fields.c.placeholder,
+        fields.c.help_text, fields.c.content).where(fields.c.form_id.in_([UUID(key) for key in parents])))).mappings()
+    result["form_fields"] = {str(row["id"]): _json_value(dict(row)) for row in rows}
+    return result
 
 
 async def capture_package_controls(db: AsyncSession, solution_id: UUID) -> dict[str, Any]:

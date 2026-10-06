@@ -258,9 +258,12 @@ This entry point commits its accounting checkpoint before the caller's separate
 Root reconciliation; all delivery/declaration hooks enter after durable commit.
 No new background job, endpoint or manual cleanup is needed.
 """
+    from src.jobs.platform.solution_package_delivery import reconcile_reviewed_package_obligations
+    completed_packages = await reconcile_reviewed_package_obligations(db,
+        source_release_id=source_release_id, limit=limit)
     policy = policy or get_settings().solution_git_delivery_policy
     if policy is None:
-        return []
+        return completed_packages
     query = select(SolutionDeployObligation).where(
         SolutionDeployObligation.organization_id == policy.organization_id,
         SolutionDeployObligation.declared_disposition == "solution_deploy_required",
@@ -272,7 +275,7 @@ No new background job, endpoint or manual cleanup is needed.
     selected = list((await db.scalars(query.order_by(SolutionDeployObligation.updated_at,
         SolutionDeployObligation.id).limit(min(max(limit, 1), 100)))).all())
     if not selected:
-        return []
+        return completed_packages
     packages = {(row.solution_slug, row.repo_subpath) for row in selected}
     installs = list((await db.scalars(select(Solution).where(Solution.status == "active",
         tuple_(Solution.slug, Solution.repo_subpath).in_(packages)).order_by(Solution.id)
@@ -319,7 +322,7 @@ No new background job, endpoint or manual cleanup is needed.
                 await db.execute(text("SELECT set_config('lock_timeout', :value, true)"), {"value": old_timeout})
             # Release membership immediately, before separate Root/Live proof.
             await db.commit()
-            return completed
+            return completed_packages + completed
     except TimeoutError:
         await db.rollback()
         return []

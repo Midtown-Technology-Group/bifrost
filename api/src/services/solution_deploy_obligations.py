@@ -524,6 +524,23 @@ async def _runtime_and_registration_readback(
     solution_id: UUID,
     artifact: bytes,
 ) -> tuple[bool, str | None, dict[str, Any]]:
+    from src.models.orm.solutions import Solution
+    from src.models.orm.solution_deployments import SolutionDeployment
+    from src.services.solutions.package_runtime import PACKAGE_RUNTIME_SCHEMA, readback_package_runtime
+
+    solution = await db.get(Solution, solution_id, populate_existing=True)
+    if solution is not None and solution.active_deployment_id is not None:
+        active = await db.get(SolutionDeployment, solution.active_deployment_id, populate_existing=True)
+        package = (active.compiled_manifest or {}).get("package_evidence") if active is not None else None
+        if isinstance(package, dict) and package.get("schema_version") == PACKAGE_RUNTIME_SCHEMA:
+            # Complete packages use revision-addressed source, never the legacy
+            # mutable Python cache. The same verifier is used after an uncertain
+            # commit and by accounting; no publication is repeated here.
+            readback = await readback_package_runtime(db, solution_id, solution.active_deployment_id,
+                expected_source_sha256=hashlib.sha256(artifact).hexdigest(),
+                expected_organization_id=solution.organization_id)
+            return True, None, readback
+
     from src.models.orm.agents import Agent
     from src.models.orm.applications import Application
     from src.models.orm.custom_claims import CustomClaim
@@ -780,6 +797,9 @@ async def reconcile_solution_deploy_obligation(
     artifact: bytes,
     repo_subpath: str | None = None,
     verified_at: datetime | None = None,
+    source_content_id: str | None = None,
+    complete_all_matches: bool = False,
+    source_release_id: UUID | None = None,
 ) -> dict[str, Any]:
     """Close only the exact reviewed obligation proven by artifact and readback."""
     verified_at = verified_at or _utc_now()
@@ -789,6 +809,10 @@ async def reconcile_solution_deploy_obligation(
         SolutionDeployObligation.declared_disposition == "solution_deploy_required",
         SolutionDeployObligation.disposition.in_(("pending", "attention_required")),
     )
+    if source_content_id is not None:
+        query = query.where(SolutionDeployObligation.source_content_id == source_content_id)
+    if source_release_id is not None:
+        query = query.where(SolutionDeployObligation.source_release_id == source_release_id)
     records = list(
         (
             await db.scalars(
@@ -805,6 +829,7 @@ async def reconcile_solution_deploy_obligation(
         repo_subpath if repo_subpath is not None else f"solutions/{solution_slug}"
     )
     mismatch: tuple[SolutionDeployObligation, str, dict[str, Any]] | None = None
+    completed: list[str] = []
     for record in records:
         if record.repo_subpath != expected_subpath:
             continue
@@ -890,12 +915,17 @@ async def reconcile_solution_deploy_obligation(
         record.completion_evidence = evidence
         record.resolved_at = verified_at
         await db.flush()
+        if complete_all_matches:
+            completed.append(str(record.id))
+            continue
         return {
             "state": "released",
             "obligation_id": str(record.id),
             "evidence_id": evidence["evidence_id"],
         }
 
+    if completed:
+        return {"state": "released", "obligation_ids": completed}
     if mismatch is not None:
         record, reason, detail = mismatch
         record.disposition = "attention_required"

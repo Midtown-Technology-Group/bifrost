@@ -39,7 +39,7 @@ SOLUTION_DEPLOY_INTENT_SCHEMA = "bifrost.solution-deploy-intent/v1"
 
 class SolutionDeployPayload(BaseModel):
     deploy_job_id: UUID
-    kind: Literal["deploy", "install", "install_from_repo"]
+    kind: Literal["deploy", "install", "install_from_repo", "deliver_package"]
     install_id: UUID | None = None
     input_sha256: str
     options: dict[str, Any]
@@ -120,6 +120,10 @@ async def run_solution_deploy(
     payload: SolutionDeployPayload,
 ) -> dict:
     from src.routers.solutions import _run_deploy_job, _run_install_job
+
+    if payload.kind == "deliver_package":
+        from src.jobs.platform.solution_package_delivery import run_solution_package_delivery
+        return await run_solution_package_delivery(context, payload)
 
     if payload.deploy_job_id != context.job_id:
         raise PlatformJobFailure("solution_deploy_identity_mismatch", "Solution job identity differs from its payload.")

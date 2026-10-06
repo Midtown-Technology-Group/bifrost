@@ -16,6 +16,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
+from src.core.solution_package_delivery_policy import SolutionPackageGitDeliveryPolicy
 
 
 def default_temp_location() -> str:
@@ -49,6 +50,10 @@ class Settings(BaseSettings):
     inline_app_git_delivery_policy: InlineAppGitDeliveryPolicy | None = Field(
         default=None,
         description="Reviewed existing inline App publication enrollment; absent disables Git delivery.",
+    )
+    solution_package_git_delivery_policy: SolutionPackageGitDeliveryPolicy | None = Field(
+        default=None,
+        description="Reviewed complete Solution package enrollment; absent disables package delivery.",
     )
 
     model_config = SettingsConfigDict(

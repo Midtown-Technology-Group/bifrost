@@ -119,7 +119,7 @@ def _app_entry(app_id: str, slug: str) -> dict:
     }
 
 
-def _reviewed_package_source(sol, *, app_access_level="authenticated"):
+def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40):
     from bifrost.solution_package_delivery import build_solution_package_archive, review_solution_package_source
     from bifrost.workspace_release import canonical_digest
     from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution, VerifiedAuthoredSolutionFile
@@ -127,6 +127,14 @@ def _reviewed_package_source(sol, *, app_access_level="authenticated"):
     from tests.unit.test_solution_package_delivery import recipe, source
 
     files = source()
+    if runtime:
+        files["functions/main.py"] = b'''from bifrost import workflow
+@workflow(effects=[], enforced_bounds={"max_duration_seconds": 30, "max_external_calls": 1, "max_records_read": 1, "max_output_bytes": 4096})
+def main():
+    return {"ok": True}
+'''
+        files["functions/main.py"] = files["functions/main.py"].replace(
+            b"def main():", f"def main({function_args}):".encode())
     files["bifrost.solution.yaml"] = f"slug: {sol.slug}\nname: APP\n".encode()
     app_manifest = yaml.safe_load(files[".bifrost/apps.yaml"])
     for app in app_manifest["apps"].values():
@@ -136,9 +144,9 @@ def _reviewed_package_source(sol, *, app_access_level="authenticated"):
     subpath = f"solutions/{sol.slug}"
     contract.update(solution_id=str(sol.id), repo_subpath=subpath)
     modes = {path: "100644" for path in files}
-    proof = review_solution_package_source(contract, files, modes, source_commit_sha="a" * 40, source_tree_sha="b" * 40)
+    proof = review_solution_package_source(contract, files, modes, source_commit_sha=source_commit_sha, source_tree_sha="b" * 40)
     authored = VerifiedAuthoredSolution(
-        commit_sha="a" * 40, tree_sha="b" * 40, subtree_sha="c" * 40,
+        commit_sha=source_commit_sha, tree_sha="b" * 40, subtree_sha="c" * 40,
         solution_slug=sol.slug, repo_subpath=subpath, source_content_id="sha256:" + "d" * 64,
         source_files=tuple(VerifiedAuthoredSolutionFile(
             path=subpath + "/" + path, mode="100644",

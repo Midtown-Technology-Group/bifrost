@@ -6,8 +6,8 @@ Deliver the Meraki Admin Governance and QuickSupport packages from protected
 Workspace Main through the common package producer. Keep V2 Solution deployment
 as compile-and-publish; inline App publication retains its separate adapter.
 
-This plan describes the remaining adapter. It does not claim implementation,
-production enrollment, source accounting closure or runtime proof.
+This plan tracks the adapter and its qualification. No production enrollment,
+accounting closure or production runtime proof is claimed.
 
 ## Existing path to extend
 
@@ -87,8 +87,8 @@ implemented. The latter reuses the existing repository/CI reader and OIDC
 verifier, binds an explicitly scoped enrolled target and complete reviewed
 manifest set, and rechecks current Main/CI after reading all blobs. Its audience
 cannot reuse workflow-only or inline-App tokens. This is source verification
-only: HTTP admission, worker publication/recovery,
-immutable workflow projection and common producer enrollment remain unimplemented.
+only; the later publication adapter needs its own qualification. Common producer
+enrollment remains unfinished.
 
 Offline review of committed Workspace Main `6793385de20071acc85ab749fbe83c3b6dd22706`
 retained all 147 Meraki package files and all 39 QuickSupport files. QuickSupport
@@ -133,8 +133,8 @@ passed its own comprehensive CI run `37442686961`, including 12,549 unit tests
 and the actual mixed-package preparation/transaction rollback test. These results
 do not qualify subsequent changes.
 
-HTTP admission, the complete worker and automatic enrollment remain unfinished.
-No new publication endpoint or production capability is enabled by these helpers.
+Automatic enrollment remains unfinished. The package policy defaults to absent,
+so the newly implemented admission path is disabled unless explicitly enrolled.
 
 The shared Solution job now records a lease-fenced intent immediately before
 its first database commit. A reclaimed attempt reads the original completion,
@@ -163,8 +163,26 @@ complete metadata preparation back to its savepoint.
 This entry returns only the original/remapped bundles and compiled App outputs;
 it does not expose the mutable-source finalizer, commit, upload or activate.
 The normal manual deploy guard remains closed for active immutable installations.
-New initial/successor, stale-pointer/source/control and rollback tests require
-the new exact-head CI. HTTP admission, immutable artifact publication, joined
-Solution/App activation, complete readback/accounting and producer enrollment
-are still unfinished; this preparation entry must not be advertised as a
-working publication endpoint.
+Initial/successor, stale-pointer/source/control and rollback preparation checks
+passed current-head CI `37452670391` at `7e71a09821d0cdc4392f51335dbc7548631e1a40`.
+This evidence does not qualify the subsequent publication changes.
+
+The new adapter joins `solution.deploy`: source-scoped OIDC admission captures
+protected Git and returns a stable shared job identity; status inspection never
+enqueues or publishes. The worker rechecks Main/CI before effects, compiles the
+complete package, stages revision-addressed source and App outputs, and joins
+Solution/App CAS in one transaction. Its commit checks the current job lease in
+that same transaction. Recovery reads only the original deployment. Actual
+source bytes, full metadata/control snapshots, registrations and runtime pins
+are checked before accounting. Existing declaration/scheduler hooks also inspect
+completed packages for late declarations. Duplicate active scope installations
+remain an accounting conflict until every intended target has qualified proof.
+
+These publication changes have only static/import/OpenAPI checks so far. New
+database/object-storage tests cover initial/successor mixed packages, App CAS
+rollback, authored-byte tampering, incompatible signatures, a real commit whose
+acknowledgement is lost, readback without publication replay, and late accounting.
+Their exact-head Docker run is required. Common producer support/enrollment,
+rapid-merge/revert qualification, actual served assets and production worker
+execution remain acceptance gates. QuickSupport literal bound declarations still
+need Source alignment; no workflow compiler restriction has been relaxed.

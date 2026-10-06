@@ -416,6 +416,9 @@ class SolutionDeployer:
             before = await capture_package_controls(self.db, sid)
             if canonical_digest(before) != expected_controls_digest:
                 raise SolutionDeployConflict("Reviewed package installed controls changed")
+            previous_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
+                Workflow.id, Workflow.parameters_schema,
+            ).where(Workflow.solution_id == sid))).all()}
             with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
                 workspace = Path(directory)
                 _safe_extract(source.source_archive, directory)
@@ -428,6 +431,17 @@ class SolutionDeployer:
                     expected_active_deployment_id=expected_active_deployment_id,
                 )
             await self.db.flush()
+            from src.services.solutions.workflow_revision import require_compatible_parameters
+            current_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
+                Workflow.id, Workflow.parameters_schema,
+            ).where(Workflow.solution_id == sid))).all()}
+            for identity, parameters in previous_parameters.items():
+                if not isinstance(parameters, dict) or not isinstance(current_parameters.get(identity), dict):
+                    raise SolutionDeployConflict("Legacy workflow parameters require reviewed adoption before package delivery")
+                try:
+                    require_compatible_parameters(parameters, current_parameters[identity])
+                except ValueError as exc:
+                    raise SolutionDeployConflict(str(exc)) from exc
             try:
                 require_preserved_package_controls(before, await capture_package_controls(self.db, sid))
             except ValueError as exc:

@@ -42,6 +42,7 @@ from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffPreflightResponse,
 )
 from src.models.orm.solutions import Solution
+from src.models.contracts.platform_jobs import PlatformJobPublic
 from src.repositories.solution_deployments import (
     InvalidDeploymentTransition,
     SolutionDeploymentRepository,
@@ -101,6 +102,67 @@ from src.services.solutions.write_lock import (
 router = APIRouter(
     prefix="/api/solutions/{solution_id}/deployments", tags=["Solution Deployments"]
 )
+
+
+async def _authenticate_package(solution_id, body, credentials):
+    from src.services.solutions.package_git_source import authenticate_package_git_delivery
+    policy = get_settings().solution_package_git_delivery_policy
+    if policy is None:
+        raise HTTPException(status_code=503, detail="Protected complete package delivery is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="GitHub Actions package OIDC token is required")
+    try:
+        await authenticate_package_git_delivery(credentials.credentials, policy=policy,
+            solution_id=solution_id, commit_sha=body.source_commit_sha, ci_run_id=body.ci_run_id,
+            ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return policy
+
+
+@router.post("/github-package", response_model=PlatformJobPublic)
+async def deliver_github_package(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+):
+    """Capture protected complete source, then use the shared durable publisher."""
+    from src.services.solutions.package_git_source import read_package_git_source
+    from src.services.solutions.package_admission import admit_package
+    from src.services.platform_jobs import platform_job_to_public
+    policy = await _authenticate_package(solution_id, body, credentials)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            source = await read_package_git_source(ProtectedGitReader(policy, github_token, client),
+                policy=policy, solution_id=solution_id, commit_sha=body.source_commit_sha,
+                ci_run_id=body.ci_run_id, ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+        return platform_job_to_public(await admit_package(db, policy, solution_id, source, github_token))
+    except HTTPException:
+        await db.rollback()
+        raise
+    except (GitDeliverySourceError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (SolutionWriteLockHeld, SolutionWriteLockLost, httpx.HTTPError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect the original package job before retrying") from exc
+
+
+@router.post("/github-package/status", response_model=PlatformJobPublic)
+async def inspect_github_package(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+):
+    """Same source-scoped identity, independently verified original-job result."""
+    from src.services.solutions.package_admission import inspect_package_job
+    from src.services.platform_jobs import platform_job_to_public
+    await _authenticate_package(solution_id, body, credentials)
+    try:
+        return platform_job_to_public(await inspect_package_job(db, solution_id, body.artifact_digest))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse)
