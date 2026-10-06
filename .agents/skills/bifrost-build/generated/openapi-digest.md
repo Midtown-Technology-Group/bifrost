@@ -104,6 +104,8 @@
 | DELETE | `/api/applications/{app_id}/files/{file_path}` |
 | GET | `/api/applications/{app_id}/files/{file_path}` |
 | PUT | `/api/applications/{app_id}/files/{file_path}` |
+| POST | `/api/applications/{app_id}/github-source` |
+| POST | `/api/applications/{app_id}/github-source/{job_id}/inspect` |
 | DELETE | `/api/applications/{app_id}/logo` |
 | GET | `/api/applications/{app_id}/logo` |
 | POST | `/api/applications/{app_id}/logo` |

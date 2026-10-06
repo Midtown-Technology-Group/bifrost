@@ -29,6 +29,24 @@ ApplicationSdkStatus = Literal[
 # ==================== APPLICATION MODELS ====================
 
 
+class ApplicationGitSourcePublicationRequest(BaseModel):
+    """Exact protected source identity; no uploaded bytes or App control edits."""
+
+    model_config = ConfigDict(extra="forbid")
+    source_commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    ci_run_id: int = Field(gt=0)
+    ci_run_attempt: int = Field(gt=0)
+    artifact_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class ApplicationGitPublicationInput(ApplicationGitSourcePublicationRequest):
+    """Server-sealed job admission; contains no producer or stored Git credential."""
+
+    expected_controls_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    producer_run_id: str = Field(pattern=r"^[1-9][0-9]*$")
+    producer_run_attempt: int = Field(gt=0)
+
+
 class ApplicationBase(BaseModel):
     """Shared application fields."""
 

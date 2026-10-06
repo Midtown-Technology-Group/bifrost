@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
+import httpx
 from pydantic import BaseModel
 
+from src.config import get_settings
 from src.core.database import get_db_context
 from src.core.pubsub import publish_app_published
 from src.jobs.execution_policy import (
@@ -18,17 +21,50 @@ from src.jobs.platform.base import (
     PlatformJobDefinition,
     PlatformJobFailure,
     PlatformJobPolicy,
+    PlatformJobRequiresAction,
 )
 from src.models.orm.applications import Application
+from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.repositories.applications import ApplicationRepository
+from src.services.application_publication import publication_controls_hash
+from src.services.application_publication_evidence import read_app_publication_runtime_pin
+from src.services.application_git_source import app_source_evidence, read_app_git_source
+from src.services.github_config import get_github_config
+from src.services.solutions.github_delivery_source import ProtectedGitReader
+from src.services.app_storage import AppStorageService, PUBLICATION_INTENT_SCHEMA
 
 APPLICATION_PUBLISH_JOB_TYPE = "application.publish"
 logger = logging.getLogger(__name__)
 
 
+def _manifest_not_applied(intent: dict | None, application_id: UUID) -> bool:
+    return (intent is not None and intent.get("schema_version") == PUBLICATION_INTENT_SCHEMA
+            and intent.get("application_id") == str(application_id)
+            and (intent.get("manifest_write_started") is False
+                 or (intent.get("manifest_write_started") is True
+                     and intent.get("manifest_write_rejected") is True)))
+
+
+def _publication_not_applied(context: PlatformJobContext, intent: dict) -> PlatformJobFailure:
+    return PlatformJobFailure(
+        "application_publication_not_applied",
+        "The original attempt did not switch its Live manifest; a new publication may be admitted.",
+        result={
+            "schema_version": "bifrost.application-publication-disposition/v1",
+            "publication_verified": False,
+            "application_id": intent["application_id"],
+            "disposition": ("manifest_not_attempted" if intent.get("manifest_write_started") is False
+                            else "manifest_conditional_rejected"),
+            "original_job_id": str(context.job_id),
+            "original_intent": intent,
+        },
+    )
+
+
 class ApplicationPublishPayload(BaseModel):
     application_id: UUID
     message: str | None = None
+    protected_git: ApplicationGitPublicationInput | None = None
 
 
 def _publish_percent(
@@ -52,6 +88,8 @@ async def run_application_publish(
     raw_payload: BaseModel,
 ) -> dict[str, object]:
     payload = ApplicationPublishPayload.model_validate(raw_payload)
+    intent = context.checkpoint
+    owns_application = False
     try:
         async with get_db_context() as db:
             application = await db.get(Application, payload.application_id)
@@ -60,6 +98,29 @@ async def run_application_publish(
                     "application_not_found",
                     "Application no longer exists.",
                 )
+            if (application.organization_id != context.organization_id
+                    or application.app_model != "inline_v1" or application.solution_id is not None):
+                raise ValueError("Application ownership/model changed after publication was queued")
+            owns_application = True
+            if _manifest_not_applied(intent, application.id):
+                # The reclaimed lease fences the old runner's mandatory second
+                # checkpoint, even if Main or current controls have since moved.
+                assert intent is not None
+                raise _publication_not_applied(context, intent)
+            controls = await publication_controls_hash(db, application.id)
+            protected_git = payload.protected_git
+            policy = None
+            if protected_git is not None:
+                policy = get_settings().inline_app_git_delivery_policy
+                if policy is None:
+                    raise ValueError("Protected Git App publication is not configured")
+                enrollment = policy.enrollment_for(application.id)
+                if (enrollment.organization_id != application.organization_id
+                        or enrollment.repo_subpath != application.repo_path
+                        or not application.published_snapshot or application.published_at is None):
+                    raise ValueError("App is outside its enrolled published source/scope")
+                if controls != protected_git.expected_controls_hash:
+                    raise ValueError("Application controls changed after protected Git admission")
 
             repo = ApplicationRepository(
                 db,
@@ -94,12 +155,73 @@ async def run_application_publish(
                 last_phase = phase
                 last_reported = current
 
-            published = await repo.publish(
-                application.id,
-                context.requested_by_email,
-                payload.message,
-                progress_callback=report,
-            )
+            storage = AppStorageService()
+            if intent is not None:
+                if intent.get("controls_hash") != controls:
+                    raise ValueError("Application controls differ from publication intent")
+                files_published = await storage.verify_publication(str(application.id), intent)
+                if await publication_controls_hash(db, application.id, lock=True) != controls:
+                    raise ValueError("Application controls changed during publication readback")
+                # Reconcile only publication bookkeeping, after exact artifact
+                # readback. No build, output write or manifest switch is replayed.
+                application.published_snapshot = {path: "" for path in intent["artifact_hashes"]}
+                application.published_at = datetime.now(timezone.utc)
+                await db.flush()
+                published = application
+            else:
+                async def checkpoint(proof: dict) -> None:
+                    nonlocal intent
+                    if await publication_controls_hash(db, application.id, lock=True) != controls:
+                        raise ValueError("Application controls changed during its build")
+                    intent = {**proof, "controls_hash": controls}
+                    await context.save_checkpoint(intent, phase="Publication intent recorded")
+
+                if protected_git is None:
+                    published = await repo.publish(
+                        application.id, context.requested_by_email, payload.message,
+                        progress_callback=report, checkpoint_callback=checkpoint,
+                    )
+                else:
+                    # Reuse the existing encrypted repository integration only
+                    # in memory. Its sync branch is untouched. Never persist the
+                    # producer's ephemeral token or copy credentials into a job.
+                    assert policy is not None
+                    config = await get_github_config(db, policy.organization_id)
+                    if (config is None or not config.token or config.repo_url not in {
+                            f"https://github.com/{policy.repository}",
+                            f"https://github.com/{policy.repository}.git"}):
+                        raise ValueError("Configured Git read credential/repository is unavailable")
+                    async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+                        reader = ProtectedGitReader(policy, config.token, client)
+                        source = await read_app_git_source(reader, policy=policy,
+                            application_id=application.id, commit_sha=protected_git.source_commit_sha,
+                            ci_run_id=protected_git.ci_run_id, ci_run_attempt=protected_git.ci_run_attempt,
+                            artifact_digest=protected_git.artifact_digest)
+                        proof = {**app_source_evidence(application.id, policy, source),
+                            "artifact_digest": protected_git.artifact_digest,
+                            "ci_run_id": protected_git.ci_run_id,
+                            "ci_run_attempt": protected_git.ci_run_attempt,
+                            "producer_run_id": protected_git.producer_run_id,
+                            "producer_run_attempt": protected_git.producer_run_attempt}
+
+                        async def guard_source() -> None:
+                            await reader.verify_ci(protected_git.source_commit_sha,
+                                protected_git.ci_run_id, protected_git.ci_run_attempt)
+                            if await publication_controls_hash(db, application.id, lock=True) != controls:
+                                raise ValueError("Application controls changed before Git publication")
+                            # Recheck the original attempt's lease before any
+                            # manifest switch, including after output writes.
+                            await context.report("Protected source reverified", percent=95)
+
+                        published = await repo.publish(
+                            application.id, context.requested_by_email, payload.message,
+                            progress_callback=report, checkpoint_callback=checkpoint,
+                            source_snapshot=source.snapshot, source_provenance=proof,
+                            before_publication=guard_source,
+                        )
+                if intent is None:
+                    raise ValueError("Publication did not record its intent")
+                files_published = await storage.verify_publication(str(application.id), intent)
             if published is None:
                 raise PlatformJobFailure(
                     "application_not_found",
@@ -111,14 +233,30 @@ async def run_application_publish(
                 if published.published_at is not None
                 else None
             )
-            files_published = len(published.published_snapshot or {})
+            runtime_pin = None
+            if protected_git is not None:
+                runtime_pin = await read_app_publication_runtime_pin(storage,
+                    application_id=application.id, publication_job_id=context.job_id,
+                    organization_id=application.organization_id, intent=intent,
+                    protected_git=protected_git.model_dump(mode="json"))
+                if await publication_controls_hash(db, application.id, lock=True) != controls:
+                    raise ValueError("App controls changed during runtime pin readback")
             await db.commit()
 
         result: dict[str, object] = {
             "application_id": str(payload.application_id),
             "published_at": published_at,
             "files_published": files_published,
+            "publication_verified": True,
+            "publication_intent": intent,
+            "recovered_from_intent": context.checkpoint is not None,
         }
+        if payload.protected_git is not None:
+            # This identifies the original admission, including readback of an
+            # older commit reused by a newer producer. Never label that job as
+            # delivery of the newer request merely because it succeeded.
+            result["git_source"] = payload.protected_git.model_dump(mode="json")
+            result["runtime_pin"] = runtime_pin
         try:
             await publish_app_published(
                 app_id=str(payload.application_id),
@@ -133,9 +271,21 @@ async def run_application_publish(
                 exc_info=True,
             )
         return result
-    except PlatformJobFailure:
+    except PlatformJobFailure as exc:
+        if intent is not None:
+            if owns_application and _manifest_not_applied(intent, payload.application_id):
+                raise _publication_not_applied(context, intent) from exc
+            raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc
         raise
-    except ValueError as exc:
+    except Exception as exc:
+        if intent is not None:
+            if owns_application and _manifest_not_applied(intent, payload.application_id):
+                raise _publication_not_applied(context, intent) from exc
+            # Retain durable evidence even for an unobserved storage/SQL outcome.
+            # A resumed lost attempt can only read back this intent.
+            raise PlatformJobRequiresAction("Publication requires exact readback", intent) from exc
+        if not isinstance(exc, ValueError):
+            raise
         raise PlatformJobFailure(
             "application_publish_failed",
             str(exc),
@@ -148,6 +298,7 @@ APPLICATION_PUBLISH_DEFINITION = PlatformJobDefinition(
     payload_version=1,
     payload_model=ApplicationPublishPayload,
     handler=run_application_publish,
+    readback_checkpoint_schema=PUBLICATION_INTENT_SCHEMA,
     policy=PlatformJobPolicy(
         timeout_seconds=20 * 60,
         max_attempts=2,
