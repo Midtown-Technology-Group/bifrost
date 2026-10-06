@@ -1,6 +1,6 @@
 """Opt-in, live-worker comparison of config SDK network and socket transports.
 
-Run with ``./test.sh tests/performance/test_sdk_config_transport.py -s -v``.
+Run with ``./test.sh tests/e2e/platform/test_sdk_config_transport.py -s -v``.
 Both paths execute in the same forked workflow child against the same shared
 config service through the shared client: network HTTP when the injected
 worker socket is cleared, worker-local HTTP when it is installed. Latency
@@ -16,8 +16,8 @@ import pytest
 from tests.e2e.conftest import E2E_API_URL, execute_workflow_sync, write_and_register
 
 
-# This opt-in live-worker benchmark is not part of the fast unit lane.
-pytestmark = pytest.mark.slow
+# This live-worker benchmark belongs to E2E; unit lanes stop the workers.
+pytestmark = [pytest.mark.e2e, pytest.mark.slow]
 
 
 @pytest.fixture(scope="session")
@@ -146,7 +146,7 @@ async def {name}():
             print("SDK_CONFIG_TRANSPORT_BENCHMARK " + json.dumps(measurements, sort_keys=True))
         finally:
             client.post(
-                "/api/sdk/config/delete", headers=org1_user.headers,
-                json={"key": key},
+                "/api/sdk/config/delete", headers=platform_admin.headers,
+                json={"key": key, "scope": org1["id"]},
             )
             client.delete(f"/api/files/editor?path={path}", headers=platform_admin.headers)
