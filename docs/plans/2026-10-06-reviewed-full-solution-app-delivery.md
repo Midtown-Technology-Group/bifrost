@@ -82,8 +82,13 @@ organization scope and hashes of the complete descriptor/entity manifest set.
 Output binds source modes/hashes, deterministic full archive and declared
 entity identities. CI, installed controls and runtime verification remain false.
 
-This is the first implemented preparation seam. Scoped server admission,
-worker publication/recovery and common producer enrollment remain unimplemented.
+The source preparation and server-side protected-Git capture seams are
+implemented. The latter reuses the existing repository/CI reader and OIDC
+verifier, binds an explicitly scoped enrolled target and complete reviewed
+manifest set, and rechecks current Main/CI after reading all blobs. Its audience
+cannot reuse workflow-only or inline-App tokens. This is source verification
+only: HTTP admission, installed-control checks, worker publication/recovery,
+immutable workflow projection and common producer enrollment remain unimplemented.
 
 Offline review of committed Workspace Main `6793385de20071acc85ab749fbe83c3b6dd22706`
 retained all 147 Meraki package files and all 39 QuickSupport files. QuickSupport
@@ -108,3 +113,12 @@ publication tests separate and preserve normal manual deployment behavior.
 
 The prepared dev.24 first batch does not depend on this additional adapter.
 Retiring loose Live still requires complete live consumer and accounting proof.
+
+## Current validation boundary
+
+Local Docker lint and six synchronous enrollment checks passed. The pve Docker
+host denies asyncio socketpair creation before fourteen async tests can execute;
+those errors remain retained, not classified as passing source validation. Use
+the authorized CI Docker lane for the committed protected-source candidate.
+Additional scope/target/manifest negatives are included in that candidate. No
+new publication endpoint or production capability is enabled by these helpers.
