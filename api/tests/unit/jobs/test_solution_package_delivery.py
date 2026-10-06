@@ -170,7 +170,8 @@ async def test_package_recovery_distinguishes_committed_and_rolled_back_transact
         assert recovered["recovered_from_rollback"] is True
         assert recovered["deployment_id"] != unknown.value.result["deployment_id"]
     assert recovered["runtime_verified"] and recovered["registrations_verified"]
-    assert len(recovered["workflow_runtime_pins"]) == len(recovered["app_runtime_pins"]) == 1
+    assert len(recovered["workflow_runtime_pins"]) == 1
+    assert len(recovered["app_runtime_pins"]) == int(include_app)
     expected_calls = {"compile": 1, "stage": 1} if interruption == "lost_ack" else {"compile": 2, "stage": 2}
     assert calls == expected_calls
     assert await platform_jobs.finish_platform_job(job_id, lease_token, status="succeeded", result=recovered)

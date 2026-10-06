@@ -35,6 +35,8 @@ from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.live_handoff_source import source_closure
 from src.services.solutions.package_controls import _json_value, capture_package_controls, capture_package_projection
 from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
+from src.services.solutions.root_file_bindings import require_root_workspace_files
+from src.services.solutions.shared_table_bindings import require_shared_tables
 from src.services.solutions.source_revision import _require_registration, _workflow_snapshot
 from src.services.solutions.workflow_revision_recipe import (
     ReviewedWorkflowRecipe, WorkflowRecipeError, compile_workflow_registrations,
@@ -55,6 +57,25 @@ async def compile_package_runtime(
     if str(sid) != evidence["package"]["solution_id"]:
         raise ValueError("Package runtime target differs from protected source")
     storage = SolutionDeploymentStorage(sid, deployment_id)
+    shared_tables = {}
+    root_file_bindings = {}
+    dependencies = {}
+    dependency_edges = []
+    if bundle.solution.active_deployment_id is not None:
+        parent = await SolutionDeploymentRepository(db).get_by_id_for_runtime(bundle.solution.active_deployment_id)
+        if parent is None or parent.solution_id != sid or parent.organization_id != bundle.solution.organization_id:
+            raise ValueError("Package base runtime target/scope differs")
+        _, parent_resolution = validate_runtime_closure(
+            parent.compiled_manifest, parent.resolution_map, parent.dependencies,
+            expected_manifest_hash=parent.compiled_manifest_hash,
+            expected_resolution_hash=parent.resolution_map_hash,
+        )
+        shared_tables = parent_resolution.shared_tables
+        root_file_bindings = parent_resolution.root_file_bindings
+        dependencies = parent_resolution.dependencies
+        dependency_edges = parent.dependencies
+    await require_shared_tables(db, shared_tables, solution_organization_id=bundle.solution.organization_id)
+    await require_root_workspace_files(db, root_file_bindings)
     files = source.authored.files
     python = {path: raw.encode() for path, raw in bundle.python_files.items()}
     sources = {path: RuntimeSourceResolution(
@@ -66,8 +87,8 @@ async def compile_package_runtime(
         # or file capability. Require the public closure analyser as well.
         source_closure(
             python, {item["path"] for item in bundle.workflows},
-            has_table_bindings=bool(bundle.tables),
-            has_root_file_bindings=bool(bundle.file_locations),
+            has_table_bindings=bool(bundle.tables or shared_tables),
+            has_root_file_bindings=bool(bundle.file_locations or root_file_bindings),
         )
         rows = (await db.scalars(select(Workflow).where(
             Workflow.solution_id == sid,
@@ -135,6 +156,8 @@ async def compile_package_runtime(
         applications[str(item.app_id)] = RuntimeEntityDefinition.model_validate(payload)
     resolution = DeploymentResolutionMap(
         workflows=workflows, applications=applications,
+        shared_tables=shared_tables, root_file_bindings=root_file_bindings,
+        dependencies=dependencies,
         agents=entities(bundle.agents, ".bifrost/agents.yaml"),
         forms=entities(bundle.forms, ".bifrost/forms.yaml"),
         events=entities(bundle.events, ".bifrost/events.yaml"), sources=sources,
@@ -158,6 +181,8 @@ async def compile_package_runtime(
         resolution_map_hash=sha256_digest(canonical_json(resolution)),
         source=DeploymentSource(artifact_key=storage.source_artifact_key, runtime_prefix=storage.runtime_prefix),
         workflows=workflows, applications=applications, agents=resolution.agents,
+        shared_tables=shared_tables, root_file_bindings=root_file_bindings,
+        dependencies=dependencies,
         forms=resolution.forms, events=resolution.events,
         tables=entities(bundle.tables, ".bifrost/tables.yaml"),
         file_locations={name: {"location": name} for name in bundle.file_locations},
@@ -166,7 +191,7 @@ async def compile_package_runtime(
         git=DeploymentGitProvenance(repository=evidence.get("repository"), resolved_ref="main", commit_sha=source.authored.commit_sha),
         package_evidence=package,
     )
-    validate_runtime_closure(manifest, resolution, [], expected_manifest_hash=manifest.content_hash(),
+    validate_runtime_closure(manifest, resolution, dependency_edges, expected_manifest_hash=manifest.content_hash(),
                              expected_resolution_hash=manifest.resolution_map_hash)
     return manifest, resolution
 
@@ -201,6 +226,9 @@ class PackageActivationHooks:
     async def verify_finalized(self, deployment: SolutionDeployment) -> None:
         if deployment.compiled_manifest_hash != self.manifest.content_hash():
             raise ValueError("Package candidate manifest differs")
+        await require_shared_tables(self.db, self.manifest.shared_tables,
+            solution_organization_id=deployment.organization_id)
+        await require_root_workspace_files(self.db, self.manifest.root_file_bindings)
         storage = SolutionDeploymentStorage(deployment.solution_id, deployment.id)
         if await storage.read_source_artifact() != self.source.source_archive:
             raise ValueError("Package source archive differs")
@@ -256,6 +284,8 @@ async def readback_package_runtime(
     manifest, resolution = validate_runtime_closure(deployment.compiled_manifest, deployment.resolution_map,
         deployment.dependencies, expected_manifest_hash=deployment.compiled_manifest_hash,
         expected_resolution_hash=deployment.resolution_map_hash)
+    await require_shared_tables(db, manifest.shared_tables, solution_organization_id=solution.organization_id)
+    await require_root_workspace_files(db, manifest.root_file_bindings)
     package = json.loads(canonical_json(manifest.package_evidence or {}))
     if package.get("schema_version") != PACKAGE_RUNTIME_SCHEMA:
         raise ValueError("Original complete package evidence is missing")

@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select, update
 
 from bifrost.workspace_release import canonical_digest
+from bifrost.root_file_bindings import RootFileBinding
 from src.models.contracts.solution_deployments import SolutionDeploymentCreate
 from src.models.orm.applications import Application
 from src.models.orm.solutions import Solution
@@ -15,6 +16,9 @@ from src.services.solutions.deploy import SolutionDeployer
 from src.services.solutions.deploy import SolutionDeployConflict
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+from src.services.solutions.deployment_manifest import SharedRootTableBinding, canonical_json, sha256_digest
+from src.services.solutions.shared_table_bindings import SharedTableBindingError, table_metadata_hash
+from src.services.solutions.root_file_bindings import RootFileBindingError
 from src.services.solutions.package_controls import capture_package_controls
 from src.services.solutions.package_runtime import (
     activate_package_runtime,
@@ -163,6 +167,22 @@ async def test_workflow_package_schema_successor_and_revert_preserve_documents_a
     table_id = None
     previous = None
     data = {"canonical_key": "example", "native_backup": {"retained": True}}
+    root_table = Table(id=uuid4(), name=f"shared_{uuid4().hex[:8]}", organization_id=None,
+        schema={"columns": [{"name": "key", "type": "string"}]})
+    db_session.add(root_table)
+    await db_session.flush()
+    shared = {root_table.name: SharedRootTableBinding(table_id=root_table.id, metadata_hash=table_metadata_hash(root_table))}
+    raw = b'{"reviewed": true}'
+    root_file = RootFileBinding(location="workspace", path=f"features/package-{uuid4().hex}.json",
+        operations=("read",), max_bytes=1024, expected_read_sha256=sha256_digest(raw))
+    bindings = {"reviewed_asset": root_file}
+    from shared.file_paths import resolve_s3_key
+    from src.config import get_settings
+    from src.services.file_storage.s3_client import S3StorageClient
+    settings = get_settings()
+    key = resolve_s3_key(root_file.location, "global", root_file.path)
+    async with S3StorageClient(settings).get_client() as client:
+        await client.put_object(Bucket=settings.s3_bucket, Key=key, Body=raw)
     for schema in (original, expanded, original):
         source = _reviewed_package_source(solution, runtime=True, include_app=False, table_schema=schema)
         prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
@@ -170,6 +190,14 @@ async def test_workflow_package_schema_successor_and_revert_preserve_documents_a
             expected_controls_digest=canonical_digest(await capture_package_controls(db_session, solution.id)),
         )
         manifest, resolution = await compile_package_runtime(db_session, source, prepared, uuid4())
+        if previous is None:
+            # Seed the retained reviewed baseline as an earlier adoption would;
+            # complete-package Source cannot introduce Root grants itself.
+            resolution = resolution.model_copy(update={"shared_tables": shared, "root_file_bindings": bindings})
+            manifest = manifest.model_copy(update={"shared_tables": shared, "root_file_bindings": bindings,
+                "resolution_map_hash": sha256_digest(canonical_json(resolution))})
+        assert manifest.shared_tables == resolution.shared_tables == shared
+        assert manifest.root_file_bindings == resolution.root_file_bindings == bindings
         await stage(db_session, seed_user, solution, source, prepared, manifest, resolution)
         await activate_package_runtime(db_session, source, prepared, manifest, previous)
         result = await readback_package_runtime(db_session, solution.id, manifest.deployment_id,
@@ -201,6 +229,20 @@ async def test_workflow_package_schema_successor_and_revert_preserve_documents_a
     # change cannot be accepted as the published package.
     await db_session.execute(update(Table).where(Table.solution_id == solution.id).values(schema=expanded))
     with pytest.raises(ValueError, match="controls/resources"):
+        await readback_package_runtime(db_session, solution.id, previous,
+            expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
+            expected_organization_id=None)
+    await db_session.execute(update(Table).where(Table.solution_id == solution.id).values(schema=original))
+    await db_session.execute(update(Table).where(Table.id == root_table.id).values(schema={"drift": True}))
+    with pytest.raises(SharedTableBindingError, match="metadata"):
+        await readback_package_runtime(db_session, solution.id, previous,
+            expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
+            expected_organization_id=None)
+    await db_session.execute(update(Table).where(Table.id == root_table.id).values(
+        schema={"columns": [{"name": "key", "type": "string"}]}))
+    async with S3StorageClient(settings).get_client() as client:
+        await client.put_object(Bucket=settings.s3_bucket, Key=key, Body=b'{"drift": true}')
+    with pytest.raises(RootFileBindingError, match="hash"):
         await readback_package_runtime(db_session, solution.id, previous,
             expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
             expected_organization_id=None)

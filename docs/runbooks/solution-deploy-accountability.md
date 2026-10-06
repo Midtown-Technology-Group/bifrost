@@ -64,3 +64,9 @@ complete post-publication snapshot includes the exact new schema, so stale
 admission and later metadata drift still fail readback. A schema revert restores
 metadata without deleting stored document fields. Existing caller compatibility,
 workflow control and resource ownership checks remain required.
+
+Complete-package successors retain the active immutable deployment's reviewed
+shared-table bindings, Root-file bindings and dependency pins. They do not
+introduce new Root grants from package source. Shared-table scope/metadata and
+required Root asset bytes are revalidated during preparation, before activation
+and during independent readback; drift requires reconciliation without replay.
