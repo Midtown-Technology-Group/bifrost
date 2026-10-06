@@ -33808,41 +33808,6 @@ export interface components {
              */
             disable_global_key: boolean;
         };
-        /** WorkflowRetirementConsumerInventory */
-        WorkflowRetirementConsumerInventory: {
-            /**
-             * Schema Version
-             * @constant
-             */
-            schema_version: "bifrost.workflow-retirement-consumers/v1";
-            /** Native Callers */
-            native_callers: components["schemas"]["WorkflowRetirementNativeReference"][];
-            /** Accepted Work */
-            accepted_work: components["schemas"]["WorkflowRetirementNativeReference"][];
-            /** Application Inventory Digest */
-            application_inventory_digest: string;
-            /**
-             * Application Source Dist Review Required
-             * @default true
-             * @constant
-             */
-            application_source_dist_review_required: true;
-            /** Inventory Digest */
-            inventory_digest: string;
-        };
-        /** WorkflowRetirementNativeReference */
-        WorkflowRetirementNativeReference: {
-            /** Entity Type */
-            entity_type: string;
-            /** Id */
-            id: string;
-            /** Organization Id */
-            organization_id: string | null;
-            /** Solution Id */
-            solution_id: string | null;
-            /** Reference Type */
-            reference_type?: string | null;
-        };
         /**
          * WorkflowResourceReport
          * @description Response for the workflow resource report endpoint.
@@ -33979,6 +33944,41 @@ export interface components {
             max_peak_process_rss_bytes?: number | null;
             /** Total Ai Cost */
             total_ai_cost?: string;
+        };
+        /** WorkflowRetirementConsumerInventory */
+        WorkflowRetirementConsumerInventory: {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "bifrost.workflow-retirement-consumers/v1";
+            /** Native Callers */
+            native_callers: components["schemas"]["WorkflowRetirementNativeReference"][];
+            /** Accepted Work */
+            accepted_work: components["schemas"]["WorkflowRetirementNativeReference"][];
+            /** Application Inventory Digest */
+            application_inventory_digest: string;
+            /**
+             * Application Source Dist Review Required
+             * @default true
+             * @constant
+             */
+            application_source_dist_review_required: true;
+            /** Inventory Digest */
+            inventory_digest: string;
+        };
+        /** WorkflowRetirementNativeReference */
+        WorkflowRetirementNativeReference: {
+            /** Entity Type */
+            entity_type: string;
+            /** Id */
+            id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Solution Id */
+            solution_id: string | null;
+            /** Reference Type */
+            reference_type?: string | null;
         };
         /**
          * WorkflowRolesResponse
