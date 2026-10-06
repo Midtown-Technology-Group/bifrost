@@ -28,7 +28,10 @@ from tests.unit.test_solution_app_deploy import _reviewed_package_source
 
 
 @pytest.mark.e2e
-@pytest.mark.parametrize("interruption", ["lost_ack", "stage_failure", "superseded_before_retry"])
+@pytest.mark.parametrize("interruption", [
+    "lost_ack", "stage_failure", "superseded_before_retry",
+    "main_changed_during_stage", "ci_attempt_changed_during_stage",
+])
 async def test_package_recovery_distinguishes_committed_and_rolled_back_transactions(
     db_session, async_session_factory, seed_user, compile_app, monkeypatch, interruption,
 ):
@@ -36,11 +39,13 @@ async def test_package_recovery_distinguishes_committed_and_rolled_back_transact
     from src.services import platform_jobs
 
     assert await db_session.scalar(text("SELECT current_database()")) == "bifrost_test"
-    solution = Solution(id=uuid4(), slug=f"package-{uuid4().hex[:8]}", name="Package", organization_id=None)
+    solution = Solution(id=uuid4(), slug=f"package-{uuid4().hex[:8]}", name="Package", organization_id=None,
+        version="2.0.0", execution_runtime_mode="repo-v1")
     db_session.add(solution)
     await db_session.flush()
     solution_id = solution.id
-    source = _reviewed_package_source(solution, runtime=True, source_commit_sha=uuid4().hex + uuid4().hex[:8])
+    source = _reviewed_package_source(solution, runtime=True, source_commit_sha=uuid4().hex + uuid4().hex[:8],
+        source_version="1.0.0")
     policy = SolutionPackageGitDeliveryPolicy(repository="MTG-Thomas/bifrost-workspace",
         repository_id=1197464564, repository_owner_id=87775189, organization_id=PROVIDER_ORG_ID,
         workflow_path=".github/workflows/deliver-solutions.yml", ci_workflow_path=".github/workflows/ci.yml",
@@ -103,7 +108,12 @@ async def test_package_recovery_distinguishes_committed_and_rolled_back_transact
     async def count_stage(*args, **kwargs):
         calls["stage"] += 1
         result = await original_stage(*args, **kwargs)
-        if interruption != "lost_ack" and calls["stage"] == 1:
+        if interruption in {"main_changed_during_stage", "ci_attempt_changed_during_stage"}:
+            from src.services.solutions.github_delivery_source import GitDeliverySourceError
+            reason = "Current Main advanced" if interruption == "main_changed_during_stage" else "CI attempt changed"
+            monkeypatch.setattr("src.services.solutions.github_delivery_source.ProtectedGitReader.verify_ci",
+                AsyncMock(side_effect=GitDeliverySourceError(reason)))
+        elif interruption != "lost_ack" and calls["stage"] == 1:
             raise TimeoutError("Storage failure before actual package commit")
         return result
 
@@ -121,13 +131,19 @@ async def test_package_recovery_distinguishes_committed_and_rolled_back_transact
         if interruption == "lost_ack":
             assert active.active_deployment_id is not None and active.execution_runtime_mode == "deployment-v1"
             assert projection.status == "succeeded"
+            assert active.version == "1.0.0" and active.upgraded_from_version == "2.0.0"
         else:
             from uuid import UUID
             from src.models.orm.solution_deployments import SolutionDeployment
             assert active.active_deployment_id is None and active.execution_runtime_mode == "repo-v1"
+            assert active.version == "2.0.0"
             assert await independent.get(SolutionDeployment, UUID(unknown.value.result["deployment_id"])) is None
+            from sqlalchemy import select
+            from src.models.orm.applications import Application
+            assert list((await independent.scalars(select(Application).where(
+                Application.solution_id == solution_id))).all()) == []
     monkeypatch.setattr(worker, "get_db_context", ordinary_context)
-    if interruption == "superseded_before_retry":
+    if interruption in {"superseded_before_retry", "main_changed_during_stage", "ci_attempt_changed_during_stage"}:
         from src.services.solutions.github_delivery_source import GitDeliverySourceError
         from src.services.solutions.package_admission import recover_pending_package, read_package_rollback
         ci = AsyncMock(side_effect=GitDeliverySourceError("Current Main advanced"))

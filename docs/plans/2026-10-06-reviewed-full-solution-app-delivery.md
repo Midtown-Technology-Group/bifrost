@@ -212,6 +212,17 @@ rapid-merge/revert qualification, actual served assets and production worker
 execution remain acceptance gates. QuickSupport literal bound declarations still
 need Source alignment; no workflow compiler restriction has been relaxed.
 
+Protected package delivery treats the reviewed current Main tree as version
+authority, including a revert to a lower declared PEP 440 version. Its preparation
+entry bypasses only the manual version-order refusal; the ordinary manual `force`
+gate, installed-control preservation, source validation and exact base CAS remain.
+The worker rechecks Main and the certified CI attempt after artifact staging and
+immediately before its lease-fenced metadata commit. Actual SQL/storage tests cover
+both Main and CI changing during staging: no Solution/App pointer or prepared
+registration is committed, and the original absent-publication receipt remains
+readable for a separately authorized newer source. These new tests require their
+own current-head CI; they are not production revert or execution proof.
+
 ### Recovery review disposition
 
 A retained complete-package intent is resolved against the original deployment

@@ -119,7 +119,7 @@ def _app_entry(app_id: str, slug: str) -> dict:
     }
 
 
-def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40):
+def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40, source_version=None):
     from bifrost.solution_package_delivery import build_solution_package_archive, review_solution_package_source
     from bifrost.workspace_release import canonical_digest
     from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution, VerifiedAuthoredSolutionFile
@@ -136,6 +136,8 @@ def main():
         files["functions/main.py"] = files["functions/main.py"].replace(
             b"def main():", f"def main({function_args}):".encode())
     files["bifrost.solution.yaml"] = f"slug: {sol.slug}\nname: APP\n".encode()
+    if source_version is not None:
+        files["bifrost.solution.yaml"] += f"version: {source_version}\n".encode()
     app_manifest = yaml.safe_load(files[".bifrost/apps.yaml"])
     for app in app_manifest["apps"].values():
         app.update(name="Example", slug=f"example-{sol.id.hex[:8]}", access_level=app_access_level)

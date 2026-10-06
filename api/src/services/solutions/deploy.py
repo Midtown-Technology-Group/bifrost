@@ -429,6 +429,7 @@ class SolutionDeployer:
                 result = await self._prepare_bundle(
                     bundle, source_artifact=source.source_archive,
                     expected_active_deployment_id=expected_active_deployment_id,
+                    allow_reviewed_version_revert=True,
                 )
             await self.db.flush()
             from src.services.solutions.workflow_revision import require_compatible_parameters
@@ -458,6 +459,7 @@ class SolutionDeployer:
         source_artifact: bytes | Path | None = None,
         *,
         expected_active_deployment_id: UUID | None = None,
+        allow_reviewed_version_revert: bool = False,
     ) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
@@ -525,7 +527,11 @@ class SolutionDeployer:
         # ── Downgrade gate (Task 20) — before ANY writes ─────────────────────
         # An older bundle (both versions PEP 440-ordered) is refused unless
         # forced. Unparseable/absent versions are unordered and never block.
-        if not force and _is_downgrade(bundle.version, solution.version):
+        # Current protected Main is the publication authority for the reviewed
+        # package path, including a reviewed source revert with a lower version.
+        # This exemption affects only version ordering; CAS, scope, resource and
+        # control checks remain required. Manual deployment keeps its force gate.
+        if not force and not allow_reviewed_version_revert and _is_downgrade(bundle.version, solution.version):
             raise SolutionDowngradeBlocked(
                 f"bundle version {bundle.version} is older than installed "
                 f"{solution.version}; re-run with force to downgrade"
