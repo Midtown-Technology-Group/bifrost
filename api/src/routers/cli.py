@@ -61,7 +61,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import Context, CurrentUser
+from src.core.auth import Context, CurrentEngineOrBypassUser, CurrentUser
 from src.core.principal import UserPrincipal
 from src.core.database import get_db
 from src.core.log_safety import log_safe
@@ -495,7 +495,7 @@ async def _resolve_sdk_org_id(
 )
 async def cli_get_config(
     request: CLIConfigGetRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> CLIConfigValue | None:
     """Get a config value via CLI API."""
@@ -578,7 +578,7 @@ async def cli_get_config(
 )
 async def cli_set_config(
     request: CLIConfigSetRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Set a config value via CLI API."""
@@ -653,7 +653,7 @@ async def cli_set_config(
 )
 async def cli_list_config(
     request: CLIConfigListRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """List all config values via CLI API."""
@@ -704,7 +704,7 @@ async def cli_list_config(
 )
 async def cli_delete_config(
     request: CLIConfigDeleteRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> bool:
     """Delete a config value via CLI API."""
@@ -839,7 +839,7 @@ async def _connection_is_declared(
 )
 async def sdk_integrations_get(
     request: SDKIntegrationsGetRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsGetResponse | None:
     """Get integration mapping data for an organization via SDK.
@@ -1148,7 +1148,7 @@ async def _build_oauth_data(
 )
 async def sdk_integrations_list_mappings(
     request: SDKIntegrationsListMappingsRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsListMappingsResponse | None:
     """List all mappings for an integration via SDK."""
@@ -1242,7 +1242,7 @@ async def sdk_integrations_list_mappings(
 )
 async def sdk_integrations_get_mapping(
     request: SDKIntegrationsGetMappingRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsMappingItem | None:
     """Get a specific integration mapping by org_id or entity_id via SDK."""
@@ -1332,7 +1332,7 @@ async def _sdk_find_integration_mapping(
 )
 async def sdk_integrations_upsert_mapping(
     request: SDKIntegrationsUpsertMappingRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsMappingItem:
     """Create or update an integration mapping for an organization via SDK."""
@@ -1440,7 +1440,7 @@ async def sdk_integrations_upsert_mapping(
 )
 async def sdk_integrations_delete_mapping(
     request: SDKIntegrationsDeleteMappingRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete an integration mapping for an organization via SDK."""
@@ -1496,7 +1496,7 @@ async def sdk_integrations_delete_mapping(
 )
 async def sdk_integrations_refresh_token(
     request: SDKIntegrationsRefreshTokenRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsRefreshTokenResponse:
     """Programmatically refresh an OAuth token for an integration.
@@ -2638,108 +2638,32 @@ async def cli_ai_complete(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> "CLIAICompleteResponse":
-    """Generate an AI completion using platform-configured LLM."""
-    from src.models.contracts.cli import CLIAICompleteResponse
-    import base64
+    """Generate an AI completion using platform-configured LLM.
 
-    from src.services.llm import LLMInputFile, LLMMessage, get_llm_client
+    Thin HTTP adapter over the shared operation
+    (``shared.sdk_ai.complete_sdk_ai``), which the engine-local
+    dispatcher calls for the same inputs.
+    """
+    from src.models.contracts.cli import CLIAICompleteResponse
+
+    from shared.sdk_ai import SdkAIError, complete_sdk_ai
 
     try:
-        client = await get_llm_client(db, profile_name=request.profile)
-
-        # Convert to LLMMessage objects
-        llm_messages = [
-            LLMMessage(role=msg["role"], content=msg["content"])  # type: ignore[arg-type]
-            for msg in request.messages
-        ]
-        if request.input_files:
-            user_message = next(
-                (
-                    message
-                    for message in reversed(llm_messages)
-                    if message.role == "user"
-                ),
-                None,
-            )
-            if user_message is None:
-                raise ValueError("AI file inputs require a user message.")
-            user_message.input_files = [
-                LLMInputFile(
-                    filename=item.filename,
-                    media_type=item.content_type,
-                    data=base64.b64decode(item.data_base64, validate=True),
-                )
-                for item in request.input_files
-            ]
-
-        response = await client.complete(
-            messages=llm_messages,
+        result = await complete_sdk_ai(
+            db,
+            current_user,
+            messages=request.messages,
             max_tokens=request.max_tokens,
             model=request.model,
+            profile=request.profile,
+            execution_id=request.execution_id,
+            scope=request.org_id,
+            input_files=request.input_files,
         )
+    except SdkAIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
 
-        logger.info(
-            f"CLI AI complete: model={log_safe(response.model)}, tokens={response.input_tokens}/{response.output_tokens}"
-        )
-
-        # Record AI usage
-        try:
-            from src.services.ai_usage_service import record_ai_usage
-            from src.core.cache import get_shared_redis
-
-            redis_client = await get_shared_redis()
-            org_id = await _resolve_sdk_org_id(current_user, request.org_id, db)
-            await record_ai_usage(
-                session=db,
-                redis_client=redis_client,
-                provider=client.provider_name,
-                model=response.model or client.model_name,
-                input_tokens=response.input_tokens or 0,
-                output_tokens=response.output_tokens or 0,
-                cache_read_tokens=response.cache_read_tokens,
-                cache_write_tokens=response.cache_write_tokens,
-                provider_cost=response.provider_cost,
-                execution_id=UUID(request.execution_id)
-                if request.execution_id
-                else None,
-                organization_id=UUID(org_id) if org_id else None,
-                user_id=current_user.user_id,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to record AI usage: {log_safe(e)}")
-
-        return CLIAICompleteResponse(
-            content=response.content,
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
-            model=response.model,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
-        )
-    except Exception as e:
-        # Check for authentication errors from LLM providers
-        error_type = type(e).__name__
-        error_module = type(e).__module__
-        if error_type == "AuthenticationError" and error_module in (
-            "anthropic",
-            "openai",
-        ):
-            provider = "Anthropic" if error_module == "anthropic" else "OpenAI"
-            logger.error(
-                f"CLI AI complete failed: {provider} authentication error - invalid API key"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.",
-            )
-        logger.error(f"CLI AI complete failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="AI completion failed. See server logs for details.",
-        )
+    return CLIAICompleteResponse(**result)
 
 
 @router.post(
@@ -2751,109 +2675,45 @@ async def cli_ai_stream(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """Generate a streaming AI completion using SSE."""
-    import base64
+    """Generate a streaming AI completion using SSE.
 
-    from src.services.llm import LLMInputFile, LLMMessage, get_llm_client
+    Thin HTTP adapter over the shared operation
+    (``shared.sdk_ai.stream_sdk_ai``), which the engine-local
+    dispatcher calls for the same inputs. Scope is resolved here —
+    before headers are sent — so authorization failures stay HTTP
+    status errors; everything after the stream starts surfaces as SSE
+    error events. Each shared payload dict is serialized to one
+    ``data:`` line, with the terminal ``[DONE]`` appended after the
+    done payload.
+    """
+    from shared.sdk_ai import stream_sdk_ai
 
-    # Capture context for usage recording. Resolve scope upfront against
-    # the authenticated user so the streaming closure doesn't have to
-    # re-derive bypass after CurrentUser falls out of scope.
-    user_id = current_user.user_id
+    # Resolve scope upfront against the authenticated user so the
+    # streaming body doesn't have to re-derive bypass after CurrentUser
+    # falls out of scope. 403/422 here stay HTTP errors (headers not
+    # yet sent); later failures are SSE error events.
     resolved_org_id = await _resolve_sdk_org_id(current_user, request.org_id, db)
-    execution_id_str = request.execution_id
 
-    async def generate():
-        try:
-            client = await get_llm_client(db)
-
-            # Convert to LLMMessage objects
-            llm_messages = [
-                LLMMessage(role=msg["role"], content=msg["content"])  # type: ignore[arg-type]
-                for msg in request.messages
-            ]
-            if request.input_files:
-                user_message = next(
-                    (
-                        message
-                        for message in reversed(llm_messages)
-                        if message.role == "user"
-                    ),
-                    None,
-                )
-                if user_message is None:
-                    raise ValueError("AI file inputs require a user message.")
-                user_message.input_files = [
-                    LLMInputFile(
-                        filename=item.filename,
-                        media_type=item.content_type,
-                        data=base64.b64decode(item.data_base64, validate=True),
-                    )
-                    for item in request.input_files
-                ]
-
-            async for chunk in client.stream(
-                messages=llm_messages,
-                max_tokens=request.max_tokens,
-                model=request.model,
-            ):
-                if chunk.type == "delta":
-                    yield f"data: {json.dumps({'content': chunk.content})}\n\n"
-                elif chunk.type == "done":
-                    yield f"data: {json.dumps({'done': True, 'input_tokens': chunk.input_tokens, 'output_tokens': chunk.output_tokens})}\n\n"
-                    yield "data: [DONE]\n\n"
-
-                    # Record AI usage after stream completes
-                    try:
-                        from src.services.ai_usage_service import record_ai_usage
-                        from src.core.cache import get_shared_redis
-
-                        redis_client = await get_shared_redis()
-                        await record_ai_usage(
-                            session=db,
-                            redis_client=redis_client,
-                            provider=client.provider_name,
-                            model=client.model_name,
-                            input_tokens=chunk.input_tokens or 0,
-                            output_tokens=chunk.output_tokens or 0,
-                            cache_read_tokens=chunk.cache_read_tokens,
-                            cache_write_tokens=chunk.cache_write_tokens,
-                            provider_cost=chunk.provider_cost,
-                            execution_id=UUID(execution_id_str)
-                            if execution_id_str
-                            else None,
-                            organization_id=UUID(resolved_org_id)
-                            if resolved_org_id
-                            else None,
-                            user_id=user_id,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to record AI usage: {log_safe(e)}")
-                elif chunk.type == "error":
-                    yield f"data: {json.dumps({'error': chunk.error})}\n\n"
-                    break
-        except ValueError as e:
-            logger.warning(f"CLI AI stream rejected: {e}")
-            yield f"data: {json.dumps({'error': 'AI stream is unavailable. See server logs for details.'})}\n\n"
-        except Exception as e:
-            # Check for authentication errors from LLM providers
-            error_type = type(e).__name__
-            error_module = type(e).__module__
-            if error_type == "AuthenticationError" and error_module in (
-                "anthropic",
-                "openai",
-            ):
-                provider = "Anthropic" if error_module == "anthropic" else "OpenAI"
-                logger.error(
-                    f"CLI AI stream failed: {provider} authentication error - invalid API key"
-                )
-                yield f"data: {json.dumps({'error': f'{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.'})}\n\n"
-            else:
-                logger.error(f"CLI AI stream failed: {log_safe(e)}")
-                yield f"data: {json.dumps({'error': 'AI stream failed. See server logs for details.'})}\n\n"
+    async def sse():
+        async for event in stream_sdk_ai(
+            db,
+            current_user,
+            messages=request.messages,
+            max_tokens=request.max_tokens,
+            model=request.model,
+            # The established HTTP stream endpoint always selected the
+            # platform default profile. Keep that SDK-visible behavior;
+            # worker-local callers may select a profile directly.
+            execution_id=request.execution_id,
+            resolved_org_id=resolved_org_id,
+            input_files=request.input_files,
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
+            if event.get("done") is True:
+                yield "data: [DONE]\n\n"
 
     return StreamingResponse(
-        generate(),
+        sse(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -2871,22 +2731,22 @@ async def cli_ai_info(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> "CLIAIInfoResponse":
-    """Get information about the configured LLM."""
+    """Get information about the configured LLM.
+
+    Thin HTTP adapter over the shared operation
+    (``shared.sdk_ai.get_sdk_model_info``), which the engine-local
+    dispatcher calls for the same inputs.
+    """
     from src.models.contracts.cli import CLIAIInfoResponse
-    from src.services.llm.factory import get_llm_config
+
+    from shared.sdk_ai import SdkAIError, get_sdk_model_info
 
     try:
-        config = await get_llm_config(db)
+        result = await get_sdk_model_info(db, current_user)
+    except SdkAIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
 
-        return CLIAIInfoResponse(
-            provider=config.provider,
-            model=config.model,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        )
+    return CLIAIInfoResponse(**result)
 
 
 # =============================================================================
@@ -2916,7 +2776,7 @@ def _deny_external_knowledge(current_user: UserPrincipal) -> None:
 )
 async def cli_knowledge_store(
     request: "CLIKnowledgeStoreRequest",
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Store a document with its embedding in the knowledge store."""
@@ -2974,7 +2834,7 @@ async def cli_knowledge_store(
 )
 async def cli_knowledge_store_many(
     request: "CLIKnowledgeStoreManyRequest",
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Store multiple documents with batch embedding."""
@@ -3112,7 +2972,7 @@ async def cli_knowledge_search(
 )
 async def cli_knowledge_delete(
     request: "CLIKnowledgeDeleteRequest",
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete a document by key from the knowledge store."""
@@ -3157,7 +3017,7 @@ async def cli_knowledge_delete(
 async def cli_knowledge_delete_namespace(
     namespace: str,
     scope: str | None = None,
-    current_user: CurrentUser = None,
+    current_user: CurrentEngineOrBypassUser = None,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete all documents in a namespace."""
@@ -3413,7 +3273,7 @@ async def download_sdk() -> Response:
 async def cli_create_table(
     request: SDKTableCreateRequest,
     ctx: Context,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKTableInfo:
     """Create a new table via SDK."""
@@ -3487,7 +3347,7 @@ async def cli_create_table(
 )
 async def cli_list_tables(
     request: SDKTableListRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[SDKTableInfo]:
     """List tables via SDK.

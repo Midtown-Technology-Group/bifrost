@@ -8,7 +8,9 @@ capacity, the org gate, and shutdown handover.
 
 import asyncio
 import time
+import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -264,6 +266,42 @@ async def test_beat_renews_lease_and_rotates_token(db_session, redis_holder):
         await db_session.get(ServiceAttempt, attempt_id)
     ).lease_expires_at
     assert after > before
+
+
+async def test_solution_service_rotation_keeps_current_workspace_scope(redis_holder):
+    from src.core.security import decode_token
+    from src.models.orm.solutions import Solution
+
+    service_id = uuid4()
+    attempt_id = uuid4()
+    solution_id = uuid4()
+    definition = SimpleNamespace(organization_id=uuid4(), solution_id=solution_id)
+    solution = SimpleNamespace(status="active", allow_outbound_access=True)
+    db = AsyncMock()
+    db.get.return_value = solution
+    owned = OwnedAttempt(
+        attempt_id=attempt_id, service_id=service_id, lease_token="lease"
+    )
+    loop = _loop(StubPool())
+
+    await loop._rotate_token(db, owned, definition)
+    token = json.loads(
+        redis_holder["redis"].values[service_token_key(str(attempt_id))]
+    )["token"]
+    claims = decode_token(token, expected_type="access")
+    assert claims["engine_solution_id"] == str(solution_id)
+    assert claims["engine_global_repo_access"] is True
+    db.get.assert_awaited_with(Solution, solution_id)
+
+    solution.allow_outbound_access = False
+    await loop._rotate_token(db, owned, definition)
+    token = json.loads(
+        redis_holder["redis"].values[service_token_key(str(attempt_id))]
+    )["token"]
+    assert (
+        decode_token(token, expected_type="access")["engine_global_repo_access"]
+        is False
+    )
 
 
 async def test_ready_drain_marks_attempt_running(db_session, redis_holder):

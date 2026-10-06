@@ -35,7 +35,12 @@ tracer = trace.get_tracer(__name__)
 
 
 def _set_process_engine_credentials(context_data: dict[str, Any]) -> bool:
-    """Install the handed-down engine token for this one-shot process."""
+    """Install the handed-down attempt token before engine-local SDK reads."""
+    service_cfg = context_data.get("service")
+    if service_cfg:
+        from bifrost._service_runtime import install_service_credentials
+
+        return install_service_credentials(service_cfg.get("token", ""))
     engine_token = context_data.get("engine_token")
     if not engine_token:
         return False
@@ -670,6 +675,12 @@ async def run_service(
     )
     from src.services.execution.workspace_modules import clear_workspace_modules
 
+    # Cache eviction can create an SDK client on the injected socket. Install
+    # the confined service credential before activating import hooks or reads.
+    from bifrost._service_runtime import install_service_credentials
+
+    install_service_credentials(service_cfg.get("token", ""))
+
     _exec_solution_id = context_data.get("solution_id")
     if _exec_solution_id:
         set_solution_context(
@@ -702,13 +713,6 @@ async def run_service(
             email=caller_data["email"],
             name=caller_data["name"],
         )
-
-        # Renewable service credential handed down at dispatch (no SECRET_KEY
-        # in the child). The engine supervisor refreshes it from the parent's
-        # Redis handoff for the life of the attempt.
-        from bifrost._service_runtime import install_service_credentials
-
-        install_service_credentials(service_cfg.get("token", ""))
 
         # Load the @service function (same DB-first loader as workflows).
         service_func = None
