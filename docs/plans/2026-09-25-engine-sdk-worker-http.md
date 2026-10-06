@@ -52,7 +52,7 @@ Completed. The custom channels and duplicate dispatch code were deleted at `2012
 
 ### Transport benchmark
 
-`./test.sh tests/performance/test_sdk_config_transport.py -s -v` runs `config.set/get/list/delete` through both paths in one forked engine child, alternating HTTP and worker-socket blocks, warming each block. There are 60 measured calls per operation and path (240 per path, 480 overall), with fixed-operation API request counts and result-parity assertions.
+`./test.sh tests/e2e/platform/test_sdk_config_transport.py -s -v` runs `config.set/get/list/delete` through both paths in one forked engine child, alternating HTTP and worker-socket blocks, warming each block. There are 60 measured calls per operation and path (240 per path, 480 overall), with fixed-operation API request counts and result-parity assertions.
 
 - External HTTP: **240** API requests.
 - Worker socket: **0** engine API requests.

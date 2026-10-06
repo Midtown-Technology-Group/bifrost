@@ -172,7 +172,7 @@ counts by operation in its end-to-end test: a local call must make zero API
 requests for that fixed operation while external SDK calls still use HTTP.
 
 An opt-in live-worker transport benchmark is available for the implemented
-config slice: `./test.sh tests/performance/test_sdk_config_transport.py -s -v`.
+config slice: `./test.sh tests/e2e/platform/test_sdk_config_transport.py -s -v`.
 It runs `config.set/get/list/delete` through both paths in one forked engine
 child, alternates HTTP and local blocks, warms each block, and prints p50/p95
 latency and fixed-operation HTTP call counts. It asserts parity and request
