@@ -8,7 +8,7 @@ Manages the app serving store:
 Data flow:
 1. Git sync/import: copy from _repo/{app_path}/ to _apps/{app_id}/preview/
 2. Editor write: write to _apps/{app_id}/preview/
-3. Publish: copy preview → live
+3. Publish: write captured build outputs → live, then its manifest
 4. Serve draft: read from preview (Redis cache → S3 fallback)
 5. Serve live: read from live (Redis cache → S3 fallback)
 """
@@ -16,11 +16,17 @@ Data flow:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import re
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
-from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from typing import Any, Literal
+
+from azure.core.exceptions import HttpResponseError
+from botocore.exceptions import ClientError
 
 from src.config import Settings, get_settings
 from src.core.log_safety import log_safe
@@ -29,9 +35,25 @@ logger = logging.getLogger(__name__)
 
 APPS_PREFIX = "_apps/"
 PUBLISH_COPY_CONCURRENCY = 16
-S3_DELETE_BATCH_SIZE = 1000
+PUBLICATION_INTENT_SCHEMA = "bifrost.application-publication-intent/v1"
+
+
+def _precondition_rejected(error: Exception) -> bool:
+    if isinstance(error, ClientError):
+        return (error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") in {409, 412}
+                and error.response.get("Error", {}).get("Code") in {
+                    "PreconditionFailed", "ConditionalRequestConflict"})
+    return (isinstance(error, HttpResponseError) and error.status_code in {409, 412}
+            and getattr(error, "error_code", None) in {"ConditionNotMet", "BlobAlreadyExists"})
 
 AppMode = Literal["preview", "live"]
+
+
+@dataclass(frozen=True)
+class LiveManifestRevision:
+    """Storage revision observed before a captured publication starts building."""
+
+    etag: str | None
 
 
 class AppStorageService:
@@ -56,8 +78,8 @@ class AppStorageService:
             raise ValueError(f"Unsupported object_storage_provider: {provider}")
 
     @asynccontextmanager
-    async def _get_client(self):
-        async with self._storage.get_client() as client:
+    async def _get_client(self, *, single_attempt: bool = False):
+        async with self._storage.get_client(**({"single_attempt": True} if single_attempt else {})) as client:
             yield client
 
     def _key(self, app_id: str, mode: AppMode, relative_path: str = "") -> str:
@@ -299,55 +321,85 @@ class AppStorageService:
             return [k[len(prefix):] for k in keys if k[len(prefix):]]
 
     # -----------------------------------------------------------------
-    # Publish: copy preview → live
+    # Publish: captured outputs → live
     # -----------------------------------------------------------------
+
+    async def live_manifest_revision(self, app_id: str) -> LiveManifestRevision:
+        async with self._get_client() as client:
+            try:
+                response = await client.get_object(Bucket=self._bucket,
+                    Key=self._key(app_id, "live", "manifest.json"))
+            except client.exceptions.NoSuchKey:
+                return LiveManifestRevision(None)
+            await response["Body"].read()
+            etag = response.get("ETag")
+            if not isinstance(etag, str) or not etag:
+                raise ValueError("Live publication has no storage revision evidence")
+            return LiveManifestRevision(etag)
 
     async def publish(
         self,
         app_id: str,
+        *,
+        bundle_files: Mapping[str, bytes],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+        checkpoint_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        expected_revision: LiveManifestRevision | None = None,
+        before_manifest_switch: Callable[[], Awaitable[None]] | None = None,
     ) -> int:
-        """Promote the current preview bundle to live.
+        """Publish the exact captured build, with its manifest written last.
 
-        Only artifacts declared by the freshly built ``manifest.json`` are
-        promoted. Hashed chunks from older preview builds can accumulate under
-        the preview prefix; copying all of them made publish time grow without
-        bound and could promote stale artifacts. Bundle outputs are copied with
-        bounded concurrency, then ``manifest.json`` is copied last as the live
-        pointer. Stale live and preview objects are removed in S3 batches.
-
-        Returns:
-            Number of files published.
+        Preview is editable during publication. It is neither the source of
+        these buffers nor a cleanup target for this operation.
         """
-        preview_prefix = self._key(app_id, "preview")
+        # Snapshot the mapping before any await. Values must be immutable bytes.
+        captured = dict(bundle_files)
+        if not captured or any(not isinstance(value, bytes) for value in captured.values()):
+            raise ValueError("Publication artifact must contain immutable byte buffers")
+        manifest_bytes = captured.get("manifest.json")
+        if manifest_bytes is None:
+            raise ValueError("Publication artifact is missing its manifest")
+        artifacts = self._bundle_artifacts(manifest_bytes)
+        if artifacts != set(captured):
+            raise ValueError("Publication artifact does not exactly match its manifest outputs")
+        if any(not path or path.startswith("/") or "\\" in path or "\0" in path
+               or any(part in {"", ".", ".."} for part in path.split("/")) for path in artifacts):
+            raise ValueError("Publication artifact contains an unsafe path")
+        manifest = json.loads(manifest_bytes)
+        evidence = manifest.get("build_evidence")
+        outputs = artifacts - {"manifest.json"}
+        css = manifest.get("css")
+        if (len(manifest["outputs"]) != len(outputs)
+                or css is not None and (not isinstance(css, str) or css not in outputs)):
+            raise ValueError("Publication manifest has duplicate or missing runtime outputs")
+        expected = {path: "sha256:" + hashlib.sha256(captured[path]).hexdigest() for path in outputs}
+        if (not isinstance(evidence, dict)
+                or evidence.get("schema_version") != "bifrost.inline-app-build/v1"
+                or evidence.get("output_hashes") != expected):
+            raise ValueError("Publication artifact output hashes do not match its build evidence")
         live_prefix = self._key(app_id, "live")
 
-        async with self._get_client() as client:
-            preview_keys = await self._list_keys(client, preview_prefix)
-            preview_relative = {
-                key[len(preview_prefix):]
-                for key in preview_keys
-                if key[len(preview_prefix):]
-            }
-            if "manifest.json" not in preview_relative:
-                logger.warning(f"No preview files to publish for app {log_safe(app_id)}")
-                return 0
-
-            manifest_response = await client.get_object(
-                Bucket=self._bucket,
-                Key=f"{preview_prefix}manifest.json",
-            )
-            manifest_bytes = await manifest_response["Body"].read()
-            artifacts = self._bundle_artifacts(manifest_bytes)
-            missing = artifacts - preview_relative
-            if missing:
-                missing_sample = ", ".join(sorted(missing)[:5])
-                raise ValueError(
-                    "Preview bundle is incomplete; missing artifact(s): "
-                    f"{missing_sample}"
-                )
-
-            output_artifacts = sorted(artifacts - {"manifest.json"})
+        # A terminal precondition response proves no pointer switch only when
+        # the SDK did not retry an earlier request whose outcome was unknown.
+        async with self._get_client(single_attempt=True) as client:
+            manifest_key = f"{live_prefix}manifest.json"
+            try:
+                prior = await client.get_object(Bucket=self._bucket, Key=manifest_key)
+            except client.exceptions.NoSuchKey:
+                etag = None
+            else:
+                await prior["Body"].read()
+                etag = prior.get("ETag")
+                if not isinstance(etag, str) or not etag:
+                    raise ValueError("Live publication has no storage revision evidence")
+            if expected_revision is not None and etag != expected_revision.etag:
+                raise ValueError("Live publication changed during the captured source build")
+            intent = {"schema_version": PUBLICATION_INTENT_SCHEMA, "application_id": app_id,
+                      "expected_live_etag": etag, "manifest_write_started": False, "artifact_hashes": {
+                          path: "sha256:" + hashlib.sha256(data).hexdigest() for path, data in captured.items()}}
+            if checkpoint_callback:
+                await checkpoint_callback(intent)
+            output_artifacts = sorted(outputs)
             total = len(artifacts)
             completed = 0
             if progress_callback:
@@ -355,19 +407,24 @@ class AppStorageService:
 
             semaphore = asyncio.Semaphore(PUBLISH_COPY_CONCURRENCY)
 
-            async def _copy_output(rel_path: str) -> None:
+            async def _write_output(rel_path: str) -> None:
                 async with semaphore:
-                    await client.copy_object(
-                        Bucket=self._bucket,
-                        CopySource={
-                            "Bucket": self._bucket,
-                            "Key": f"{preview_prefix}{rel_path}",
-                        },
-                        Key=f"{live_prefix}{rel_path}",
-                    )
+                    key = f"{live_prefix}{rel_path}"
+                    try:
+                        await client.put_object(Bucket=self._bucket, Key=key,
+                                                Body=captured[rel_path], IfNoneMatch="*")
+                    except Exception as error:
+                        # Resolve an existing or uncertain create by exact byte
+                        # readback. Never overwrite or retry that output.
+                        try:
+                            existing = await client.get_object(Bucket=self._bucket, Key=key)
+                        except Exception:
+                            raise error from None
+                        if await existing["Body"].read() != captured[rel_path]:
+                            raise ValueError("Publication output conflicts with immutable storage") from None
 
             tasks = [
-                asyncio.create_task(_copy_output(rel_path))
+                asyncio.create_task(_write_output(rel_path))
                 for rel_path in output_artifacts
             ]
             try:
@@ -384,50 +441,35 @@ class AppStorageService:
 
             # The manifest is the live bundle pointer, so publish it only after
             # every referenced output is durable.
+            if before_manifest_switch is not None:
+                await before_manifest_switch()
+            if checkpoint_callback:
+                # The job's current lease must durably cross this boundary
+                # before any pointer request. A reclaimed false checkpoint
+                # therefore proves that its old runner cannot issue a late PUT.
+                intent = {**intent, "manifest_write_started": True}
+                await checkpoint_callback(intent)
             rel_path = "manifest.json"
-            await client.copy_object(
-                Bucket=self._bucket,
-                CopySource={"Bucket": self._bucket, "Key": f"{preview_prefix}{rel_path}"},
-                Key=f"{live_prefix}{rel_path}",
-            )
+            try:
+                await client.put_object(
+                    Bucket=self._bucket,
+                    Key=f"{live_prefix}{rel_path}",
+                    Body=manifest_bytes,
+                    **({"IfMatch": etag} if etag is not None else {"IfNoneMatch": "*"}),
+                )
+            except Exception as error:
+                if checkpoint_callback and _precondition_rejected(error):
+                    await checkpoint_callback({**intent, "manifest_write_rejected": True})
+                raise
             completed += 1
             if progress_callback:
                 await progress_callback(completed, total)
 
-            live_keys = await self._list_keys(client, live_prefix)
-            stale_live = [
-                key for key in live_keys if key[len(live_prefix):] not in artifacts
-            ]
-            try:
-                await self._delete_keys(client, stale_live)
-            except Exception:
-                logger.warning(
-                    "Published current app manifest but failed to clean stale "
-                    "live objects",
-                    extra={"app_id": log_safe(app_id)},
-                    exc_info=True,
-                )
-
-            stale_preview = [
-                key
-                for key in preview_keys
-                if key[len(preview_prefix):] not in artifacts
-            ]
-            try:
-                await self._delete_keys(client, stale_preview)
-            except Exception:
-                logger.warning(
-                    "Published current app manifest but failed to clean stale "
-                    "preview objects",
-                    extra={"app_id": log_safe(app_id)},
-                    exc_info=True,
-                )
-
+            # Already-loaded browsers may still use older hashed chunks.
+            # Publication has no garbage-collection authority over those bytes.
             published = len(artifacts)
             logger.info(
                 f"Published {published} files for app {log_safe(app_id)}"
-                f" (removed {len(stale_live)} stale live and "
-                f"{len(stale_preview)} stale preview objects)"
             )
 
         await self.invalidate_render_cache(app_id)
@@ -453,17 +495,33 @@ class AppStorageService:
         artifacts.add("manifest.json")
         return artifacts
 
-    async def _delete_keys(self, client: Any, keys: Iterable[str]) -> None:
-        """Delete S3 objects in batches instead of one request per object."""
-        key_list = list(keys)
-        for start in range(0, len(key_list), S3_DELETE_BATCH_SIZE):
-            batch = key_list[start : start + S3_DELETE_BATCH_SIZE]
-            if not batch:
-                continue
-            await client.delete_objects(
-                Bucket=self._bucket,
-                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
-            )
+    async def verify_publication(self, app_id: str, intent: dict[str, Any]) -> int:
+        """Read back saved intent without rebuilding or writing any artifact."""
+        hashes = intent.get("artifact_hashes")
+        if (intent.get("schema_version") != PUBLICATION_INTENT_SCHEMA
+                or intent.get("application_id") != app_id or not isinstance(hashes, dict)
+                or "manifest.json" not in hashes
+                or any(not isinstance(path, str) or not path or path.startswith("/")
+                       or "\\" in path or "\0" in path
+                       or any(part in {"", ".", ".."} for part in path.split("/"))
+                       or not isinstance(value, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+                       for path, value in hashes.items())):
+            raise ValueError("Publication checkpoint is invalid")
+        async with self._get_client() as client:
+            prefix = self._key(app_id, "live")
+            async def read(path: str) -> bytes:
+                result = await client.get_object(Bucket=self._bucket, Key=prefix + path)
+                content = await result["Body"].read()
+                if "sha256:" + hashlib.sha256(content).hexdigest() != hashes[path]:
+                    raise ValueError("Live publication differs from the saved intent")
+                return content
+            manifest = await read("manifest.json")
+            if self._bundle_artifacts(manifest) != set(hashes):
+                raise ValueError("Publication checkpoint omits runtime outputs")
+            for path in sorted(set(hashes) - {"manifest.json"}):
+                await read(path)
+            await read("manifest.json")
+        return len(hashes)
 
     # -----------------------------------------------------------------
     # Render cache (Redis → S3 fallback)

@@ -7,6 +7,7 @@ generated source; no esbuild subprocess is run.
 """
 from __future__ import annotations
 
+import hashlib
 import pathlib
 from unittest.mock import AsyncMock, patch
 
@@ -487,6 +488,66 @@ async def test_build_uploads_live_outputs_and_manifest(
     assert manifest["entry"] == "entry-live.js"
     assert manifest["css"] == "entry-live.css"
     assert manifest["dependencies"] == {"dayjs": "^1.11.0"}
+    assert manifest["build_evidence"] == {
+        "schema_version": "bifrost.inline-app-build/v1",
+        "materialized_source_hashes": {
+            "pages/index.tsx": "sha256:" + hashlib.sha256(
+                b"export default function Page(){ return null; }\n"
+            ).hexdigest(),
+        },
+        "output_hashes": {
+            "entry-live.js": "sha256:" + hashlib.sha256(written["entry-live.js"]).hexdigest(),
+            "entry-live.css": "sha256:" + hashlib.sha256(written["entry-live.css"]).hexdigest(),
+        },
+    }
+
+
+async def test_build_evidence_captures_source_before_tailwind_transforms(
+    bundler: BundlerService,
+) -> None:
+    original_css = b".card { @apply p-4; }\n"
+    original_page = b"export default () => null;\n"
+
+    async def materialize(src_dir: pathlib.Path, _prefix: str) -> list[str]:
+        (src_dir / "page.tsx").write_bytes(original_page)
+        (src_dir / "styles.css").write_bytes(original_css)
+        return ["styles.css", "page.tsx"]
+
+    async def transform(src_dir: pathlib.Path, _sources: list[str]) -> tuple[bool, set[str]]:
+        (src_dir / "styles.css").write_bytes(b"transformed CSS is not the input")
+        (src_dir / TAILWIND_OUTPUT_CSS).write_bytes(b".card { padding: 1rem; }")
+        return True, {"styles.css"}
+
+    async def esbuild(cfg: dict) -> dict:
+        out = pathlib.Path(cfg["out_dir"])
+        (out / "entry.js").write_bytes(b"// built output\n")
+        return {"success": True, "outputs": [{"path": "entry.js"}],
+                "entry_file": "entry.js", "css_file": None, "duration_ms": 1, "warnings": []}
+
+    written: dict[str, bytes] = {}
+
+    async def upload(_app: str, path: str, content: bytes) -> None:
+        written[path] = content
+
+    with patch.object(bundler, "_materialize_source", new=materialize), \
+         patch.object(bundler, "_generate_app_tailwind", new=transform), \
+         patch.object(bundler, "_run_esbuild", new=esbuild), \
+         patch.object(bundler._app_storage, "write_preview_file", new=upload):
+        result = await bundler.build("app", "apps/test", "preview")
+
+    assert result.success
+    assert result.publication_files is not None
+    assert dict(result.publication_files) == written
+    with pytest.raises(TypeError):
+        result.publication_files["entry.js"] = b"a later build"  # type: ignore[index]
+    evidence = __import__("json").loads(written["manifest.json"])["build_evidence"]
+    assert evidence["materialized_source_hashes"] == {
+        "page.tsx": "sha256:" + hashlib.sha256(original_page).hexdigest(),
+        "styles.css": "sha256:" + hashlib.sha256(original_css).hexdigest(),
+    }
+    assert evidence["output_hashes"] == {
+        "entry.js": "sha256:" + hashlib.sha256(written["entry.js"]).hexdigest(),
+    }
 
 
 async def test_materialize_source_filters_metadata_tmp_and_directory_keys(
