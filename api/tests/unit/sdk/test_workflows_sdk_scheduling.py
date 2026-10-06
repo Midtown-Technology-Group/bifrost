@@ -36,8 +36,8 @@ async def test_execute_with_scheduled_at_includes_field():
     assert args == ("POST", "/api/workflows/execute")
     payload = fake.engine_request.await_args.kwargs["json"]
     assert payload["scheduled_at"] == run_at.isoformat()
-    assert fake.post.await_args.kwargs["retry_safe"] is True
-    UUID(fake.post.await_args.kwargs["headers"]["X-Bifrost-Execution-ID"])
+    assert fake.engine_request.await_args.kwargs["retry_safe"] is True
+    UUID(fake.engine_request.await_args.kwargs["headers"]["X-Bifrost-Execution-ID"])
 
 
 @pytest.mark.asyncio

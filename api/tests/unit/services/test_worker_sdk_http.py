@@ -604,6 +604,7 @@ class TestRouteReuse:
             "/api/tables/{table_id}": frozenset({"DELETE"}),
             "/api/tables/{table_id}/documents": frozenset({"POST"}),
             "/api/tables/{table_id}/documents/upsert": frozenset({"POST"}),
+            "/api/tables/{table_id}/documents/{doc_id}/conditional": frozenset({"PATCH"}),
             "/api/tables/{table_id}/documents/count": frozenset({"GET"}),
             "/api/tables/{table_id}/documents/{doc_id}": frozenset(
                 {"GET", "PATCH", "DELETE"}
@@ -713,6 +714,7 @@ class TestRouteReuse:
     def test_sdk_module_route_selection_is_exact(self):
         """Gate C5i mounts only the resolve GET and the greedy fetch GET."""
         assert SDK_MODULES_ROUTE_METHODS == {
+            "/api/sdk/resources/{path:path}": frozenset({"GET"}),
             "/api/sdk/modules-resolve": frozenset({"GET"}),
             "/api/sdk/modules/{path:path}": frozenset({"GET"}),
         }
@@ -1146,6 +1148,34 @@ class TestSocketTableWrites:
                     )
                 ).scalar_one_or_none()
             assert row is not None, "socket batch write returned 200 without committing"
+
+            # The fork's reviewed revision guard must work on the same socket.
+            assert row.updated_at is not None
+            reviewed = row.updated_at.isoformat()
+            path = f"/api/tables/{table_uuid}/documents/b1/conditional"
+            body = {"data": {"v": 2}, "expected_updated_at": reviewed, "expected_data": {"v": 1}}
+            async with _socket_client(server) as client:
+                updated = await client.patch(path, params={"scope": str(org_uuid)}, json=body, headers=headers)
+                stale = await client.patch(path, params={"scope": str(org_uuid)}, json=body, headers=headers)
+                from src.core.security import mint_engine_token
+
+                revoked, _ = mint_engine_token(
+                    execution_id=str(_ENGINE_EXECUTION_ID), attempt_token=str(uuid4()),
+                    timeout_seconds=300,
+                )
+                refused = await client.get(
+                    f"/api/tables/{table_uuid}/documents/b1", params={"scope": str(org_uuid)},
+                    headers={"Authorization": f"Bearer {revoked}"},
+                )
+            assert updated.status_code == 200, updated.text
+            assert updated.json()["data"] == {"v": 2}
+            assert stale.status_code == 409, stale.text
+            assert refused.status_code == 409, refused.text
+            async with async_session_factory() as check:
+                durable_data = await check.scalar(select(DocumentModel.data).where(
+                    DocumentModel.table_id == table_uuid, DocumentModel.id == "b1",
+                ))
+            assert durable_data == {"v": 2}
         finally:
             await server.stop()
             async with async_session_factory() as cleanup:
@@ -1572,7 +1602,10 @@ class TestEngineLocalTransportSelection:
             await server.stop()
 
     @pytest.mark.asyncio
-    async def test_local_failure_does_not_fall_back_to_network(self):
+    async def test_local_failure_does_not_fall_back_to_network(self, monkeypatch):
+        import bifrost.client as client_module
+
+        monkeypatch.setattr(client_module, "SDK_RETRY_BACKOFF_SECONDS", ())
         from bifrost import config as bifrost_config
 
         # An injected path with nothing listening: the local attempt must
@@ -1645,7 +1678,10 @@ class TestEngineLocalFilesFallback:
     """A failed files socket request never replays over the network API."""
 
     @pytest.mark.asyncio
-    async def test_files_local_failure_does_not_fall_back_to_network(self):
+    async def test_files_local_failure_does_not_fall_back_to_network(self, monkeypatch):
+        import bifrost.client as client_module
+
+        monkeypatch.setattr(client_module, "SDK_RETRY_BACKOFF_SECONDS", ())
         from bifrost.files import files
 
         missing_socket = os.path.join(
@@ -1716,7 +1752,10 @@ class TestEngineLocalArtifactsFallback:
     """A failed artifact socket request never replays over the network API."""
 
     @pytest.mark.asyncio
-    async def test_artifact_local_failure_does_not_fall_back_to_network(self):
+    async def test_artifact_local_failure_does_not_fall_back_to_network(self, monkeypatch):
+        import bifrost.client as client_module
+
+        monkeypatch.setattr(client_module, "SDK_RETRY_BACKOFF_SECONDS", ())
         from bifrost.artifacts import artifacts
 
         missing_socket = os.path.join(
@@ -2165,7 +2204,7 @@ class TestSocketAgentRuns:
             # only the broker-publishing leaf is stubbed so the unit lane does
             # not hand a run to a worker.
             with patch(
-                "src.services.execution.agent_run_service.enqueue_agent_run",
+                "src.routers.agent_runs.enqueue_agent_run",
                 new=AsyncMock(return_value=run_id),
             ) as mock_enqueue:
                 async with _socket_client(server) as client:
@@ -2417,7 +2456,7 @@ class TestSocketEventsForms:
                 # real; only the durable emitter leaf is stubbed so the unit
                 # lane does not commit an event.
                 with patch(
-                    "src.services.events.emit_event",
+                    "src.routers.events.emit_event",
                     new=AsyncMock(return_value=(event_id, 2)),
                 ) as durable:
                     response = await client.post(
@@ -2468,7 +2507,7 @@ class TestSocketEventsForms:
         try:
             async with _socket_client(server) as client:
                 with patch(
-                    "src.services.events.emit_event",
+                    "src.routers.events.emit_event",
                     new=AsyncMock(return_value=(event_id, 0)),
                 ) as durable:
                     scoped = await client.post(

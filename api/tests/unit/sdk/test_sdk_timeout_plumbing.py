@@ -199,7 +199,7 @@ async def test_workflow_and_execution_facades_send_no_per_call_timeout(monkeypat
         "parameters": [],
         "execution_mode": "sync",
         "timeout_seconds": 1800,
-        "retry_policy": None,
+        "retry_policy": {},
         "endpoint_enabled": False,
         "allowed_methods": None,
         "disable_global_key": False,
