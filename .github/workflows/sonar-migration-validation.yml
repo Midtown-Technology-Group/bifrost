@@ -28,7 +28,11 @@ jobs:
         with:
           node-version: "26"
       - name: Require unactivated CI staging
-        run: python3 -c 'import json; assert json.load(open(".github/sonar-ci.json"))["mode"] in ("report-only", "ci")'
+        env:
+          ACTIVATED: ${{ vars.SONAR_CI_ENABLED }}
+        run: |
+          test "$ACTIVATED" != true
+          python3 -c 'import json; assert json.load(open(".github/sonar-ci.json"))["mode"] in ("report-only", "ci")'
       - name: Run clean-candidate pre-PR gate
         env:
           GH_TOKEN: ${{ github.token }}

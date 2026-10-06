@@ -87,7 +87,7 @@ configuration from a trusted base and authenticate provider/run identity.
 2. In the existing SonarQube Cloud project, record the organization key, plan,
    default branch/new-code baseline, current gate conditions, active profiles,
    effective analysis/coverage/duplication exclusions, small-change exemption,
-   and GitHub binding. Confirm branch/PR support, including merge-queue branches.
+   and GitHub binding. Confirm Free main/PR support and record merge-group branch analysis as unavailable.
    Verify there is no organization-level exclusion silently defeating scope.
    Verify hidden `.github`/`.claude` sources in the actual scanner inventory;
    repository-root scope alone is not proof that each language indexed them.
