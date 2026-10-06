@@ -101,6 +101,8 @@ If VM-backed validation was requested or is warranted by the change, run it on t
 
 ### 6. Known failures outside the scoped run
 
+Use [scoped CI recovery](../../../docs/dev/ci-recovery-policy.md) to distinguish verified same-candidate infrastructure recovery from test-failure diagnosis. Preserve original evidence; focused retries do not replace final-candidate gates or authorize mixing artifact attempts.
+
 A scoped change may be complete without running every suite. If a broader local run or CI later finds another failure, however, the failure becomes owned work and must be classified from evidence:
 
 1. Capture the exact failure, logs, and test order or concurrency conditions. Do not start with blind reruns.
