@@ -1,21 +1,56 @@
 # Sonar CI coverage migration
 
+## Verified main import (2026-10-06)
+
+PRs #1068 and #1085 merged through the native queue. Main CI run
+[37467149112](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37467149112)
+analyzed revision `19728d6526b2fa7bfc5a14aa150d7bec76a86704` after Automatic
+Analysis was disabled and `SONAR_CI_ENABLED=true` was read back.
+
+Compute task `AaERZ0zrRjl70sckbn2a` completed successfully as analysis
+`ee73a40e-3b92-404f-802f-ccf9730626dd`. The scanner imported `python.xml`,
+`client.lcov` and `node.lcov`; independent artifact verification bound all three
+to this source/configuration and manifest
+`aa6f3b08c0f5649de989f1f7fca4ee2c6ae42bebb142f3d5f6e0f17ecdcb6135`.
+Sonar's file inventory includes authored `.github` scripts and the `.claude`
+shell hook. File measures confirm Python engine/proxy, client TypeScript and
+Node tooling coverage. Markdown skill instructions have no coverage claim.
+
+The existing Sonar way gate is **red**: new-code coverage is 69.3% against 80%,
+reliability is C against A, and security is E against A. Overall coverage is
+69.8% (73.1% lines, 62.1% branches). Duplication and hotspot-review conditions
+passed. The inherited previous-version period starts on 2026-09-02; it includes
+47,548 lines to cover and 2,738 new findings. These are observed baseline
+results, not a proposal to reset the period or dismiss findings. Preserve the
+failed CI result and unchanged gate/profile while remediation is scoped.
+
+The main import is verified. A real PR analysis and the reviewed removal of the
+obsolete automatic-analysis configuration remain migration acceptance steps.
+The prior `.sonarcloud.properties` is retained in commit `19728d6526b2fa7bfc5a14aa150d7bec76a86704`
+for rollback; restore that reviewed configuration before restoring Automatic
+Analysis. A red gate after a trustworthy import is a quality finding, not a
+reason to discard coverage or restore the old coverage-free green badge.
+
 ## State and ownership
 
-This is a **Lane 3 migration staged behind an operator activation variable**. It does not enable
-an approval producer, authorize queue admission, change required checks, dismiss
-findings, or review security hotspots. The existing SonarCloud Code Analysis
-GitHub App check and automatic analysis remain active during preparation.
+This **Lane 3 migration now uses CI analysis behind an operator activation
+variable**. It does not authorize queue admission, change required checks, dismiss
+findings, or review security hotspots. Automatic Analysis was preserved during
+preparation, then disabled before the first CI submission above. The main import
+was verified afterward; this follow-up removes the obsolete automatic-analysis
+configuration after that verification.
 
 `.github/sonar-ci.json` declares `ci` mode for the Free adapter. CI executes the
 evidence job and uploads reports; submissions stay disabled until the repository
-variable `SONAR_CI_ENABLED` is exactly `true`. Merge this reviewed adapter with
-the variable unset, preserving Automatic Analysis. A successful evidence job
+variable `SONAR_CI_ENABLED` is exactly `true`. The reviewed adapter merged while
+the variable was unset and Automatic Analysis was still active; activation
+followed that merge. Keep the variable set for the current CI method. A successful evidence job
 means the reports and their source identity passed local checks. It does **not**
 mean Sonar analyzed those files or its quality gate passed.
 
 The maintained `sonar-project.properties` applies only to CI-based analysis.
-Automatic analysis ignores it and continues to use `.sonarcloud.properties`.
+Automatic analysis ignores it. The former `.sonarcloud.properties` is archived
+in the verified main commit above and is removed after CI import verification.
 Sonar explicitly disallows simultaneous automatic and CI-based analysis for the
 same project, so there is no safe indefinite overlap of the two scan methods.
 Do not disable the current method before the replacement is ready to submit.
