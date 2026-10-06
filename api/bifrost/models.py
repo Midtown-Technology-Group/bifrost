@@ -169,7 +169,7 @@ class AgentRun(BaseModel):
     conversation_id: str | None = None
     event_delivery_id: str | None = None
     input: dict | None = None
-    output: dict | None = None
+    output: dict | str | None = None
     status: str
     error: str | None = None
     org_id: str | None = None

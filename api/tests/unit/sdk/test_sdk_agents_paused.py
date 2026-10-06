@@ -48,7 +48,7 @@ async def test_run_raises_agent_paused_error_on_paused_response(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_returns_output_for_normal_completion(monkeypatch):
-    """A completed run still returns plain text to an unstructured caller."""
+    """A completed run preserves the historical unstructured text envelope."""
     mod = _agents_module()
 
     mock_response = MagicMock()
@@ -63,8 +63,8 @@ async def test_run_returns_output_for_normal_completion(monkeypatch):
     monkeypatch.setattr(
         mod.agents,
         "get_run",
-        AsyncMock(return_value=MagicMock(status="completed", output={"text": "hello"})),
+        AsyncMock(return_value=MagicMock(status="completed", output={"text": "hello"}, error=None)),
     )
 
     result = await mod.agents.run("Foo", input={"x": 1})
-    assert result == "hello"
+    assert result == {"text": "hello"}

@@ -90,7 +90,7 @@ Treat event payloads as a versioned contract. Topic-triggered execution context 
 
 ### `agents`
 
-Use `agents.run()` when workflow orchestration needs to wait for a configured Bifrost agent. The result may be structured data or text according to the agent contract. Use `agents.enqueue()` to return immediately with a run ID, then call `agents.get_run()` when you need its current status or result. Set bounded timeouts for synchronous runs and do not recursively delegate without a stopping condition.
+Use `agents.run()` for the historical result contract: a default 1,800-second bounded wait and persisted raw output, including a one-key `{"text": ...}` dictionary. Schema JSON strings are decoded; error-bearing terminal results raise `RuntimeError`. Nonterminal wait expiry raises `AgentRunWaitTimeout` (a `BifrostAPIError` / `httpx.HTTPStatusError` with status 504), carrying `run_id`, `reason`, and `last_known_status`. The workflow return margin still applies. Resume the accepted run with `agents.get_run(error.run_id)` or `agents.wait(error.run_id)`; never automatically enqueue again. For explicit pending/resume control, use `agents.enqueue()` followed by `agents.wait()`, which retains `AgentRunPending` and its newer output mapping. Cancellation remains an error. Do not recursively delegate without a stopping condition.
 
 ### `ai`
 

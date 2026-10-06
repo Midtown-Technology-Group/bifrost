@@ -1,15 +1,17 @@
 """Bifrost SDK — Agent invocation from workflows."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
+import httpx
+
 from ._context import _execution_context
-from .client import get_client, raise_for_status_with_detail
+from .client import BifrostAPIError, get_client, raise_for_status_with_detail
 from .models import AgentRun, AgentRunHandle, AgentRunPending
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,23 @@ class AgentPausedError(Exception):
     def __init__(self, message: str, *, agent_id: str | None = None):
         super().__init__(message)
         self.agent_id = agent_id
+
+
+class AgentRunWaitTimeout(BifrostAPIError):
+    """A bounded compatibility wait ended; resume the accepted run explicitly."""
+
+    def __init__(self, pending: AgentRunPending):
+        self.run_id = pending.run_id
+        self.reason = pending.reason
+        self.last_known_status = pending.last_known_status
+        request = httpx.Request("GET", f"http://bifrost/api/agent-runs/{pending.run_id}")
+        response = httpx.Response(504, request=request, json=pending.model_dump())
+        super().__init__(
+            f"Agent run {pending.run_id} wait ended: {pending.reason}; "
+            "resume this run with agents.get_run() or agents.wait(), do not enqueue again.",
+            request=request,
+            response=response,
+        )
 
 
 class agents:
@@ -89,32 +108,41 @@ class agents:
         input: dict[str, Any] | None = None,
         *,
         output_schema: dict[str, Any] | None = None,
-        timeout: float | None = None,
-    ) -> dict[str, Any] | str | AgentRunPending:
+        timeout: float = 1800,
+    ) -> dict[str, Any] | str:
         """Run an agent and wait for the result.
 
         Args:
             agent_name: Name of the agent to run.
             input: Structured input data for the agent.
             output_schema: JSON Schema for the expected output.
-            timeout: Optional maximum seconds to wait. The agent keeps running
+            timeout: Maximum seconds to wait (default 30 min). The agent keeps running
                 if this wait expires. Inside a workflow, the wait also ends
                 shortly before the workflow's execution deadline.
 
         Returns:
-            Agent output, or AgentRunPending with the run ID if the wait ends.
+            Persisted agent output, without unwrapping a one-key text envelope.
+            JSON strings are decoded when an output schema is supplied.
 
         Raises:
             RuntimeError: If the agent run fails.
             ValueError: If the agent is not found.
             AgentPausedError: If the target agent is paused (is_active=False).
+            AgentRunWaitTimeout: HTTP 504-compatible error with the accepted run ID
+                when the wait or workflow deadline ends. Resume, never re-enqueue.
         """
         if timeout is not None and timeout < 0:
             raise ValueError("timeout must be non-negative")
         handle = await agents.enqueue(
             agent_name, input, output_schema=output_schema,
         )
-        return await agents.wait(handle.run_id, output_schema=output_schema, timeout=timeout)
+        result = await agents._wait(
+            handle.run_id, output_schema=output_schema, timeout=timeout,
+            preserve_output=True,
+        )
+        if isinstance(result, AgentRunPending):
+            raise AgentRunWaitTimeout(result)
+        return result
 
     @staticmethod
     async def wait(
@@ -124,6 +152,16 @@ class agents:
         timeout: float | None = None,
     ) -> dict[str, Any] | str | AgentRunPending:
         """Wait for a previously enqueued run using short status requests."""
+        return await agents._wait(run_id, output_schema=output_schema, timeout=timeout)
+
+    @staticmethod
+    async def _wait(
+        run_id: str,
+        *,
+        output_schema: dict[str, Any] | None,
+        timeout: float | None,
+        preserve_output: bool = False,
+    ) -> dict[str, Any] | str | AgentRunPending:
         if timeout is not None and timeout < 0:
             raise ValueError("timeout must be non-negative")
 
@@ -148,7 +186,7 @@ class agents:
                 remaining = wait_deadline - time.monotonic()
             if workflow_deadline is not None:
                 workflow_remaining = (
-                    workflow_deadline - datetime.now(timezone.utc)
+                    workflow_deadline - datetime.now(UTC)
                 ).total_seconds() - workflow_return_margin
                 if remaining is None or workflow_remaining < remaining:
                     remaining = workflow_remaining
@@ -164,14 +202,17 @@ class agents:
                     run = await agents.get_run(run_id)
                 else:
                     run = await asyncio.wait_for(agents.get_run(run_id), timeout=remaining)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return AgentRunPending(
                     run_id=run_id, last_known_status=last_status, reason=reason,
                 )
 
             if run.status in {"completed", "budget_exceeded"}:
+                if preserve_output and run.error:
+                    raise RuntimeError(f"Agent run {run_id} failed: {run.error}")
                 output = run.output
-                if not output_schema and isinstance(output, dict) and set(output) == {"text"}:
+                if (not preserve_output and not output_schema
+                        and isinstance(output, dict) and set(output) == {"text"}):
                     return output["text"]
                 if output_schema and isinstance(output, str):
                     try:
@@ -198,7 +239,7 @@ class agents:
             if workflow_deadline is not None:
                 sleep_for = min(
                     sleep_for,
-                    max(0, (workflow_deadline - datetime.now(timezone.utc)).total_seconds()
+                    max(0, (workflow_deadline - datetime.now(UTC)).total_seconds()
                         - workflow_return_margin),
                 )
             await asyncio.sleep(sleep_for)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import importlib
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -26,13 +26,13 @@ def _knowledge_module():
 async def test_agents_run_waits_through_short_status_requests(monkeypatch):
     mod = _agents_module()
     run = MagicMock(status="running")
-    completed = MagicMock(status="completed", output={"text": "ok"})
+    completed = MagicMock(status="completed", output={"text": "ok"}, error=None)
     monkeypatch.setattr(mod.agents, "enqueue", AsyncMock(return_value=MagicMock(run_id="run-1")))
     monkeypatch.setattr(mod.agents, "get_run", AsyncMock(side_effect=[run, completed]))
     sleep = AsyncMock()
     monkeypatch.setattr(mod.asyncio, "sleep", sleep)
 
-    assert await mod.agents.run("Foo") == "ok"
+    assert await mod.agents.run("Foo") == {"text": "ok"}
     sleep.assert_awaited_once_with(2.0)
     assert mod.agents.get_run.await_count == 2
 
@@ -51,7 +51,9 @@ async def test_agents_run_returns_run_id_when_wait_expires(monkeypatch):
     get_run = AsyncMock()
     monkeypatch.setattr(mod.agents, "get_run", get_run)
 
-    pending = await mod.agents.run("Foo", timeout=0)
+    with pytest.raises(mod.AgentRunWaitTimeout) as exc:
+        await mod.agents.run("Foo", timeout=0)
+    pending = exc.value
 
     assert pending.run_id == "run-1"
     assert pending.reason == "wait_timeout"
@@ -78,11 +80,13 @@ async def test_agents_run_respects_workflow_deadline_margin(monkeypatch):
     get_run = AsyncMock()
     monkeypatch.setattr(mod.agents, "get_run", get_run)
     token = mod._execution_context.set(SimpleNamespace(
-        workflow_deadline=datetime.now(timezone.utc) + timedelta(seconds=5),
+        workflow_deadline=datetime.now(UTC) + timedelta(seconds=5),
         workflow_timeout_seconds=60,
     ))
     try:
-        pending = await mod.agents.run("Foo")
+        with pytest.raises(mod.AgentRunWaitTimeout) as exc:
+            await mod.agents.run("Foo")
+        pending = exc.value
     finally:
         mod._execution_context.reset(token)
 
@@ -95,10 +99,10 @@ async def test_agents_run_respects_workflow_deadline_margin(monkeypatch):
 async def test_sixty_second_workflow_can_wait_for_agent(monkeypatch):
     mod = _agents_module()
     monkeypatch.setattr(mod.agents, "enqueue", AsyncMock(return_value=MagicMock(run_id="run-4")))
-    get_run = AsyncMock(return_value=MagicMock(status="completed", output={"text": "done"}))
+    get_run = AsyncMock(return_value=MagicMock(status="completed", output={"text": "done"}, error=None))
     monkeypatch.setattr(mod.agents, "get_run", get_run)
     token = mod._execution_context.set(SimpleNamespace(
-        workflow_deadline=datetime.now(timezone.utc) + timedelta(seconds=60),
+        workflow_deadline=datetime.now(UTC) + timedelta(seconds=60),
         workflow_timeout_seconds=60,
     ))
     try:
@@ -106,7 +110,7 @@ async def test_sixty_second_workflow_can_wait_for_agent(monkeypatch):
     finally:
         mod._execution_context.reset(token)
 
-    assert result == "done"
+    assert result == {"text": "done"}
     get_run.assert_awaited_once_with("run-4")
     assert mod._workflow_return_margin(60) == 9.0
 
