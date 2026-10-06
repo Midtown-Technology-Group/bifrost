@@ -171,6 +171,7 @@ class TestSolutionAppDeploy:
         from bifrost.workspace_release import canonical_digest
         from sqlalchemy import select
         from src.models.orm.solution_deployments import SolutionDeployment
+        from src.repositories.solution_deployments import SolutionDeploymentRepository
         from src.services.solutions.package_controls import capture_package_controls
         from src.services.solutions.storage import SolutionStorage
 
@@ -180,14 +181,22 @@ class TestSolutionAppDeploy:
             previous = uuid.uuid4()
             db_session.add(SolutionDeployment(
                 id=previous, solution_id=sol.id, organization_id=None, created_by=seed_user.id,
-                state="active", bundle_hash="sha256:" + "1" * 64, compiled_manifest={},
+                state="draft", bundle_hash="sha256:" + "1" * 64, compiled_manifest={},
                 compiled_manifest_hash="sha256:" + "2" * 64, resolution_map={},
                 resolution_map_hash="sha256:" + "3" * 64, source_artifact_key="test/source.zip",
                 runtime_storage_prefix="test/runtime/",
             ))
             await db_session.flush()
-            sol.active_deployment_id = previous
-            await db_session.flush()
+            repository = SolutionDeploymentRepository(db_session)
+            for old_state, new_state in (
+                ("draft", "building"), ("building", "validated"),
+                ("validated", "ready"), ("ready", "activating"),
+            ):
+                await repository.transition(previous, None, expected_state=old_state, new_state=new_state)
+            assert await repository.compare_and_set_active_deployment(
+                sol.id, None, expected_active_deployment_id=None, new_active_deployment_id=previous,
+            )
+            await repository.transition(previous, None, expected_state="activating", new_state="active")
         source = _reviewed_package_source(sol)
         controls = await capture_package_controls(db_session, sol.id)
         prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
@@ -234,6 +243,7 @@ class TestSolutionAppDeploy:
         from src.services.solutions.package_controls import capture_package_controls
 
         sol = await self._install(db_session)
+        solution_id = sol.id
         deployer = SolutionDeployer(db_session)
         await deployer.prepare_reviewed_package(
             _reviewed_package_source(sol), expected_active_deployment_id=None,
@@ -245,7 +255,7 @@ class TestSolutionAppDeploy:
                 _reviewed_package_source(sol, app_access_level="everyone"),
                 expected_active_deployment_id=None, expected_controls_digest=canonical_digest(before),
             )
-        assert await capture_package_controls(db_session, sol.id) == before
+        assert await capture_package_controls(db_session, solution_id) == before
         assert _stub_app_build == {}
 
     async def test_reviewed_package_scope_check_refreshes_a_cached_target(
