@@ -101,7 +101,7 @@ If VM-backed validation was requested or is warranted by the change, run it on t
 
 ### 6. Known failures outside the scoped run
 
-Use [scoped CI recovery](../../../docs/dev/ci-recovery-policy.md) to distinguish verified same-candidate infrastructure recovery from test-failure diagnosis. Preserve original evidence; focused retries do not replace final-candidate gates or authorize mixing artifact attempts.
+Use [scoped CI recovery](../../../docs/dev/ci-recovery-policy.md) to distinguish verified same-candidate infrastructure recovery from test-failure diagnosis. Preserve original evidence; focused retries do not replace final-candidate gates or authorize mixing artifact attempts. The current stage cache does not bind actual base SHA; record it with the evidence and run `./test.sh pre-pr --fresh` if the base changed or cannot be proved unchanged from the reusable stages, even when HEAD and the affected plan match.
 
 A scoped change may be complete without running every suite. If a broader local run or CI later finds another failure, however, the failure becomes owned work and must be classified from evidence:
 
