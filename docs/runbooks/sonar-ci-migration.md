@@ -36,7 +36,9 @@ reason to discard coverage or restore the old coverage-free green badge.
 This **Lane 3 migration now uses CI analysis behind an operator activation
 variable**. It does not authorize queue admission, change required checks, dismiss
 findings, or review security hotspots. Automatic Analysis was preserved during
-preparation and is now disabled following the verified main import above.
+preparation, then disabled before the first CI submission above. The main import
+was verified afterward; this follow-up removes the obsolete automatic-analysis
+configuration after that verification.
 
 `.github/sonar-ci.json` declares `ci` mode for the Free adapter. CI executes the
 evidence job and uploads reports; submissions stay disabled until the repository
