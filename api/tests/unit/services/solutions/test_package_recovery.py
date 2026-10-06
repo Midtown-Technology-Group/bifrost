@@ -220,7 +220,7 @@ async def test_rollback_readback_proves_absence_not_runtime_delivery(monkeypatch
     from src.services.solutions.package_admission import read_package_rollback
 
     _, job, _payload = retained_job(status="failed")
-    intent = job.result
+    intent = dict(job.result or {})
     job.result = {"schema_version": PACKAGE_ROLLBACK_SCHEMA, "publication_not_committed": True,
         "original_job_id": str(job.id), "solution_id": str(SID), "original_intent": intent}
     if drift == "payload":

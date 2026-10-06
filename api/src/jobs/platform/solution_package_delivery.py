@@ -177,6 +177,7 @@ async def run_solution_package_delivery(context: PlatformJobContext, payload: So
     intent = context.checkpoint
     rolled_back_checkpoint = isinstance(intent, dict) and intent.get("schema_version") == PACKAGE_ROLLBACK_SCHEMA
     if rolled_back_checkpoint:
+        assert isinstance(intent, dict)
         intent = intent.get("original_intent")
         if not isinstance(intent, dict):
             raise ValueError("Original package rollback evidence is missing")
