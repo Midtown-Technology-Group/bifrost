@@ -1292,6 +1292,7 @@ async def export_solution(
     from src.services.solutions.export import (
         add_live_content_to_workspace_zip_file,
         build_workspace_zip_for_export,
+        copy_workspace_zip_with_readme,
     )
     from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
 
@@ -1335,7 +1336,9 @@ async def export_solution(
         else:
             has_stored_source = await artifact.copy_to_path(source_path)
             if has_stored_source and mode == "shareable":
-                source_path.replace(out_path)
+                await asyncio.to_thread(
+                    copy_workspace_zip_with_readme, source_path, out_path, sol.readme
+                )
             else:
                 bundle = await SolutionCaptureService(ctx.db).bundle_for(
                     sol,
