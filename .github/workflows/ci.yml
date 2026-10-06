@@ -1955,6 +1955,7 @@ jobs:
           python3 scripts/release/package-notes.py "$VERSION" >> release/package-notes.md
 
       - name: Create release
+        id: release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
@@ -1980,19 +1981,26 @@ jobs:
 
       - name: Publish release
         env:
+          RELEASE_ID: ${{ steps.release.outputs.id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.get_version.outputs.version }}
           PRERELEASE: ${{ steps.get_version.outputs.prerelease }}
         run: |
           set -euo pipefail
-          args=(--draft=false)
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]
+          endpoint="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          args=(-F draft=false)
           if [ "$PRERELEASE" = "true" ]; then
-            args+=(--prerelease)
+            args+=(-F prerelease=true)
           else
-            args+=(--latest)
+            args+=(-f make_latest=true)
           fi
           # Do not publish until every required source asset is uploaded.
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
+          # Tag lookup exposes published releases only. Use the draft's returned
+          # identity, then bind it to the expected tag before any publication.
+          release="$(gh api "$endpoint")"
+          printf '%s' "$release" | jq -e --arg tag "$VERSION" --argjson id "$RELEASE_ID" '
+            .id == $id and .tag_name == $tag and .draft == true' > /dev/null
           printf '%s' "$release" | jq -e --arg name "bifrost-$VERSION-source.tar.gz" '
             [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
             [$name, ($name + ".sha256"), ($name + ".sigstore")] |
@@ -2005,6 +2013,7 @@ jobs:
               ["release-manifest.json", "release-manifest.json.sha256", "release-manifest.json.sigstore.json"] |
               all(. as $required | $assets | index($required) != null)' > /dev/null
           fi
-          gh release edit "$VERSION" "${args[@]}"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
+          gh api --method PATCH "$endpoint" "${args[@]}" > /dev/null
+          gh api "$endpoint" --jq '.draft == false and .immutable == true' | grep -Fxq true
+
 
