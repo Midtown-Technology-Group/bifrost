@@ -138,7 +138,8 @@ def test_stable_manifest_acceptance_attestation_and_upload_precede_publication()
 def test_manual_branch_ci_runs_clean_candidate_gate_without_tag_or_write_access() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
     job = workflow["jobs"]["pre-pr-candidate"]
-    assert job["if"] == "github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')"
+    assert job["needs"] == "lint"
+    assert job["if"] == "${{ !cancelled() && needs.lint.result == 'success' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/') }}"
     assert job["permissions"] == {"contents": "read"}
     assert job["steps"][0]["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0}
     assert any("bash test.sh pre-pr" in step.get("run", "") for step in job["steps"])
