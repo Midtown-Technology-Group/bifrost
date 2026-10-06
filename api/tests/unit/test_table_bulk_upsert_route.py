@@ -31,7 +31,6 @@ class _FakeDb:
 
 @pytest.mark.asyncio
 async def test_batch_upsert_rolls_back_and_409s_on_guarded_count_mismatch(monkeypatch):
-    import shared.table_document_writes as writes
     import src.routers.tables as router
 
     table = SimpleNamespace(
@@ -98,7 +97,6 @@ async def test_batch_upsert_rolls_back_and_409s_on_guarded_count_mismatch(monkey
 
 @pytest.mark.asyncio
 async def test_batch_documents_invalidates_table_once_after_commit(monkeypatch):
-    import shared.table_document_writes as writes
     import src.routers.tables as router
 
     table = SimpleNamespace(
@@ -195,7 +193,6 @@ async def test_batch_documents_invalidates_table_once_after_commit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_batch_documents_does_not_invalidate_for_conflict_only_no_change(monkeypatch):
-    import shared.table_document_writes as writes
     import src.routers.tables as router
 
     table = SimpleNamespace(
@@ -267,7 +264,6 @@ async def test_batch_documents_does_not_invalidate_for_conflict_only_no_change(m
 
 @pytest.mark.asyncio
 async def test_batch_delete_documents_invalidates_table_once_after_commit(monkeypatch):
-    import shared.table_document_writes as writes
     import src.routers.tables as router
 
     table = SimpleNamespace(
@@ -369,7 +365,6 @@ async def test_batch_delete_documents_invalidates_table_once_after_commit(monkey
 
 @pytest.mark.asyncio
 async def test_batch_delete_documents_does_not_invalidate_noop(monkeypatch):
-    import shared.table_document_writes as writes
     import src.routers.tables as router
 
     table = SimpleNamespace(

@@ -9,7 +9,6 @@ The fork retains its own handlers to preserve its authorization contracts.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
