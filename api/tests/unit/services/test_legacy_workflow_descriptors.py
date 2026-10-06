@@ -1,6 +1,8 @@
 """Legacy display metadata cannot broaden immutable registration authorization."""
 
 from copy import deepcopy
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -59,6 +61,96 @@ def test_nullable_descriptors_require_separate_exact_immutable_evidence():
     assert isinstance(fields, dict)
     with pytest.raises(TypeError, match="immutable"):
         fields["description"] = ""
+
+
+def test_larger_source_bound_cannot_exceed_retained_registration_timeout():
+    from src.services.solutions.workflow_revision import retain_installed_timeouts
+
+    row, definition = _registration()
+    definition.update(timeout_seconds=120, runtime_bounds={"max_duration_seconds": 120},
+        legacy_descriptor_evidence=legacy_descriptor_evidence(_workflow_snapshot(row)))
+    before = {"task": _entity(row, definition)}
+    with pytest.raises(SolutionSourceRevisionError, match="registration differs"):
+        _require_registration(row, before["task"])
+    retained = retain_installed_timeouts(before, [row])
+    _require_registration(row, retained["task"])
+    assert retained["task"].definition["timeout_seconds"] == row.timeout_seconds == 60
+
+
+@pytest.mark.parametrize("duration,compiled_timeout", [(60, 30), (120, 30)])
+def test_lower_recipe_timeout_cannot_leave_an_unverifiable_retained_registration(duration, compiled_timeout):
+    from src.services.solutions.workflow_revision import retain_installed_timeouts
+
+    row, definition = _registration()
+    definition.update(timeout_seconds=compiled_timeout, runtime_bounds={"max_duration_seconds": duration},
+        legacy_descriptor_evidence=legacy_descriptor_evidence(_workflow_snapshot(row)))
+    with pytest.raises(SolutionSourceRevisionError, match="Recipe timeout conflicts"):
+        retain_installed_timeouts({"task": _entity(row, definition)}, [row])
+
+
+def test_reviewed_shorter_source_bound_matches_retained_registration_verification():
+    from src.services.solutions.workflow_revision import retain_installed_timeouts
+
+    row, definition = _registration()
+    definition.update(timeout_seconds=30, runtime_bounds={"max_duration_seconds": 30},
+        legacy_descriptor_evidence=legacy_descriptor_evidence(_workflow_snapshot(row)))
+    retained = retain_installed_timeouts({"task": _entity(row, definition)}, [row])
+    _require_registration(row, retained["task"])
+    assert retained["task"].definition["timeout_seconds"] == 30 and row.timeout_seconds == 60
+
+
+@pytest.mark.asyncio
+async def test_workflow_successor_retains_legacy_metadata_timeout_and_new_effects():
+    from src.services.solutions.workflow_revision import project_workflow_registrations, retain_legacy_descriptors
+
+    row, old = _registration()
+    old["legacy_descriptor_evidence"] = legacy_descriptor_evidence(_workflow_snapshot(row))
+    old["runtime_bounds"] = {"max_duration_seconds": 30}
+    old["timeout_seconds"] = 30
+    desired = deepcopy(old)
+    del desired["legacy_descriptor_evidence"]
+    desired.update(effects=[{"kind": "integration.read", "target": "microsoft_csp"}],
+        source_enforced_bounds=None, source_requested_bounds=None, parameters_schema_contract="test")
+    previous = {"task": _entity(row, old)}
+    successor = retain_legacy_descriptors({"task": _entity(row, desired)}, previous)
+    entity = successor["task"]
+    _require_registration(row, entity)
+    db = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(rowcount=1)))
+    await project_workflow_registrations(db, uuid4(), successor, {row.id})
+    parameters = db.execute.call_args.args[0].compile().params
+    assert "timeout_seconds" not in parameters
+    assert parameters["description"] is None and parameters["category"] == "General"
+    assert "legacy_descriptor_evidence" not in parameters and "effects" not in parameters
+    assert parameters["endpoint_enabled"] is False and parameters["public_endpoint"] is False
+    effect_list = entity.definition["effects"]
+    runtime_bounds = entity.definition["runtime_bounds"]
+    assert isinstance(effect_list, list | tuple) and isinstance(effect_list[0], dict)
+    assert isinstance(runtime_bounds, dict)
+    assert effect_list[0]["target"] == "microsoft_csp"
+    assert runtime_bounds["max_duration_seconds"] == 30
+    assert row.timeout_seconds == 60
+    assert retain_legacy_descriptors({"task": _entity(row, desired)}, successor) == successor
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("damage", ["hash", "security_field", "missing_field"])
+async def test_workflow_projection_rejects_changed_descriptor_evidence_before_write(damage):
+    from src.services.solutions.workflow_revision import project_workflow_registrations
+
+    row, definition = _registration()
+    evidence = legacy_descriptor_evidence(_workflow_snapshot(row))
+    if damage == "hash":
+        evidence["content_hash"] = "sha256:" + "0" * 64
+    elif damage == "security_field":
+        evidence["fields"]["endpoint_enabled"] = True
+    else:
+        del evidence["fields"]["description"]
+    definition.update(legacy_descriptor_evidence=evidence, runtime_bounds={}, effects=[],
+        source_enforced_bounds=None, source_requested_bounds=None, parameters_schema_contract="test")
+    db = SimpleNamespace(execute=AsyncMock())
+    with pytest.raises(SolutionSourceRevisionError, match="descriptor projection evidence"):
+        await project_workflow_registrations(db, uuid4(), {"task": _entity(row, definition)}, {row.id})
+    db.execute.assert_not_called()
 
 
 @pytest.mark.parametrize("change", ["hash", "schema", "fields", "security_field", "missing_source", "invalid_source"])

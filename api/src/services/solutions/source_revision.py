@@ -199,9 +199,8 @@ def _workflow_snapshot(workflow: Workflow) -> dict:
     }
 
 
-def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition, *, allow_inactive: bool = False) -> None:
-    definition = json.loads(canonical_json(entity.definition))
-    require_legacy_registration_name(definition)
+def registration_runtime_timeout(workflow: Workflow, definition: dict) -> int:
+    """Resolve the immutable limit from retained controls and Source bounds."""
     timeout = workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
     bounds = definition.get("runtime_bounds")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
@@ -213,6 +212,13 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition, *
         timeout = min(timeout, duration)
     elif bounds is not None:
         raise SolutionSourceRevisionError("workflow runtime bound is invalid")
+    return timeout
+
+
+def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition, *, allow_inactive: bool = False) -> None:
+    definition = json.loads(canonical_json(entity.definition))
+    require_legacy_registration_name(definition)
+    timeout = registration_runtime_timeout(workflow, definition)
     expected = {
         "path": workflow.path.replace("\\", "/").lstrip("/"),
         "function_name": workflow.function_name,

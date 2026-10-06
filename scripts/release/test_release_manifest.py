@@ -24,6 +24,10 @@ class ReleaseManifestTests(unittest.TestCase):
         self.addCleanup(os.chdir, previous)
         os.chdir(self.directory.name)
         manifest.git("init", "-q")
+        # Commits must not leave detached Git maintenance writing into a
+        # temporary fixture while unittest removes it.
+        manifest.git("config", "gc.auto", "0")
+        manifest.git("config", "maintenance.auto", "false")
         manifest.git("config", "user.name", "Release fixture")
         manifest.git("config", "user.email", "release@example.invalid")
         manifest.git("config", "commit.gpgsign", "false")

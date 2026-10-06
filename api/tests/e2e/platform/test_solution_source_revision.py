@@ -112,7 +112,7 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None, solution_id=None, workflow_id=None, source_path=None, solution_slug=None):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None, solution_id=None, workflow_id=None, source_path=None, solution_slug=None, owned_legacy=False, owned_registry_timeout=1800):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
     from src.services.solutions.deployment_manifest import DeploymentGitProvenance
@@ -129,8 +129,10 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     new_source = b"from bifrost import tables\nasync def run():\n    return 2\n"
     if source_pair is not None:
         old_source, new_source = source_pair
-    table = Table(id=uuid4(), name=f"revision_state_{uuid4().hex}", organization_id=None)
-    bindings = {table.name: SharedRootTableBinding(table_id=table.id, metadata_hash=table_metadata_hash(table))}
+    table = Table(id=uuid4(), name=f"revision_state_{uuid4().hex}",
+        organization_id=organization_id if owned_legacy else None,
+        solution_id=solution_id if owned_legacy else None)
+    bindings = {} if owned_legacy else {table.name: SharedRootTableBinding(table_id=table.id, metadata_hash=table_metadata_hash(table))}
     base_prefix = deployment_runtime_prefix(solution_id, base_id)
     source_hash = sha256_digest(old_source)
     bounds = {
@@ -212,12 +214,20 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
         cache_ttl_seconds=0,
     )
     recipe = None
-    if legacy_registration_name is not None:
+    if legacy_registration_name is not None or owned_legacy:
         from src.services.file_storage.indexers.workflow import WorkflowIndexer
         from src.services.solutions.reviewed_workflow_artifact import build_reviewed_artifact, compile_reviewed_workflows
         from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+        from src.services.solutions.source_revision import _workflow_snapshot
 
         assert source_commit_sha is not None
+        if owned_legacy:
+            workflow.roles = []
+            workflow.allowed_methods = ["POST"]
+            workflow.description = None
+            workflow.category = "General"
+            workflow.tags = []
+            workflow.timeout_seconds = owned_registry_timeout
         recipe = ReviewedWorkflowRecipe.model_validate({
             "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(solution_id),
             "files": {path: f"solutions/{solution.slug}/{path}"},
@@ -228,7 +238,9 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
                 "controls": {}, "runtime_bounds": bounds}],
         })
         entities = compile_reviewed_workflows(recipe, {path: old_source}, {}, WorkflowIndexer(db_session),
-            legacy_registration_names={workflow_id: legacy_registration_name})
+            legacy_registration_names={workflow_id: legacy_registration_name} if legacy_registration_name is not None else None,
+            has_owned_tables=owned_legacy,
+            legacy_descriptor_snapshots={workflow_id: _workflow_snapshot(workflow)} if owned_legacy else None)
         manifest, resolution = build_reviewed_artifact(solution_id, base_id, recipe,
             {path: old_source}, {}, entities, source_commit_sha, "bifrost.repo-workflow-adoption/v1")
     base = SolutionDeployment(
@@ -760,6 +772,124 @@ async def test_verified_git_delivery_recovers_cancelled_stage_and_preserves_queu
         # Immutable history and permanent receipts are not row-deleted. The
         # canonical test.sh phase reset destroys this disposable test DB.
         await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_owned_table_effect_successor_preserves_registry_data_and_accepted_pin(
+    committed_delivery_db, platform_admin, monkeypatch,
+):
+    from src.models.orm.tables import Document
+    from src.services.solutions.repo_workflow_adoption import _digest_row
+    from src.services.solutions.guard import install_solution_write_guard
+    from src.services.solutions.source_revision import _workflow_snapshot
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+
+    install_solution_write_guard()
+    db = committed_delivery_db
+    old = b'from bifrost import workflow, tables\n@workflow(name="Revision test", category="Source category", effects=[])\nasync def run():\n    """Source description."""\n    return 1\n'
+    new = old.replace(b"effects=[]", b'effects=[{"kind":"integration.read","target":"microsoft_csp"}]')
+    f = await _seed_adopted_revision(db, platform_admin, monkeypatch, source_pair=(old, new),
+        organization_id=None, source_commit_sha="a" * 40, owned_legacy=True)
+    document = Document(id="retained", table_id=f.table.id, data={"receipt": "do not replay"})
+    db.add(document)
+    await db.commit()
+    await db.refresh(f.workflow, attribute_names=["roles"])
+    baseline = _workflow_snapshot(f.workflow)
+    metadata_hash = _digest_row(f.table)
+    accepted = await pin_workflow_runtime(db, f.workflow_id)
+    assert accepted is not None
+    expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.base_id,
+        expected_active_manifest_hash=f.base.compiled_manifest_hash)
+    with pytest.raises(SolutionSourceRevisionError, match="signature.*decorators"):
+        await SolutionSourceRevisionService(db).stage(f.solution_id, uuid4(), platform_admin.user_id,
+            SolutionSourceRevisionRequest(**expected.model_dump(), source_commit_sha="b" * 40,
+                files=[SolutionSourceFile(path=f.path, content_base64=base64.b64encode(new).decode())]))
+    service = SolutionWorkflowRevisionService(db)
+    staged = await service.stage_workflows(f.solution_id, f.revision_id, platform_admin.user_id,
+        expected, f.recipe, {f.path: new}, "b" * 40)
+    inspected = await service.inspect_workflows(f.solution_id, f.revision_id, expected, f.recipe)
+    assert inspected.evidence_id == staged.evidence_id
+    await service.activate_workflows(f.solution_id, f.revision_id,
+        SolutionSourceRevisionCommitRequest(**expected.model_dump(), expected_evidence_id=inspected.evidence_id), f.recipe)
+    await db.commit()
+    await db.refresh(f.workflow)
+    await db.refresh(f.workflow, attribute_names=["roles"])
+    assert _workflow_snapshot(f.workflow) == baseline
+    await db.refresh(f.table)
+    assert _digest_row(f.table) == metadata_hash and f.table.solution_id == f.solution_id
+    await db.refresh(document)
+    assert document.data == {"receipt": "do not replay"}
+    current = await pin_workflow_runtime(db, f.workflow_id)
+    assert current is not None and current.deployment_id == f.revision_id
+    assert current.queue_evidence() != accepted.queue_evidence()
+    retained = await resolve_pinned_workflow_runtime(db, f.base_id, f.workflow_id)
+    assert retained.queue_evidence() == accepted.queue_evidence()
+    successor = await db.get(SolutionDeployment, f.revision_id)
+    assert successor is not None
+    definition = successor.resolution_map["workflows"][f.path + "::run"]["definition"]
+    assert definition["effects"][0]["target"] == "microsoft_csp"
+    assert DeploymentResolutionMap.model_validate(successor.resolution_map).shared_tables == {}
+    await service.verify_current_workflows(f.solution_id,
+        SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.revision_id,
+            expected_active_manifest_hash=successor.compiled_manifest_hash), f.recipe)
+
+
+@pytest.mark.asyncio
+async def test_lower_recipe_timeout_is_rejected_and_supported_successors_remain_verifiable(
+    committed_delivery_db, platform_admin, monkeypatch,
+):
+    from src.services.solutions.guard import install_solution_write_guard
+    from src.services.solutions.source_revision import _workflow_snapshot
+    from src.services.solutions.workflow_revision import SolutionWorkflowRevisionService
+    from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+
+    install_solution_write_guard()
+    db = committed_delivery_db
+    old = b'from bifrost import workflow, tables\n@workflow(name="Revision test", effects=[])\nasync def run():\n    return 1\n'
+    new = old.replace(b"effects=[]", b'effects=[{"kind":"integration.read","target":"microsoft_csp"}]')
+    f = await _seed_adopted_revision(db, platform_admin, monkeypatch, source_pair=(old, new),
+        organization_id=None, source_commit_sha="a" * 40, owned_legacy=True, owned_registry_timeout=60)
+    await db.refresh(f.workflow, attribute_names=["roles"])
+    baseline = _workflow_snapshot(f.workflow)
+    expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.base_id,
+        expected_active_manifest_hash=f.base.compiled_manifest_hash)
+    spec = f.recipe.model_dump(mode="json")
+    spec["workflows"][0]["runtime_bounds"]["max_duration_seconds"] = 60
+    spec["workflows"][0]["controls"]["timeout_seconds"] = 30
+    invalid = ReviewedWorkflowRecipe.model_validate(spec)
+    service = SolutionWorkflowRevisionService(db)
+    rejected_id = uuid4()
+    with pytest.raises(SolutionSourceRevisionError, match="Recipe timeout conflicts"):
+        await service.stage_workflows(f.solution_id, rejected_id, platform_admin.user_id,
+            expected, invalid, {f.path: new}, "b" * 40)
+    assert await db.get(SolutionDeployment, rejected_id) is None
+    await db.refresh(f.solution)
+    assert f.solution.active_deployment_id == f.base_id
+
+    spec["workflows"][0]["controls"]["timeout_seconds"] = 60
+    recipe = ReviewedWorkflowRecipe.model_validate(spec)
+    staged = await service.stage_workflows(f.solution_id, f.revision_id, platform_admin.user_id,
+        expected, recipe, {f.path: new}, "b" * 40)
+    checked = await service.inspect_workflows(f.solution_id, f.revision_id, expected, recipe)
+    assert checked.evidence_id == staged.evidence_id
+    await service.activate_workflows(f.solution_id, f.revision_id,
+        SolutionSourceRevisionCommitRequest(**expected.model_dump(), expected_evidence_id=checked.evidence_id), recipe)
+    await db.commit()
+    await db.refresh(f.workflow)
+    await db.refresh(f.workflow, attribute_names=["roles"])
+    assert _workflow_snapshot(f.workflow) == baseline and f.workflow.timeout_seconds == 60
+    active = await db.get(SolutionDeployment, f.revision_id)
+    assert active is not None
+    next_expected = SolutionSourceRevisionInspectRequest(expected_active_deployment_id=active.id,
+        expected_active_manifest_hash=active.compiled_manifest_hash)
+    await service.verify_current_workflows(f.solution_id, next_expected, recipe)
+    another_id = uuid4()
+    next_staged = await service.stage_workflows(f.solution_id, another_id, platform_admin.user_id,
+        next_expected, recipe, {f.path: new}, "c" * 40)
+    next_checked = await service.inspect_workflows(f.solution_id, another_id, next_expected, recipe)
+    assert next_staged.evidence_id == next_checked.evidence_id
+    await db.refresh(f.solution)
+    assert f.solution.active_deployment_id == f.revision_id
 
 
 @pytest.mark.asyncio

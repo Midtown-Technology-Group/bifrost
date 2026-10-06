@@ -594,15 +594,23 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
 def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes], *,
                            previous_recipe_value: dict | None = None,
                            previous_files: dict[str, bytes] | None = None,
-                           previous_resources: dict[str, bytes] | None = None) -> dict[str, Any]:
+                           previous_resources: dict[str, bytes] | None = None,
+                           owned_table_ids: tuple[UUID, ...] = ()) -> dict[str, Any]:
     """Offline deterministic checks only; live ownership/callers remain unproved."""
     from bifrost.solution_source_closure import source_closure
+
+    try:
+        owned_ids = tuple(UUID(str(identity)) for identity in owned_table_ids)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowRecipeError("Owned-table review context requires exact table UUIDs") from exc
+    if len(set(owned_ids)) != len(owned_ids):
+        raise WorkflowRecipeError("Owned-table review context contains duplicate UUIDs")
 
     def compile_complete(value, sources, resource_files):
         recipe = ReviewedWorkflowRecipe.model_validate(value)
         validate_resource_files(recipe, resource_files, sources)
         closure = source_closure(sources, {item.path for item in recipe.workflows},
-            has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources),
+            has_table_bindings=bool(recipe.shared_tables) or bool(owned_ids), has_resource_bindings=bool(recipe.resources),
             has_root_file_bindings=bool(recipe.root_file_bindings))
         if set(closure) != set(sources):
             raise WorkflowRecipeError("Recipe differs from the complete dependency closure")
@@ -630,6 +638,7 @@ def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resource
     return {"schema_version": DELIVERY_REVIEW_CONTRACT, "solution_id": str(recipe.solution_id),
         "source_paths": sorted(files), "resource_paths": sorted(resources),
         "workflow_ids": sorted(str(item.resolved_id) for item in desired.values()),
+        **({"owned_table_review_ids": sorted(str(identity) for identity in owned_ids)} if owned_ids else {}),
         "previous_recipe_checked": previous_recipe_value is not None,
         "live_state_verified": False, "runtime_verified": False}
 
@@ -637,7 +646,8 @@ def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resource
 def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes], *,
                            previous_recipe_value: dict | None = None,
                            previous_files: dict[str, bytes] | None = None,
-                           previous_resources: dict[str, bytes] | None = None) -> dict[str, Any]:
+                           previous_resources: dict[str, bytes] | None = None,
+                           owned_table_ids: tuple[UUID, ...] = ()) -> dict[str, Any]:
     """Review workflow delivery or the legacy body-only source adapter offline."""
     from bifrost.solution_source_closure import source_closure
     if previous_recipe_value is not None and recipe_value.get("schema_version") != previous_recipe_value.get("schema_version"):
@@ -645,7 +655,9 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
     if recipe_value.get("schema_version") == WORKFLOW_RECIPE_SCHEMA:
         return review_workflow_recipe(recipe_value, files, resources,
             previous_recipe_value=previous_recipe_value, previous_files=previous_files,
-            previous_resources=previous_resources)
+            previous_resources=previous_resources, owned_table_ids=owned_table_ids)
+    if owned_table_ids:
+        raise WorkflowRecipeError("Owned-table review context requires the reviewed workflow adapter")
 
     def signatures(value, sources, resource_files):
         if (set(value) != {"schema_version", "solution_id", "files"}
