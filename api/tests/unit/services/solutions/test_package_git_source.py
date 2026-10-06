@@ -216,7 +216,7 @@ async def test_package_oidc_is_resource_artifact_and_adapter_bound(signing, faul
 async def captured_evidence(documents, raw_recipe, configured):
     async with httpx.AsyncClient(transport=transport(documents, [])) as client:
         authored = await ProtectedGitReader(
-            configured, "ephemeral", client
+            configured, "ephemeral-job-token", client
         ).authored_source(SHA, "solutions/fixture", TREE)
     return package_source_evidence(
         SID, configured, authored, raw_recipe, ci_run_id=123, ci_run_attempt=2
@@ -230,7 +230,7 @@ async def test_complete_protected_package_preserves_resources_archive_and_immuta
     evidence = await captured_evidence(documents, raw_recipe, configured)
     calls = []
     async with httpx.AsyncClient(transport=transport(documents, calls)) as client:
-        reader = ProtectedGitReader(configured, "ephemeral", client)
+        reader = ProtectedGitReader(configured, "ephemeral-job-token", client)
         result = await read_package_git_source(
             reader,
             policy=configured,
@@ -335,7 +335,7 @@ async def test_protected_package_capture_fails_closed_before_any_publication(fau
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
         reader = ProtectedGitReader(
-            policy() if fault == "reader_policy" else configured, "ephemeral", client
+            policy() if fault == "reader_policy" else configured, "ephemeral-job-token", client
         )
         with pytest.raises(GitDeliverySourceError):
             await read_package_git_source(
