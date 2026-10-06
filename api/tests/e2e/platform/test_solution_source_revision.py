@@ -828,7 +828,7 @@ async def test_owned_table_effect_successor_preserves_registry_data_and_accepted
     assert successor is not None
     definition = successor.resolution_map["workflows"][f.path + "::run"]["definition"]
     assert definition["effects"][0]["target"] == "microsoft_csp"
-    assert successor.resolution_map["shared_tables"] == {}
+    assert DeploymentResolutionMap.model_validate(successor.resolution_map).shared_tables == {}
     await service.verify_current_workflows(f.solution_id,
         SolutionSourceRevisionInspectRequest(expected_active_deployment_id=f.revision_id,
             expected_active_manifest_hash=successor.compiled_manifest_hash), f.recipe)
