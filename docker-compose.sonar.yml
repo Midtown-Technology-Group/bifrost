@@ -1,0 +1,9 @@
+# Used only by the independent Sonar evidence job. The ordinary test stack and
+# API coverage badge retain their existing configuration.
+services:
+  test-runner:
+    environment:
+      COVERAGE_FILE: /tmp/bifrost/.coverage.sonar
+    volumes:
+      - .:/repo:ro
+      - ./api/bifrost.py:/app/bifrost.py:ro

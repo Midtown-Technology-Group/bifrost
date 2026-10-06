@@ -23,11 +23,12 @@ import httpx
 import jwt
 from bifrost.workspace_release import canonical_digest
 
-from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy, delivery_path
+from src.core.solution_delivery_policy import ProtectedGitRepositoryPolicy, SolutionGitDeliveryPolicy, delivery_path, reviewed_package_registry
 from src.services.github_actions_oidc import (
     GITHUB_ACTIONS_ISSUER,
     GITHUB_ACTIONS_JWKS_URL,
 )
+from src.services.inline_app_source import InlineAppSourceSnapshot, MAX_INLINE_SOURCE_FILES
 from src.services.solutions.deployment_manifest import (
     MAX_DEPLOYMENT_RESOURCE_BYTES,
     MAX_DEPLOYMENT_RESOURCES_BYTES,
@@ -42,6 +43,9 @@ RECIPE_SCHEMA = "bifrost.solution-source-delivery/v1"
 MAX_SOURCE_BYTES = 10 * 1024 * 1024
 MAX_METADATA_BYTES = 5 * 1024 * 1024
 MAX_AUTHORED_FILES = 1000
+MAX_ANCESTRY_COMMITS = 1000
+MAX_HISTORICAL_AUTHORED_SOURCES = 100
+MAX_HISTORICAL_AUTHORED_BYTES = 32 * 1024 * 1024
 
 
 class GitDeliverySourceError(ValueError):
@@ -97,6 +101,7 @@ class VerifiedGitSource:
     control_hashes: dict[str, str] = field(default_factory=dict)
     installation_registry: dict[str, Any] | None = None
     ancestor_commit_shas: tuple[str, ...] = ()
+    historical_authored_sources: tuple[VerifiedAuthoredSolution, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -125,6 +130,18 @@ class VerifiedAuthoredSolution:
                  "size": item.size} for item in self.source_files]
 
 
+@dataclass(frozen=True)
+class VerifiedInlineAppSource:
+    """Protected tree/blob content proof, not App enrollment or publication authority."""
+
+    commit_sha: str
+    tree_sha: str
+    subtree_sha: str
+    repo_subpath: str
+    snapshot: InlineAppSourceSnapshot
+    file_modes: Mapping[str, str]
+
+
 def delivery_audience(solution_id: UUID, commit_sha: str, ci_run_id: int,
                       ci_run_attempt: int, artifact_digest: str) -> str:
     return f"{AUDIENCE}:{solution_id}:{commit_sha}:{ci_run_id}:{ci_run_attempt}:{artifact_digest}"
@@ -138,6 +155,15 @@ async def authenticate_git_delivery(
     if solution_id not in policy.solutions:
         raise GitDeliverySourceError("Solution is outside the delivery allowlist")
     audience = delivery_audience(solution_id, commit_sha, ci_run_id, ci_run_attempt, artifact_digest)
+    return await authenticate_protected_git_producer(token, policy=policy,
+        audience=audience, commit_sha=commit_sha, jwks=jwks)
+
+
+async def authenticate_protected_git_producer(
+    token: str, *, policy: ProtectedGitRepositoryPolicy, audience: str, commit_sha: str,
+    jwks: dict[str, Any] | None = None,
+) -> GitDeliveryIdentity:
+    """Shared signature/producer checks; the adapter must bind its exact resource audience."""
     try:
         header = jwt.get_unverified_header(token)
         if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
@@ -181,13 +207,14 @@ async def authenticate_git_delivery(
 class ProtectedGitReader:
     """Read only the configured repo; never execute code or follow Git redirects."""
 
-    def __init__(self, policy: SolutionGitDeliveryPolicy, token: str, client: httpx.AsyncClient):
+    def __init__(self, policy: ProtectedGitRepositoryPolicy, token: str, client: httpx.AsyncClient):
         self.policy, self.token, self.client = policy, token, client
 
-    async def document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> dict:
+    async def _document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> Any:
         if re.fullmatch(
             r"(?:branches/main|actions/runs/[1-9][0-9]*|git/(?:commits|blobs)/[0-9a-f]{40}"
-            r"|git/trees/[0-9a-f]{40}\?recursive=1)?", suffix
+            r"|git/trees/[0-9a-f]{40}\?recursive=1"
+            r"|commits\?sha=[0-9a-f]{40}&per_page=100&page=(?:[1-9]|10))?", suffix
         ) is None:
             raise GitDeliverySourceError("Protected Git endpoint is outside the delivery allowlist")
         path, _, query = suffix.partition("?")
@@ -210,43 +237,78 @@ class ProtectedGitReader:
                         raise GitDeliverySourceError("Protected Git response exceeds its size bound")
                     chunks.append(chunk)
             value = json.loads(b"".join(chunks))
-            if not isinstance(value, dict):
-                raise GitDeliverySourceError("Unexpected protected Git response")
             return value
         except ValueError as exc:
             if isinstance(exc, GitDeliverySourceError):
                 raise
             raise GitDeliverySourceError("Protected Git metadata is unavailable") from exc
 
+    async def document(self, suffix: str, *, limit: int = MAX_METADATA_BYTES) -> dict:
+        value = await self._document(suffix, limit=limit)
+        if not isinstance(value, dict):
+            raise GitDeliverySourceError("Unexpected protected Git response")
+        return value
+
     async def require_current_main(self, commit_sha: str) -> None:
         branch = await self.document("branches/main")
         if branch.get("protected") is not True or branch.get("commit", {}).get("sha") != commit_sha:
             raise GitDeliverySourceError("Source was superseded or main is not protected; deliver full current state")
 
-    async def verified_ancestors(self, commit_sha: str, candidates: set[str], *, limit: int = 100) -> tuple[str, ...]:
-        """Bounded first-parent Git proof for delayed accounting, not time order.
+    async def verified_ancestors(
+        self, commit_sha: str, candidates: set[str] | None, *, limit: int = MAX_ANCESTRY_COMMITS,
+    ) -> tuple[str, ...]:
+        """Prove first-parent ancestry from bounded fixed-repository Git pages.
 
-        A truncated walk leaves older debt unresolved. Delivery is still allowed;
-        no missing ancestor is guessed from timestamps or equal source bytes.
+        Listing order is never ancestry evidence: each traversed edge must name
+        its actual parent. Missing pages, gaps or truncation leave debt open.
+        A delayed 268-commit declaration needs three reads rather than 268.
+        None returns the bounded verified chain so native history selection can
+        exclude unprovable declarations before applying its archive-read limit.
         """
+        if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
+            raise GitDeliverySourceError("Expected an exact ancestry head SHA")
+        remaining = None if candidates is None else {
+            sha for sha in candidates if re.fullmatch(r"[0-9a-f]{40}", sha)
+        } - {commit_sha}
+        steps = min(max(limit, 0), MAX_ANCESTRY_COMMITS - 1)
         matched: list[str] = []
         seen = {commit_sha}
+        parents: dict[str, tuple[str, ...]] = {}
         current = commit_sha
-        remaining = candidates - seen
-        for _ in range(min(max(limit, 0), 100)):
-            if not remaining:
+        page = 0
+        complete = False
+        for _ in range(steps):
+            if remaining is not None and not remaining:
                 break
-            document = await self.document(f"git/commits/{current}")
-            parents = document.get("parents", [])
-            if document.get("sha") != current or not isinstance(parents, list) or len(parents) != 1:
+            while current not in parents and not complete and page < MAX_ANCESTRY_COMMITS // 100:
+                page += 1
+                rows = await self._document(f"commits?sha={commit_sha}&per_page=100&page={page}")
+                if not isinstance(rows, list) or len(rows) > 100:
+                    return tuple(matched)
+                added = {}
+                for row in rows:
+                    identity = row.get("sha") if isinstance(row, dict) else None
+                    edges = row.get("parents") if isinstance(row, dict) else None
+                    if (not isinstance(identity, str) or re.fullmatch(r"[0-9a-f]{40}", identity) is None
+                            or identity in parents or identity in added or not isinstance(edges, list)):
+                        return tuple(matched)
+                    values = tuple(edge.get("sha") if isinstance(edge, dict) else None for edge in edges)
+                    if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None
+                           for value in values) or len(set(values)) != len(values):
+                        return tuple(matched)
+                    added[identity] = values
+                parents.update(added)
+                complete = len(rows) < 100
+            if current not in parents or not parents[current]:
                 break
-            parent = parents[0].get("sha") if isinstance(parents[0], dict) else None
-            if not isinstance(parent, str) or re.fullmatch(r"[0-9a-f]{40}", parent) is None or parent in seen:
+            parent = parents[current][0]
+            if parent in seen:
                 break
             seen.add(parent)
-            if parent in remaining:
+            if remaining is None or parent in remaining:
                 matched.append(parent)
-                remaining.remove(parent)
+                if remaining is not None:
+                    remaining.remove(parent)
             current = parent
         return tuple(matched)
 
@@ -298,12 +360,56 @@ class ProtectedGitReader:
         """
         from src.services.solution_deploy_obligations import solution_source_content_id
 
-        if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None
-               for value in (commit_sha, expected_tree_sha)):
-            raise GitDeliverySourceError("Expected exact authored commit/tree SHAs")
         if (not isinstance(repo_subpath, str)
                 or re.fullmatch(r"solutions/[a-z0-9]+(?:-[a-z0-9]+)*", repo_subpath) is None):
             raise GitDeliverySourceError("Expected a canonical Solution subtree path")
+        subtree_sha, files, modes = await self._authored_subtree(commit_sha, repo_subpath, expected_tree_sha)
+        manifest = tuple(VerifiedAuthoredSolutionFile(
+            path=repo_subpath + "/" + path, mode=modes[path],
+            sha256=hashlib.sha256(content).hexdigest(), size=len(content),
+        ) for path, content in files.items())
+        manifest_values: list[dict[str, object]] = [
+            {"path": item.path, "mode": item.mode, "sha256": item.sha256, "size": item.size}
+            for item in manifest
+        ]
+        return VerifiedAuthoredSolution(
+            commit_sha=commit_sha, tree_sha=expected_tree_sha, subtree_sha=subtree_sha,
+            solution_slug=repo_subpath.split("/")[1], repo_subpath=repo_subpath,
+            source_content_id=solution_source_content_id(solution_slug=repo_subpath.split("/")[1],
+                repo_subpath=repo_subpath, source_files=manifest_values),
+            source_files=manifest, files=MappingProxyType(files),
+        )
+
+    async def inline_app_source(
+        self, commit_sha: str, repo_subpath: str, expected_tree_sha: str,
+    ) -> VerifiedInlineAppSource:
+        """Read the complete App subtree with the same Git transport verification.
+
+        Callers must independently authenticate the producer, verify current Main
+        and its CI, and preserve installed App scope/controls. This content read
+        neither applies app.yaml nor authorizes publishing an arbitrary App.
+        """
+        if (not isinstance(repo_subpath, str)
+                or re.fullmatch(r"apps/[a-z0-9]+(?:-[a-z0-9]+)*", repo_subpath) is None):
+            raise GitDeliverySourceError("Expected a canonical inline App subtree path")
+        subtree_sha, files, modes = await self._authored_subtree(
+            commit_sha, repo_subpath, expected_tree_sha, max_files=MAX_INLINE_SOURCE_FILES,
+        )
+        try:
+            snapshot = InlineAppSourceSnapshot(files)
+        except ValueError as exc:
+            raise GitDeliverySourceError(str(exc)) from exc
+        return VerifiedInlineAppSource(commit_sha, expected_tree_sha, subtree_sha,
+            repo_subpath, snapshot, MappingProxyType(modes))
+
+    async def _authored_subtree(
+        self, commit_sha: str, repo_subpath: str, expected_tree_sha: str,
+        *, max_files: int = MAX_AUTHORED_FILES,
+    ) -> tuple[str, dict[str, bytes], dict[str, str]]:
+        """Complete regular-file inventory shared by distinct package adapters."""
+        if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None
+               for value in (commit_sha, expected_tree_sha)):
+            raise GitDeliverySourceError("Expected exact authored commit/tree SHAs")
 
         def tree_index(document: dict, identity: str, *, prefix: str | None = None) -> dict[str, dict]:
             entries = document.get("tree")
@@ -335,7 +441,7 @@ class ProtectedGitReader:
         subtree_sha = subtree.get("sha")
         if (subtree.get("type") != "tree" or subtree.get("mode") != "040000"
                 or not isinstance(subtree_sha, str) or re.fullmatch(r"[0-9a-f]{40}", subtree_sha) is None):
-            raise GitDeliverySourceError("Authored Solution subtree identity is invalid")
+            raise GitDeliverySourceError("Authored subtree identity is invalid")
         selected = tree_index(await self.document(f"git/trees/{subtree_sha}?recursive=1"), subtree_sha)
         prefix = repo_subpath + "/"
         root_selected = {path[len(prefix):]: entry for path, entry in root.items() if path.startswith(prefix)}
@@ -363,10 +469,10 @@ class ProtectedGitReader:
                 raise GitDeliverySourceError("Authored source requires bounded regular Git files")
             total += entry["size"]
             blobs[path] = entry
-            if len(blobs) > MAX_AUTHORED_FILES or total > MAX_SOURCE_BYTES:
+            if len(blobs) > max_files or total > MAX_SOURCE_BYTES:
                 raise GitDeliverySourceError("Authored source exceeds its inventory bound")
         if not blobs:
-            raise GitDeliverySourceError("Authored Solution subtree is empty")
+            raise GitDeliverySourceError("Authored subtree is empty")
         slots = asyncio.Semaphore(16)
 
         async def read(path: str, entry: dict) -> tuple[str, bytes]:
@@ -374,23 +480,11 @@ class ProtectedGitReader:
                 return path, await self.blob(entry, limit=MAX_SOURCE_BYTES)
 
         files = dict(await asyncio.gather(*(read(path, blobs[path]) for path in sorted(blobs))))
-        manifest = tuple(VerifiedAuthoredSolutionFile(
-            path=prefix + path, mode=blobs[path]["mode"],
-            sha256=hashlib.sha256(content).hexdigest(), size=len(content),
-        ) for path, content in files.items())
-        manifest_values: list[dict[str, object]] = [
-            {"path": item.path, "mode": item.mode, "sha256": item.sha256, "size": item.size}
-            for item in manifest
-        ]
-        return VerifiedAuthoredSolution(
-            commit_sha=commit_sha, tree_sha=expected_tree_sha, subtree_sha=subtree_sha,
-            solution_slug=repo_subpath.split("/")[1], repo_subpath=repo_subpath,
-            source_content_id=solution_source_content_id(solution_slug=repo_subpath.split("/")[1],
-                repo_subpath=repo_subpath, source_files=manifest_values),
-            source_files=manifest, files=MappingProxyType(files),
-        )
+        return subtree_sha, files, {path: entry["mode"] for path, entry in blobs.items()}
 
     async def source(self, solution_id: UUID, commit_sha: str, artifact_digest: str) -> VerifiedGitSource:
+        if not isinstance(self.policy, SolutionGitDeliveryPolicy):
+            raise GitDeliverySourceError("Solution delivery requires its own installed recipe policy")
         if solution_id not in self.policy.solutions:
             raise GitDeliverySourceError("Solution is outside the delivery allowlist")
         if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
@@ -463,23 +557,13 @@ class ProtectedGitReader:
             raw_registry = await self.blob(index[registry_path], limit=128 * 1024)
             try:
                 registry = json.loads(raw_registry, object_pairs_hook=_unique_json_object)
-                if (not isinstance(registry, dict)
-                        or set(registry) != {"schema_version", "installations"}
-                        or registry["schema_version"] != "bifrost.solution-delivery-installations/v1"
-                        or not isinstance(registry["installations"], list)
-                        or not 1 <= len(registry["installations"]) <= 100):
-                    raise ValueError("Invalid installation registry")
-                rows = registry["installations"]
-                for row in rows:
-                    if (not isinstance(row, dict) or set(row) != {"target", "recipe"}
-                            or row["target"] not in {"production", "canary"}):
-                        raise ValueError("Invalid installation registry entry")
-                    delivery_path(row["recipe"])
-                selected = [row for row in rows if row["recipe"] == recipe_path]
+                rows = reviewed_package_registry(registry)
+                solution_rows = [row for row in rows if row["kind"] == "solution"]
+                selected = [row for row in solution_rows if row["recipe"] == recipe_path]
                 if len(selected) != 1:
                     raise ValueError("Recipe has no unique registry target")
                 target = selected[0]["target"]
-                recipes = [row["recipe"] for row in rows if row["target"] == target]
+                recipes = [row["recipe"] for row in solution_rows if row["target"] == target]
                 if len(set(recipes)) != len(recipes) or set(recipes) != set(self.policy.solutions.values()):
                     raise ValueError("Registry target differs from configured installations")
                 sizes = [index.get(path, {}).get("size") for path in self.policy.solutions.values()]
@@ -520,6 +604,11 @@ class ProtectedGitReader:
                     for identity, path in self.policy.solutions.items())))
                 registry_proof = {"path": registry_path, "target": target,
                     "installations": installations}
+                app_rows = [row for row in rows if row["target"] == target and row["kind"] == "inline_app"]
+                if app_rows:
+                    # This is presence evidence only, never App publication or
+                    # accounting authority borrowed from a Solution receipt.
+                    registry_proof["application_recipes"] = sorted(row["recipe"] for row in app_rows)
                 control_hashes[registry_path] = hashlib.sha256(raw_registry).hexdigest()
             except (ValueError, TypeError, KeyError, UnicodeError) as exc:
                 raise GitDeliverySourceError("Protected installation registry is invalid") from exc

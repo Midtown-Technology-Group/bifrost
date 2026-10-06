@@ -208,6 +208,115 @@ Jobs are requester-visible; platform administrators may inspect all jobs.
 Enqueue endpoints remain responsible for authorizing the underlying action and
 setting the correct organization and resource metadata.
 
+### Inline App publication recovery
+
+Inline App publication records exact captured artifact hashes and the expected
+Live manifest storage revision in the existing job checkpoint before its first
+write. Hashed output objects are create-only; existing bytes must match. The
+manifest switches conditionally after all referenced outputs are durable. Older
+outputs remain available to already-loaded browsers; publishing does not collect
+them.
+
+The initial checkpoint explicitly records `manifest_write_started=false`.
+Immediately before the conditional manifest PUT, the handler saves the same
+intent with that flag set to `true`, using the current job lease. A reclaimed
+false checkpoint therefore fences the old runner before it can issue a late
+write. A stopped pre-write attempt finishes as `application_publication_not_applied`,
+retaining its original intent in a terminal disposition receipt. It receives
+no publication, runtime or accounting credit; a new request can enter the normal
+reviewed admission path even if Main or controls have changed. Ownership/model
+changes do not authorize this disposition. A publication uses a single-attempt
+storage client (SDK retries disabled); a
+definitive conditional-write rejection records `manifest_write_rejected=true`
+under the same lease and receives a terminal, unverified disposition as well.
+Legacy checkpoints without the flag and writes without a definitive rejection
+remain uncertain: observing the old ETag alone does not prove that a delayed conditional PUT cannot still succeed.
+
+An uncertain outcome retains this intent in `requires_action`. A lost worker or
+the same requester's next `POST /api/applications/{id}/publish` reconciles the
+original intent by reading the manifest and every output, checking App scope,
+identity and controls, then recording publication metadata. It never rebuilds or
+replays storage writes. Changed or unavailable bytes stay unresolved and block a
+fresh publish; another requester cannot resume the original job. The shared
+enqueue service exposes this behavior only through an explicit checkpoint schema
+on the handler's registered definition. A saved intent disables cancellation,
+including queued recovery and runner-loss retries. Cancellation and checkpoint
+persistence serialize on the job row; an old status response cannot erase a
+newly saved intent. Earlier cancelled rows with matching intent also block fresh
+publication and can resume only the original requester's readback, retaining
+their payload, evidence and attempt history. No new job/status
+system or App publication authority is introduced.
+
+Build/publication evidence alone does not attest protected Git provenance or
+enroll an App in automatic delivery. Standalone and Solution-owned App deployment
+semantics remain distinct.
+
+The inline bundler can also capture outputs from a bounded immutable App source
+snapshot. It materializes a private temporary tree, applies the SDK import
+migration there, and compiles with Live settings. It reads no editor source and
+writes neither preview nor Live storage. Evidence separates the complete authored
+file hashes (including `app.yaml`) from the migrated compiler inputs and names the
+changed paths. `app.yaml` is attested but never applied to installed App metadata,
+roles or dependencies. Snapshot bytes alone confer no Git or publication authority;
+protected source admission and the existing publication job remain required.
+
+The protected Git reader supplies distinct inline App content evidence: exact
+commit/root/subtree identities, complete regular-file bytes and modes, including
+zero-byte assets and `app.yaml`. Root and subtree inventories must agree and each
+blob is verified against its Git object ID. Solution authored-tree accounting
+retains its existing identity contract; App content is not assigned a Solution ID.
+The App adapter has an explicit App UUID/scope/subtree allowlist and its own
+artifact-bound OIDC audience, sharing the pinned repository/workflow verifier.
+A Solution token cannot authorize an App. Source admission verifies exact Main
+CI before and after the tree read and compares the complete source digest.
+
+Captured repository publication carries that Git evidence in the compiled
+manifest, captures the Live storage revision before building, and rejects a
+changed revision before writing any outputs. A caller-provided authority check
+runs after compilation and again after output writes immediately before the
+conditional manifest switch. Normal manual publication retains its existing
+behavior.
+
+`POST /api/applications/{id}/github-source` admits enrolled, already published
+inline Apps into the existing `application.publish` job. It does not upload
+source or grant producer tokens an API role. The job stores only source/CI and
+producer identities plus the installed control hash. The worker resolves the
+existing encrypted repository integration in memory, requires its repository to
+match the pinned policy, and leaves its sync branch unchanged. It verifies Git
+again before compiling and checks Main/CI, controls and its attempt lease before
+the manifest switch. A saved intent resumes only original artifact readback,
+without a new Git read, compilation or effect replay. A reused job proves its
+original source, so the producer must compare its result to the requested commit
+before claiming delivery. The additive enqueue contract reuses
+`PlatformJobAccepted`; existing clients and manual publication remain compatible.
+Admission IDs are deterministic for the App/source/producer attempt, so a lost
+terminal response cannot enqueue the same completed operation again. Scoped OIDC
+`POST /api/applications/{id}/github-source/{job_id}/inspect` reads original job
+status and re-verifies successful live artifacts and controls without resuming
+anything. If admission reused an older job instead of creating the proposed ID,
+inspection returns that scoped original job with its original source identity.
+The producer must compare identities and commit evidence; a green old job never
+proves the new commit delivered.
+An explicit protected admission for an unresolved original checkpoint delegates
+to the shared kernel's readback resume on that original row. It preserves the
+payload, requester, intent and attempt history. Completed jobs and failures
+without a checkpoint are observation only; this is no automatic effect retry.
+
+Protected publication and successful inspection also validate an App runtime
+pin from the actual Live manifest after verifying every output byte. The pin
+binds the original publication job, App scope, preserved control hash, complete
+Git source, migrated compiler inputs and compiled output hashes. Inspection
+requires the reconstructed pin to match the original result; missing evidence,
+changed bytes or control drift stop without rebuilding or republishing. This
+attests compiled runtime bytes, not a browser business journey or ledger closure.
+
+Automatic App source accounting is implemented through the existing source
+ledger. It verifies the original protected publication, current runtime bytes
+and controls, and the complete mixed App/Solution registry before settling
+delivery. Scoped inspection reports accounting without republishing the App.
+Production enrollment, reviewed deployment and actual Main delivery/accounting
+qualification remain pending; implemented code is not activated authority.
+
 `PlatformJobPublic` is the single status contract for HTTP and WebSocket
 delivery. Changes that break a CLI-consumed enqueue or status contract require
 a matching `CONTRACT_VERSION` bump in both the server and packaged CLI.
@@ -314,3 +423,8 @@ application environment is production.
 | Diagnostics API | `api/src/routers/scheduler_diagnostics.py` |
 | Diagnostics UI | `client/src/pages/diagnostics/components/SchedulerTab.tsx` |
 | Browser WebSocket transport | `client/src/services/websocket.ts` |
+
+The tagged package registry keeps App recipes separate from the Solution target
+family. Solution delivery can continue, while registry accounting remains open
+when App publication has no independent completion proof. A Solution receipt
+must never certify an App enrollment merely because both share one producer.

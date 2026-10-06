@@ -422,7 +422,7 @@ class TestTopicEndpoints:
                 return_value=["ticket.created", "agent.completed"]
             )
 
-            response = await events.list_topics(db)
+            response = await events.list_topics(db, _user())
 
         assert response.curated
         assert response.in_use == ["ticket.created", "agent.completed"]

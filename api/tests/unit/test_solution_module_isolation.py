@@ -123,7 +123,6 @@ async def test_execute_async_sets_solution_context_before_clearing_modules(monke
     calls: list[tuple[str, object]] = []
 
     context = {"solution_id": sid, "solution_global_repo_access": False}
-
     def _fake_set_ctx(solution_id, global_repo_access=False):
         calls.append(("set_context", solution_id))
 

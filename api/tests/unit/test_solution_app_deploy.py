@@ -8,9 +8,13 @@ THIS install only; an id collision with a ``_repo/`` or other-install app raises
 no real Node toolchain runs in unit tests.
 """
 from contextlib import asynccontextmanager
+from dataclasses import replace
+import hashlib
+import json
 import uuid
 
 import pytest
+import yaml
 
 from src.models.orm.applications import Application
 from src.models.orm.solutions import Solution
@@ -115,6 +119,48 @@ def _app_entry(app_id: str, slug: str) -> dict:
     }
 
 
+def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40, source_version=None):
+    from bifrost.solution_package_delivery import build_solution_package_archive, review_solution_package_source
+    from bifrost.workspace_release import canonical_digest
+    from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution, VerifiedAuthoredSolutionFile
+    from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
+    from tests.unit.test_solution_package_delivery import recipe, source
+
+    files = source()
+    if runtime:
+        files["functions/main.py"] = b'''from bifrost import workflow
+@workflow(effects=[], enforced_bounds={"max_duration_seconds": 30, "max_external_calls": 1, "max_records_read": 1, "max_output_bytes": 4096})
+def main():
+    return {"ok": True}
+'''
+        files["functions/main.py"] = files["functions/main.py"].replace(
+            b"def main():", f"def main({function_args}):".encode())
+    files["bifrost.solution.yaml"] = f"slug: {sol.slug}\nname: APP\n".encode()
+    if source_version is not None:
+        files["bifrost.solution.yaml"] += f"version: {source_version}\n".encode()
+    app_manifest = yaml.safe_load(files[".bifrost/apps.yaml"])
+    for app in app_manifest["apps"].values():
+        app.update(name="Example", slug=f"example-{sol.id.hex[:8]}", access_level=app_access_level)
+    files[".bifrost/apps.yaml"] = yaml.safe_dump(app_manifest).encode()
+    contract = recipe(files)
+    subpath = f"solutions/{sol.slug}"
+    contract.update(solution_id=str(sol.id), repo_subpath=subpath)
+    modes = {path: "100644" for path in files}
+    proof = review_solution_package_source(contract, files, modes, source_commit_sha=source_commit_sha, source_tree_sha="b" * 40)
+    authored = VerifiedAuthoredSolution(
+        commit_sha=source_commit_sha, tree_sha="b" * 40, subtree_sha="c" * 40,
+        solution_slug=sol.slug, repo_subpath=subpath, source_content_id="sha256:" + "d" * 64,
+        source_files=tuple(VerifiedAuthoredSolutionFile(
+            path=subpath + "/" + path, mode="100644",
+            sha256=hashlib.sha256(raw).hexdigest(), size=len(raw),
+        ) for path, raw in files.items()), files=files,
+    )
+    evidence = {"schema_version": "bifrost.solution-package-git-source/v1", "package": proof}
+    return VerifiedSolutionPackageSource(
+        authored, build_solution_package_archive(files, modes), json.dumps(evidence).encode(), canonical_digest(evidence)
+    )
+
+
 @pytest.mark.e2e
 class TestSolutionAppDeploy:
     async def _install(self, db, org_id=None) -> Solution:
@@ -128,6 +174,188 @@ class TestSolutionAppDeploy:
         await db.flush()
         return sol
 
+    @pytest.mark.parametrize("successor", [False, True])
+    async def test_reviewed_complete_package_prepares_without_mutable_publication(
+        self, db_session, _stub_app_build, seed_user, successor
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import select
+        from src.models.orm.solution_deployments import SolutionDeployment
+        from src.repositories.solution_deployments import SolutionDeploymentRepository
+        from src.services.solutions.package_controls import capture_package_controls
+        from src.services.solutions.storage import SolutionStorage
+
+        sol = await self._install(db_session)
+        previous = None
+        if successor:
+            previous = uuid.uuid4()
+            db_session.add(SolutionDeployment(
+                id=previous, solution_id=sol.id, organization_id=None, created_by=seed_user.id,
+                state="draft", bundle_hash="sha256:" + "1" * 64, compiled_manifest={},
+                compiled_manifest_hash="sha256:" + "2" * 64, resolution_map={},
+                resolution_map_hash="sha256:" + "3" * 64, source_artifact_key="test/source.zip",
+                runtime_storage_prefix="test/runtime/",
+            ))
+            await db_session.flush()
+            repository = SolutionDeploymentRepository(db_session)
+            for old_state, new_state in (
+                ("draft", "building"), ("building", "validated"),
+                ("validated", "ready"), ("ready", "activating"),
+            ):
+                await repository.transition(previous, None, expected_state=old_state, new_state=new_state)
+            assert await repository.compare_and_set_active_deployment(
+                sol.id, None, expected_active_deployment_id=None, new_active_deployment_id=previous,
+            )
+            await repository.transition(previous, None, expected_state="activating", new_state="active")
+        source = _reviewed_package_source(sol)
+        controls = await capture_package_controls(db_session, sol.id)
+        prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
+            source, expected_active_deployment_id=previous,
+            expected_controls_digest=canonical_digest(controls),
+        )
+        assert len(prepared.bundle.workflows) == len(prepared.bundle.tables) == len(prepared.bundle.apps) == 1
+        assert prepared.bundle.file_locations == ["audit-evidence"]
+        assert len(prepared.compiled_apps) == 1
+        assert prepared.source_bundle.python_files["modules/__init__.py"] == ""
+        assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sol.id)) == previous
+        assert _stub_app_build == {}
+        assert await SolutionStorage(sol.id).list("") == []
+        assert not hasattr(prepared, "finalize_s3")
+
+    @pytest.mark.parametrize("drift", ["controls", "pointer", "archive"])
+    async def test_reviewed_package_rejects_changed_preflight_before_preparation(
+        self, db_session, _stub_app_build, drift
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import capture_package_controls
+
+        sol = await self._install(db_session)
+        source = _reviewed_package_source(sol)
+        digest = canonical_digest(await capture_package_controls(db_session, sol.id))
+        expected_pointer = None
+        if drift == "controls":
+            sol.allow_inbound_access = False
+            await db_session.flush()
+        elif drift == "pointer":
+            expected_pointer = uuid.uuid4()
+        else:
+            source = replace(source, source_archive=source.source_archive + b"extra")
+        with pytest.raises(SolutionDeployConflict):
+            await SolutionDeployer(db_session).prepare_reviewed_package(
+                source, expected_active_deployment_id=expected_pointer, expected_controls_digest=digest,
+            )
+        assert _stub_app_build == {}
+
+    async def test_reviewed_package_control_change_rolls_back_complete_preparation(
+        self, db_session, _stub_app_build
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import capture_package_controls
+
+        sol = await self._install(db_session)
+        solution_id = sol.id
+        deployer = SolutionDeployer(db_session)
+        await deployer.prepare_reviewed_package(
+            _reviewed_package_source(sol), expected_active_deployment_id=None,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sol.id)),
+        )
+        before = await capture_package_controls(db_session, sol.id)
+        with pytest.raises(SolutionDeployConflict, match="installed controls: applications"):
+            await deployer.prepare_reviewed_package(
+                _reviewed_package_source(sol, app_access_level="everyone"),
+                expected_active_deployment_id=None, expected_controls_digest=canonical_digest(before),
+            )
+        assert await capture_package_controls(db_session, solution_id) == before
+        assert _stub_app_build == {}
+
+    async def test_reviewed_package_scope_check_refreshes_a_cached_target(
+        self, db_session, _stub_app_build
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import update
+        from src.models.orm.organizations import Organization
+        from src.services.solutions.package_controls import capture_package_controls
+
+        sol = await self._install(db_session)
+        source = _reviewed_package_source(sol)
+        organization = Organization(id=uuid.uuid4(), name="Changed scope", created_by="test@example.com")
+        db_session.add(organization)
+        await db_session.flush()
+        await db_session.execute(update(Solution).where(Solution.id == sol.id).values(
+            organization_id=organization.id,
+        ).execution_options(synchronize_session=False))
+        # The ORM identity map is deliberately stale, while the explicit-column
+        # snapshot observes the current database scope.
+        assert sol.organization_id is None
+        digest = canonical_digest(await capture_package_controls(db_session, sol.id))
+        with pytest.raises(SolutionDeployConflict, match="target/scope differs"):
+            await SolutionDeployer(db_session).prepare_reviewed_package(
+                source, expected_active_deployment_id=None, expected_controls_digest=digest,
+            )
+        assert _stub_app_build == {}
+
+    async def test_preparation_retains_the_complete_mixed_bundle_before_upload(
+        self, db_session, _stub_app_build
+    ):
+        sol = await self._install(db_session)
+        portable_app, portable_workflow, portable_table = (
+            uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
+        code = "def run():\n    return {'ok': True}\n"
+        bundle = SolutionBundle(
+            solution=sol,
+            python_files={"workflows/run.py": code},
+            workflows=[{
+                "id": str(portable_workflow), "name": "Run", "function_name": "run",
+                "path": "workflows/run.py",
+            }],
+            apps=[_app_entry(str(portable_app), "mixed-" + sol.slug)],
+            tables=[{
+                "id": str(portable_table), "name": "evidence", "schema": {},
+                "policies": None,
+            }],
+            file_locations=["audit-evidence"],
+        )
+        result = await SolutionDeployer(db_session).deploy(bundle)
+        assert _stub_app_build == {}  # No runtime object uploaded or activated.
+        assert result.prepared is not None
+        prepared = result.prepared
+        assert prepared.source_bundle is bundle
+        assert prepared.source_bundle.apps[0]["id"] == str(portable_app)
+        assert prepared.bundle.python_files == {"workflows/run.py": code}
+        assert prepared.bundle.file_locations == ["audit-evidence"]
+        for rows, portable in (
+            (prepared.bundle.apps, portable_app),
+            (prepared.bundle.workflows, portable_workflow),
+            (prepared.bundle.tables, portable_table),
+        ):
+            assert len(rows) == 1
+            assert uuid.UUID(rows[0]["id"]) == solution_entity_id(sol.id, portable)
+        assert len(prepared.compiled_apps) == 1
+        compiled = prepared.compiled_apps[0]
+        assert compiled.app_id == solution_entity_id(sol.id, portable_app)
+        assert compiled.solution_id == sol.id
+        assert compiled.expected_old_deployment_id is None
+        assert compiled.runtime_pin["deployment_id"] == str(compiled.deployment_id)
+        assert compiled.runtime_pin["output_hashes"] == {
+            path: hashlib.sha256(raw).hexdigest() for path, raw in compiled.dist.items()
+        }
+        app = await db_session.get(Application, compiled.app_id)
+        assert app.active_deployment_id is None
+        # The caller controls the complete publication transaction. Rolling it
+        # back also rolls back the App pointer; the helper cannot commit alone.
+        nested = await db_session.begin_nested()
+        await SolutionDeployer(db_session)._activate_compiled_dists_in_transaction(
+            db_session, list(prepared.compiled_apps)
+        )
+        await db_session.refresh(app)
+        assert app.active_deployment_id == compiled.deployment_id
+        await nested.rollback()
+        await db_session.refresh(app)
+        assert app.active_deployment_id is None
+        assert _stub_app_build == {}
+        assert result.workflows_upserted == result.tables_upserted == result.apps_upserted == 1
+
     @pytest.mark.parametrize("source_files,source_available", [
         ({}, False),
         ({"package.json": "{}"}, False),
@@ -139,6 +367,18 @@ class TestSolutionAppDeploy:
         db = db_session
         sol = await self._install(db)
         app_id = str(uuid.uuid4())
+
+        from src.services.solutions import export as solution_export
+
+        build_zip = solution_export.build_workspace_zip
+        archives = []
+
+        def retain_actual_archive(bundle):
+            archive = build_zip(bundle)
+            archives.append(archive)
+            return archive
+
+        monkeypatch.setattr(solution_export, "build_workspace_zip", retain_actual_archive)
 
         entry = {**_app_entry(app_id, "dash"), "src_files": source_files}
         result = await SolutionDeployer(db).deploy(SolutionBundle(solution=sol, apps=[entry]))
@@ -160,6 +400,13 @@ class TestSolutionAppDeploy:
         assert app.deployed_at is not None
         assert app.repo_path is not None
         assert app.published_snapshot["sdk_source_available"] is source_available
+        # The existing service synthesizes and retains a zip for callers that
+        # supply a bundle directly. The pin must bind that actual archive.
+        assert len(archives) == 1
+        pin = app.published_snapshot["runtime_pin"]
+        assert pin["source_artifact_sha256"] == hashlib.sha256(archives[0]).hexdigest()
+        assert pin["application_id"] == str(app.id)
+        assert pin["deployment_id"] == str(app.active_deployment_id)
         assert app.sdk_fingerprint is None
 
     async def test_source_build_uploads_versioned_dist_and_stamps_sdk_after_upload(
@@ -536,7 +783,7 @@ class TestSolutionAppDeploy:
 
         assert deleted == [(app_id, old_deployment)]
 
-    async def test_activation_failure_deletes_new_uploads_and_preserves_old_pointers(
+    async def test_activation_failure_retains_uploads_and_preserves_old_pointers(
         self, db_session, monkeypatch
     ):
         from src.services.solutions import app_build
@@ -622,7 +869,8 @@ class TestSolutionAppDeploy:
         with pytest.raises(SolutionFinalizeIncomplete):
             await result.finalize_s3()
 
-        assert deleted == uploaded
+        assert uploaded
+        assert deleted == []
         for app_id, old_deployment in zip(app_ids, old_deployments):
             app = await db.get(Application, app_id)
             assert app.active_deployment_id == old_deployment

@@ -6137,6 +6137,10 @@ export interface paths {
         /**
          * Generate AI completion
          * @description Generate an AI completion using platform-configured LLM.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.complete_sdk_ai``), which the engine-local
+         *     dispatcher calls for the same inputs.
          */
         post: operations["cli_ai_complete_api_sdk_ai_complete_post"];
         delete?: never;
@@ -6157,6 +6161,15 @@ export interface paths {
         /**
          * Stream AI completion
          * @description Generate a streaming AI completion using SSE.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.stream_sdk_ai``), which the engine-local
+         *     dispatcher calls for the same inputs. Scope is resolved here —
+         *     before headers are sent — so authorization failures stay HTTP
+         *     status errors; everything after the stream starts surfaces as SSE
+         *     error events. Each shared payload dict is serialized to one
+         *     ``data:`` line, with the terminal ``[DONE]`` appended after the
+         *     done payload.
          */
         post: operations["cli_ai_stream_api_sdk_ai_stream_post"];
         delete?: never;
@@ -6175,6 +6188,10 @@ export interface paths {
         /**
          * Get AI model information
          * @description Get information about the configured LLM.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.get_sdk_model_info``), which the engine-local
+         *     dispatcher calls for the same inputs.
          */
         get: operations["cli_ai_info_api_sdk_ai_info_get"];
         put?: never;
@@ -8809,6 +8826,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/workflow-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get workflow resource report
+         * @description Get per-execution workflow resource usage for a time window. Platform admin only.
+         */
+        get: operations["get_workflow_resource_report_api_reports_workflow_resources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/ai/pricing": {
         parameters: {
             query?: never;
@@ -10782,6 +10819,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/github-package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver Github Package
+         * @description Capture protected complete source, then use the shared durable publisher.
+         */
+        post: operations["deliver_github_package_api_solutions__solution_id__deployments_github_package_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github Package
+         * @description Same source-scoped identity, independently verified original-job result.
+         */
+        post: operations["inspect_github_package_api_solutions__solution_id__deployments_github_package_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Github Package
+         * @description Current Main may request readback of the target's original uncertain job.
+         *
+         *     A returned older job does not certify this request's newer source. There is
+         *     no fresh source capture or publication in this operation.
+         */
+        post: operations["recover_github_package_api_solutions__solution_id__deployments_github_package_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/github-source": {
         parameters: {
             query?: never;
@@ -11628,6 +11728,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{app_id}/github-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Github App Source
+         * @description Enqueue a source-scoped App publication; a reused job proves only its original source.
+         */
+        post: operations["publish_github_app_source_api_applications__app_id__github_source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/github-source/{job_id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github App Publication
+         * @description Scoped original-job readback, including a lost accepted/terminal response.
+         *
+         *     A newer request may observe an older deduplicated job; its original source
+         *     identity is retained. This route never enqueues, resumes or publishes work.
+         */
+        post: operations["inspect_github_app_publication_api_applications__app_id__github_source__job_id__inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{app_id}/publish": {
         parameters: {
             query?: never;
@@ -11646,7 +11789,9 @@ export interface paths {
          *     ``/api/platform-jobs/{id}`` or subscribe to the caller's notification
          *     WebSocket channel for progress. A repeated
          *     request while the same app is queued or running returns the existing
-         *     operation instead of launching a conflicting publish.
+         *     operation instead of launching a conflicting publish. If that operation
+         *     retained uncertain publication evidence, the same requester resumes exact
+         *     readback on the original job. It never builds or republishes that intent.
          */
         post: operations["publish_application_api_applications__app_id__publish_post"];
         delete?: never;
@@ -12976,10 +13121,7 @@ export interface paths {
         };
         /**
          * Fetch Requirements
-         * @description Fetch requirements.txt content.
-         *
-         *     Returns JSON: {"content": "...", "hash": "..."} or 404 if none exists.
-         *     Used by the child's install_requirements() when Redis is cold.
+         * @description Return the existing requirements.txt HTTP contract for external callers.
          */
         get: operations["fetch_requirements_api_sdk_requirements_get"];
         put?: never;
@@ -13429,7 +13571,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Models */
             models: components["schemas"]["LLMModelInfo"][];
         };
@@ -13441,7 +13583,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Api Key */
             api_key: string;
             /** Endpoint */
@@ -13460,7 +13602,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
             /** Api Key Set */
@@ -13496,7 +13638,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
             /** Anthropic Prompt Cache Supported */
@@ -13507,7 +13649,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Provider */
-            provider?: ("openai" | "anthropic" | "google" | "openrouter" | "openai_compatible") | null;
+            provider?: ("openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go") | null;
             /** Api Key */
             api_key?: string | null;
             /** Endpoint */
@@ -14753,6 +14895,20 @@ export interface components {
             };
         };
         /**
+         * ApplicationGitSourcePublicationRequest
+         * @description Exact protected source identity; no uploaded bytes or App control edits.
+         */
+        ApplicationGitSourcePublicationRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Ci Run Id */
+            ci_run_id: number;
+            /** Ci Run Attempt */
+            ci_run_attempt: number;
+            /** Artifact Digest */
+            artifact_digest: string;
+        };
+        /**
          * ApplicationListResponse
          * @description Response for listing applications.
          */
@@ -15313,6 +15469,11 @@ export interface components {
              * @description Event source: 'http', 'sso_sync', 'scheduler', 'cli', ...
              */
             source: string;
+            /**
+             * Execution Id
+             * @description Workflow execution that produced the event, when supported
+             */
+            execution_id?: string | null;
             /** @description Who performed the action */
             actor: components["schemas"]["AuditLogActor"];
             /** Ip Address */
@@ -17249,6 +17410,10 @@ export interface components {
                 [key: string]: components["schemas"]["DependencyResolution"];
             };
             git?: components["schemas"]["DeploymentGitProvenance"];
+            /** Package Evidence */
+            package_evidence?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
         };
         /**
          * ConditionalDocumentUpdate
@@ -31274,6 +31439,19 @@ export interface components {
             readme?: string | null;
         };
         /**
+         * SolutionPackageRecoveryResponse
+         * @description An object envelope even when there is no older intent to reconcile.
+         */
+        SolutionPackageRecoveryResponse: {
+            /**
+             * Schema Version
+             * @default bifrost.solution-package-recovery/v1
+             * @constant
+             */
+            schema_version: "bifrost.solution-package-recovery/v1";
+            job: components["schemas"]["PlatformJobPublic"] | null;
+        };
+        /**
          * SolutionReadme
          * @description GET/PUT response shape for an install's README markdown.
          */
@@ -33787,6 +33965,143 @@ export interface components {
              * @default false
              */
             disable_global_key: boolean;
+        };
+        /**
+         * WorkflowResourceReport
+         * @description Response for the workflow resource report endpoint.
+         */
+        WorkflowResourceReport: {
+            summary: components["schemas"]["WorkflowResourceSummary"];
+            /** Runs */
+            runs?: components["schemas"]["WorkflowResourceRun"][];
+            /** Workflows */
+            workflows?: components["schemas"]["WorkflowResourceWorkflow"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 25
+             */
+            page_size: number;
+        };
+        /**
+         * WorkflowResourceRun
+         * @description One execution row in the workflow resource report.
+         */
+        WorkflowResourceRun: {
+            /** Execution Id */
+            execution_id: string;
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Status */
+            status: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Cpu Total Seconds */
+            cpu_total_seconds?: number | null;
+            /** Avg Cpu Cores */
+            avg_cpu_cores?: number | null;
+            /** Peak Cpu Cores */
+            peak_cpu_cores?: number | null;
+            /** Peak Process Rss Bytes */
+            peak_process_rss_bytes?: number | null;
+            /** Ai Cost */
+            ai_cost?: string;
+            /**
+             * Ai Calls
+             * @default 0
+             */
+            ai_calls: number;
+            /**
+             * Ai Tokens
+             * @default 0
+             */
+            ai_tokens: number;
+        };
+        /**
+         * WorkflowResourceSummary
+         * @description Summary totals for the workflow resource report.
+         */
+        WorkflowResourceSummary: {
+            /**
+             * Run Count
+             * @description Number of executions in the window
+             * @default 0
+             */
+            run_count: number;
+            /**
+             * Total Cpu Seconds
+             * @description Sum of CPU time in seconds
+             * @default 0
+             */
+            total_cpu_seconds: number;
+            /**
+             * Total Duration Ms
+             * @description Sum of execution durations in milliseconds
+             * @default 0
+             */
+            total_duration_ms: number;
+            /**
+             * Total Ai Cost
+             * @description Sum of AI cost in USD
+             */
+            total_ai_cost?: string;
+            /**
+             * Total Ai Calls
+             * @description Total number of AI calls
+             * @default 0
+             */
+            total_ai_calls: number;
+        };
+        /**
+         * WorkflowResourceWorkflow
+         * @description One workflow-aggregated row in the workflow resource report.
+         */
+        WorkflowResourceWorkflow: {
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Workflow Name */
+            workflow_name: string;
+            /**
+             * Run Count
+             * @default 0
+             */
+            run_count: number;
+            /**
+             * Failed Count
+             * @default 0
+             */
+            failed_count: number;
+            /**
+             * Total Cpu Seconds
+             * @default 0
+             */
+            total_cpu_seconds: number;
+            /**
+             * Total Duration Ms
+             * @default 0
+             */
+            total_duration_ms: number;
+            /** Max Peak Cpu Cores */
+            max_peak_cpu_cores?: number | null;
+            /** Max Peak Process Rss Bytes */
+            max_peak_process_rss_bytes?: number | null;
+            /** Total Ai Cost */
+            total_ai_cost?: string;
         };
         /** WorkflowRetirementConsumerInventory */
         WorkflowRetirementConsumerInventory: {
@@ -43254,6 +43569,8 @@ export interface operations {
                 outcome?: string | null;
                 /** @description Filter by acting user ID */
                 user_id?: string | null;
+                /** @description Filter by workflow execution ID */
+                execution_id?: string | null;
                 /** @description Start of time range (inclusive) */
                 start_date?: string | null;
                 /** @description End of time range (inclusive) */
@@ -51808,6 +52125,56 @@ export interface operations {
             };
         };
     };
+    get_workflow_resource_report_api_reports_workflow_resources_get: {
+        parameters: {
+            query: {
+                /** @description Start of window (timezone-aware ISO) */
+                started_after: string;
+                /** @description End of window (timezone-aware ISO) */
+                started_before: string;
+                /** @description Aggregate by run or workflow */
+                view?: "runs" | "workflows";
+                /** @description Sort runs by column */
+                sort?: "cpu" | "elapsed" | "memory" | "ai" | "started";
+                /** @description 1-based page number */
+                page?: number;
+                /** @description Items per page (max 100) */
+                page_size?: number;
+                /** @description Filter by organization ID */
+                org_id?: string | null;
+                /** @description Filter by workflow ID */
+                workflow_id?: string | null;
+                /** @description Partial workflow name filter */
+                workflow?: string | null;
+                /** @description Filter by execution status */
+                status?: components["schemas"]["ExecutionStatus"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowResourceReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_pricing_api_settings_ai_pricing_get: {
         parameters: {
             query?: never;
@@ -55429,6 +55796,115 @@ export interface operations {
             };
         };
     };
+    deliver_github_package_api_solutions__solution_id__deployments_github_package_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_github_package_api_solutions__solution_id__deployments_github_package_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_github_package_api_solutions__solution_id__deployments_github_package_recover_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionPackageRecoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     deliver_github_source_api_solutions__solution_id__deployments_github_source_post: {
         parameters: {
             query?: never;
@@ -57276,6 +57752,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_github_app_source_api_applications__app_id__github_source_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGitSourcePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_github_app_publication_api_applications__app_id__github_source__job_id__inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGitSourcePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
                 };
             };
             /** @description Validation Error */
