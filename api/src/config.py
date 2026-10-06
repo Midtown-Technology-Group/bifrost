@@ -15,6 +15,7 @@ from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
 
 
 def default_temp_location() -> str:
@@ -44,6 +45,10 @@ class Settings(BaseSettings):
             "Explicit protected-Git deployment trust policy. Separate from source "
             "declaration OIDC; absent disables automated Solution delivery."
         ),
+    )
+    inline_app_git_delivery_policy: InlineAppGitDeliveryPolicy | None = Field(
+        default=None,
+        description="Reviewed existing inline App publication enrollment; absent disables Git delivery.",
     )
 
     model_config = SettingsConfigDict(

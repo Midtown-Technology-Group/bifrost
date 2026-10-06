@@ -10,21 +10,33 @@ Unlike app_compiler (per-file Babel), this pipeline:
   3. Runs esbuild with bundle+splitting to produce hashed chunks
   4. Uploads artifacts to _apps/{app_id}/{mode}/
   5. Writes manifest.json describing the bundle
+
+Successful manifests also carry ``bifrost.inline-app-build/v1`` evidence:
+hashes of the materialized source before generated files/Tailwind transforms,
+and hashes of every emitted output. Source excludes app.yaml and temporary
+editor files, matching materialization. Automatic migration runs before this
+capture. These are build-byte attestations, not Git, SDK/toolchain or full App
+definition provenance. Existing manifests without evidence remain renderable;
+they cannot satisfy a reviewed source-to-build verification check.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES
 from src.core.log_safety import log_safe
 from src.core.malloc import trim_malloc
 from src.services.app_storage import AppStorageService
+from src.services.inline_app_source import InlineAppSourceSnapshot
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
@@ -34,9 +46,8 @@ BUNDLE_SCRIPT = Path(__file__).parent / "bundle.js"
 # Bump this whenever the bundler or auto-migrator's output semantics change.
 # Manifest.json records this; readers compare against it and trigger a
 # rebuild (which runs auto-migration first) when they see an older value.
-# This is how a deploy transparently heals every app's bundle — the first
-# viewer after deploy pays a ~200ms migrate+rebuild cost, subsequent views
-# are cached.
+# Preview reads may migrate/rebuild stale bundles. Live reads fail closed
+# and require explicit publication; a viewer never rebuilds production source.
 SCHEMA_VERSION = 5
 
 # CSS file the bundler synthesizes from per-app Tailwind compilation.
@@ -58,7 +69,7 @@ DEFAULT_EXTERNALS = [
     "tailwind-merge",
 ]
 
-Mode = Literal["preview", "live"]
+Mode = Literal["preview", "live", "capture"]
 
 
 # Canonical set of names the `bifrost` package exposes to user code.
@@ -106,6 +117,8 @@ class BundleResult:
     errors: list[BundleMessage] | None = None
     warnings: list[BundleMessage] | None = None
     duration_ms: int = 0
+    # Server-internal immutable buffers, not a new API/publication contract.
+    publication_files: Mapping[str, bytes] | None = None
 
 
 class BundlerService:
@@ -119,6 +132,8 @@ class BundlerService:
         repo_prefix: str,
         mode: Mode,
         dependencies: dict[str, str] | None = None,
+        *,
+        source_snapshot: InlineAppSourceSnapshot | None = None,
     ) -> BundleResult:
         """Build an app bundle.
 
@@ -126,7 +141,8 @@ class BundlerService:
             app_id: Application UUID (string)
             repo_prefix: Repo path prefix of the app source
                 (e.g. "apps/braytel-crm/"). Must end with "/".
-            mode: "preview" or "live"
+            mode: "preview", "live", or "capture". Capture returns immutable
+                output buffers without writing preview or live storage.
             dependencies: npm deps from Application.dependencies — treated
                 as externals; resolved in the browser via import map
                 pointing at esm.sh.
@@ -137,7 +153,11 @@ class BundlerService:
             manifest.json is NOT overwritten — last good bundle stays live.
         """
         try:
-            return await self._build(app_id, repo_prefix, mode, dependencies)
+            if mode not in {"preview", "live", "capture"}:
+                raise ValueError("Unknown inline App build mode")
+            if (mode == "capture") != (source_snapshot is not None):
+                raise ValueError("Captured source builds require capture mode and never write preview/live")
+            return await self._build(app_id, repo_prefix, mode, dependencies, source_snapshot=source_snapshot)
         finally:
             # Every build materializes a source tree + holds esbuild output
             # bytes in Python before uploading to S3. Glibc retains the
@@ -151,10 +171,12 @@ class BundlerService:
         repo_prefix: str,
         mode: Mode,
         dependencies: dict[str, str] | None,
+        *,
+        source_snapshot: InlineAppSourceSnapshot | None = None,
     ) -> BundleResult:
         if not repo_prefix.endswith("/"):
             repo_prefix += "/"
-        dependencies = dependencies or {}
+        dependencies = dict(dependencies or {})
 
         with tempfile.TemporaryDirectory(prefix="bifrost-bundle-") as tmp:
             tmp_path = Path(tmp)
@@ -164,7 +186,26 @@ class BundlerService:
             out_dir.mkdir()
 
             # 1. Materialize app source from _repo to tempdir
-            sources = await self._materialize_source(src_dir, repo_prefix)
+            migrated_paths: list[str] = []
+            if source_snapshot is None:
+                sources = await self._materialize_source(src_dir, repo_prefix)
+            else:
+                # Migration operates only on this captured temp tree. Editor
+                # source and previews remain independent of production input.
+                from bifrost.migrate_imports import load_lucide_icon_names, migrate_app
+
+                sources = source_snapshot.materialize(src_dir)
+                migration = await asyncio.to_thread(
+                    migrate_app, src_dir, PLATFORM_EXPORT_NAMES, load_lucide_icon_names()
+                )
+                for item in migration:
+                    if item.changed:
+                        relative_path = item.path.resolve().relative_to(src_dir.resolve()).as_posix()
+                        if relative_path not in sources:
+                            raise ValueError("Migration output is outside the captured App source")
+                        item.path.write_text(item.updated, encoding="utf-8")
+                        migrated_paths.append(relative_path)
+                migrated_paths.sort()
             if not sources:
                 return BundleResult(
                     success=False,
@@ -172,6 +213,14 @@ class BundlerService:
                         text=f"No source files for app {app_id} at {repo_prefix}",
                     )],
                 )
+
+            # Capture exactly the bytes materialized for this build, before
+            # Tailwind and generated runtime files transform the temp tree.
+            # This proves build inputs, not a protected Git commit or app.yaml.
+            source_hashes = {
+                path: "sha256:" + hashlib.sha256((src_dir / path).read_bytes()).hexdigest()
+                for path in sorted(sources)
+            }
 
             # 2. Run the per-app Tailwind v4 pipeline. This compiles
             #    arbitrary-value utilities (bg-[color:var(--x)],
@@ -211,7 +260,7 @@ class BundlerService:
                 "source_dir": str(src_dir),
                 "out_dir": str(out_dir),
                 "entry": entry_file,
-                "mode": mode,
+                "mode": "live" if mode == "capture" else mode,
                 "externals": DEFAULT_EXTERNALS + user_deps,
             }
             result = await self._run_esbuild(build_cfg)
@@ -238,12 +287,17 @@ class BundlerService:
 
             # 6. Upload artifacts to S3
             uploaded: list[str] = []
+            output_hashes: dict[str, str] = {}
+            publication_files: dict[str, bytes] = {}
             for out in result["outputs"]:
                 rel = out["path"]
                 data = (out_dir / rel).read_bytes()
-                await self._app_storage.write_preview_file(app_id, rel, data) \
-                    if mode == "preview" \
-                    else await self._write_live(app_id, rel, data)
+                output_hashes[rel] = "sha256:" + hashlib.sha256(data).hexdigest()
+                publication_files[rel] = data
+                if mode == "preview":
+                    await self._app_storage.write_preview_file(app_id, rel, data)
+                elif mode == "live":
+                    await self._write_live(app_id, rel, data)
                 uploaded.append(rel)
 
             # 7. Write manifest — only on success, so failures preserve
@@ -255,13 +309,27 @@ class BundlerService:
                 "outputs": uploaded,
                 "duration_ms": duration_ms,
                 "dependencies": dependencies,
+                "build_evidence": {
+                    "schema_version": "bifrost.inline-app-build/v1",
+                    "materialized_source_hashes": source_hashes,
+                    "output_hashes": output_hashes,
+                },
             }
+            if source_snapshot is not None:
+                manifest["source_snapshot_evidence"] = {
+                    "schema_version": "bifrost.inline-app-source-snapshot/v1",
+                    "authored_source_hashes": source_snapshot.hashes(),
+                    "compiler_source_hashes": source_hashes,
+                    "migration_changed_paths": migrated_paths,
+                    "metadata_not_applied": ["app.yaml"],
+                }
             manifest_bytes = json.dumps(manifest, indent=2).encode()
+            publication_files["manifest.json"] = manifest_bytes
             if mode == "preview":
                 await self._app_storage.write_preview_file(
                     app_id, "manifest.json", manifest_bytes
                 )
-            else:
+            elif mode == "live":
                 await self._write_live(app_id, "manifest.json", manifest_bytes)
 
             logger.info(
@@ -281,6 +349,7 @@ class BundlerService:
                 ),
                 warnings=warnings,
                 duration_ms=duration_ms,
+                publication_files=MappingProxyType(publication_files),
             )
 
     async def _materialize_source(

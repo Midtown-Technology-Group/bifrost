@@ -860,11 +860,13 @@ async def get_bundle_asset(
     else:
         media_type = "application/octet-stream"
 
-    # Hashed filenames are immutable — cache aggressively.
+    # The manifest is a mutable publication pointer. Only hashed output
+    # filenames are immutable; browser readback must observe a fresh manifest.
     return Response(
         content=data,
         media_type=media_type,
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={"Cache-Control": "no-store" if filename == "manifest.json"
+                 else "public, max-age=31536000, immutable"},
     )
 
 

@@ -112,19 +112,19 @@ async def db_session(async_engine):
                 await outer.rollback()
 
 
-async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None):
+async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, source_pair=None, organization_id=PROVIDER_ORG_ID, root_file_bindings=None, source_commit_sha=None, legacy_registration_name=None, solution_id=None, workflow_id=None, source_path=None, solution_slug=None):
     """One synthetic adopted runtime shared by source and Git delivery proofs."""
     from types import SimpleNamespace
     from src.services.solutions.deployment_manifest import DeploymentGitProvenance
     from src.services.solutions import deployment_api, deployment_resources, resource_delivery, source_revision, workflow_revision
 
     solution_id, base_id, revision_id, workflow_id = (
+        solution_id or uuid4(),
         uuid4(),
         uuid4(),
-        uuid4(),
-        uuid4(),
+        workflow_id or uuid4(),
     )
-    path = f"features/revision_{uuid4().hex}.py"
+    path = source_path or f"features/revision_{uuid4().hex}.py"
     old_source = b"from bifrost import tables\nasync def run():\n    return 1\n"
     new_source = b"from bifrost import tables\nasync def run():\n    return 2\n"
     if source_pair is not None:
@@ -184,7 +184,7 @@ async def _seed_adopted_revision(db_session, platform_admin, monkeypatch, *, sou
     )
     solution = Solution(
         id=solution_id,
-        slug=f"source-revision-{uuid4().hex[:12]}",
+        slug=solution_slug or f"source-revision-{uuid4().hex[:12]}",
         name="Source revision test",
         organization_id=organization_id,
         execution_runtime_mode="deployment-v1",
