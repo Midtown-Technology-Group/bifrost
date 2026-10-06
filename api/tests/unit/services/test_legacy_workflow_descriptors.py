@@ -125,3 +125,90 @@ def test_adoption_compiler_preserves_json_lists_before_freezing_descriptor_evide
     assert dumped["definition"]["role_ids"] == []
     assert dumped["definition"]["effects"] == []
     assert dumped["definition"]["allowed_methods"] == ["POST"]
+
+
+def test_adoption_compiler_seals_tags_and_tool_description_without_registry_projection():
+    from bifrost.workflow_parameters import WorkflowParameterCompiler
+    from bifrost.workspace_release import canonical_digest
+
+    from src.services.solutions.reviewed_workflow_artifact import compile_reviewed_workflows
+    from src.services.solutions.workflow_revision_recipe import ReviewedWorkflowRecipe
+
+    row, _ = _registration()
+    row.type = "tool"
+    row.retry_policy = {"version": "execution-retry/v1", "enabled": False, "max_attempts": 2, "retry_on": []}
+    snapshot = _workflow_snapshot(row)
+    controls = {key: snapshot[key] for key in (
+        "display_name", "execution_mode", "timeout_seconds", "cache_ttl_seconds", "time_saved", "value",
+        "retry_policy", "access_level", "role_ids", "endpoint_enabled", "public_endpoint", "allowed_methods",
+        "disable_global_key",
+    )}
+    recipe = ReviewedWorkflowRecipe.model_validate({
+        "schema_version": "bifrost.solution-workflow-delivery/v1", "solution_id": str(uuid4()),
+        "files": {row.path: "solutions/task.py"}, "workflows": [{
+            "id": str(row.id), "path": row.path, "function_name": "run", "organization_id": None,
+            "controls": controls, "runtime_bounds": {"max_duration_seconds": 60,
+                "max_external_calls": 10, "max_records_read": 100, "max_output_bytes": 4096},
+        }],
+    })
+    files = {row.path: b"from bifrost import tool\n@tool(name='Reviewed task', description='New source help', tags=['reviewed'], effects=[])\nasync def run():\n    return 1\n"}
+    unmarked = next(iter(compile_reviewed_workflows(recipe, files, {}, WorkflowParameterCompiler()).values()))
+    row.parameters_schema = unmarked.model_dump(mode="json")["definition"]["parameters_schema"]
+    baseline = _workflow_snapshot(row)
+    entity = next(iter(compile_reviewed_workflows(recipe, files, {}, WorkflowParameterCompiler(),
+        legacy_descriptor_snapshots={row.id: baseline}).values()))
+    _require_registration(row, entity)
+    evidence = entity.model_dump(mode="json")["definition"]["legacy_descriptor_evidence"]
+    assert evidence == {
+        "schema_version": "bifrost.solution-legacy-descriptors/v2",
+        "fields": {"description": None, "category": "General", "tags": [], "tool_description": None},
+        "content_hash": canonical_digest({"description": None, "category": "General", "tags": [], "tool_description": None}),
+    }
+    assert _workflow_snapshot(row) == baseline
+    assert entity.model_dump(mode="json")["definition"]["tags"] == ["reviewed"]
+    assert entity.definition["tool_description"] == "New source help"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("tags", ["changed"]), ("tool_description", "changed"),
+    ("organization_id", uuid4()), ("endpoint_enabled", True),
+    ("access_level", "authenticated"), ("parameters_schema", {"changed": True}),
+])
+def test_extended_descriptor_evidence_still_rejects_metadata_scope_auth_and_signature_drift(field, value):
+    row, definition = _registration()
+    definition.update(tags=["source-tag"], tool_description="source help")
+    definition["legacy_descriptor_evidence"] = legacy_descriptor_evidence(_workflow_snapshot(row), extended=True)
+    entity = _entity(row, definition)
+    setattr(row, field, value)
+    with pytest.raises(SolutionSourceRevisionError):
+        _require_registration(row, entity)
+
+
+def test_v1_evidence_cannot_hide_new_tag_or_tool_description_drift():
+    row, definition = _registration()
+    definition.update(tags=["source-tag"], tool_description="source help")
+    definition["legacy_descriptor_evidence"] = legacy_descriptor_evidence(_workflow_snapshot(row))
+    with pytest.raises(SolutionSourceRevisionError, match="registration differs"):
+        _require_registration(row, _entity(row, definition))
+
+
+@pytest.mark.parametrize("change", ["hash", "schema", "security_field", "missing_field", "tags", "tool_description"])
+def test_extended_evidence_shape_and_source_types_fail_closed(change):
+    row, definition = _registration()
+    definition.update(tags=["source-tag"], tool_description="source help")
+    evidence = legacy_descriptor_evidence(_workflow_snapshot(row), extended=True)
+    if change == "hash":
+        evidence["content_hash"] = "sha256:" + "0" * 64
+    elif change == "schema":
+        evidence["schema_version"] = "other"
+    elif change == "security_field":
+        evidence["fields"]["endpoint_enabled"] = False
+    elif change == "missing_field":
+        del evidence["fields"]["tool_description"]
+    elif change == "tags":
+        definition["tags"] = [1]
+    else:
+        definition["tool_description"] = False
+    definition["legacy_descriptor_evidence"] = evidence
+    with pytest.raises(SolutionSourceRevisionError):
+        _require_registration(row, _entity(row, definition))

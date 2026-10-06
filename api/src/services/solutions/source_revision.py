@@ -63,6 +63,7 @@ from src.services.solutions.shared_table_bindings import (
 _SOURCE_REVISION_MARKER = "bifrost.solution-source-revision/v1"
 _HANDOFF_MARKER = "bifrost.workspace-live-handoff/v1"
 _LEGACY_DESCRIPTORS = "bifrost.solution-legacy-descriptors/v1"
+_LEGACY_DESCRIPTORS_V2 = "bifrost.solution-legacy-descriptors/v2"
 _LEGACY_NAMES = "bifrost.solution-legacy-registration-name/v1"
 
 
@@ -74,12 +75,18 @@ class SolutionSourceRevisionConflict(SolutionSourceRevisionError):
     """The active base or review evidence changed."""
 
 
-def legacy_descriptor_evidence(snapshot: dict) -> dict:
+def legacy_descriptor_evidence(snapshot: dict, *, extended: bool = False) -> dict:
     """Retain installed display metadata that the source compiler cannot express."""
     fields = {key: snapshot[key] for key in ("description", "category")}
     if any(value is not None and not isinstance(value, str) for value in fields.values()):
         raise SolutionSourceRevisionError("legacy workflow descriptors are invalid")
-    return {"schema_version": _LEGACY_DESCRIPTORS, "fields": fields,
+    if extended:
+        tags, tool_description = snapshot["tags"], snapshot["tool_description"]
+        if (not isinstance(tags, list) or len(tags) > 100 or any(not isinstance(tag, str) for tag in tags)
+                or (tool_description is not None and not isinstance(tool_description, str))):
+            raise SolutionSourceRevisionError("legacy workflow descriptors are invalid")
+        fields.update(tags=list(tags), tool_description=tool_description)
+    return {"schema_version": _LEGACY_DESCRIPTORS_V2 if extended else _LEGACY_DESCRIPTORS, "fields": fields,
             "content_hash": canonical_digest(fields)}
 
 
@@ -228,13 +235,21 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
         # The compiler's source-derived descriptors remain in the executable
         # definition. Exact installed legacy descriptors are a separate sealed
         # observation; no security or identity field may enter this exception.
-        expected_legacy = legacy_descriptor_evidence(snapshot)
+        extended = isinstance(legacy, dict) and legacy.get("schema_version") == _LEGACY_DESCRIPTORS_V2
+        expected_legacy = legacy_descriptor_evidence(snapshot, extended=extended)
         if legacy != expected_legacy:
             raise SolutionSourceRevisionError("legacy workflow descriptors differ from immutable evidence")
         for key in ("description", "category"):
             if not isinstance(definition.get(key), str):
                 raise SolutionSourceRevisionError("source workflow descriptor must be a string")
             snapshot[key] = definition[key]
+        if extended:
+            tags, tool_description = definition.get("tags"), definition.get("tool_description")
+            if (not isinstance(tags, list) or len(tags) > 100 or any(not isinstance(tag, str) for tag in tags)
+                    or "tool_description" not in definition
+                    or (tool_description is not None and not isinstance(tool_description, str))):
+                raise SolutionSourceRevisionError("source workflow descriptors are invalid")
+            snapshot.update(tags=tags, tool_description=tool_description)
     if isinstance(workflow.parameters_schema, list):
         # Adoption attests the exact legacy representation after checking the
         # source signature. Preserve it in the registry until reviewed delivery
