@@ -133,14 +133,15 @@ def _reviewed_package_source(sol, *, app_access_level="authenticated"):
         app.update(name="Example", slug="example", access_level=app_access_level)
     files[".bifrost/apps.yaml"] = yaml.safe_dump(app_manifest).encode()
     contract = recipe(files)
-    contract.update(solution_id=str(sol.id), repo_subpath=f"solutions/{sol.slug}")
+    subpath = f"solutions/{sol.slug}"
+    contract.update(solution_id=str(sol.id), repo_subpath=subpath)
     modes = {path: "100644" for path in files}
     proof = review_solution_package_source(contract, files, modes, source_commit_sha="a" * 40, source_tree_sha="b" * 40)
     authored = VerifiedAuthoredSolution(
         commit_sha="a" * 40, tree_sha="b" * 40, subtree_sha="c" * 40,
-        solution_slug=sol.slug, repo_subpath=contract["repo_subpath"], source_content_id="sha256:" + "d" * 64,
+        solution_slug=sol.slug, repo_subpath=subpath, source_content_id="sha256:" + "d" * 64,
         source_files=tuple(VerifiedAuthoredSolutionFile(
-            path=contract["repo_subpath"] + "/" + path, mode="100644",
+            path=subpath + "/" + path, mode="100644",
             sha256=hashlib.sha256(raw).hexdigest(), size=len(raw),
         ) for path, raw in files.items()), files=files,
     )
@@ -168,6 +169,7 @@ class TestSolutionAppDeploy:
         self, db_session, _stub_app_build, seed_user, successor
     ):
         from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import select
         from src.models.orm.solution_deployments import SolutionDeployment
         from src.services.solutions.package_controls import capture_package_controls
         from src.services.solutions.storage import SolutionStorage
@@ -196,7 +198,7 @@ class TestSolutionAppDeploy:
         assert prepared.bundle.file_locations == ["audit-evidence"]
         assert len(prepared.compiled_apps) == 1
         assert prepared.source_bundle.python_files["modules/__init__.py"] == ""
-        assert sol.active_deployment_id == previous
+        assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sol.id)) == previous
         assert _stub_app_build == {}
         assert await SolutionStorage(sol.id).list("") == []
         assert not hasattr(prepared, "finalize_s3")
