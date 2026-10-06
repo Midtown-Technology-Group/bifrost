@@ -61,7 +61,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import Context, CurrentUser
+from src.core.auth import Context, CurrentEngineOrBypassUser, CurrentUser
 from src.core.principal import UserPrincipal
 from src.core.database import get_db
 from src.core.log_safety import log_safe
@@ -495,7 +495,7 @@ async def _resolve_sdk_org_id(
 )
 async def cli_get_config(
     request: CLIConfigGetRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> CLIConfigValue | None:
     """Get a config value via CLI API."""
@@ -578,7 +578,7 @@ async def cli_get_config(
 )
 async def cli_set_config(
     request: CLIConfigSetRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Set a config value via CLI API."""
@@ -653,7 +653,7 @@ async def cli_set_config(
 )
 async def cli_list_config(
     request: CLIConfigListRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """List all config values via CLI API."""
@@ -704,7 +704,7 @@ async def cli_list_config(
 )
 async def cli_delete_config(
     request: CLIConfigDeleteRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> bool:
     """Delete a config value via CLI API."""
@@ -839,7 +839,7 @@ async def _connection_is_declared(
 )
 async def sdk_integrations_get(
     request: SDKIntegrationsGetRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsGetResponse | None:
     """Get integration mapping data for an organization via SDK.
@@ -1148,7 +1148,7 @@ async def _build_oauth_data(
 )
 async def sdk_integrations_list_mappings(
     request: SDKIntegrationsListMappingsRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsListMappingsResponse | None:
     """List all mappings for an integration via SDK."""
@@ -1242,7 +1242,7 @@ async def sdk_integrations_list_mappings(
 )
 async def sdk_integrations_get_mapping(
     request: SDKIntegrationsGetMappingRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsMappingItem | None:
     """Get a specific integration mapping by org_id or entity_id via SDK."""
@@ -1332,7 +1332,7 @@ async def _sdk_find_integration_mapping(
 )
 async def sdk_integrations_upsert_mapping(
     request: SDKIntegrationsUpsertMappingRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsMappingItem:
     """Create or update an integration mapping for an organization via SDK."""
@@ -1440,7 +1440,7 @@ async def sdk_integrations_upsert_mapping(
 )
 async def sdk_integrations_delete_mapping(
     request: SDKIntegrationsDeleteMappingRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete an integration mapping for an organization via SDK."""
@@ -1496,7 +1496,7 @@ async def sdk_integrations_delete_mapping(
 )
 async def sdk_integrations_refresh_token(
     request: SDKIntegrationsRefreshTokenRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsRefreshTokenResponse:
     """Programmatically refresh an OAuth token for an integration.
@@ -2916,7 +2916,7 @@ def _deny_external_knowledge(current_user: UserPrincipal) -> None:
 )
 async def cli_knowledge_store(
     request: "CLIKnowledgeStoreRequest",
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Store a document with its embedding in the knowledge store."""
@@ -2974,7 +2974,7 @@ async def cli_knowledge_store(
 )
 async def cli_knowledge_store_many(
     request: "CLIKnowledgeStoreManyRequest",
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Store multiple documents with batch embedding."""
@@ -3112,7 +3112,7 @@ async def cli_knowledge_search(
 )
 async def cli_knowledge_delete(
     request: "CLIKnowledgeDeleteRequest",
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete a document by key from the knowledge store."""
@@ -3157,7 +3157,7 @@ async def cli_knowledge_delete(
 async def cli_knowledge_delete_namespace(
     namespace: str,
     scope: str | None = None,
-    current_user: CurrentUser = None,
+    current_user: CurrentEngineOrBypassUser = None,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete all documents in a namespace."""
@@ -3413,7 +3413,7 @@ async def download_sdk() -> Response:
 async def cli_create_table(
     request: SDKTableCreateRequest,
     ctx: Context,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKTableInfo:
     """Create a new table via SDK."""
@@ -3487,7 +3487,7 @@ async def cli_create_table(
 )
 async def cli_list_tables(
     request: SDKTableListRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[SDKTableInfo]:
     """List tables via SDK.

@@ -1490,6 +1490,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 delegated_is_superuser=pending.get("is_platform_admin", False),
                 delegated_is_provider_org=pending.get("is_provider_org", False),
                 delegated_is_external=pending.get("is_external", False),
+                caller_user_id=str(user_id) if user_id else None,
+                caller_organization_id=str(org_id) if org_id else None,
+                caller_email=user_email,
+                caller_name=user_name,
             )
 
             # Build context for worker process

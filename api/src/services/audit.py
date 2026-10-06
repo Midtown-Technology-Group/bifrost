@@ -88,6 +88,7 @@ async def emit_audit(
                 ip_address=actor.ip_address,
                 user_agent=actor.user_agent,
                 details=details,
+                execution_id=actor.execution_id,
             )
 
     try:

@@ -5544,6 +5544,9 @@ export interface paths {
          *     org. The optional ``org_id`` query parameter lets platform admins and
          *     provider-org members target another org for the session — gated by
          *     the same C2 rule the scope resolver applies elsewhere.
+         *
+         *     Context behavior lives in the shared service (``shared.sdk_context``),
+         *     which a worker-local engine child can call with the same inputs.
          */
         get: operations["get_dev_context_api_sdk_context_get"];
         put?: never;
@@ -5686,6 +5689,10 @@ export interface paths {
          *     2. Org-specific mapping: Returns mapping entity_id, config, and OAuth data
          *     3. Fallback to integration defaults: When no org mapping exists, returns
          *        integration.default_entity_id, integration-level config, and OAuth data
+         *
+         *     Scope resolution and response construction live in the shared
+         *     integrations service (``shared.sdk_integrations``), which the
+         *     worker-local engine child calls for the same inputs.
          */
         post: operations["sdk_integrations_get_api_sdk_integrations_get_post"];
         delete?: never;
@@ -5706,6 +5713,10 @@ export interface paths {
         /**
          * List all mappings for an integration
          * @description List all mappings for an integration via SDK.
+         *
+         *     Scope resolution and response construction live in the shared
+         *     integrations service (``shared.sdk_integrations``), which the
+         *     worker-local engine child calls for the same inputs.
          */
         post: operations["sdk_integrations_list_mappings_api_sdk_integrations_list_mappings_post"];
         delete?: never;
@@ -5726,6 +5737,10 @@ export interface paths {
         /**
          * Get a specific mapping by org_id or entity_id
          * @description Get a specific integration mapping by org_id or entity_id via SDK.
+         *
+         *     Scope resolution and response construction live in the shared
+         *     integrations service (``shared.sdk_integrations``), which the
+         *     worker-local engine child calls for the same inputs.
          */
         post: operations["sdk_integrations_get_mapping_api_sdk_integrations_get_mapping_post"];
         delete?: never;
@@ -5746,6 +5761,10 @@ export interface paths {
         /**
          * Create or update a mapping for an organization
          * @description Create or update an integration mapping for an organization via SDK.
+         *
+         *     Mutation rules live in the shared integrations service
+         *     (``shared.sdk_integrations``), which the worker-local engine child calls
+         *     for the same inputs.
          */
         post: operations["sdk_integrations_upsert_mapping_api_sdk_integrations_upsert_mapping_post"];
         delete?: never;
@@ -5766,6 +5785,10 @@ export interface paths {
         /**
          * Delete a mapping for an organization
          * @description Delete an integration mapping for an organization via SDK.
+         *
+         *     Mutation rules live in the shared integrations service
+         *     (``shared.sdk_integrations``), which the worker-local engine child calls
+         *     for the same inputs.
          */
         post: operations["sdk_integrations_delete_mapping_api_sdk_integrations_delete_mapping_post"];
         delete?: never;
@@ -5793,9 +5816,11 @@ export interface paths {
          *     The new token is persisted to the database so subsequent integrations.get() calls
          *     also benefit from the refreshed token.
          *
-         *     The HTTP refresh itself is delegated to the shared primitive
-         *     :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
-         *     only owns the provider lookup, context build, and persistence.
+         *     The refresh rules live in the shared integrations service
+         *     (``shared.sdk_integrations``), which a worker-local engine child calls
+         *     for the same inputs. The HTTP refresh itself is delegated to the shared
+         *     primitive :func:`src.services.oauth_provider.refresh_oauth_token_http`
+         *     via that service; this handler only maps transport errors.
          */
         post: operations["sdk_integrations_refresh_token_api_sdk_integrations_refresh_token_post"];
         delete?: never;
@@ -6137,6 +6162,10 @@ export interface paths {
         /**
          * Generate AI completion
          * @description Generate an AI completion using platform-configured LLM.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.complete_sdk_ai``), which the engine-local
+         *     dispatcher calls for the same inputs.
          */
         post: operations["cli_ai_complete_api_sdk_ai_complete_post"];
         delete?: never;
@@ -6157,6 +6186,15 @@ export interface paths {
         /**
          * Stream AI completion
          * @description Generate a streaming AI completion using SSE.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.stream_sdk_ai``), which the engine-local
+         *     dispatcher calls for the same inputs. Scope is resolved here —
+         *     before headers are sent — so authorization failures stay HTTP
+         *     status errors; everything after the stream starts surfaces as SSE
+         *     error events. Each shared payload dict is serialized to one
+         *     ``data:`` line, with the terminal ``[DONE]`` appended after the
+         *     done payload.
          */
         post: operations["cli_ai_stream_api_sdk_ai_stream_post"];
         delete?: never;
@@ -6175,6 +6213,10 @@ export interface paths {
         /**
          * Get AI model information
          * @description Get information about the configured LLM.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.get_sdk_model_info``), which the engine-local
+         *     dispatcher calls for the same inputs.
          */
         get: operations["cli_ai_info_api_sdk_ai_info_get"];
         put?: never;
@@ -13041,10 +13083,7 @@ export interface paths {
         };
         /**
          * Fetch Requirements
-         * @description Fetch requirements.txt content.
-         *
-         *     Returns JSON: {"content": "...", "hash": "..."} or 404 if none exists.
-         *     Used by the child's install_requirements() when Redis is cold.
+         * @description Return the existing requirements.txt HTTP contract for external callers.
          */
         get: operations["fetch_requirements_api_sdk_requirements_get"];
         put?: never;
@@ -15392,6 +15431,11 @@ export interface components {
              * @description Event source: 'http', 'sso_sync', 'scheduler', 'cli', ...
              */
             source: string;
+            /**
+             * Execution Id
+             * @description Workflow execution that produced the event, when supported
+             */
+            execution_id?: string | null;
             /** @description Who performed the action */
             actor: components["schemas"]["AuditLogActor"];
             /** Ip Address */
@@ -43470,6 +43514,8 @@ export interface operations {
                 outcome?: string | null;
                 /** @description Filter by acting user ID */
                 user_id?: string | null;
+                /** @description Filter by workflow execution ID */
+                execution_id?: string | null;
                 /** @description Start of time range (inclusive) */
                 start_date?: string | null;
                 /** @description End of time range (inclusive) */
