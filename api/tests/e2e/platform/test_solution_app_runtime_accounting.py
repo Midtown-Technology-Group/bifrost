@@ -1,5 +1,6 @@
 """Real deploy HTTP, PostgreSQL pointer and object bytes must agree for V2 Apps."""
 
+from contextlib import asynccontextmanager
 import hashlib
 import io
 import uuid
@@ -12,18 +13,28 @@ from sqlalchemy import text
 from src.models.orm.applications import Application
 from src.services.solution_deploy_obligations import _runtime_and_registration_readback
 from src.services.solutions.app_build import SolutionAppBuilder
-from src.services.solutions.deploy import solution_entity_id
+from src.services.solutions import deploy as deploy_module
+from src.services.solutions.app_runtime import compiled_app_runtime_pin
+from src.services.solutions.deploy import (
+    CompiledSolutionAppDeployment,
+    SolutionDeployer,
+    solution_entity_id,
+)
 from tests.e2e.platform.conftest import wait_for_deploy
 
 pytestmark = pytest.mark.e2e
 
 
-@pytest.mark.parametrize("corrupt", [False, True])
+@pytest.mark.parametrize(
+    ("corrupt", "lost_activation_ack"), [(False, False), (True, False), (False, True)]
+)
 async def test_solution_app_accounting_reads_the_active_compiled_bytes(
     e2e_client,
     platform_admin,
     db_session,
     corrupt,
+    lost_activation_ack,
+    monkeypatch,
 ):
     assert await db_session.scalar(text("SELECT current_database()")) == "bifrost_test"
     slug = "app-runtime-" + uuid.uuid4().hex[:8]
@@ -100,6 +111,61 @@ async def test_solution_app_accounting_reads_the_active_compiled_bytes(
             served_js.status_code == 200
             and served_js.content == compiled["assets/main.js"].encode()
         )
+        if lost_activation_ack:
+            # Exercise the shared publisher against real DB/S3. The separate
+            # activation transaction commits, then only its acknowledgement is
+            # lost; no publish/activation replay is performed.
+            original_context = deploy_module._solution_app_activation_db_context
+            activations = 0
+
+            @asynccontextmanager
+            async def committed_but_unacknowledged():
+                nonlocal activations
+                activations += 1
+                async with original_context() as activation_db:
+                    yield activation_db
+                raise TimeoutError("activation committed; acknowledgement lost")
+
+            monkeypatch.setattr(
+                deploy_module,
+                "_solution_app_activation_db_context",
+                committed_but_unacknowledged,
+            )
+            successor_id = uuid.uuid4()
+            outputs = {path: raw.encode() for path, raw in compiled.items()}
+            successor_pin = compiled_app_runtime_pin(
+                solution_id=solution_id,
+                application_id=app_id,
+                deployment_id=successor_id,
+                source_sha256=hashlib.sha256(artifact).hexdigest(),
+                outputs=outputs,
+                source_built=False,
+            )
+            successor = CompiledSolutionAppDeployment(
+                app_id=app_id,
+                solution_id=solution_id,
+                deployment_id=successor_id,
+                expected_old_deployment_id=deployment_id,
+                superseded_deployment_id=deployment_id,
+                dist=outputs,
+                runtime_pin=successor_pin,
+            )
+            with pytest.raises(TimeoutError, match="acknowledgement lost"):
+                await SolutionDeployer(db_session)._upload_compiled_dists([successor])
+            assert activations == 1
+            # Independent DB and public HTTP readback must still find every
+            # active byte. Before the repair the error handler deleted them.
+            await db_session.refresh(app)
+            assert app.active_deployment_id == successor_id
+            assert app.published_snapshot["runtime_pin"] == successor_pin
+            for path, raw in outputs.items():
+                response = e2e_client.get(
+                    f"/api/applications/{app_id}/dist/{path}", headers=headers
+                )
+                assert response.status_code == 200, response.text
+                assert response.content == raw
+            deployment_id = successor_id
+            pin = successor_pin
         if corrupt:
             # Mutate only this synthetic test install's object namespace.
             builder = SolutionAppBuilder()

@@ -1372,16 +1372,15 @@ class SolutionDeployer:
         try:
             await self._activate_compiled_dists(compiled)
         except Exception:
-            for item in compiled:
-                try:
-                    await builder.delete_deployment(item.app_id, item.deployment_id)
-                except Exception:  # noqa: BLE001 - best-effort cleanup before retry
-                    logger.warning(
-                        "failed to delete unactivated app deployment %s for app %s",
-                        item.deployment_id,
-                        item.app_id,
-                        exc_info=True,
-                    )
+            # The transaction may have committed before its acknowledgement was
+            # lost. Deleting these immutable outputs could remove the now-active
+            # App. Retain them for independent pointer/byte readback; an exception
+            # is not proof that activation rolled back.
+            logger.warning(
+                "Solution App activation outcome is unresolved; retaining uploaded "
+                "deployments for readback",
+                exc_info=True,
+            )
             raise
         for item in compiled:
             old = item.superseded_deployment_id

@@ -556,7 +556,7 @@ class TestSolutionAppDeploy:
 
         assert deleted == [(app_id, old_deployment)]
 
-    async def test_activation_failure_deletes_new_uploads_and_preserves_old_pointers(
+    async def test_activation_failure_retains_uploads_and_preserves_old_pointers(
         self, db_session, monkeypatch
     ):
         from src.services.solutions import app_build
@@ -642,7 +642,8 @@ class TestSolutionAppDeploy:
         with pytest.raises(SolutionFinalizeIncomplete):
             await result.finalize_s3()
 
-        assert deleted == uploaded
+        assert uploaded
+        assert deleted == []
         for app_id, old_deployment in zip(app_ids, old_deployments):
             app = await db.get(Application, app_id)
             assert app.active_deployment_id == old_deployment
