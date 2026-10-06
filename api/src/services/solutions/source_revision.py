@@ -199,7 +199,7 @@ def _workflow_snapshot(workflow: Workflow) -> dict:
     }
 
 
-def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -> None:
+def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition, *, allow_inactive: bool = False) -> None:
     definition = json.loads(canonical_json(entity.definition))
     require_legacy_registration_name(definition)
     timeout = workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
@@ -265,7 +265,7 @@ def _require_registration(workflow: Workflow, entity: RuntimeEntityDefinition) -
         if key in definition:
             expected[key] = snapshot[key]
     if (
-        not workflow.is_active
+        (not allow_inactive and not workflow.is_active)
         or workflow.id != entity.resolved_id
         or any(definition.get(key) != value for key, value in expected.items())
     ):

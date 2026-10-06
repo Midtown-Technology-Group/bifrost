@@ -10802,6 +10802,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/deployments/github-package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver Github Package
+         * @description Capture protected complete source, then use the shared durable publisher.
+         */
+        post: operations["deliver_github_package_api_solutions__solution_id__deployments_github_package_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github Package
+         * @description Same source-scoped identity, independently verified original-job result.
+         */
+        post: operations["inspect_github_package_api_solutions__solution_id__deployments_github_package_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Github Package
+         * @description Current Main may request readback of the target's original uncertain job.
+         *
+         *     A returned older job does not certify this request's newer source. There is
+         *     no fresh source capture or publication in this operation.
+         */
+        post: operations["recover_github_package_api_solutions__solution_id__deployments_github_package_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/deployments/github-source": {
         parameters: {
             query?: never;
@@ -17328,6 +17391,10 @@ export interface components {
                 [key: string]: components["schemas"]["DependencyResolution"];
             };
             git?: components["schemas"]["DeploymentGitProvenance"];
+            /** Package Evidence */
+            package_evidence?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
         };
         /**
          * ConditionalDocumentUpdate
@@ -31351,6 +31418,19 @@ export interface components {
             requires_password: boolean;
             /** Readme */
             readme?: string | null;
+        };
+        /**
+         * SolutionPackageRecoveryResponse
+         * @description An object envelope even when there is no older intent to reconcile.
+         */
+        SolutionPackageRecoveryResponse: {
+            /**
+             * Schema Version
+             * @default bifrost.solution-package-recovery/v1
+             * @constant
+             */
+            schema_version: "bifrost.solution-package-recovery/v1";
+            job: components["schemas"]["PlatformJobPublic"] | null;
         };
         /**
          * SolutionReadme
@@ -55682,6 +55762,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deliver_github_package_api_solutions__solution_id__deployments_github_package_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_github_package_api_solutions__solution_id__deployments_github_package_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_github_package_api_solutions__solution_id__deployments_github_package_recover_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionPackageRecoveryResponse"];
                 };
             };
             /** @description Validation Error */

@@ -29,6 +29,7 @@ from src.models.contracts.solution_deployments import (
     SolutionDeploymentRuntimeState,
     SolutionGitSourceDeliveryRequest,
     SolutionGitSourceDeliveryResponse,
+    SolutionPackageRecoveryResponse,
     SolutionSourceRevisionCommitRequest,
     SolutionSourceRevisionInspectRequest,
     SolutionSourceRevisionInspectResponse,
@@ -42,6 +43,7 @@ from src.models.contracts.solution_deployments import (
     WorkspaceLiveHandoffPreflightResponse,
 )
 from src.models.orm.solutions import Solution
+from src.models.contracts.platform_jobs import PlatformJobPublic
 from src.repositories.solution_deployments import (
     InvalidDeploymentTransition,
     SolutionDeploymentRepository,
@@ -101,6 +103,115 @@ from src.services.solutions.write_lock import (
 router = APIRouter(
     prefix="/api/solutions/{solution_id}/deployments", tags=["Solution Deployments"]
 )
+
+
+async def _authenticate_package(solution_id, body, credentials):
+    from src.services.solutions.package_git_source import authenticate_package_git_delivery
+    policy = get_settings().solution_package_git_delivery_policy
+    if policy is None:
+        raise HTTPException(status_code=503, detail="Protected complete package delivery is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="GitHub Actions package OIDC token is required")
+    try:
+        await authenticate_package_git_delivery(credentials.credentials, policy=policy,
+            solution_id=solution_id, commit_sha=body.source_commit_sha, ci_run_id=body.ci_run_id,
+            ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return policy
+
+
+@router.post("/github-package", response_model=PlatformJobPublic)
+async def deliver_github_package(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+):
+    """Capture protected complete source, then use the shared durable publisher."""
+    from src.services.solutions.package_git_source import read_package_git_source
+    from src.services.solutions.package_admission import admit_package
+    from src.services.platform_jobs import platform_job_to_public
+    policy = await _authenticate_package(solution_id, body, credentials)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            source = await read_package_git_source(ProtectedGitReader(policy, github_token, client),
+                policy=policy, solution_id=solution_id, commit_sha=body.source_commit_sha,
+                ci_run_id=body.ci_run_id, ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+        return platform_job_to_public(await admit_package(db, policy, solution_id, source, github_token))
+    except HTTPException:
+        await db.rollback()
+        raise
+    except (GitDeliverySourceError, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (SolutionWriteLockHeld, SolutionWriteLockLost, httpx.HTTPError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect the original package job before retrying") from exc
+
+
+@router.post("/github-package/status", response_model=PlatformJobPublic)
+async def inspect_github_package(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+):
+    """Same source-scoped identity, independently verified original-job result."""
+    from src.services.solutions.package_admission import inspect_package_job, read_package_accounting, read_package_rollback
+    from src.services.platform_jobs import platform_job_to_public
+    await _authenticate_package(solution_id, body, credentials)
+    try:
+        job = await inspect_package_job(db, solution_id, body.artifact_digest)
+        public = platform_job_to_public(job)
+        if job.status == "succeeded":
+            public.result = {**(public.result or {}), "accounting_readback": await read_package_accounting(db, job)}
+        elif job.status == "failed":
+            rollback = await read_package_rollback(db, job)
+            if rollback is not None:
+                public.result = {**(public.result or {}), "rollback_readback": rollback}
+        return public
+    except LookupError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/github-package/recover", response_model=SolutionPackageRecoveryResponse)
+async def recover_github_package(
+    solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+):
+    """Current Main may request readback of the target's original uncertain job.
+
+    A returned older job does not certify this request's newer source. There is
+    no fresh source capture or publication in this operation.
+    """
+    from src.core.security import decrypt_secret
+    from src.jobs.platform.solution_deploy import SolutionDeployPayload
+    from src.services.platform_jobs import platform_job_to_public
+    from src.services.solutions.package_admission import recover_pending_package
+
+    policy = await _authenticate_package(solution_id, body, credentials)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            await ProtectedGitReader(policy, github_token, client).verify_ci(
+                body.source_commit_sha, body.ci_run_id, body.ci_run_attempt)
+        job = await recover_pending_package(db, policy, solution_id)
+        if job is None:
+            return SolutionPackageRecoveryResponse(job=None)
+        if job.encrypted_payload is None:
+            raise ValueError("Original package payload is unavailable")
+        payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
+        public = platform_job_to_public(job)
+        public.result = {**(public.result or {}), "original_artifact_digest": payload.options["artifact_digest"]}
+        return SolutionPackageRecoveryResponse(job=public)
+    except (ValueError, GitDeliverySourceError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Original package recovery remains unresolved") from exc
 
 
 @router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse)
