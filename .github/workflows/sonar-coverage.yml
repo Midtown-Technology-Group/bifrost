@@ -249,10 +249,47 @@ jobs:
         run: |
           echo 'Coverage evidence is staged. No CI analysis was submitted to SonarQube Cloud. Automatic analysis and current approval controls remain unchanged.' >> "$GITHUB_STEP_SUMMARY"
 
+  # This notice is an explicit capability disposition, never a Sonar gate pass.
+  free-plan-disposition:
+    name: Sonar Free scope disposition
+    needs: evidence
+    runs-on: ubuntu-latest
+    if: needs.evidence.outputs.mode == 'ci'
+    steps:
+      - name: Record provider scope and activation state
+        env:
+          ACTIVATED: ${{ vars.SONAR_CI_ENABLED }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.base_ref }}
+          PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$ACTIVATED" = true ] && [ "$EVENT" = pull_request ] &&
+             { [ "$PR_REPOSITORY" != "$REPOSITORY" ] || [ "$ACTOR" = "dependabot[bot]" ] || [ "$PR_AUTHOR" = "dependabot[bot]" ]; }; then
+            echo "::error::Sonar CI analysis is unavailable for fork or Dependabot PRs until an approved credential route exists."
+            echo "Blocked: no Sonar analysis or gate is claimed for this unsupported credential route." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          elif [ "$EVENT" = merge_group ]; then
+            echo 'Free plan: combined merge-group coverage evidence is available; no Sonar analysis or quality gate is claimed for this tree.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$ACTIVATED" != true ]; then
+            echo 'CI submission is awaiting coordinated activation. Automatic analysis remains the existing provider until cutover.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Free scope: main and PRs targeting main only. Consult Sonar CI Analysis for an actual submitted task and gate result.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   scan:
     name: Sonar CI Analysis
     needs: evidence
-    if: needs.evidence.outputs.mode == 'ci'
+    # Activation is an operator-controlled cutover after this workflow merges.
+    # Free supports main and PRs targeting main; merge groups retain evidence only.
+    if: >-
+      needs.evidence.outputs.mode == 'ci' && vars.SONAR_CI_ENABLED == 'true' &&
+      ((github.event_name == 'pull_request' && github.base_ref == 'main' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]') ||
+       ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -289,11 +326,13 @@ jobs:
           [[ "$ORGANIZATION" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo 'Verified Sonar organization key is missing or invalid.' >&2; exit 1; }
           args="-Dsonar.organization=$ORGANIZATION -Dsonar.scm.revision=$HEAD_SHA"
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            test "$PR_BASE" = main
             [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
             [[ "$PR_BRANCH" =~ ^[A-Za-z0-9_./-]+$ ]]
             [[ "$PR_BASE" =~ ^[A-Za-z0-9_./-]+$ ]]
             args="$args -Dsonar.pullrequest.key=$PR_NUMBER -Dsonar.pullrequest.branch=$PR_BRANCH -Dsonar.pullrequest.base=$PR_BASE"
           else
+            test "$GITHUB_REF" = refs/heads/main
             [[ "$GITHUB_REF_NAME" =~ ^[A-Za-z0-9_./-]+$ ]]
             args="$args -Dsonar.branch.name=$GITHUB_REF_NAME"
           fi
