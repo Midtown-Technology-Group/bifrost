@@ -70,6 +70,7 @@ async def read_package_rollback(db: AsyncSession, job: PlatformJob) -> dict | No
     from src.jobs.platform.solution_deploy import SOLUTION_DEPLOY_INTENT_SCHEMA
     from src.jobs.platform.solution_package_delivery import PACKAGE_ROLLBACK_SCHEMA
     from src.models.orm.solution_deployments import SolutionDeployment
+    from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 
     result = job.result or {}
     if result.get("schema_version") != PACKAGE_ROLLBACK_SCHEMA:
@@ -78,6 +79,7 @@ async def read_package_rollback(db: AsyncSession, job: PlatformJob) -> dict | No
         raise ValueError("Original rollback input is missing")
     payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
     intent = result.get("original_intent") or {}
+    projection = await db.get(SolutionDeployJob, job.id)
     if (result.get("publication_not_committed") is not True
             or result.get("original_job_id") != str(job.id)
             or result.get("solution_id") != str(payload.install_id)
@@ -87,6 +89,9 @@ async def read_package_rollback(db: AsyncSession, job: PlatformJob) -> dict | No
             or intent.get("solution_id") != str(payload.install_id)
             or intent.get("organization_id") != (str(job.organization_id) if job.organization_id else None)
             or intent.get("payload_digest") != canonical_digest(payload.model_dump(mode="json"))
+            or projection is None or projection.install_id != payload.install_id
+            or projection.status == "succeeded"
+            or (projection.result or {}).get("deployment_id") == intent.get("deployment_id")
             or await db.get(SolutionDeployment, UUID(intent["deployment_id"])) is not None):
         raise ValueError("Original package rollback readback differs")
     return {"verified": True, "original_job_id": str(job.id),
@@ -105,17 +110,29 @@ async def recover_pending_package(db: AsyncSession, policy: SolutionPackageGitDe
     )
     from src.routers.solutions import _lock_solution_operation
     from src.services.platform_jobs import enqueue_platform_job
+    from src.jobs.platform.solution_package_delivery import PACKAGE_ROLLBACK_SCHEMA
 
     enrollment = policy.enrollment_for(solution_id)
     await _lock_solution_operation(db, solution_id)
     job = await unresolved_solution_deploy(db, solution_id)
     if job is None:
-        return None
+        # A failed fresh attempt may have durably certified the older
+        # transaction absent. Return that receipt for independent status
+        # readback, rather than hiding it as "no original publication".
+        job = await db.scalar(select(PlatformJob).where(
+            PlatformJob.job_type == "solution.deploy", PlatformJob.status == "failed",
+            PlatformJob.result["schema_version"].as_string() == PACKAGE_ROLLBACK_SCHEMA,
+            PlatformJob.result["solution_id"].as_string() == str(solution_id),
+        ).order_by(PlatformJob.created_at.desc()).limit(1))
+        if job is None:
+            return None
     if (job.job_type != "solution.deploy" or job.requested_by_user_id != str(SYSTEM_USER_UUID)
             or job.organization_id != enrollment.organization_id or job.encrypted_payload is None):
         raise ValueError("Original publication is outside complete package recovery")
     payload = SolutionDeployPayload.model_validate_json(decrypt_secret(job.encrypted_payload))
-    intent = job.result or {}
+    result = job.result or {}
+    rolled_back = result.get("schema_version") == PACKAGE_ROLLBACK_SCHEMA
+    intent = result.get("original_intent", {}) if rolled_back else result
     source = payload.options.get("package_source", {})
     package = source.get("package", {})
     artifact_digest = payload.options.get("artifact_digest")
@@ -140,7 +157,9 @@ async def recover_pending_package(db: AsyncSession, policy: SolutionPackageGitDe
             or intent.get("solution_id") != str(solution_id)
             or intent.get("payload_digest") != canonical_digest(payload.model_dump(mode="json"))):
         raise ValueError("Original complete package intent/enrollment differs")
-    if job.status in {"requires_action", "failed", "cancelled"}:
+    if rolled_back:
+        await read_package_rollback(db, job)
+    elif job.status in {"requires_action", "failed", "cancelled"}:
         resumed, reused = await enqueue_platform_job(db, SOLUTION_DEPLOY_DEFINITION, payload,
             dedupe_key=job.dedupe_key, resource_lock_key=job.resource_lock_key,
             priority=job.priority, organization_id=job.organization_id,

@@ -207,6 +207,11 @@ async def run_solution_package_delivery(context: PlatformJobContext, payload: So
                         archive = await SolutionDeploymentStorage(sid, UUID(intent["deployment_id"])).read_source_artifact()
                         proof["accounting"] = await settle(db, archive)
                         return {**proof, "original_job_id": str(context.job_id), "recovered_from_intent": True}
+                    projection = await db.get(SolutionDeployJob, context.job_id)
+                    if (projection is None or projection.install_id != sid
+                            or projection.status == "succeeded"
+                            or (projection.result or {}).get("deployment_id") == intent["deployment_id"]):
+                        raise ValueError("Original package completion prevents rollback recovery")
                     # The deployment row and all pointer/resource changes share
                     # one transaction, fenced by the shared job lease. A new
                     # lease can prove that transaction absent without replaying
@@ -288,6 +293,12 @@ async def run_solution_package_delivery(context: PlatformJobContext, payload: So
                 projection.status = "succeeded"
                 projection.result = {"solution_id": str(sid), "deployment_id": str(did),
                     "candidate_id": f"sha256:{payload.input_sha256}", "source_commit_sha": source.authored.commit_sha}
+                # Staging/build I/O can outlast a rapid Main merge. Recheck
+                # immediately before the fenced metadata commit as well;
+                # refusal rolls back all provisional registration/pointers.
+                async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+                    await ProtectedGitReader(policy, payload.options["delivery_git_token"], client).verify_ci(
+                        source.authored.commit_sha, envelope["ci_run_id"], envelope["ci_run_attempt"])
                 # Fence the metadata/pointer commit in the SAME transaction.
                 # A stale runner cannot publish after another lease reclaimed
                 # its checkpoint while artifacts were being written.

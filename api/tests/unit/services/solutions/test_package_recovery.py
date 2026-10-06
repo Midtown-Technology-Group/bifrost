@@ -42,7 +42,7 @@ def retained_job(status="requires_action"):
 @pytest.mark.parametrize("status", ["requires_action", "failed", "cancelled", "queued", "running"])
 async def test_recovery_keeps_original_input_and_identity_without_source_or_stage(monkeypatch, status):
     policy, job, payload = retained_job(status)
-    db = SimpleNamespace(commit=AsyncMock())
+    db = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=None))
     enqueue = AsyncMock(return_value=(job, True))
     monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
     monkeypatch.setattr("src.jobs.platform.solution_deploy.unresolved_solution_deploy", AsyncMock(return_value=job))
@@ -86,7 +86,7 @@ async def test_changed_original_intent_cannot_resume(monkeypatch, drift):
         policy = type(policy).model_validate(values)
     job.encrypted_payload = encrypt_secret(payload.model_dump_json())
     enqueue = AsyncMock()
-    db = SimpleNamespace(commit=AsyncMock())
+    db = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=None))
     monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
     monkeypatch.setattr("src.jobs.platform.solution_deploy.unresolved_solution_deploy", AsyncMock(return_value=job))
     monkeypatch.setattr("src.services.platform_jobs.enqueue_platform_job", enqueue)
@@ -99,7 +99,7 @@ async def test_changed_original_intent_cannot_resume(monkeypatch, drift):
 @pytest.mark.asyncio
 async def test_shared_dedupe_must_reuse_original_job(monkeypatch):
     policy, job, _payload = retained_job()
-    db = SimpleNamespace(commit=AsyncMock())
+    db = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=None))
     monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
     monkeypatch.setattr("src.jobs.platform.solution_deploy.unresolved_solution_deploy", AsyncMock(return_value=job))
     monkeypatch.setattr("src.services.platform_jobs.enqueue_platform_job", AsyncMock(return_value=(
@@ -111,7 +111,7 @@ async def test_shared_dedupe_must_reuse_original_job(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_recovery_without_original_intent_has_no_effects(monkeypatch):
-    db = SimpleNamespace(commit=AsyncMock())
+    db = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=None))
     enqueue = AsyncMock()
     monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
     monkeypatch.setattr("src.jobs.platform.solution_deploy.unresolved_solution_deploy", AsyncMock(return_value=None))
@@ -214,7 +214,7 @@ async def test_failed_status_inspection_releases_its_database_lock(monkeypatch, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("drift", [None, "committed", "payload", "target", "unverified"])
+@pytest.mark.parametrize("drift", [None, "committed", "completed_projection", "payload", "target", "unverified"])
 async def test_rollback_readback_proves_absence_not_runtime_delivery(monkeypatch, drift):
     from src.jobs.platform.solution_package_delivery import PACKAGE_ROLLBACK_SCHEMA
     from src.services.solutions.package_admission import read_package_rollback
@@ -229,9 +229,16 @@ async def test_rollback_readback_proves_absence_not_runtime_delivery(monkeypatch
         job.result["solution_id"] = str(uuid4())
     elif drift == "unverified":
         job.result["publication_not_committed"] = False
-    db = SimpleNamespace(get=AsyncMock(return_value=object() if drift == "committed" else None))
+    from src.models.orm.solution_deployments import SolutionDeployment
+    projection = SimpleNamespace(install_id=SID, status="succeeded" if drift == "completed_projection" else "running", result=None)
+    async def lookup(model, *_args):
+        if model is SolutionDeployment:
+            return object() if drift == "committed" else None
+        return projection
+    db = SimpleNamespace(get=AsyncMock(side_effect=lookup))
     if drift is None:
         proof = await read_package_rollback(db, job)
+        assert proof is not None
         assert proof == {"verified": True, "original_job_id": str(job.id),
             "solution_id": str(SID), "deployment_id": intent["deployment_id"]}
         assert "source_verified" not in proof and "runtime_verified" not in proof
