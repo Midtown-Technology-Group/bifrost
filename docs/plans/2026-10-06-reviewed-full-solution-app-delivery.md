@@ -133,3 +133,14 @@ requires its own current-head CI; the `ce4fd20b3` results do not qualify it.
 
 HTTP admission, the complete worker and automatic enrollment remain unfinished.
 No new publication endpoint or production capability is enabled by these helpers.
+
+The shared Solution job now records a lease-fenced intent immediately before
+its first database commit. A reclaimed attempt reads the original completion,
+source archive, registrations, Python runtime/cache and compiled App pins;
+it never invokes deployment or installation again. Uncertain commits retain
+the staged input and install rather than deleting them. An identical request
+from the original actor can resume that same job for readback; changed bytes,
+options or scope cannot replace an unresolved intent. A missing original
+completion or newer deployment fails closed for reconciliation. This does not
+repair partially completed resource writes or qualify the future immutable
+package worker. New recovery checks still require their exact-head CI.
