@@ -81,3 +81,10 @@ objects, rejects missing names or undeclared SDK reads, and checks the new
 archive and runtime objects before activation and during independent readback.
 An arbitrary authored asset does not create a new resource permission. Resource
 updates and reverts preserve grants and never substitute mutable Root storage.
+
+Complete-package export uses the same independent runtime verifier and carries
+the retained authored archive, including manifests, App sources, binary assets
+and empty files. It does not capture mutable App/Root source to reconstruct that
+archive. Full exports retain the existing encrypted runtime-content overlay;
+config values, table rows and operational files remain opt-in. The authored
+README is preserved in both modes, and pointer drift still rejects the export.

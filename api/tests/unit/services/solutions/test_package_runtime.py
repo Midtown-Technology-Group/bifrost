@@ -1,5 +1,7 @@
 """Mixed immutable package publication against real database/object storage."""
 
+import io
+import zipfile
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,6 +27,7 @@ from src.services.solutions.source_revision import SolutionSourceRevisionError
 from src.services.solutions.shared_table_bindings import SharedTableBindingError, table_metadata_hash
 from src.services.solutions.root_file_bindings import RootFileBindingError
 from src.services.solutions.package_controls import capture_package_controls
+from src.services.solutions.immutable_export import read_active_source, write_active_export
 from src.services.solutions.package_runtime import (
     activate_package_runtime,
     compile_package_runtime,
@@ -143,6 +146,61 @@ async def test_package_readback_detects_authored_asset_tampering(db_session, see
 
 
 @pytest.mark.e2e
+@pytest.mark.parametrize("include_app", [False, True])
+@pytest.mark.parametrize("backup", [False, True])
+async def test_complete_package_export_preserves_authored_bytes_and_encrypted_backup(
+    db_session, seed_user, compile_app, monkeypatch, tmp_path, include_app, backup,
+):
+    from src.services.solutions.capture import SolutionCaptureService
+    from src.services.solutions.secrets_blob import decode_secrets_blob
+
+    def reject_mutable_capture(*args, **kwargs):
+        pytest.fail("Complete package export must not reconstruct authored source from mutable captures")
+
+    async def config_values(*args):
+        return {"API_KEY": "runtime-secret"}
+
+    monkeypatch.setattr(SolutionCaptureService, "bundle_for", reject_mutable_capture)
+    monkeypatch.setattr(SolutionCaptureService, "_config_values", config_values)
+    solution = Solution(id=uuid4(), slug=f"export-{uuid4().hex[:8]}", name="Export", organization_id=None)
+    db_session.add(solution)
+    await db_session.flush()
+    source = _reviewed_package_source(solution, runtime=True, include_app=include_app,
+        additional_files={"README.md": b"", "assets/opaque.bin": b"\x00\xff\x02"})
+    prepared = await SolutionDeployer(db_session).prepare_reviewed_package(source,
+        expected_active_deployment_id=None,
+        expected_controls_digest=canonical_digest(await capture_package_controls(db_session, solution.id)))
+    manifest, resolution = await compile_package_runtime(db_session, source, prepared, uuid4())
+    await stage(db_session, seed_user, solution, source, prepared, manifest, resolution)
+    await activate_package_runtime(db_session, source, prepared, manifest, None)
+    table_id = next(iter(manifest.tables.values())).resolved_id
+    row_data = {"retained": "document-data"}
+    db_session.add(Document(id="export-row", table_id=table_id, data=row_data))
+    await db_session.flush()
+    python, resources = await read_active_source(db_session, solution)
+    assert python == {path: raw.decode() for path, raw in source.authored.files.items() if path.endswith(".py")}
+    assert resources == {}
+    destination = tmp_path / "export.zip"
+    await write_active_export(db_session, solution, destination,
+        include_values=backup, include_data=backup, include_files=False, password="backup-password" if backup else None)
+    with zipfile.ZipFile(destination) as archive:
+        expected = dict(source.authored.files)
+        if backup:
+            content = decode_secrets_blob(archive.read(".bifrost/secrets.enc").decode(), password="backup-password")
+            assert content.config_values == {"API_KEY": "runtime-secret"}
+            assert content.table_data == {"evidence": [row_data]}
+            assert b"runtime-secret" not in archive.read(".bifrost/secrets.enc")
+            actual = {path: archive.read(path) for path in archive.namelist() if path != ".bifrost/secrets.enc"}
+        else:
+            actual = {path: archive.read(path) for path in archive.namelist()}
+        assert actual == expected
+        assert len(archive.namelist()) == len(set(archive.namelist()))
+    assert solution.active_deployment_id == manifest.deployment_id
+    document = await db_session.scalar(select(Document).where(Document.table_id == table_id))
+    assert document is not None and document.data == row_data
+
+
+@pytest.mark.e2e
 async def test_package_successor_cannot_add_a_required_parameter_to_existing_callers(db_session, compile_app):
     solution = Solution(id=uuid4(), slug=f"package-{uuid4().hex[:8]}", name="Package", organization_id=None)
     db_session.add(solution)
@@ -157,7 +215,7 @@ async def test_package_successor_cannot_add_a_required_parameter_to_existing_cal
 
 @pytest.mark.e2e
 async def test_package_retains_named_immutable_resources_on_update_revert_and_failed_activation(
-    db_session, seed_user,
+    db_session, seed_user, tmp_path,
 ):
     solution = Solution(id=uuid4(), slug=f"resources-{uuid4().hex[:8]}", name="Resources", organization_id=None)
     db_session.add(solution)
@@ -195,6 +253,11 @@ async def test_package_retains_named_immutable_resources_on_update_revert_and_fa
         assert result["source_verified"] and result["runtime_verified"]
         assert len(result["workflow_runtime_pins"]) == 1
         assert result["app_runtime_pins"] == {}
+        destination = tmp_path / "resources.zip"
+        await write_active_export(db_session, solution, destination,
+            include_values=False, include_data=False, include_files=False, password=None)
+        with zipfile.ZipFile(io.BytesIO(destination.read_bytes())) as archive:
+            assert {name: archive.read(name) for name in archive.namelist()} == source.authored.files
         previous = did
 
     before = await capture_package_controls(db_session, sid)
