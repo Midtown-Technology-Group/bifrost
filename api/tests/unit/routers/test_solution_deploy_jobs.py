@@ -178,9 +178,10 @@ async def test_original_intent_admission_resumes_only_identical_readback(monkeyp
     monkeypatch.setattr("src.routers.solutions.unresolved_solution_deploy", AsyncMock(return_value=row))
     monkeypatch.setattr("src.routers.solutions.enqueue_platform_job", enqueue)
     monkeypatch.setattr("src.routers.solutions.SolutionDeployJobStorage.write_bytes", staging)
+    requested_options = dict(options)
     request = dict(kind="deploy", install_id=install_id, organization_id=None,
         requested_by_user_id=actor, requested_by_email="admin@example.com", requested_by_name="Admin",
-        input_bytes=content, options=dict(options))
+        input_bytes=content, options=requested_options)
     if changed == "source":
         request["input_bytes"] = b"new archive"
     if changed == "actor":
@@ -188,7 +189,7 @@ async def test_original_intent_admission_resumes_only_identical_readback(monkeyp
     if changed == "scope":
         request["organization_id"] = uuid4()
     if changed == "options":
-        request["options"]["force"] = True
+        requested_options["force"] = True
     if changed is None:
         returned = await _enqueue_solution_deploy_job(db, **request)
         assert returned is projection
