@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -18,7 +20,7 @@ def _service(client=None) -> AppStorageService:
 
 def _client_context(client):
     @asynccontextmanager
-    async def context():
+    async def context(**_options):
         yield client
 
     return context
@@ -200,29 +202,30 @@ async def test_sync_preview_copies_repo_files_and_removes_stale_preview(
 
 
 @pytest.mark.asyncio
-async def test_publish_returns_zero_without_preview_files() -> None:
+async def test_publish_rejects_missing_captured_artifact_before_storage() -> None:
     client = _FakeClient(list_pages=[{"Contents": [], "IsTruncated": False}])
     service = _service(client)
 
-    assert await service.publish("app") == 0
+    with pytest.raises(ValueError, match="immutable byte buffers"):
+        await service.publish("app", bundle_files={})
     assert client.copied == []
     assert client.deleted == []
+    assert client.puts == client.list_calls == []
 
 
 @pytest.mark.asyncio
-async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> None:
-    manifest = b'{"entry":"index.js","outputs":["index.js","components/Button.js"]}'
+async def test_publish_writes_captured_build_and_retains_prior_live_outputs(monkeypatch) -> None:
+    outputs = {"index.js": b"entry", "components/Button.js": b"component"}
+    manifest = json.dumps({
+        "entry": "index.js", "outputs": list(outputs),
+        "build_evidence": {
+            "schema_version": "bifrost.inline-app-build/v1",
+            "output_hashes": {path: "sha256:" + hashlib.sha256(data).hexdigest()
+                              for path, data in outputs.items()},
+        },
+    }).encode()
     client = _FakeClient(
         list_pages=[
-            {
-                "Contents": [
-                    {"Key": "_apps/app/preview/manifest.json"},
-                    {"Key": "_apps/app/preview/index.js"},
-                    {"Key": "_apps/app/preview/components/Button.js"},
-                    {"Key": "_apps/app/preview/stale.js"},
-                ],
-                "IsTruncated": False,
-            },
             {
                 "Contents": [
                     {"Key": "_apps/app/live/index.js"},
@@ -231,7 +234,6 @@ async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> Non
                 "IsTruncated": False,
             },
         ],
-        objects={"_apps/app/preview/manifest.json": manifest},
     )
     service = _service(client)
     invalidated: list[str] = []
@@ -241,28 +243,19 @@ async def test_publish_copies_preview_and_removes_stale_live(monkeypatch) -> Non
 
     monkeypatch.setattr(service, "invalidate_render_cache", invalidate)
 
-    assert await service.publish("app") == 3
-    assert {copy["Key"] for copy in client.copied} == {
+    files = {**outputs, "manifest.json": manifest}
+    assert await service.publish("app", bundle_files=files) == 3
+    assert {item["Key"]: item["Body"] for item in client.puts} == {
+        f"_apps/app/live/{path}": data for path, data in files.items()
+    }
+    assert {item["Key"] for item in client.puts} == {
         "_apps/app/live/manifest.json",
         "_apps/app/live/index.js",
         "_apps/app/live/components/Button.js",
     }
-    assert client.deleted_batches == [
-        {
-            "Bucket": "bucket",
-            "Delete": {
-                "Objects": [{"Key": "_apps/app/live/old.tsx"}],
-                "Quiet": True,
-            },
-        },
-        {
-            "Bucket": "bucket",
-            "Delete": {
-                "Objects": [{"Key": "_apps/app/preview/stale.js"}],
-                "Quiet": True,
-            },
-        },
-    ]
+    assert client.deleted_batches == []
+    assert client.copied == []
+    assert client.list_calls == []
     assert invalidated == ["app"]
 
 
@@ -453,3 +446,27 @@ class _FakeRedis:
         self.delete_calls.append(keys)
         for key in keys:
             self.values.pop(key, None)
+
+
+@pytest.mark.parametrize("provider,status,code,expected", [
+    ("s3",412,"PreconditionFailed",True),
+    ("s3",409,"ConditionalRequestConflict",True),
+    ("s3",500,"InternalError",False),
+    ("s3",412,"OtherError",False),
+    ("azure",412,"ConditionNotMet",True),
+    ("azure",409,"BlobAlreadyExists",True),
+    ("azure",500,"ConditionNotMet",False),
+    ("azure",412,"OtherError",False),
+])
+def test_publication_rejects_only_definitive_provider_preconditions(provider, status, code, expected):
+    from azure.core.exceptions import HttpResponseError
+    from botocore.exceptions import ClientError
+    from src.services.app_storage import _precondition_rejected
+
+    if provider == "s3":
+        error = ClientError({"ResponseMetadata":{"HTTPStatusCode":status},"Error":{"Code":code}},"PutObject")
+    else:
+        error = HttpResponseError(message="Storage response")
+        error.status_code, error.error_code = status, code
+    assert _precondition_rejected(error) is expected
+    assert _precondition_rejected(TimeoutError("Unknown write outcome")) is False
