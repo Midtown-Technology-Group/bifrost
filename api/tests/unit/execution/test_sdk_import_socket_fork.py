@@ -229,3 +229,99 @@ class TestForkedColdImportOverSocket:
                 delete(FormModel).where(FormModel.name == form_name)
             )
             await db_session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stale_index", [False, True])
+async def test_service_cold_bootstrap_uses_handed_token_and_socket(
+    db_session, monkeypatch, stale_index
+):
+    """A real service child starts without ambient auth or a reachable API."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import delete
+    from src.core.module_cache_contract import MODULE_INDEX_GENERATION_KEY, MODULE_INDEX_KEY
+    from src.core.redis_client import get_redis_client
+    from src.core.security import mint_service_token
+    from src.models.orm.organizations import Organization
+    from src.models.orm.services import ServiceAttempt, ServiceDefinition
+    from src.models.orm.workflows import Workflow
+
+    tag = uuid4().hex[:8]
+    name = f"cold_service_{tag}"
+    path = f"workflows/{name}.py"
+    dep = f"cold_service_dep_{tag}"
+    dep_path = f"{dep}.py"
+    org = Organization(name=f"cold-service-{tag}", is_active=True, created_by="test")
+    db_session.add(org)
+    await db_session.flush()
+    workflow = Workflow(name=name, function_name=name, path=path, type="service",
+                        organization_id=org.id, created_by="test")
+    db_session.add(workflow)
+    await db_session.flush()
+    definition = ServiceDefinition(workflow_id=workflow.id, organization_id=org.id,
+                                   desired_state="running", created_by="test")
+    db_session.add(definition)
+    await db_session.flush()
+    attempt = ServiceAttempt(service_id=definition.id, lease_token=uuid4().hex,
+                             lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5))
+    db_session.add(attempt)
+    await db_session.commit()
+    token, expires_at = mint_service_token(
+        service_id=str(definition.id), attempt_id=str(attempt.id),
+        organization_id=str(org.id), solution_id=None, global_repo_access=True,
+    )
+    source = f'''from bifrost import service
+@service
+async def {name}():
+    import os
+    from bifrost.client import get_engine_socket_path
+    from {dep} import VALUE
+    await service.ready()
+    return {{"value": VALUE, "socket": get_engine_socket_path() is not None,
+            "has_db": "BIFROST_DATABASE_URL" in os.environ,
+            "has_storage": "BIFROST_S3_SECRET_KEY" in os.environ}}
+'''
+    await _seed_s3_only(path, source)
+    await _seed_s3_only(dep_path, f"VALUE = 'service-{tag}'\n")
+    redis = await get_redis_client()
+    await redis.delete(MODULE_INDEX_KEY, MODULE_INDEX_GENERATION_KEY)
+    if stale_index:
+        await redis.sadd(MODULE_INDEX_KEY, "stale-service-module.py")
+        await redis.set(MODULE_INDEX_GENERATION_KEY, "stale-service-generation")
+    monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
+    for key in ("BIFROST_ACCESS_TOKEN", "BIFROST_REFRESH_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    context = _context_for(name, path, token, str(attempt.id))
+    context.pop("engine_token")
+    context["is_platform_admin"] = False
+    context["organization"] = {"id": str(org.id), "name": org.name, "is_active": True}
+    context["service"] = {
+        "service_id": str(definition.id), "attempt_id": str(attempt.id),
+        "lease_token": attempt.lease_token, "token": token, "token_expires_at": expires_at,
+    }
+    server = WorkerSdkHttpServer()
+    await server.start()
+    template = TemplateProcess()
+    template.start()
+    try:
+        child_pid, work_queue, result_queue = template.fork(
+            worker_id=f"cold-service-{tag}", sdk_socket_path=server.socket_path,
+        )
+        work_queue.put((str(attempt.id), context))
+        envelope = await asyncio.to_thread(result_queue.get, True, 120.0)
+        assert envelope["success"] is True, envelope
+        assert envelope["result"] == {
+            "value": f"service-{tag}", "socket": True, "has_db": False, "has_storage": False,
+        }
+        _wait_for_pid_to_die(child_pid)
+    finally:
+        template.shutdown()
+        await server.stop()
+        await _drop_s3(path)
+        await _drop_s3(dep_path)
+        await redis.delete(MODULE_INDEX_KEY, MODULE_INDEX_GENERATION_KEY)
+        await db_session.execute(delete(ServiceAttempt).where(ServiceAttempt.id == attempt.id))
+        await db_session.execute(delete(ServiceDefinition).where(ServiceDefinition.id == definition.id))
+        await db_session.execute(delete(Workflow).where(Workflow.id == workflow.id))
+        await db_session.execute(delete(Organization).where(Organization.id == org.id))
+        await db_session.commit()

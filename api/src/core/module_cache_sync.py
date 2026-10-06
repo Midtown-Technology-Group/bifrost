@@ -441,26 +441,27 @@ def _get_engine_credentials() -> tuple[str, str] | None:
     return None
 
 
-def _get_engine_client() -> Any | None:
-    """Return the engine-local SDK client when the trusted socket is injected.
-
-    Non-None only inside a forked engine child whose entrypoint installed the
-    worker's private Unix socket. Everywhere else (API processes, plain
-    workers, tests without an injection) this is None and the existing
-    HTTP/S3 fallbacks apply unchanged.
-
-    The import is lazy so this module stays importable before the SDK package
-    loads. A SDK package that is present but broken raises instead of
-    silently switching an engine child back to HTTP/S3.
-    """
+def _engine_socket_installed() -> bool:
+    """Inspect transport mode without loading authenticated SDK credentials."""
     try:
-        from bifrost.client import get_client, get_engine_socket_path
+        from bifrost.client import get_engine_socket_path
     except ModuleNotFoundError as e:
         if e.name in {"bifrost", "bifrost.client"}:
-            return None
+            return False
         raise
-    if get_engine_socket_path() is None:
+    return get_engine_socket_path() is not None
+
+
+def _get_engine_client() -> Any | None:
+    """Return the authenticated SDK client only for an installed engine socket.
+
+    Keep HTTP/S3 fallback for external callers. A broken installed SDK raises
+    instead of silently switching an engine child to an external transport.
+    """
+    if not _engine_socket_installed():
         return None
+    from bifrost.client import get_client
+
     return get_client()
 
 
@@ -1418,7 +1419,7 @@ def get_module_index_sync() -> set[str]:
         # Children resolve individual imports on the socket. With no current
         # index, clear_workspace_modules treats loaded workspace modules as
         # stale; never send an unscoped legacy listing to the public API/S3.
-        if _get_engine_client() is not None:
+        if _engine_socket_installed():
             return set()
 
         # Redis index is empty — try API first

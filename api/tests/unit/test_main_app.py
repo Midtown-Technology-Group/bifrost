@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.exc import NoResultFound
 
 os.environ.setdefault("BIFROST_SECRET_KEY", "test-secret-key-for-main-app-unit-tests")
 

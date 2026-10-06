@@ -371,3 +371,14 @@ class TestEngineSocketColdPath:
         assert fetched is not None
         assert fetched["content"] == content
         assert len(fetched["content"]) == len(content)
+
+
+@pytest.mark.parametrize("stale_index", [False, True])
+def test_engine_index_probe_never_loads_credentials(monkeypatch, stale_index):
+    redis = _redis_mock()
+    redis.smembers.return_value = {"stale.py"} if stale_index else set()
+    monkeypatch.setattr(mcs, "_get_sync_redis", lambda: redis)
+    monkeypatch.setattr(mcs, "_engine_socket_installed", lambda: True)
+    monkeypatch.setattr(mcs, "_get_engine_client", MagicMock(side_effect=AssertionError("credential lookup")))
+    monkeypatch.setattr(mcs, "_fetch_module_index_from_api", MagicMock(side_effect=AssertionError("public API")))
+    assert mcs.get_module_index_sync() == set()
