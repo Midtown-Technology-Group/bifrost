@@ -34,6 +34,38 @@ from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
 pytestmark = pytest.mark.slow
 
 
+_ENGINE_EXECUTION_ID = uuid4()
+_ENGINE_ATTEMPT_TOKEN = uuid4()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _committed_engine_attempt(async_session_factory):
+    """Socket credentials identify a real live fork attempt, as production does."""
+    from datetime import datetime, timezone
+    from sqlalchemy import delete
+    from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+
+    now = datetime.now(timezone.utc)
+    async with async_session_factory() as db:
+        db.add(Execution(
+            id=_ENGINE_EXECUTION_ID, workflow_name="worker-sdk-route-proof",
+            executed_by_name="Engine", attempt_tracking_version="v1",
+        ))
+        await db.flush()
+        db.add(WorkflowExecutionAttempt(
+            execution_id=_ENGINE_EXECUTION_ID, attempt_number=1,
+            claim_token=_ENGINE_ATTEMPT_TOKEN, status="claimed", phase="claim",
+            published_at=now, claimed_at=now,
+        ))
+        await db.commit()
+    yield
+    async with async_session_factory() as db:
+        await db.execute(delete(Execution).where(Execution.id == _ENGINE_EXECUTION_ID))
+        await db.commit()
+
+
+
+
 def _no_cache():
     redis = AsyncMock()
     redis.hgetall = AsyncMock(return_value={})
@@ -115,7 +147,8 @@ def _context_for(
     is_platform_admin: bool = True,
 ) -> dict[str, Any]:
     return {
-        "execution_id": f"wsdk-fork-{uuid4().hex[:8]}",
+        "execution_id": str(_ENGINE_EXECUTION_ID),
+        "attempt_token": str(_ENGINE_ATTEMPT_TOKEN),
         "name": "worker-sdk-http-fork-test",
         "code": code_b64,
         "parameters": {},
@@ -159,7 +192,8 @@ async def test_forked_child_config_crud_over_worker_socket(
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
     engine_token, _ = mint_engine_token(
-        execution_id="gate-a-fork",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=120,
@@ -508,7 +542,8 @@ async def test_forked_child_integrations_over_worker_socket(
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
     engine_token, _ = mint_engine_token(
-        execution_id="gate-c2-fork",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=120,
@@ -773,7 +808,8 @@ async def test_forked_child_tables_over_worker_socket(
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
     engine_token, _ = mint_engine_token(
-        execution_id="gate-c3a-fork",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=120,
@@ -960,7 +996,8 @@ async def test_forked_child_files_over_worker_socket(monkeypatch):
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
     engine_token, _ = mint_engine_token(
-        execution_id="gate-c4a-fork",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=120,
@@ -1104,7 +1141,8 @@ async def test_forked_child_artifacts_over_worker_socket(monkeypatch):
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
     engine_token, _ = mint_engine_token(
-        execution_id="gate-c4b-fork",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=120,
@@ -1286,7 +1324,8 @@ async def test_forked_child_events_and_forms_over_worker_socket(
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
 
     engine_token, _ = mint_engine_token(
-        execution_id="gate-c5c-fork",
+        execution_id=str(_ENGINE_EXECUTION_ID),
+        attempt_token=str(_ENGINE_ATTEMPT_TOKEN),
         solution_id=None,
         global_repo_access=True,
         timeout_seconds=120,
