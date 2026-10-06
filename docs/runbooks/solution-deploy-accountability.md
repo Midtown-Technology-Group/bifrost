@@ -73,3 +73,11 @@ and during independent readback; drift requires reconciliation without replay.
 An owned table's declared name cannot overlap an inherited shared-table alias,
 including when the manifest stores owned tables under UUID keys. Ambiguous
 table resolution rejects the candidate before staging or switching pointers.
+
+Successors also retain the exact names of already-reviewed immutable resources.
+Their bytes come from protected authored source and receive new deployment-local
+hash and size pins. The publisher verifies the parent archive and resource
+objects, rejects missing names or undeclared SDK reads, and checks the new
+archive and runtime objects before activation and during independent readback.
+An arbitrary authored asset does not create a new resource permission. Resource
+updates and reverts preserve grants and never substitute mutable Root storage.

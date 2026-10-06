@@ -17,7 +17,11 @@ from src.services.solutions.deploy import SolutionDeployer
 from src.services.solutions.deploy import SolutionDeployConflict
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
-from src.services.solutions.deployment_manifest import SharedRootTableBinding, canonical_json, sha256_digest
+from src.services.solutions.deployment_manifest import (
+    RuntimeResourceResolution, SharedRootTableBinding, canonical_json, sha256_digest,
+)
+from src.services.solutions.resource_delivery import read_deployment_resources
+from src.services.solutions.source_revision import SolutionSourceRevisionError
 from src.services.solutions.shared_table_bindings import SharedTableBindingError, table_metadata_hash
 from src.services.solutions.root_file_bindings import RootFileBindingError
 from src.services.solutions.package_controls import capture_package_controls
@@ -149,6 +153,82 @@ async def test_package_successor_cannot_add_a_required_parameter_to_existing_cal
         await SolutionDeployer(db_session).prepare_reviewed_package(
             _reviewed_package_source(solution, runtime=True, function_args="tenant_id: str"),
             expected_active_deployment_id=None, expected_controls_digest=canonical_digest(controls))
+
+
+@pytest.mark.e2e
+async def test_package_retains_named_immutable_resources_on_update_revert_and_failed_activation(
+    db_session, seed_user,
+):
+    solution = Solution(id=uuid4(), slug=f"resources-{uuid4().hex[:8]}", name="Resources", organization_id=None)
+    db_session.add(solution)
+    await db_session.flush()
+    sid = solution.id
+    path = "config/policy.json"
+    previous = None
+    for raw in (b'{"v":1}', b'{"v":2}', b'{"v":1}'):
+        source = _reviewed_package_source(solution, runtime=True, include_app=False,
+            immutable_resource=raw, reads_resource=previous is not None)
+        prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
+            source, expected_active_deployment_id=previous,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sid)))
+        did = uuid4()
+        manifest, resolution = await compile_package_runtime(db_session, source, prepared, did)
+        if previous is None:
+            # An earlier reviewed resource-aware adoption grants this exact
+            # name. Whole-package source may update its bytes, not add names.
+            resources = {path: RuntimeResourceResolution(
+                object_key=SolutionDeploymentStorage(sid, did).runtime_prefix + "_resources/" + path,
+                content_hash=sha256_digest(raw), size_bytes=len(raw))}
+            resolution = resolution.model_copy(update={"resources": resources,
+                "sources": {name: value for name, value in resolution.sources.items() if name != path}})
+            manifest = manifest.model_copy(update={"resources": resources,
+                "resolution_map_hash": sha256_digest(canonical_json(resolution))})
+        assert set(manifest.resources) == set(resolution.resources) == {path}
+        assert path not in resolution.sources
+        assert resolution.resources[path].content_hash == sha256_digest(raw)
+        await stage(db_session, seed_user, solution, source, prepared, manifest, resolution)
+        await activate_package_runtime(db_session, source, prepared, manifest, previous)
+        assert await read_deployment_resources(sid, did, resolution) == {path: raw}
+        result = await readback_package_runtime(db_session, sid, did,
+            expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
+            expected_organization_id=None)
+        assert result["source_verified"] and result["runtime_verified"]
+        assert len(result["workflow_runtime_pins"]) == 1
+        assert result["app_runtime_pins"] == {}
+        previous = did
+
+    before = await capture_package_controls(db_session, sid)
+    with pytest.raises(ValueError, match="omits an inherited immutable resource"):
+        async with db_session.begin_nested():
+            missing = _reviewed_package_source(solution, runtime=True, include_app=False)
+            attempted = await SolutionDeployer(db_session).prepare_reviewed_package(
+                missing, expected_active_deployment_id=previous, expected_controls_digest=canonical_digest(before))
+            await compile_package_runtime(db_session, missing, attempted, uuid4())
+    assert await capture_package_controls(db_session, sid) == before
+    await db_session.refresh(solution)
+
+    prepared = await SolutionDeployer(db_session).prepare_reviewed_package(
+        source, expected_active_deployment_id=previous, expected_controls_digest=canonical_digest(before))
+    candidate, candidate_resolution = await compile_package_runtime(db_session, source, prepared, uuid4())
+    await stage(db_session, seed_user, solution, source, prepared, candidate, candidate_resolution)
+    from src.config import get_settings
+    from src.services.file_storage.s3_client import S3StorageClient
+    settings = get_settings()
+    async with S3StorageClient(settings).get_client() as client:
+        await client.put_object(Bucket=settings.s3_bucket,
+            Key=candidate_resolution.resources[path].object_key, Body=b'{"v":9}')
+    with pytest.raises(ValueError, match="activation was not established"):
+        await activate_package_runtime(db_session, source, prepared, candidate, previous)
+    assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sid)) == previous
+    assert await read_deployment_resources(sid, previous, resolution) == {path: b'{"v":1}'}
+    async with S3StorageClient(settings).get_client() as client:
+        await client.put_object(Bucket=settings.s3_bucket,
+            Key=resolution.resources[path].object_key, Body=b'{"v":9}')
+    with pytest.raises(SolutionSourceRevisionError, match="Resource archive or runtime bytes differ"):
+        await readback_package_runtime(db_session, sid, previous,
+            expected_source_sha256=source.evidence()["package"]["source_archive_sha256"],
+            expected_organization_id=None)
+    assert await db_session.scalar(select(Solution.active_deployment_id).where(Solution.id == sid)) == previous
 
 
 @pytest.mark.e2e

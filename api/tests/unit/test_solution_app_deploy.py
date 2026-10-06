@@ -119,7 +119,7 @@ def _app_entry(app_id: str, slug: str) -> dict:
     }
 
 
-def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40, source_version=None, include_app=True, table_schema=None, additional_table_name=None):
+def _reviewed_package_source(sol, *, app_access_level="authenticated", runtime=False, function_args="", source_commit_sha="a" * 40, source_version=None, include_app=True, table_schema=None, additional_table_name=None, immutable_resource=None, reads_resource=False):
     from bifrost.solution_package_delivery import build_solution_package_archive, review_solution_package_source
     from bifrost.workspace_release import canonical_digest
     from src.services.solutions.github_delivery_source import VerifiedAuthoredSolution, VerifiedAuthoredSolutionFile
@@ -135,6 +135,13 @@ def main():
 '''
         files["functions/main.py"] = files["functions/main.py"].replace(
             b"def main():", f"def main({function_args}):".encode())
+        if reads_resource:
+            files["functions/main.py"] = files["functions/main.py"].replace(
+                b"from bifrost import workflow", b"from bifrost import resources, workflow").replace(
+                b"def main():\n    return {\"ok\": True}",
+                b"async def main():\n    return await resources.read(\"config/policy.json\")")
+    if immutable_resource is not None:
+        files["config/policy.json"] = immutable_resource
     files["bifrost.solution.yaml"] = f"slug: {sol.slug}\nname: APP\n".encode()
     if source_version is not None:
         files["bifrost.solution.yaml"] += f"version: {source_version}\n".encode()
