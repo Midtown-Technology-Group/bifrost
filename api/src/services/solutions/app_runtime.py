@@ -8,6 +8,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from bifrost.workspace_release import canonical_digest
 
@@ -16,44 +17,44 @@ from src.core.solution_delivery_policy import delivery_path
 SCHEMA = "bifrost.solution-app-runtime-pin/v1"
 
 
-def compiled_index_assets(html: str) -> tuple[str | None, str | None]:
-    """Use the same entry/CSS references for serving and accounting."""
+class _IndexAssetParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.entries: list[str] = []
+        self.stylesheets: list[str] = []
 
-    class IndexAssetParser(HTMLParser):
-        def __init__(self) -> None:
-            super().__init__()
-            self.entry: str | None = None
-            self.css: str | None = None
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        source, href = values.get("src"), values.get("href")
+        if tag == "script" and values.get("type") == "module" and source:
+            self.entries.append(source)
+        if tag == "link" and values.get("rel") == "stylesheet" and href:
+            self.stylesheets.append(href)
 
-        def handle_starttag(
-            self, tag: str, attrs: list[tuple[str, str | None]]
-        ) -> None:
-            values = dict(attrs)
-            if tag == "script" and values.get("type") == "module" and values.get("src"):
-                self.entry = values["src"]
-            if (
-                tag == "link"
-                and values.get("rel") == "stylesheet"
-                and values.get("href")
-            ):
-                self.css = values["href"]
 
-    parser = IndexAssetParser()
+def _compiled_index_references(html: str) -> tuple[list[str], list[str]]:
+    parser = _IndexAssetParser()
     parser.feed(html)
-    # Vite's base="./" emits ./assets/...; the browser resolves that to the
-    # same deployment-relative object as assets/.... Preserve that identity
-    # when comparing against the compiled output inventory.
-    entry = (
-        parser.entry.split("/dist/")[-1].lstrip("/").removeprefix("./")
-        if parser.entry
-        else None
+
+    def normalize(reference: str) -> str:
+        parsed = urlsplit(reference)
+        # Only the pathname carries a serving prefix. Query/fragment contents
+        # may themselves contain /dist/ and must retain their URL semantics.
+        if (parsed.scheme or parsed.netloc) and "/dist/" not in parsed.path:
+            return reference
+        path = parsed.path.split("/dist/")[-1].lstrip("/").removeprefix("./")
+        return urlunsplit(("", "", path, parsed.query, parsed.fragment))
+
+    return (
+        [normalize(ref) for ref in parser.entries],
+        [normalize(ref) for ref in parser.stylesheets],
     )
-    css = (
-        parser.css.split("/dist/")[-1].lstrip("/").removeprefix("./")
-        if parser.css
-        else None
-    )
-    return entry, css
+
+
+def compiled_index_assets(html: str) -> tuple[str | None, str | None]:
+    """Keep the loader's last entry/CSS selection and complete URL semantics."""
+    entries, stylesheets = _compiled_index_references(html)
+    return (entries[-1] if entries else None, stylesheets[-1] if stylesheets else None)
 
 
 def source_archive_sha256(source: bytes | Path) -> str:
@@ -76,14 +77,15 @@ def compiled_app_runtime_pin(
         raise ValueError("App build requires the exact source archive digest")
     if "index.html" not in outputs:
         raise ValueError("Compiled App is missing index.html")
-    entry, css = compiled_index_assets(outputs["index.html"].decode("utf-8"))
-    if (
-        entry is not None
-        and entry not in outputs
-        or css is not None
-        and css not in outputs
-    ):
-        raise ValueError("Compiled App entry or CSS dependency is missing")
+    entries, stylesheets = _compiled_index_references(
+        outputs["index.html"].decode("utf-8")
+    )
+    # Prove every index reference, including tags the legacy loader does not
+    # select. Otherwise an earlier missing asset can hide behind the last tag.
+    for reference in (*entries, *stylesheets):
+        parsed = urlsplit(reference)
+        if parsed.scheme or parsed.netloc or unquote(parsed.path) not in outputs:
+            raise ValueError("Compiled App entry or CSS dependency is missing")
     for path in outputs:
         delivery_path(path)
     proof = {

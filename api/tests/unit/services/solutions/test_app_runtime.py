@@ -2,10 +2,12 @@
 
 from copy import deepcopy
 from uuid import uuid4
+from urllib.parse import urlsplit
 
 import pytest
 
 from src.services.solutions.app_runtime import (
+    compiled_index_assets,
     compiled_app_runtime_pin,
     source_archive_sha256,
     verify_compiled_app_runtime_pin,
@@ -39,6 +41,79 @@ def test_vite_relative_urls_reference_the_same_compiled_files():
         b'<link rel="stylesheet" href="./assets/main.css">'
     )
     identity["outputs"]["assets/main.css"] = b"body { color: blue; }"
+    proof = compiled_app_runtime_pin(**identity)
+    assert verify_compiled_app_runtime_pin(proof, **identity) == proof
+
+
+@pytest.mark.parametrize(
+    "entry,css",
+    [
+        ("assets/main.js?v=1", "assets/main.css#theme"),
+        ("./assets/main.js?v=1#entry", "./assets/main.css?v=2#theme"),
+        (
+            "/api/applications/app/dist/assets/main.js?v=1",
+            "/api/applications/app/dist/assets/main.css#theme",
+        ),
+        (
+            "assets/main.js?return=/dist/other.js",
+            "assets/main.css?return=/dist/other.css",
+        ),
+    ],
+)
+def test_asset_pathnames_are_verified_without_changing_loading_url_semantics(
+    entry, css
+):
+    identity = inputs()
+    html = f'<script type="module" src="{entry}"></script><link rel="stylesheet" href="{css}">'
+    identity["outputs"]["index.html"] = html.encode()
+    identity["outputs"]["assets/main.css"] = b"body { color: blue; }"
+    proof = compiled_app_runtime_pin(**identity)
+    assert verify_compiled_app_runtime_pin(proof, **identity) == proof
+    loaded_entry, loaded_css = compiled_index_assets(html)
+    assert loaded_entry is not None and loaded_css is not None
+    assert urlsplit(loaded_entry).path == "assets/main.js"
+    assert urlsplit(loaded_css).path == "assets/main.css"
+    assert urlsplit(loaded_entry).query == urlsplit(entry).query
+    assert urlsplit(loaded_entry).fragment == urlsplit(entry).fragment
+    assert urlsplit(loaded_css).query == urlsplit(css).query
+    assert urlsplit(loaded_css).fragment == urlsplit(css).fragment
+
+
+@pytest.mark.parametrize(
+    "earlier",
+    [
+        '<script type="module" src="assets/missing.js"></script>',
+        '<link rel="stylesheet" href="assets/missing.css">',
+    ],
+)
+def test_earlier_references_cannot_hide_a_missing_compiled_dependency(earlier):
+    identity = inputs()
+    identity["outputs"]["index.html"] = (
+        earlier + '<script type="module" src="assets/main.js"></script>'
+        '<link rel="stylesheet" href="assets/main.css">'
+    ).encode()
+    identity["outputs"]["assets/main.css"] = b"body {}"
+    with pytest.raises(ValueError, match="dependency"):
+        compiled_app_runtime_pin(**identity)
+
+
+def test_multiple_references_with_all_bytes_keep_existing_last_entry_selection():
+    identity = inputs()
+    html = (
+        '<script type="module" src="assets/earlier.js"></script>'
+        '<link rel="stylesheet" href="assets/earlier.css">'
+        '<script type="module" src="assets/main.js"></script>'
+        '<link rel="stylesheet" href="assets/main.css">'
+    )
+    identity["outputs"].update(
+        {
+            "index.html": html.encode(),
+            "assets/earlier.js": b"const earlier = 1;",
+            "assets/earlier.css": b"body {}",
+            "assets/main.css": b"body { color: blue; }",
+        }
+    )
+    assert compiled_index_assets(html) == ("assets/main.js", "assets/main.css")
     proof = compiled_app_runtime_pin(**identity)
     assert verify_compiled_app_runtime_pin(proof, **identity) == proof
 

@@ -39,8 +39,9 @@ async def test_solution_app_accounting_reads_the_active_compiled_bytes(
         portable_id = uuid.uuid4()
         app_id = solution_entity_id(solution_id, portable_id)
         compiled = {
-            "index.html": '<html><script type="module" src="assets/main.js"></script></html>',
+            "index.html": '<html><script type="module" src="./assets/main.js?v=1#entry"></script><link rel="stylesheet" href="./assets/main.css?v=2#theme"></html>',
             "assets/main.js": "const version = 1;",
+            "assets/main.css": "body { color: blue; }",
         }
         manifest = {
             "apps": {
@@ -90,7 +91,15 @@ async def test_solution_app_accounting_reads_the_active_compiled_bytes(
             params={"mode": "live"},
         )
         assert manifest_response.status_code == 200, manifest_response.text
-        assert manifest_response.json()["entry"] == "assets/main.js"
+        assert manifest_response.json()["entry"] == "assets/main.js?v=1#entry"
+        assert manifest_response.json()["css"] == "assets/main.css?v=2#theme"
+        served_js = e2e_client.get(
+            f"/api/applications/{app_id}/dist/assets/main.js?v=1", headers=headers
+        )
+        assert (
+            served_js.status_code == 200
+            and served_js.content == compiled["assets/main.js"].encode()
+        )
         if corrupt:
             # Mutate only this synthetic test install's object namespace.
             builder = SolutionAppBuilder()
@@ -100,6 +109,7 @@ async def test_solution_app_accounting_reads_the_active_compiled_bytes(
                 {
                     "index.html": compiled["index.html"].encode(),
                     "assets/main.js": b"const version = 2;",
+                    "assets/main.css": compiled["assets/main.css"].encode(),
                 },
             )
             with pytest.raises(ValueError, match="differs"):
