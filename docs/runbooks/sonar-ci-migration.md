@@ -60,8 +60,8 @@ Do not disable the current method before the replacement is ready to submit.
 - A clean, full-depth checkout of the PR's exact head SHA, the merge-group SHA,
   or the push/manual SHA, with its explicit base recorded. Existing CI still
   exercises its normal merge candidate separately.
-- All Python unit tests, including slow unit cases, and repository Python tool
-  tests. Pure tool tests run in the same locked Docker image from `/repo` with
+- All Python unit tests, including slow unit cases, full API E2E tests, and
+  repository Python tool tests. Pure tool tests run in the same locked Docker image from `/repo` with
   their own `PYTHONPATH`, before API tests append their coverage. This avoids the
   API `scripts` package shadowing repository tools. The dedicated `.coveragerc.sonar` includes authored CLI, proxy, router,
   worker, scheduler, MCP, execution, API scripts, and root tools. The ordinary
@@ -76,9 +76,13 @@ Do not disable the current method before the replacement is ready to submit.
   The `.claude/skills` originals remain in scope; generated `.agents/skills` and
   plugin skill mirrors and the four `skills/*` directory aliases are not counted twice.
 
-Unit coverage is not evidence of E2E/server-process coverage. The lane does not
-combine the existing permissive badge/server-process reports. A zero or absent
-per-file report entry is never promoted to a hit. Unmeasured or unsupported
+The Sonar-only Compose override instruments the API, replica, worker, scheduler
+and HTTP fixture processes with the same branch configuration and authored-source
+scope as the unit collector. After E2E tests, normal process shutdown flushes their
+parallel data; strict combination preserves real unit and runtime hits before
+canonical source filtering and XML export. Missing or incompatible runtime data
+fails the evidence job. The existing permissive badge reports are not imported.
+A zero or absent per-file report entry is never promoted to a hit. Unmeasured or unsupported
 languages, shell/configuration changes, and generated/vendor-file changes remain
 explicit in the manifest and require human review. No claim of Rust coverage
 is made; current main contains no tracked Rust source, and any future Rust

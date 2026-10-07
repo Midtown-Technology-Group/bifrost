@@ -1,20 +1,20 @@
 """Sonar reports retain real hits and unexecuted authored source across mounts."""
 
-from configparser import ConfigParser
 import hashlib
 import importlib.util
 import json
 import os
-from pathlib import Path
+import runpy
 import shlex
 import subprocess
 import sys
 import textwrap
+from configparser import ConfigParser
+from pathlib import Path
 from xml.etree import ElementTree
 
 import coverage
 import pytest
-
 
 API_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = "def choose(flag):\n    if flag:\n        return 1\n    return 2\n\nchoose(True)\n"
@@ -39,6 +39,7 @@ def test_sonar_collection_and_reporting_keep_the_same_exclusions():
 
     assert collect.get("run", "omit") == report.get("run", "omit")
     assert collect.getboolean("run", "branch")
+    assert collect.getboolean("run", "sigterm")
     assert report.getboolean("run", "branch")
     assert not collect.getboolean("run", "relative_files")
     assert report.getboolean("run", "relative_files")
@@ -418,3 +419,31 @@ def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
     assert result.returncode != 0
     assert "Unsafe private Sonar diagnostic artifact" in result.stderr
     assert not capture.exists()
+
+
+def test_sonar_combines_real_unit_and_runtime_branch_hits(tmp_path: Path) -> None:
+    source = tmp_path / "sample.py"
+    source.write_text("def choose(flag):\n    if flag:\n        return 1\n    return 2\n")
+    data = tmp_path / ".coverage.sonar"
+    for flag in (True, False):
+        collector = coverage.Coverage(
+            config_file=False, branch=True, data_file=str(data), data_suffix=True,
+            source=[str(tmp_path)],
+        )
+        collector.start()
+        try:
+            namespace = runpy.run_path(str(source))
+            assert namespace["choose"](flag) == (1 if flag else 2)
+        finally:
+            collector.stop()
+            collector.save()
+    report = coverage.Coverage(config_file=False, branch=True, data_file=str(data))
+    report.combine(data_paths=[str(tmp_path)], strict=True, keep=True)
+    report.save()
+    xml = tmp_path / "combined.xml"
+    report.xml_report(outfile=str(xml))
+    measured = ElementTree.parse(xml).find(".//class")
+    assert measured is not None
+    assert measured.attrib["line-rate"] == "1"
+    assert measured.attrib["branch-rate"] == "1"
+    assert len(list(tmp_path.glob(".coverage.sonar.*"))) == 2

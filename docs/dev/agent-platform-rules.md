@@ -139,6 +139,12 @@ docker volume ls --filter "label=com.docker.compose.project=$project" --format '
 Container/network results must be empty; volumes must be empty after disposable teardown or match the recorded preserved set. Status alone is insufficient: Docker query failures can look like DOWN, and status does not check volumes. Report teardown failures or unavailable Docker as unverified cleanup with exact scope and blocker. Keep credentials out of reports and preserve user credential files.
 
 
+New debug databases use a private worktree credential stored under
+`${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/<project>/postgres-secret`.
+An existing database volume without that saved credential requires its existing
+`POSTGRES_PASSWORD` in the debug environment; startup never resets the volume or
+silently rotates its password. URLs encode the configured password.
+
 The default mode allocates a free local port for the client (deterministic per worktree, in 30000-39999). If `NETBIRD_SETUP_KEY` is set in `~/.config/bifrost/debug.env`, the stack boots with a Netbird sidecar and NetBird Peer Expose provides an ephemeral public HTTPS URL with no host ports. Use the URL printed by `./debug.sh status`; never use a shared default password on a public endpoint.
 
 Stack contains: API (port 8000 internal), Client (port 80 internal), Scheduler, Worker, Postgres, RabbitMQ, Redis, SeaweedFS. All Bifrost services build from `api/Dockerfile.dev` / `client/Dockerfile.dev` (source build, not public images).

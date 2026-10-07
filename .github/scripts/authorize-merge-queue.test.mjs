@@ -5,7 +5,7 @@ import { authorizeMergeQueue } from "./authorize-merge-queue.mjs";
 function fixture() {
   const entry = {
     enqueuer: { __typename: "User", login: "MTG-Thomas", databaseId: 87775189 },
-    headCommit: { oid: "candidate" },
+    headCommit: { oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     pullRequest: { number: 714, baseRefName: "main" },
   };
   const queue = { data: { repository: { mergeQueue: { entries: {
@@ -14,8 +14,8 @@ function fixture() {
   const permission = { permission: "admin", user: { id: 87775189 } };
   const calls = [];
   const input = {
-    repo: "Midtown-Technology-Group/bifrost", sha: "candidate", eventName: "merge_group",
-    event: { action: "checks_requested", merge_group: { base_ref: "refs/heads/main", head_sha: "candidate" } },
+    repo: "Midtown-Technology-Group/bifrost", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", eventName: "merge_group",
+    event: { action: "checks_requested", merge_group: { base_ref: "refs/heads/main", head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
     request: async (path) => {
       calls.push(path);
       return path === "/graphql" ? queue : permission;
@@ -26,7 +26,7 @@ function fixture() {
 
 test("authorizes the administrator who queued the exact live candidate", async () => {
   const { input, calls } = fixture();
-  assert.match(await authorizeMergeQueue(input), /MTG-Thomas authorized PR #714 at candidate/);
+  assert.match(await authorizeMergeQueue(input), /MTG-Thomas authorized PR #714 at a{40}/);
   assert.deepEqual(calls, ["/graphql", "/repos/Midtown-Technology-Group/bifrost/collaborators/MTG-Thomas/permission"]);
 });
 
@@ -55,6 +55,15 @@ test("does not authorize bots", async () => {
   entry.enqueuer.__typename = "Bot";
   await assert.rejects(authorizeMergeQueue(input), /MTG administrator/);
 });
+
+for (const login of ["../other", "MTG-Thomas\nforged approval", "bad/user", "-option", ""] ) {
+  test(`rejects malformed actor ${JSON.stringify(login)} before permission lookup`, async () => {
+    const { input, entry, calls } = fixture();
+    entry.enqueuer.login = login;
+    await assert.rejects(authorizeMergeQueue(input), /Invalid merge queue/);
+    assert.deepEqual(calls, ["/graphql"]);
+  });
+}
 
 for (const [name, alter] of [
   ["stale queue candidate", ({ entry }) => { entry.headCommit.oid = "old"; }],

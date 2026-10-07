@@ -134,7 +134,7 @@ configure_debug_storage() {
         return 0
     fi
 
-    local credential_dir secret_file
+    local credential_dir secret_file ancestor
     credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
     secret_file="$credential_dir/storage-secret"
     mkdir -p "$credential_dir"
@@ -145,6 +145,44 @@ configure_debug_storage() {
     chmod 600 "$secret_file"
     SEAWEEDFS_SECRET_KEY="$(<"$secret_file")"
     export SEAWEEDFS_SECRET_KEY
+}
+
+# Keep local database credentials private and stable for the owning worktree.
+# Existing volumes are never reset or assigned a different password implicitly.
+configure_debug_database() {
+    local credential_dir secret_file ancestor
+    credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
+    secret_file="$credential_dir/postgres-secret"
+    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+        ancestor="$credential_dir"
+        while [ "$ancestor" != / ] && [ "$ancestor" != . ]; do
+            if [ -L "$ancestor" ]; then
+                echo 'Debug database credential directory cannot contain symlinks' >&2
+                return 1
+            fi
+            ancestor="$(dirname "$ancestor")"
+        done
+        if [ -s "$secret_file" ] && [ ! -L "$secret_file" ]; then
+            chmod 600 "$secret_file"
+            POSTGRES_PASSWORD="$(<"$secret_file")"
+        else
+            if docker volume inspect "${COMPOSE_PROJECT_NAME}_postgres_data" >/dev/null 2>&1; then
+                echo 'Existing debug database: set POSTGRES_PASSWORD to its existing credential before continuing. No volume or password was changed.' >&2
+                return 1
+            fi
+            mkdir -p "$credential_dir"
+            chmod 700 "$credential_dir"
+            if [ -e "$secret_file" ] || [ -L "$secret_file" ]; then
+                echo 'Unsafe or empty debug database credential file' >&2
+                return 1
+            fi
+            (umask 077; set -o noclobber; openssl rand -hex 32 > "$secret_file") || return 1
+            POSTGRES_PASSWORD="$(<"$secret_file")"
+        fi
+    fi
+    export POSTGRES_PASSWORD
+    POSTGRES_PASSWORD_URLENCODED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["POSTGRES_PASSWORD"], safe=""))')"
+    export POSTGRES_PASSWORD_URLENCODED
 }
 
 # =============================================================================
@@ -569,6 +607,7 @@ cmd_fixtures() {
 
 load_env_files
 configure_debug_admin
+configure_debug_database
 
 if [ $# -eq 0 ]; then
     cmd_up

@@ -82,7 +82,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/sonar -p 'test_*.py'
       - name: Install client and repository test dependencies
         run: |
-          npm ci --prefix client
+          npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
       - name: Collect comprehensive client coverage
         env:
@@ -163,8 +163,15 @@ jobs:
           # Append the API tests to repository-tool coverage. Include slow unit
           # cases; affected-only reports are not this initial full denominator.
           ./test.sh unit -m "" --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
+          # Exercise the actual API/worker/scheduler paths, using the same
+          # authored-source scope as units. Flush their parallel data before
+          # merging; absence or incompatibility of runtime reports is fatal.
+          ./test.sh e2e --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          docker compose -f "$COMPOSE_FILE" stop api api-replica worker scheduler scheduler-fixtures
+          docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
+            coverage combine --rcfile=/app/.coveragerc.sonar --append --keep /coverage
           # Virtual workflow filenames executed by tests are not repository
           # source. Audit only those records out; missing tracked source fails.
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \

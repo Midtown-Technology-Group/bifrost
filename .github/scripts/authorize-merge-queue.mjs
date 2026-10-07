@@ -44,6 +44,12 @@ export async function authorizeMergeQueue({ eventName, event, sha, repo, request
   if (entry.pullRequest.baseRefName !== "main" || entry.enqueuer?.__typename !== "User") {
     throw new Error("An MTG administrator must enqueue this main PR");
   }
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(entry.enqueuer.login)
+      || !Number.isSafeInteger(entry.enqueuer.databaseId) || entry.enqueuer.databaseId <= 0
+      || !Number.isSafeInteger(entry.pullRequest.number) || entry.pullRequest.number <= 0
+      || !/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error("Invalid merge queue actor, PR or commit identity");
+  }
   const permission = await request(
     `/repos/${repository}/collaborators/${encodeURIComponent(entry.enqueuer.login)}/permission`,
   );

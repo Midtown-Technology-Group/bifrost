@@ -60,8 +60,8 @@ download_kind() {
   local checksum_url="${url}.sha256sum"
   local tmp="${KIND_BIN}.tmp"
   local checksum_file="${tmp}.sha256sum"
-  curl --fail --location --silent --show-error --output "${tmp}" "${url}"
-  curl --fail --location --silent --show-error --output "${checksum_file}" "${checksum_url}"
+  curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --output "${tmp}" "${url}"
+  curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --output "${checksum_file}" "${checksum_url}"
   local expected actual
   expected="$(awk '{print $1}' "${checksum_file}")"
   actual="$(sha256sum "${tmp}" | awk '{print $1}')"
@@ -223,6 +223,7 @@ up() {
   rendered="$(write_rendered_manifests)"
   kubectl_local apply -f "${ROOT_DIR}/k8s/local/namespace.yaml"
   kubectl_local apply -f "${ROOT_DIR}/k8s/local/config.yaml"
+  python3 "${ROOT_DIR}/scripts/kubernetes/local_secrets.py" --kubeconfig "$KUBECONFIG_PATH" --context "$KIND_CONTEXT"
   kubectl_local apply -f "${ROOT_DIR}/k8s/local/postgres.yaml"
   kubectl_local apply -f "${ROOT_DIR}/k8s/local/pgbouncer.yaml"
   kubectl_local apply -f "${ROOT_DIR}/k8s/local/rabbitmq.yaml"

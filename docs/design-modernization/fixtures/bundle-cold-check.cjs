@@ -1,12 +1,14 @@
 // Run from any directory after installing client dependencies. See fixtures.md.
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const {chromium,expect}=require(path.resolve(__dirname, '../../../client/node_modules/@playwright/test'));
 const baseUrl = process.env.BIFROST_REVIEW_URL;
 const authPath = process.env.BIFROST_REVIEW_AUTH;
-const outputDir = process.env.BIFROST_REVIEW_OUTPUT || '/tmp/bifrost-design-review';
+const outputDir = process.env.BIFROST_REVIEW_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), 'bifrost-design-review-'));
 if (!baseUrl || !authPath) throw new Error('Set BIFROST_REVIEW_URL and BIFROST_REVIEW_AUTH to an isolated preview and its Playwright storage-state file.');
-fs.mkdirSync(outputDir, {recursive:true});
+fs.mkdirSync(outputDir, {recursive:true, mode:0o700});
+if (fs.lstatSync(outputDir).isSymbolicLink() || (fs.statSync(outputDir).mode & 0o077) !== 0) throw new Error('Review output must be a private directory, not a symlink.');
 (async()=>{const b=await chromium.launch();try{for(const theme of ['light','dark'])for(const width of [320,1440]){
  const c=await b.newContext({storageState:authPath,viewport:{width,height:800},reducedMotion:'reduce'});await c.addInitScript(t=>{localStorage.setItem('theme',t);localStorage.removeItem('bifrost.automigrate-dismissed.cold-review');},theme);const p=await c.newPage();let manifests=0;
  await p.route('**/api/applications/cold-review/bundle-manifest?*',r=>{manifests++;return r.fulfill({json:{entry:'entry.js',css:null,base_url:'/api/applications/cold-review/bundle-asset',dependencies:{},app_model:'inline_v1',migrated:true,organization_id:null}});});
