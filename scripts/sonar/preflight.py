@@ -70,6 +70,16 @@ def json_bytes(value: object) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode()
 
 
+def commit_arguments(operands: tuple[str, ...]) -> list[str]:
+    validated = []
+    for operand in operands:
+        match = re.fullmatch(r"[0-9a-f]{40}", operand)
+        if not match:
+            fail("Git evidence requires exact commit identities")
+        validated.append(match.group(0))
+    return validated
+
+
 def git_arguments(args: tuple[str, ...]) -> list[str]:
     fixed = {
         ("rev-parse", "HEAD"): ["rev-parse", "HEAD"],
@@ -94,12 +104,7 @@ def git_arguments(args: tuple[str, ...]) -> list[str]:
         prefix, count = operation
         if args[:count] != tuple(prefix) or len(args) != count + 2:
             fail("Git evidence accepts only fixed read-only operation signatures")
-        command = list(prefix)
-        for operand in args[count:]:
-            match = re.fullmatch(r"[0-9a-f]{40}", operand)
-            if not match:
-                fail("Git evidence requires exact commit identities")
-            command.append(match.group(0))
+        command = [*prefix, *commit_arguments(args[count:])]
     return command
 
 
