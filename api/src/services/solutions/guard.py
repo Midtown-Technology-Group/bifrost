@@ -98,7 +98,16 @@ _FILE_RUNTIME_CONTENT_FIELDS = {
 
 
 def _instance_is_managed(obj: Any) -> bool:
-    return is_solution_managed(obj)
+    if _is_solution_scoped_operational_row(obj):
+        return False
+    if is_solution_managed(obj):
+        return True
+    state = sa_inspect(obj)
+    # Clearing the current owner must not make an existing managed row escape
+    # the flush guard. Check its persisted ownership as well as its new value.
+    return "solution_id" in state.attrs and any(
+        value is not None for value in state.attrs.solution_id.history.deleted
+    )
 
 
 def _changed_column_fields(obj: Any) -> set[str]:

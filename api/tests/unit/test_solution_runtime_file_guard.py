@@ -43,7 +43,9 @@ def test_changed_runtime_content_metadata_passes_flush_guard() -> None:
 
 
 @pytest.mark.parametrize("content_changed", [False, True])
-def test_runtime_update_can_fill_missing_creation_attribution(content_changed: bool) -> None:
+def test_runtime_update_can_fill_missing_creation_attribution(
+    content_changed: bool,
+) -> None:
     install_solution_write_guard()
     row = _metadata()
     row.created_by = None
@@ -85,6 +87,31 @@ def test_workspace_source_metadata_remains_blocked() -> None:
     with Session() as session:
         session.add(row)
         row.sha256 = "b" * 64
+        with pytest.raises(SolutionManagedWriteError):
+            session.dispatch.before_flush(session, None, None)
+
+
+@pytest.mark.parametrize("model", ["metadata", "policy"])
+def test_file_rows_cannot_escape_the_guard_by_clearing_solution_owner(
+    model: str,
+) -> None:
+    install_solution_write_guard()
+    row = (
+        _metadata()
+        if model == "metadata"
+        else FilePolicy(
+            id=uuid.uuid4(),
+            solution_id=uuid.uuid4(),
+            organization_id=None,
+            location="reboot-operations",
+            path="",
+            policies={"policies": []},
+        )
+    )
+    make_transient_to_detached(row)
+    with Session() as session:
+        session.add(row)
+        row.solution_id = None
         with pytest.raises(SolutionManagedWriteError):
             session.dispatch.before_flush(session, None, None)
 
