@@ -255,6 +255,9 @@ class TestSolutionAppDeploy:
 
         sol = await self._install(db_session)
         solution_id = sol.id
+        # Historical mutable installs predate the deployment-v1 default.
+        sol.execution_runtime_mode = "repo-v1"
+        await db_session.flush()
         deployer = SolutionDeployer(db_session)
         original = _reviewed_package_source(sol, runtime=True, function_args="value: str", include_app=False)
         await deployer.prepare_reviewed_package(original, expected_active_deployment_id=None,
