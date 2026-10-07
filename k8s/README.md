@@ -7,7 +7,7 @@ This directory contains Kubernetes manifests for deploying Bifrost to a Kubernet
 Before deploying Bifrost, you need:
 
 1. **PostgreSQL Database** - Use a managed service (RDS, Cloud SQL, Azure Database)
-2. **S3-Compatible Storage** - AWS S3, GCS, Azure Blob, or self-hosted S3-compatible storage such as SeaweedFS
+2. **Object Storage** - S3-compatible storage (AWS S3, GCS, or self-hosted S3-compatible storage such as SeaweedFS), or Azure Blob Storage via the native `azure_blob` object-storage provider (`BIFROST_OBJECT_STORAGE_PROVIDER=azure_blob`). Azure Blob Storage does not expose an S3 API, so it is not configured through the S3 endpoint settings.
 
 ## Directory Structure
 
@@ -85,6 +85,26 @@ Then apply:
 ```bash
 kubectl apply -f k8s/configmap.yaml
 ```
+
+For Azure Blob Storage, replace the S3 storage settings above rather than using
+an S3 endpoint. Keep the non-storage secret values, omit the `BIFROST_S3_*`
+settings, and set these values in `k8s/configmap.yaml`:
+
+```yaml
+data:
+  BIFROST_OBJECT_STORAGE_PROVIDER: "azure_blob"
+  BIFROST_AZURE_BLOB_ACCOUNT_URL: "https://<account>.blob.core.windows.net"
+  BIFROST_AZURE_BLOB_CONTAINER: "<container>"
+  BIFROST_AZURE_BLOB_AUTH: "account_key"
+```
+
+For `account_key` authentication, replace the S3 flags in the secret command
+with `--from-literal=BIFROST_AZURE_BLOB_ACCOUNT_KEY='your-account-key'`, or add
+that key to `k8s/secret.yaml`; keep it out of the ConfigMap. Prefer
+`default_credential` in production after configuring Azure identity for every
+storage-using workload. These generic manifests do not configure Azure Workload
+Identity, so changing the auth mode alone is insufficient; omit the account key
+only once identity is available to the API, init container, and workers.
 
 ### 4. Deploy All Services
 
@@ -239,7 +259,7 @@ Scale gradually and monitor memory-pressure deferrals and queue wait time.
 
 ## Configuration Reference
 
-### Required Secrets
+### Secret Settings
 
 | Name | Description |
 |------|-------------|
@@ -249,9 +269,10 @@ Scale gradually and monitor memory-pressure deferrals and queue wait time.
 | `BIFROST_RABBITMQ_URL` | RabbitMQ AMQP connection string |
 | `BIFROST_RABBITMQ_PASSWORD` | RabbitMQ password (for in-cluster deployment) |
 | `BIFROST_REDIS_URL` | Redis connection string (for caching) |
-| `BIFROST_S3_ENDPOINT_URL` | S3 endpoint URL |
-| `BIFROST_S3_ACCESS_KEY` | S3 access key |
-| `BIFROST_S3_SECRET_KEY` | S3 secret key |
+| `BIFROST_S3_ENDPOINT_URL` | S3 provider only; optional for AWS S3, set for other S3-compatible services |
+| `BIFROST_S3_ACCESS_KEY` | S3 provider only; access key |
+| `BIFROST_S3_SECRET_KEY` | S3 provider only; secret key |
+| `BIFROST_AZURE_BLOB_ACCOUNT_KEY` | Azure Blob provider only when `BIFROST_AZURE_BLOB_AUTH=account_key` |
 
 ### ConfigMap Settings
 
@@ -259,8 +280,12 @@ Scale gradually and monitor memory-pressure deferrals and queue wait time.
 |------|---------|-------------|
 | `BIFROST_ENVIRONMENT` | `production` | Environment name |
 | `BIFROST_DEBUG` | `false` | Debug mode |
-| `BIFROST_S3_BUCKET` | (required) | S3 bucket name for workspace storage |
-| `BIFROST_S3_REGION` | `us-east-1` | S3 region |
+| `BIFROST_OBJECT_STORAGE_PROVIDER` | `s3` | Storage provider: `s3` or `azure_blob` |
+| `BIFROST_S3_BUCKET` | (required for `s3`) | S3 bucket name for workspace storage |
+| `BIFROST_S3_REGION` | `us-east-1` | S3 provider only; region |
+| `BIFROST_AZURE_BLOB_ACCOUNT_URL` | (required for `azure_blob`) | Blob account URL, such as `https://acct.blob.core.windows.net` |
+| `BIFROST_AZURE_BLOB_CONTAINER` | (required for `azure_blob`) | Blob container for workspace and upload storage |
+| `BIFROST_AZURE_BLOB_AUTH` | `default_credential` | Azure Blob auth: `default_credential` or `account_key` |
 | `BIFROST_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | JWT access token TTL |
 | `BIFROST_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `BIFROST_MFA_ENABLED` | `true` | Enable MFA |
