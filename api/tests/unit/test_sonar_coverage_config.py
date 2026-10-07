@@ -14,6 +14,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import coverage
+from coverage.exceptions import CoverageException
 import pytest
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -484,3 +485,29 @@ def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
     workflow = (root / ".github/workflows/sonar-coverage.yml").read_text()
     assert "python /app/scripts/combine_sonar_coverage.py" in workflow
     assert "coverage combine --strict" not in workflow
+
+
+@pytest.mark.parametrize("invalid", ["corrupt", "incompatible"])
+def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
+    tmp_path: Path, invalid: str
+) -> None:
+    module = _runtime_combiner(tmp_path)
+    source = str(tmp_path / "sample.py")
+    unit = coverage.CoverageData(basename=str(module.DATA_FILE))
+    unit.add_arcs({source: [(1, 2)]})
+    unit.write()
+    original = module.DATA_FILE.read_bytes()
+    valid = coverage.CoverageData(basename=str(module.RUNTIME_DIR / ".coverage.sonar.valid"))
+    valid.add_arcs({source: [(2, 3)]})
+    valid.write()
+    invalid_path = module.RUNTIME_DIR / ".coverage.sonar.invalid"
+    if invalid == "corrupt":
+        invalid_path.write_bytes(b"not a coverage database")
+    else:
+        incompatible = coverage.CoverageData(basename=str(invalid_path))
+        incompatible.add_lines({source: [1]})
+        incompatible.write()
+    with pytest.raises((ValueError, CoverageException)):
+        module.main()
+    assert module.DATA_FILE.read_bytes() == original
+    assert invalid_path.exists()
