@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import signal
 import subprocess
 import sys
@@ -39,7 +40,8 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
     )
-    parser.add_argument("--interval", type=float, default=0.1)
+    parser.add_argument("--interval", type=float, default=0.1,
+                        help="Sampling period in seconds (greater than zero, at most one)")
     parser.add_argument(
         "--max-retained-mib",
         type=float,
@@ -95,6 +97,9 @@ def _mib(value: float) -> float:
 
 def main() -> int:
     args = _parse_args()
+    interval = float(args.interval)
+    if not math.isfinite(interval) or not 0 < interval <= 1:
+        raise ValueError("Sampling interval must be finite, greater than zero, and at most one second")
     args.trace_out = checked_trace_path(args.trace_out or
         Path(tempfile.mkdtemp(prefix="bifrost-large-table-")) / "memory.csv")
     container = memory_sampler._detect_container()
@@ -109,12 +114,12 @@ def main() -> int:
             "--out",
             str(args.trace_out),
             "--interval",
-            str(args.interval),
+            str(interval),
             "--maps-every",
             "10",
         ],
     )
-    time.sleep(max(0.2, args.interval * 2))
+    time.sleep(max(0.2, interval * 2))
 
     output_lines: list[str] = []
     try:

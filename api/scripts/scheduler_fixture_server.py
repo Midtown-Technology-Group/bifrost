@@ -6,6 +6,7 @@ providers while remaining entirely inside the debug/test Compose network.
 
 from __future__ import annotations
 
+import html
 import json
 import shutil
 import signal
@@ -255,8 +256,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: object) -> None:
         # Preserve JSON values while preventing HTML interpretation by clients
         # that ignore the content type of an error or reflected fixture value.
-        body = (json.dumps(payload).replace("<", "\\u003c").replace(">", "\\u003e")
-                .replace("&", "\\u0026")).encode()
+        escaped = html.escape(json.dumps(payload), quote=False)
+        body = (escaped.replace("&lt;", "\\u003c").replace("&gt;", "\\u003e")
+                .replace("&amp;", "\\u0026")).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("X-Content-Type-Options", "nosniff")

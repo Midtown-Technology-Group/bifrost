@@ -633,6 +633,7 @@ def read_json(path: Path, root: Path) -> dict:
 
 
 def stamp_report(root: Path, head: str, base: str, report: Path, properties: str) -> Path:
+    head, base = commit_arguments((head, base))
     validate_checkout(root, head, base)
     items = inventory(root, base, head)
     if properties not in {item["path"] for item in items}:

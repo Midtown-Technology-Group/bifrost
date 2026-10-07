@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { authorizeMergeQueue } from "./authorize-merge-queue.mjs";
+import { fileURLToPath } from "node:url";
+import { authorizeMergeQueue, githubRequestUrl } from "./authorize-merge-queue.mjs";
+
+test("permission lookups cannot escape the fixed GitHub API route", () => {
+  assert.equal(githubRequestUrl("/graphql").href, "https://api.github.com/graphql");
+  assert.equal(githubRequestUrl("/repos/Midtown-Technology-Group/bifrost/collaborators/MTG-Thomas/permission").hostname, "api.github.com");
+  for (const path of ["//other.example", "https://other.example", "/graphql?other=1", "/graphql\n", "/repos/Midtown-Technology-Group/bifrost/collaborators/../permission"]) {
+    assert.throws(() => githubRequestUrl(path), /Unexpected/);
+  }
+});
 
 function fixture() {
   const entry = {
@@ -87,6 +100,32 @@ test("API failure fails the gate", async () => {
   const { input } = fixture();
   input.request = async () => { throw new Error("HTTP 403"); };
   await assert.rejects(authorizeMergeQueue(input), /HTTP 403/);
+});
+
+test("CLI fails closed without publishing malicious API errors or credentials", () => {
+  const directory = mkdtempSync(join(tmpdir(), "merge-queue-log-"));
+  try {
+    const { input } = fixture();
+    const eventPath = join(directory, "event.json");
+    writeFileSync(eventPath, JSON.stringify(input.event));
+    const bootstrap = `
+      import { pathToFileURL } from "node:url";
+      globalThis.fetch = async () => { throw new Error("forged approval\\ncredential: test-only"); };
+      await import(pathToFileURL(process.argv[1]).href);
+    `;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", bootstrap,
+      fileURLToPath(new URL("./authorize-merge-queue.mjs", import.meta.url))], {
+      encoding: "utf8",
+      env: { GITHUB_EVENT_PATH: eventPath, GITHUB_EVENT_NAME: input.eventName,
+        GITHUB_SHA: input.sha, GITHUB_REPOSITORY: input.repo, GH_TOKEN: "test-only" },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.doesNotMatch(result.stderr, /forged approval|test-only/);
+    assert.equal(result.stderr.trim().split("\n").length, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("later waiting PRs do not block the authorized first candidate", async () => {
