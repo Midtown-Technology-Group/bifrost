@@ -20,7 +20,8 @@ def tracker():
     modules = ModuleType("modules")
     modules.ninjaone = SimpleNamespace(list_devices_detaileds=AsyncMock(return_value=[]), list_network_interfaces=AsyncMock(return_value=[]))
     spec = importlib.util.spec_from_file_location("isolated_site_tracker", root / "docs/audits/fixtures/721-ninja-site-tracker.proposed.py")
-    assert spec and spec.loader
+    assert spec
+    assert spec.loader
     value = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, {"bifrost": bifrost, "modules": modules}):
         spec.loader.exec_module(value)
@@ -55,7 +56,9 @@ async def test_bounded_table_pagination_and_cloud_adapter_evidence(tracker):
         SimpleNamespace(documents=[SimpleNamespace(id="last", data=None), {"data": {}}]),
     ]
     rows, calls = await tracker._load_state()
-    assert len(rows) == 501 and rows["last"] == {} and calls == 2
+    assert len(rows) == 501
+    assert rows["last"] == {}
+    assert calls == 2
     assert [call.kwargs["offset"] for call in tracker.tables.query.await_args_list] == [0, 500]
     tracker.ninjaone.list_network_interfaces.return_value = {"results": [
         {"deviceId": 1, "adapterName": "Amazon Elastic Network"},
@@ -113,7 +116,8 @@ async def test_workflows_return_preview_evidence_and_write_mode_stops_before_rea
     assert result["known_site_ip_count"] == 1
     assert result["by_derivation"] == {"server_anchor": 1}
     preview = await tracker.ninja_scan_device_site_moves(org_ids=[1], detect_cloud=False)
-    assert preview["dry_run"] is True and preview["devices_scanned"] == 2
+    assert preview["dry_run"] is True
+    assert preview["devices_scanned"] == 2
     assert preview["summary"] == {"home": 1, "moved_same_client": 1}
     assert preview["notable_count"] == 1
     tracker.ninjaone.list_devices_detaileds.reset_mock()

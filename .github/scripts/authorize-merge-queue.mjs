@@ -83,18 +83,19 @@ async function main() {
     if (!response.ok) throw new Error(`GitHub API returned HTTP ${response.status}`);
     return response.json();
   };
-  console.log(JSON.stringify(await authorizeMergeQueue({
+  await authorizeMergeQueue({
     eventName: process.env.GITHUB_EVENT_NAME,
     event,
     sha: process.env.GITHUB_SHA,
     repo: process.env.GITHUB_REPOSITORY,
     request,
-  })));
+  });
+  console.log("Merge queue authorization passed.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(JSON.stringify(error.message));
+  main().catch(() => {
+    console.error("Merge queue authorization failed; inspect the exact event and live queue state.");
     process.exitCode = 1;
   });
 }

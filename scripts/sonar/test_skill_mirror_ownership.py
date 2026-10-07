@@ -13,7 +13,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("sonar_test_skill_mirrors", ROOT / "scripts/check_skill_mirrors.py")
-assert spec and spec.loader
+assert spec
+assert spec.loader
 mirrors = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mirrors)
 

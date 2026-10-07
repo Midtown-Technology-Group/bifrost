@@ -58,7 +58,8 @@ async def test_inspect_never_decrypts_an_envelope_or_changes_delivery(database, 
     database.execute.return_value = result
     rows = await cli.postgres_inspect("workflow-executions", 10, status)
     assert rows[0]["delivery_id"] == str(row.id)
-    assert "encrypted_envelope" not in rows[0] and "body" not in rows[0]
+    assert "encrypted_envelope" not in rows[0]
+    assert "body" not in rows[0]
     database.commit.assert_not_called()
     database.add.assert_not_called()
 
@@ -97,7 +98,8 @@ async def test_discard_requires_owned_terminal_recovery_and_durable_receipt(data
     row = delivery(case if case in {"poison", "queued"} else "interrupted")
     monkeypatch.setattr(cli, "_postgres_delivery", AsyncMock(return_value=row))
     async def recover(db, identity):
-        assert db is database and identity == row.id
+        assert db is database
+        assert identity == row.id
         if case not in {"refused", "nonterminal"}:
             row.status = "completed"
         return case != "refused"

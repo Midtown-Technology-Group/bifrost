@@ -78,7 +78,8 @@ async def test_attempt_sampling_keeps_successful_history_and_reports_read_gaps()
     async with httpx.AsyncClient(base_url="https://isolated.invalid", transport=httpx.MockTransport(transport)) as client:
         assert await load._sample_attempt_stages(client, {}, []) == ([], 0)
         samples, errors = await load._sample_attempt_stages(client, {}, ["observed", "missing"])
-    assert samples == [{"dispatch": 1.0}] and errors == 1
+    assert samples == [{"dispatch": 1.0}]
+    assert errors == 1
 
 
 @pytest.mark.asyncio
@@ -120,5 +121,7 @@ def test_empty_and_incomplete_pool_arithmetic_does_not_invent_capacity():
     result = load.summarize_fresh_pools({"pools": [{"last_heartbeat": "invalid"}, {
         "last_heartbeat": datetime.now(UTC).isoformat(), "busy_count": 1,
     }]}, datetime.now(UTC))
-    assert result["fresh_pools"] == 1 and result["stale_pools"] == 1
-    assert result["capacity"] is None and result["available"] is None
+    assert result["fresh_pools"] == 1
+    assert result["stale_pools"] == 1
+    assert result["capacity"] is None
+    assert result["available"] is None

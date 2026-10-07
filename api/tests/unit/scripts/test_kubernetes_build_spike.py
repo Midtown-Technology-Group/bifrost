@@ -112,7 +112,8 @@ async def test_terminal_and_success_checks_do_not_confuse_failure_or_timeout(mon
 async def test_seed_creates_standalone_app_without_solution_or_org_retarget(database):
     app = await spike._seed_application("fixture", 2)
     assert app.app_model == "standalone_v2"
-    assert app.organization_id is None and app.solution_id is None
+    assert app.organization_id is None
+    assert app.solution_id is None
     database.add.assert_called_once_with(app)
     database.commit.assert_awaited_once()
 
@@ -205,8 +206,9 @@ async def test_lab_requires_real_overlap_and_restores_concurrency_on_every_exit(
         assert result["sdk_update_deployment_check"]["active_deployment_id"] == "after"
         assert result["submitted_job_ids"]["deploy"] == [str(j.id) for j in builds]
     else:
+        arguments = SimpleNamespace(mode="build", hold_seconds=1)
         with pytest.raises(RuntimeError):
-            await spike.run_build_mode(SimpleNamespace(mode="build", hold_seconds=1))
+            await spike.run_build_mode(arguments)
     assert override.await_args_list[0].args == ("application.deploy", 2)
     assert override.await_args_list[-1].args == ("application.deploy", None)
     close.assert_awaited_once()
