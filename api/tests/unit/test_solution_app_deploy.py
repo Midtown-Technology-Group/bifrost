@@ -295,6 +295,74 @@ class TestSolutionAppDeploy:
             source_read.assert_awaited_once_with("functions/main.py")
         assert await storage.read("functions/main.py") == original_bytes
 
+    @pytest.mark.parametrize("fault", [None, "breaking_type", "legacy_list_changed", "runtime_bytes_changed"])
+    async def test_package_successor_verifies_legacy_list_against_active_immutable_source(
+        self, db_session, seed_user, monkeypatch, fault,
+    ):
+        from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import select, update
+        from src.models.contracts.solution_deployments import SolutionDeploymentCreate
+        from src.models.orm.workflows import Workflow
+        from src.repositories.solution_deployments import SolutionDeploymentRepository
+        from src.services.solutions.deployment_api import SolutionDeploymentAPIService
+        from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+        from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+        from src.services.solutions.package_controls import capture_package_controls
+        from src.services.solutions.package_runtime import compile_package_runtime, stage_package_runtime
+        from src.services.solutions.storage import SolutionStorage
+
+        sol = await self._install(db_session)
+        sid = sol.id
+        deployer = SolutionDeployer(db_session)
+        source = _reviewed_package_source(sol, runtime=True, function_args="value: str", include_app=False)
+        prepared = await deployer.prepare_reviewed_package(source, expected_active_deployment_id=None,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sid)))
+        did = uuid.uuid4()
+        manifest, resolution = await compile_package_runtime(db_session, source, prepared, did)
+        row = await db_session.scalar(select(Workflow).where(Workflow.solution_id == sid))
+        legacy = [{"name": "value", "type": "string", "required": True}]
+        row.parameters_schema = legacy
+        await db_session.flush()
+        workflows = {ref: item.model_copy(update={"legacy_parameters_schema_hash": canonical_digest(legacy)})
+            for ref, item in resolution.workflows.items()}
+        resolution = resolution.model_copy(update={"workflows": workflows})
+        manifest = manifest.model_copy(update={"workflows": workflows,
+            "resolution_map_hash": sha256_digest(canonical_json(resolution))})
+        await stage_package_runtime(source, prepared, manifest)
+        await SolutionDeploymentAPIService(db_session).create_ready_draft(sid, seed_user.id,
+            SolutionDeploymentCreate(compiled_manifest=manifest, resolution_map=resolution))
+        repository = SolutionDeploymentRepository(db_session)
+        await repository.transition(did, None, expected_state="ready", new_state="activating")
+        assert await repository.compare_and_set_active_deployment(sid, None,
+            expected_active_deployment_id=None, new_active_deployment_id=did)
+        await repository.transition(did, None, expected_state="activating", new_state="active")
+
+        if fault == "legacy_list_changed":
+            await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(
+                parameters_schema=[{"name": "value", "type": "integer", "required": True}]))
+        if fault == "runtime_bytes_changed":
+            async def changed_bytes(self, path, **kwargs):
+                return b"def main(value: str): return 'changed'\n"
+            monkeypatch.setattr(SolutionDeploymentStorage, "read_runtime_file", changed_bytes)
+        async def reject_mutable_source(self, path):
+            raise AssertionError("Immutable successor must not trust mutable Solution storage")
+        monkeypatch.setattr(SolutionStorage, "read", reject_mutable_source)
+        before = await capture_package_controls(db_session, sid)
+        args = "value: int" if fault == "breaking_type" else "value: str, note: str | None = None"
+        desired = _reviewed_package_source(sol, runtime=True, function_args=args, include_app=False)
+        if fault:
+            with pytest.raises(SolutionDeployConflict):
+                await deployer.prepare_reviewed_package(desired, expected_active_deployment_id=did,
+                    expected_controls_digest=canonical_digest(before))
+        else:
+            await deployer.prepare_reviewed_package(desired, expected_active_deployment_id=did,
+                expected_controls_digest=canonical_digest(before))
+            await db_session.refresh(row)
+            assert set(row.parameters_schema["properties"]) == {"value", "note"}
+        assert await capture_package_controls(db_session, sid) == before
+        await db_session.refresh(sol)
+        assert sol.active_deployment_id == did
+
     async def test_reviewed_package_registry_and_runtime_share_literal_constant_defaults(self, db_session):
         from bifrost.workspace_release import canonical_digest
         from sqlalchemy import select
