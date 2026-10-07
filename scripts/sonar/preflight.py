@@ -70,17 +70,46 @@ def json_bytes(value: object) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode()
 
 
+def git_arguments(args: tuple[str, ...]) -> list[str]:
+    fixed = {
+        ("rev-parse", "HEAD"): ["rev-parse", "HEAD"],
+        ("diff", "--name-only", "HEAD", "--"): ["diff", "--name-only", "HEAD", "--"],
+        ("ls-files", "-z"): ["ls-files", "-z"],
+    }
+    if args in fixed:
+        command = fixed[args]
+    elif len(args) == 3 and args[:2] == ("rev-parse", "--verify"):
+        match = re.fullmatch(r"([0-9a-f]{40})\^\{commit\}", args[2])
+        if not match:
+            fail("Git evidence requires an exact commit identity")
+        command = ["rev-parse", "--verify", "--end-of-options", match.group(1) + "^{commit}"]
+    else:
+        operations = {
+            "merge-base": (["merge-base"], 1),
+            "diff": (["diff", "--no-renames", "--name-only", "--diff-filter=ACMT", "-z"], 5),
+        }
+        operation = operations.get(args[0]) if args else None
+        if operation is None:
+            fail("Git evidence accepts only fixed read-only operations")
+        prefix, count = operation
+        if args[:count] != tuple(prefix) or len(args) != count + 2:
+            fail("Git evidence accepts only fixed read-only operation signatures")
+        command = list(prefix)
+        for operand in args[count:]:
+            match = re.fullmatch(r"[0-9a-f]{40}", operand)
+            if not match:
+                fail("Git evidence requires exact commit identities")
+            command.append(match.group(0))
+    return command
+
+
 def git(root: Path, *args: str) -> bytes:
-    literals = {"rev-parse", "--verify", "HEAD", "merge-base", "diff", "--name-only",
-                "--no-renames", "--diff-filter=ACMT", "-z", "ls-files", "--"}
-    if any(arg not in literals and not re.fullmatch(r"[0-9a-f]{40}(?:\^\{commit\})?", arg)
-           for arg in args):
-        fail("Git evidence accepts only fixed read-only operations and exact commit identities")
+    command = git_arguments(args)
     root = root.resolve(strict=True)
     if not root.is_dir():
         fail("Git evidence root is not a directory")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    result = subprocess.run(["git", "-C", str(root), *args], check=False,
+    result = subprocess.run(["git", "-C", str(root), *command], check=False,
                             capture_output=True, env=environment)
     if result.returncode:
         fail(f"git {' '.join(args)} failed: {result.stderr.decode(errors='replace').strip()}")

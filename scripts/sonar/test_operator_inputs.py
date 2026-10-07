@@ -1,8 +1,12 @@
 """Adversarial inputs fail before file access, child commands or local writes."""
 
+import csv
+import hashlib
 import importlib.util
+import io
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -33,6 +37,16 @@ local = load("local_secret_guard", "scripts/kubernetes/local_secrets.py")
 
 
 class InputBoundaries(unittest.TestCase):
+    def test_git_rejects_mixed_operations_and_non_commit_operands(self):
+        with patch.object(guard.subprocess, "run") as command:
+            for args in (("ls-files", "HEAD"), ("rev-parse", "--verify", "HEAD"),
+                         ("merge-base", "a" * 40, "--help"),
+                         ("diff", "--name-only", "a" * 40, "b" * 40),
+                         ("merge-base", "A" * 40, "b" * 40), ()):
+                with self.subTest(args=args), self.assertRaises(guard.EvidenceError):
+                    guard.git(ROOT, *args)
+            command.assert_not_called()
+
     def test_git_evidence_rejects_unmodeled_options_before_command(self):
         with patch.object(guard.subprocess, "run") as command:
             for value in ("--exec-path=/tmp", "--config-env=core.sshCommand=ATTACK", "HEAD; id"):
@@ -157,6 +171,200 @@ class InputBoundaries(unittest.TestCase):
             with self.assertRaises(ValueError):
                 local.ensure(Path("/fixture/config"), "production")
             command.assert_not_called()
+
+    def test_new_kind_credentials_are_created_through_stdin_in_exact_context(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config"
+            config.write_text("fixture")
+            with patch.object(local.subprocess, "run", return_value=SimpleNamespace(stdout="")) as command:
+                local.ensure(config, "kind-test-cluster")
+            self.assertEqual(command.call_count, 2)
+            create = command.call_args_list[1]
+            self.assertEqual(create.args[0][:5], ["kubectl", "--kubeconfig", str(config), "--context", "kind-test-cluster"])
+            self.assertEqual(create.args[0][-3:], ["create", "-f", "-"])
+            payload = json.loads(create.kwargs["input"])
+            self.assertEqual(payload["metadata"], {"name": local.NAME, "namespace": local.NAMESPACE})
+            self.assertTrue(all(payload["stringData"].values()))
+            self.assertNotIn(payload["stringData"]["POSTGRES_PASSWORD"], create.args[0])
+
+    def test_wrong_or_incomplete_existing_kind_secret_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config"
+            config.write_text("fixture")
+            for existing in ({"metadata": {"name": "other", "namespace": local.NAMESPACE}},
+                             {"metadata": {"name": local.NAME, "namespace": "other"}},
+                             {"metadata": {"name": local.NAME, "namespace": local.NAMESPACE}, "data": {}}):
+                with self.subTest(existing=existing), \
+                        patch.object(local.subprocess, "run", return_value=SimpleNamespace(stdout=json.dumps(existing))) as command:
+                    with self.assertRaises(ValueError):
+                        local.ensure(config, "kind-test-cluster")
+                    self.assertEqual(command.call_count, 1)
+
+    def test_kubeconfig_path_or_read_failure_never_creates_a_secret(self):
+        for config in (Path("config"), Path("/tmp/../etc/config")):
+            with self.subTest(config=config), patch.object(local.subprocess, "run") as command:
+                with self.assertRaises(ValueError):
+                    local.ensure(config, "kind-test-cluster")
+                command.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config"
+            config.write_text("fixture")
+            with patch.object(local.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "kubectl")) as command:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    local.ensure(config, "kind-test-cluster")
+                self.assertEqual(command.call_count, 1)
+
+    def test_stage_atomic_write_preserves_prior_receipt_on_replace_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "state.json"
+            stage.atomic_write(receipt, {"status": "complete"})
+            self.assertEqual(stage.read_state(receipt), {"status": "complete"})
+            with patch.object(stage.os, "replace", side_effect=OSError("read-only destination")):
+                with self.assertRaises(OSError):
+                    stage.atomic_write(receipt, {"status": "running"})
+            self.assertEqual(stage.read_state(receipt), {"status": "complete"})
+            self.assertEqual(list(Path(directory).iterdir()), [receipt])
+            receipt.write_text("partial {")
+            self.assertEqual(stage.read_state(receipt), {})
+
+    def test_stage_metadata_permission_is_limited_to_the_named_ledger(self):
+        with patch.object(stage, "run", return_value="/outside-primary/.git/worktrees/candidate/bifrost-test-locks"):
+            ledger = Path("/outside-primary/.git/worktrees/candidate/bifrost-test-locks/state.json")
+            self.assertEqual(stage.bounded_path(ledger, ROOT), ledger)
+            with self.assertRaises(ValueError):
+                stage.bounded_path(Path("/outside-primary/.git/config"), ROOT)
+
+    def test_environment_symlink_is_never_hashed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            primary = Path(directory)
+            target = primary / "credentials"
+            target.write_text("preserved")
+            link = primary / ".env.test"
+            link.symlink_to(target)
+            with patch.object(stage, "run", return_value=str(primary / ".git")):
+                with self.assertRaises(ValueError):
+                    stage.environment_path(link, ROOT)
+            self.assertEqual(target.read_text(), "preserved")
+
+    def test_release_source_ref_accepts_tags_but_rejects_options_and_traversal(self):
+        for value in ("HEAD", "v3.0.0", "origin/main"):
+            self.assertEqual(release.checked_source_ref(value), value)
+        for value in ("--help", "HEAD\n--exec-path=/tmp", "../foreign"):
+            with self.subTest(value=value), self.assertRaises(release.ReleaseError):
+                release.checked_source_ref(value)
+
+    def test_sampler_output_rejects_escape_or_symlink_before_probing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "existing.csv"
+            target.write_text("preserved")
+            link = Path(directory) / "link.csv"
+            link.symlink_to(target)
+            for output in ("/etc/probe.csv", str(link), str(Path(directory) / ".." / "probe.csv")):
+                args = SimpleNamespace(container="fixture-api", out=output)
+                with self.subTest(output=output), patch.object(sampler, "_parse_args", return_value=args), \
+                        patch.object(sampler.subprocess, "run") as command:
+                    with self.assertRaises(ValueError):
+                        sampler.main()
+                    command.assert_not_called()
+            self.assertEqual(target.read_text(), "preserved")
+
+    def test_sampler_records_one_sample_in_private_default_directory(self):
+        handlers = {}
+        args = SimpleNamespace(container="fixture-api", out=None, interval=0.01, maps_every=1)
+        def probe(*_args, **_kwargs):
+            handlers[sampler.signal.SIGTERM](None, None)
+            return SimpleNamespace(returncode=0, stdout=",".join(str(n) for n in range(11)), stderr="")
+        with tempfile.TemporaryDirectory() as directory:
+            result_dir = Path(directory) / "private"
+            result_dir.mkdir(mode=0o700)
+            with patch.object(sampler, "_parse_args", return_value=args), \
+                    patch.object(sampler.tempfile, "mkdtemp", return_value=str(result_dir)), \
+                    patch.object(sampler.signal, "signal", side_effect=lambda sig, fn: handlers.update({sig: fn})), \
+                    patch.object(sampler.subprocess, "run", side_effect=probe) as command, \
+                    patch.object(sampler.time, "sleep"), patch.object(sys, "stderr", io.StringIO()):
+                self.assertEqual(sampler.main(), 0)
+            rows = list(csv.reader((result_dir / "trace.csv").read_text().splitlines()))
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[1][1:], [str(n) for n in range(11)])
+            self.assertEqual(command.call_args.args[0][:5], ["docker", "exec", "-e", "SAMPLE_MAPS=1", "fixture-api"])
+
+    def test_sampler_detects_only_the_current_worktree_container(self):
+        expected = "bifrost-test-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:8] + "-api-1"
+        with patch.object(sampler.subprocess, "check_output", side_effect=[str(ROOT), "foreign-api\n" + expected]):
+            self.assertEqual(sampler._detect_container(), expected)
+        with patch.object(sampler.subprocess, "check_output", side_effect=[str(ROOT), "foreign-api"]):
+            with self.assertRaises(SystemExit):
+                sampler._detect_container()
+
+    def test_kind_cli_runs_only_the_explicit_selected_cluster(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config"
+            config.write_text("fixture")
+            document = local.document()
+            existing = {"metadata": document["metadata"], "data": dict.fromkeys(document["stringData"], "Zml4dHVyZQ==")}
+            with patch.object(sys, "argv", ["local_secrets.py", "--kubeconfig", str(config), "--context", "kind-cli"]), \
+                    patch.object(subprocess, "run", return_value=SimpleNamespace(stdout=json.dumps(existing))) as command:
+                runpy.run_path(str(ROOT / "scripts/kubernetes/local_secrets.py"), run_name="__main__")
+            self.assertEqual(command.call_count, 1)
+            self.assertIn("kind-cli", command.call_args.args[0])
+
+    def test_stage_snapshot_binds_compose_image_and_environment_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            compose = repo / "compose.yml"
+            compose.write_text("fixture")
+            (repo / ".env.test").write_text("test-only")
+            def inspect(command, _cwd):
+                if command[:2] == ["git", "status"]:
+                    return ""
+                if command[:3] == ["git", "rev-parse", "HEAD"]:
+                    return "a" * 40
+                if command[0] == "git":
+                    return "unavailable"
+                if command[-1] == "--images":
+                    return "fixture-image"
+                if command[:3] == ["docker", "image", "inspect"]:
+                    return "sha256:fixture"
+                return "test-output"
+            with patch.object(stage, "run", side_effect=inspect):
+                before = stage.snapshot(repo, str(compose), ".env.test", "image")
+                (repo / ".env.test").write_text("changed-test-only")
+                after = stage.snapshot(repo, str(compose), ".env.test", "image")
+            self.assertTrue(before["compose_available"])
+            self.assertEqual(before["compose_images"], ["sha256:fixture"])
+            self.assertNotEqual(before["env_sha256"], after["env_sha256"])
+
+    def test_stage_cli_reuses_only_unchanged_completed_context(self):
+        current = dict.fromkeys(("head", "status", "compose_sha256", "env_sha256", "docker_version", "compose_version",
+                                 "python_version", "node_version", "browser_config_sha256"), "fixture")
+        current.update(status="", compose_available=True, compose_images=["sha256:fixture"])
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "state.json"
+            def invoke(action, context="reviewed"):
+                with patch.object(sys, "argv", ["stage", action, "--repo", str(ROOT), "--state", str(receipt),
+                                               "--stage", "quality", "--context", context]), \
+                        patch.object(stage, "snapshot", return_value=current):
+                    return stage.main()
+            self.assertEqual(invoke("start"), 0)
+            self.assertEqual(invoke("reuse"), 1)
+            self.assertEqual(invoke("success"), 0)
+            complete = receipt.read_bytes()
+            self.assertEqual(invoke("reuse"), 0)
+            self.assertEqual(invoke("reuse", "different-review"), 1)
+            current["env_sha256"] = "changed"
+            self.assertEqual(invoke("reuse"), 1)
+            self.assertEqual(receipt.read_bytes(), complete)
+            self.assertEqual(invoke("fresh"), 0)
+            self.assertFalse(receipt.exists())
+
+    def test_stage_cli_foreign_checkout_stops_before_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(sys, "argv", ["stage", "fresh", "--repo", directory, "--state", str(Path(directory) / "state")]), \
+                patch.object(stage, "snapshot") as snapshot, patch.object(sys, "stderr", io.StringIO()):
+            with self.assertRaises(SystemExit) as result:
+                stage.main()
+            self.assertEqual(result.exception.code, 2)
+            snapshot.assert_not_called()
 
 
 if __name__ == "__main__":

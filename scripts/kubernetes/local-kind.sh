@@ -15,6 +15,7 @@ IMAGE_NAME="${BIFROST_K8S_IMAGE:-bifrost-api:kind-${WORKTREE_HASH}}"
 KIND_VERSION="${BIFROST_KIND_VERSION:-v0.24.0}"
 KEDA_VERSION="${BIFROST_KEDA_VERSION:-2.16.1}"
 KIND_BIN="${BIN_DIR}/kind-${KIND_VERSION}"
+HTTPS_PROTOCOL="=https"
 
 usage() {
   cat <<USAGE
@@ -60,8 +61,8 @@ download_kind() {
   local checksum_url="${url}.sha256sum"
   local tmp="${KIND_BIN}.tmp"
   local checksum_file="${tmp}.sha256sum"
-  curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --output "${tmp}" "${url}"
-  curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --output "${checksum_file}" "${checksum_url}"
+  curl --proto "${HTTPS_PROTOCOL}" --proto-redir "${HTTPS_PROTOCOL}" --fail --location --silent --show-error --output "${tmp}" "${url}"
+  curl --proto "${HTTPS_PROTOCOL}" --proto-redir "${HTTPS_PROTOCOL}" --fail --location --silent --show-error --output "${checksum_file}" "${checksum_url}"
   local expected actual
   expected="$(awk '{print $1}' "${checksum_file}")"
   actual="$(sha256sum "${tmp}" | awk '{print $1}')"

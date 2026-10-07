@@ -519,6 +519,12 @@ def publish(source: str, run_id: int, prs: list[dict]) -> None:
     )
 
 
+def checked_source_ref(source: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/~^{}-]*", source) or ".." in source:
+        raise ReleaseError("Source must be a Git ref, never a command option")
+    return source
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("version", "prepare", "validate", "publish"))
@@ -530,9 +536,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/~^{}-]*", args.source) or ".." in args.source:
-            raise ReleaseError("Source must be a Git ref, never a command option")
-        source = git("rev-parse", "--verify", "--end-of-options", f"{args.source}^{{commit}}")
+        source_ref = checked_source_ref(args.source)
+        source = git("rev-parse", "--verify", "--end-of-options", f"{source_ref}^{{commit}}")
         prs = merged_prs()
         if args.action == "version":
             candidate = calculate(
