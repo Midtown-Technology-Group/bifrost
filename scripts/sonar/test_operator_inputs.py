@@ -38,7 +38,7 @@ local = load("local_secret_guard", "scripts/kubernetes/local_secrets.py")
 
 class InputBoundaries(unittest.TestCase):
     def test_invalid_sampling_interval_stops_before_container_or_child_process(self):
-        for interval in ("--help", float("nan"), float("inf"), -1, 0, 61):
+        for interval in ("--help", float("nan"), float("inf"), -1, 0, 1.0001, 60, 61):
             with self.subTest(interval=interval), \
                     patch.object(benchmark, "_parse_args", return_value=SimpleNamespace(interval=interval)), \
                     patch.object(benchmark.memory_sampler, "_detect_container") as detect, \
@@ -47,6 +47,20 @@ class InputBoundaries(unittest.TestCase):
                     benchmark.main()
                 detect.assert_not_called()
                 process.assert_not_called()
+
+    def test_default_and_maximum_sampling_intervals_reach_container_detection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for interval in (0.1, 1):
+                args = SimpleNamespace(interval=interval, trace_out=Path(directory) / "memory.csv")
+                with self.subTest(interval=interval), \
+                        patch.object(benchmark, "_parse_args", return_value=args), \
+                        patch.object(benchmark.memory_sampler, "_detect_container",
+                                     side_effect=RuntimeError("no test container")) as detect, \
+                        patch.object(benchmark.subprocess, "Popen") as process:
+                    with self.assertRaisesRegex(RuntimeError, "no test container"):
+                        benchmark.main()
+                    detect.assert_called_once_with()
+                    process.assert_not_called()
 
     def test_git_rejects_mixed_operations_and_non_commit_operands(self):
         with patch.object(guard.subprocess, "run") as command:
