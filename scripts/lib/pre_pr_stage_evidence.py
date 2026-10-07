@@ -17,7 +17,11 @@ def run(command: list[str], cwd: Path) -> str:
     if not command or command[0] not in {"git", "docker", "node"}:
         raise ValueError("Stage evidence only inspects Git, Docker and Node")
     try:
-        return subprocess.check_output(command, cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
+        environment = os.environ.copy()
+        if command[0] == "git":
+            environment = {key: value for key, value in environment.items() if not key.startswith("GIT_")}
+        return subprocess.check_output(command, cwd=cwd, text=True,
+                                       stderr=subprocess.DEVNULL, env=environment).strip()
     except (OSError, subprocess.CalledProcessError):
         return "unavailable"
 

@@ -56,7 +56,7 @@ test("does not authorize bots", async () => {
   await assert.rejects(authorizeMergeQueue(input), /MTG administrator/);
 });
 
-for (const login of ["../other", "MTG-Thomas\nforged approval", "bad/user", "-option", ""] ) {
+for (const login of ["../other", "MTG-Thomas\nforged approval", "MTG-Thomas\n", "MTG-Thomas\r", "bad/user", "-option", ""] ) {
   test(`rejects malformed actor ${JSON.stringify(login)} before permission lookup`, async () => {
     const { input, entry, calls } = fixture();
     entry.enqueuer.login = login;

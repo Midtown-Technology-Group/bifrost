@@ -421,13 +421,29 @@ def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
     assert not capture.exists()
 
 
+def _runtime_combiner(tmp_path: Path):
+    spec = importlib.util.spec_from_file_location(
+        "sonar_runtime_combiner_under_test", API_ROOT / "scripts/combine_sonar_coverage.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.RUNTIME_DIR = tmp_path / "runtime"
+    module.RUNTIME_DIR.mkdir()
+    module.DATA_FILE = tmp_path / ".coverage.sonar"
+    module.RC_FILE = tmp_path / "sonar.rc"
+    module.RC_FILE.write_text("[run]\nbranch = True\n")
+    return module
+
+
 def test_sonar_combines_real_unit_and_runtime_branch_hits(tmp_path: Path) -> None:
+    module = _runtime_combiner(tmp_path)
     source = tmp_path / "sample.py"
     source.write_text("def choose(flag):\n    if flag:\n        return 1\n    return 2\n")
-    data = tmp_path / ".coverage.sonar"
     for flag in (True, False):
+        data_file = module.DATA_FILE if flag else module.RUNTIME_DIR / ".coverage.sonar"
         collector = coverage.Coverage(
-            config_file=False, branch=True, data_file=str(data), data_suffix=True,
+            config_file=False, branch=True, data_file=str(data_file), data_suffix=not flag,
             source=[str(tmp_path)],
         )
         collector.start()
@@ -437,13 +453,34 @@ def test_sonar_combines_real_unit_and_runtime_branch_hits(tmp_path: Path) -> Non
         finally:
             collector.stop()
             collector.save()
-    report = coverage.Coverage(config_file=False, branch=True, data_file=str(data))
-    report.combine(data_paths=[str(tmp_path)], strict=True, keep=True)
-    report.save()
+    assert module.main() == 0
+    report = coverage.Coverage(config_file=False, branch=True, data_file=str(module.DATA_FILE))
+    report.load()
     xml = tmp_path / "combined.xml"
     report.xml_report(outfile=str(xml))
     measured = ElementTree.parse(xml).find(".//class")
     assert measured is not None
     assert measured.attrib["line-rate"] == "1"
     assert measured.attrib["branch-rate"] == "1"
-    assert len(list(tmp_path.glob(".coverage.sonar.*"))) == 2
+    assert len(list(module.RUNTIME_DIR.glob(".coverage.sonar.*"))) == 1
+
+
+def test_sonar_runtime_absence_fails_even_with_unit_data(tmp_path: Path) -> None:
+    module = _runtime_combiner(tmp_path)
+    data = coverage.CoverageData(basename=str(module.DATA_FILE))
+    data.add_arcs({str(tmp_path / "sample.py"): [(1, 2)]})
+    data.write()
+    original = module.DATA_FILE.read_bytes()
+    with pytest.raises(ValueError, match="actual runtime"):
+        module.main()
+    assert module.DATA_FILE.read_bytes() == original
+
+
+def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
+    root = API_ROOT
+    compose = (root / "docker-compose.sonar.yml").read_text()
+    runner = compose.split("  test-runner:\n", 1)[1]
+    assert "- test-coverage:/coverage" in runner
+    workflow = (root / ".github/workflows/sonar-coverage.yml").read_text()
+    assert "python /app/scripts/combine_sonar_coverage.py" in workflow
+    assert "coverage combine --strict" not in workflow

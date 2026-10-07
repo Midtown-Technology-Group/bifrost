@@ -2,6 +2,8 @@
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -37,6 +39,22 @@ class InputBoundaries(unittest.TestCase):
                 with self.subTest(value=value), self.assertRaises(guard.EvidenceError):
                     guard.git(ROOT, value)
             command.assert_not_called()
+
+    def test_repository_environment_cannot_replace_the_selected_checkout(self):
+        clean = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        expected = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                                           env=clean, text=True).strip()
+        with tempfile.TemporaryDirectory() as directory:
+            foreign = Path(directory)
+            subprocess.run(["git", "init", "-q", str(foreign)], env=clean, check=True)
+            subprocess.run(["git", "-C", str(foreign), "-c", "user.name=Fixture",
+                            "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
+                            "commit", "--allow-empty", "-qm", "foreign"], env=clean, check=True)
+            with patch.dict(os.environ, {"GIT_DIR": str(foreign / ".git"),
+                                        "GIT_WORK_TREE": str(foreign),
+                                        "GIT_INDEX_FILE": str(foreign / ".git/index")}):
+                self.assertEqual(guard.git(ROOT, "rev-parse", "HEAD").decode().strip(), expected)
+                self.assertEqual(stage.run(["git", "rev-parse", "HEAD"], ROOT), expected)
 
     def test_report_escape_and_symlinks_rejected_without_reading(self):
         with tempfile.TemporaryDirectory() as directory:

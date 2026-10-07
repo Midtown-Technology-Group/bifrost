@@ -28,3 +28,4 @@ services:
     volumes:
       - .:/repo:ro
       - ./api/bifrost.py:/app/bifrost.py:ro
+      - test-coverage:/coverage

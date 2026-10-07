@@ -434,6 +434,7 @@ print_login() {
 # =============================================================================
 
 cmd_up() {
+    configure_debug_database
     print_header
 
     if stack_is_running; then
@@ -507,6 +508,10 @@ cmd_up() {
 }
 
 cmd_down() {
+    # Compose validates interpolation even for teardown; these values are not
+    # sent to existing containers or used to change a database credential.
+    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-unused-for-teardown}"
+    export POSTGRES_PASSWORD_URLENCODED="${POSTGRES_PASSWORD_URLENCODED:-unused-for-teardown}"
     print_header
     echo "Tearing down stack..."
     docker compose -f "$COMPOSE_FILE" --profile netbird down -v
@@ -559,6 +564,8 @@ cmd_status() {
 }
 
 cmd_logs() {
+    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-unused-for-logs}"
+    export POSTGRES_PASSWORD_URLENCODED="${POSTGRES_PASSWORD_URLENCODED:-unused-for-logs}"
     if [ $# -gt 0 ]; then
         docker compose -f "$COMPOSE_FILE" logs -f "$@"
     else
@@ -567,6 +574,7 @@ cmd_logs() {
 }
 
 cmd_fixtures() {
+    configure_debug_database
     print_header
     if ! stack_is_running; then
         echo "ERROR: debug stack is not running. Run ./debug.sh up first." >&2
@@ -607,7 +615,6 @@ cmd_fixtures() {
 
 load_env_files
 configure_debug_admin
-configure_debug_database
 
 if [ $# -eq 0 ]; then
     cmd_up

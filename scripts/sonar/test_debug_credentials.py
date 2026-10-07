@@ -29,6 +29,28 @@ class DebugCredentials(unittest.TestCase):
         script += "\nconfigure_debug_database\n" + assertions
         return subprocess.run(["bash", "-c", script], env=self.env, capture_output=True, text=True, check=False)
 
+    def test_status_dispatch_does_not_bootstrap_database_credentials(self):
+        dispatch = SOURCE[SOURCE.index("\nload_env_files\n", SOURCE.index("# Dispatch")):]
+        script = "set -euo pipefail\n" + FUNCTION
+        script += "\ndocker() { return 0; }; load_env_files() { :; }; configure_debug_admin() { :; }\n"
+        script += "cmd_status() { printf 'status-readonly'; }\n" + dispatch
+        self.env["FIXTURE_VOLUME_PRESENT"] = "0"
+        result = subprocess.run(["bash", "-c", script, "fixture", "status"],
+                                env=self.env, capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "status-readonly")
+        self.assertFalse(self.secret.exists())
+
+    def test_down_interpolation_does_not_need_or_change_database_credentials(self):
+        start = SOURCE.index("cmd_down() {")
+        down = SOURCE[start:SOURCE.index("\n}\n", start) + 3]
+        script = "set -euo pipefail\nCOMPOSE_FILE=fixture\nprint_header() { :; }\n"
+        script += "docker() { python3 -c 'import os; assert os.environ[\"POSTGRES_PASSWORD\"] == \"unused-for-teardown\"; assert os.environ[\"POSTGRES_PASSWORD_URLENCODED\"] == \"unused-for-teardown\"'; }\n"
+        result = subprocess.run(["bash", "-c", script + down + "\ncmd_down\n"],
+                                env=self.env, capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.secret.exists())
+
     def test_fresh_database_generates_private_stable_credential(self):
         first = self.invoke()
         self.assertEqual(first.returncode, 0, first.stderr)

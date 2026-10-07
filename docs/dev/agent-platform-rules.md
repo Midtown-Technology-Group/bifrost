@@ -125,7 +125,7 @@ From the original worktree, derive the project and match it to the recorded iden
 project="$(BIFROST_PROJECT_PREFIX=bifrost-debug bash -c 'source scripts/lib/test_helpers.sh; compute_project_name .')"
 ```
 
-If containers and volumes were created solely for this task, run `./debug.sh down`. It runs Compose `down -v` and deletes this project's volumes. If task-created containers use pre-existing volumes, preserve data with `COMPOSE_PROJECT_NAME="$project" docker compose -f docker-compose.debug.yml --profile netbird down` instead. Preserve borrowed stacks; do not use global Docker prune, another project's name or broad host teardown.
+If containers and volumes were created solely for this task, run `./debug.sh down`. It runs Compose `down -v` and deletes this project's volumes. If task-created containers use pre-existing volumes, preserve data with `COMPOSE_PROJECT_NAME="$project" POSTGRES_PASSWORD=unused-for-teardown POSTGRES_PASSWORD_URLENCODED=unused-for-teardown docker compose -f docker-compose.debug.yml --profile netbird down` instead. Preserve borrowed stacks; do not use global Docker prune, another project's name or broad host teardown.
 
 Verify Docker is reachable and every query succeeds:
 

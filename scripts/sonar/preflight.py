@@ -79,7 +79,9 @@ def git(root: Path, *args: str) -> bytes:
     root = root.resolve(strict=True)
     if not root.is_dir():
         fail("Git evidence root is not a directory")
-    result = subprocess.run(["git", "-C", str(root), *args], check=False, capture_output=True)
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    result = subprocess.run(["git", "-C", str(root), *args], check=False,
+                            capture_output=True, env=environment)
     if result.returncode:
         fail(f"git {' '.join(args)} failed: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout
