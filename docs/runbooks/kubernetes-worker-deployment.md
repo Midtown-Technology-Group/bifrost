@@ -296,7 +296,8 @@ in-cluster equivalents:
 - RabbitMQ with durable storage, HA policy, TLS/authentication and monitored
   queue depth;
 - Redis with the selected persistence/HA posture for Bifrost's cache and result
-  paths;
+  paths (on Azure, use Azure Managed Redis: Azure Cache for Redis SKUs are
+  retiring);
 - S3-compatible object storage with durable buckets, credentials rotation and
   lifecycle policy;
 - ingress, TLS, WebSocket support and public URL/WebAuthn configuration.

@@ -7,7 +7,7 @@ This directory contains Kubernetes manifests for deploying Bifrost to a Kubernet
 Before deploying Bifrost, you need:
 
 1. **PostgreSQL Database** - Use a managed service (RDS, Cloud SQL, Azure Database)
-2. **S3-Compatible Storage** - AWS S3, GCS, Azure Blob, or self-hosted S3-compatible storage such as SeaweedFS
+2. **Object Storage** - S3-compatible storage (AWS S3, GCS, or self-hosted S3-compatible storage such as SeaweedFS), or Azure Blob Storage via the native `azure_blob` object-storage provider (`BIFROST_OBJECT_STORAGE_PROVIDER=azure_blob`). Azure Blob Storage does not expose an S3 API, so it is not configured through the S3 endpoint settings.
 
 ## Directory Structure
 
