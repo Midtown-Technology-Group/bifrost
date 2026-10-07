@@ -878,12 +878,13 @@ async def test_inline_app_file_bound_precedes_blob_reads():
 
 
 @pytest.mark.asyncio
-async def test_solution_delivery_in_common_registry_retains_unproven_app_enrollment_separately():
+async def test_solution_delivery_in_mixed_registry_does_not_borrow_package_or_app_authority():
     documents, _, digest = fixture()
     registry_path = "config/solution-delivery/installations.json"
     rows = [
         {"kind": "solution", "target": "production", "recipe": RECIPE},
         {"kind": "inline_app", "target": "production", "recipe": "config/app-delivery/fixture.json"},
+        {"kind": "solution_package", "target": "production", "recipe": "config/solution-package-delivery/fixture.json"},
     ]
     content = json.dumps({"schema_version": "bifrost.package-delivery-installations/v1", "installations": rows}).encode()
     add_git_document(documents, registry_path, content)

@@ -37,6 +37,7 @@ from uuid import UUID, uuid4, uuid5
 from pydantic import ValidationError
 from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.models.contracts.events import EventCriteria
 from src.models.orm.agents import Agent, AgentRole
@@ -416,9 +417,85 @@ class SolutionDeployer:
             before = await capture_package_controls(self.db, sid)
             if canonical_digest(before) != expected_controls_digest:
                 raise SolutionDeployConflict("Reviewed package installed controls changed")
-            previous_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
-                Workflow.id, Workflow.parameters_schema,
-            ).where(Workflow.solution_id == sid))).all()}
+            previous_workflows = list((await self.db.scalars(select(Workflow).where(
+                Workflow.solution_id == sid).options(selectinload(Workflow.roles)))).all())
+            previous_parameters = {row.id: row.parameters_schema for row in previous_workflows}
+            legacy_rows = [row for row in previous_workflows if isinstance(row.parameters_schema, list)]
+            if legacy_rows:
+                # Legacy list DTOs cannot prove a complete call contract. Read
+                # the existing install's actual source before preparing any
+                # replacement, using the same compiler as reviewed adoption.
+                from bifrost.solution_delivery_review import WorkflowRecipeError, compile_workflow_parameters
+                from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+                indexer = WorkflowIndexer(self.db)
+                immutable = solution.execution_runtime_mode == "deployment-v1"
+                resolution = None
+                immutable_storage = None
+                if immutable:
+                    from src.repositories.solution_deployments import SolutionDeploymentRepository
+                    from src.services.solutions.deployment_manifest import validate_runtime_closure
+                    from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+
+                    base = await SolutionDeploymentRepository(self.db).get_runtime_closure(
+                        solution.active_deployment_id, solution.organization_id, sid,
+                    ) if solution.active_deployment_id else None
+                    if base is None or base.state != "active":
+                        raise SolutionDeployConflict("Legacy parameter runtime base is not active")
+                    try:
+                        manifest, resolution = validate_runtime_closure(
+                            base.compiled_manifest, base.resolution_map, base.dependencies,
+                            expected_manifest_hash=base.compiled_manifest_hash,
+                            expected_resolution_hash=base.resolution_map_hash,
+                        )
+                    except ValueError as exc:
+                        raise SolutionDeployConflict("Legacy parameter runtime closure differs") from exc
+                    immutable_storage = SolutionDeploymentStorage(sid, base.id)
+                    if await immutable_storage.read_compiled_manifest() != manifest.canonical_bytes():
+                        raise SolutionDeployConflict("Legacy parameter stored manifest differs")
+                elif solution.execution_runtime_mode != "repo-v1" or solution.active_deployment_id is not None:
+                    raise SolutionDeployConflict("Legacy parameter runtime mode/pointer differs")
+                storage = SolutionStorage(sid)
+                legacy_files: dict[str, bytes] = {}
+                for row in legacy_rows:
+                    try:
+                        entity = None
+                        if resolution is not None:
+                            from src.services.solutions.source_revision import _require_registration
+
+                            entity = next((item for item in resolution.workflows.values()
+                                           if item.resolved_id == row.id), None)
+                            if entity is None:
+                                raise ValueError("Legacy parameter runtime registration is missing")
+                            _require_registration(row, entity, allow_inactive=True)
+                        if row.path not in legacy_files:
+                            if resolution is None:
+                                legacy_files[row.path] = await storage.read(row.path,
+                                    max_bytes=10 * 1024 * 1024 - sum(len(raw) for raw in legacy_files.values()))
+                            else:
+                                from src.services.solutions.deployment_manifest import sha256_digest
+
+                                assert immutable_storage is not None
+                                reference = resolution.sources.get(row.path)
+                                if reference is None or reference.object_key != immutable_storage.runtime_prefix + row.path:
+                                    raise ValueError("Legacy parameter source reference differs")
+                                raw = await immutable_storage.read_runtime_file(row.path,
+                                    max_bytes=10 * 1024 * 1024 - sum(len(raw) for raw in legacy_files.values()))
+                                if sha256_digest(raw) != reference.content_hash:
+                                    raise ValueError("Legacy parameter immutable source differs")
+                                legacy_files[row.path] = raw
+                            if sum(len(raw) for raw in legacy_files.values()) > 10 * 1024 * 1024:
+                                raise SolutionDeployConflict("Legacy parameter source exceeds its review bound")
+                        previous_parameters[row.id] = compile_workflow_parameters(
+                            legacy_files[row.path], row.function_name, path=row.path, indexer=indexer,
+                        )
+                        if entity is not None:
+                            from src.services.solutions.deployment_manifest import canonical_json
+
+                            if canonical_json(previous_parameters[row.id]) != canonical_json(entity.definition.get("parameters_schema")):
+                                raise ValueError("Legacy parameter compiled contract differs from active runtime")
+                    except (FileNotFoundError, ValueError, WorkflowRecipeError) as exc:
+                        raise SolutionDeployConflict("Legacy workflow source cannot prove its parameter contract") from exc
             with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
                 workspace = Path(directory)
                 _safe_extract(source.source_archive, directory)
@@ -430,6 +507,7 @@ class SolutionDeployer:
                     bundle, source_artifact=source.source_archive,
                     expected_active_deployment_id=expected_active_deployment_id,
                     allow_reviewed_version_revert=True,
+                    reviewed_parameters=True,
                 )
             await self.db.flush()
             from src.services.solutions.workflow_revision import require_compatible_parameters
@@ -460,6 +538,7 @@ class SolutionDeployer:
         *,
         expected_active_deployment_id: UUID | None = None,
         allow_reviewed_version_revert: bool = False,
+        reviewed_parameters: bool = False,
     ) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
@@ -558,7 +637,7 @@ class SolutionDeployer:
             raise SolutionWorkflowNameMismatch("\n".join(name_errors))
 
         # ── DB-only phase (validates + reconciles; rolls back cleanly) ───────
-        await self._upsert_workflows(solution, rb.workflows, rb.python_files)
+        await self._upsert_workflows(solution, rb.workflows, rb.python_files, reviewed_parameters=reviewed_parameters)
         await self._upsert_claims(solution, rb.claims)
         await self._upsert_tables(solution, rb.tables)
         builds = await self._upsert_apps(solution, rb.apps)
@@ -995,6 +1074,8 @@ class SolutionDeployer:
         solution: Solution,
         workflows: list[dict[str, Any]],
         python_files: dict[str, str] | None = None,
+        *,
+        reviewed_parameters: bool = False,
     ) -> None:
         from bifrost.manifest import ManifestWorkflow
         from bifrost.manifest_codec import Destination
@@ -1039,11 +1120,17 @@ class SolutionDeployer:
             if not isinstance(source, (str, bytes)):
                 source = source_files.get(mwf_model.path)
             if isinstance(source, (str, bytes)):
-                inferred_parameters = indexer.extract_parameters_from_source(
-                    source,
-                    mwf_model.function_name,
-                    path=mwf_model.path,
-                )
+                if reviewed_parameters:
+                    from bifrost.solution_delivery_review import compile_workflow_parameters
+
+                    inferred_parameters = compile_workflow_parameters(
+                        source.encode() if isinstance(source, str) else source,
+                        mwf_model.function_name, path=mwf_model.path, indexer=indexer,
+                    )
+                else:
+                    inferred_parameters = indexer.extract_parameters_from_source(
+                        source, mwf_model.function_name, path=mwf_model.path,
+                    )
                 if inferred_parameters is not None:
                     values["parameters_schema"] = inferred_parameters
             # Safe now: the id is either absent or already this install's.

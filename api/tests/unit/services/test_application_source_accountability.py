@@ -49,7 +49,9 @@ def metadata_files() -> dict[str, dict[str, Any]]:
             "organization_id": str(ORG), "repo_subpath": "apps/fixture"},
         accounting.REGISTRY_PATH: {"schema_version": "bifrost.package-delivery-installations/v1",
             "installations": [{"kind": "solution", "target": "production", "recipe": RECIPE},
-                {"kind": "inline_app", "target": "production", "recipe": APP_RECIPE}]}}
+                {"kind": "inline_app", "target": "production", "recipe": APP_RECIPE},
+                {"kind": "solution_package", "target": "production",
+                    "recipe": "config/solution-package-delivery/fixture.json"}]}}
 
 
 @pytest.mark.asyncio
@@ -68,7 +70,8 @@ async def test_accounting_reads_exact_historical_tree_and_complete_target_regist
         files[accounting.REGISTRY_PATH]["installations"].append({
             "kind": "inline_app", "target": "production", "recipe": "config/app-delivery/second.json"})
     elif fault == "missing_app":
-        files[accounting.REGISTRY_PATH]["installations"].pop()
+        files[accounting.REGISTRY_PATH]["installations"] = [
+            row for row in files[accounting.REGISTRY_PATH]["installations"] if row["kind"] != "inline_app"]
     elif fault == "wrong_solution":
         files[RECIPE]["solution_id"] = str(APP)
     elif fault == "wrong_producer":

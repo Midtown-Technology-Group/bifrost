@@ -9,6 +9,7 @@ def registry():
     return {"schema_version": "bifrost.package-delivery-installations/v1", "installations": [
         {"kind": "solution", "target": "production", "recipe": "config/solution-delivery/fixture.json"},
         {"kind": "inline_app", "target": "production", "recipe": "config/app-delivery/fixture.json"},
+        {"kind": "solution_package", "target": "production", "recipe": "config/solution-package-delivery/fixture.json"},
     ]}
 
 
@@ -17,6 +18,20 @@ def test_package_registry_keeps_distinct_adapter_namespaces_and_legacy_defaults(
     legacy = {"schema_version": "bifrost.solution-delivery-installations/v1",
         "installations": [{"target": "production", "recipe": "config/solution-delivery/fixture.json"}]}
     assert reviewed_package_registry(legacy) == [registry()["installations"][0]]
+
+
+@pytest.mark.parametrize("kind", ["solution", "solution_package", "inline_app"])
+@pytest.mark.parametrize("namespace", ["solution-delivery", "solution-package-delivery", "app-delivery"])
+def test_each_adapter_accepts_only_its_recipe_namespace(kind, namespace):
+    value = registry()
+    value["installations"] = [{"kind": kind, "target": "production", "recipe": f"config/{namespace}/fixture.json"}]
+    expected = {"solution": "solution-delivery", "solution_package": "solution-package-delivery",
+        "inline_app": "app-delivery"}
+    if expected[kind] == namespace:
+        assert reviewed_package_registry(value) == value["installations"]
+    else:
+        with pytest.raises(ValueError, match="adapter namespace"):
+            reviewed_package_registry(value)
 
 
 @pytest.mark.parametrize("fault", ["unknown_kind", "wrong_namespace", "duplicate", "unknown_target", "missing_kind",

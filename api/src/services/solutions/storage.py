@@ -66,13 +66,24 @@ class SolutionStorage:
             await client.put_object(Bucket=self._bucket, Key=key, Body=content)
             return content_hash
 
-    async def read(self, path: str) -> bytes:
+    async def read(self, path: str, *, max_bytes: int | None = None) -> bytes:
         """Read a file from this install's prefix."""
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 0):
+            raise ValueError("Solution source byte bound is invalid")
         async with self._get_client() as client:
             key = self._key(path)
-            response = await client.get_object(Bucket=self._bucket, Key=key)
+            kwargs = {"Range": f"bytes=0-{max_bytes}"} if max_bytes is not None else {}
+            response = await client.get_object(Bucket=self._bucket, Key=key, **kwargs)
             body = response["Body"]
-            return await body.read()
+            if max_bytes is None:
+                return await body.read()
+            from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+
+            async with body:
+                content = await SolutionDeploymentStorage._read_bounded(body, max_bytes + 1)
+            if len(content) > max_bytes:
+                raise ValueError("Solution source exceeds its byte bound")
+            return content
 
     async def delete(self, path: str) -> None:
         """Delete a file from this install's prefix."""
