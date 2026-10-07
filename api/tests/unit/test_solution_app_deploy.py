@@ -292,7 +292,7 @@ class TestSolutionAppDeploy:
         if fault == "immutable_legacy":
             source_read.assert_not_awaited()
         else:
-            source_read.assert_awaited_once_with("functions/main.py")
+            source_read.assert_awaited_once_with("functions/main.py", max_bytes=10 * 1024 * 1024)
         assert await storage.read("functions/main.py") == original_bytes
 
     @pytest.mark.parametrize("fault", [None, "breaking_type", "legacy_list_changed", "runtime_bytes_changed"])
@@ -350,7 +350,7 @@ class TestSolutionAppDeploy:
         args = "value: int" if fault == "breaking_type" else "value: str, note: str | None = None"
         desired = _reviewed_package_source(sol, runtime=True, function_args=args, include_app=False)
         if fault:
-            with pytest.raises(SolutionDeployConflict):
+            with pytest.raises(SolutionDeployConflict, match="Breaking parameter changes" if fault == "breaking_type" else None):
                 await deployer.prepare_reviewed_package(desired, expected_active_deployment_id=did,
                     expected_controls_digest=canonical_digest(before))
         else:

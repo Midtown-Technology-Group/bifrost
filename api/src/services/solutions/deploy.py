@@ -470,7 +470,8 @@ class SolutionDeployer:
                             _require_registration(row, entity, allow_inactive=True)
                         if row.path not in legacy_files:
                             if resolution is None:
-                                legacy_files[row.path] = await storage.read(row.path)
+                                legacy_files[row.path] = await storage.read(row.path,
+                                    max_bytes=10 * 1024 * 1024 - sum(len(raw) for raw in legacy_files.values()))
                             else:
                                 from src.services.solutions.deployment_manifest import sha256_digest
 
@@ -488,8 +489,11 @@ class SolutionDeployer:
                         previous_parameters[row.id] = compile_workflow_parameters(
                             legacy_files[row.path], row.function_name, path=row.path, indexer=indexer,
                         )
-                        if entity is not None and previous_parameters[row.id] != entity.definition.get("parameters_schema"):
-                            raise ValueError("Legacy parameter compiled contract differs from active runtime")
+                        if entity is not None:
+                            from src.services.solutions.deployment_manifest import canonical_json
+
+                            if canonical_json(previous_parameters[row.id]) != canonical_json(entity.definition.get("parameters_schema")):
+                                raise ValueError("Legacy parameter compiled contract differs from active runtime")
                     except (FileNotFoundError, ValueError, WorkflowRecipeError) as exc:
                         raise SolutionDeployConflict("Legacy workflow source cannot prove its parameter contract") from exc
             with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
