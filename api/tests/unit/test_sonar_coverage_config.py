@@ -14,8 +14,8 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import coverage
-from coverage.exceptions import CoverageException
 import pytest
+from coverage.exceptions import CoverageException
 
 API_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = "def choose(flag):\n    if flag:\n        return 1\n    return 2\n\nchoose(True)\n"
