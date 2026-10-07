@@ -70,7 +70,8 @@ async def test_accounting_reads_exact_historical_tree_and_complete_target_regist
         files[accounting.REGISTRY_PATH]["installations"].append({
             "kind": "inline_app", "target": "production", "recipe": "config/app-delivery/second.json"})
     elif fault == "missing_app":
-        files[accounting.REGISTRY_PATH]["installations"].pop()
+        files[accounting.REGISTRY_PATH]["installations"] = [
+            row for row in files[accounting.REGISTRY_PATH]["installations"] if row["kind"] != "inline_app"]
     elif fault == "wrong_solution":
         files[RECIPE]["solution_id"] = str(APP)
     elif fault == "wrong_producer":
