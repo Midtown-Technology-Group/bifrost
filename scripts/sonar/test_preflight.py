@@ -191,7 +191,7 @@ class EvidenceIntegrationTests(Fixture):
     def test_stale_report_head_rejected(self):
         self.stamp()
         target = Path(str(self.reports["python"]) + ".provenance.json")
-        data = guard.read_json(target)
+        data = guard.read_json(target, self.root)
         data["head"] = "0" * 40
         target.write_bytes(guard.json_bytes(data))
         with self.assertRaisesRegex(guard.EvidenceError, "provenance/SHA/config mismatch"):

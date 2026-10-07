@@ -1,20 +1,21 @@
 """Sonar reports retain real hits and unexecuted authored source across mounts."""
 
-from configparser import ConfigParser
 import hashlib
 import importlib.util
 import json
 import os
-from pathlib import Path
+import runpy
 import shlex
 import subprocess
 import sys
 import textwrap
+from configparser import ConfigParser
+from pathlib import Path
 from xml.etree import ElementTree
 
 import coverage
 import pytest
-
+from coverage.exceptions import CoverageException
 
 API_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = "def choose(flag):\n    if flag:\n        return 1\n    return 2\n\nchoose(True)\n"
@@ -39,6 +40,7 @@ def test_sonar_collection_and_reporting_keep_the_same_exclusions():
 
     assert collect.get("run", "omit") == report.get("run", "omit")
     assert collect.getboolean("run", "branch")
+    assert collect.getboolean("run", "sigterm")
     assert report.getboolean("run", "branch")
     assert not collect.getboolean("run", "relative_files")
     assert report.getboolean("run", "relative_files")
@@ -418,3 +420,95 @@ def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
     assert result.returncode != 0
     assert "Unsafe private Sonar diagnostic artifact" in result.stderr
     assert not capture.exists()
+
+
+def _runtime_combiner(tmp_path: Path):
+    spec = importlib.util.spec_from_file_location(
+        "sonar_runtime_combiner_under_test", API_ROOT / "scripts/combine_sonar_coverage.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.RUNTIME_DIR = tmp_path / "runtime"
+    module.RUNTIME_DIR.mkdir()
+    module.DATA_FILE = tmp_path / ".coverage.sonar"
+    module.RC_FILE = tmp_path / "sonar.rc"
+    module.RC_FILE.write_text("[run]\nbranch = True\n")
+    return module
+
+
+def test_sonar_combines_real_unit_and_runtime_branch_hits(tmp_path: Path) -> None:
+    module = _runtime_combiner(tmp_path)
+    source = tmp_path / "sample.py"
+    source.write_text("def choose(flag):\n    if flag:\n        return 1\n    return 2\n")
+    for flag in (True, False):
+        data_file = module.DATA_FILE if flag else module.RUNTIME_DIR / ".coverage.sonar"
+        collector = coverage.Coverage(
+            config_file=False, branch=True, data_file=str(data_file), data_suffix=not flag,
+            source=[str(tmp_path)],
+        )
+        collector.start()
+        try:
+            namespace = runpy.run_path(str(source))
+            assert namespace["choose"](flag) == (1 if flag else 2)
+        finally:
+            collector.stop()
+            collector.save()
+    assert module.main() == 0
+    report = coverage.Coverage(config_file=False, branch=True, data_file=str(module.DATA_FILE))
+    report.load()
+    xml = tmp_path / "combined.xml"
+    report.xml_report(outfile=str(xml))
+    measured = ElementTree.parse(xml).find(".//class")
+    assert measured is not None
+    assert measured.attrib["line-rate"] == "1"
+    assert measured.attrib["branch-rate"] == "1"
+    assert len(list(module.RUNTIME_DIR.glob(".coverage.sonar.*"))) == 1
+
+
+def test_sonar_runtime_absence_fails_even_with_unit_data(tmp_path: Path) -> None:
+    module = _runtime_combiner(tmp_path)
+    data = coverage.CoverageData(basename=str(module.DATA_FILE))
+    data.add_arcs({str(tmp_path / "sample.py"): [(1, 2)]})
+    data.write()
+    original = module.DATA_FILE.read_bytes()
+    with pytest.raises(ValueError, match="actual runtime"):
+        module.main()
+    assert module.DATA_FILE.read_bytes() == original
+
+
+def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
+    root = API_ROOT if (API_ROOT / "docker-compose.sonar.yml").is_file() else API_ROOT.parent
+    compose = (root / "docker-compose.sonar.yml").read_text()
+    runner = compose.split("  test-runner:\n", 1)[1]
+    assert "- test-coverage:/coverage" in runner
+    workflow = (root / ".github/workflows/sonar-coverage.yml").read_text()
+    assert "python /app/scripts/combine_sonar_coverage.py" in workflow
+    assert "coverage combine --strict" not in workflow
+
+
+@pytest.mark.parametrize("invalid", ["corrupt", "incompatible"])
+def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
+    tmp_path: Path, invalid: str
+) -> None:
+    module = _runtime_combiner(tmp_path)
+    source = str(tmp_path / "sample.py")
+    unit = coverage.CoverageData(basename=str(module.DATA_FILE))
+    unit.add_arcs({source: [(1, 2)]})
+    unit.write()
+    original = module.DATA_FILE.read_bytes()
+    valid = coverage.CoverageData(basename=str(module.RUNTIME_DIR / ".coverage.sonar.valid"))
+    valid.add_arcs({source: [(2, 3)]})
+    valid.write()
+    invalid_path = module.RUNTIME_DIR / ".coverage.sonar.invalid"
+    if invalid == "corrupt":
+        invalid_path.write_bytes(b"not a coverage database")
+    else:
+        incompatible = coverage.CoverageData(basename=str(invalid_path))
+        incompatible.add_lines({source: [1]})
+        incompatible.write()
+    with pytest.raises((ValueError, CoverageException)):
+        module.main()
+    assert module.DATA_FILE.read_bytes() == original
+    assert invalid_path.exists()

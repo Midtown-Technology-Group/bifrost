@@ -4,6 +4,7 @@
 # so that api/scripts and repository scripts cannot be confused.
 [run]
 branch = True
+sigterm = True
 relative_files = False
 source =
     /app

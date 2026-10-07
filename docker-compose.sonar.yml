@@ -1,9 +1,31 @@
 # Used only by the independent Sonar evidence job. The ordinary test stack and
 # API coverage badge retain their existing configuration.
+x-sonar-runtime: &sonar-runtime
+  environment:
+    COVERAGE_FILE: /coverage/.coverage.sonar
+    COVERAGE_RCFILE: /app/.coveragerc.sonar
+  volumes:
+    - .:/repo:ro
+    - ./api/.coveragerc.sonar:/app/.coveragerc.sonar:ro
+    - test-coverage:/coverage
+
 services:
+  api:
+    <<: *sonar-runtime
+  api-replica:
+    <<: *sonar-runtime
+  scheduler:
+    <<: *sonar-runtime
+  worker:
+    <<: *sonar-runtime
+    command: ["coverage", "run", "--parallel-mode", "-m", "src.worker.main"]
+  scheduler-fixtures:
+    <<: *sonar-runtime
+    command: ["coverage", "run", "--parallel-mode", "/app/scripts/scheduler_fixture_server.py"]
   test-runner:
     environment:
       COVERAGE_FILE: /tmp/bifrost/.coverage.sonar
     volumes:
       - .:/repo:ro
       - ./api/bifrost.py:/app/bifrost.py:ro
+      - test-coverage:/coverage
