@@ -11,6 +11,8 @@ mappings, secret config *values*, and workflow endpoint API keys (criterion 7).
 OAuth/config values live on their own records, so they never call this guard.
 Workflow keys predate Solutions and are columns on Workflow; the backstop allows
 only those runtime key columns to change on a managed Workflow.
+Solution runtime files likewise update content metadata after policy-checked
+writes. Their ownership/path and the FilePolicy definitions remain protected.
 """
 
 from __future__ import annotations
@@ -86,6 +88,14 @@ _WORKFLOW_RUNTIME_KEY_FIELDS = {
     "api_key_expires_at",
 }
 
+_FILE_RUNTIME_CONTENT_FIELDS = {
+    "content_type",
+    "size_bytes",
+    "sha256",
+    "updated_by",
+    "updated_at",
+}
+
 
 def _instance_is_managed(obj: Any) -> bool:
     return is_solution_managed(obj)
@@ -101,10 +111,21 @@ def _changed_column_fields(obj: Any) -> set[str]:
 
 
 def _managed_dirty_change_is_allowed(obj: Any) -> bool:
-    if obj.__class__.__name__ != "Workflow":
-        return False
     changed = _changed_column_fields(obj)
-    return bool(changed) and changed <= _WORKFLOW_RUNTIME_KEY_FIELDS
+    if obj.__class__.__name__ == "Workflow":
+        return bool(changed) and changed <= _WORKFLOW_RUNTIME_KEY_FIELDS
+    if obj.__class__.__name__ == "FileMetadata" and obj.location != "workspace":
+        # Only runtime content metadata is instance-owned. In particular, never
+        # allow rebinding a file to another install, location, path or S3 key.
+        allowed = _FILE_RUNTIME_CONTENT_FIELDS
+        if "created_by" in changed:
+            history = sa_inspect(obj).attrs.created_by.history
+            if len(history.deleted) == 1 and history.deleted[0] is None:
+                # Deployed files may lack creation attribution. The ordinary
+                # metadata writer fills it once; existing attribution is fixed.
+                allowed = allowed | {"created_by"}
+        return bool(changed) and changed <= allowed
+    return False
 
 
 def install_solution_write_guard() -> None:
