@@ -49,7 +49,9 @@ def metadata_files() -> dict[str, dict[str, Any]]:
             "organization_id": str(ORG), "repo_subpath": "apps/fixture"},
         accounting.REGISTRY_PATH: {"schema_version": "bifrost.package-delivery-installations/v1",
             "installations": [{"kind": "solution", "target": "production", "recipe": RECIPE},
-                {"kind": "inline_app", "target": "production", "recipe": APP_RECIPE}]}}
+                {"kind": "inline_app", "target": "production", "recipe": APP_RECIPE},
+                {"kind": "solution_package", "target": "production",
+                    "recipe": "config/solution-package-delivery/fixture.json"}]}}
 
 
 @pytest.mark.asyncio
