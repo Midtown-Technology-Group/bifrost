@@ -180,7 +180,7 @@ class InputBoundaries(unittest.TestCase):
                 local.ensure(config, "kind-test-cluster")
             self.assertEqual(command.call_count, 2)
             create = command.call_args_list[1]
-            self.assertEqual(create.args[0][:5], ["kubectl", "--kubeconfig", str(config), "--context", "kind-test-cluster"])
+            self.assertEqual(create.args[0][:5], ["kubectl", "--kubeconfig", str(config.resolve()), "--context", "kind-test-cluster"])
             self.assertEqual(create.args[0][-3:], ["create", "-f", "-"])
             payload = json.loads(create.kwargs["input"])
             self.assertEqual(payload["metadata"], {"name": local.NAME, "namespace": local.NAMESPACE})

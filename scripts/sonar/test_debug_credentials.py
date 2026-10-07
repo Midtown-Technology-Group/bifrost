@@ -62,6 +62,25 @@ class DebugCredentials(unittest.TestCase):
         self.assertEqual(self.invoke().returncode, 0)
         self.assertEqual(self.secret.read_bytes(), value)
 
+    def test_failed_generation_never_publishes_partial_credential(self):
+        script = "set -euo pipefail\ndocker() { return 1; }\n"
+        script += "openssl() { printf 'partial'; return 1; }\n" + FUNCTION
+        result = subprocess.run(["bash", "-c", script + "\nconfigure_debug_database\n"],
+                                env=self.env, capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.secret.exists())
+        self.assertEqual(list(self.secret.parent.iterdir()), [])
+
+    def test_competing_publication_never_overwrites_existing_credential(self):
+        script = "set -euo pipefail\ndocker() { return 1; }\n"
+        script += "openssl() { printf 'generated'; }\n"
+        script += 'ln() { printf \'concurrent-existing\' > "$2"; command ln "$@"; }\n'
+        result = subprocess.run(["bash", "-c", script + FUNCTION + "\nconfigure_debug_database\n"],
+                                env=self.env, capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.secret.read_text(), "concurrent-existing")
+        self.assertEqual(list(self.secret.parent.iterdir()), [self.secret])
+
     def test_existing_volume_without_credential_stops_without_creating_state(self):
         self.env["FIXTURE_VOLUME_PRESENT"] = "0"
         result = self.invoke()

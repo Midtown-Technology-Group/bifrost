@@ -150,7 +150,7 @@ configure_debug_storage() {
 # Keep local database credentials private and stable for the owning worktree.
 # Existing volumes are never reset or assigned a different password implicitly.
 configure_debug_database() {
-    local credential_dir secret_file ancestor
+    local credential_dir secret_file ancestor temporary_secret
     credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
     secret_file="$credential_dir/postgres-secret"
     if [ -z "${POSTGRES_PASSWORD:-}" ]; then
@@ -176,7 +176,16 @@ configure_debug_database() {
                 echo 'Unsafe or empty debug database credential file' >&2
                 return 1
             fi
-            (umask 077; set -o noclobber; openssl rand -hex 32 > "$secret_file") || return 1
+            temporary_secret="$(umask 077; mktemp "$credential_dir/.postgres-secret.XXXXXXXX")" || return 1
+            if ! openssl rand -hex 32 > "$temporary_secret"; then
+                rm -f "$temporary_secret"
+                return 1
+            fi
+            if ! ln "$temporary_secret" "$secret_file"; then
+                rm -f "$temporary_secret"
+                return 1
+            fi
+            rm -f "$temporary_secret"
             POSTGRES_PASSWORD="$(<"$secret_file")"
         fi
     fi

@@ -149,6 +149,11 @@ describe("source-control orchestration", () => {
 		await act(async () => { resolve({ working_content: "old result", head_content: "old remote" }); });
 		expect(mock.editor.diffPreview?.path).toBe("newer.py");
 		expect(mock.editor.diffPreview?.localContent).not.toBe("old result");
+		mock.results.diff = { working_content: "fresh", head_content: "fresh remote" };
+		mock.editor.diffPreview = null;
+		fireEvent.click(screen.getByRole("button", { name: "View changes for workflow.py" }));
+		await waitFor(() => expect(mock.diff).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(mock.editor.diffPreview?.localContent).toBe("fresh"));
 	});
 	it("reports fetch failure without presenting stale state as already up to date", async () => {
 		mock.errors.fetch = new Error("transport unavailable");
@@ -162,7 +167,7 @@ describe("source-control orchestration", () => {
 		await waitFor(() => expect(mock.success).toHaveBeenCalledWith("Already up to date"));
 		expect(mock.changes).toHaveBeenCalledTimes(2);
 	});
-	it("keeps initialization and unavailable status distinct from an empty clean repository", () => {
+	it("does not present an uninitialized repository as an empty clean repository", () => {
 		mock.initialized = false; panel();
 		expect(mock.changes).not.toHaveBeenCalled();
 		expect(screen.queryByLabelText("Commit message")).not.toBeInTheDocument();

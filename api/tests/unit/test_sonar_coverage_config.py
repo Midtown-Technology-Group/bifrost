@@ -479,7 +479,7 @@ def test_sonar_runtime_absence_fails_even_with_unit_data(tmp_path: Path) -> None
 
 
 def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
-    root = API_ROOT
+    root = API_ROOT if (API_ROOT / "docker-compose.sonar.yml").is_file() else API_ROOT.parent
     compose = (root / "docker-compose.sonar.yml").read_text()
     runner = compose.split("  test-runner:\n", 1)[1]
     assert "- test-coverage:/coverage" in runner
