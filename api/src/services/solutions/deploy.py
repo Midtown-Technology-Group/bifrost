@@ -454,6 +454,7 @@ class SolutionDeployer:
                     bundle, source_artifact=source.source_archive,
                     expected_active_deployment_id=expected_active_deployment_id,
                     allow_reviewed_version_revert=True,
+                    reviewed_parameters=True,
                 )
             await self.db.flush()
             from src.services.solutions.workflow_revision import require_compatible_parameters
@@ -484,6 +485,7 @@ class SolutionDeployer:
         *,
         expected_active_deployment_id: UUID | None = None,
         allow_reviewed_version_revert: bool = False,
+        reviewed_parameters: bool = False,
     ) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
@@ -582,7 +584,7 @@ class SolutionDeployer:
             raise SolutionWorkflowNameMismatch("\n".join(name_errors))
 
         # ── DB-only phase (validates + reconciles; rolls back cleanly) ───────
-        await self._upsert_workflows(solution, rb.workflows, rb.python_files)
+        await self._upsert_workflows(solution, rb.workflows, rb.python_files, reviewed_parameters=reviewed_parameters)
         await self._upsert_claims(solution, rb.claims)
         await self._upsert_tables(solution, rb.tables)
         builds = await self._upsert_apps(solution, rb.apps)
@@ -1019,6 +1021,8 @@ class SolutionDeployer:
         solution: Solution,
         workflows: list[dict[str, Any]],
         python_files: dict[str, str] | None = None,
+        *,
+        reviewed_parameters: bool = False,
     ) -> None:
         from bifrost.manifest import ManifestWorkflow
         from bifrost.manifest_codec import Destination
@@ -1063,11 +1067,17 @@ class SolutionDeployer:
             if not isinstance(source, (str, bytes)):
                 source = source_files.get(mwf_model.path)
             if isinstance(source, (str, bytes)):
-                inferred_parameters = indexer.extract_parameters_from_source(
-                    source,
-                    mwf_model.function_name,
-                    path=mwf_model.path,
-                )
+                if reviewed_parameters:
+                    from bifrost.solution_delivery_review import compile_workflow_parameters
+
+                    inferred_parameters = compile_workflow_parameters(
+                        source.encode() if isinstance(source, str) else source,
+                        mwf_model.function_name, path=mwf_model.path, indexer=indexer,
+                    )
+                else:
+                    inferred_parameters = indexer.extract_parameters_from_source(
+                        source, mwf_model.function_name, path=mwf_model.path,
+                    )
                 if inferred_parameters is not None:
                     values["parameters_schema"] = inferred_parameters
             # Safe now: the id is either absent or already this install's.

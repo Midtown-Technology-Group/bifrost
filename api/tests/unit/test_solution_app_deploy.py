@@ -295,6 +295,29 @@ class TestSolutionAppDeploy:
             source_read.assert_awaited_once_with("functions/main.py")
         assert await storage.read("functions/main.py") == original_bytes
 
+    async def test_reviewed_package_registry_and_runtime_share_literal_constant_defaults(self, db_session):
+        from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import select
+        from src.models.orm.workflows import Workflow
+        from src.services.solutions.package_controls import capture_package_controls
+        from src.services.solutions.package_runtime import compile_package_runtime
+
+        sol = await self._install(db_session)
+        initial = _reviewed_package_source(sol, runtime=True, function_args="limit: int = DEFAULT_LIMIT", include_app=False)
+        raw = initial.authored.files["functions/main.py"].replace(
+            b"from bifrost import workflow\n", b"from bifrost import workflow\nDEFAULT_LIMIT = 2_000_000\n")
+        source = _reviewed_package_source(sol, runtime=True, include_app=False,
+            additional_files={"functions/main.py": raw})
+        prepared = await SolutionDeployer(db_session).prepare_reviewed_package(source,
+            expected_active_deployment_id=None,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sol.id)))
+        _manifest, resolution = await compile_package_runtime(db_session, source, prepared, uuid.uuid4(),
+            publication_job_id=uuid.uuid4())
+        row = await db_session.scalar(select(Workflow).where(Workflow.solution_id == sol.id))
+        definition = next(iter(resolution.workflows.values())).definition
+        assert row.parameters_schema == definition["parameters_schema"]
+        assert row.parameters_schema["properties"]["limit"]["default"] == 2_000_000
+
     @pytest.mark.parametrize("drift", ["controls", "pointer", "archive"])
     async def test_reviewed_package_rejects_changed_preflight_before_preparation(
         self, db_session, _stub_app_build, drift
