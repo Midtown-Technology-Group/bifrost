@@ -345,3 +345,65 @@ it("retains failed access edits and does not silently replay the requested write
     expect(screen.getByRole("checkbox", { name: "Select Create service request" })).toBeChecked();
     expect(screen.getByRole("combobox", { name: "Access level change" })).toHaveTextContent("Everyone");
 });
+
+async function chooseForDeletion(names: string[]) {
+    const user = userEvent.setup();
+    apiPost.mockResolvedValue(relationshipAvailability());
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><EntityManagement /></QueryClientProvider>);
+    for (const name of names) await user.click(await screen.findByRole("checkbox", { name: `Select ${name}` }));
+    await user.click(screen.getByRole("button", { name: "Delete selected" }));
+    return user;
+}
+
+it("deletes only the explicitly confirmed resources and clears successful selections", async () => {
+    authFetch.mockResolvedValue(new Response(null, { status: 204 }));
+    const user = await chooseForDeletion(kinds.map(([, name]) => name));
+    expect(authFetch).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Delete 4 entities" }));
+    await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(4));
+    expect(authFetch.mock.calls.map(([path]) => path)).toEqual([
+        "/api/workflows/workflow-1", "/api/forms/form-1", "/api/agents/agent-1", "/api/applications/app-1",
+    ]);
+    expect(authFetch.mock.calls.every(([, options]) => options.method === "DELETE")).toBe(true);
+    expect(authFetch.mock.calls.some(([path]) => path.includes("app-2"))).toBe(false);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).not.toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "Select Unrelated Portal" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Create service request" })).not.toBeChecked();
+});
+
+it("retains only failed deletions for an explicit retry and never repeats completed ones", async () => {
+    authFetch.mockImplementation(async (path: string) => path.includes("form-1")
+        ? new Response(JSON.stringify({ detail: "Deletion refused" }), { status: 400 })
+        : new Response(null, { status: 204 }));
+    const user = await chooseForDeletion(["Create service request", "Service request intake"]);
+    await user.click(screen.getByRole("button", { name: "Delete 2 entities" }));
+    await screen.findByText("Some items could not be deleted");
+    expect(authFetch).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert")).toHaveTextContent("Deletion refused");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Create service request");
+    authFetch.mockResolvedValue(new Response(null, { status: 204 }));
+    await user.click(screen.getByRole("button", { name: "Retry deletion" }));
+    await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(3));
+    expect(authFetch.mock.calls.filter(([path]) => path.includes("workflow-1"))).toHaveLength(1);
+    expect(authFetch.mock.calls[2][0]).toBe("/api/forms/form-1");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).not.toBeInTheDocument());
+});
+
+it("allows cancellation before confirmation without any deletion request", async () => {
+    const user = await chooseForDeletion(["Covi Portal"]);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(authFetch).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Confirm delete" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Covi Portal" })).toBeChecked();
+});
+
+it("does not automatically repeat a deletion whose response was lost", async () => {
+    authFetch.mockRejectedValue(new TypeError("Response lost; outcome unknown"));
+    const user = await chooseForDeletion(["Reviewed Agent"]);
+    await user.click(screen.getByRole("button", { name: "Delete agent" }));
+    await screen.findByText("Some items could not be deleted");
+    expect(screen.getByRole("alert")).toHaveTextContent("outcome unknown");
+    expect(authFetch).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(authFetch).toHaveBeenCalledTimes(1);
+});

@@ -13,7 +13,7 @@ import pytest
 
 @pytest.fixture
 def tracker():
-    root = Path("/repo") if Path("/repo/docs").is_dir() else Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[1]
     bifrost = ModuleType("bifrost")
     bifrost.workflow = lambda function: function
     bifrost.tables = SimpleNamespace(query=AsyncMock(return_value=[]))
