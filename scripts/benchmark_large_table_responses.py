@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import signal
 import subprocess
 import sys
@@ -95,6 +96,9 @@ def _mib(value: float) -> float:
 
 def main() -> int:
     args = _parse_args()
+    interval = float(args.interval)
+    if not math.isfinite(interval) or not 0 < interval <= 60:
+        raise ValueError("Sampling interval must be finite and between zero and 60 seconds")
     args.trace_out = checked_trace_path(args.trace_out or
         Path(tempfile.mkdtemp(prefix="bifrost-large-table-")) / "memory.csv")
     container = memory_sampler._detect_container()
@@ -109,12 +113,12 @@ def main() -> int:
             "--out",
             str(args.trace_out),
             "--interval",
-            str(args.interval),
+            str(interval),
             "--maps-every",
             "10",
         ],
     )
-    time.sleep(max(0.2, args.interval * 2))
+    time.sleep(max(0.2, interval * 2))
 
     output_lines: list[str] = []
     try:

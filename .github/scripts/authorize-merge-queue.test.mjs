@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authorizeMergeQueue } from "./authorize-merge-queue.mjs";
+import { authorizeMergeQueue, githubRequestUrl } from "./authorize-merge-queue.mjs";
+
+test("permission lookups cannot escape the fixed GitHub API route", () => {
+  assert.equal(githubRequestUrl("/graphql").href, "https://api.github.com/graphql");
+  assert.equal(githubRequestUrl("/repos/Midtown-Technology-Group/bifrost/collaborators/MTG-Thomas/permission").hostname, "api.github.com");
+  for (const path of ["//other.example", "https://other.example", "/graphql?other=1", "/graphql\n", "/repos/Midtown-Technology-Group/bifrost/collaborators/../permission"]) {
+    assert.throws(() => githubRequestUrl(path), /Unexpected/);
+  }
+});
 
 function fixture() {
   const entry = {

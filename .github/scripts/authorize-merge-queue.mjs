@@ -3,6 +3,13 @@ import { pathToFileURL } from "node:url";
 
 const repository = "Midtown-Technology-Group/bifrost";
 
+export function githubRequestUrl(path) {
+  if (path !== "/graphql" && !/^\/repos\/Midtown-Technology-Group\/bifrost\/collaborators\/[A-Za-z0-9-]{1,39}\/permission$/.test(path)) {
+    throw new Error("Unexpected merge queue API path");
+  }
+  return new URL(encodeURI(path), "https://api.github.com");
+}
+
 export async function authorizeMergeQueue({ eventName, event, sha, repo, request }) {
   if (repo !== repository) throw new Error("Unexpected repository");
   // GitHub requires the same check before admission and on the merge group.
@@ -62,7 +69,7 @@ export async function authorizeMergeQueue({ eventName, event, sha, repo, request
 async function main() {
   const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, "utf8"));
   const request = async (path, body) => {
-    const response = await fetch(`https://api.github.com${path}`, {
+    const response = await fetch(githubRequestUrl(path), {
       method: body ? "POST" : "GET",
       headers: {
         Authorization: `Bearer ${process.env.GH_TOKEN}`,
@@ -76,18 +83,18 @@ async function main() {
     if (!response.ok) throw new Error(`GitHub API returned HTTP ${response.status}`);
     return response.json();
   };
-  console.log(await authorizeMergeQueue({
+  console.log(JSON.stringify(await authorizeMergeQueue({
     eventName: process.env.GITHUB_EVENT_NAME,
     event,
     sha: process.env.GITHUB_SHA,
     repo: process.env.GITHUB_REPOSITORY,
     request,
-  }));
+  })));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
-    console.error(error.message);
+    console.error(JSON.stringify(error.message));
     process.exitCode = 1;
   });
 }

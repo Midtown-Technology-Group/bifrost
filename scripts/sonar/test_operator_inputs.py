@@ -37,6 +37,17 @@ local = load("local_secret_guard", "scripts/kubernetes/local_secrets.py")
 
 
 class InputBoundaries(unittest.TestCase):
+    def test_invalid_sampling_interval_stops_before_container_or_child_process(self):
+        for interval in ("--help", float("nan"), float("inf"), -1, 0, 61):
+            with self.subTest(interval=interval), \
+                    patch.object(benchmark, "_parse_args", return_value=SimpleNamespace(interval=interval)), \
+                    patch.object(benchmark.memory_sampler, "_detect_container") as detect, \
+                    patch.object(benchmark.subprocess, "Popen") as process:
+                with self.assertRaises(ValueError):
+                    benchmark.main()
+                detect.assert_not_called()
+                process.assert_not_called()
+
     def test_git_rejects_mixed_operations_and_non_commit_operands(self):
         with patch.object(guard.subprocess, "run") as command:
             for args in (("ls-files", "HEAD"), ("rev-parse", "--verify", "HEAD"),
