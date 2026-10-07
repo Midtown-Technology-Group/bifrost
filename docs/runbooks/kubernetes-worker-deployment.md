@@ -296,10 +296,10 @@ in-cluster equivalents:
 - RabbitMQ with durable storage, HA policy, TLS/authentication and monitored
   queue depth;
 - Redis with the selected persistence/HA posture for Bifrost's cache and result
-  paths (on Azure, use Azure Managed Redis: Azure Cache for Redis SKUs are
-  retiring);
-- S3-compatible object storage with durable buckets, credentials rotation and
-  lifecycle policy;
+  paths (on Azure, use Azure Managed Redis: [Azure Cache for Redis SKUs are
+  retiring](https://learn.microsoft.com/en-us/azure/azure-cache-for-redis/cache-whats-new));
+- S3-compatible object storage or Azure Blob via Bifrost's native `azure_blob`
+  provider, with durable buckets/containers, scoped access and lifecycle policy;
 - ingress, TLS, WebSocket support and public URL/WebAuthn configuration.
 
 The local KEDA example uses the AMQP URL from `BIFROST_RABBITMQ_URL`. In a real

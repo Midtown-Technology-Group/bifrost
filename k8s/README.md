@@ -86,6 +86,26 @@ Then apply:
 kubectl apply -f k8s/configmap.yaml
 ```
 
+For Azure Blob Storage, replace the S3 storage settings above rather than using
+an S3 endpoint. Keep the non-storage secret values, omit the `BIFROST_S3_*`
+settings, and set these values in `k8s/configmap.yaml`:
+
+```yaml
+data:
+  BIFROST_OBJECT_STORAGE_PROVIDER: "azure_blob"
+  BIFROST_AZURE_BLOB_ACCOUNT_URL: "https://<account>.blob.core.windows.net"
+  BIFROST_AZURE_BLOB_CONTAINER: "<container>"
+  BIFROST_AZURE_BLOB_AUTH: "account_key"
+```
+
+For `account_key` authentication, replace the S3 flags in the secret command
+with `--from-literal=BIFROST_AZURE_BLOB_ACCOUNT_KEY='your-account-key'`, or add
+that key to `k8s/secret.yaml`; keep it out of the ConfigMap. Prefer
+`default_credential` in production after configuring Azure identity for every
+storage-using workload. These generic manifests do not configure Azure Workload
+Identity, so changing the auth mode alone is insufficient; omit the account key
+only once identity is available to the API, init container, and workers.
+
 ### 4. Deploy All Services
 
 **Option A: Using Kustomize (recommended)**
