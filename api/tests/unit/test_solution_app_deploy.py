@@ -244,6 +244,57 @@ class TestSolutionAppDeploy:
         assert await SolutionStorage(sol.id).list("") == []
         assert not hasattr(prepared, "finalize_s3")
 
+    @pytest.mark.parametrize("fault", [None, "breaking_type", "missing_source", "immutable_legacy"])
+    async def test_initial_package_compares_legacy_parameters_with_actual_installed_source(self, db_session, fault):
+        from bifrost.workspace_release import canonical_digest
+        from sqlalchemy import select
+        from unittest.mock import AsyncMock
+        from src.models.orm.workflows import Workflow
+        from src.services.solutions.package_controls import capture_package_controls
+        from src.services.solutions.storage import SolutionStorage
+
+        sol = await self._install(db_session)
+        solution_id = sol.id
+        deployer = SolutionDeployer(db_session)
+        original = _reviewed_package_source(sol, runtime=True, function_args="value: str", include_app=False)
+        await deployer.prepare_reviewed_package(original, expected_active_deployment_id=None,
+            expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sol.id)))
+        row = await db_session.scalar(select(Workflow).where(Workflow.solution_id == sol.id))
+        row.parameters_schema = [{"name": "value", "type": "string", "required": True}]
+        await db_session.flush()
+        if fault == "immutable_legacy":
+            sol.execution_runtime_mode = "deployment-v1"
+            await db_session.flush()
+        before = await capture_package_controls(db_session, sol.id)
+        storage = SolutionStorage(solution_id)
+        original_bytes = original.authored.files["functions/main.py"]
+        await storage.write("functions/main.py", original_bytes)
+        new_args = "value: int" if fault == "breaking_type" else "value: str, note: str | None = None"
+        desired = _reviewed_package_source(sol, runtime=True, function_args=new_args, include_app=False)
+        source_read = AsyncMock(side_effect=FileNotFoundError()) if fault == "missing_source" else AsyncMock(wraps=storage.read)
+        from unittest.mock import patch
+        with patch.object(SolutionStorage, "read", source_read):
+            if fault:
+                with pytest.raises(SolutionDeployConflict):
+                    await deployer.prepare_reviewed_package(desired, expected_active_deployment_id=None,
+                        expected_controls_digest=canonical_digest(before))
+            else:
+                await deployer.prepare_reviewed_package(desired, expected_active_deployment_id=None,
+                    expected_controls_digest=canonical_digest(before))
+                await db_session.refresh(row)
+                assert set(row.parameters_schema["properties"]) == {"value", "note"}
+        assert await capture_package_controls(db_session, solution_id) == before
+        await db_session.refresh(sol)
+        assert sol.active_deployment_id is None
+        if fault:
+            await db_session.refresh(row)
+            assert isinstance(row.parameters_schema, list)
+        if fault == "immutable_legacy":
+            source_read.assert_not_awaited()
+        else:
+            source_read.assert_awaited_once_with("functions/main.py")
+        assert await storage.read("functions/main.py") == original_bytes
+
     @pytest.mark.parametrize("drift", ["controls", "pointer", "archive"])
     async def test_reviewed_package_rejects_changed_preflight_before_preparation(
         self, db_session, _stub_app_build, drift

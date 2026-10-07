@@ -416,9 +416,33 @@ class SolutionDeployer:
             before = await capture_package_controls(self.db, sid)
             if canonical_digest(before) != expected_controls_digest:
                 raise SolutionDeployConflict("Reviewed package installed controls changed")
-            previous_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
-                Workflow.id, Workflow.parameters_schema,
-            ).where(Workflow.solution_id == sid))).all()}
+            previous_workflows = list((await self.db.scalars(select(Workflow).where(
+                Workflow.solution_id == sid))).all())
+            previous_parameters = {row.id: row.parameters_schema for row in previous_workflows}
+            legacy_rows = [row for row in previous_workflows if isinstance(row.parameters_schema, list)]
+            if legacy_rows:
+                # Legacy list DTOs cannot prove a complete call contract. Read
+                # the existing install's actual source before preparing any
+                # replacement, using the same compiler as reviewed adoption.
+                from bifrost.solution_delivery_review import WorkflowRecipeError, compile_workflow_parameters
+                from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+                if solution.active_deployment_id is not None or solution.execution_runtime_mode != "repo-v1":
+                    raise SolutionDeployConflict("Legacy workflow parameters require initial reviewed adoption")
+                indexer = WorkflowIndexer(self.db)
+                storage = SolutionStorage(sid)
+                legacy_files: dict[str, bytes] = {}
+                for row in legacy_rows:
+                    try:
+                        if row.path not in legacy_files:
+                            legacy_files[row.path] = await storage.read(row.path)
+                            if sum(len(raw) for raw in legacy_files.values()) > 10 * 1024 * 1024:
+                                raise SolutionDeployConflict("Legacy parameter source exceeds its review bound")
+                        previous_parameters[row.id] = compile_workflow_parameters(
+                            legacy_files[row.path], row.function_name, path=row.path, indexer=indexer,
+                        )
+                    except (FileNotFoundError, WorkflowRecipeError) as exc:
+                        raise SolutionDeployConflict("Legacy workflow source cannot prove its parameter contract") from exc
             with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
                 workspace = Path(directory)
                 _safe_extract(source.source_archive, directory)
