@@ -132,6 +132,7 @@ def project(tmp_path):
     (root / "package.json").write_text("{}")
     (root / "src").mkdir()
     (root / "src/main.tsx").write_text("export {}")
+    (root / ".env").write_text("FIXTURE_VALUE=must-stay-local\n")
     write_app_binding(root, AppBinding(URL, APP_ID))
     return root
 

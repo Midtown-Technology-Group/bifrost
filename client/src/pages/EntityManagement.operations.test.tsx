@@ -118,7 +118,7 @@ vi.mock("@/hooks/useForms", () => ({
 
 vi.mock("@/hooks/useAgents", () => ({
 	useAgents: () => ({
-        data: [{ id: "agent-1", name: "Reviewed Agent", organization_id: null, access_level: "authenticated",
+        data: [{ id: "agent-1", name: "Reviewed Agent", is_active: true, organization_id: null, access_level: "authenticated",
             created_at: "2026-01-01T00:00:00Z", role_ids: [], is_solution_managed: false, solution_id: null }],
 		isLoading: false,
 		isError: false,

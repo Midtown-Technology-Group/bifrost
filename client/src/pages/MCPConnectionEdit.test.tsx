@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
+import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MCPConnectionEdit } from "./MCPConnectionEdit";
 
@@ -21,10 +22,18 @@ vi.mock("@/lib/api-client", () => ({
 			isLoading: mock.loading, error: mock.failed ? new Error("read refused") : null,
 			isFetching: mock.fetching, refetch: mock.refetch,
 		}),
-		useMutation: (method: string, path: string) => ({
-			mutateAsync: method === "delete" ? mock.remove : path.endsWith("refresh-tools") ? mock.refresh : mock.update,
-			isPending: false, isError: false, reset: mock.reset,
-		}),
+		useMutation: (method: string, path: string) => {
+			const [isError, setError] = useState(false);
+			const operation = method === "delete" ? mock.remove : path.endsWith("refresh-tools") ? mock.refresh : mock.update;
+			return {
+				mutateAsync: async (input: unknown) => {
+					setError(false);
+					try { return await operation(input); }
+					catch (error) { setError(true); throw error; }
+				},
+				isPending: false, isError, reset: mock.reset,
+			};
+		},
 	},
 	apiClient: { PATCH: mock.patchTool, POST: vi.fn(), GET: vi.fn() },
 }));

@@ -30,7 +30,7 @@ it("does not replace matching documents until explicit conflict confirmation", a
 	mount(); fireEvent.click(screen.getByRole("button", { name: "Update Scope" }));
 	await screen.findByText("Replace Existing Documents?");
 	expect(mock.fetch).toHaveBeenCalledTimes(1); expect(mock.saved).not.toHaveBeenCalled();
-	fireEvent.click(screen.getByRole("button", { name: "Replace", exact: true }));
+	fireEvent.click(screen.getByRole("button", { name: "Replace" }));
 	await waitFor(() => expect(mock.saved).toHaveBeenCalled());
 	expect(JSON.parse(mock.fetch.mock.calls[1][1].body).replace).toBe(true);
 });
