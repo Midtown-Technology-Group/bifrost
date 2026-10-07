@@ -247,7 +247,7 @@ class TestSolutionAppDeploy:
     @pytest.mark.parametrize("fault", [None, "breaking_type", "missing_source", "immutable_legacy"])
     async def test_initial_package_compares_legacy_parameters_with_actual_installed_source(self, db_session, fault):
         from bifrost.workspace_release import canonical_digest
-        from sqlalchemy import select
+        from sqlalchemy import select, update
         from unittest.mock import AsyncMock
         from src.models.orm.workflows import Workflow
         from src.services.solutions.package_controls import capture_package_controls
@@ -260,8 +260,8 @@ class TestSolutionAppDeploy:
         await deployer.prepare_reviewed_package(original, expected_active_deployment_id=None,
             expected_controls_digest=canonical_digest(await capture_package_controls(db_session, sol.id)))
         row = await db_session.scalar(select(Workflow).where(Workflow.solution_id == sol.id))
-        row.parameters_schema = [{"name": "value", "type": "string", "required": True}]
-        await db_session.flush()
+        await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(
+            parameters_schema=[{"name": "value", "type": "string", "required": True}]))
         if fault == "immutable_legacy":
             sol.execution_runtime_mode = "deployment-v1"
             await db_session.flush()
@@ -321,8 +321,7 @@ class TestSolutionAppDeploy:
         manifest, resolution = await compile_package_runtime(db_session, source, prepared, did)
         row = await db_session.scalar(select(Workflow).where(Workflow.solution_id == sid))
         legacy = [{"name": "value", "type": "string", "required": True}]
-        row.parameters_schema = legacy
-        await db_session.flush()
+        await db_session.execute(update(Workflow).where(Workflow.id == row.id).values(parameters_schema=legacy))
         workflows = {ref: item.model_copy(update={"legacy_parameters_schema_hash": canonical_digest(legacy)})
             for ref, item in resolution.workflows.items()}
         resolution = resolution.model_copy(update={"workflows": workflows})
