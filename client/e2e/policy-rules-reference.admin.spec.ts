@@ -178,9 +178,17 @@ test.describe("Policy rule reference mode", () => {
 		await expect(
 			fileDetails.getByRole("list", { name: "Policy rules" }),
 		).toContainText(fileRuleLabel);
-		await fileDetails
-			.getByRole("switch", { name: "Advanced", exact: true })
-			.click();
+		// Selecting a rule updates the summary before the picker exit finishes.
+		// Wait for its DOM to leave before clicking a different control.
+		await expect(
+			page.getByRole("listbox", { includeHidden: true }),
+		).toBeHidden();
+		const advanced = fileDetails.getByRole("switch", {
+			name: "Advanced",
+			exact: true,
+		});
+		await advanced.click();
+		await expect(advanced).toBeChecked();
 		await expect(
 			fileDetails.getByRole("textbox", {
 				name: "file-policies.yaml",
