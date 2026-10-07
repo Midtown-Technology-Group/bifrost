@@ -49,6 +49,8 @@ class ReleaseError(ValueError):
 
 
 def command(args: list[str]) -> str:
+    if not args or args[0] not in {"git", "gh"}:
+        raise ReleaseError("Release commands are limited to Git and GitHub CLI")
     result = subprocess.run(args, text=True, capture_output=True, check=False)
     if result.returncode:
         # Do not echo request bodies, authorization headers or environment values.
@@ -63,6 +65,8 @@ def git(*args: str) -> str:
 
 
 def api(path: str, *, pages: bool = False, fields: dict | None = None) -> object:
+    if not re.fullmatch(r"[A-Za-z0-9_./?=&%-]+", path) or ".." in path:
+        raise ReleaseError("Invalid repository-scoped GitHub API path")
     args = ["gh", "api", f"repos/{REPOSITORY}/{path}"]
     if pages:
         args += ["--paginate"]
@@ -311,9 +315,15 @@ def prepare(source: str, prs: list[dict]) -> dict | None:
     Path("release").mkdir(exist_ok=True)
     Path(CANDIDATE).write_text(json.dumps(candidate, indent=2) + "\n")
     for path in MANIFESTS:
-        manifest = json.loads(Path(path).read_text())
+        checkout = Path.cwd().resolve()
+        target = (checkout / path).resolve()
+        if not target.is_relative_to(checkout) or (checkout / path).is_symlink():
+            raise ReleaseError("Release manifest escapes the checkout")
+        manifest = json.loads(target.read_text())
         manifest["version"] = candidate["version"][1:]
-        Path(path).write_text(json.dumps(manifest, indent=2) + "\n")
+        with target.open("w", encoding="utf-8") as stream:
+            json.dump(manifest, stream, indent=2)
+            stream.write("\n")
     entries = candidate["pull_requests"]
     changes = [f"- {markdown(pr['title'])} (#{pr['number']})" for pr in entries]
     security = [
@@ -509,6 +519,12 @@ def publish(source: str, run_id: int, prs: list[dict]) -> None:
     )
 
 
+def checked_source_ref(source: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/~^{}-]*", source) or ".." in source:
+        raise ReleaseError("Source must be a Git ref, never a command option")
+    return source
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("version", "prepare", "validate", "publish"))
@@ -520,7 +536,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        source = git("rev-parse", f"{args.source}^{{commit}}")
+        source_ref = checked_source_ref(args.source)
+        source = git("rev-parse", "--verify", "--end-of-options", f"{source_ref}^{{commit}}")
         prs = merged_prs()
         if args.action == "version":
             candidate = calculate(
@@ -553,4 +570,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

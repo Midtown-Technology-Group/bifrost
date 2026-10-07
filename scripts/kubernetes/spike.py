@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
+import tempfile
 import time
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / "scripts/kubernetes/local-kind.sh"
@@ -76,6 +77,7 @@ print(json.dumps({'current_bytes':c,'peak_bytes':int((p/'memory.peak').read_text
 
 
 def experiment(mode: str, out: Path) -> None:
+    out = checked_output(out)
     out.mkdir(parents=True, exist_ok=False)
     original = json.loads(kubectl("get", "scaledobject/bifrost-worker", "-o", "json"))
     config = original["spec"]
@@ -165,12 +167,21 @@ def experiment(mode: str, out: Path) -> None:
     print(f"PASS {mode}: {out}", flush=True)
 
 
+def checked_output(out: Path) -> Path:
+    if ".." in out.parts or out.is_symlink():
+        raise ValueError("Experiment output cannot traverse or name a symlink")
+    resolved = out.resolve()
+    if not any(resolved.is_relative_to(root) for root in (Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())):
+        raise ValueError("Experiment output must stay in the checkout or temporary results")
+    return resolved
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=["warm", "sdk", "cold", "burst", "load", "drain", "deadline"])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    out = args.output or Path(f"/tmp/bifrost-k8s-experiment-{args.mode}-{time.time_ns()}")
+    out = args.output or Path(tempfile.mkdtemp(prefix=f"bifrost-k8s-{args.mode}-")) / "results"
     experiment(args.mode, out)
 
 

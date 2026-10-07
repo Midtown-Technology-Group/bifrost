@@ -12,15 +12,15 @@ from __future__ import annotations
 
 import argparse
 import ast
-from collections import Counter
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from collections import Counter
+from pathlib import Path, PurePosixPath
 
 
 class EvidenceError(ValueError):
@@ -70,8 +70,52 @@ def json_bytes(value: object) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode()
 
 
+def commit_arguments(operands: tuple[str, ...]) -> list[str]:
+    validated = []
+    for operand in operands:
+        match = re.fullmatch(r"[0-9a-f]{40}", operand)
+        if not match:
+            fail("Git evidence requires exact commit identities")
+        validated.append(match.group(0))
+    return validated
+
+
+def git_arguments(args: tuple[str, ...]) -> list[str]:
+    fixed = {
+        ("rev-parse", "HEAD"): ["rev-parse", "HEAD"],
+        ("diff", "--name-only", "HEAD", "--"): ["diff", "--name-only", "HEAD", "--"],
+        ("ls-files", "-z"): ["ls-files", "-z"],
+    }
+    if args in fixed:
+        command = fixed[args]
+    elif len(args) == 3 and args[:2] == ("rev-parse", "--verify"):
+        match = re.fullmatch(r"([0-9a-f]{40})\^\{commit\}", args[2])
+        if not match:
+            fail("Git evidence requires an exact commit identity")
+        command = ["rev-parse", "--verify", "--end-of-options", match.group(1) + "^{commit}"]
+    else:
+        operations = {
+            "merge-base": (["merge-base"], 1),
+            "diff": (["diff", "--no-renames", "--name-only", "--diff-filter=ACMT", "-z"], 5),
+        }
+        operation = operations.get(args[0]) if args else None
+        if operation is None:
+            fail("Git evidence accepts only fixed read-only operations")
+        prefix, count = operation
+        if args[:count] != tuple(prefix) or len(args) != count + 2:
+            fail("Git evidence accepts only fixed read-only operation signatures")
+        command = [*prefix, *commit_arguments(args[count:])]
+    return command
+
+
 def git(root: Path, *args: str) -> bytes:
-    result = subprocess.run(["git", "-C", str(root), *args], check=False, capture_output=True)
+    command = git_arguments(args)
+    root = root.resolve(strict=True)
+    if not root.is_dir():
+        fail("Git evidence root is not a directory")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    result = subprocess.run(["git", "-C", str(root), *command], check=False,
+                            capture_output=True, env=environment)
     if result.returncode:
         fail(f"git {' '.join(args)} failed: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout
@@ -330,7 +374,8 @@ def validate_rate(value: str | None, label: str, numerator: int | None = None,
         fail(f"coverage rate {label} disagrees with its line/branch records")
 
 
-def report_bytes(path: Path) -> bytes:
+def report_bytes(path: Path, root: Path) -> bytes:
+    path = bounded_report_path(path, root)
     try:
         size = path.stat().st_size
         if not 0 < size <= MAX_REPORT_BYTES:
@@ -341,6 +386,17 @@ def report_bytes(path: Path) -> bytes:
     if not data.strip():
         fail(f"empty report: {path}")
     return data
+
+
+def bounded_report_path(path: Path, root: Path) -> Path:
+    """Coverage input/output belongs to this checkout, never an arbitrary path."""
+    root = root.resolve(strict=True)
+    if ".." in path.parts or path.is_symlink():
+        fail("Report path cannot traverse or name a symlink")
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root):
+        fail("Report path is outside the current checkout")
+    return resolved
 
 
 def parse_python(data: bytes, root: Path, tracked: dict[str, dict]) -> tuple[bytes, dict[str, dict]]:
@@ -566,9 +622,9 @@ def complete_inventory(items: list[dict], reports: dict[str, dict], root: Path) 
     return review
 
 
-def read_json(path: Path) -> dict:
+def read_json(path: Path, root: Path) -> dict:
     try:
-        value = json.loads(path.read_bytes())
+        value = json.loads(report_bytes(path, root))
     except (OSError, ValueError) as exc:
         fail(f"missing/malformed evidence {path}: {exc}")
     if not isinstance(value, dict):
@@ -581,26 +637,27 @@ def stamp_report(root: Path, head: str, base: str, report: Path, properties: str
     items = inventory(root, base, head)
     if properties not in {item["path"] for item in items}:
         fail("scanner properties must be tracked")
-    data = report_bytes(report)
+    report = bounded_report_path(report, root)
+    data = report_bytes(report, root)
     stamp = {"schema": SCHEMA, "status": "report_produced", "head": head, "base": base,
              "merge_base": git(root, "merge-base", base, head).decode().strip(),
              "report_sha256": sha256(data), "source_inventory_sha256": inventory_digest(items),
              "config_sha256": config_hashes(items, properties)}
-    target = Path(str(report) + ".provenance.json")
+    target = bounded_report_path(Path(str(report) + ".provenance.json"), root)
     target.write_bytes(json_bytes(stamp))
     return target
 
 
 def check_stamp(report: Path, data: bytes, head: str, base: str, merge_base: str,
-                digest: str, configs: dict[str, str]) -> str:
+                digest: str, configs: dict[str, str], root: Path) -> str:
     stamp_path = Path(str(report) + ".provenance.json")
-    stamp = read_json(stamp_path)
+    stamp = read_json(stamp_path, root)
     expected = {"schema": SCHEMA, "status": "report_produced", "head": head, "base": base,
                 "merge_base": merge_base,
                 "report_sha256": sha256(data), "source_inventory_sha256": digest, "config_sha256": configs}
     if stamp != expected:
         fail(f"report provenance/SHA/config mismatch: {report}")
-    return sha256(stamp_path.read_bytes())
+    return sha256(report_bytes(stamp_path, root))
 
 
 def preflight(root: Path, head: str, base: str, reports: dict[str, Path],
@@ -632,8 +689,8 @@ def preflight(root: Path, head: str, base: str, reports: dict[str, Path],
             fail(f"{key} must point only to validated outputs: {expected}")
     parsed, measurements, metadata = {}, {}, {}
     for kind in ("python", "client", "node"):
-        data = report_bytes(reports[kind])
-        stamp_hash = check_stamp(reports[kind], data, head, base, merge_base, digest, configs)
+        data = report_bytes(reports[kind], root)
+        stamp_hash = check_stamp(reports[kind], data, head, base, merge_base, digest, configs, root)
         normalized, stats = parse_python(data, root, tracked) if kind == "python" else parse_lcov(data, root, tracked, kind)
         overlap = set(measurements) & set(stats)
         if overlap:
@@ -668,9 +725,9 @@ def verify(root: Path, head: str, base: str, output: Path, manifest_sha256: str)
     manifest_path = output / "manifest.json"
     if not re.fullmatch(r"[0-9a-f]{64}", manifest_sha256):
         fail("expected manifest SHA256 must be supplied from the evidence job output")
-    if sha256(report_bytes(manifest_path)) != manifest_sha256:
+    if sha256(report_bytes(manifest_path, root)) != manifest_sha256:
         fail("manifest hash does not match the evidence job output")
-    manifest = read_json(manifest_path)
+    manifest = read_json(manifest_path, root)
     if manifest.get("schema") != SCHEMA or manifest.get("status") != "validated_for_scan":
         fail("manifest status/schema is not valid evidence")
     if manifest.get("head") != head or manifest.get("base") != base:
@@ -690,7 +747,7 @@ def verify(root: Path, head: str, base: str, output: Path, manifest_sha256: str)
     for kind, report in reports.items():
         expected = (output / ("python.xml" if kind == "python" else f"{kind}.lcov")).resolve()
         path = root / safe_relative(report.get("normalized_path", ""))
-        if path.resolve() != expected or sha256(report_bytes(path)) != report.get("normalized_sha256"):
+        if path.resolve() != expected or sha256(report_bytes(path, root)) != report.get("normalized_sha256"):
             fail(f"normalized report path/content changed since preflight: {kind}")
     return manifest
 
