@@ -52,7 +52,7 @@ def snapshot(repo: Path, compose_file: str, env_file: str, stage: str | None = N
         "compose_sha256": hashlib.sha256(compose.encode()).hexdigest(),
         "compose_available": compose != "unavailable",
         "compose_images": sorted(set(images.splitlines())) if images != "unavailable" else [],
-        "env_sha256": digest(bounded_path(repo / env_file, repo)),
+        "env_sha256": digest(environment_path(repo / env_file, repo)),
         "docker_version": run(["docker", "version", "--format", "{{.Server.Version}}"], repo),
         "compose_version": run(["docker", "compose", "version", "--short"], repo),
         "python_version": sys.version.split()[0],
@@ -92,6 +92,19 @@ def bounded_path(path: Path, repo: Path | None = None) -> Path:
     if not any(resolved.is_relative_to(base) for base in roots):
         raise ValueError("Stage evidence must stay in checkout, Git ledger or temporary results")
     return resolved
+
+
+def environment_path(path: Path, repo: Path) -> Path:
+    if ".." in path.parts or path.is_symlink():
+        raise ValueError("Environment evidence cannot traverse or name a symlink")
+    # test.sh supports the primary checkout's existing .env.test in a linked
+    # worktree. Permit only that exact Git-derived file for reading its digest.
+    common = run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], repo)
+    if common != "unavailable" and Path(common).is_absolute():
+        primary = Path(common).resolve().parent / ".env.test"
+        if path.resolve() == primary:
+            return primary
+    return bounded_path(path, repo)
 
 
 def read_state(path: Path) -> dict[str, object]:

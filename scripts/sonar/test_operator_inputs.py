@@ -87,6 +87,15 @@ class InputBoundaries(unittest.TestCase):
                     stage.atomic_write(path, {"replace": True})
             self.assertEqual(json.loads(target.read_text()), {"keep": True})
 
+    def test_primary_environment_digest_keeps_exact_git_derived_read_boundary(self):
+        with patch.object(stage, "run", return_value="/outside-primary/.git"):
+            self.assertEqual(stage.environment_path(Path("/outside-primary/.env.test"), ROOT),
+                             Path("/outside-primary/.env.test"))
+            with self.assertRaises(ValueError):
+                stage.environment_path(Path("/outside-primary/other.env"), ROOT)
+            with self.assertRaises(ValueError):
+                stage.atomic_write(Path("/outside-primary/.env.test"), {"replace": True})
+
     def test_local_output_and_trace_cannot_escape_or_follow_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "target"
