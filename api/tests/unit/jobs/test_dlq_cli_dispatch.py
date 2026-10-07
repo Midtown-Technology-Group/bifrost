@@ -41,6 +41,10 @@ def test_cli_dispatches_once_with_operator_and_exact_identity(backend, command, 
             assert call.kwargs["reason"] == "reviewed recovery"
     if backend == "postgres" and command in {"discard", "reconcile"}:
         assert call.kwargs["delivery_id"] == identity and call.kwargs["dry_run"] is True
+    if command == "reconcile-discard":
+        assert call.kwargs["message_id"] == "original-message"
+        assert call.kwargs["execution_id"] == identity
+        assert call.kwargs["expected_reason"] == "original-reason"
     assert json.loads(capsys.readouterr().out) == [{"observed": True}]
 
 

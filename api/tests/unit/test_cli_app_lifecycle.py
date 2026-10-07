@@ -91,7 +91,7 @@ async def test_binding_cannot_reclaim_invisible_legacy_or_solution_owned_app(row
     resolver.resolve = AsyncMock(return_value=APP_ID)
     with patch.object(app, "RefResolver", return_value=resolver), pytest.raises(click.ClickException):
         await app._find_app(api, "reviewed-app")
-    api.post.assert_not_awaited()
+    api.post.assert_not_called()
 
 
 def test_bind_requires_existing_vite_root_then_retains_selected_remote_identity(tmp_path):
@@ -110,7 +110,7 @@ def test_bind_requires_existing_vite_root_then_retains_selected_remote_identity(
         result = CliRunner().invoke(app.app_group, ["bind", APP_ID, str(root)])
     assert result.exit_code == 0, result.output
     assert read_app_binding(root) == AppBinding(URL, APP_ID)
-    api.post.assert_not_awaited()
+    api.post.assert_not_called()
 
 
 @pytest.mark.parametrize("nested", [False, True])
@@ -172,7 +172,7 @@ def test_empty_app_archive_stops_before_any_dispatch(tmp_path):
         filter_factory.return_value.match_file.return_value = True
         result = CliRunner().invoke(app.app_group, ["deploy", str(root)])
     assert result.exit_code != 0
-    api.post.assert_not_awaited()
+    api.post.assert_not_called()
 
 
 @pytest.mark.parametrize("vite_failure", [False, True])
@@ -204,7 +204,7 @@ def test_start_preserves_app_and_org_identity_with_no_local_workflow_registratio
     terminate.assert_called_once_with(vite)
     if vite_failure:
         build.assert_not_called()
-        runner.setup.assert_not_awaited()
+        runner.setup.assert_not_called()
     else:
         config = build.call_args.args[0]
         assert config.app_id == APP_ID
@@ -213,7 +213,7 @@ def test_start_preserves_app_and_org_identity_with_no_local_workflow_registratio
         assert config.local_workflows is False
         runner.cleanup.assert_awaited_once()
         site.start.assert_awaited_once()
-    api.post.assert_not_awaited()
+    api.post.assert_not_called()
 
 
 def test_unbound_project_cannot_start_or_deploy_live_resources(tmp_path):

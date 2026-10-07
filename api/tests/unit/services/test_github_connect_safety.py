@@ -150,12 +150,14 @@ async def test_stale_or_unapproved_connection_stops_before_replacement_and_apply
             repo.head.commit.hexsha = "b" * 40
         return repo
     strategy = "publish_local" if case == "publish-nonempty" else "start_from_remote"
-    request = GitConnectRequest(preview_token="reviewed-preview", strategy=strategy)
+    request = GitConnectRequest(preview_token="reviewed-preview", strategy=strategy,
+                                confirm_destructive=case == "remote-empty")
     before = sync._connect_tree_hashes(root)
     with (
         patch.object(value, "load_connect_preview", new=AsyncMock(return_value=snapshot)),
         patch.object(value, "_clone_connect_remote", side_effect=clone),
-        pytest.raises((sync.GitConnectPreviewStale, sync.GitConnectDecisionError)),
+        pytest.raises((sync.GitConnectPreviewStale, sync.GitConnectDecisionError),
+                      match="nonempty remote branch" if case == "remote-empty" else None),
     ):
         await value.desktop_connect(request, requested_by_user_id="actor", organization_id="org")
     assert sync._connect_tree_hashes(root) == before

@@ -367,8 +367,9 @@ it("deletes only the explicitly confirmed resources and clears successful select
     expect(authFetch.mock.calls.every(([, options]) => options.method === "DELETE")).toBe(true);
     expect(authFetch.mock.calls.some(([path]) => path.includes("app-2"))).toBe(false);
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm delete" })).not.toBeInTheDocument());
+    for (const [, name] of kinds)
+        expect(screen.getByRole("checkbox", { name: `Select ${name}` })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Select Unrelated Portal" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Select Create service request" })).not.toBeChecked();
 });
 
 it("retains only failed deletions for an explicit retry and never repeats completed ones", async () => {
