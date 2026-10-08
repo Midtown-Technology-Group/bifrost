@@ -182,6 +182,10 @@ class TestCreate:
         assert exc.value.code == "device_busy"
         assert exc.value.status_code == status.HTTP_409_CONFLICT
         assert exc.value.extra.get("job_id") == str(active.id)
+        # Additive #1060: actionable recovery reference for the blocker.
+        assert exc.value.extra.get("cancel_url") == (
+            f"/api/devices/{active.device_id}/jobs/{active.id}/cancel"
+        )
         session.add.assert_not_called()
 
     async def test_busy_race_through_unique_index(self):
@@ -207,6 +211,9 @@ class TestCreate:
             )
         assert exc.value.code == "device_busy"
         assert exc.value.extra.get("job_id") == str(winner.id)
+        assert exc.value.extra.get("cancel_url") == (
+            f"/api/devices/{winner.device_id}/jobs/{winner.id}/cancel"
+        )
         session.rollback.assert_awaited()
 
     async def test_success_records_attribution_and_caps(self):
@@ -807,6 +814,42 @@ class TestCancel:
             await request_cancel(session, user, job.id, now=NOW)
         assert exc.value.code == "job_terminal"
         assert exc.value.status_code == 409
+
+    async def test_cancelled_job_cancel_replays_success(self):
+        # Additive #1060: cancelling an already-cancelled job returns the
+        # same success shape (no error); other terminal outcomes still 409.
+        from src.core.principal import UserPrincipal
+
+        session = _session()
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=uuid4(), name="U",
+        )
+        job = _job(status=JOB_STATUS_CANCELLED, cancel_requested_at=NOW)
+        session.execute.return_value = _result(scalar=job)
+        got = await request_cancel(
+            session, user, job.id, now=NOW + timedelta(seconds=5)
+        )
+        assert got is job
+        assert got.status == JOB_STATUS_CANCELLED
+        assert got.cancel_requested_at == NOW
+
+    async def test_cancel_state_serializes_on_public_contract(self):
+        # Additive #1060: derived cancel_state on DeviceJobPublic.
+        from src.models.contracts.device_jobs import DeviceJobPublic
+
+        def cancel_state(**overrides) -> str:
+            job = _job(created_at=NOW, updated_at=NOW, **overrides)
+            return DeviceJobPublic.model_validate(job).cancel_state
+
+        assert cancel_state(status=JOB_STATUS_PENDING) == "none"
+        assert (
+            cancel_state(status=JOB_STATUS_RUNNING, cancel_requested_at=NOW)
+            == "requested"
+        )
+        assert (
+            cancel_state(status=JOB_STATUS_CANCELLED, cancel_requested_at=NOW)
+            == "converged"
+        )
 
     async def test_cross_org_job_is_404(self):
         from src.core.principal import UserPrincipal
