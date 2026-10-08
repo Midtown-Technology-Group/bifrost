@@ -1,7 +1,7 @@
 """device_jobs service: create, fenced claim/run/finish, reclaim, lost.
 
 Implements the M0 freeze (docs/architecture/device-control-plane.md
-§Job lifecycle) exactly:
+§Job lifecycle) exactly, plus the #1059 dead-device claim release:
 
 - create: structured busy 409 (never a queue), caps enforced, device must be
   active and in the same org;
@@ -12,12 +12,14 @@ Implements the M0 freeze (docs/architecture/device-control-plane.md
 - finish: fenced on ``claim_token``; agents may post only agent-terminal
   statuses — never ``lost``;
 - reclaim: only ``pending``/``claimed``; ``running`` loss (activity silence
-  or timeout backstop) writes terminal **``lost``** and never re-queues.
+  or timeout backstop) and dead-device claim loss (stale device heartbeat,
+  #1059) write terminal **``lost``** and never re-queue.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -25,6 +27,7 @@ from fastapi import status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.org_filter import org_filter_clause, resolve_org_filter
 from src.core.principal import UserPrincipal
@@ -35,6 +38,7 @@ from src.models.orm.device_jobs import (
     ACTIVE_JOB_STATUSES,
     AGENT_TERMINAL_STATUSES,
     CLAIM_LEASE_SECONDS,
+    DEVICE_HEARTBEAT_LOST_SECONDS,
     JOB_STATUS_CANCELLED,
     JOB_STATUS_CLAIMED,
     JOB_STATUS_LOST,
@@ -54,6 +58,7 @@ from src.models.orm.device_jobs import (
 )
 from src.services.devices import DeviceOperationError
 
+logger = logging.getLogger(__name__)
 
 # Log batch bounds (M0 log-batch contract).
 LOG_ENTRY_MAX_CHARS = 65536
@@ -390,15 +395,22 @@ async def sweep_device_jobs(
     db: AsyncSession,
     now: datetime | None = None,
 ) -> dict:
-    """Server watchdog: running loss -> terminal ``lost`` (never re-queued).
+    """Server watchdog: terminal ``lost`` (never re-queued) for lost work.
 
-    - activity silence: ``last_agent_activity_at`` older than 90s (only the
-      owning agent session renews it — see M0);
-    - timeout backstop: running past ``timeout_seconds + 60s`` with no
-      terminal report (a healthy agent posts ``timeout`` itself first).
+    - running activity silence: ``last_agent_activity_at`` older than 90s
+      (only the owning agent session renews it — see M0);
+    - running timeout backstop: running past ``timeout_seconds + 60s`` with
+      no terminal report (a healthy agent posts ``timeout`` itself first);
+    - dead-device claims (#1059): a ``claimed`` row whose device heartbeat
+      (``devices.last_seen_at``) is older than
+      ``DEVICE_HEARTBEAT_LOST_SECONDS`` — the agent holding the claim is
+      gone, so ``claim_next`` can never run for that device — is
+      terminalized ``lost`` with a distinct reason.
 
-    Stale ``claimed`` rows are intentionally NOT modified: ``claim_next``
-    reclaims them in place with a fresh token.
+    A ``claimed`` row on a heartbeat-fresh device is intentionally NOT
+    modified: ``claim_next`` reclaims it in place with a fresh token when
+    the (possibly restarted) agent polls again, and a healthy agent's
+    in-flight claim is never touched here.
     """
     current = now if now is not None else datetime.now(timezone.utc)
     result = await db.execute(
@@ -433,21 +445,62 @@ async def sweep_device_jobs(
             )
             lost_backstop += 1
 
+    # Lease-expired claims, joined to the device heartbeat (#1059). Row lock
+    # (SKIP LOCKED) so a concurrently revived agent's claim_next either wins
+    # first or skips this row — the sweep never steals a fresh claim.
     stale_claimed_result = await db.execute(
         select(DeviceJob)
         .where(
             DeviceJob.status == JOB_STATUS_CLAIMED,
             DeviceJob.claimed_at < current - timedelta(seconds=CLAIM_LEASE_SECONDS),
         )
+        .options(selectinload(DeviceJob.device))
+        .with_for_update(skip_locked=True)
         .limit(100)
     )
-    stale_claimed = len(stale_claimed_result.scalars().all())
+    stale_claimed_rows = stale_claimed_result.scalars().all()
+
+    heartbeat_cutoff = current - timedelta(seconds=DEVICE_HEARTBEAT_LOST_SECONDS)
+    stale_claimed_reclaimable = 0
+    lost_dead_device = 0
+    dead_job_ids: list[str] = []
+    for job in stale_claimed_rows:
+        if job.status != JOB_STATUS_CLAIMED:
+            # Transitioned by a concurrent writer before we locked it (the
+            # WHERE clause also filters this — defense in depth).
+            continue
+        device = getattr(job, "device", None)
+        last_seen_at = getattr(device, "last_seen_at", None)
+        if last_seen_at is None or last_seen_at >= heartbeat_cutoff:
+            # Live device (or unknown heartbeat): claim_next still owns the
+            # recovery path — reclaim in place with a fresh token.
+            stale_claimed_reclaimable += 1
+            continue
+        job.status = JOB_STATUS_LOST
+        job.error = (
+            "agent device heartbeat lost; claim released (server watchdog)"
+        )
+        lost_dead_device += 1
+        dead_job_ids.append(str(job.id))
 
     await db.commit()
+
+    # `lost_silence` covers both running-activity silence and dead-device
+    # claim release; the distinct job.error text separates them per row.
+    if lost_dead_device:
+        logger.warning(
+            "device_jobs_watchdog released claim(s) of heartbeat-dead device(s)",
+            extra={
+                "task_id": "device_jobs_lost_sweep",
+                "count": lost_dead_device,
+                "job_ids": dead_job_ids,
+            },
+        )
+
     return {
-        "lost_silence": lost_silence,
+        "lost_silence": lost_silence + lost_dead_device,
         "lost_backstop": lost_backstop,
-        "stale_claimed_reclaimable": stale_claimed,
+        "stale_claimed_reclaimable": stale_claimed_reclaimable,
     }
 
 

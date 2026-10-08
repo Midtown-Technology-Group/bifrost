@@ -10,6 +10,10 @@ New drills in this file:
 - stale `claimed` reclaimed with a FRESH token; the old token is then fenced
 - late result/logs after server-written `lost` are rejected
 - `running` loss -> terminal `lost`, never re-queued; explicit retry = new job
+- dead-device claim release (#1059): stale `devices.last_seen_at` ->
+  terminal `lost` with a distinct reason, claim slot freed
+- heartbeat-fresh claim is NOT touched by the sweep; `claim_next` reclaims
+  it with a fresh token (revived-agent path)
 """
 
 from __future__ import annotations
@@ -21,7 +25,12 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from src.models.orm.device_jobs import CLAIM_LEASE_SECONDS, DeviceJob
+from src.models.orm.device_jobs import (
+    CLAIM_LEASE_SECONDS,
+    DEVICE_HEARTBEAT_LOST_SECONDS,
+    DeviceJob,
+)
+from src.models.orm.devices import Device
 from src.services.device_jobs import sweep_device_jobs
 from tests.e2e.api.test_device_protocol import _enroll
 from tests.e2e.fixtures.setup import API_BASE_URL
@@ -246,3 +255,106 @@ async def test_running_loss_becomes_lost_and_requires_explicit_retry(
 
     await db_session.refresh(job)
     assert job.status == "lost"
+
+
+@pytest.mark.e2e
+async def test_dead_device_claim_released_by_sweep(
+    e2e_client, platform_admin, org1, db_session
+):
+    """#1059: an agent takes a claim and its device stops heartbeating —
+    nothing can ever poll `claim_next` for that device, so the sweep
+    terminalizes the claim as `lost` with the distinct dead-device reason
+    and the one-active slot frees for a new submit."""
+    device_id, key = _enroll(
+        e2e_client, platform_admin.headers, org1["id"], "dead-claim-device"
+    )
+    headers = _headers(key)
+    session_id = str(uuid4())
+
+    await _seed_job(db_session, org1["id"], device_id)
+    claim = e2e_client.post(
+        "/api/device/jobs/claim",
+        headers=headers,
+        json={"agent_session_id": session_id},
+    )
+    assert claim.status_code == 200, claim.text
+    job = await db_session.get(DeviceJob, UUID(claim.json()["job_id"]))
+    # The test session seeded this row before the API claim — re-read it.
+    await db_session.refresh(job)
+    assert job.status == "claimed"
+
+    # Test control: age the claim past the 60s lease and freeze the device
+    # heartbeat (agent dead right after claiming, #1059).
+    job.claimed_at = datetime.now(timezone.utc) - timedelta(
+        seconds=CLAIM_LEASE_SECONDS + 1
+    )
+    device = await db_session.get(Device, UUID(device_id))
+    device.last_seen_at = datetime.now(timezone.utc) - timedelta(
+        seconds=DEVICE_HEARTBEAT_LOST_SECONDS + 1
+    )
+    await db_session.commit()
+
+    stats = await sweep_device_jobs(db_session, now=datetime.now(timezone.utc))
+    await db_session.refresh(job)
+    assert job.status == "lost"
+    assert job.error == (
+        "agent device heartbeat lost; claim released (server watchdog)"
+    )
+    assert stats["lost_silence"] >= 1
+
+    # Claim released: the one-active index accepts a new submit again.
+    retry = e2e_client.post(
+        f"/api/devices/{device_id}/jobs",
+        headers=platform_admin.headers,
+        json=_job_body(),
+    )
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["id"] != str(job.id)
+
+
+@pytest.mark.e2e
+async def test_fresh_heartbeat_claim_survives_sweep_then_reclaims(
+    e2e_client, platform_admin, org1, db_session
+):
+    """#1059 evidence: the sweep never touches a claim whose device heartbeat
+    is fresh (healthy in-flight claim), and the revived agent's `claim_next`
+    reclaims the lease-expired row with a fresh token."""
+    device_id, key = _enroll(
+        e2e_client, platform_admin.headers, org1["id"], "revived-device"
+    )
+    headers = _headers(key)
+    now = datetime.now(timezone.utc)
+
+    job = await _seed_job(
+        db_session,
+        org1["id"],
+        device_id,
+        status="claimed",
+        claimed_at=now - timedelta(seconds=CLAIM_LEASE_SECONDS + 5),
+        agent_session_id=uuid4(),
+        last_agent_activity_at=now,
+    )
+    if job.claim_token is None:
+        job.claim_token = uuid4()
+    old_token = job.claim_token
+    # Test control: device heartbeat stays fresh (agent alive / revived).
+    device = await db_session.get(Device, UUID(device_id))
+    device.last_seen_at = now
+    await db_session.commit()
+
+    stats = await sweep_device_jobs(db_session, now=datetime.now(timezone.utc))
+    await db_session.refresh(job)
+    # Row-scoped: untouched by the dead-device path (heartbeat fresh).
+    assert job.status == "claimed"
+    assert job.claim_token == old_token
+    assert stats["stale_claimed_reclaimable"] >= 1
+
+    # Revived agent polls claim: the lease-expired row is reclaimed in place
+    # with a fresh token (no device-heartbeat predicate on that path).
+    claim = e2e_client.post(
+        "/api/device/jobs/claim",
+        headers=headers,
+        json={"agent_session_id": str(uuid4())},
+    )
+    assert claim.status_code == 200, claim.text
+    assert claim.json()["claim_token"] != str(old_token)
