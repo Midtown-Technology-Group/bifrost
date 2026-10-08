@@ -63,8 +63,19 @@
       },
       {
         "agent_id": "agent-b",
+        "input_schema": {
+          "additionalProperties": false,
+          "description": "FORBIDDEN-schema",
+          "properties": {},
+          "type": "object"
+        },
         "name": "FORBIDDEN-workflow",
         "read_only": true,
+        "result": {
+          "devices": 999,
+          "online": 999,
+          "sentinel": "FORBIDDEN-result"
+        },
         "tenant_id": "tenant-b",
         "tool_ref": "FORBIDDEN-workflow"
       }

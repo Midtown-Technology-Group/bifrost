@@ -195,13 +195,27 @@ python -m pip install --dry-run \
 
 For the candidate, derive a temporary constraints file from every package's
 `==` line in `requirements.lock`, removing continuation slashes, hashes and
-extras. Omit only `fastmcp` and `fastmcp-slim`. The next command must fail with
-the unchanged `uncalled-for==0.3.1` constraint, then resolve when that constraint
-is replaced with exactly `uncalled-for==0.4.0`:
+extras. Omit only `fastmcp` and `fastmcp-slim`.
+
+First, run with the unchanged `uncalled-for==0.3.1` constraint. Expect
+`ResolutionImpossible`; this reproduces the JSON's `locked-candidate` record:
 
 ```bash
-python -m pip install --dry-run --report /tmp/code-mode-resolution.json \
+python -m pip install --dry-run \
   --constraint /tmp/code-mode-constraints.txt \
+  'fastmcp==4.0.11' 'fastmcp-slim[client,server,code-mode]==4.0.11' \
+  'pydantic-ai-harness[code-mode]==0.27.0' \
+  'pydantic-ai-slim==2.35.3' 'mcp==2.0.0'
+```
+
+Second, copy that constraints file to `/tmp/code-mode-scoped-constraints.txt`
+and replace only `uncalled-for==0.3.1` with `uncalled-for==0.4.0` in the copy.
+Run again with that file. Expect successful resolution; this reproduces the
+JSON's `scoped-candidate` record:
+
+```bash
+python -m pip install --dry-run --report /tmp/code-mode-scoped-resolution.json \
+  --constraint /tmp/code-mode-scoped-constraints.txt \
   'fastmcp==4.0.11' 'fastmcp-slim[client,server,code-mode]==4.0.11' \
   'pydantic-ai-harness[code-mode]==0.27.0' \
   'pydantic-ai-slim==2.35.3' 'mcp==2.0.0'
