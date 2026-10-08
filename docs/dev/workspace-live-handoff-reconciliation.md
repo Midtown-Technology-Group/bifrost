@@ -26,16 +26,20 @@ can describe (#1122):
   coverage, verified source paths and source hashes match the current
   release's governed bytes. One mismatched identity field is tampering and
   fails closed, as do initial-install, adoption and detached-revision roots.
-- When the active deployment chain carries no reviewed lineage marker at all,
-  the key is verified directly against that closure-validated active
+- When the active deployment itself carries no recorded lineage marker, the
+  key is verified directly against that closure-validated active
   deployment: existence, active pointer, storage identity, runtime bytes,
   contracts, dependencies, registration set, inherited identity and exposure.
-  A solution-managed key with no active covering deployment, an unknown key,
+  A reviewed marker anywhere in the chain still requires its recorded base:
+  a missing marker reached through a reviewed revision fails closed. A
+  solution-managed key with no active covering deployment, an unknown key,
   or any drift in those checks still raises `UnprovenLiveHandoff`.
 
 The original governed source files stay in the next loose snapshot because
-remaining loose workflows may depend on their helpers. Only certified workflow
-bindings leave its registration set. Solution updates use reviewed Solution
+remaining loose workflows may depend on their helpers. Workflow bindings leave
+its registration set only when the readback proves them — either through a
+certified handoff receipt or through verified coverage of their active
+Solution deployment. Solution updates use reviewed Solution
 delivery; selecting a handed-off entry for loose delivery is refused.
 
 Activation repeats registration and handoff proof under the existing global

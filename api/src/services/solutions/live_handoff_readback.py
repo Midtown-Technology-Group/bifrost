@@ -212,8 +212,13 @@ class LiveHandoffReadback:
                 certified_handoff = True
                 break
             if not schema:
-                # No reviewed lineage was recorded for this deployment chain
-                # (ownership moved without a certified handoff receipt).
+                if origin.id != active.id:
+                    # A reviewed marker exists in this chain, so its recorded
+                    # base is required: a missing marker reached through a
+                    # reviewed revision is incoherent lineage, never coverage.
+                    raise UnprovenLiveHandoff("Solution revision has no reviewed handoff lineage")
+                # No reviewed lineage was recorded for the active deployment
+                # itself (ownership moved without a certified handoff receipt).
                 # Coverage is then proven against this closure-validated
                 # deployment by require(): existence, active pointer, storage,
                 # runtime bytes, contracts, dependencies, identity and exposure.

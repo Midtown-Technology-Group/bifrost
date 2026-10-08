@@ -264,6 +264,18 @@ async def test_active_coverage_proves_a_key_with_no_recorded_lineage(handoff):
 
 
 @pytest.mark.asyncio
+async def test_reviewed_revision_with_unrecorded_base_refuses_coverage(handoff):
+    """Active coverage only applies when the active deployment itself is the
+    unrecorded origin: a valid reviewed marker in the chain requires its
+    recorded base, and a missing marker reached through a reviewed revision
+    is incoherent lineage that fails closed (#1122)."""
+    _reviewed_successor(handoff, readback.SOURCE_MARKER)
+    handoff.deployment.validation_result = None
+    with pytest.raises(ValueError, match='no reviewed handoff lineage'):
+        await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
 async def test_preview_omits_a_key_proven_by_active_coverage(handoff, monkeypatch):
     handoff.deployment.validation_result = None
     monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
