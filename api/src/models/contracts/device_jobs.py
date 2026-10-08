@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 # ASCII control chars (C0 + DEL): never valid inside a version string.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -155,6 +155,23 @@ class DeviceJobPublic(BaseModel):
     log_sequence: int
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # additive cancel observability (#1060)
+    @property
+    def cancel_state(self) -> Literal["none", "requested", "converged"]:
+        """Derived from `status` + `cancel_requested_at` (never stored).
+
+        - ``none``: no cancel was requested.
+        - ``requested``: cooperative cancel recorded; a running job
+          converges when the agent observes it via heartbeat (≤ ~60 s)
+          and posts its terminal result.
+        - ``converged``: the job reached terminal ``cancelled``.
+        """
+        if self.status == "cancelled":
+            return "converged"
+        if self.cancel_requested_at is not None:
+            return "requested"
+        return "none"
 
 
 class DeviceJobDetail(DeviceJobPublic):

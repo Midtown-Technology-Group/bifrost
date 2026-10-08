@@ -62,11 +62,26 @@ LOG_BATCH_MAX_CHARS = 1024 * 1024
 
 
 def _busy(active: DeviceJob | None) -> DeviceOperationError:
+    """Structured 409 with an actionable recovery link (additive #1060).
+
+    Existing fields are byte-compatible; when the blocking job is known the
+    envelope also carries ``cancel_url`` — the absolute path of the
+    cooperative cancel endpoint for that job — so a caller can recover from
+    the error it just received.
+    """
+    if active is None:
+        return DeviceOperationError(
+            status.HTTP_409_CONFLICT,
+            "device_busy",
+            "device already has an active job",
+            job_id=None,
+        )
     return DeviceOperationError(
         status.HTTP_409_CONFLICT,
         "device_busy",
         "device already has an active job",
-        job_id=str(active.id) if active is not None else None,
+        job_id=str(active.id),
+        cancel_url=f"/api/devices/{active.device_id}/jobs/{active.id}/cancel",
     )
 
 
@@ -695,7 +710,9 @@ async def request_cancel(
 ) -> DeviceJob:
     """Cooperative cancel (M0 ownership): pending/claimed cancel immediately;
     running only gets the cancel flag (agent observes via heartbeat); the
-    platform never guarantees a process kill. Idempotent for running jobs.
+    platform never guarantees a process kill. Idempotent for running jobs and
+    for already-``cancelled`` jobs (additive #1060: replay the same success
+    shape instead of 409). Other terminal outcomes still reject.
     """
     current = now if now is not None else datetime.now(timezone.utc)
     # Row lock: cancel must serialize with the agent's mark_running/finish.
@@ -704,6 +721,11 @@ async def request_cancel(
     # runs (double execution) and swallowing the agent's terminal report.
     job = await get_job_scoped(db, user, job_id, with_lock=True)
 
+    if job.status == JOB_STATUS_CANCELLED:
+        # Idempotent cancel (#1060): an already-cancelled job replays the
+        # same success shape. Cancelling any other terminal outcome
+        # (succeeded/failed/timeout/lost) is a caller mistake, not a retry.
+        return job
     if job.status in TERMINAL_JOB_STATUSES:
         raise DeviceOperationError(
             status.HTTP_409_CONFLICT,
