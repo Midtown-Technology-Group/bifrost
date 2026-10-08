@@ -61,7 +61,7 @@ class WorkspaceReleaseRegistrationBinding:
 
     @property
     def repair_command(self) -> str:
-        return f"bifrost promote preview {self.path} -w {self.function_name}"
+        return f"Use reviewed Solution delivery for {self.path}::{self.function_name}"
 
     def to_dict(self) -> dict[str, Any]:
         return {

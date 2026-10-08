@@ -172,7 +172,7 @@ async def test_legacy_mutation_guard_names_promote_for_governed_path(
         acquire_lock,
     )
 
-    with pytest.raises(WorkspaceReleasePathGoverned, match="use `bifrost promote`"):
+    with pytest.raises(WorkspaceReleasePathGoverned, match="use reviewed Solution delivery"):
         await reject_release_governed_paths(
             SimpleNamespace(),
             # The guard is platform-global: a mutation attempted from a

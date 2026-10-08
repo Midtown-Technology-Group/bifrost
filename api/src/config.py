@@ -157,35 +157,6 @@ class Settings(BaseSettings):
     execution_timeout_seconds: int = Field(
         default=300, description="Default execution timeout in seconds (5 minutes)"
     )
-    workspace_rapid_promotion_preview_enabled: bool = Field(
-        default=False,
-        description=(
-            "Enable the preview-only immutable Workspace promotion API. "
-            "This flag does not enable activation."
-        ),
-    )
-    workspace_rapid_promotion_draft_upload_enabled: bool = Field(
-        default=False,
-        description=(
-            "Enable inert, expiring local Workspace draft storage. Drafts cannot "
-            "be prepared, canaried, registered, or activated."
-        ),
-    )
-    workspace_release_prepare_canary_enabled: bool = Field(
-        default=False,
-        description=(
-            "Enable immutable reviewed-artifact preparation and bounded canaries. "
-            "This flag does not enable activation."
-        ),
-    )
-    workspace_release_activation_enabled: bool = Field(
-        default=False,
-        description="Enable atomic activation of prepared Workspace releases.",
-    )
-    workspace_release_retirement_enabled: bool = Field(
-        default=False,
-        description="Enable retirement of the immutable global Workspace Live release.",
-    )
     workspace_promotion_diagnostics_mode: Literal["off", "shadow", "enforce"] = Field(
         default="off",
         description=(

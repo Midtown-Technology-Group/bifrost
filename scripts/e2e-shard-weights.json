@@ -239,7 +239,6 @@
     "tests/e2e/platform/test_workspace_reimport_memory.py": 9,
     "tests/e2e/platform/test_workspace_reindex.py": 2,
     "tests/e2e/platform/test_workspace_release_artifact_append_only.py": 1,
-    "tests/e2e/platform/test_workspace_release_lock_retry.py": 1,
     "tests/e2e/platform/test_workspace_release_registration_activation.py": 1,
     "tests/e2e/platform/test_workspace_release_retirement.py": 2,
     "tests/e2e/platform/test_workspace_repo_changesets.py": 9,
