@@ -113,6 +113,7 @@ jobs:
     name: Plan Affected Tests
     permissions:
       contents: read
+      actions: read # occupancy report reads this repository's run/job intervals
     outputs:
       scope: ${{ steps.plan.outputs.scope }}
       api_quality_mode: ${{ steps.plan.outputs.api_quality_mode }}
@@ -166,6 +167,25 @@ jobs:
         with:
           name: affected-test-plan
           path: ${{ runner.temp }}/affected-test-plan.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # Occupancy is sampled inside the existing plan job so the report adds no
+      # runner to the test wave: the org caps concurrent runners at 20 and every
+      # slot spent here is a slot not spent on tests. Cross-repository sampling
+      # needs an org-scoped token; without one the report is repository-scoped
+      # and says so instead of silently implying org-wide coverage.
+      - name: Record CI occupancy report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OCCUPANCY_WINDOW_HOURS: "6"
+        run: python3 scripts/ci/occupancy_report.py --window-hours "$OCCUPANCY_WINDOW_HOURS" --out "$RUNNER_TEMP/ci-occupancy.json"
+
+      - name: Upload CI occupancy report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-occupancy-report
+          path: ${{ runner.temp }}/ci-occupancy.json
           if-no-files-found: error
           retention-days: 14
 
@@ -462,6 +482,15 @@ jobs:
         run: |
           python3 scripts/lib/pre_pr_stage_evidence_test.py
           bash scripts/lib/pre_pr_lanes_test.sh
+
+      # Occupancy accounting and the enforcement-boundary audit stay green while
+      # P0 is pending: enforce_closure runs in report mode (advisory) until
+      # CODEOWNERS has owners, per the proposal's rollout order.
+      - name: CI slice regression checks
+        run: |
+          python3 scripts/ci/test_occupancy_report.py
+          python3 scripts/ci/test_enforce_closure.py
+          python3 scripts/ci/enforce_closure.py --mode report
 
       - name: Set up Python
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
@@ -779,7 +808,12 @@ jobs:
   # =============================================================================
   test-e2e:
     needs: [affected-test-plan, lint, publish-ci-test-images]
-    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
+    # The zero-shard sentinel ({shard:0,total:0}) marks a lane outside the
+    # affected closure. The shard job must not allocate a runner for it: skip the
+    # whole job instead of executing every step skipped. The required "E2E Tests"
+    # gate accepts this skipped result only when the plan itself succeeded and
+    # marked the lane 'skip', so a failed or cancelled shard still blocks merge.
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && fromJSON(needs.affected-test-plan.outputs.api_e2e_matrix || '{"include":[{"shard":0,"total":0}]}').include[0].total != 0 && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     permissions:
@@ -903,7 +937,9 @@ jobs:
   # =============================================================================
   test-client-e2e:
     needs: [affected-test-plan, lint, publish-ci-test-images]
-    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
+    # Same zero-shard sentinel rule as test-e2e: no runner for an out-of-scope
+    # browser lane; the gate decides whether skipped is acceptable.
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && fromJSON(needs.affected-test-plan.outputs.client_e2e_matrix || '{"include":[{"shard":0,"total":0}]}').include[0].total != 0 && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     strategy:
@@ -1005,7 +1041,7 @@ jobs:
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
-    needs: [affected-test-plan, lint, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
+    needs: [affected-test-plan, lint, publish-ci-test-images, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
     steps:
@@ -1019,13 +1055,30 @@ jobs:
             echo "Affected test planning failed or was cancelled (result: ${{ needs.affected-test-plan.result }})"
             exit 1
           fi
-          if [ "${{ needs.test-e2e.result }}" != "success" ]; then
-            echo "One or more e2e shards failed or were cancelled (result: ${{ needs.test-e2e.result }})"
+          if [ "${{ needs.publish-ci-test-images.result }}" != "success" ] && [ "${{ needs.publish-ci-test-images.result }}" != "skipped" ]; then
+            echo "CI test image publication failed or was cancelled (result: ${{ needs.publish-ci-test-images.result }})"
             exit 1
           fi
+          # Zero-shard sentinel: a lane outside the affected closure reports a
+          # {shard:0,total:0} matrix and its shard jobs no longer allocate a
+          # runner, so they report skipped. Skipped is accepted ONLY when the plan
+          # succeeded and marked that lane 'skip' - a failed, cancelled or
+          # unexpectedly-skipped shard still blocks the merge.
+          if [ "${{ needs.test-e2e.result }}" != "success" ]; then
+            if [ "${{ needs.test-e2e.result }}" = "skipped" ] && [ "${{ needs.affected-test-plan.outputs.api_e2e_mode }}" = "skip" ]; then
+              echo "API e2e is outside the affected closure; shard jobs allocated no runner (zero-shard sentinel)."
+            else
+              echo "One or more e2e shards failed or were cancelled (result: ${{ needs.test-e2e.result }}, api_e2e_mode: ${{ needs.affected-test-plan.outputs.api_e2e_mode }})"
+              exit 1
+            fi
+          fi
           if [ "${{ needs.test-client-e2e.result }}" != "success" ]; then
-            echo "Client e2e tests failed or were cancelled (result: ${{ needs.test-client-e2e.result }})"
-            exit 1
+            if [ "${{ needs.test-client-e2e.result }}" = "skipped" ] && [ "${{ needs.affected-test-plan.outputs.client_e2e_mode }}" = "skip" ]; then
+              echo "Browser e2e is outside the affected closure; shard jobs allocated no runner (zero-shard sentinel)."
+            else
+              echo "Client e2e tests failed or were cancelled (result: ${{ needs.test-client-e2e.result }}, client_e2e_mode: ${{ needs.affected-test-plan.outputs.client_e2e_mode }})"
+              exit 1
+            fi
           fi
           if [ "${{ needs.test-client-unit.result }}" != "success" ]; then
             echo "Client unit tests failed or were cancelled (result: ${{ needs.test-client-unit.result }})"
