@@ -232,7 +232,14 @@ Transitions and rules:
   `agent_session_id` renews `last_agent_activity_at`), or as a backstop when
   a `running` job passes `timeout_seconds + 60 s` with no terminal report —
   a healthy agent always posts `timeout` itself first, so the backstop only
-  fires when the agent is gone or wedged. `lost` is terminal; **explicit
+  fires when the agent is gone or wedged. A `claimed` row is released the
+  same way when the **device itself is dead** (#1059): if
+  `devices.last_seen_at` is older than **300 s** (10 × heartbeat), that
+  device's agent can never poll `claim_next`, so the sweep terminalizes the
+  claim as `lost` with reason
+  `agent device heartbeat lost; claim released (server watchdog)` — claims
+  on heartbeat-fresh devices stay reclaimable in place. `lost` is terminal;
+  **explicit
   retry creates a new job id** (audited like any create). No automatic
   re-execution, ever.
 - **Fencing:** logs and results require the current `claim_token` (sent as a
