@@ -187,9 +187,9 @@ def collect_report(
         "runs": run_rows,
         "notes": [
             "repository-scoped: cross-repository sampling needs an org-scoped token "
-            "(pass --org together with GH_ORG_TOKEN); org-wide demand is not implied.",
+            + "(pass --org together with GH_ORG_TOKEN); org-wide demand is not implied.",
             "interval timestamps come from the workflow-jobs API; true runner wait is "
-            "not exposed and is not reported here.",
+            + "not exposed and is not reported here.",
         ],
     }
 
