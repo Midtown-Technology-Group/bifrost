@@ -138,10 +138,13 @@ class StubClient:
         runs: list[dict[str, Any]],
         jobs: dict[int, list[dict[str, Any]]],
         runs_total: int | None = None,
+        jobs_total: int | None | str = "auto",
     ) -> None:
         self._runs = runs
         self._jobs = jobs
         self._runs_total = runs_total
+        # "auto" -> len(all_jobs); None -> omit total_count; int -> that value.
+        self._jobs_total = jobs_total
         self.paths: list[str] = []
 
     def get(self, path: str, params: dict[str, str] | None = None) -> Any:
@@ -159,7 +162,13 @@ class StubClient:
             all_jobs = self._jobs.get(run_id, [])
             page = int(params.get("page", "1"))
             start = (page - 1) * 100
-            return {"jobs": all_jobs[start : start + 100], "total_count": len(all_jobs)}
+            payload: dict[str, Any] = {"jobs": all_jobs[start : start + 100]}
+            if self._jobs_total != "auto":
+                if self._jobs_total is not None:
+                    payload["total_count"] = self._jobs_total
+            else:
+                payload["total_count"] = len(all_jobs)
+            return payload
         raise AssertionError(f"unexpected path: {path}")
 
 
@@ -266,6 +275,52 @@ class CollectReportTests(unittest.TestCase):
         self.assertEqual(report["jobs_with_intervals"], 150)
         self.assertFalse(report["jobs_truncated"])
         self.assertGreater(report["peak_concurrent_jobs"]["value"], 0)
+
+    @staticmethod
+    def _many_jobs(count: int) -> list[dict[str, Any]]:
+        return [
+            {
+                "started_at": iso(T0 + timedelta(seconds=index)),
+                "completed_at": iso(T0 + timedelta(seconds=index) + timedelta(minutes=1)),
+            }
+            for index in range(count)
+        ]
+
+    @staticmethod
+    def _single_run() -> list[dict[str, Any]]:
+        return [
+            {
+                "id": 1,
+                "run_attempt": 1,
+                "name": "CI",
+                "event": "pull_request",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": iso(T0),
+            }
+        ]
+
+    def test_missing_total_count_still_paginates_to_the_end(self) -> None:
+        """No total_count means unknown, not 'everything fetched'."""
+        report = collect_report(
+            StubClient(self._single_run(), {1: self._many_jobs(150)}, jobs_total=None),  # type: ignore[arg-type]
+            "owner/repo",
+            T0,
+            T0 + timedelta(hours=1),
+        )
+        self.assertEqual(report["jobs_with_intervals"], 150)
+        self.assertFalse(report["jobs_truncated"])
+
+    def test_zero_total_count_is_treated_as_unknown(self) -> None:
+        """total_count: 0 must not stop a full first page either."""
+        report = collect_report(
+            StubClient(self._single_run(), {1: self._many_jobs(150)}, jobs_total=0),  # type: ignore[arg-type]
+            "owner/repo",
+            T0,
+            T0 + timedelta(hours=1),
+        )
+        self.assertEqual(report["jobs_with_intervals"], 150)
+        self.assertFalse(report["jobs_truncated"])
 
     def test_run_list_truncation_is_disclosed_not_silent(self) -> None:
         runs = [

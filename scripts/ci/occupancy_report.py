@@ -145,9 +145,15 @@ def fetch_run_jobs(
         )
         batch = payload.get("jobs", [])
         jobs.extend(batch)
-        total = int(payload.get("total_count") or len(jobs))
-        if len(batch) < 100 or len(jobs) >= total:
-            return jobs, len(jobs) < total
+        # total_count drives the stop condition, so its absence (or a zero)
+        # must mean "unknown", never "everything is fetched" - otherwise a
+        # full first page stops pagination and hides the overflow silently.
+        raw_total = payload.get("total_count")
+        total = int(raw_total) if raw_total is not None else None
+        if total is not None and total <= 0:
+            total = None
+        if len(batch) < 100 or (total is not None and len(jobs) >= total):
+            return jobs, total is not None and len(jobs) < total
     return jobs, True
 
 
