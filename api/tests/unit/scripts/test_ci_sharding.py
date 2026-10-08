@@ -137,6 +137,29 @@ def test_browser_jobs_keep_isolated_stacks_diagnostics_and_required_aggregate():
     assert "needs.test-client-e2e.result" in gate["steps"][0]["run"]
 
 
+class _GHObject(dict):
+    """Dict with attribute access, mimicking GitHub expression objects."""
+
+    def __getattr__(self, name):
+        try:
+            return _wrap(self[name])
+        except KeyError as error:
+            raise AttributeError(name) from error
+
+
+def _wrap(value):
+    if isinstance(value, dict):
+        return _GHObject(value)
+    if isinstance(value, list):
+        return [_wrap(item) for item in value]
+    return value
+
+
+def _from_json(text):
+    """GitHub's fromJSON: JSON value with expression-style object access."""
+    return _wrap(json.loads(text))
+
+
 def _admitted(
     expression,
     *,
@@ -147,12 +170,26 @@ def _admitted(
     cancelled=False,
     same_repo=True,
     planner="success",
+    shard_total=4,
 ):
     """Evaluate the small boolean admission language used by these CI jobs."""
+    if shard_total:
+        matrix = {
+            "include": [
+                {"shard": number, "total": shard_total}
+                for number in range(1, shard_total + 1)
+            ]
+        }
+    else:
+        # The plan's zero-shard sentinel: lane is outside the affected closure.
+        matrix = {"include": [{"shard": 0, "total": 0}]}
+    matrix_json = json.dumps(matrix, separators=(",", ":"))
     values = {
         "needs.lint.result": lint,
         "needs.affected-test-plan.result": planner,
         "needs.publish-ci-test-images.result": publisher,
+        "needs.affected-test-plan.outputs.api_e2e_matrix": matrix_json,
+        "needs.affected-test-plan.outputs.client_e2e_matrix": matrix_json,
         "github.event_name": event,
         "github.ref": ref,
         "github.repository": "Midtown-Technology-Group/bifrost",
@@ -170,7 +207,11 @@ def _admitted(
     expression = re.sub(r"!(?!=)", "not ", expression)
     return eval(
         f"({expression})",
-        {"__builtins__": {}, "starts_with": str.startswith},
+        {
+            "__builtins__": {},
+            "starts_with": str.startswith,
+            "fromJSON": _from_json,
+        },
         {},
     )
 
@@ -266,6 +307,21 @@ def test_successful_quality_preserves_supported_test_events(
             assert not _admitted(
                 jobs[name]["if"], **{**args, "publisher": failed_publisher}
             )
+
+
+@pytest.mark.parametrize("name", ["test-e2e", "test-client-e2e"])
+def test_zero_shard_sentinel_lane_is_not_admitted(name):
+    """A lane outside the affected closure must not allocate a shard runner.
+
+    The plan emits {shard:0,total:0} for such lanes; admission must reject it
+    so the job-level condition skips the job entirely instead of running every
+    step skipped while still consuming a runner.
+    """
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    args = {"lint": "success"}
+
+    assert _admitted(jobs[name]["if"], **args)
+    assert not _admitted(jobs[name]["if"], **args, shard_total=0)
 
 
 def test_main_publication_does_not_depend_on_redundant_quality_rerun():

@@ -7,6 +7,7 @@ Run directly: ``python3 scripts/ci/test_enforce_closure.py``.
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -111,12 +112,14 @@ class AuditTests(unittest.TestCase):
 
 class LoaderTests(unittest.TestCase):
     def test_load_patterns_skips_comments_and_blank_lines(self) -> None:
-        path = Path(__file__).with_name("_tmp_codeowners")
-        path.write_text("# comment\n\n.github/workflows/**  @owner\n", encoding="utf-8")
-        try:
+        # The Sonar evidence job mounts the repository read-only, so the fixture
+        # must be written outside the checkout rather than next to this file.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "CODEOWNERS"
+            path.write_text(
+                "# comment\n\n.github/workflows/**  @owner\n", encoding="utf-8"
+            )
             self.assertEqual(load_patterns(path), [".github/workflows/**"])
-        finally:
-            path.unlink()
 
     def test_load_manifest_reads_the_declared_boundary(self) -> None:
         manifest = load_manifest(Path(__file__).with_name("enforcement-deps.txt"))
