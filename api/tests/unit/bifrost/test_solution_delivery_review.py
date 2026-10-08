@@ -225,6 +225,56 @@ def test_global_rebinding_in_helper_cannot_replace_executable_decorator(legacy):
         review_solution_recipe(value, files, resources)
 
 
+def test_identical_installed_baseline_compiles_once_and_still_reports_checked(monkeypatch):
+    from bifrost import solution_delivery_review as review
+    recipe, files, resources = fixture()
+    compiled = {"calls": 0}
+    original = review.compile_workflow_registrations
+    def counting(value, sources, indexer=None):
+        compiled["calls"] += 1
+        return original(value, sources, indexer)
+    monkeypatch.setattr(review, "compile_workflow_registrations", counting)
+    reviewed = review_solution_recipe(deepcopy(recipe), dict(files), dict(resources),
+        previous_recipe_value=deepcopy(recipe), previous_files=dict(files), previous_resources=dict(resources))
+    assert compiled["calls"] == 1
+    assert reviewed["previous_recipe_checked"] is True
+    assert reviewed == {**review_solution_recipe(recipe, files, resources), "previous_recipe_checked": True}
+
+
+def test_changed_installed_baseline_still_compiles_twice_and_enforces_workflow_identity(monkeypatch):
+    from bifrost import solution_delivery_review as review
+    recipe, files, resources = fixture()
+    previous = deepcopy(recipe)
+    previous["workflows"][0]["id"] = str(uuid4())
+    compiled = {"calls": 0}
+    original = review.compile_workflow_registrations
+    def counting(value, sources, indexer=None):
+        compiled["calls"] += 1
+        return original(value, sources, indexer)
+    monkeypatch.setattr(review, "compile_workflow_registrations", counting)
+    with pytest.raises(WorkflowRecipeError, match="Workflow removal requires"):
+        review_solution_recipe(recipe, files, resources,
+            previous_recipe_value=previous, previous_files=dict(files), previous_resources=dict(resources))
+    assert compiled["calls"] == 2
+
+
+def test_identical_legacy_baseline_reports_checked_without_second_source_pass(monkeypatch):
+    from bifrost import solution_delivery_review as review
+    recipe = {"schema_version": "bifrost.solution-source-delivery/v1", "solution_id": str(uuid4()),
+        "files": {"run.py": "run.py"}}
+    source = {"run.py": b"from bifrost import workflow\n@workflow\nasync def run(count: int = 1):\n return 1\n"}
+    parsed = {"calls": 0}
+    original = review.require_executable_bindings
+    def counting(tree):
+        parsed["calls"] += 1
+        return original(tree)
+    monkeypatch.setattr(review, "require_executable_bindings", counting)
+    reviewed = review_solution_recipe(recipe, dict(source), {},
+        previous_recipe_value=recipe, previous_files=dict(source), previous_resources={})
+    assert parsed["calls"] == 1
+    assert reviewed["previous_recipe_checked"] is True
+
+
 def test_downloaded_artifact_reviews_source_without_platform_or_source_execution(tmp_path):
     artifact = build_cli_artifact(Path("bifrost"), tmp_path / "artifacts", "2.2.1-dev.999")
     destination = tmp_path / "standalone"
