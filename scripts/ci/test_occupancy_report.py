@@ -6,17 +6,26 @@ Run directly: ``python3 scripts/ci/test_occupancy_report.py``.
 
 from __future__ import annotations
 
+import http.server
+import json
+import os
 import sys
+import tempfile
+import threading
 import unittest
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from occupancy_report import (  # noqa: E402
+    GitHubClient,
     collect_report,
     job_intervals,
+    main,
     occupancy_series,
     peak_concurrency,
     run_disposition,
@@ -106,6 +115,18 @@ class DispositionTests(unittest.TestCase):
                 self.assertEqual(
                     run_disposition({"status": status, "conclusion": conclusion}), expected
                 )
+
+    def test_action_required_is_classified_as_failed(self) -> None:
+        self.assertEqual(
+            run_disposition({"status": "completed", "conclusion": "action_required"}),
+            "failed",
+        )
+
+    def test_unrecognised_conclusion_is_passed_through(self) -> None:
+        self.assertEqual(
+            run_disposition({"status": "completed", "conclusion": "surprise_state"}),
+            "surprise_state",
+        )
 
 
 class StubClient:
@@ -269,6 +290,35 @@ class CollectReportTests(unittest.TestCase):
         self.assertEqual(report["runs_total"], 40)
         self.assertTrue(any("truncated" in note for note in report["notes"]))
 
+    def test_page_bound_discloses_job_truncation(self) -> None:
+        runs = [
+            {
+                "id": 1,
+                "run_attempt": 1,
+                "name": "CI",
+                "event": "push",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": iso(T0),
+            }
+        ]
+        jobs = [
+            {
+                "started_at": iso(T0),
+                "completed_at": iso(T0 + timedelta(minutes=1)),
+            }
+            for _ in range(1001)
+        ]
+        report = collect_report(
+            StubClient(runs, {1: jobs}),  # type: ignore[arg-type]
+            "owner/repo",
+            T0,
+            T0 + timedelta(hours=1),
+        )
+        self.assertTrue(report["jobs_truncated"])
+        self.assertEqual(report["jobs_with_intervals"], 1000)
+        self.assertTrue(any("page bound" in note for note in report["notes"]))
+
     def test_notes_do_not_promise_unimplemented_options(self) -> None:
         report = collect_report(
             StubClient([], {}),  # type: ignore[arg-type]
@@ -280,6 +330,105 @@ class CollectReportTests(unittest.TestCase):
         self.assertNotIn("--org", joined)
         self.assertNotIn("GH_ORG_TOKEN", joined)
         self.assertIn("not implemented", joined)
+
+
+class _JsonHandler(http.server.BaseHTTPRequestHandler):
+    """Serves a fixed payload and records the request for assertions."""
+
+    def do_GET(self) -> None:  # noqa: N802 - http.server API
+        server: StubHttpServer = self.server  # type: ignore[assignment]
+        server.last_path = self.path
+        server.last_headers = dict(self.headers)
+        body = json.dumps(server.payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args: Any) -> None:  # silence test output
+        return
+
+
+class StubHttpServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    payload: dict[str, Any] = {}
+    last_path: str = ""
+    last_headers: dict[str, str] = {}
+
+
+class HttpClientTests(unittest.TestCase):
+    """Exercise GitHubClient.get for real against a local HTTP server."""
+
+    def test_get_builds_the_request_and_parses_the_body(self) -> None:
+        server = StubHttpServer(("127.0.0.1", 0), _JsonHandler)
+        server.payload = {"workflow_runs": [], "total_count": 3}
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        root = f"http://127.0.0.1:{server.server_address[1]}"
+        client = GitHubClient("token-abc", api_root=root)
+        data = client.get("/repos/o/r/actions/runs", {"per_page": "100"})
+
+        self.assertEqual(data["total_count"], 3)
+        self.assertIn("per_page=100", server.last_path)
+        self.assertEqual(server.last_headers.get("Authorization"), "Bearer token-abc")
+        self.assertEqual(server.last_headers.get("Accept"), "application/vnd.github+json")
+
+
+class CliTests(unittest.TestCase):
+    """Drive main() end-to-end: input validation, success and API failure."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.out = Path(self._tmp.name) / "ci-occupancy.json"
+
+    def _run(self, *extra: str) -> int:
+        env = {"GITHUB_REPOSITORY": "owner/repo"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            return main(["--out", str(self.out), *extra])
+
+    def test_missing_repository_is_an_input_error(self) -> None:
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": ""}, clear=True):
+            self.assertEqual(main(["--out", str(self.out)]), 2)
+
+    def test_malformed_repository_is_rejected(self) -> None:
+        self.assertEqual(self._run("--repository", "no-slash"), 2)
+        self.assertEqual(self._run("--repository", "../evil/x"), 2)
+        self.assertEqual(self._run("--repository", "owner/repo/extra"), 2)
+
+    def test_traversal_in_out_is_rejected(self) -> None:
+        with mock.patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": "owner/repo"}, clear=True
+        ):
+            code = main(
+                ["--out", str(Path(self._tmp.name) / "sub" / ".." / ".." / "x.json")]
+            )
+        self.assertEqual(code, 2)
+
+    def test_success_writes_a_report(self) -> None:
+        payload = {"workflow_runs": [], "total_count": 0}
+        with mock.patch.object(GitHubClient, "get", return_value=payload):
+            self.assertEqual(self._run(), 0)
+
+        report = json.loads(self.out.read_text(encoding="utf-8"))
+        self.assertEqual(report["scope"], "repository")
+        self.assertEqual(report["runs_considered"], 0)
+        self.assertFalse(report["runs_truncated"])
+
+    def test_api_failure_still_writes_an_unavailable_report(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://api.github.com/x", 503, "unavailable", None, None
+        )
+        with mock.patch.object(GitHubClient, "get", side_effect=error):
+            self.assertEqual(self._run(), 0)
+
+        report = json.loads(self.out.read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "unavailable")
+        self.assertIn("HTTP 503", report["error"])
+        self.assertTrue(any("unavailable" in note for note in report["notes"]))
 
 
 if __name__ == "__main__":

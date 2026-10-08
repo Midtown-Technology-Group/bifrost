@@ -168,6 +168,72 @@ def load_manifest(path: Path) -> list[str]:
     return load_patterns(path)
 
 
+def _contain(base: Path, raw: Path, what: str) -> Path:
+    """Resolve a CLI-supplied path under ``base`` and reject traversal.
+
+    Sonar S8707 (path traversal via faulty LLM-supplied CLI arguments): a
+    caller-supplied path must not escape the repository, whether through
+    ``..`` segments or through an absolute path pointing elsewhere. Raises
+    ``ValueError`` instead of silently reading or writing outside the base.
+    """
+    if ".." in Path(raw).parts:
+        raise ValueError(f"{what} contains a traversal segment: {raw}")
+    base_resolved = base.resolve()
+    resolved = (raw if raw.is_absolute() else base_resolved / raw).resolve()
+    if not resolved.is_relative_to(base_resolved):
+        raise ValueError(f"{what} escapes {base_resolved}: {raw}")
+    return resolved
+
+
+def _read_changed_files(path: Path) -> list[str]:
+    if not path.exists():
+        raise FileNotFoundError(f"--changed-files path does not exist: {path}")
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def _print_report(report: dict[str, object], changed_provided: bool) -> None:
+    print("enforce_closure: enforcement dependency boundary audit")
+    print(f"  CODEOWNERS patterns : {report['codeowners_patterns']}")
+    print(f"  manifest patterns   : {report['manifest_patterns']}")
+    print(f"  manifest covered    : {report['manifest_covered']}")
+    uncovered = list(report["manifest_uncovered"])  # type: ignore[arg-type]
+    if uncovered:
+        print("  uncovered (advisory until P0):")
+        for entry in uncovered:
+            print(f"    - {entry}")
+    if not changed_provided:
+        return
+    print(f"  changed paths       : {report['changed_total']}")
+    print(f"  changed in scope    : {report['changed_in_scope']}")
+    unowned = list(report.get("changed_in_scope_unowned", []))  # type: ignore[arg-type]
+    if unowned:
+        print("  changed in scope without an owner:")
+        for entry in unowned:
+            print(f"    - {entry}")
+
+
+def _enforce_result(report: dict[str, object]) -> int:
+    if not report["owns_enforcement_chain"]:
+        print(
+            "enforce_closure: FAIL - enforcement-chain paths lack CODEOWNERS coverage "
+            "(enable P0 ownership before enforcing).",
+            file=sys.stderr,
+        )
+        return 1
+    if report.get("changed_in_scope_unowned"):
+        print(
+            "enforce_closure: FAIL - changed enforcement paths are not owned.",
+            file=sys.stderr,
+        )
+        return 1
+    print("enforce_closure: OK - enforcement chain is owned.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("report", "enforce"), default="report")
@@ -181,69 +247,37 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="optional JSON report path")
     args = parser.parse_args(argv)
 
-    manifest = load_manifest(args.manifest)
-    if not manifest:
-        print(f"enforce_closure: empty or missing manifest {args.manifest}", file=sys.stderr)
-        return 2
-
-    rules = load_rules(args.codeowners)
-    changed: list[str] | None = None
-    if args.changed_files is not None:
-        # A supplied path that does not exist is an input error, not a licence
-        # to skip the changed-path audit (mistyped paths must not go unaudited).
-        if not args.changed_files.exists():
+    # Every path below is caller-supplied: contain it in the repository first
+    # (S8707), and distinguish an omitted --changed-files from a missing one.
+    try:
+        root = Path.cwd()
+        manifest = load_manifest(_contain(root, args.manifest, "--manifest"))
+        if not manifest:
             print(
-                f"enforce_closure: --changed-files path does not exist: {args.changed_files}",
+                f"enforce_closure: empty or missing manifest {args.manifest}",
                 file=sys.stderr,
             )
             return 2
-        changed = [
-            line.strip()
-            for line in args.changed_files.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        ]
+        rules = load_rules(_contain(root, args.codeowners, "--codeowners"))
+        changed: list[str] | None = None
+        if args.changed_files is not None:
+            changed = _read_changed_files(
+                _contain(root, args.changed_files, "--changed-files")
+            )
+        out_path = _contain(root, args.out, "--out") if args.out else None
+    except (ValueError, FileNotFoundError) as error:
+        print(f"enforce_closure: {error}", file=sys.stderr)
+        return 2
 
     report = audit(manifest, rules, changed)
-    payload = json.dumps(report, indent=2, sort_keys=True)
-    if args.out:
-        args.out.write_text(payload + "\n", encoding="utf-8")
-
-    print("enforce_closure: enforcement dependency boundary audit")
-    print(f"  CODEOWNERS patterns : {report['codeowners_patterns']}")
-    print(f"  manifest patterns   : {report['manifest_patterns']}")
-    print(f"  manifest covered    : {report['manifest_covered']}")
-    uncovered = list(report["manifest_uncovered"])  # type: ignore[arg-type]
-    if uncovered:
-        print("  uncovered (advisory until P0):")
-        for entry in uncovered:
-            print(f"    - {entry}")
-    if changed is not None:
-        print(f"  changed paths       : {report['changed_total']}")
-        print(f"  changed in scope    : {report['changed_in_scope']}")
-        unowned = list(report.get("changed_in_scope_unowned", []))  # type: ignore[arg-type]
-        if unowned:
-            print("  changed in scope without an owner:")
-            for entry in unowned:
-                print(f"    - {entry}")
-
+    if out_path is not None:
+        out_path.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    _print_report(report, changed_provided=changed is not None)
     if args.mode == "report":
         return 0
-
-    if not report["owns_enforcement_chain"]:
-        print(
-            "enforce_closure: FAIL - enforcement-chain paths lack CODEOWNERS coverage "
-            "(enable P0 ownership before enforcing).",
-            file=sys.stderr,
-        )
-        return 1
-    if changed is not None and report.get("changed_in_scope_unowned"):
-        print(
-            "enforce_closure: FAIL - changed enforcement paths are not owned.",
-            file=sys.stderr,
-        )
-        return 1
-    print("enforce_closure: OK - enforcement chain is owned.")
-    return 0
+    return _enforce_result(report)
 
 
 if __name__ == "__main__":

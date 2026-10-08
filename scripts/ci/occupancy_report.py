@@ -26,6 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 SCHEMA = 1
@@ -232,6 +233,18 @@ def collect_report(
     }
 
 
+def _valid_repository(value: str) -> bool:
+    """``owner/name`` with GitHub-safe characters only.
+
+    The value is interpolated into the API path, so a stray ``/`` or ``..``
+    would address a different endpoint than the operator intended (S8707).
+    """
+    parts = value.split("/")
+    return len(parts) == 2 and all(
+        part and all(char.isalnum() or char in "._-" for char in part) for part in parts
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--window-hours", type=int, default=DEFAULT_WINDOW_HOURS)
@@ -246,6 +259,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.repository:
         print("occupancy_report: no repository given", file=sys.stderr)
+        return 2
+    if not _valid_repository(args.repository):
+        print(
+            f"occupancy_report: --repository must be 'owner/name': {args.repository}",
+            file=sys.stderr,
+        )
+        return 2
+    out_path = Path(args.out)
+    if ".." in out_path.parts:
+        # Sonar S8707: caller-supplied paths must not traverse out of their
+        # directory. Absolute destinations (the runner's temp dir) stay allowed.
+        print(
+            f"occupancy_report: --out contains a traversal segment: {args.out}",
+            file=sys.stderr,
+        )
         return 2
 
     window_end = datetime.now(timezone.utc)
@@ -280,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(f"occupancy_report: {error}", file=sys.stderr)
 
-    with open(args.out, "w", encoding="utf-8") as handle:
+    with open(out_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, sort_keys=True)
         handle.write("\n")
 
