@@ -75,9 +75,12 @@ touch most, so every change arrives with a large blast radius. Sizes
 In the last 500 commits the top-touched backend files are
 `services/solutions/deploy.py` (13),
 `services/solution_source_accountability.py` (12),
-`services/solutions/github_source_delivery.py` and
-`services/workspace_source_releases.py` (10 each), with the matching
-test files churning alongside (`test_solution_app_deploy.py` 21).
+`services/solutions/github_source_delivery.py` (12), and
+`services/workspace_source_releases.py`,
+`services/solutions/native_authored_accounting.py`, and
+`services/solutions/github_delivery_source.py` (10 each), with the
+matching test files churning alongside
+(`test_solution_app_deploy.py` 21).
 Large file plus high churn plus multi-surface reach (REST, Solutions
 flows, git delivery, manifest) means reviewers re-verify the same
 invariants on every PR instead of relying on module boundaries.
@@ -88,16 +91,23 @@ it).
 
 ### 4. MCP-vs-REST behavior divergence, legacy REST import routes, and direct DB access in routers
 
-Why it slows reviews: entity *field* parity is the part that already
-works. CLI, MCP, and manifest export read the same `XxxCreate` /
-`XxxUpdate` Pydantic DTOs through `api/bifrost/dto_flags.py`, enforced
-by `tests/unit/test_dto_flags.py`, the CLI-contract tripwire
-(`tests/unit/test_contract_version.py`), MCP parity tests, and
-skill-truth freshness (`docs/dev/agent-platform-rules.md`, "Keeping
-CLI, MCP, and manifest in sync"). `.bifrost/` is export-only and the
-old `bifrost export` / `bifrost import` commands were removed in favor
-of Solutions — so manifest "import/export" is no longer a fourth live
-mutation surface.
+Why it slows reviews: entity *field* parity is only partly enforced,
+and the audit must not claim blanket coverage. CLI field parity is
+checked through `api/bifrost/dto_flags.py` and
+`tests/unit/test_dto_flags.py`. MCP parity checks
+(`tests/e2e/mcp/test_mcp_parity.py`) cover only the Task 6
+thin-wrapper groups — roles, configs, integrations, organizations,
+workflow lifecycle — and do not cover the legacy `agents`, `forms`,
+`tables`, `apps`, and `events` groups. Manifest export uses separate
+ORM-to-manifest projections (`api/src/services/manifest_generator.py`
+reads ORM models directly), so it requires its own parity review. The
+CLI-contract tripwire (`tests/unit/test_contract_version.py`) and
+skill-truth freshness still apply (`docs/dev/agent-platform-rules.md`,
+"Keeping CLI, MCP, and manifest in sync"). `.bifrost/` is export-only
+and the old `bifrost export` / `bifrost import` commands were removed
+in favor of Solutions — so manifest "import/export" is no longer a
+fourth live mutation surface, but manifest *export* projections remain
+a separate surface to keep in sync.
 
 The drift that remains is behavioral. The MCP tools for `agents`,
 `forms`, `tables`, `apps`, and `events` re-implement router logic and
@@ -125,21 +135,25 @@ see `routers/devices.py`), and platform superuser gates coexist, so a
 new route can pick the wrong idiom and still look conventional.
 
 Classification: architecture-driven (legacy behavior duplication plus
-unenforced layering), with the field-parity half already
-test/contract-driven and working.
+unenforced layering), with CLI/thin-wrapper-MCP field parity already
+test/contract-driven and working, and manifest projections plus legacy
+MCP groups as the uncovered remainder.
 
 ### 5. Untyped trust-boundary payloads verified by after-the-fact tests
 
 Why it slows reviews: `Dict[str, Any]`/`dict[str, Any]` concentrates at
-exactly the boundaries where invariants matter most —
-`services/solutions/deploy.py` (36 sites),
+exactly the boundaries where invariants matter most (counts below are
+matching lines per the `grep -c` command in "Reproducing the counts",
+not individually triaged payload sites) —
+`services/solutions/deploy.py` (36 matching lines),
 `services/mcp_server/gateway.py` (33),
 `services/execution/async_executor.py` (29),
 `services/execution/engine.py` (26),
 `services/execution/process_pool.py` (25) — with `json.loads`/`dumps`
 spread across auth, Redis, RabbitMQ, and worker-claim paths. Combined
-with target 2, nothing mechanical checks these shapes, so behavior is
-pinned only by tests written alongside or after the change; the churn
+with target 2, Pyright provides only limited mechanical checking of
+these shapes, so behavior remains largely pinned by tests written
+alongside or after the change; the churn
 data in target 3 shows test files being edited in the same commits as
 the code they cover. The contract-version tripwire
 (`tests/unit/test_contract_version.py`) forces an explicit
@@ -172,9 +186,11 @@ pre-empt them.
    `services/solutions/deploy.py` + `services/mcp_server/gateway.py`
    with the router-DB-access rule; follow with the already-sequenced
    `docs/plans/2026-04-18-mcp-router-reconciliation.md` work for the
-   five legacy MCP tools (whose permission model wins, per entity) plus
+   five legacy MCP tools (whose permission model wins, per entity),
    a keep-or-retire decision on the legacy REST import routes versus
-   Solutions — no new parity mechanism is needed for entity fields.
+   Solutions, and parity coverage for the manifest-export projections
+   (`manifest_generator.py`) and legacy MCP groups that today's
+   DTO/parity checks do not reach.
 2. **Execution-contract work second, scoped around #1053.** Unify (or
    explicitly relate) the two attempt models; for delivery backends,
    cover only what #1053 leaves open — the `api/src/config.py`
@@ -197,12 +213,17 @@ v1 draft undercounted routers by excluding `routers/platform/`.
 - Router census (84 non-`__init__` modules: 80 top-level + 4 in
   `routers/platform/`):
   `find api/src/routers -name '*.py' | grep -v __init__ | wc -l`
+  (Recounted at both the PR head and `17fb2be09`: 84. An unfiltered
+  `find … | wc -l` returns 86 because it includes the two
+  `__init__.py` files; the audit counts modules, not files.)
 - Direct DB access in routers (46 of 84):
   `find api/src/routers -name '*.py' | grep -v __init__ | xargs grep -lE 'session\.execute|db\.execute' | wc -l`
-- Repo-wide pattern (238 files, includes the `repositories/` layer
-  itself — it measures prevalence, not violations):
+- Repo-wide pattern (238 matching Python files under `api/src`,
+  including the `repositories/` layer itself — it measures prevalence,
+  not violations, and is not an HTTP-layer count):
   `grep -rlE 'session\.execute|db\.execute' api/src --include='*.py' | wc -l`
-- `Dict[str, Any]` hotspots, e.g.:
+- `Dict[str, Any]` hotspots (values are matching-line counts from
+  `grep -c`, not individually triaged sites), e.g.:
   `grep -rcE 'Dict\[str, Any\]|dict\[str, Any\]' api/src/services/solutions/deploy.py api/src/services/mcp_server/gateway.py api/src/services/execution/async_executor.py api/src/services/execution/engine.py api/src/services/execution/process_pool.py`
 - Sizes: `wc -l` on the named files.
 - Churn (last 500 commits on `main` at the evidence head):
