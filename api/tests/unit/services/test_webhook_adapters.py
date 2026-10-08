@@ -221,18 +221,32 @@ async def test_graph_event_type_uses_configured_collection_not_object_id():
         query_params={},
         body=(
             b'{"value":[{"changeType":"created","resource":'
-            b'"Users/user-1/Messages/01LONGMESSAGEID"}]}'
+            b'"Users/user-1/Messages/01LONGMESSAGEID","clientState":"fixture-state"}]}'
         ),
     )
 
     result = await MicrosoftGraphAdapter().handle_request(
         request,
         config={"resource": "/users/user-1/messages"},
-        state={},
+        state={"client_state": "fixture-state"},
     )
 
     assert isinstance(result, Deliver)
     assert result.event_type == "graph.messages.created"
+
+
+@pytest.mark.asyncio
+async def test_graph_rejects_missing_client_state_after_resubscribe_failure():
+    request = WebhookRequest(
+        method="POST",
+        path="/api/hooks/source-1",
+        headers={},
+        query_params={},
+        body=b'{"value":[{"changeType":"created","clientState":"attacker-state"}]}',
+    )
+    result = await MicrosoftGraphAdapter().handle_request(request, config={}, state={})
+    assert isinstance(result, Rejected)
+    assert result.status_code == 503
 
 
 @pytest.mark.asyncio

@@ -411,10 +411,11 @@ class MicrosoftGraphAdapter(WebhookAdapter):
 
         # Validate client state on each notification
         expected_state = state.get("client_state")
-        if expected_state:
-            for notification in notifications:
-                if notification.get("clientState") != expected_state:
-                    return Rejected(message="Invalid client state", status_code=401)
+        if not isinstance(expected_state, str) or not expected_state:
+            return Rejected(message="Graph subscription client state is unavailable", status_code=503)
+        for notification in notifications:
+            if notification.get("clientState") != expected_state:
+                return Rejected(message="Invalid client state", status_code=401)
 
         # For now, deliver the first notification
         # Future: could batch process all notifications
