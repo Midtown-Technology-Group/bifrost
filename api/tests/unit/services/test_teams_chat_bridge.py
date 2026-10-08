@@ -193,6 +193,7 @@ async def test_chat_terminal_emits_only_bound_teams_run(
         status="failed",
         org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
+        trigger_type="chat",
     )
     await bridge.emit_teams_chat_completion(run)
     assert emit.await_args.args[0] == "microsoft_teams.chat_run_completed"
@@ -204,6 +205,10 @@ async def test_chat_terminal_emits_only_bound_teams_run(
     assert emit.await_args.kwargs["solution_id"] == SOLUTION_ID
     completion_solution.assert_awaited_once()
     emit.reset_mock()
+    run.trigger_type = "api"
+    await bridge.emit_teams_chat_completion(run)
+    emit.assert_not_awaited()
+    run.trigger_type = "chat"
     run.input = {}
     await bridge.emit_teams_chat_completion(run)
     emit.assert_not_awaited()
@@ -222,6 +227,7 @@ async def test_completion_emit_failure_leaves_run_eligible_for_recovery(
         status="failed",
         org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
+        trigger_type="chat",
         run_metadata={},
     )
     with pytest.raises(RuntimeError, match="topic unavailable"):
@@ -242,6 +248,7 @@ async def test_failed_completion_delivery_leaves_run_eligible_for_recovery(
         status="completed",
         org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
+        trigger_type="chat",
         run_metadata={},
     )
     emit = AsyncMock(return_value=(UUID(int=4), 1))
@@ -279,6 +286,7 @@ async def test_successful_completion_locks_only_agent_run(
         status="failed",
         org_id=ORG_ID,
         input={"teams_event_id": str(EVENT_ID)},
+        trigger_type="chat",
         run_metadata={},
     )
     monkeypatch.setattr(events, "emit_event", AsyncMock(return_value=(UUID(int=4), 1)))

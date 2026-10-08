@@ -227,6 +227,7 @@ async def test_transient_registration_failure_remains_recoverable() -> None:
     run = SimpleNamespace(
         id=uuid4(),
         input={"teams_event_id": str(uuid4())},
+        trigger_type="chat",
         status="completed",
         org_id=uuid4(),
         run_metadata={},
@@ -258,6 +259,7 @@ async def test_transient_registration_failure_remains_recoverable() -> None:
         prior_queries = db.scalars.await_count
         assert await recover_teams_chat_completions() == 1
         query = db.scalars.await_args_list[prior_queries].args[0]
+        assert "agent_runs.trigger_type =" in str(query)
         cutoffs = [
             value
             for value in query.compile().params.values()
