@@ -18,6 +18,21 @@ preview must omit that installation's bindings without reclaiming its workflows.
 - The original Live row/release identity, source hashes, bundle hash and recomputed
   preflight evidence digest. The receipt alone is insufficient.
 
+Two provenance variants keep that proof honest for transitions that no receipt
+can describe (#1122):
+
+- A receipt coherently bound to a predecessor Live release (both release
+  identity fields differ together) still proves the handoff while its
+  coverage, verified source paths and source hashes match the current
+  release's governed bytes. One mismatched identity field is tampering and
+  fails closed, as do initial-install, adoption and detached-revision roots.
+- When the active deployment chain carries no reviewed lineage marker at all,
+  the key is verified directly against that closure-validated active
+  deployment: existence, active pointer, storage identity, runtime bytes,
+  contracts, dependencies, registration set, inherited identity and exposure.
+  A solution-managed key with no active covering deployment, an unknown key,
+  or any drift in those checks still raises `UnprovenLiveHandoff`.
+
 The original governed source files stay in the next loose snapshot because
 remaining loose workflows may depend on their helpers. Only certified workflow
 bindings leave its registration set. Solution updates use reviewed Solution
