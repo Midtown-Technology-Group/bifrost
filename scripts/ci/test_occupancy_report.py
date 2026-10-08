@@ -111,18 +111,33 @@ class DispositionTests(unittest.TestCase):
 class StubClient:
     """Serves canned API payloads without touching the network."""
 
-    def __init__(self, runs: list[dict[str, Any]], jobs: dict[int, list[dict[str, Any]]]) -> None:
+    def __init__(
+        self,
+        runs: list[dict[str, Any]],
+        jobs: dict[int, list[dict[str, Any]]],
+        runs_total: int | None = None,
+    ) -> None:
         self._runs = runs
         self._jobs = jobs
+        self._runs_total = runs_total
         self.paths: list[str] = []
 
     def get(self, path: str, params: dict[str, str] | None = None) -> Any:
         self.paths.append(path)
+        params = params or {}
         if path.endswith("/actions/runs"):
-            return {"workflow_runs": self._runs}
+            return {
+                "workflow_runs": self._runs,
+                "total_count": self._runs_total
+                if self._runs_total is not None
+                else len(self._runs),
+            }
         if "/actions/runs/" in path and path.endswith("/jobs"):
             run_id = int(path.split("/actions/runs/")[1].split("/")[0])
-            return {"jobs": self._jobs.get(run_id, [])}
+            all_jobs = self._jobs.get(run_id, [])
+            page = int(params.get("page", "1"))
+            start = (page - 1) * 100
+            return {"jobs": all_jobs[start : start + 100], "total_count": len(all_jobs)}
         raise AssertionError(f"unexpected path: {path}")
 
 
@@ -199,6 +214,72 @@ class CollectReportTests(unittest.TestCase):
         self.assertEqual(report["incomplete_intervals"], 1)
         self.assertEqual(report["peak_concurrent_jobs"]["value"], 0)
         self.assertEqual(report["runs"][0]["disposition"], "running")
+
+    def test_jobs_are_paginated_so_intervals_are_not_lost(self) -> None:
+        """A run with >100 jobs must not silently lose the overflow page."""
+        runs = [
+            {
+                "id": 1,
+                "run_attempt": 1,
+                "name": "CI",
+                "event": "pull_request",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": iso(T0),
+            }
+        ]
+        jobs = [
+            {
+                "started_at": iso(T0 + timedelta(seconds=index)),
+                "completed_at": iso(T0 + timedelta(seconds=index) + timedelta(minutes=1)),
+            }
+            for index in range(150)
+        ]
+        report = collect_report(
+            StubClient(runs, {1: jobs}),  # type: ignore[arg-type]
+            "owner/repo",
+            T0,
+            T0 + timedelta(hours=1),
+        )
+        self.assertEqual(report["jobs_with_intervals"], 150)
+        self.assertFalse(report["jobs_truncated"])
+        self.assertGreater(report["peak_concurrent_jobs"]["value"], 0)
+
+    def test_run_list_truncation_is_disclosed_not_silent(self) -> None:
+        runs = [
+            {
+                "id": index,
+                "run_attempt": 1,
+                "name": "CI",
+                "event": "pull_request",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": iso(T0),
+            }
+            for index in range(3)
+        ]
+        report = collect_report(
+            StubClient(runs, {}, runs_total=40),  # type: ignore[arg-type]
+            "owner/repo",
+            T0,
+            T0 + timedelta(hours=1),
+            max_runs=1,
+        )
+        self.assertTrue(report["runs_truncated"])
+        self.assertEqual(report["runs_total"], 40)
+        self.assertTrue(any("truncated" in note for note in report["notes"]))
+
+    def test_notes_do_not_promise_unimplemented_options(self) -> None:
+        report = collect_report(
+            StubClient([], {}),  # type: ignore[arg-type]
+            "owner/repo",
+            T0,
+            T0 + timedelta(hours=1),
+        )
+        joined = " ".join(report["notes"])
+        self.assertNotIn("--org", joined)
+        self.assertNotIn("GH_ORG_TOKEN", joined)
+        self.assertIn("not implemented", joined)
 
 
 if __name__ == "__main__":

@@ -38,17 +38,55 @@ DEFAULT_CODEOWNERS = Path(".github/CODEOWNERS")
 
 
 def load_patterns(path: Path) -> list[str]:
-    """Read a CODEOWNERS-style file and return non-comment patterns."""
+    """Read a pattern file and return non-comment patterns (no ownership)."""
+    return [pattern for pattern, _ in load_rules(path)]
+
+
+# A CODEOWNERS rule: (pattern, has_owner). Order matters - see is_owned().
+Rule = tuple[str, bool]
+
+
+def load_rules(path: Path) -> list[Rule]:
+    """Read a CODEOWNERS-style file into ordered rules with owner presence.
+
+    Lines are ``<pattern> [owner...]``. ``#`` terminates a line. Owner
+    presence is recorded rather than discarded, because CODEOWNERS semantics
+    are last-match: a trailing rule without owners *unowns* what an earlier
+    rule owned.
+    """
     if not path.exists():
         return []
-    patterns: list[str] = []
+    rules: list[Rule] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        # CODEOWNERS lines are "<pattern> <owner...>"; keep only the pattern.
-        patterns.append(line.split()[0])
-    return patterns
+        tokens: list[str] = []
+        for token in line.split():
+            if token.startswith("#"):
+                break
+            tokens.append(token)
+        if not tokens:
+            continue
+        rules.append((tokens[0], any(owner.startswith("@") for owner in tokens[1:])))
+    return rules
+
+
+def _normalize(path: str) -> str:
+    # Only strip an explicit "./" prefix and surrounding slashes: lstrip("./")
+    # would also eat the leading dot of paths like ".github/workflows/ci.yml".
+    normalized = path[2:] if path.startswith("./") else path
+    return normalized.strip("/")
+
+
+def is_owned(rules: list[Rule], path: str) -> bool:
+    """CODEOWNERS last-match semantics: only the last matching rule decides."""
+    normalized = _normalize(path)
+    decision: bool | None = None
+    for pattern, has_owner in rules:
+        if compile_pattern(pattern).match(normalized):
+            decision = has_owner
+    return bool(decision)
 
 
 def _glob_to_regex(pattern: str, *, anchored: bool) -> re.Pattern[str]:
@@ -89,11 +127,12 @@ def compile_pattern(pattern: str) -> re.Pattern[str]:
 
 
 def matches_any(patterns: list[str], path: str) -> bool:
-    """True when any pattern matches ``path`` (POSIX, repo-root relative)."""
-    # Only strip an explicit "./" prefix and surrounding slashes: lstrip("./")
-    # would also eat the leading dot of paths like ".github/workflows/ci.yml".
-    normalized = path[2:] if path.startswith("./") else path
-    normalized = normalized.strip("/")
+    """True when any pattern matches ``path`` (POSIX, repo-root relative).
+
+    Used for boundary membership (the manifest is a flat path list), not for
+    ownership - ownership uses CODEOWNERS last-match rules via is_owned().
+    """
+    normalized = _normalize(path)
     return any(compile_pattern(pattern).match(normalized) for pattern in patterns)
 
 
@@ -102,11 +141,11 @@ def changed_in_scope(manifest: list[str], changed: list[str]) -> list[str]:
 
 
 def audit(
-    manifest: list[str], codeowners: list[str], changed: list[str] | None = None
+    manifest: list[str], rules: list[Rule], changed: list[str] | None = None
 ) -> dict[str, object]:
-    manifest_uncovered = [entry for entry in manifest if not matches_any(codeowners, entry)]
+    manifest_uncovered = [entry for entry in manifest if not is_owned(rules, entry)]
     report: dict[str, object] = {
-        "codeowners_patterns": len(codeowners),
+        "codeowners_patterns": len(rules),
         "manifest_patterns": len(manifest),
         "manifest_covered": len(manifest) - len(manifest_uncovered),
         "manifest_uncovered": manifest_uncovered,
@@ -114,7 +153,7 @@ def audit(
     }
     if changed is not None:
         in_scope = changed_in_scope(manifest, changed)
-        unowned = [path for path in in_scope if not matches_any(codeowners, path)]
+        unowned = [path for path in in_scope if not is_owned(rules, path)]
         report.update(
             {
                 "changed_total": len(changed),
@@ -147,16 +186,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"enforce_closure: empty or missing manifest {args.manifest}", file=sys.stderr)
         return 2
 
-    codeowners = load_patterns(args.codeowners)
+    rules = load_rules(args.codeowners)
     changed: list[str] | None = None
-    if args.changed_files and args.changed_files.exists():
+    if args.changed_files is not None:
+        # A supplied path that does not exist is an input error, not a licence
+        # to skip the changed-path audit (mistyped paths must not go unaudited).
+        if not args.changed_files.exists():
+            print(
+                f"enforce_closure: --changed-files path does not exist: {args.changed_files}",
+                file=sys.stderr,
+            )
+            return 2
         changed = [
             line.strip()
             for line in args.changed_files.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.lstrip().startswith("#")
         ]
 
-    report = audit(manifest, codeowners, changed)
+    report = audit(manifest, rules, changed)
     payload = json.dumps(report, indent=2, sort_keys=True)
     if args.out:
         args.out.write_text(payload + "\n", encoding="utf-8")

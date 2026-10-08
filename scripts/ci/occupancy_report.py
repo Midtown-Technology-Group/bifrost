@@ -10,9 +10,10 @@ It is intentionally read-only and dependency-free (stdlib + GitHub REST). It is
 invoked as a step inside the existing ``affected-test-plan`` job so the report
 adds no runner to the test wave.
 
-Scope: repository by default. Cross-repository sampling needs an org-scoped
-token, so the report says ``scope: repository`` instead of implying org-wide
-coverage when only ``GH_TOKEN`` (repo-scoped) is available.
+Scope: repository only. Cross-repository sampling is **not implemented** - the
+report states that in its notes rather than implying org-wide coverage, because
+the 20-runner cap is an org-wide constraint and repository scope cannot speak
+to it.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ API_ROOT = "https://api.github.com"
 DEFAULT_WINDOW_HOURS = 6
 DEFAULT_MAX_RUNS = 50
 BUCKET_SECONDS = 300
+MAX_JOB_PAGES = 10  # bound on jobs pagination (100 jobs per page)
 
 
 class GitHubClient:
@@ -125,6 +127,28 @@ def run_disposition(run: dict[str, Any]) -> str:
     return "no-verdict" if conclusion is None else str(conclusion)
 
 
+def fetch_run_jobs(
+    client: GitHubClient, repository: str, run_id: int
+) -> tuple[list[dict[str, Any]], bool]:
+    """Fetch every jobs page for a run, bounded by MAX_JOB_PAGES.
+
+    Returns ``(jobs, truncated)``. A run with more jobs than the page bound
+    would otherwise silently lose intervals and understate peak concurrency.
+    """
+    jobs: list[dict[str, Any]] = []
+    for page in range(1, MAX_JOB_PAGES + 1):
+        payload = client.get(
+            f"/repos/{repository}/actions/runs/{run_id}/jobs",
+            {"per_page": "100", "page": str(page)},
+        )
+        batch = payload.get("jobs", [])
+        jobs.extend(batch)
+        total = int(payload.get("total_count") or len(jobs))
+        if len(batch) < 100 or len(jobs) >= total:
+            return jobs, len(jobs) < total
+    return jobs, True
+
+
 def collect_report(
     client: GitHubClient,
     repository: str,
@@ -137,16 +161,17 @@ def collect_report(
         "per_page": "100",
     }
     payload = client.get(f"/repos/{repository}/actions/runs", params)
+    runs_total = int(payload.get("total_count") or 0)
     runs = payload.get("workflow_runs", [])[:max_runs]
+    runs_truncated = runs_total > len(runs)
 
     all_intervals: list[tuple[datetime, datetime]] = []
     incomplete = 0
+    jobs_truncated = False
     run_rows: list[dict[str, Any]] = []
     for run in runs:
-        jobs_payload = client.get(
-            f"/repos/{repository}/actions/runs/{run['id']}/jobs", {"per_page": "100"}
-        )
-        jobs = jobs_payload.get("jobs", [])
+        jobs, run_truncated = fetch_run_jobs(client, repository, run["id"])
+        jobs_truncated = jobs_truncated or run_truncated
         intervals, run_incomplete = job_intervals(jobs)
         all_intervals.extend(intervals)
         incomplete += run_incomplete
@@ -169,6 +194,21 @@ def collect_report(
         )
 
     peak, peak_at = peak_concurrency(all_intervals)
+    notes = [
+        "repository-scoped only: cross-repository sampling is not implemented.",
+        "interval timestamps come from the workflow-jobs API; true runner wait is "
+        + "not exposed and is not reported here.",
+    ]
+    if runs_truncated:
+        notes.append(
+            f"run list truncated: {runs_total} runs matched the window but only "
+            f"{len(runs)} were fetched (max-runs={max_runs}); occupancy may be understated."
+        )
+    if jobs_truncated:
+        notes.append(
+            "job pagination reached its page bound for at least one run; "
+            "occupancy may be understated for that run."
+        )
     return {
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -177,6 +217,9 @@ def collect_report(
         "window_start": window_start.isoformat(),
         "window_end": window_end.isoformat(),
         "runs_considered": len(runs),
+        "runs_total": runs_total,
+        "runs_truncated": runs_truncated,
+        "jobs_truncated": jobs_truncated,
         "jobs_with_intervals": len(all_intervals),
         "incomplete_intervals": incomplete,
         "peak_concurrent_jobs": {
@@ -185,12 +228,7 @@ def collect_report(
         },
         "occupancy_series": occupancy_series(all_intervals, window_start, window_end),
         "runs": run_rows,
-        "notes": [
-            "repository-scoped: cross-repository sampling needs an org-scoped token "
-            + "(pass --org together with GH_ORG_TOKEN); org-wide demand is not implied.",
-            "interval timestamps come from the workflow-jobs API; true runner wait is "
-            + "not exposed and is not reported here.",
-        ],
+        "notes": notes,
     }
 
 

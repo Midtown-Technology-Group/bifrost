@@ -16,8 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from enforce_closure import (  # noqa: E402
     audit,
     changed_in_scope,
+    is_owned,
     load_manifest,
     load_patterns,
+    load_rules,
     matches_any,
 )
 
@@ -56,6 +58,34 @@ class MatchingTests(unittest.TestCase):
         self.assertFalse(matches_any([".github/workflows/**"], "src/main.py"))
 
 
+class LastMatchTests(unittest.TestCase):
+    """CODEOWNERS is last-match: a later ownerless rule un-owns the path."""
+
+    def test_last_matching_rule_decides_ownership(self) -> None:
+        rules = [(".github/**", True), (".github/CODEOWNERS", False)]
+        self.assertTrue(is_owned(rules, ".github/workflows/ci.yml"))
+        self.assertFalse(is_owned(rules, ".github/CODEOWNERS"))
+
+    def test_trailing_ownerless_match_unowns_everything(self) -> None:
+        rules = [(".github/**", True), (".github/**", False)]
+        self.assertFalse(is_owned(rules, ".github/workflows/ci.yml"))
+
+    def test_no_matching_rule_is_unowned(self) -> None:
+        self.assertFalse(is_owned([("docs/**", True)], "src/main.py"))
+
+    def test_load_rules_keeps_ownerless_rules_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "CODEOWNERS"
+            path.write_text(
+                "# comment\n/scripts/ @team\n.github/\n/api/ @team # trailing comment\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                load_rules(path),
+                [("/scripts/", True), (".github/", False), ("/api/", True)],
+            )
+
+
 class AuditTests(unittest.TestCase):
     def test_empty_codeowners_reports_everything_uncovered(self) -> None:
         report = audit(MANIFEST, [], changed=["src/main.py"])
@@ -70,35 +100,37 @@ class AuditTests(unittest.TestCase):
         # The manifest spans more than .github/ and scripts/ (scanner config,
         # compose files, Dockerfiles, package manifests), so partial ownership
         # must stay visible instead of passing vacuously.
-        owners = [".github/**", "scripts/**", "test.sh"]
-        report = audit(MANIFEST, owners)
+        rules = [(pattern, True) for pattern in (".github/**", "scripts/**", "test.sh")]
+        report = audit(MANIFEST, rules)
         self.assertFalse(report["owns_enforcement_chain"])
         self.assertGreater(len(report["manifest_uncovered"]), 0)
         self.assertNotIn(".github/workflows/**", report["manifest_uncovered"])
 
     def test_comprehensive_owners_satisfy_the_boundary(self) -> None:
-        owners = [
-            ".github/**",
-            "scripts/**",
-            "test.sh",
-            "sonar-project.properties",
-            "api/**",
-            "docker-compose*.yml",
-            "client/package.json",
+        rules = [
+            (pattern, True)
+            for pattern in (
+                ".github/**",
+                "scripts/**",
+                "test.sh",
+                "sonar-project.properties",
+                "api/**",
+                "docker-compose*.yml",
+                "client/package.json",
+            )
         ]
-        report = audit(MANIFEST, owners)
+        report = audit(MANIFEST, rules)
         self.assertEqual(report["manifest_uncovered"], [])
         self.assertTrue(report["owns_enforcement_chain"])
 
     def test_partial_owners_surface_the_gap(self) -> None:
-        owners = [".github/**"]
-        report = audit(MANIFEST, owners)
+        report = audit(MANIFEST, [(".github/**", True)])
         self.assertFalse(report["owns_enforcement_chain"])
         self.assertGreater(len(report["manifest_uncovered"]), 0)
 
     def test_changed_path_in_scope_without_owner_is_flagged(self) -> None:
-        owners = [".github/**"]
-        report = audit(MANIFEST, owners, changed=["test.sh", "src/main.py"])
+        rules = [(".github/**", True)]
+        report = audit(MANIFEST, rules, changed=["test.sh", "src/main.py"])
         self.assertEqual(report["changed_in_scope"], 1)
         self.assertEqual(report["changed_in_scope_unowned"], ["test.sh"])
 
