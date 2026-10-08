@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -245,6 +246,35 @@ def _valid_repository(value: str) -> bool:
     )
 
 
+def _output_roots() -> tuple[Path, ...]:
+    """Directories the report may be written into.
+
+    The workflow writes to ``$RUNNER_TEMP``; local and test invocations use
+    the working directory or the system temp directory.
+    """
+    roots = [Path.cwd(), Path(tempfile.gettempdir())]
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        roots.append(Path(runner_temp))
+    return tuple(roots)
+
+
+def _safe_output(raw: Path, roots: tuple[Path, ...]) -> Path:
+    """Contain a caller-supplied output path inside one of ``roots`` (S8707).
+
+    Only the working directory, the system temp directory and the workflow's
+    own temp directory are writable destinations: traversal segments and
+    absolute paths outside them are input errors, never an arbitrary write.
+    """
+    if ".." in raw.parts:
+        raise ValueError(f"--out contains a traversal segment: {raw}")
+    resolved = (raw if raw.is_absolute() else Path.cwd() / raw).resolve()
+    allowed = tuple(root.resolve() for root in roots if root)
+    if not any(resolved.is_relative_to(root) for root in allowed):
+        raise ValueError(f"--out escapes every allowed directory: {raw}")
+    return resolved
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--window-hours", type=int, default=DEFAULT_WINDOW_HOURS)
@@ -267,13 +297,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     out_path = Path(args.out)
-    if ".." in out_path.parts:
-        # Sonar S8707: caller-supplied paths must not traverse out of their
-        # directory. Absolute destinations (the runner's temp dir) stay allowed.
-        print(
-            f"occupancy_report: --out contains a traversal segment: {args.out}",
-            file=sys.stderr,
-        )
+    try:
+        out_path = _safe_output(out_path, _output_roots())
+    except ValueError as error:
+        print(f"occupancy_report: {error}", file=sys.stderr)
         return 2
 
     window_end = datetime.now(timezone.utc)

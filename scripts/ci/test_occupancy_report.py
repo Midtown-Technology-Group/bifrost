@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.server
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -409,6 +410,50 @@ class CliTests(unittest.TestCase):
                 ["--out", str(Path(self._tmp.name) / "sub" / ".." / ".." / "x.json")]
             )
         self.assertEqual(code, 2)
+
+    def test_out_outside_every_allowed_root_is_rejected(self) -> None:
+        """An absolute path outside cwd/temp/runner-temp is an input error."""
+        with unittest.mock.patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": "owner/repo"}, clear=True
+        ):
+            code = main(["--out", "/etc/ci-occupancy.json"])
+        self.assertEqual(code, 2)
+        self.assertFalse(Path("/etc/ci-occupancy.json").exists())
+
+    def test_out_in_runner_temp_is_accepted(self) -> None:
+        """The workflow's own destination ($RUNNER_TEMP) must keep working.
+
+        The directory sits outside cwd and /tmp so only the RUNNER_TEMP root
+        can authorise it.
+        """
+        base = "/var/tmp" if Path("/var/tmp").is_dir() else tempfile.gettempdir()
+        runner_temp = tempfile.mkdtemp(prefix="runner-temp-", dir=base)
+        self.addCleanup(shutil.rmtree, runner_temp, ignore_errors=True)
+        dest = Path(runner_temp) / "ci-occupancy.json"
+        payload = {"workflow_runs": [], "total_count": 0}
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"GITHUB_REPOSITORY": "owner/repo", "RUNNER_TEMP": runner_temp},
+            clear=True,
+        ):
+            with unittest.mock.patch.object(GitHubClient, "get", return_value=payload):
+                code = main(["--out", str(dest)])
+        self.assertEqual(code, 0)
+        self.assertTrue(dest.exists())
+
+    def test_out_in_runner_temp_is_rejected_without_the_env_root(self) -> None:
+        """Same path, RUNNER_TEMP unset: containment must reject it."""
+        base = "/var/tmp" if Path("/var/tmp").is_dir() else tempfile.gettempdir()
+        if base == tempfile.gettempdir():
+            self.skipTest("/var/tmp unavailable; cannot outrank the temp root")
+        outside = tempfile.mkdtemp(prefix="not-allowed-", dir=base)
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        with unittest.mock.patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": "owner/repo"}, clear=True
+        ):
+            code = main(["--out", str(Path(outside) / "x.json")])
+        self.assertEqual(code, 2)
+
 
     def test_success_writes_a_report(self) -> None:
         payload = {"workflow_runs": [], "total_count": 0}
