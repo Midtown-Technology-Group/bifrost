@@ -13,11 +13,11 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -387,11 +387,13 @@ class CliTests(unittest.TestCase):
 
     def _run(self, *extra: str) -> int:
         env = {"GITHUB_REPOSITORY": "owner/repo"}
-        with mock.patch.dict(os.environ, env, clear=True):
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
             return main(["--out", str(self.out), *extra])
 
     def test_missing_repository_is_an_input_error(self) -> None:
-        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": ""}, clear=True):
+        with unittest.mock.patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": ""}, clear=True
+        ):
             self.assertEqual(main(["--out", str(self.out)]), 2)
 
     def test_malformed_repository_is_rejected(self) -> None:
@@ -400,7 +402,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self._run("--repository", "owner/repo/extra"), 2)
 
     def test_traversal_in_out_is_rejected(self) -> None:
-        with mock.patch.dict(
+        with unittest.mock.patch.dict(
             os.environ, {"GITHUB_REPOSITORY": "owner/repo"}, clear=True
         ):
             code = main(
@@ -410,7 +412,7 @@ class CliTests(unittest.TestCase):
 
     def test_success_writes_a_report(self) -> None:
         payload = {"workflow_runs": [], "total_count": 0}
-        with mock.patch.object(GitHubClient, "get", return_value=payload):
+        with unittest.mock.patch.object(GitHubClient, "get", return_value=payload):
             self.assertEqual(self._run(), 0)
 
         report = json.loads(self.out.read_text(encoding="utf-8"))
@@ -422,7 +424,7 @@ class CliTests(unittest.TestCase):
         error = urllib.error.HTTPError(
             "https://api.github.com/x", 503, "unavailable", None, None
         )
-        with mock.patch.object(GitHubClient, "get", side_effect=error):
+        with unittest.mock.patch.object(GitHubClient, "get", side_effect=error):
             self.assertEqual(self._run(), 0)
 
         report = json.loads(self.out.read_text(encoding="utf-8"))
