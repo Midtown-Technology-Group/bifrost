@@ -11,9 +11,11 @@ statistics. Every count states its scope and command in
 language/tooling pain from architecture pain from test/contract pain,
 as the issue requires.
 
-Correction note (review feedback on v1): entity *field* parity across
-CLI, MCP, and manifest is enforced by shared DTOs and tests, not by
-convention — see target 4. The drift that remains is MCP-vs-REST
+Correction note (review feedback on v1, corrected again per final
+review): DTO/field checks cover CLI and the thin-wrapper MCP groups
+only — not all of MCP, and not manifest export. The uncovered
+remainder is the manifest-export projections and the five legacy MCP
+groups (see target 4). The drift that remains is MCP-vs-REST
 *behavior* divergence plus legacy REST import routes.
 
 ## Top 5 refactor targets (ranked)
@@ -158,8 +160,9 @@ data in target 3 shows test files being edited in the same commits as
 the code they cover. The contract-version tripwire
 (`tests/unit/test_contract_version.py`) forces an explicit
 breaking-vs-compatible decision on CLI/SDK-consumed DTO changes, so the
-remaining gap is the untyped interior shapes in this section — not DTO
-parity, which target 4 shows is already enforced.
+enforced part is CLI and thin-wrapper-MCP field parity. The remaining
+gaps are the untyped interior shapes in this section plus the
+manifest-projection and legacy-MCP parity target 4 shows as uncovered.
 
 Classification: test/contract-driven, amplified by language/tooling
 (target 2). Typing the hotspots in this section is what makes the
