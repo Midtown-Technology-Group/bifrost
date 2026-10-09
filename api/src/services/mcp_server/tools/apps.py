@@ -14,6 +14,7 @@ from typing import Any
 
 from fastmcp.tools import ToolResult
 
+from shared.scope_resolver import has_scope_bypass
 from src.core.app_scaffold import APP_INDEX_SOURCE, APP_LAYOUT_SOURCE
 from src.core.pubsub import publish_app_draft_update
 from src.services.mcp_server.tool_result import error_result, success_result
@@ -22,6 +23,24 @@ from src.services.mcp_server.tools._org_scope import apply_mcp_org_scope
 from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
+
+
+def _write_scope_bypass(context: Any) -> bool:
+    return has_scope_bypass(
+        is_platform_admin=getattr(context, "is_platform_admin", False),
+        is_provider_org=getattr(context, "is_provider_org", False),
+    )
+
+
+def _app_write_denied(context: Any, app: Any) -> bool:
+    """Whether the caller lacks write scope for ``app``.
+
+    Writing to any application — own-org included — requires scope bypass
+    (platform admin or provider-org member), matching REST's
+    ``get_application_for_write_or_404``.
+    """
+    del app  # write scope no longer depends on the app's org
+    return not _write_scope_bypass(context)
 
 
 def _pick_slug_row(rows: list[Any], org_id: Any) -> Any | None:
@@ -139,6 +158,11 @@ async def create_app(
     from src.services.file_storage import FileStorageService
 
     logger.info(f"MCP create_app called with name={name}, scope={scope}")
+
+    if not _write_scope_bypass(context):
+        return error_result(
+            "Only a platform admin or provider-org member can create applications."
+        )
 
     if not name:
         return error_result("name is required")
@@ -345,6 +369,13 @@ async def update_app(
             app = result.scalar_one_or_none()
 
             if not app:
+                return error_result(f"Application not found: {app_id}")
+
+            # Writing requires scope bypass — the same rule the REST router
+            # enforces via get_application_for_write_or_404. Report the same
+            # not-found message as the lookup above so a caller can't
+            # distinguish "no write access" from "doesn't exist".
+            if _app_write_denied(context, app):
                 return error_result(f"Application not found: {app_id}")
 
             # Solution-managed apps are read-only (criterion 6) — refuse before
@@ -878,6 +909,18 @@ async def push_files(
                     [delete_prefix],
                 )
 
+            delete_prefix_paths: set[str] = set()
+            if delete_prefix:
+                existing_files = await db.execute(
+                    select(FileIndex.path).where(FileIndex.path.startswith(f"{delete_prefix}/"))
+                )
+                delete_prefix_paths = {row[0] for row in existing_files.all()} - set(files)
+            if not getattr(context, "is_platform_admin", False):
+                return error_result(
+                    "You don't have permission to write one or more of these paths.",
+                    {"denied_paths": sorted(set(files) | delete_prefix_paths)},
+                )
+
             file_storage = FileStorageService(db)
             created = 0
             updated = 0
@@ -914,13 +957,7 @@ async def push_files(
                     push_errors.append(f"{repo_path}: {str(e)}")
 
             if delete_prefix:
-                prefix = f"{delete_prefix}/"
-                existing_files = await db.execute(
-                    select(FileIndex.path).where(FileIndex.path.startswith(prefix))
-                )
-                existing_paths = {row[0] for row in existing_files.all()}
-                push_paths = set(files.keys())
-                for path_to_delete in existing_paths - push_paths:
+                for path_to_delete in delete_prefix_paths:
                     try:
                         await file_storage.delete_file(path_to_delete)
                         deleted += 1
@@ -1125,6 +1162,10 @@ async def update_app_dependencies(
             result = await db.execute(query)
             app = result.scalar_one_or_none()
             if not app:
+                return error_result(f"Application not found: {app_id}")
+
+            # Writing requires scope bypass (see _app_write_denied).
+            if _app_write_denied(context, app):
                 return error_result(f"Application not found: {app_id}")
 
             # Solution-managed apps are read-only (criterion 6) — refuse before

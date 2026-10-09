@@ -386,6 +386,9 @@ async def register_workflow(
         guard_workspace_registration_mutation,
     )
 
+    if not context.is_platform_admin:
+        return error_result("Only platform admins can register workflows")
+
     if not path:
         return error_result("path is required")
     if not function_name:

@@ -23,6 +23,7 @@ from src.repositories.policy_rule import PolicyRuleRepository
 from shared.policies.subscription import decide_visibility_change
 from shared.role_cache import get_user_roles
 from src.core.auth import get_current_user_ws
+from src.core.exceptions import AccessDeniedError
 from src.core.principal import UserPrincipal
 from src.core.database import get_db_context
 from src.core.log_safety import log_safe
@@ -31,7 +32,8 @@ from src.models import Conversation, Execution
 from src.models.contracts.policies import Expr, TablePolicies
 from src.models.contracts.policies import FileAction
 from src.models.orm import Agent
-from src.models.orm.applications import Application
+from src.models.orm.cli import CLISession
+from src.repositories.applications import ApplicationRepository
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
 from src.models.orm.tables import Table as TableOrm
 from src.services.agent_run_access import load_agent_run_for_user
@@ -902,12 +904,12 @@ async def can_access_service(user: UserPrincipal, service_id: str) -> bool:
 
 async def can_access_app(user: UserPrincipal, app_id: str) -> bool:
     """
-    Check if user can access an application.
+    Check if user can access an application's *live* channel.
 
-    Access is granted if:
-    - User is a superuser (platform admin)
-    - App is global (organization_id is NULL)
-    - App belongs to user's organization
+    Mirrors the REST app-read access check (``get_application_by_id_or_404``):
+    cascade scoping plus the app's own access-level/role check, not bare org
+    membership. Draft channels are handled separately (bypass-only — see
+    the "app:draft:" branches in the connect/subscribe handlers).
 
     Args:
         user: The authenticated user
@@ -916,36 +918,52 @@ async def can_access_app(user: UserPrincipal, app_id: str) -> bool:
     Returns:
         True if user can access, False otherwise
     """
-    # Superusers can access any app
-    if user.is_superuser:
-        return True
-
     try:
         app_uuid = UUID(app_id)
     except ValueError:
         return False
 
     async with get_db_context() as db:
-        result = await db.execute(
-            select(Application.organization_id).where(Application.id == app_uuid)
+        repo = ApplicationRepository(
+            session=db,
+            org_id=user.organization_id,
+            user_id=user.user_id,
+            is_superuser=user.is_superuser,
+            is_external=user.is_external,
         )
-        # Note: scalar_one_or_none returns None if no row, or the column value (which may also be None for global apps)
-        # We need to check if the row exists first
-        row_result = result.one_or_none()
+        try:
+            await repo.can_access(id=app_uuid)
+            return True
+        except AccessDeniedError:
+            return False
 
-        if row_result is None:
-            # App doesn't exist - allow subscription anyway
-            # (they won't receive anything, and this avoids timing attacks)
+
+async def can_access_cli_session(user: UserPrincipal, session_id: str) -> bool:
+    """Check if a user may subscribe to a CLI debugging session's channel.
+
+    CLI sessions carry an owning ``user_id``; only the owner or a platform
+    admin may subscribe.
+    """
+    if user.is_superuser:
+        return True
+
+    try:
+        session_uuid = UUID(session_id)
+    except ValueError:
+        return False
+
+    async with get_db_context() as db:
+        result = await db.execute(
+            select(CLISession.user_id).where(CLISession.id == session_uuid)
+        )
+        row = result.scalar_one_or_none()
+
+        if row is None:
+            # Session doesn't exist - allow subscription anyway (they won't
+            # receive anything; avoids leaking existence via timing).
             return True
 
-        org_id = row_result[0]
-
-        # Global app (organization_id is NULL) - accessible to all authenticated users
-        if org_id is None:
-            return True
-
-        # Org-scoped app - check if user is in the same org
-        return org_id == user.organization_id
+        return row == user.user_id
 
 
 def _agent_runs_channel_for_user(user: UserPrincipal) -> str | None:
@@ -1100,11 +1118,10 @@ async def websocket_connect(
             if user.is_superuser:
                 allowed_channels.append(channel)
         elif channel.startswith("git:"):
-            # Git job channels - ephemeral, job-specific UUIDs
-            # Authorization: any authenticated user can subscribe
-            # The job_id is a one-time UUID that only the requester knows
-            # (returned by the API after queueing the job)
-            allowed_channels.append(channel)
+            # Git job channels have no owning-user record to check against;
+            # gate to platform admins until they carry real job ownership.
+            if user.is_superuser:
+                allowed_channels.append(channel)
         elif channel.startswith("notification:"):
             # Notification channels - users can subscribe to their own
             if channel == f"notification:{user.user_id}":
@@ -1135,28 +1152,29 @@ async def websocket_connect(
             if channel == f"devrun:{user.user_id}":
                 allowed_channels.append(channel)
         elif channel.startswith("cli-session:"):
-            # CLI session channels - allow all (session ownership validated elsewhere)
-            allowed_channels.append(channel)
+            # CLI session channels - owner (or platform admin) only
+            session_id = channel.split(":", 1)[1]
+            if await can_access_cli_session(user, session_id):
+                allowed_channels.append(channel)
         elif channel.startswith("cli-sessions:"):
             # CLI sessions list channel - users can subscribe to their own
             if channel == f"cli-sessions:{user.user_id}":
                 allowed_channels.append(channel)
         elif channel.startswith("event-source:"):
-            # Event source channels for real-time event updates
-            # Platform admins can view all, org users can view their org's sources
-            # Access is validated on event delivery, so we allow subscription
-            allowed_channels.append(channel)
+            # Event source channels for real-time event updates - bypass-only,
+            # matching the REST events router (list/get sources are admin-only).
+            if user.is_superuser:
+                allowed_channels.append(channel)
         elif channel.startswith("reindex:"):
             # Reindex job progress channels - platform admins only
             if user.is_superuser:
                 allowed_channels.append(channel)
         elif channel.startswith("app:draft:"):
-            # App Builder draft channels - validate user has access to the app
-            app_id = channel.split(":", 2)[2]
-            if await can_access_app(user, app_id):
+            # App Builder draft channels are an authoring surface - bypass-only.
+            if user.is_superuser:
                 allowed_channels.append(channel)
         elif channel.startswith("app:live:"):
-            # App Builder live channels - validate user has access to the app
+            # App Builder live channels - same access check as the REST app read.
             app_id = channel.split(":", 2)[2]
             if await can_access_app(user, app_id):
                 allowed_channels.append(channel)
@@ -1348,22 +1366,38 @@ async def websocket_connect(
                             "channel": channel
                         })
                     elif channel.startswith("cli-session:"):
-                        if channel not in manager.connections:
-                            manager.connections[channel] = set()
-                        manager.connections[channel].add(websocket)
-                        await websocket.send_json({
-                            "type": "subscribed",
-                            "channel": channel
-                        })
+                        session_id = channel.split(":", 1)[1]
+                        if await can_access_cli_session(user, session_id):
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
                     elif channel.startswith("event-source:"):
-                        # Event source channels for real-time event updates
-                        if channel not in manager.connections:
-                            manager.connections[channel] = set()
-                        manager.connections[channel].add(websocket)
-                        await websocket.send_json({
-                            "type": "subscribed",
-                            "channel": channel
-                        })
+                        # Event source channels - bypass-only, matching the
+                        # REST events router.
+                        if user.is_superuser:
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
                     elif channel.startswith("history:"):
                         # History channels for real-time execution updates
                         # history:user:{user_id} - Allow only for the user's own channel
@@ -1382,8 +1416,24 @@ async def websocket_connect(
                                 "channel": channel,
                                 "message": "Access denied"
                             })
-                    elif channel.startswith("app:draft:") or channel.startswith("app:live:"):
-                        # App Builder channels - validate user has access to the app
+                    elif channel.startswith("app:draft:"):
+                        # App Builder draft channels are an authoring surface - bypass-only.
+                        if user.is_superuser:
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
+                    elif channel.startswith("app:live:"):
+                        # App Builder live channels - same access check as the REST app read.
                         app_id = channel.split(":", 2)[2]
                         if await can_access_app(user, app_id):
                             if channel not in manager.connections:
@@ -1416,15 +1466,13 @@ async def websocket_connect(
                                 "message": "Access denied"
                             })
                     elif channel.startswith("git:"):
-                        # Git sync job channels - ephemeral, job-specific UUIDs
-                        # Any authenticated user can subscribe (job ID is a secret token)
-                        if channel not in manager.connections:
-                            manager.connections[channel] = set()
-                        manager.connections[channel].add(websocket)
-                        await websocket.send_json({
-                            "type": "subscribed",
-                            "channel": channel
-                        })
+                        if user.is_superuser:
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({"type": "subscribed", "channel": channel})
+                        else:
+                            await websocket.send_json({"type": "error", "channel": channel, "message": "Access denied"})
                     elif channel.startswith("agent-run:"):
                         run_id = channel.split(":", 1)[1]
                         if await can_access_agent_run(user, run_id):

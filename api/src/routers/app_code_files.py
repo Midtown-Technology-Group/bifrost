@@ -269,6 +269,29 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
         )
 
 
+async def get_application_for_write_or_404(ctx: Context, app_id: UUID) -> Application:
+    """Get application by UUID, enforcing write scope.
+
+    Read access (including the embed-token binding above) resolves exactly
+    as ``get_application_or_404``. Writing to an application's files
+    requires platform-admin authority, for
+    every application — own-org included. An embed principal has no
+    organization and no bypass flags, so it can never satisfy this rule —
+    embed tokens only ever get read access to app files.
+
+    Raises the identical 404 the read helper uses, so a caller cannot tell
+    "exists but no write access" apart from "does not exist".
+    """
+    app = await get_application_or_404(ctx, app_id)
+    is_bypass = ctx.user.is_platform_admin
+    if is_bypass:
+        return app
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Application '{app_id}' not found",
+    )
+
+
 class FileMode(str, Enum):
     draft = "draft"
     live = "live"
@@ -444,7 +467,7 @@ async def write_app_file(
     S3 _repo/ storage, file_index update, pubsub, and preview sync).
     """
     require_platform_admin(user)
-    app = await get_application_or_404(ctx, app_id)
+    app = await get_application_for_write_or_404(ctx, app_id)
     # Solution-managed app source is read-only on the platform — only deploy
     # may write it. The before_flush backstop can't see this: it writes to S3 +
     # file_index, never dirtying the Application ORM row. (criterion 6)
@@ -497,7 +520,7 @@ async def delete_app_file(
     file_index cleanup, pubsub, and preview sync).
     """
     require_platform_admin(user)
-    app = await get_application_or_404(ctx, app_id)
+    app = await get_application_for_write_or_404(ctx, app_id)
     # Read-only for solution-managed apps (S3 delete bypasses the ORM backstop).
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     prefix = _server_source_prefix(app)
@@ -715,6 +738,21 @@ async def get_bundle_manifest(
                     "Publish the application to rebuild the live bundle."
                 ),
             )
+
+        if not ctx.user.is_platform_admin:
+            if manifest_bytes is None:
+                raise HTTPException(status_code=404, detail="Bundle manifest not built yet")
+            m = _json.loads(manifest_bytes)
+            return {
+                "entry": m.get("entry"),
+                "css": m.get("css"),
+                "base_url": f"/api/applications/{app_id}/bundle-asset",
+                "mode": storage_mode,
+                "dependencies": m.get("dependencies") or (app.dependencies or {}),
+                "migrated": False,
+                "organization_id": str(app.organization_id) if app.organization_id else None,
+                "app_model": app.app_model,
+            }
 
         repo_prefix = app.repo_prefix
         # Serialize migrate+rebuild across concurrent first-viewers so two
@@ -950,7 +988,7 @@ async def put_dependencies(
     Validates every package name and version, enforces the max-dependency limit.
     """
     require_platform_admin(user)
-    app = await get_application_or_404(ctx, app_id)
+    app = await get_application_for_write_or_404(ctx, app_id)
     # Dependencies are solution-owned metadata — read-only for managed apps.
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
