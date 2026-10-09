@@ -137,7 +137,8 @@ the exact candidate is published to existing PR #1018. Supported PR CI
 [37991033951](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37991033951)
 and manual CI
 [37991094247](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37991094247)
-are pending. The latter runs the existing literal `bash test.sh pre-pr` job;
+both completed failed on Docker Hub pull limits. Planning, lint/type and client
+unit tests passed. The latter ran the existing literal `bash test.sh pre-pr` job;
 no custom verification workflow was added. Historical AUTH-P1 CI does not
 qualify this candidate.
 
@@ -160,6 +161,12 @@ disposition, exact writer/cascade catalog and reviewed migration/profile diff
 remain prerequisites. No additional SDK capability or implementation release
 is authorized by documenting these proposals.
 
-Fresh AUTH-P1 ARM64/reliability runs failed before product tests on Docker Hub
-unauthenticated pull-limit responses. Original logs are retained; both checks
-remain blocking. No retry was dispatched while the quota condition persisted.
+Fresh AUTH-P1 ARM64/reliability runs and all PR candidate/CI image producers
+failed on Docker Hub unauthenticated pull-limit responses. Candidate Images
+and E2E failed their dependency gates. Manual pre-PR tripwires passed before a
+Redis pull-limit failure at infrastructure startup. Backend tests, client E2E,
+MCP, ARM64 smoke and reliability behavior did not execute. The digest-verified
+manual pre-PR artifact has an empty container inventory after teardown; this
+alone does not prove network/volume cleanup. Original logs/run/combined-tree
+identities are retained; all failed gates remain blocking. No retry was
+dispatched without evidence the quota condition cleared.
