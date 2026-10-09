@@ -525,3 +525,54 @@ owner interface proposal has not received the human architecture release require
 by #1132 Package4; goal continuation is not that approval. Independent session
 work remains available, so the goal stays active rather than blocked or complete.
 No production/vendor mutation, expanded credentials, PR creation, merge or deploy.
+
+## Independent Python session specification checkpoint (2026-10-09)
+
+Candidate `9991601616db10318e89d62d567e02fe19c6a4af` adds a separate Python
+transcript checker from the published profile rules and pinned fixtures. Current
+platform main remains `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d` and #1132 remains
+open at `35daf020d5e1286f82bdfed6bb3fc537bf3d78f6`. Neither ref is promoted to
+authority. [Exact retained proof](python-session-conformance-proof.json) binds
+the source, diagnostic outputs, peer exchange receipts and native measurements.
+
+Hosted diagnostic run38001310239 passed. Independent Python now matches all68
+session scenarios and695 steps including named fixture setups, with69 tests
+including inventory validation. Each step checks its expected error and complete
+published snapshot. Every rejected step additionally checks that the entire
+private Python model state is unchanged, including sequences, raw payloads,
+receipt preimage and observation frontiers. The checker uses the independent
+Python stream codec; it imports neither the proposal oracle nor platform/Rust
+implementation code. Fixture insertion order preserves the declared raw receipt
+preimage, rather than normalizing received bytes.
+
+Go session-model conformance remains green. Structural/wire checks retain237
+named proposed Go passes,144 unchanged P0 Go passes,169 Python codec tests and167
+Rust codec tests. All six18-message peer encoding directions and semantic-drift
+negatives passed. Independent Rust session conformance remains unimplemented;
+Package1 acceptance is still incomplete.
+
+Hosted full native run38001310078 passed:414 Go test/subtest passes,41 direct
+and15 pooled reduced ownership checks, normal test/build/static/security checks,
+synthetic HTTPS SDK execution and local cancellation, plus existing P0 peer
+interchange. Downloaded workflow and warm-edit binaries and module graph match
+the descriptor. Its experimental signature verifies independently; no application
+or container ran on the physical pve-t340 host. Native workflow bytes remain
+`160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
+
+Fresh observations:15.732s cold compile with resolved modules,15.342s independent
+empty compile cache,360.15ms warm edit,342.48ms restored warm compile,630.42ms
+edit→artifact,4.708ms median local execution (20 samples) and0.400ms cooperative
+local cancellation. These are fixture/developer-loop measurements, not genuine
+Rust lifecycle latency. SDK remains0.0.0-spike.2, MTG package2026-10-09.1 and
+Engineering Flow/PR Stewardship2026-10-06.1.
+
+The Python checker is test-only. Commit, grant, delivery, release and cleanup
+events are injected assumptions; it cannot issue a credential, launch a tenant,
+write SQL or finalize a result. No new production session state machine or writer
+exists. The same-artifact conforming supervisor execution, real Rust admission,
+Start, cancellation, durable Result/Receipt, public Execution API readback and
+actual whole-schema writer exclusion remain unproved. The pending common owner
+interface proposal still lacks #1132 Package4's required human architecture
+release. Next safe work is independent Rust session conformance; the full goal
+stays active. Decision CONTINUE SPIKE. No production/vendor mutation, expanded
+credentials, PR creation, merge or deployment was performed.

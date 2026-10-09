@@ -1,0 +1,217 @@
+{
+  "status": "independent-python-session-specification-proof-not-runtime-authority",
+  "source": "9991601616db10318e89d62d567e02fe19c6a4af",
+  "proposal_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+  "diagnostic_run": 38001310239,
+  "conclusion": "success",
+  "session": {
+    "languages": [
+      "Go test model",
+      "independent Python test model"
+    ],
+    "cases_per_language": 68,
+    "steps_including_setup_per_language": 695,
+    "python_tests_including_inventory": 69,
+    "rejection_checks": "Expected error, exact published after-snapshot, and unchanged entire private Python test state on every rejected step.",
+    "rust_session_conformance": "not implemented or proved"
+  },
+  "codec_named_passes": {
+    "Go": {
+      "github.com/midtown-technology-group/bifrost-go/executionprofile": 237,
+      "github.com/midtown-technology-group/bifrost-go/runtimecontrol": 144
+    },
+    "Python": 169,
+    "Rust": 167
+  },
+  "peer_exchange_receipts": {
+    "execution-peer-receipt.json": {
+      "status": "proposed-wire-peer-proof-not-runtime-authority",
+      "reference_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+      "go_encoder_to_python_oracle_decoder": 18,
+      "python_oracle_encoder_to_go_decoder": 18,
+      "message_types": [
+        "Cancel",
+        "Heartbeat",
+        "LogBatch",
+        "Offer",
+        "Prepare",
+        "Prepared",
+        "Provision",
+        "Result",
+        "ResultReceipt",
+        "Select",
+        "Start",
+        "Stopped",
+        "Usage"
+      ],
+      "deliberate_shape_valid_drift_rejected": [
+        "Go",
+        "Python oracle"
+      ],
+      "python_version": "3.12.3",
+      "reference_dependencies": {
+        "attrs": "26.1.0",
+        "jsonschema": "4.26.0",
+        "jsonschema-specifications": "2025.9.1",
+        "referencing": "0.37.0",
+        "rpds-py": "0.30.0",
+        "typing-extensions": "4.15.0"
+      },
+      "binary_sha256": "d1abd53fca6407f649a4107f16ad382b82487b16e93ef4ab2456360fbd9bdf67",
+      "exchange_sha256": {
+        "go-execution-exchange.json": "93237f9eda4673d6fd470ac78dbf2ec2f7c8c7fd906900551275591d126038e8",
+        "python-execution-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99"
+      },
+      "limits": [
+        "Python peer is the proposal's test-only oracle, not an extracted production runtime.",
+        "Independent Python/Rust codec proof is recorded in separate component receipts.",
+        "Frames are independent specimens, not a legal session or workflow execution.",
+        "No Session/release/commit/delivery event, SDK credential or durable store was used."
+      ]
+    },
+    "python-stream-peer-receipt.json": {
+      "status": "independent-python-stream-component-proof-not-owner-acceptance",
+      "reference_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+      "go_to_independent_python": 18,
+      "independent_python_to_go": 18,
+      "message_types": [
+        "Cancel",
+        "Heartbeat",
+        "LogBatch",
+        "Offer",
+        "Prepare",
+        "Prepared",
+        "Provision",
+        "Result",
+        "ResultReceipt",
+        "Select",
+        "Start",
+        "Stopped",
+        "Usage"
+      ],
+      "independent_python_semantic_drift_rejected": true,
+      "codec_source_sha256": "a1737fe550888b42de30602a1fb6864d50bae55721447248b9bcf683393e345a",
+      "exchange_sha256": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+      "limits": [
+        "Candidate stream codec, not a deployed/extracted Python runtime.",
+        "No session, lifecycle, provision or tenant execution; Rust proof has a separate receipt."
+      ]
+    },
+    "rust-execution-peer-receipt.json": {
+      "status": "independent-rust-wire-peer-proof-not-owner-acceptance",
+      "reference_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+      "rust_encodings_to_go_and_independent_python": 18,
+      "go_and_independent_python_encodings_to_rust": 18,
+      "rust_semantic_drift_rejected": true,
+      "raw_result_receipt_hashes": {
+        "go-execution-exchange.json": {
+          "frames_validated": 18,
+          "result_payload_sha256": {
+            "depth-boundary": "e2d165587a52bc0013dcbefaef3c3b3ffa4b931b5236a5974a0d34ba62935b97",
+            "valid-Result": "be48e93d57b05b77e1434ed4e151926d776cde0b26d4386dc4abca58991a4fe4",
+            "valid-error": "307fcc0a817be2e71eca80c8c35a44b8f232fcde330a1f845760c6b9ed47373c"
+          }
+        },
+        "python-stream-exchange.json": {
+          "frames_validated": 18,
+          "result_payload_sha256": {
+            "depth-boundary": "f43f3c891b72601bf1d85a4b7b9ea78a57419b3468ed8ebe7795fcb4b5386175",
+            "valid-Result": "f8df3fe162909d474705085a565872fa473afb9598c088c6ec35b5eedba8c7b4",
+            "valid-error": "982dda1fb655ddc1e7f50e2ddef09c8e401bc3ef5102907dde19dcce0425caa5"
+          }
+        }
+      },
+      "rust_binary_sha256": "2946f1adfe695e297789976f5bc848f44533d780639d1e2411ffaab6b9b6edcf",
+      "rust_exchange_sha256": "1018da564101f54e337c561b9f15afa569276d2ee90a6d938a8c0b06370c1af0",
+      "limits": [
+        "No session/transcript acceptance or supervisor authority.",
+        "No tenant process, grant, durable Result or Execution API."
+      ]
+    }
+  },
+  "retained_diagnostic_files": {
+    "execution-peer-receipt.json": "b65b2f7485372cc3c33a9b92722ef43d80a852737192ceb4062cf635020a81b8",
+    "executioncheck": "d1abd53fca6407f649a4107f16ad382b82487b16e93ef4ab2456360fbd9bdf67",
+    "go-execution-exchange.json": "93237f9eda4673d6fd470ac78dbf2ec2f7c8c7fd906900551275591d126038e8",
+    "go-version.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+    "proposal-provenance.json": "54680654f80d5d44233b9f9a2b6ece11e635b91cbad0ace5b5f3033094d801e6",
+    "python-execution-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "python-session-tests.txt": "5150ddfd4a4cb72887fc52abdc695e992a2ee9f4906902d5083b0a74c015b097",
+    "python-stream-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "python-stream-peer-receipt.json": "72c367d49c80ece1d4fbcaa5c617a06a4cfec0ad88d543ce908a11f8b7ab67ec",
+    "python-stream-tests.txt": "81d8540ccbf630c1678bb4b07be0f7389878954801e01c9b5e9170877ebf9cfb",
+    "rust-dependency-provenance.json": "cf496117155765bb9ffec36ba9bce47a71ce9173021399b4de337f634607db78",
+    "rust-execution-Cargo.lock": "61b6735cd14842fc504e49ab332617dda30bcf9ad547218d034d61306d2b957e",
+    "rust-execution-build.txt": "95585a51c19c5a964ca6296829278fc081986982ad0b37d9269ab56fd62d49fc",
+    "rust-execution-clippy.txt": "4d18a1cfa659835f8c80407b08e0aa67f8366fd7d08a848199dac3e703973b6f",
+    "rust-execution-exchange.json": "1018da564101f54e337c561b9f15afa569276d2ee90a6d938a8c0b06370c1af0",
+    "rust-execution-fetch.txt": "e0dcb02d87bce83fb854e0bba62120df59608dfe505b3bff3b3850c293b61d50",
+    "rust-execution-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rust-execution-peer-receipt.json": "26817e210ceb1b101aa049b1e45ff2d57f2eb09c236ba2e8face70804f014ba6",
+    "rust-execution-tests.txt": "90b5e0be1176bd52e947fc5698b8045fa93475cec7b082420424f1198037cebf",
+    "rust-execution-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+    "rust-executioncheck": "2946f1adfe695e297789976f5bc848f44533d780639d1e2411ffaab6b9b6edcf",
+    "rust-installed-components.txt": "e8831f6eab33b6dd0f72364237d8f7a00d762711a08608010877e0ce0b7f667b",
+    "rust-tools-build.txt": "a71b44c4499fe9d61e129847d0b16e795f61bc368651773afd62938067e8fb7b",
+    "rust-tools-cleanup.txt": "662786b5820c0e7df48cfd69306c3ffb3198f361b45bdbccdc11f6c1dd472828",
+    "rust-tools-image.txt": "fc7531f67765044c134a72d9c7f35e0e87eac37bf8bfa8f0e7f28febc2b04919",
+    "scope.txt": "759ef0f51c7fd53f5d5481fbf2f4f7a72746f00f63dac844def4bda8eac131d4",
+    "source-sha.txt": "0a5a7b6e3f10a48994879af8a82eb8ce94f0ae02c0803c4a259fae422164ee1f",
+    "tests.jsonl": "d910b9c3f6ec4736fa8a3a8f3c2e9520ac7a9b98fcbdf74eb4a3d2fae5ee412f"
+  },
+  "checker_source_sha256": "13c1fe09f2a5978a77493ee6f5601892f683a8be90aeaef1ac1123241980fd1a",
+  "limits": [
+    "Owner commit, grant, private delivery, release and cleanup events are injected assumptions, not authority.",
+    "The checker imports neither the reference oracle nor platform implementation code.",
+    "No tenant process, SDK credential, SQL, durable projection, public Execution API or actual supervised cleanup is present.",
+    "No native runtime integration or architecture release follows from these tests."
+  ],
+  "sdk_version": "0.0.0-spike.2",
+  "mtg_package_version": "2026-10-09.1",
+  "full_native_component": {
+    "run": 38001310078,
+    "conclusion": "success",
+    "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "artifact_size_bytes": 9920235,
+    "named_go_tests": 414,
+    "descriptor_sha256": "129367dc8a9fba15d507d763d9d394efa5a1f813eabbef8b78d0c3da2dc4ef39",
+    "descriptor_signature": "Downloaded signature independently verified; experimental ephemeral key, not accepted admission trust.",
+    "timings_ms": {
+      "module_download": 108.347758,
+      "cold_compile_warm_modules": 15731.758675,
+      "independent_cold_compile": 15342.251021,
+      "warm_source_edit_compile": 360.14974,
+      "restored_warm_compile": 342.481558,
+      "edit_to_artifact": 630.418351
+    },
+    "execution_summary": {
+      "startup_to_sdk_ms": {
+        "median": 4.120141500000001,
+        "p95": 4.516662,
+        "n": 20
+      },
+      "execution_ms": {
+        "median": 4.707582,
+        "p95": 5.04243,
+        "n": 20
+      },
+      "max_rss_kib": {
+        "median": 13064.0,
+        "p95": 13064,
+        "n": 20
+      }
+    },
+    "cancellation_ms": 0.400443,
+    "scope": "Synthetic HTTPS SDK and local cancellation only; no genuine Rust lifecycle overhead.",
+    "reduced_ownership": {
+      "ownership-evidence.json": {
+        "checks": 41,
+        "sha256": "095050401eee21d79eec64d81d31c9534b5ede19f8a11dfe7bfa1e3494d8631d"
+      },
+      "ownership-pool-evidence.json": {
+        "checks": 15,
+        "sha256": "d4e385a16d180a14e5f47e73b1ae84f0f91b3ee17b16182307600e1b8cfded65"
+      }
+    }
+  }
+}
