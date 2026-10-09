@@ -225,8 +225,11 @@ def verify_workflow_removal_evidence(evidence: dict[str, Any] | WorkflowRemovalE
     if len(trusted) != 1:
         raise ValueError("Evidence producer is not uniquely trusted")
     try:
+        signature = base64.b64decode(receipt.signature, validate=True)
+        if base64.b64encode(signature).decode("ascii") != receipt.signature:
+            raise ValueError("Noncanonical evidence signature encoding")
         key = Ed25519PublicKey.from_public_bytes(base64.b64decode(trusted[0].public_key, validate=True))
-        key.verify(base64.b64decode(receipt.signature, validate=True),
+        key.verify(signature,
                    canonical_bytes(receipt.model_dump(exclude={"signature"}, mode="json")))
     except (InvalidSignature, ValueError) as exc:
         raise ValueError("Evidence signature verification failed") from exc
