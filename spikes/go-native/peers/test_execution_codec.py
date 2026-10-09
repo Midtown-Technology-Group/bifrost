@@ -11,6 +11,7 @@ from execution_codec import MAX_FRAME, Codec, CodecError
 
 CORPUS = Path(__file__).resolve().parent.parent / "executionprofile/testdata/wire-vectors.json"
 VECTORS = json.loads(CORPUS.read_text())
+STRUCTURAL = json.loads((CORPUS.parent / "structural-vectors.json").read_text())
 
 
 def specimen(vector):
@@ -67,6 +68,16 @@ def wire_test(vector):
 
 for index, vector in enumerate(VECTORS):
     setattr(WireTests, f"test_wire_{index:03d}_{vector['name'].replace('-', '_')}", wire_test(vector))
+
+
+def structural_test(vector):
+    def test(self):
+        self.assertEqual(self.codec.matches_schema(vector["frame"]), vector["valid"])
+    return test
+
+
+for index, vector in enumerate(STRUCTURAL):
+    setattr(WireTests, f"test_structural_{index:03d}", structural_test(vector))
 
 
 class StreamTests(unittest.TestCase):

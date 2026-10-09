@@ -50,6 +50,10 @@ impl Codec {
         })
     }
 
+    pub fn matches_schema(&self, document: &Value) -> bool {
+        self.schemas.valid(document)
+    }
+
     pub fn decode(&self, payload: &[u8]) -> Result<Decoded, Error> {
         if payload.len() > MAX_FRAME {
             return Err(Error::FrameTooLarge);

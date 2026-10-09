@@ -13,7 +13,9 @@
     "contracts/runtime/v1/language-neutral/provision-binding.schema.json": "d24a4a82b9af81f932af35db4fae2e410a7986bbd439febb5ce51daf37a495d1",
     "contracts/runtime/v1/language-neutral/workload.schema.json": "8371c02a25f0c6c7b61275f336c7774206f70c52b0afd5733c706c778bff87cf",
     "contracts/runtime/v1/execution-profile/profile.schema.json": "92809f3571f637c8bd639565396ab99a863e74444fd38059a3973071e3eb2279",
-    "contracts/runtime/v1/execution-profile/wire-vectors.json": "2cbf39883853d56938e9f00f15f5d035aabaaa75d1442f88577bd7d5812d4775"
+    "contracts/runtime/v1/execution-profile/wire-vectors.json": "2cbf39883853d56938e9f00f15f5d035aabaaa75d1442f88577bd7d5812d4775",
+    "contracts/runtime/v1/execution-profile/structural-vectors.json": "612bf1ef4b66b2cef5ce9f9934ee3f8b1ac419823209b2c2ff426b7c7131910f",
+    "contracts/runtime/v1/execution-profile/session-vectors.json": "da9f664d12891f3384b28ccb9b7a7d72cfda0fd18c2ed08bb736f85f4727a47e"
   },
   "oracle_dependencies_sha256": "0608efd25b654713d7c208aea3881c9d3f5a1da148543f691fe6e1a3c231543e"
 }

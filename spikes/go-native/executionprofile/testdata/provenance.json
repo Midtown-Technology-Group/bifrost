@@ -17,6 +17,14 @@
     "testdata/wire-vectors.json": {
       "source_path": "contracts/runtime/v1/execution-profile/wire-vectors.json",
       "sha256": "2cbf39883853d56938e9f00f15f5d035aabaaa75d1442f88577bd7d5812d4775"
+    },
+    "testdata/structural-vectors.json": {
+      "source_path": "contracts/runtime/v1/execution-profile/structural-vectors.json",
+      "sha256": "612bf1ef4b66b2cef5ce9f9934ee3f8b1ac419823209b2c2ff426b7c7131910f"
+    },
+    "testdata/session-vectors.json": {
+      "source_path": "contracts/runtime/v1/execution-profile/session-vectors.json",
+      "sha256": "da9f664d12891f3384b28ccb9b7a7d72cfda0fd18c2ed08bb736f85f4727a47e"
     }
   },
   "previous_proposal_head": "370230fb4d42f481c9fb94efc8cc9ca7f1185e8c"

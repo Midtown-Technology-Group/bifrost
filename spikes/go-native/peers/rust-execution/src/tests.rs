@@ -278,3 +278,94 @@ case_test!(wire_090_exact_max_frame, 90);
 case_test!(wire_091_body_uuid_trailing_newline, 91);
 case_test!(wire_092_artifact_hash_trailing_newline, 92);
 case_test!(wire_093_float_attempt_in_binding, 93);
+
+fn structural_case(index: usize) {
+    let cases: Value = serde_json::from_str(include_str!(
+        "../../../executionprofile/testdata/structural-vectors.json"
+    ))
+    .unwrap_or_else(|_| panic!("invalid trusted structural corpus"));
+    assert_eq!(cases.as_array().map(Vec::len), Some(68));
+    let case = &cases[index];
+    assert_eq!(
+        Some(codec().matches_schema(&case["frame"])),
+        case["valid"].as_bool(),
+        "{}",
+        case["name"]
+    );
+}
+macro_rules! structural_test {
+    ($name:ident, $index:expr) => {
+        #[test]
+        fn $name() {
+            structural_case($index);
+        }
+    };
+}
+structural_test!(structural_000_valid_offer, 0);
+structural_test!(structural_001_valid_select, 1);
+structural_test!(structural_002_valid_prepare, 2);
+structural_test!(structural_003_valid_prepared, 3);
+structural_test!(structural_004_valid_start, 4);
+structural_test!(structural_005_valid_provision, 5);
+structural_test!(structural_006_valid_heartbeat, 6);
+structural_test!(structural_007_valid_logbatch, 7);
+structural_test!(structural_008_valid_usage, 8);
+structural_test!(structural_009_valid_result, 9);
+structural_test!(structural_010_valid_cancel, 10);
+structural_test!(structural_011_valid_stopped, 11);
+structural_test!(structural_012_valid_resultreceipt, 12);
+structural_test!(structural_013_valid_error, 13);
+structural_test!(structural_014_artifact_native_executable_v1, 14);
+structural_test!(structural_015_artifact_interpreted_runtime_v1, 15);
+structural_test!(structural_016_artifact_managed_runtime_v1, 16);
+structural_test!(structural_017_missing_body_field_offer, 17);
+structural_test!(structural_018_unknown_body_field_offer, 18);
+structural_test!(structural_019_missing_body_field_select, 19);
+structural_test!(structural_020_unknown_body_field_select, 20);
+structural_test!(structural_021_missing_body_field_prepare, 21);
+structural_test!(structural_022_unknown_body_field_prepare, 22);
+structural_test!(structural_023_missing_body_field_prepared, 23);
+structural_test!(structural_024_unknown_body_field_prepared, 24);
+structural_test!(structural_025_missing_body_field_start, 25);
+structural_test!(structural_026_unknown_body_field_start, 26);
+structural_test!(structural_027_missing_body_field_provision, 27);
+structural_test!(structural_028_unknown_body_field_provision, 28);
+structural_test!(structural_029_missing_body_field_heartbeat, 29);
+structural_test!(structural_030_unknown_body_field_heartbeat, 30);
+structural_test!(structural_031_missing_body_field_logbatch, 31);
+structural_test!(structural_032_unknown_body_field_logbatch, 32);
+structural_test!(structural_033_missing_body_field_usage, 33);
+structural_test!(structural_034_unknown_body_field_usage, 34);
+structural_test!(structural_035_missing_body_field_result, 35);
+structural_test!(structural_036_unknown_body_field_result, 36);
+structural_test!(structural_037_missing_body_field_cancel, 37);
+structural_test!(structural_038_unknown_body_field_cancel, 38);
+structural_test!(structural_039_missing_body_field_stopped, 39);
+structural_test!(structural_040_unknown_body_field_stopped, 40);
+structural_test!(structural_041_missing_body_field_resultreceipt, 41);
+structural_test!(structural_042_unknown_body_field_resultreceipt, 42);
+structural_test!(structural_043_missing_envelope_protocol, 43);
+structural_test!(structural_044_missing_envelope_type, 44);
+structural_test!(structural_045_missing_envelope_session_id, 45);
+structural_test!(structural_046_missing_envelope_message_id, 46);
+structural_test!(structural_047_missing_envelope_sequence, 47);
+structural_test!(structural_048_missing_envelope_correlation_id, 48);
+structural_test!(structural_049_missing_envelope_body, 49);
+structural_test!(structural_050_bool_sequence, 50);
+structural_test!(structural_051_zero_sequence, 51);
+structural_test!(structural_052_unsafe_sequence, 52);
+structural_test!(structural_053_upper_uuid, 53);
+structural_test!(structural_054_success_and_error, 54);
+structural_test!(structural_055_negative_usage, 55);
+structural_test!(structural_056_unbounded_log, 56);
+structural_test!(structural_057_duplicate_capability, 57);
+structural_test!(structural_058_impossible_utc, 58);
+structural_test!(structural_059_utc_offset, 59);
+structural_test!(structural_060_global_with_org, 60);
+structural_test!(structural_061_org_with_null, 61);
+structural_test!(structural_062_missing_original_provenance, 62);
+structural_test!(structural_063_tenant_authority_flag, 63);
+structural_test!(structural_064_adapter_authority_flag, 64);
+structural_test!(structural_065_receipt_accepted_cancel_winner, 65);
+structural_test!(structural_066_secret_provision, 66);
+structural_test!(structural_067_python_only_protocol_field, 67);

@@ -131,6 +131,9 @@ class Codec:
     def __init__(self):
         self._validator = _schema_validator()
 
+    def matches_schema(self, document: object) -> bool:
+        return self._validator.is_valid(document)
+
     def decode(self, payload: bytes) -> Decoded:
         if len(payload) > MAX_FRAME:
             raise CodecError("FrameTooLarge")

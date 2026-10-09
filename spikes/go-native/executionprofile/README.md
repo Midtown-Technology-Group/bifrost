@@ -24,3 +24,13 @@ source and its 99 wire/7 binary/35 session vectors remain unchanged. Supported
 CI runs all existing and new Go tests with the isolated build recipe; physical
 host runtime tests are forbidden. The package does not run the application
 through the full profile or prove cross-language execution-profile interchange.
+
+Structural/session conformance now also has an independent Go specification
+model in `conformance_test.go`. It is compiled only into tests. Its injected
+commit/grant/delivery/release/cleanup events are fixture assumptions: no SDK
+credential, workload callback, SQL, OS launch or durable store exists. A successful
+model release is never runtime authority. It checks the published 68-case
+transcript, both directional frontiers, rejection rollback and raw receipt
+preimages; its status remains unproved until supported CI passes the exact source.
+The same pinned structural documents are consumed by the independent Python and
+Rust components, distinct from their wire/correlation and session layers.
