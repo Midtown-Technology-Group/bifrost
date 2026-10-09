@@ -613,8 +613,9 @@ candidate evidence, not architecture ratification, profile freeze or production
 integration into the accepted Rust/Python seams.
 
 Full native run38001923981 passed414 Go test/subtests,41 direct reduced ownership
-checks and15 distinct pooled checks. The pooled log contains16 observations
-because a successful startup readiness probe repeats; it adds no writer coverage.
+checks and16 pooled observations (14 unique query records). The same denial is
+checked before/during the fixture race, and a live-owner-transaction observation
+probe repeats. These observations add no writer coverage.
 Existing P0 Go/Python/Rust interchange, isolated ordinary Go tests/build/security
 checks, synthetic SDK execution and local cancellation pass. Downloaded native
 and warm binaries and module graph match the descriptor; its experimental

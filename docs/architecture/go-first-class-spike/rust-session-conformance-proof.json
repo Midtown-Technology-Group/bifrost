@@ -209,14 +209,14 @@
       "ownership-evidence.json": {
         "sha256": "095050401eee21d79eec64d81d31c9534b5ede19f8a11dfe7bfa1e3494d8631d",
         "observations": 41,
-        "distinct_checks": 41
+        "unique_query_records": 41
       },
       "ownership-pool-evidence.json": {
         "sha256": "0046e669190cf2a3b3b4253ce55d5b38d84c1b716bba654a0b63af5600e6c765",
         "observations": 16,
-        "distinct_checks": 14
+        "unique_query_records": 14
       }
     },
-    "reduced_ownership_note": "Pool startup readiness can record repeated successful probes. This run has 16 observations for 15 distinct checks, not expanded writer coverage."
+    "reduced_ownership_note": "The pooled log has 16 observations and 14 unique query records: one denial is intentionally repeated before/during the race, and a live-owner-transaction observation probe repeats. This adds no writer coverage."
   }
 }
