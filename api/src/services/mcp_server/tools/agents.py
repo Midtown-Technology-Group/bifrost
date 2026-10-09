@@ -395,7 +395,7 @@ async def create_agent(
             return error_result("organization_id is required when scope='organization' and no context org_id is set")
 
     # Thin wrapper over POST /api/agents: REST enforces the non-admin
-    # rules (forced PRIVATE access_level, forced own org, admin-only
+    # rules (explicit PRIVATE access_level, forced own org, admin-only
     # fields stripped to empty, tool_ids validated against the caller's
     # own accessible tools) — MCP does not re-implement that logic.
     body = {
@@ -403,7 +403,7 @@ async def create_agent(
         "description": description,
         "system_prompt": system_prompt,
         "channels": channels,
-        "access_level": "role_based",
+        "access_level": "role_based" if context.is_platform_admin else "private",
         "organization_id": effective_org_id,
         "tool_ids": tool_ids or [],
         "delegated_agent_ids": delegated_agent_ids or [],

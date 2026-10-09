@@ -6868,6 +6868,10 @@ export interface paths {
         /**
          * Get Accessible Tools
          * @description Get tools the current user can assign to their agents (via role intersection).
+         *
+         *     Role membership alone isn't org scope: also require the tool workflow
+         *     to be in the caller's own org or global, so a role grant on another
+         *     org's tool-type workflow never surfaces here.
          */
         get: operations["get_accessible_tools_api_agents_accessible_tools_get"];
         put?: never;
@@ -6888,6 +6892,10 @@ export interface paths {
         /**
          * Get Accessible Knowledge
          * @description Get knowledge sources the current user can assign to their agents.
+         *
+         *     Role membership alone isn't org scope: also require the namespace-role
+         *     grant itself to be global or the caller's own org, so a role grant
+         *     scoped to another org's namespace assignment never surfaces here.
          */
         get: operations["get_accessible_knowledge_api_agents_accessible_knowledge_get"];
         put?: never;
@@ -6909,7 +6917,11 @@ export interface paths {
          * Get Fleet Stats Endpoint
          * @description Fleet-wide agent run stats over the last ``window_days``.
          *
-         *     Superusers see cross-org totals; org users are scoped to their org.
+         *     Bypass callers (platform admin / provider org) see cross-org totals;
+         *     regular users are scoped to their own org, their own runs/chats, and
+         *     never see another user's private agent folded into the count. A
+         *     regular caller with no org never falls through to the platform-wide
+         *     view â they get an empty fleet instead.
          *     Route is registered before ``/{agent_id}`` so the literal ``stats``
          *     prefix is not parsed as a UUID.
          */
