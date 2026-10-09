@@ -202,14 +202,13 @@ class TestFormMutationValidation:
         )
         assert "organization_id is required" in result.structured_content["error"]
 
-        result = await forms.create_form(
-            _context(admin=True),
-            name="Ticket",
-            workflow_id=workflow_id,
-            fields=[{}],
-            organization_id="not-a-uuid",
-        )
-        assert "not a valid UUID" in result.structured_content["error"]
+        with patch.object(forms, "call_rest", AsyncMock(return_value=(422, {"detail": "invalid organization_id"}))) as call:
+            result = await forms.create_form(
+                _context(admin=True), name="Ticket", workflow_id=workflow_id,
+                fields=[{}], organization_id="not-a-uuid",
+            )
+        assert "HTTP 422" in result.structured_content["error"]
+        assert call.await_args.kwargs["json_body"]["organization_id"] == "not-a-uuid"
 
         result = await forms.create_form(
             ctx,
@@ -243,143 +242,46 @@ class TestFormMutationValidation:
 
     @pytest.mark.asyncio
     async def test_update_form_rejects_missing_or_invalid_id_before_db_access(self):
-        result = await forms.update_form(_context(), form_id="")
+        result = await forms.update_form(_context(admin=True), form_id="")
         assert "form_id is required" in result.structured_content["error"]
 
-        result = await forms.update_form(_context(), form_id="not-a-uuid")
+        result = await forms.update_form(_context(admin=True), form_id="not-a-uuid")
         assert "'not-a-uuid' is not a valid UUID" in result.structured_content["error"]
 
 
 class TestCreateFormTool:
     @pytest.mark.asyncio
-    async def test_create_form_returns_workflow_and_launch_serialization(self):
-        db = MagicMock()
-        db.flush = AsyncMock()
-        created_forms = []
-
-        def add(row):
-            created_forms.append(row)
-            if row.__class__.__name__ == "Form":
-                row.id = uuid4()
-
-        db.add.side_effect = add
-        db.execute = AsyncMock(side_effect=lambda *_args, **_kwargs: _ScalarResult(created_forms[0]))
-
-        workflow_id = str(uuid4())
-        launch_workflow_id = str(uuid4())
-        workflow_repo = MagicMock()
-        workflow_repo.get = AsyncMock(
-            side_effect=[
-                SimpleNamespace(name="Submit ticket"),
-                SimpleNamespace(name="Prefill ticket"),
-            ]
-        )
-        fields = [{"name": "summary", "type": "text", "label": "Summary", "required": True}]
-
-        with (
-            patch.object(forms, "get_tool_db", _fake_tool_db(db)),
-            patch("src.repositories.workflows.WorkflowRepository", return_value=workflow_repo) as repo_cls,
-            patch("src.routers.forms._form_schema_to_fields", return_value=[_field()]) as to_fields,
-        ):
+    async def test_create_form_forwards_schema_and_workflows_to_rest(self):
+        ctx = _context(admin=True)
+        workflow_id, launch_id = str(uuid4()), str(uuid4())
+        fields = [{"name": "summary", "type": "text", "label": "Summary"}]
+        response = {"id": str(uuid4()), "name": "Intake", "workflow_id": workflow_id}
+        with patch.object(forms, "call_rest", AsyncMock(return_value=(201, response))) as call:
             result = await forms.create_form(
-                _context(admin=True, org_id=None),
-                name="Ticket intake",
-                description="Collect ticket details",
-                workflow_id=workflow_id,
-                launch_workflow_id=launch_workflow_id,
-                fields=fields,
-                scope="global",
+                ctx, name="Intake", workflow_id=workflow_id, fields=fields,
+                launch_workflow_id=launch_id, scope="global",
             )
-
-        assert result.structured_content == {
-            "success": True,
-            "id": str(created_forms[0].id),
-            "name": "Ticket intake",
-            "confirmation_markdown": "## Form submitted\n\nThank you!",
-            "url": f"/forms/{created_forms[0].id}",
-            "workflow_id": workflow_id,
-            "workflow_name": "Submit ticket",
-            "field_count": 1,
-            "launch_workflow_id": launch_workflow_id,
-            "launch_workflow_name": "Prefill ticket",
-        }
-        assert created_forms[0].organization_id is None
-        assert created_forms[0].created_by == "admin@example.com"
-        assert db.flush.await_count == 2
-        to_fields.assert_called_once_with({"fields": fields}, created_forms[0].id)
-        assert repo_cls.call_args.kwargs["is_superuser"] is True
+        assert result.structured_content == {"success": True, **response}
+        assert call.await_args.args == (ctx, "POST", "/api/forms")
+        body = call.await_args.kwargs["json_body"]
+        assert body["form_schema"] == {"fields": fields}
+        assert body["workflow_id"] == workflow_id
+        assert body["launch_workflow_id"] == launch_id
+        assert body["organization_id"] is None
+        assert body["access_level"] == "role_based"
 
     @pytest.mark.asyncio
-    async def test_create_form_reports_missing_workflow_launch_workflow_and_schema_errors(self):
-        db = AsyncMock()
-        fields = [{"name": "summary", "type": "text", "label": "Summary", "required": True}]
-        workflow_id = str(uuid4())
-        launch_workflow_id = str(uuid4())
-
-        missing_workflow_repo = MagicMock()
-        missing_workflow_repo.get = AsyncMock(return_value=None)
-        with (
-            patch.object(forms, "get_tool_db", _fake_tool_db(db)),
-            patch("src.repositories.workflows.WorkflowRepository", return_value=missing_workflow_repo),
-        ):
-            missing_workflow = await forms.create_form(
-                _context(),
-                name="Ticket",
-                workflow_id=workflow_id,
-                fields=fields,
-            )
-        assert f"Workflow '{workflow_id}' not found" in missing_workflow.structured_content["error"]
-
-        missing_launch_repo = MagicMock()
-        missing_launch_repo.get = AsyncMock(side_effect=[SimpleNamespace(name="Submit"), None])
-        with (
-            patch.object(forms, "get_tool_db", _fake_tool_db(db)),
-            patch("src.repositories.workflows.WorkflowRepository", return_value=missing_launch_repo),
-        ):
-            missing_launch = await forms.create_form(
-                _context(),
-                name="Ticket",
-                workflow_id=workflow_id,
-                launch_workflow_id=launch_workflow_id,
-                fields=fields,
-            )
-        assert f"Launch workflow '{launch_workflow_id}' not found" in missing_launch.structured_content["error"]
-
-        schema_repo = MagicMock()
-        schema_repo.get = AsyncMock(return_value=SimpleNamespace(name="Submit"))
-        with (
-            patch.object(forms, "get_tool_db", _fake_tool_db(db)),
-            patch("src.repositories.workflows.WorkflowRepository", return_value=schema_repo),
-        ):
-            invalid_schema = await forms.create_form(
-                _context(),
-                name="Ticket",
-                workflow_id=workflow_id,
-                fields=[{"name": "summary"}],
-            )
-        assert "Invalid form schema" in invalid_schema.structured_content["error"]
-
-    @pytest.mark.asyncio
-    async def test_create_form_reports_database_errors(self):
-        db = MagicMock()
-        db.flush = AsyncMock()
-        workflow_repo = MagicMock()
-        workflow_repo.get = AsyncMock(return_value=SimpleNamespace(name="Submit"))
-        db.add.side_effect = RuntimeError("write failed")
-
-        with (
-            patch.object(forms, "get_tool_db", _fake_tool_db(db)),
-            patch("src.repositories.workflows.WorkflowRepository", return_value=workflow_repo),
-        ):
+    @pytest.mark.parametrize("status,detail", [
+        (403, "Platform admin required"), (404, "Workflow not found"),
+        (422, "Invalid form schema"), (500, "Database unavailable"),
+    ])
+    async def test_create_form_preserves_rest_authorization_reference_schema_and_write_errors(self, status, detail):
+        with patch.object(forms, "call_rest", AsyncMock(return_value=(status, {"detail": detail}))):
             result = await forms.create_form(
-                _context(),
-                name="Ticket",
-                workflow_id=str(uuid4()),
-                fields=[{"name": "summary", "type": "text", "label": "Summary"}],
+                _context(admin=False), name="Intake", workflow_id=str(uuid4()), fields=[{"name": "summary"}],
             )
-
-        assert "Error creating form" in result.structured_content["error"]
-        assert "write failed" in result.structured_content["error"]
+        assert f"HTTP {status}" in result.structured_content["error"]
+        assert result.structured_content["body"] == {"detail": detail}
 
 
 class TestGetFormTool:
@@ -404,6 +306,7 @@ class TestGetFormTool:
         with (
             patch.object(forms, "get_tool_db", _fake_tool_db(db)),
             patch("src.repositories.workflows.WorkflowRepository", return_value=workflow_repo),
+            patch("src.repositories.forms.FormRepository", return_value=SimpleNamespace(get_form_with_access_check=AsyncMock(return_value=form))),
         ):
             result = await forms.get_form(_context(org_id=form.organization_id), form_id=str(form_id))
 
@@ -437,6 +340,7 @@ class TestGetFormTool:
         with (
             patch.object(forms, "get_tool_db", _fake_tool_db(db)),
             patch("src.repositories.workflows.WorkflowRepository") as repo_cls,
+            patch("src.repositories.forms.FormRepository", return_value=SimpleNamespace(get_form_with_access_check=AsyncMock(return_value=form))),
         ):
             result = await forms.get_form(_context(org_id=form.organization_id), form_id=str(form.id))
 
@@ -454,9 +358,9 @@ class TestUpdateFormTool:
         own_form = _form(organization_id=own_org)
 
         for form, ctx, expected in [
-            (other_org_form, _context(org_id=uuid4()), "don't have permission"),
+            (other_org_form, _context(org_id=uuid4()), "Only platform admins"),
             (global_form, _context(org_id=own_org), "Only platform admins"),
-            (own_form, _context(org_id=own_org), "No updates provided"),
+            (own_form, _context(admin=True, org_id=own_org), "No updates provided"),
         ]:
             db = AsyncMock()
             db.execute = AsyncMock(return_value=_ScalarResult(form))
@@ -498,7 +402,7 @@ class TestUpdateFormTool:
             patch("src.routers.forms._form_schema_to_fields", return_value=[_field(name="replacement")]) as to_fields,
         ):
             result = await forms.update_form(
-                _context(org_id=form.organization_id),
+                _context(admin=True, org_id=form.organization_id),
                 form_id=str(form.id),
                 name="New intake",
                 description="Updated",

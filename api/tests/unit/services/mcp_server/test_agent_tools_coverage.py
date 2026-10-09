@@ -391,13 +391,13 @@ class TestAgentMutationValidation:
         )
         assert "organization_id is required" in result.structured_content["error"]
 
-        result = await agents.create_agent(
-            _context(admin=True, org_id=None),
-            name="Bad Org",
-            system_prompt="prompt",
-            organization_id="not-a-uuid",
-        )
-        assert "not a valid UUID" in result.structured_content["error"]
+        with patch.object(agents, "call_rest", AsyncMock(return_value=(422, {"detail": "invalid organization_id"}))) as call:
+            result = await agents.create_agent(
+                _context(admin=True), name="Bad Org", system_prompt="prompt",
+                organization_id="not-a-uuid",
+            )
+        assert "HTTP 422" in result.structured_content["error"]
+        assert call.await_args.kwargs["json_body"]["organization_id"] == "not-a-uuid"
 
     @pytest.mark.asyncio
     async def test_update_agent_rejects_invalid_inputs_before_db_access(self):
@@ -443,90 +443,35 @@ class TestAgentMutationValidation:
 
 class TestCreateAgentTool:
     @pytest.mark.asyncio
-    async def test_create_agent_resolves_tools_delegates_and_shapes_response(self):
-        org_id = uuid4()
-        profile_id = uuid4()
-        workflow_id = uuid4()
-        delegate_id = uuid4()
-        reloaded = _agent_detail(
-            name="Dispatcher",
-            description="Routes tickets",
-            channels=["chat"],
-        )
-        db = AsyncMock()
-        db.add = MagicMock()
-        db.scalar = AsyncMock(return_value=profile_id)
-        db.execute = AsyncMock(
-            side_effect=[
-                _Result(SimpleNamespace(id=workflow_id, organization_id=org_id)),
-                _Result(SimpleNamespace(id=delegate_id, organization_id=org_id)),
-                _Result(reloaded),
-            ]
-        )
-
-        with patch.object(agents, "get_tool_db", _fake_tool_db(db)):
+    @pytest.mark.parametrize("admin", [False, True])
+    async def test_create_agent_forwards_references_and_preserves_rest_response(self, admin):
+        ctx = _context(admin=admin)
+        tool_id, delegate_id, profile_id = (str(uuid4()) for _ in range(3))
+        response = {"id": str(uuid4()), "name": "Dispatcher", "tool_ids": [tool_id]}
+        with patch.object(agents, "call_rest", AsyncMock(return_value=(201, response))) as call:
             result = await agents.create_agent(
-                _context(admin=True, org_id=org_id),
-                name="Dispatcher",
-                system_prompt="Route work carefully",
-                description="Routes tickets",
-                tool_ids=[str(workflow_id)],
-                delegated_agent_ids=[str(delegate_id)],
-                knowledge_sources=["kb"],
-                system_tools=["list_agents"],
-                llm_profile_id=str(profile_id),
-                llm_max_tokens=1024,
+                ctx, name="Dispatcher", system_prompt="Route work carefully",
+                tool_ids=[tool_id], delegated_agent_ids=[delegate_id] if admin else None,
+                knowledge_sources=["kb"] if admin else None,
+                system_tools=["list_agents"] if admin else None,
+                llm_profile_id=profile_id, llm_max_tokens=1024 if admin else None,
             )
-
-        assert result.structured_content == {
-            "success": True,
-            "id": str(reloaded.id),
-            "name": "Dispatcher",
-            "description": "Routes tickets",
-            "channels": ["chat"],
-            "tool_count": 1,
-            "delegated_agent_count": 1,
-        }
-        assert db.execute.await_count == 3
-        assert db.add.call_count == 3
-        db.flush.assert_awaited_once()
+        assert result.structured_content == {"success": True, **response}
+        assert call.await_args.args == (ctx, "POST", "/api/agents")
+        body = call.await_args.kwargs["json_body"]
+        assert body["organization_id"] == str(ctx.org_id)
+        assert body["access_level"] == ("role_based" if admin else "private")
+        assert body["tool_ids"] == [tool_id]
+        assert body["delegated_agent_ids"] == ([delegate_id] if admin else [])
+        assert body["llm_profile_id"] == profile_id
 
     @pytest.mark.asyncio
-    async def test_create_agent_rejects_cross_org_tool_before_relationship_writes(self):
-        org_id = uuid4()
-        db = AsyncMock()
-        db.add = MagicMock()
-        db.execute = AsyncMock(
-            return_value=_Result(SimpleNamespace(id=uuid4(), organization_id=uuid4()))
-        )
-
-        with patch.object(agents, "get_tool_db", _fake_tool_db(db)):
-            result = await agents.create_agent(
-                _context(admin=True, org_id=org_id),
-                name="Dispatcher",
-                system_prompt="Route work carefully",
-                tool_ids=[str(uuid4())],
-            )
-
-        assert "belongs to a different organization" in result.structured_content["error"]
-        db.flush.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_create_agent_returns_error_when_db_write_fails(self):
-        db = AsyncMock()
-        db.add = MagicMock()
-        db.flush = AsyncMock(side_effect=RuntimeError("flush failed"))
-
-        with patch.object(agents, "get_tool_db", _fake_tool_db(db)):
-            result = await agents.create_agent(
-                _context(admin=True, org_id=None),
-                name="Global",
-                system_prompt="Route work carefully",
-                scope="global",
-            )
-
-        assert "Error creating agent" in result.structured_content["error"]
-        assert "flush failed" in result.structured_content["error"]
+    @pytest.mark.parametrize("status,detail", [(403, "Tool is inaccessible"), (500, "write failed")])
+    async def test_create_agent_preserves_rest_validation_and_write_errors(self, status, detail):
+        with patch.object(agents, "call_rest", AsyncMock(return_value=(status, {"detail": detail}))):
+            result = await agents.create_agent(_context(admin=True), name="Dispatcher", system_prompt="prompt")
+        assert f"HTTP {status}" in result.structured_content["error"]
+        assert result.structured_content["body"] == {"detail": detail}
 
 
 class TestUpdateAgentTool:

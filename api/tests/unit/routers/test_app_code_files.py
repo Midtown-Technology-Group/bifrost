@@ -112,7 +112,7 @@ async def test_delete_app_file_rejects_governed_path_before_storage(monkeypatch)
         )
     )
 
-    monkeypatch.setattr(app_code_files, "get_application_or_404", AsyncMock(return_value=app))
+    monkeypatch.setattr(app_code_files, "get_application_for_write_or_404", AsyncMock(return_value=app))
     monkeypatch.setattr(
         app_code_files, "assert_entity_id_not_solution_managed", AsyncMock(return_value=None)
     )
@@ -140,7 +140,7 @@ async def test_write_app_file_rejects_governed_path_before_storage(monkeypatch):
         )
     )
 
-    monkeypatch.setattr(app_code_files, "get_application_or_404", AsyncMock(return_value=app))
+    monkeypatch.setattr(app_code_files, "get_application_for_write_or_404", AsyncMock(return_value=app))
     monkeypatch.setattr(
         app_code_files, "assert_entity_id_not_solution_managed", AsyncMock(return_value=None)
     )

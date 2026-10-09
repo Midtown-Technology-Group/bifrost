@@ -150,8 +150,9 @@ async def test_propose_returns_proposal_with_flagged_runs(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("same_org", [False, True])
 async def test_propose_can_scope_global_agent_runs_to_caller_org(
-    db_session, seed_agent, seed_user
+    db_session, seed_agent, seed_user, same_org
 ):
     """Tenant-scoped tuning excludes other orgs' runs for global agents."""
     from src.services.execution import tuning_service as mod
@@ -171,6 +172,7 @@ async def test_propose_can_scope_global_agent_runs_to_caller_org(
         output={"text": "caller org answer"},
         verdict="down",
         org_id=caller_org_id,
+        caller_user_id=str(seed_user.id),
     )
     other_run = AgentRun(
         id=uuid4(),
@@ -182,7 +184,8 @@ async def test_propose_can_scope_global_agent_runs_to_caller_org(
         input={"message": "other org secret question"},
         output={"text": "other org secret answer"},
         verdict="down",
-        org_id=other_org_id,
+        org_id=caller_org_id if same_org else other_org_id,
+        caller_user_id=str(uuid4()) if same_org else str(seed_user.id),
     )
     db_session.add_all([caller_org, other_org])
     await db_session.flush()
@@ -299,8 +302,9 @@ async def test_apply_updates_prompt_creates_history_resets_verdicts(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("same_org", [False, True])
 async def test_apply_only_clears_caller_org_flagged_runs_for_global_agent(
-    db_session, seed_agent, seed_user
+    db_session, seed_agent, seed_user, same_org
 ):
     """Tenant-scoped apply must not clear verdicts from other orgs."""
     caller_org = _build_org("Apply Caller Org")
@@ -319,6 +323,7 @@ async def test_apply_only_clears_caller_org_flagged_runs_for_global_agent(
         verdict="down",
         verdict_note="caller wrong",
         org_id=caller_org_id,
+        caller_user_id=str(seed_user.id),
     )
     other_run = AgentRun(
         id=uuid4(),
@@ -331,7 +336,8 @@ async def test_apply_only_clears_caller_org_flagged_runs_for_global_agent(
         output={"text": "other"},
         verdict="down",
         verdict_note="other wrong",
-        org_id=other_org_id,
+        org_id=caller_org_id if same_org else other_org_id,
+        caller_user_id=str(uuid4()) if same_org else str(seed_user.id),
     )
     db_session.add_all([caller_org, other_org])
     await db_session.flush()

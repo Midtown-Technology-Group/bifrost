@@ -207,13 +207,15 @@ class TestAppToolImpl:
     async def test_create_app_validates_required_inputs(self, context):
         from src.services.mcp_server.tools.apps import create_app
 
+        context.is_platform_admin = True
+
         missing_name = await create_app(context, "")
         bad_scope = await create_app(context, "App", scope="tenant")
         bad_org = await create_app(context, "App", organization_id="not-a-uuid")
         context_without_org = MCPContext(
             user_id=str(uuid4()),
             org_id=None,
-            is_platform_admin=False,
+            is_platform_admin=True,
             user_email="test@example.com",
             user_name="Test User",
         )
@@ -228,6 +230,8 @@ class TestAppToolImpl:
     async def test_create_app_rejects_unclaimed_existing_source(self, context):
         """MCP app creation must not adopt stale source under apps/<slug>/."""
         from src.services.mcp_server.tools.apps import create_app
+
+        context.is_platform_admin = True
 
         db = _CreateAppDb(stale_source=True)
 

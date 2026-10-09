@@ -74,6 +74,7 @@ def _user(**overrides):
         "user_id": uuid4(),
         "organization_id": uuid4(),
         "is_superuser": True,
+        "is_provider_org": False,
         "is_external": False,
     }
     values.update(overrides)

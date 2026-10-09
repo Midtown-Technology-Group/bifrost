@@ -133,13 +133,14 @@ def test_publish_success_deduplication_and_requester_visibility(
         for response in responses
     )
     assert accepted["notification_id"]
+    # Write authorization precedes deduplication and does not reveal the job.
     duplicate = e2e_client.post(
         f"/api/applications/{app['id']}/publish",
         headers=org1_user.headers,
     )
-    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.status_code == 404, duplicate.text
     assert duplicate.json()["detail"] == (
-        "An application publish is already in progress"
+        f"Application '{app['id']}' not found"
     )
     visible = e2e_client.get(
         f"/api/platform-jobs/{accepted['job_id']}",
