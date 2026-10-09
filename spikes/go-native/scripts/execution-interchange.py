@@ -1,4 +1,4 @@
-"""Hosted test-only Go/Python-oracle exchange. No workload/session/owner execution."""
+"""Hosted Go/Python/Rust codec exchange and reference oracle; no runtime authority."""
 import hashlib
 import importlib.metadata
 import io
@@ -143,7 +143,7 @@ def main():
         "codec_source_sha256": hashlib.sha256((scripts.parent / "peers/execution_codec.py").read_bytes()).hexdigest(),
         "exchange_sha256": hashlib.sha256(stream_path.read_bytes()).hexdigest(),
         "limits": ["Candidate stream codec, not a deployed/extracted Python runtime.",
-                   "No session, Rust codec, lifecycle, provision or tenant execution."],
+                   "No session, lifecycle, provision or tenant execution; Rust proof has a separate receipt."],
     }
     (output / "python-stream-peer-receipt.json").write_text(json.dumps(stream_receipt, indent=2) + "\n")
     rust_binary = Path(sys.argv[4]).resolve()
@@ -202,12 +202,12 @@ def main():
         "exchange_sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                             for path in (output / "go-execution-exchange.json", python_path)},
         "limits": ["Python peer is the proposal's test-only oracle, not an extracted production runtime.",
-                   "Rust execution-profile codec interchange remains unproved.",
+                   "Independent Python/Rust codec proof is recorded in separate component receipts.",
                    "Frames are independent specimens, not a legal session or workflow execution.",
                    "No Session/release/commit/delivery event, SDK credential or durable store was used."],
     }
     (output / "execution-peer-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    print("PASS 18 encodings each direction, 13 message types; both semantic drift controls rejected")
+    print("PASS 18 encodings per direction, 13 message types, Go/Python/Rust and reference oracle; semantic drift controls rejected")
 
 
 if __name__ == "__main__":

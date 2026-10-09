@@ -66,13 +66,13 @@ jobs:
             > "$RUNNER_TEMP/codec-evidence/python-stream-tests.txt" 2>&1
       - name: Isolated independent Rust codec checks
         run: bash spikes/go-native/scripts/rust-execution-check.sh "$RUNNER_TEMP/codec-evidence"
-      - name: Actual Go and proposed Python-oracle peer encoding checks
+      - name: Actual Go, Python and Rust proposed-profile encoding checks
         run: |
           env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
             "$RUNNER_TEMP/profile-python/bin/python" spikes/go-native/scripts/execution-interchange.py \
             .profile-reference "$RUNNER_TEMP/codec-evidence/executioncheck" "$RUNNER_TEMP/codec-evidence" \
             "$RUNNER_TEMP/codec-evidence/rust-executioncheck"
-          printf '%s\n' 'Trusted proposed-wire peer diagnostic only: Python test oracle, no Rust execution codec, tenant run, session authority or durable finalization.' \
+          printf '%s\n' 'Trusted proposed-wire diagnostic: independent Go/Python/Rust codecs plus Python test oracle; no tenant run, session authority or durable finalization.' \
             > "$RUNNER_TEMP/codec-evidence/scope.txt"
       - name: Retain exact diagnostic evidence, including test failure
         if: always()
