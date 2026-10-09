@@ -205,6 +205,7 @@ class TestAppToolImpl:
 
     @pytest.mark.asyncio
     async def test_create_app_validates_required_inputs(self, context):
+        """Require the mandatory application fields before scaffolding source."""
         from src.services.mcp_server.tools.apps import create_app
 
         context.is_platform_admin = True

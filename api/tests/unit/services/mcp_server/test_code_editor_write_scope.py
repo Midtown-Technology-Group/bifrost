@@ -21,14 +21,17 @@ from src.services.mcp_server.tools import code_editor
 
 
 def _fake_tool_db(db_session):
+    """Bind MCP database access to the test session without opening a separate transaction."""
     @asynccontextmanager
     async def _cm(_context):
+        """Yield the existing test session for an MCP tool database context."""
         yield db_session
 
     return _cm
 
 
 def _ctx(*, org_id=None, is_platform_admin=False, is_provider_org=False):
+    """Build a caller context with explicit organization scope and privilege flags."""
     return SimpleNamespace(
         user_id=uuid4(),
         org_id=org_id,
@@ -39,11 +42,13 @@ def _ctx(*, org_id=None, is_platform_admin=False, is_provider_org=False):
 
 
 def _is_error(result) -> bool:
+    """Identify a structured MCP error without treating a successful tool response as a denial."""
     return bool(result.structured_content) and "error" in result.structured_content
 
 
 @pytest.mark.asyncio
 async def test_replace_content_denied_for_non_bypass(db_session, monkeypatch):
+    """Deny source replacement to a caller without platform-admin authority."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
 
     write_file = AsyncMock()
@@ -60,6 +65,7 @@ async def test_replace_content_denied_for_non_bypass(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_replace_content_allowed_for_bypass_caller(db_session, monkeypatch):
+    """Allow source replacement by a platform admin."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
 
     write_file = AsyncMock()
@@ -77,6 +83,7 @@ async def test_replace_content_allowed_for_bypass_caller(db_session, monkeypatch
 
 @pytest.mark.asyncio
 async def test_replace_content_denied_for_provider_org_without_admin(db_session, monkeypatch):
+    """Deny provider-only source replacement without a platform-admin grant."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
 
     write_file = AsyncMock()
@@ -94,6 +101,7 @@ async def test_replace_content_denied_for_provider_org_without_admin(db_session,
 
 @pytest.mark.asyncio
 async def test_delete_content_denied_for_non_bypass(db_session, monkeypatch):
+    """Deny source deletion to a caller without platform-admin authority."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     monkeypatch.setattr(code_editor.RepoStorage, "exists", AsyncMock(return_value=True))
 
@@ -109,6 +117,7 @@ async def test_delete_content_denied_for_non_bypass(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_delete_content_allowed_for_bypass_caller(db_session, monkeypatch):
+    """Allow source deletion by a platform admin."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     monkeypatch.setattr(code_editor.RepoStorage, "exists", AsyncMock(return_value=True))
 
@@ -124,6 +133,7 @@ async def test_delete_content_allowed_for_bypass_caller(db_session, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_patch_content_denied_for_non_bypass(db_session, monkeypatch):
+    """Deny source patching to a caller without platform-admin authority."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     read_from_s3 = AsyncMock(return_value="old content")
     monkeypatch.setattr(code_editor, "_read_from_s3", read_from_s3)
@@ -140,6 +150,7 @@ async def test_patch_content_denied_for_non_bypass(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_list_content_denied_for_non_bypass(monkeypatch):
+    """Deny source enumeration to a caller without platform-admin authority."""
     ctx = _ctx(org_id=uuid4())
     result = await code_editor.list_content(ctx)
     assert _is_error(result)
@@ -147,6 +158,7 @@ async def test_list_content_denied_for_non_bypass(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_list_content_allowed_for_bypass_caller(db_session, monkeypatch):
+    """Allow source enumeration by a platform admin."""
     from src.services.repo_storage import RepoStorage
 
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
@@ -158,6 +170,7 @@ async def test_list_content_allowed_for_bypass_caller(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_content_denied_for_non_bypass(db_session, monkeypatch):
+    """Deny source searches to a caller without platform-admin authority."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     ctx = _ctx(org_id=uuid4())
     result = await code_editor.search_content(ctx, pattern="foo")
@@ -166,6 +179,7 @@ async def test_search_content_denied_for_non_bypass(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_content_denied_for_non_bypass(monkeypatch):
+    """Deny source reads to a caller without platform-admin authority."""
     read_from_s3 = AsyncMock(return_value="content")
     monkeypatch.setattr(code_editor, "_read_from_s3", read_from_s3)
 
@@ -178,6 +192,7 @@ async def test_get_content_denied_for_non_bypass(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_content_allowed_for_bypass_caller(db_session, monkeypatch):
+    """Allow source reads by a platform admin."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     read_from_s3 = AsyncMock(return_value="content")
     monkeypatch.setattr(code_editor, "_read_from_s3", read_from_s3)
@@ -191,6 +206,7 @@ async def test_get_content_allowed_for_bypass_caller(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_read_content_lines_denied_for_non_bypass(monkeypatch):
+    """Deny source line reads to a caller without platform-admin authority."""
     read_from_s3 = AsyncMock(return_value="content")
     monkeypatch.setattr(code_editor, "_read_from_s3", read_from_s3)
 

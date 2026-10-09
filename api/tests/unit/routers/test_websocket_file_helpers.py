@@ -147,6 +147,7 @@ class TestAgentRunChannels:
         )
 
     def test_org_user_cannot_subscribe_to_any_agent_runs_list_channel(self) -> None:
+        """Deny regular users every agent-run list alias, including explicit organization channels."""
         org_id = uuid.uuid4()
         user = _user(org_id=org_id)
 
@@ -155,6 +156,7 @@ class TestAgentRunChannels:
             assert ws_mod._resolve_agent_runs_channel(user, channel) is None
 
     def test_org_admin_is_limited_to_own_org_list_channel(self) -> None:
+        """Keep an organization-scoped admin's list subscription within their organization."""
         org_id = uuid.uuid4()
         user = _user(org_id=org_id, is_superuser=True)
 

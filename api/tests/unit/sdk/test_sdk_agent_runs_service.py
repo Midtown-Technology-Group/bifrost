@@ -66,6 +66,7 @@ async def _seed_solution(db_session, *, status="active"):
 
 
 async def _seed_agent(db_session, name, **kwargs):
+    """Persist an agent with explicit access, ownership, and organization settings for SDK tests."""
     from src.models.enums import AgentAccessLevel
     from src.models.orm.agents import Agent as AgentModel
 
@@ -153,6 +154,7 @@ def _redis_stream_context(entries):
 @pytest.mark.asyncio
 class TestEnqueueSdkAgentRun:
     async def test_success_enqueues_with_actor_attribution(self, db_session):
+        """Attribute an enqueued SDK agent run to the authenticated actor."""
         org = await _seed_org(db_session)
         # AUTHENTICATED so a non-bypass principal (no role grants seeded)
         # passes the access check resolve_executable_agent now enforces —
@@ -364,6 +366,7 @@ class TestGetSdkAgentRun:
         assert detail.id == run.id
 
     async def test_org_user_cannot_see_another_users_run_in_same_org(self, db_session):
+        """Hide another caller's agent run even when both callers belong to the same organization."""
         org = await _seed_org(db_session)
         agent = await _seed_agent(db_session, "Shared Org Agent")
         run = await _seed_run(

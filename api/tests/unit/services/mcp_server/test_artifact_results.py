@@ -91,6 +91,7 @@ async def test_workflow_artifact_results_become_mcp_media_and_resources(
 async def test_provider_workflow_cannot_bypass_artifact_ownership_without_admin(
     monkeypatch: pytest.MonkeyPatch, is_platform_admin: bool
 ) -> None:
+    """Keep provider workflow context from bypassing another user's artifact ownership."""
     context = server.MCPContext(
         user_id=uuid4(), org_id=None, is_platform_admin=is_platform_admin,
         is_provider_org=True,
@@ -110,15 +111,18 @@ async def test_provider_workflow_cannot_bypass_artifact_ownership_without_admin(
 
     @asynccontextmanager
     async def fake_db_context():
+        """Provide an inert database context for the artifact ownership service double."""
         yield object()
 
     read_artifact = AsyncMock(return_value=b"png-data")
 
     class FakeArtifactService:
         def __init__(self, db) -> None:
+            """Accept the service database argument without opening a real artifact store."""
             pass
 
         async def get_authorized(self, artifact_id, *, user_id, bypass):
+            """Model an artifact owned by another user, accessible only through an explicit admin bypass."""
             assert user_id == context.user_id
             if not bypass:
                 raise ArtifactAccessError("Artifact belongs to another user")

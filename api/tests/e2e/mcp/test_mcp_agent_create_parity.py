@@ -13,6 +13,7 @@ from src.services.mcp_server.tools.agents import create_agent
 async def test_regular_mcp_caller_creates_an_owned_private_agent(
     e2e_client, org1_user, bob_user, platform_admin, monkeypatch
 ):
+    """Keep regular-user MCP agent creation aligned with REST's private ownership contract."""
     monkeypatch.setenv("BIFROST_MCP_HTTP_BRIDGE_URL", str(e2e_client.base_url))
     context = MCPContext(
         user_id=org1_user.user_id,

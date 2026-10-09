@@ -12,6 +12,7 @@ from src.services.chat_attachments import (
 
 
 def _db_with_total(total: int = 0) -> MagicMock:
+    """Model storage totals and a new workspace while preserving the conversation owner lookup."""
     db = MagicMock()
     result = MagicMock()
     result.scalar.return_value = total

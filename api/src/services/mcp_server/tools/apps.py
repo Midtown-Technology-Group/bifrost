@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def _write_scope_bypass(context: Any) -> bool:
+    """Allow provider or platform-admin scope bypass for application metadata operations."""
     return has_scope_bypass(
         is_platform_admin=getattr(context, "is_platform_admin", False),
         is_provider_org=getattr(context, "is_provider_org", False),

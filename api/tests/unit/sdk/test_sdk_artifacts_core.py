@@ -88,6 +88,7 @@ async def test_store_rejects_unsupported_content_before_persisting() -> None:
 
 @pytest.mark.asyncio
 async def test_store_uses_actor_ownership_and_org_scope() -> None:
+    """Assign stored artifacts to the calling actor and their organization."""
     user = _user()
     caller = _caller(user=user)
     workspace_id = uuid4()
@@ -145,6 +146,7 @@ async def test_store_engine_superuser_carries_no_org() -> None:
 
 @pytest.mark.asyncio
 async def test_list_maps_latest_versions_with_caller_scope() -> None:
+    """List the latest artifact versions within the caller's authorized scope."""
     user = _user()
     caller = _caller(user=user)
     workspace_id = uuid4()
@@ -255,6 +257,7 @@ async def test_read_preview_non_office_returns_raw_bytes() -> None:
 
 @pytest.mark.asyncio
 async def test_download_url_delegates_to_signed_url_path() -> None:
+    """Generate artifact download URLs through the authorized signed-URL path."""
     user = _user()
     caller = _caller(user=user)
     artifact = _orm_artifact(filename="Unsafe.html", content_type="text/html")

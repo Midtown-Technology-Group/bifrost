@@ -120,6 +120,7 @@ async def test_document_stores_with_actor_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_document_resolves_images_with_caller_scope() -> None:
+    """Resolve document image artifacts using the requesting caller's access scope."""
     import io
 
     from PIL import Image
@@ -262,6 +263,7 @@ async def test_text_stores_with_actor_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_image_generates_stores_and_records_usage() -> None:
+    """Store a generated image under its actor and record the generation usage."""
     from contextlib import asynccontextmanager
 
     from shared.artifact_generation import GeneratedArtifact

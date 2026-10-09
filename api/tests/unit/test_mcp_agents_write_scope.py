@@ -20,14 +20,17 @@ from src.services.mcp_server.tools import agents as mcp_agents
 
 
 def _fake_tool_db(db_session):
+    """Bind MCP database access to the test session without opening a separate transaction."""
     @asynccontextmanager
     async def _cm(_context):
+        """Yield the existing test session for an MCP tool database context."""
         yield db_session
 
     return _cm
 
 
 async def _org(db) -> Organization:
+    """Persist a uniquely named organization for agent write-scope tests."""
     row = Organization(name=f"org-{uuid4().hex[:8]}", domain=f"{uuid4().hex}.example", created_by="test")
     db.add(row)
     await db.flush()
@@ -35,6 +38,7 @@ async def _org(db) -> Organization:
 
 
 async def _user(db, org: Organization | None, *, superuser: bool = False) -> User:
+    """Persist a verified caller with the chosen organization and admin grant."""
     row = User(
         email=f"{uuid4().hex}@example.com",
         name="Test User",
@@ -54,6 +58,7 @@ async def _agent(
     owner_user_id=None,
     access_level=AgentAccessLevel.ROLE_BASED,
 ) -> Agent:
+    """Persist an agent with the chosen organization, owner, and access level."""
     row = Agent(
         name=f"agent-{uuid4().hex[:8]}",
         system_prompt="You are a test agent.",
@@ -68,6 +73,7 @@ async def _agent(
 
 
 def _ctx(*, user_id, org_id=None, is_platform_admin=False, is_provider_org=False):
+    """Build a caller context with explicit organization scope and privilege flags."""
     from src.services.mcp_server.server import MCPContext
 
     return MCPContext(
@@ -79,6 +85,7 @@ def _ctx(*, user_id, org_id=None, is_platform_admin=False, is_provider_org=False
 
 
 def _error_text(result) -> str:
+    """Serialize an MCP result so tests can inspect its authorization error details."""
     payload = result.model_dump() if hasattr(result, "model_dump") else result
     return str(payload)
 
@@ -107,6 +114,7 @@ async def test_non_owner_org_member_denied(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_owner_of_private_agent_allowed(db_session, monkeypatch):
+    """Allow a private agent's owner to update it through MCP."""
     monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db(db_session))
 
     org = await _org(db_session)
@@ -158,6 +166,7 @@ async def test_caller_with_no_org_denied_for_org_owned_agent(db_session, monkeyp
 
 @pytest.mark.asyncio
 async def test_platform_admin_allowed_for_global_agent(db_session, monkeypatch):
+    """Allow a platform admin to update a globally scoped agent."""
     monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db(db_session))
 
     agent = await _agent(db_session, organization_id=None)
@@ -171,6 +180,7 @@ async def test_platform_admin_allowed_for_global_agent(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_admin_budget_update_denied_before_database_access(monkeypatch):
+    """Deny regular callers token-budget updates before database access."""
     from unittest.mock import MagicMock
 
     database = MagicMock(side_effect=AssertionError("denied requests must not access the database"))

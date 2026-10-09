@@ -967,6 +967,7 @@ async def can_access_cli_session(user: UserPrincipal, session_id: str) -> bool:
 
 
 def _agent_runs_channel_for_user(user: UserPrincipal) -> str | None:
+    """Select the admin list channel for the current scope; regular callers have no list channel."""
     if not user.is_superuser:
         return None
     if user.is_superuser and user.organization_id is None:
@@ -979,6 +980,7 @@ def _agent_runs_channel_for_user(user: UserPrincipal) -> str | None:
 def _resolve_agent_runs_channel(user: UserPrincipal, channel: str) -> str | None:
     # List broadcasts contain other callers' summaries. Regular users must
     # subscribe to authorized per-run channels instead.
+    """Resolve list aliases within admin scope, denying every list channel to regular callers."""
     if not user.is_superuser:
         return None
     if channel == _AGENT_RUNS_CHANNEL:

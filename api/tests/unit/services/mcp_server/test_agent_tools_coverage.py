@@ -357,6 +357,7 @@ class TestAgentMutationValidation:
 
     @pytest.mark.asyncio
     async def test_create_agent_rejects_privilege_and_org_scope_escalation(self):
+        """Reject agent creation requests that escalate access or organization scope."""
         org_id = uuid4()
         ctx = _context(admin=False, org_id=org_id)
 
@@ -445,6 +446,7 @@ class TestCreateAgentTool:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("admin", [False, True])
     async def test_create_agent_forwards_references_and_preserves_rest_response(self, admin):
+        """Forward agent references through REST and preserve the successful REST response."""
         ctx = _context(admin=admin)
         tool_id, delegate_id, profile_id = (str(uuid4()) for _ in range(3))
         response = {"id": str(uuid4()), "name": "Dispatcher", "tool_ids": [tool_id]}
@@ -468,6 +470,7 @@ class TestCreateAgentTool:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status,detail", [(403, "Tool is inaccessible"), (500, "write failed")])
     async def test_create_agent_preserves_rest_validation_and_write_errors(self, status, detail):
+        """Preserve REST validation and write failures in MCP agent creation responses."""
         with patch.object(agents, "call_rest", AsyncMock(return_value=(status, {"detail": detail}))):
             result = await agents.create_agent(_context(admin=True), name="Dispatcher", system_prompt="prompt")
         assert f"HTTP {status}" in result.structured_content["error"]

@@ -467,6 +467,7 @@ class TestMcpParityOrganizations:
     async def test_organization_crud_uses_rest_contract(
         self, admin_context, e2e_client, platform_admin
     ) -> None:
+        """Exercise MCP organization CRUD through the REST bridge and clean up the created organization."""
         from src.services.mcp_server.tools.organizations import (
             create_organization,
             delete_organization,

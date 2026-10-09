@@ -1111,6 +1111,7 @@ async def get_integration_logo(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> Response:
+    """Serve an integration logo to admins, using immutable caching only for versioned thumbnails."""
     integration = (
         await ctx.db.execute(select(Integration).where(Integration.id == integration_id))
     ).scalar_one_or_none()

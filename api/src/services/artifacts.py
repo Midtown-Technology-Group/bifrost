@@ -85,6 +85,7 @@ class ArtifactService:
         logical_path: str | None = None,
         bypass: bool = False,
     ) -> Artifact:
+        """Store nonempty artifact content with actor attribution and enforce existing workspace ownership."""
         if not filename:
             raise ValueError("Artifact filename is required.")
         if not content:

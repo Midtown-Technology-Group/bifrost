@@ -19,6 +19,7 @@ from src.services.mcp_server.tools import events as events_tool
 
 
 def _ctx(*, is_platform_admin=False, is_provider_org=False, is_external=False, org_id=...):
+    """Build a caller context with explicit organization scope and privilege flags."""
     from unittest.mock import AsyncMock
 
     session = AsyncMock()
@@ -37,6 +38,7 @@ def _ctx(*, is_platform_admin=False, is_provider_org=False, is_external=False, o
 
 
 def _source(org_id):
+    """Build an active topic event source with the specified organization scope."""
     src = MagicMock()
     src.id = uuid4()
     src.name = "src"
@@ -50,6 +52,7 @@ def _source(org_id):
 
 
 def _ctx_returning(source, **kw):
+    """Configure the MCP session to return the supplied source from its access lookup."""
     ctx = _ctx(**kw)
     result = MagicMock()
     result.unique.return_value.scalar_one_or_none = MagicMock(return_value=source)
@@ -58,6 +61,7 @@ def _ctx_returning(source, **kw):
 
 
 def _is_error(tool_result) -> bool:
+    """Identify a structured MCP error without treating a successful tool response as a denial."""
     sc = getattr(tool_result, "structured_content", None)
     return isinstance(sc, dict) and "error" in sc
 
@@ -72,6 +76,7 @@ class TestUpdateEventSourceWriteScope:
         assert _is_error(res)
 
     async def test_non_admin_denied_for_global_source(self):
+        """Deny regular callers administration of globally scoped event sources."""
         ctx = _ctx_returning(_source(None), is_external=False)
         res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
         assert _is_error(res)
@@ -84,11 +89,13 @@ class TestUpdateEventSourceWriteScope:
         assert _is_error(res)
 
     async def test_platform_admin_allowed_for_global_source(self):
+        """Allow a platform admin to update a globally scoped event source."""
         ctx = _ctx_returning(_source(None), is_platform_admin=True)
         res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
         assert not _is_error(res)
 
     async def test_platform_admin_allowed_for_own_org_source(self):
+        """Allow platform-admin event-source writes within the caller's organization."""
         org = uuid4()
         ctx = _ctx_returning(_source(org), is_platform_admin=True, org_id=org)
         res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
@@ -98,17 +105,20 @@ class TestUpdateEventSourceWriteScope:
 @pytest.mark.asyncio
 class TestDeleteEventSourceWriteScope:
     async def test_non_admin_denied_for_own_org_source(self):
+        """Deny regular callers event-source deletion within their own organization."""
         org = uuid4()
         ctx = _ctx_returning(_source(org), is_external=False, org_id=org)
         res = await events_tool.delete_event_source(ctx, source_id=str(uuid4()))
         assert _is_error(res)
 
     async def test_non_admin_denied_for_global_source(self):
+        """Deny regular callers administration of globally scoped event sources."""
         ctx = _ctx_returning(_source(None), is_external=False)
         res = await events_tool.delete_event_source(ctx, source_id=str(uuid4()))
         assert _is_error(res)
 
     async def test_platform_admin_allowed_for_own_org_source(self):
+        """Allow platform-admin event-source writes within the caller's organization."""
         org = uuid4()
         ctx = _ctx_returning(_source(org), is_platform_admin=True, org_id=org)
         res = await events_tool.delete_event_source(ctx, source_id=str(uuid4()))

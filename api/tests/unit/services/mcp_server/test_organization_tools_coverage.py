@@ -8,11 +8,13 @@ from src.services.mcp_server.tools import organizations
 
 
 def _context(*, admin: bool = True) -> SimpleNamespace:
+    """Build the minimal principal used to test the organization tools' admin requirement."""
     return SimpleNamespace(is_platform_admin=admin)
 
 
 @pytest.mark.asyncio
 async def test_list_organizations_formats_rest_rows_and_reports_errors():
+    """Map REST organization rows to MCP results and preserve REST failures."""
     org = {"id": str(uuid4()), "name": "Alpha", "domain": "alpha", "is_active": False}
     with patch.object(organizations, "call_rest", AsyncMock(return_value=(200, [org]))) as call:
         result = await organizations.list_organizations(_context())
@@ -26,6 +28,7 @@ async def test_list_organizations_formats_rest_rows_and_reports_errors():
 
 @pytest.mark.asyncio
 async def test_get_organization_validates_identifiers_and_preserves_rest_details():
+    """Validate organization identifiers while preserving canonical REST response details."""
     missing = await organizations.get_organization(_context())
     bad = await organizations.get_organization(_context(), organization_id="bad")
     assert "Either organization_id or domain" in missing.structured_content["error"]
@@ -47,6 +50,7 @@ async def test_get_organization_validates_identifiers_and_preserves_rest_details
 
 @pytest.mark.asyncio
 async def test_create_organization_validates_and_generates_domain():
+    """Validate organization creation fields and derive a domain when none is supplied."""
     missing = await organizations.create_organization(_context(), "")
     long_name = await organizations.create_organization(_context(), "x" * 256)
     long_domain = await organizations.create_organization(_context(), "Valid", domain="x" * 256)
@@ -66,6 +70,7 @@ async def test_create_organization_validates_and_generates_domain():
 
 @pytest.mark.asyncio
 async def test_organization_tools_deny_regular_users_before_rest():
+    """Deny regular callers organization administration before dispatching to REST."""
     with patch.object(organizations, "call_rest", AsyncMock()) as call:
         for result in [
             await organizations.list_organizations(_context(admin=False)),

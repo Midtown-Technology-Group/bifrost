@@ -453,6 +453,7 @@ async def test_can_access_agent_run_rejects_bad_id_and_delegates_loader():
 
 @pytest.mark.asyncio
 async def test_websocket_connect_filters_initial_channels_without_accepting_file_or_table_queries():
+    """Filter initial subscriptions without accepting file or table query channels."""
     user = _user(is_superuser=True)
     ws = _QueuedWebSocket()
     manager = SimpleNamespace(
@@ -528,6 +529,7 @@ async def test_websocket_connect_filters_initial_channels_without_accepting_file
 
 @pytest.mark.asyncio
 async def test_websocket_connect_handles_runtime_subscribe_errors_and_permission_denials():
+    """Return subscription errors and permission denials without dropping the WebSocket connection."""
     user = _user(is_superuser=False)
     ws = _QueuedWebSocket(
         [
@@ -631,6 +633,7 @@ async def test_websocket_connect_unsubscribe_resolves_table_and_file_subscriptio
 
 @pytest.mark.asyncio
 async def test_can_access_app_rejects_invalid_ids_and_uses_repository_access():
+    """Reject malformed application IDs and defer valid IDs to canonical repository access checks."""
     user = _user()
 
     assert not await ws_mod.can_access_app(user, "not-a-uuid")

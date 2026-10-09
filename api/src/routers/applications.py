@@ -1752,6 +1752,7 @@ async def delete_application_logo(
     app_id: UUID,
     ctx: Context,
 ) -> Response:
+    """Clear logo and thumbnail data after enforcing write scope and Solution immutability."""
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     application = await get_application_for_write_or_404(ctx, app_id)
     application.logo_data = None

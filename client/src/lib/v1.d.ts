@@ -8235,7 +8235,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get integration logo */
+        /**
+         * Get integration logo
+         * @description Serve an integration logo to admins, using immutable caching only for versioned thumbnails.
+         */
         get: operations["get_integration_logo_api_integrations__integration_id__logo_get"];
         put?: never;
         /**
@@ -11947,7 +11950,10 @@ export interface paths {
          *     the application origin.
          */
         post: operations["upload_application_logo_api_applications__app_id__logo_post"];
-        /** Delete application logo */
+        /**
+         * Delete application logo
+         * @description Clear logo and thumbnail data after enforcing write scope and Solution immutability.
+         */
         delete: operations["delete_application_logo_api_applications__app_id__logo_delete"];
         options?: never;
         head?: never;

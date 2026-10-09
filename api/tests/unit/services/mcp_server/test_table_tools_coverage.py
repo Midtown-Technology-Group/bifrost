@@ -101,6 +101,7 @@ def _table(**overrides):
 
 @pytest.mark.asyncio
 async def test_table_schema_and_id_validation():
+    """Reject malformed table identifiers and schema definitions."""
     with patch(
         "src.services.mcp_server.schema_utils.models_to_markdown",
         return_value="# Generated tables\n",
@@ -127,6 +128,7 @@ async def test_table_schema_and_id_validation():
 
 @pytest.mark.asyncio
 async def test_list_and_get_tables_format_rows_and_report_errors():
+    """Format table metadata responses and preserve lookup failures."""
     table_id = uuid4()
     table = _table(id=table_id, organization_id=None, name="Global")
     db = _Db([_RowsResult([table]), _ScalarResult(table), _ScalarResult(3)])
@@ -149,6 +151,7 @@ async def test_list_and_get_tables_format_rows_and_report_errors():
 
 @pytest.mark.asyncio
 async def test_create_table_validates_scope_and_org_before_db_access():
+    """Validate table creation authority and organization scope before database access."""
     org_id = uuid4()
     ctx = _context(admin=False, org_id=org_id)
 
@@ -175,6 +178,7 @@ async def test_create_table_validates_scope_and_org_before_db_access():
 
 @pytest.mark.asyncio
 async def test_create_table_reports_duplicates_and_persists_new_table():
+    """Reject duplicate table names and persist a valid new table."""
     org_id = uuid4()
     duplicate_db = _Db([_ScalarResult(_table(name="Tickets", organization_id=org_id))])
 
@@ -207,6 +211,7 @@ async def test_create_table_reports_duplicates_and_persists_new_table():
 
 @pytest.mark.asyncio
 async def test_update_table_reports_missing_noop_and_applies_changes():
+    """Distinguish missing tables and empty updates from successful metadata changes."""
     table_id = uuid4()
     missing_db = _Db([_ScalarResult(None)])
     with patch.object(tables, "get_tool_db", _tool_db(missing_db)):
@@ -287,6 +292,7 @@ async def test_update_and_delete_table_guard_permissions_and_delete_rows():
 
 @pytest.mark.asyncio
 async def test_table_metadata_denies_regular_users_before_db_access():
+    """Deny regular callers table metadata administration before database access."""
     ctx = _context(admin=False)
     with patch.object(tables, "get_tool_db") as db:
         results = [

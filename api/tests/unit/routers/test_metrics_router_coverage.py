@@ -79,6 +79,7 @@ def _snapshot():
 
 @pytest.mark.asyncio
 async def test_get_metrics_uses_snapshot_and_recent_failures() -> None:
+    """Combine the cached metrics snapshot with scoped recent failure data."""
     snapshot = _snapshot()
     roi_settings = SimpleNamespace(time_saved_unit="minutes", value_unit="USD")
     db = FakeDb(Result(scalar=snapshot))

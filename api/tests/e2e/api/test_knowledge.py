@@ -960,6 +960,7 @@ class TestKnowledgeDocumentByIdOrgScope:
         embedding_config_setup,
         knowledge_cleanup,
     ):
+        """Hide a document belonging to another organization behind the normal not-found response."""
         create = e2e_client.post(
             "/api/knowledge-sources/e2e-test/documents",
             headers=platform_admin.headers,

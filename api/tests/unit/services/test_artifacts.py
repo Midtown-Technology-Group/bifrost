@@ -44,6 +44,7 @@ async def test_store_returns_opaque_reference_and_persists_bytes() -> None:
 
 @pytest.mark.asyncio
 async def test_store_places_logical_file_in_workspace_prefix() -> None:
+    """Store logical artifact paths under the workspace-specific storage prefix."""
     db = MagicMock()
     db.flush = AsyncMock()
     result = MagicMock()
@@ -103,6 +104,7 @@ async def test_read_and_delete_resolve_canonical_storage_record() -> None:
 
 @pytest.mark.asyncio
 async def test_get_authorized_hides_missing_or_out_of_scope_artifact() -> None:
+    """Return the same not-found behavior for missing and unauthorized artifacts."""
     db = MagicMock()
     result = MagicMock()
     result.scalar_one_or_none.return_value = None

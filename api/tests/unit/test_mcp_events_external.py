@@ -23,6 +23,7 @@ from src.services.mcp_server.tools import events as events_tool
 
 
 def _ctx(*, is_platform_admin=False, is_provider_org=False, is_external=False, org_id=...):
+    """Build a caller context with explicit organization scope and privilege flags."""
     session = AsyncMock()
     session.add = MagicMock()
     session.execute = AsyncMock()
@@ -61,6 +62,7 @@ def _source(org_id):
 
 
 def _subscription(source_id):
+    """Build an active workflow subscription tied to the specified event source."""
     sub = MagicMock()
     sub.id = uuid4()
     sub.event_source_id = source_id
@@ -107,11 +109,13 @@ def _is_error(tool_result) -> bool:
 @pytest.mark.asyncio
 class TestListEventSourcesAdminOnly:
     async def test_non_admin_denied(self):
+        """Require platform-admin authority to list event sources."""
         ctx = _ctx(is_external=False)
         res = await events_tool.list_event_sources(ctx)
         assert _is_error(res)
 
     async def test_external_denied(self):
+        """Deny external callers event-source or subscription administration."""
         ctx = _ctx(is_external=True)
         res = await events_tool.list_event_sources(ctx)
         assert _is_error(res)
@@ -124,6 +128,7 @@ class TestListEventSourcesAdminOnly:
         assert _is_error(res)
 
     async def test_platform_admin_allowed(self):
+        """Allow platform admins to list event sources."""
         ctx = _ctx(is_platform_admin=True)
         res = await events_tool.list_event_sources(ctx)
         assert not _is_error(res)
@@ -132,6 +137,7 @@ class TestListEventSourcesAdminOnly:
 @pytest.mark.asyncio
 class TestCreateEventSourceAdminOnly:
     async def test_non_admin_cannot_create(self):
+        """Deny regular callers event-source creation."""
         ctx = _ctx(is_external=False)
         res = await events_tool.create_event_source(
             ctx, name="x", source_type="topic"
@@ -139,6 +145,7 @@ class TestCreateEventSourceAdminOnly:
         assert _is_error(res)
 
     async def test_external_cannot_create(self):
+        """Deny external callers event-source creation even with an organization supplied."""
         ctx = _ctx(is_external=True)
         res = await events_tool.create_event_source(
             ctx, name="x", source_type="topic", organization_id=str(uuid4())
@@ -146,6 +153,7 @@ class TestCreateEventSourceAdminOnly:
         assert _is_error(res)
 
     async def test_platform_admin_can_create(self):
+        """Persist a valid event source for a platform admin."""
         ctx = _ctx(is_platform_admin=True)
         added = []
         ctx.session.add = added.append
@@ -158,17 +166,20 @@ class TestCreateEventSourceAdminOnly:
 @pytest.mark.asyncio
 class TestGetEventSourceAdminOnly:
     async def test_non_admin_denied_even_for_own_org_source(self):
+        """Require admin authority to read an event source even within the caller's organization."""
         org = uuid4()
         ctx = _ctx_returning(_source(org), is_external=False, org_id=org)
         res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
         assert _is_error(res)
 
     async def test_non_admin_denied_for_global_source(self):
+        """Deny regular callers administration of globally scoped event sources."""
         ctx = _ctx_returning(_source(None), is_external=False)
         res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
         assert _is_error(res)
 
     async def test_external_denied_for_global_source(self):
+        """Deny external callers reads of globally scoped event sources."""
         ctx = _ctx_returning(_source(None), is_external=True)
         res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
         assert _is_error(res)
@@ -182,17 +193,20 @@ class TestGetEventSourceAdminOnly:
 @pytest.mark.asyncio
 class TestListEventSubscriptionsAdminOnly:
     async def test_non_admin_denied_even_for_global_source(self):
+        """Deny regular callers subscription administration even for globally scoped sources."""
         ctx = _ctx_source_then(_source(None), is_external=False)
         res = await events_tool.list_event_subscriptions(ctx, source_id=str(uuid4()))
         assert _is_error(res)
 
     async def test_external_denied_even_for_own_org_source(self):
+        """Deny external callers subscription access even within their own organization."""
         org = uuid4()
         ctx = _ctx_source_then(_source(org), is_external=True, org_id=org)
         res = await events_tool.list_event_subscriptions(ctx, source_id=str(uuid4()))
         assert _is_error(res)
 
     async def test_admin_allowed(self):
+        """Allow a platform admin to list subscriptions for an accessible event source."""
         ctx = _ctx_source_then(_source(uuid4()), is_platform_admin=True)
         res = await events_tool.list_event_subscriptions(ctx, source_id=str(uuid4()))
         assert not _is_error(res)
@@ -201,6 +215,7 @@ class TestListEventSubscriptionsAdminOnly:
 @pytest.mark.asyncio
 class TestCreateEventSubscriptionAdminOnly:
     async def test_non_admin_denied_even_for_global_source(self):
+        """Deny regular callers subscription administration even for globally scoped sources."""
         ctx = _ctx_source_then(_source(None), is_external=False)
         res = await events_tool.create_event_subscription(
             ctx, source_id=str(uuid4()), workflow_id=str(uuid4())
@@ -208,6 +223,7 @@ class TestCreateEventSubscriptionAdminOnly:
         assert _is_error(res)
 
     async def test_external_denied(self):
+        """Deny external callers event-source or subscription administration."""
         ctx = _ctx_source_then(_source(None), is_external=True)
         res = await events_tool.create_event_subscription(
             ctx, source_id=str(uuid4()), workflow_id=str(uuid4())
@@ -218,6 +234,7 @@ class TestCreateEventSubscriptionAdminOnly:
 @pytest.mark.asyncio
 class TestUpdateDeleteEventSubscriptionAdminOnly:
     async def test_update_denied_for_non_admin_even_for_own_org_source(self):
+        """Deny regular callers subscription updates even within their own organization."""
         org = uuid4()
         source_id = uuid4()
         ctx = _ctx_source_then(
@@ -232,6 +249,7 @@ class TestUpdateDeleteEventSubscriptionAdminOnly:
         assert _is_error(res)
 
     async def test_delete_denied_for_external_on_global_source(self):
+        """Deny external callers subscription deletion on globally scoped sources."""
         source_id = uuid4()
         ctx = _ctx_source_then(
             _source(None), then=_subscription(source_id), is_external=True
@@ -242,6 +260,7 @@ class TestUpdateDeleteEventSubscriptionAdminOnly:
         assert _is_error(res)
 
     async def test_update_allowed_for_admin(self):
+        """Allow a platform admin to update an event subscription."""
         org = uuid4()
         source_id = uuid4()
         ctx = _ctx_source_then(

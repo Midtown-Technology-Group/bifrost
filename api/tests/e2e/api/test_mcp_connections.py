@@ -152,6 +152,7 @@ class TestMCPConnectionsCRUD:
     def test_org_user_cannot_create_connection(
         self, e2e_client, org1_user, server_template, org1
     ):
+        """Deny MCP connection creation to a regular organization member."""
         resp = e2e_client.post(
             "/api/mcp-connections",
             headers=org1_user.headers,

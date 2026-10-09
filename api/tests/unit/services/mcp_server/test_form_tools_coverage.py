@@ -165,6 +165,7 @@ class TestListFormsTool:
 class TestFormMutationValidation:
     @pytest.mark.asyncio
     async def test_create_form_rejects_invalid_inputs_before_db_access(self):
+        """Reject invalid form creation inputs before performing a database lookup."""
         ctx = _context(admin=False)
         workflow_id = str(uuid4())
 
@@ -242,6 +243,7 @@ class TestFormMutationValidation:
 
     @pytest.mark.asyncio
     async def test_update_form_rejects_missing_or_invalid_id_before_db_access(self):
+        """Reject missing or malformed form IDs before accessing the database."""
         result = await forms.update_form(_context(admin=True), form_id="")
         assert "form_id is required" in result.structured_content["error"]
 
@@ -252,6 +254,7 @@ class TestFormMutationValidation:
 class TestCreateFormTool:
     @pytest.mark.asyncio
     async def test_create_form_forwards_schema_and_workflows_to_rest(self):
+        """Forward form schema and workflow references through the canonical REST create route."""
         ctx = _context(admin=True)
         workflow_id, launch_id = str(uuid4()), str(uuid4())
         fields = [{"name": "summary", "type": "text", "label": "Summary"}]
@@ -276,6 +279,7 @@ class TestCreateFormTool:
         (422, "Invalid form schema"), (500, "Database unavailable"),
     ])
     async def test_create_form_preserves_rest_authorization_reference_schema_and_write_errors(self, status, detail):
+        """Preserve REST authorization, reference, schema, and write errors in MCP form creation."""
         with patch.object(forms, "call_rest", AsyncMock(return_value=(status, {"detail": detail}))):
             result = await forms.create_form(
                 _context(admin=False), name="Intake", workflow_id=str(uuid4()), fields=[{"name": "summary"}],
@@ -287,6 +291,7 @@ class TestCreateFormTool:
 class TestGetFormTool:
     @pytest.mark.asyncio
     async def test_get_form_serializes_sorted_fields_and_workflow_names(self):
+        """Return form fields in order and resolve workflow names in the read response."""
         form_id = uuid4()
         workflow_id = uuid4()
         launch_workflow_id = uuid4()
@@ -333,6 +338,7 @@ class TestGetFormTool:
 
     @pytest.mark.asyncio
     async def test_get_form_ignores_unresolvable_workflow_refs(self):
+        """Omit unavailable workflow names while returning an otherwise valid form."""
         form = _form(workflow_id="portable-ref", launch_workflow_id="also-portable", fields=[])
         db = AsyncMock()
         db.execute = AsyncMock(return_value=_ScalarResult(form))
@@ -352,6 +358,7 @@ class TestGetFormTool:
 class TestUpdateFormTool:
     @pytest.mark.asyncio
     async def test_update_form_rejects_permission_and_empty_update_paths(self):
+        """Reject unauthorized form updates and requests with no update fields."""
         other_org_form = _form(organization_id=uuid4())
         global_form = _form(organization_id=None)
         own_org = uuid4()
@@ -390,6 +397,7 @@ class TestUpdateFormTool:
 
     @pytest.mark.asyncio
     async def test_update_form_applies_fields_launch_clear_and_serializes_updates(self):
+        """Apply form fields and launch-workflow clearing, then serialize the updated form."""
         form = _form(organization_id=uuid4(), launch_workflow_id=str(uuid4()))
         db = MagicMock()
         db.flush = AsyncMock()

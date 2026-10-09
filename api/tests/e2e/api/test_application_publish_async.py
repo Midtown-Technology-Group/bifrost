@@ -103,6 +103,7 @@ def _poll_notification(e2e_client, headers, notification_id: str, status: str) -
 def test_publish_success_deduplication_and_requester_visibility(
     e2e_client, platform_admin, org1, org1_user, app_factory
 ):
+    """Publish one immutable build and restrict the durable job status to its requester."""
     app = app_factory(
         platform_admin.headers,
         f"async-publish-{uuid.uuid4().hex[:8]}",

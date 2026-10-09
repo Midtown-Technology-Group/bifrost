@@ -29,6 +29,7 @@ async def alice_and_bob_runs(
     alice_user,
     bob_user,
 ) -> AsyncGenerator[dict, None]:
+    """Seed two callers' runs on one shared agent and remove the seeded rows after the test."""
     agent = Agent(
         id=uuid4(),
         name=f"Visibility Test Agent {uuid4().hex[:8]}",
@@ -89,6 +90,7 @@ def test_user_cannot_get_another_users_run_in_same_org(
 
 
 def test_user_sees_own_run(e2e_client, alice_user, alice_and_bob_runs):
+    """Expose the caller's run while hiding another caller's run on the same agent."""
     response = e2e_client.get(
         f"/api/agent-runs/{alice_and_bob_runs['alice_run'].id}",
         headers=alice_user.headers,
@@ -115,6 +117,7 @@ def test_user_cannot_list_another_users_run_in_same_org(
 def test_platform_admin_sees_both_runs(
     e2e_client, platform_admin, alice_and_bob_runs
 ):
+    """Allow a platform admin to inspect both callers' runs."""
     response = e2e_client.get(
         "/api/agent-runs",
         params={"agent_id": str(alice_and_bob_runs["agent"].id)},

@@ -23,6 +23,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _subscribe(ws, channel):
+    """Subscribe to one WebSocket channel and return the first server acknowledgement."""
     await ws.send(json.dumps({"type": "subscribe", "channels": [channel]}))
     msg = await asyncio.wait_for(ws.recv(), timeout=5)
     return json.loads(msg)
@@ -40,6 +41,7 @@ class TestAgentRunChannelVisibility:
         bob_user,
         db_session: AsyncSession,
     ):
+        """Allow the authorized owner's detail subscription while denying unrelated callers."""
         agent = Agent(
             name=f"WS visibility {uuid4().hex}",
             system_prompt="test",
@@ -101,6 +103,7 @@ class TestAgentRunChannelVisibility:
         platform_admin,
         org1_user,
     ):
+        """Restrict shared agent-run list broadcasts to authorized admins."""
         ws_url = f"{e2e_ws_url}/ws/connect"
 
         async with connect(
@@ -128,6 +131,7 @@ class TestEventSourceChannelVisibility:
         platform_admin,
         org1_user,
     ):
+        """Deny regular callers the protected channel while accepting platform-admin subscriptions."""
         ws_url = f"{e2e_ws_url}/ws/connect"
         source_id = uuid4()
 
@@ -158,6 +162,7 @@ class TestCliSessionChannelVisibility:
         org2_user,
         db_session: AsyncSession,
     ):
+        """Allow the authorized owner's detail subscription while denying unrelated callers."""
         session_id = uuid4()
         cli_session = CLISession(
             id=session_id,
@@ -208,6 +213,7 @@ class TestAppChannelVisibility:
         org1,
         org1_user,
     ):
+        """Restrict application draft broadcasts to callers with the required privileged scope."""
         slug = f"ws-draft-{uuid4().hex[:8]}"
         create = e2e_client.post(
             "/api/applications",
@@ -253,6 +259,7 @@ class TestAppChannelVisibility:
         org1_user,
         org2_user,
     ):
+        """Use canonical application read permissions when authorizing live broadcasts."""
         slug = f"ws-live-{uuid4().hex[:8]}"
         create = e2e_client.post(
             "/api/applications",

@@ -69,6 +69,7 @@ class TestBundleManifestNonBypassNeverBuilds:
         }
 
         async def _write_stale():
+            """Write the obsolete preview manifest used to prove reads do not trigger a rebuild."""
             await AppStorageService().write_preview_file(
                 inline_app["id"],
                 "manifest.json",
@@ -91,6 +92,7 @@ class TestBundleManifestNonBypassNeverBuilds:
         self, e2e_client, org1_user, inline_app, manifest_bytes
     ):
 
+        """Return 404 for unreadable or non-object manifests without rebuilding them for regular callers."""
         from src.services.app_storage import AppStorageService
 
         storage = AppStorageService()

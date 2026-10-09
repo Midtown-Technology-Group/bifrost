@@ -14,6 +14,7 @@ from src.services.app_bundler import BundleManifest, BundleResult, SCHEMA_VERSIO
 
 
 def _user(*, is_platform_admin: bool = False) -> SimpleNamespace:
+    """Build a test principal with explicit identity and authorization flags."""
     return SimpleNamespace(
         is_platform_admin=is_platform_admin,
         is_provider_org=False,
@@ -24,6 +25,7 @@ def _user(*, is_platform_admin: bool = False) -> SimpleNamespace:
 
 
 def _ctx(user):
+    """Build a caller context with explicit organization scope and privilege flags."""
     result = MagicMock()
     result.scalar_one_or_none.return_value = None  # An unmanaged application.
     db = MagicMock()
@@ -33,6 +35,7 @@ def _ctx(user):
 
 @pytest.fixture(autouse=True)
 def accessible_application(monkeypatch):
+    """Stub an accessible application so mutation tests reach the separate write-authority gate."""
     monkeypatch.setattr(
         applications, "get_application_by_id_or_404",
         AsyncMock(return_value=SimpleNamespace()),
@@ -41,6 +44,7 @@ def accessible_application(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_update_app_slug() -> None:
+    """Require platform-admin authority to change an application slug."""
     with pytest.raises(HTTPException) as exc:
         await applications.update_application(
             uuid4(),
@@ -64,6 +68,7 @@ async def test_non_admin_cannot_update_app_slug() -> None:
 async def test_non_admin_cannot_update_app_control_plane_fields(
     update: ApplicationUpdate,
 ) -> None:
+    """Deny regular callers changes to application control-plane fields."""
     with pytest.raises(HTTPException) as exc:
         await applications.update_application(
             uuid4(),
@@ -79,6 +84,7 @@ async def test_non_admin_cannot_update_app_control_plane_fields(
 async def test_admin_update_app_slug_proceeds_past_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Allow an admin slug update through authorization to the underlying lookup."""
     class FakeRepo:
         def __init__(self, *args, **kwargs) -> None:
             pass
@@ -103,11 +109,13 @@ async def test_admin_update_app_slug_proceeds_past_auth(
 async def test_non_admin_cannot_update_non_sensitive_app_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Deny regular callers metadata writes even when the fields are not sensitive."""
     class FakeRepo:
         def __init__(self, *args, **kwargs) -> None:
             pass
 
         async def update_application(self, *args, **kwargs):
+            """Fail if a denied metadata write reaches the repository mutation method."""
             raise AssertionError("Non-admin metadata writes must be denied")
 
     monkeypatch.setattr(applications, "ApplicationRepository", FakeRepo)
@@ -125,6 +133,7 @@ async def test_non_admin_cannot_update_non_sensitive_app_fields(
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_update_browser_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Require platform-admin authority to alter application browser dependencies."""
     async def fail_if_lookup_runs(*args, **kwargs):  # pragma: no cover - assertion helper
         raise AssertionError("dependency mutation should fail before app lookup")
 
@@ -143,6 +152,7 @@ async def test_non_admin_cannot_update_browser_dependencies(monkeypatch: pytest.
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_write_app_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reject regular-user app source writes before invoking storage."""
     async def fail_if_lookup_runs(*args, **kwargs):  # pragma: no cover - assertion helper
         raise AssertionError("code mutation should fail before app lookup")
 
@@ -162,6 +172,7 @@ async def test_non_admin_cannot_write_app_code(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_delete_app_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reject regular-user app source deletion before invoking storage."""
     async def fail_if_lookup_runs(*args, **kwargs):  # pragma: no cover - assertion helper
         raise AssertionError("code deletion should fail before app lookup")
 
@@ -221,6 +232,7 @@ async def test_live_stale_manifest_fails_closed_without_rebuild(
 
 @pytest.mark.asyncio
 async def test_preview_stale_manifest_can_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Allow the authorized preview path to rebuild an obsolete manifest."""
     app_id = uuid4()
     app = SimpleNamespace(
         id=app_id,

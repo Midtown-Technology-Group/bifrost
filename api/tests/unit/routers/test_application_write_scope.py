@@ -19,6 +19,7 @@ from src.routers.applications import get_application_for_write_or_404
 
 
 def _ctx(*, org_id, is_platform_admin=False, is_provider_org=False):
+    """Build a caller context with explicit organization scope and privilege flags."""
     return SimpleNamespace(
         org_id=org_id,
         user=SimpleNamespace(
@@ -30,6 +31,7 @@ def _ctx(*, org_id, is_platform_admin=False, is_provider_org=False):
 
 @pytest.mark.asyncio
 async def test_non_bypass_member_denied_for_global_app():
+    """Deny a regular organization member writes to a globally scoped application."""
     app_id = uuid4()
     application = SimpleNamespace(id=app_id, organization_id=None)
     ctx = _ctx(org_id=uuid4())
@@ -65,6 +67,7 @@ async def test_non_bypass_member_denied_for_own_org_app():
 
 @pytest.mark.asyncio
 async def test_non_bypass_member_denied_for_other_org_app():
+    """Hide applications in another organization from a regular caller's write lookup."""
     app_id = uuid4()
     application = SimpleNamespace(id=app_id, organization_id=uuid4())
     ctx = _ctx(org_id=uuid4())
@@ -81,6 +84,7 @@ async def test_non_bypass_member_denied_for_other_org_app():
 
 @pytest.mark.asyncio
 async def test_platform_admin_allowed_for_global_app():
+    """Allow a platform admin to mutate a globally scoped application."""
     app_id = uuid4()
     application = SimpleNamespace(id=app_id, organization_id=None)
     ctx = _ctx(org_id=uuid4(), is_platform_admin=True)
@@ -96,6 +100,7 @@ async def test_platform_admin_allowed_for_global_app():
 
 @pytest.mark.asyncio
 async def test_platform_admin_allowed_for_own_org_app():
+    """Allow a platform admin to mutate an application within their organization."""
     app_id = uuid4()
     org_id = uuid4()
     application = SimpleNamespace(id=app_id, organization_id=org_id)
@@ -129,6 +134,7 @@ async def test_provider_org_non_admin_allowed_for_global_app():
 
 @pytest.mark.asyncio
 async def test_provider_org_non_admin_allowed_for_own_org_app():
+    """Allow provider metadata scope bypass without implying platform-admin source authority."""
     app_id = uuid4()
     org_id = uuid4()
     application = SimpleNamespace(id=app_id, organization_id=org_id)
