@@ -133,8 +133,13 @@ AUTH-P1 current-main integration is candidate
 `8292784e5c5014d7fba4eb78c18d84798064ff68`, incorporating the platform head
 above. The ten approved authority source/test paths are unchanged by that main
 advance. Static parsing, qualified scoped Ruff and whitespace checks pass;
-fresh supported CI and the literal pre-PR gate remain required. Historical
-AUTH-P1 CI does not qualify this candidate.
+the exact candidate is published to existing PR #1018. Supported PR CI
+[37991033951](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37991033951)
+and manual CI
+[37991094247](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37991094247)
+are pending. The latter runs the existing literal `bash test.sh pre-pr` job;
+no custom verification workflow was added. Historical AUTH-P1 CI does not
+qualify this candidate.
 
 No full lifecycle, C2/C3, merge or production-deployment acceptance follows.
 The prior qualification failures and exhausted claim experiment remain
