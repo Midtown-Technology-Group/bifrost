@@ -22,6 +22,7 @@ from src.models.orm.organizations import Organization
 from src.models.orm.users import Role, User, UserRole
 from src.routers.agent_runs import execute_agent_run, list_agent_runs, rerun_agent_run
 from src.routers.websocket import websocket_connect
+from src.services.agent_run_access import load_agent_run_for_user
 
 
 pytestmark = pytest.mark.asyncio
@@ -282,9 +283,13 @@ async def test_delegated_runs_require_the_callers_parent(db_session: AsyncSessio
     other_child.parent_run_id = other_parent.id
     await db_session.flush()
 
-    response = await _list_runs_for_user(db_session, _principal(caller.id, org.id))
-
-    assert {item.id for item in response.items} == {own_parent.id, own_child.id}
+    principal = _principal(caller.id, org.id)
+    visible = await load_agent_run_for_user(db_session, own_child.id, principal)
+    assert visible is not None and visible.id == own_child.id
+    assert await load_agent_run_for_user(db_session, other_child.id, principal) is None
+    response = await _list_runs_for_user(db_session, principal)
+    # Global history remains root-only; child reads use their parent's caller.
+    assert {item.id for item in response.items} == {own_parent.id}
 
 
 async def test_platform_admin_list_agent_runs_includes_foreign_org_runs(
