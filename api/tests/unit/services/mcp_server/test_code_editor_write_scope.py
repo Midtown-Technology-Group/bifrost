@@ -146,9 +146,10 @@ async def test_list_content_denied_for_non_bypass(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_list_content_allowed_for_bypass_caller(monkeypatch):
+async def test_list_content_allowed_for_bypass_caller(db_session, monkeypatch):
     from src.services.repo_storage import RepoStorage
 
+    monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     monkeypatch.setattr(RepoStorage, "list", AsyncMock(return_value=[]))
     ctx = _ctx(is_platform_admin=True)
     result = await code_editor.list_content(ctx)
@@ -176,7 +177,8 @@ async def test_get_content_denied_for_non_bypass(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_content_allowed_for_bypass_caller(monkeypatch):
+async def test_get_content_allowed_for_bypass_caller(db_session, monkeypatch):
+    monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     read_from_s3 = AsyncMock(return_value="content")
     monkeypatch.setattr(code_editor, "_read_from_s3", read_from_s3)
 
