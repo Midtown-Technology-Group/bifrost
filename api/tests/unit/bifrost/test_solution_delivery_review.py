@@ -313,7 +313,7 @@ def test_removal_requires_evidence_and_verifies_exact_signed_observations(review
     "base_resources_digest", "candidate_resources_digest", "missing_id", "extra_id", "duplicate_id",
     "expired", "stale", "future", "naive_time", "snapshot", "issuer", "key", "build", "tampered",
     "unknown_field", "unknown_schema", "missing_context", "wrong_context_solution", "untrusted_key",
-    "no_baseline"])
+    "no_baseline", "noncanonical_signature"])
 def test_removal_evidence_fails_closed_for_wrong_stale_or_tampered_receipts(damage):
     import base64
     from bifrost.workflow_removal_evidence import canonical_bytes
@@ -357,7 +357,11 @@ def test_removal_evidence_fails_closed_for_wrong_stale_or_tampered_receipts(dama
     elif damage == "no_baseline":
         args["previous_recipe_value"] = None
     # Sign damaged semantics too: valid authentication must not excuse wrong bindings/scans.
-    if damage != "tampered":
+    if damage == "noncanonical_signature":
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        signature = receipt["signature"]
+        receipt["signature"] = signature[:85] + alphabet[alphabet.index(signature[85]) + 1] + "=="
+    elif damage != "tampered":
         receipt["signature"] = base64.b64encode(key.sign(canonical_bytes(
             {k: v for k, v in receipt.items() if k != "signature"}))).decode()
     else:
