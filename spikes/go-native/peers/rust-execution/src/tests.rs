@@ -12,7 +12,9 @@ fn vectors() -> Value {
 fn unhex(value: &str) -> Vec<u8> {
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| {
             u8::from_str_radix(std::str::from_utf8(p).unwrap_or_default(), 16)
                 .unwrap_or_else(|_| panic!("invalid trusted corpus hex"))

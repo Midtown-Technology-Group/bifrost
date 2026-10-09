@@ -122,13 +122,12 @@ impl Schemas {
             }
         }
         if let Some(fields) = value.as_object() {
-            if let Some(required) = schema["required"].as_array() {
-                if required
+            if let Some(required) = schema["required"].as_array()
+                && required
                     .iter()
                     .any(|v| !v.as_str().is_some_and(|k| fields.contains_key(k)))
-                {
-                    return false;
-                }
+            {
+                return false;
             }
             for (name, child) in fields {
                 if let Some(property) = schema["properties"].get(name) {
@@ -179,19 +178,18 @@ impl Schemas {
                     return false;
                 }
             }
-            if let Some(format) = schema["format"].as_str() {
-                if format != "date-time" || !timestamp(text) {
-                    return false;
-                }
-            }
-        }
-        if value.is_i64() || value.is_u64() {
-            if !value
-                .as_f64()
-                .is_some_and(|n| bounds(n, schema, "minimum", "maximum"))
+            if let Some(format) = schema["format"].as_str()
+                && (format != "date-time" || !timestamp(text))
             {
                 return false;
             }
+        }
+        if (value.is_i64() || value.is_u64())
+            && !value
+                .as_f64()
+                .is_some_and(|n| bounds(n, schema, "minimum", "maximum"))
+        {
+            return false;
         }
         true
     }
