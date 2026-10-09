@@ -381,3 +381,82 @@ time. Only independent prerequisite work proceeded. Next is independent proposed
 profile Rust/transcript proof and, after the actual authority release and required
 gates, the common trusted adapter/Rust owner integration. Decision CONTINUE SPIKE;
 the full goal remains active and unproved. SDK0.0.0-spike.2; MTG package2026-10-09.1.
+
+## Independent Rust wire codec and three-language interchange
+
+The corrected reporting source is
+`943a7fc3192f8f60b1d4ba821d8c428cd162e98d`. Hosted
+[diagnostic run37998422430](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37998422430)
+and full [native run37998422614](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37998422614)
+both succeeded. [Retained proof](rust-execution-codec-proof.json) binds exact
+producer source, schema/reference pins, Rust dependency closure, compiled checker,
+all exchange files, tests, tool image/cleanup and current native evidence.
+
+New `spikes/go-native/peers/rust-execution` is a first-party candidate contract
+consumer, not a coordinator or Go dependency. It independently validates the
+restricted vocabulary of the exact shared schemas. Only the unchanged P0 lexical
+JSON visitor is retained from Rust reference0fa18ddd with attribution; no P0
+Rust body enum, SQL, lifecycle or oracle state is copied into the new codec.
+The21 registry dependency records/checksums are selected from that existing
+reference lock and were accepted by actual `cargo fetch --locked`. Its pinned
+Rust1.98.1 W0 tool image/component recipe performs fmt, clippy with warnings denied,
+tests and build with network disabled, read-only source, bounded resources and
+clean environment. Component/dependency preparation contains no tenant code or
+SDK/DB/signing credentials. The owned derived image was removed after the checks.
+
+Rust has99 named passing tests:94 unchanged raw specimens plus5 stream/receipt/
+output checks. Independent Python has101; the diagnostic's Go codec packages
+have99 proposed and144 unchanged P0 named test/subtest passes. All three real
+encoders send18 specimens across all13 message types to both other decoders;
+all six encoding directions pass. The Python test oracle remains a separate
+reference check. Each consumer's semantic comparison rejects a deliberately
+changed shape-valid Result. The Rust receiver's exact raw Result digests match
+independent hashing of both Go and Python payloads. Those hashes correctly differ
+between semantically equal differently ordered JSON encodings; canonicalizing a
+business value would not preserve receipt identity. Specimens remain independent,
+not same-session retransmissions or legal execution transcripts.
+
+The original eb05dce6 diagnostic stopped on four clippy style findings after
+locked fetch/fmt. The warnings gate was preserved and corrections passed ata4151cced.
+The final943a7fc31 also corrects stale report wording that still described Rust
+interchange as unproved. Both preceding evidence and their scope are retained;
+no failed/pending check is treated as acceptance.
+
+The full native run passes276 Go named test/subtest checks, existing P0
+Go/Python/Rust interchange, normal build/scan and local SDK/cancellation probes,
+plus41 direct and15 pooled reduced ownership checks. Native bytes remain
+`160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`,
+9,920,235bytes. Downloaded binary/module graph/warm binary and experimental
+signature readbacks match. No downloaded executable or container ran on pve-t340.
+This is the historical spike base, not current-main platform/API acceptance.
+
+Fresh timings are78.10ms module download,16.749s cold compile with resolved modules,
+16.575s independent empty compiler cache,401.56ms warm edit compile,347.67ms
+restored warm compile and605.66ms edit→artifact. Across20 local runs, startup→SDK
+median4.502ms and run median5.084ms/p955.447ms; cancellation observation0.493ms.
+These are separate runner observations alongside earlier10.668s/272ms/3.140ms
+measurements of the same native artifact, not a paired regression attribution or
+Rust lifecycle overhead. Durable projection and Rust admission remain false in
+the retained descriptor.
+
+Fresh fetched platform main staysb031b9ca; workspace main is now
+`e666a60b614fc34022008dadfa734b1d970208c8` (Cisco Secure Client evidence #1250).
+The primary workspace remains01a5137f on its preserved branch, clean. No workspace
+workload, current-main source, public API, credential, ownership or deployment
+was mutated. The current #1132 reference remains35daf020d, open/unfrozen.
+
+Package1's wire codec/interchange portion has three independent implementations;
+its full structural/session/transcript conformance remains work, not implied by
+these passes. The complete workflow still lacks accepted native registration,
+trusted initialization/provision custody, Rust admission/Start/cancellation/durable
+Result, existing Execution API readback and full incumbent writer exclusion.
+Another conforming supervisor executing the same workflow under the common
+lifecycle remains unproved. Go depends on neutral contracts and ordinary authoring
+remains intact; neither fact alone makes it first-class. Decision CONTINUE SPIKE.
+
+The concrete owner interface proposal is still pending the explicitly required
+human architecture release; no response is inferred from goal continuation or
+elapsed time. Independent transcript work remains available, so this turn does
+not mark the active goal blocked or complete. No production/vendor mutation,
+expanded credentials, PR creation, merge or deployment. SDK0.0.0-spike.2,
+MTG package2026-10-09.1; procedures retain their previously recorded versions.
