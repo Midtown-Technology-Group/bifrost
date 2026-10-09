@@ -18,6 +18,7 @@ from typing import Any
 
 from sqlalchemy import and_, delete, func, select, union
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentSuperuser
 from src.core.log_safety import log_safe
 from sqlalchemy.orm import defer, joinedload, selectinload
@@ -813,6 +814,7 @@ class IntegrationsRepository:
     status_code=status.HTTP_201_CREATED,
     summary="Create integration",
     description="Create a new integration (Platform admin only)",
+    **operation_route("integrations.create"),
 )
 async def create_integration(
     request: IntegrationCreate,
@@ -843,6 +845,7 @@ async def create_integration(
     response_model=IntegrationListResponse,
     summary="List integrations",
     description="List all integrations (Platform admin only)",
+    **operation_route("integrations.list"),
 )
 async def list_integrations(
     ctx: Context,
@@ -862,6 +865,7 @@ async def list_integrations(
     response_model=IntegrationDetailResponse,
     summary="Get integration by ID",
     description="Get a specific integration by ID with mappings and OAuth config (Platform admin only)",
+    **operation_route("integrations.get"),
 )
 async def get_integration(
     integration_id: UUID,
@@ -998,6 +1002,7 @@ async def get_integration_by_name(
     response_model=IntegrationResponse,
     summary="Update integration",
     description="Update an existing integration (Platform admin only)",
+    **operation_route("integrations.update"),
 )
 async def update_integration(
     integration_id: UUID,
@@ -1024,6 +1029,7 @@ async def update_integration(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete integration",
     description="Soft delete an integration (Platform admin only)",
+    **operation_route("integrations.delete"),
 )
 async def delete_integration(
     integration_id: UUID,
@@ -1187,6 +1193,7 @@ class IntegrationConfigResponse(BaseModel):
     response_model=IntegrationConfigResponse,
     summary="Update integration default config",
     description="Set default config values for an integration (Platform admin only)",
+    **operation_route("integrations.config.update"),
 )
 async def update_integration_config(
     integration_id: UUID,
@@ -1240,6 +1247,7 @@ async def update_integration_config(
     response_model=IntegrationConfigResponse,
     summary="Get integration default config",
     description="Get default config values for an integration (Platform admin only)",
+    **operation_route("integrations.config.get"),
 )
 async def get_integration_config(
     integration_id: UUID,
@@ -1309,6 +1317,7 @@ async def _mapping_to_response(
     status_code=status.HTTP_201_CREATED,
     summary="Create integration mapping",
     description="Create a new mapping between an integration and organization (Platform admin only)",
+    **operation_route("integrations.mappings.create"),
 )
 async def create_mapping(
     integration_id: UUID,
@@ -1351,6 +1360,7 @@ async def create_mapping(
     response_model=IntegrationMappingListResponse,
     summary="List mappings for integration",
     description="List all mappings for a specific integration (Platform admin only)",
+    **operation_route("integrations.mappings.list"),
 )
 async def list_mappings(
     integration_id: UUID,
@@ -1379,6 +1389,7 @@ async def list_mappings(
     response_model=IntegrationMappingResponse,
     summary="Get integration mapping",
     description="Get a specific mapping by ID (Platform admin only)",
+    **operation_route("integrations.mappings.get"),
 )
 async def get_mapping(
     integration_id: UUID,
@@ -1407,6 +1418,7 @@ async def get_mapping(
     response_model=IntegrationMappingResponse,
     summary="Get mapping by organization",
     description="Get the mapping for an integration in a specific organization (Platform admin only)",
+    **operation_route("integrations.mappings.get_by_org"),
 )
 async def get_mapping_by_org(
     integration_id: UUID,
@@ -1435,6 +1447,7 @@ async def get_mapping_by_org(
     response_model=IntegrationMappingResponse,
     summary="Update integration mapping",
     description="Update an existing mapping (Platform admin only)",
+    **operation_route("integrations.mappings.update"),
 )
 async def update_mapping(
     integration_id: UUID,
@@ -1468,6 +1481,7 @@ async def update_mapping(
     response_model=IntegrationMappingBatchResponse,
     summary="Batch upsert integration mappings",
     description="Create or update multiple mappings in a single request (Platform admin only)",
+    **operation_route("integrations.mappings.batch"),
 )
 async def batch_upsert_mappings(
     integration_id: UUID,
@@ -1533,6 +1547,7 @@ async def batch_upsert_mappings(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete integration mapping",
     description="Delete an integration mapping (Platform admin only)",
+    **operation_route("integrations.mappings.delete"),
 )
 async def delete_mapping(
     integration_id: UUID,
@@ -1558,6 +1573,7 @@ async def delete_mapping(
     response_model=MappingAuthorizeResponse,
     summary="Begin OAuth authorize flow for a mapping",
     description="Returns the authorization URL with a signed state token carrying mapping_id (Platform admin only)",
+    **operation_route("integrations.mappings.authorize"),
 )
 async def authorize_mapping(
     integration_id: UUID,
@@ -1621,6 +1637,7 @@ async def authorize_mapping(
     status_code=204,
     summary="Disconnect a mapping's per-row OAuth connection",
     description="Deletes the mapping's OAuth token and clears oauth_token_id. Fallback to integration-level token resumes (Platform admin only).",
+    **operation_route("integrations.mappings.disconnect"),
 )
 async def disconnect_mapping(
     integration_id: UUID,
@@ -1754,6 +1771,7 @@ async def _emit_refresh_failed(
         "tokens don't poison the integration-level fallback's health). "
         "Platform admin only."
     ),
+    **operation_route("integrations.mappings.refresh"),
 )
 async def refresh_mapping_oauth(
     integration_id: UUID,
@@ -1841,6 +1859,7 @@ async def refresh_mapping_oauth(
     response_model=OAuthConfigResponse,
     summary="Get OAuth provider config",
     description="Get the OAuth provider configuration for this integration (Platform admin only)",
+    **operation_route("integrations.oauth.get"),
 )
 async def get_oauth_config(
     integration_id: UUID,
@@ -1876,6 +1895,7 @@ async def get_oauth_config(
     response_model=OAuthAuthorizeResponse,
     summary="Get OAuth authorization URL",
     description="Get the authorization URL for this integration's OAuth flow (Platform admin only)",
+    **operation_route("integrations.oauth.authorize"),
 )
 async def get_oauth_authorization_url(
     integration_id: UUID,
@@ -1940,6 +1960,7 @@ async def get_oauth_authorization_url(
         "specific mapping's entity_id (used when the picker fires inside "
         "the OAuth popup of a per-mapping connect). Platform admin only."
     ),
+    **operation_route("integrations.oauth.entity_id_source.update"),
 )
 async def set_entity_id_source(
     integration_id: UUID,
@@ -1986,6 +2007,7 @@ async def set_entity_id_source(
         "under this integration so they re-capture on reconnect. "
         "Platform admin only."
     ),
+    **operation_route("integrations.oauth.entity_id_source.delete"),
 )
 async def clear_entity_id_source(
     integration_id: UUID,
@@ -2104,6 +2126,7 @@ result = await test()
     response_model=IntegrationTestResponse,
     summary="Test integration connection",
     description="Test connectivity to an integration by making a GET request to the specified endpoint (Platform admin only)",
+    **operation_route("integrations.test"),
 )
 async def test_integration_connection(
     integration_id: UUID,
@@ -2377,6 +2400,7 @@ class GenerateSDKResponse(BaseModel):
     response_model=GenerateSDKResponse,
     summary="Generate SDK from OpenAPI spec",
     description="Generate a Python SDK module from an OpenAPI specification (Platform admin only)",
+    **operation_route("integrations.generate_sdk"),
 )
 async def generate_sdk(
     integration_id: UUID,

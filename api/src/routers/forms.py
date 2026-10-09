@@ -23,6 +23,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.config import get_settings
 from src.core.db_deps import DbSession
@@ -286,6 +287,7 @@ async def _validate_form_references(
     response_model=list[FormPublic],
     summary="List forms",
     description="List all forms visible to the user based on their permissions",
+    **operation_route("forms.list"),
 )
 async def list_forms(
     ctx: Context,
@@ -412,6 +414,7 @@ async def _publication_response(
     status_code=status.HTTP_201_CREATED,
     summary="Create a new form",
     description="Create a new form (Platform admin only)",
+    **operation_route("forms.create"),
 )
 async def create_form(
     request: FormCreate,
@@ -740,6 +743,7 @@ async def create_form_captcha(
     response_model=FormPublic,
     summary="Get form by ID",
     description="Get a specific form by ID. User must have access to the form.",
+    **operation_route("forms.get"),
 )
 async def get_form(
     form_id: UUID,
@@ -762,6 +766,7 @@ async def get_form(
     response_model=FormPublic,
     summary="Update a form",
     description="Update an existing form (Platform admin only)",
+    **operation_route("forms.update"),
 )
 async def update_form(
     form_id: UUID,
@@ -1045,6 +1050,7 @@ async def delete_form_logo(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a form",
     description="Delete a form. Use ?purge=true to permanently remove it from the database (Platform admin only)",
+    **operation_route("forms.delete"),
 )
 async def delete_form(
     form_id: UUID,

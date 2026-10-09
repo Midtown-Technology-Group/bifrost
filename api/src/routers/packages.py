@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
 
+from src.services.operation_catalog import operation_route
 from src.models import (
     InstallPackageRequest,
     InstalledPackage,
@@ -393,6 +394,7 @@ async def install_package(
     "/installations/{run_id}",
     response_model=PackageInstallationProgressResponse,
     summary="Get package recycle progress",
+    **operation_route("packages.get_package_installation_progress"),
 )
 async def get_package_installation_progress(
     run_id: UUID,
