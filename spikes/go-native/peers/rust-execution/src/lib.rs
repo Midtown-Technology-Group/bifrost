@@ -179,3 +179,6 @@ fn read_exact(reader: &mut impl Read, buffer: &mut [u8], allow_eof: bool) -> Res
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod session_tests;

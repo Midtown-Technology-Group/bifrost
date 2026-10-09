@@ -26,3 +26,14 @@ semantic-drift negative must pass. Until supported CI verifies the exact source,
 these are expectations. This package implements no session, initialization
 custody, private provision, lifecycle or durable projection. It cannot release
 #1011/#1132 authority gates or approve the owner integration proposal.
+
+`session_tests.rs` is an independent test-only transcript model consuming the
+published 68 cases and their named setup fixtures. Every step checks rejection
+and the exact snapshot; rejection must preserve the entire private model state.
+Commit, grant, delivery, release and cleanup are injected assumptions with no
+credential, process or durable effects. The `raw_value` development feature of
+the already pinned serde_json package retains fixture field order for its declared
+receipt preimage; no new registry package is added. Raw received Result bytes are
+hashed unchanged. This test model is absent from the normal executable/library
+and is not an owner/session registry or a supervisor implementation. Rust session
+conformance remains unproved until supported CI verifies this exact candidate.
