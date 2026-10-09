@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, Response, status
 from sqlalchemy import select
 from starlette.responses import JSONResponse
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import DbSession
 from src.models.contracts.device_jobs import (
     DeviceClaimRequest,
@@ -118,6 +119,7 @@ async def _touch(db, device: Device) -> datetime:
     "/heartbeat",
     response_model=DeviceHeartbeatResponse,
     summary="Device heartbeat: renew activity and receive the poll hint",
+    **operation_route("deviceprotocol.heartbeat_route"),
 )
 async def heartbeat_route(
     body: DeviceHeartbeatRequest,
@@ -160,6 +162,7 @@ async def heartbeat_route(
     "/jobs/claim",
     response_model=DeviceClaimResponse,
     summary="Claim the next job for this device (204 when idle)",
+    **operation_route("deviceprotocol.claim_route"),
 )
 async def claim_route(
     body: DeviceClaimRequest,
@@ -191,6 +194,7 @@ async def claim_route(
     "/jobs/{job_id}/running",
     response_model=DeviceRunningResponse,
     summary="Report a real spawn: claimed -> running (fenced)",
+    **operation_route("deviceprotocol.running_route"),
 )
 async def running_route(
     job_id: UUID,
@@ -224,6 +228,7 @@ async def running_route(
     "/jobs/{job_id}/logs",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Fenced, idempotent log batch",
+    **operation_route("deviceprotocol.logs_route"),
 )
 async def logs_route(
     job_id: UUID,
@@ -269,6 +274,7 @@ async def logs_route(
     "/jobs/{job_id}/result",
     response_model=DeviceResultResponse,
     summary="Fenced terminal result",
+    **operation_route("deviceprotocol.result_route"),
 )
 async def result_route(
     job_id: UUID,

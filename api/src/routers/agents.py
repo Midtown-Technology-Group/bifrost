@@ -19,6 +19,7 @@ from fastapi.responses import Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
+from src.services.operation_catalog import operation_route
 from shared.scope_resolver import has_scope_bypass
 from src.core.auth import CurrentActiveUser
 from src.core.db_deps import DbSession
@@ -303,7 +304,7 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
 # =============================================================================
 
 
-@router.get("")
+@router.get("", **operation_route("agents.list"))
 async def list_agents(
     db: DbSession,
     user: CurrentActiveUser,
@@ -412,7 +413,7 @@ async def list_agents(
     return result
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, **operation_route("agents.create"))
 async def create_agent(
     agent_data: AgentCreate,
     db: DbSession,
@@ -676,7 +677,7 @@ async def get_fleet_stats_endpoint(
     return await get_fleet_stats(db, org_id=org_id, window_days=window_days)
 
 
-@router.get("/{agent_id}")
+@router.get("/{agent_id}", **operation_route("agents.get"))
 async def get_agent(
     agent_id: UUID,
     db: DbSession,
@@ -707,7 +708,7 @@ async def get_agent(
     return _agent_to_public(agent)
 
 
-@router.put("/{agent_id}")
+@router.put("/{agent_id}", **operation_route("agents.update"))
 async def update_agent(
     agent_id: UUID,
     agent_data: AgentUpdate,
@@ -957,7 +958,7 @@ async def update_agent(
     return _agent_to_public(agent)
 
 
-@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT, **operation_route("agents.delete"))
 async def delete_agent(
     agent_id: UUID,
     db: DbSession,
