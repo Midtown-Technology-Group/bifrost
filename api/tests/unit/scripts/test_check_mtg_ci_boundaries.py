@@ -71,6 +71,22 @@ def test_merge_group_trigger_rejects_other_activity_types(tmp_path: Path):
     assert any("only checks_requested" in item for item in violations)
 
 
+def test_zero_shard_sentinel_guard_is_required(tmp_path: Path):
+    workflow = _repo_root() / ".github/workflows/ci.yml"
+    original = workflow.read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    sentinel_guard = (
+        " && fromJSON(needs.affected-test-plan.outputs.api_e2e_matrix || "
+        "'{\"include\":[{\"shard\":0,\"total\":0}]}').include[0].total != 0"
+    )
+    mutated.write_text(original.replace(sentinel_guard, "", 1), encoding="utf-8")
+    assert mutated.read_text(encoding="utf-8") != original, "sentinel guard not found in ci.yml"
+
+    violations = check_ci_workflow(mutated)
+
+    assert any("admission guard changed" in item for item in violations)
+
+
 def test_required_test_jobs_reject_preloaded_third_party_actions(tmp_path: Path):
     workflow = _repo_root() / ".github/workflows/ci.yml"
     original = workflow.read_text(encoding="utf-8")
