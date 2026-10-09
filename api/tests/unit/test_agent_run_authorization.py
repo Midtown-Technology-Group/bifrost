@@ -267,6 +267,26 @@ async def test_user_with_agent_role_can_list_own_agent_run(db_session: AsyncSess
     assert response.items[0].id == run.id
 
 
+async def test_delegated_runs_require_the_callers_parent(db_session: AsyncSession):
+    org = await _make_org(db_session, "DelegationOrg")
+    caller = await _make_user(db_session, org)
+    other = await _make_user(db_session, org)
+    agent = await _make_authenticated_agent(db_session, org)
+    own_parent = await _make_run(db_session, agent, org, caller_user_id=caller.id)
+    other_parent = await _make_run(db_session, agent, org, caller_user_id=other.id)
+    own_child = await _make_run(db_session, agent, org, caller_user_id=other.id)
+    own_child.trigger_type = "delegation"
+    own_child.parent_run_id = own_parent.id
+    other_child = await _make_run(db_session, agent, org, caller_user_id=other.id)
+    other_child.trigger_type = "delegation"
+    other_child.parent_run_id = other_parent.id
+    await db_session.flush()
+
+    response = await _list_runs_for_user(db_session, _principal(caller.id, org.id))
+
+    assert {item.id for item in response.items} == {own_parent.id, own_child.id}
+
+
 async def test_platform_admin_list_agent_runs_includes_foreign_org_runs(
     db_session: AsyncSession,
 ):
