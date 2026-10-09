@@ -1,0 +1,51 @@
+{
+  "status": "proposed-interfaces-not-authority-release",
+  "sources": {
+    "platform_main": {
+      "sha": "b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d",
+      "files": {
+        "api/src/services/workspace_release_projection.py": "5cfe2adc25e4d93c9d167811e3975395715f2eafa4dee41b65e4831882f4ce78",
+        "api/src/services/execution/attempts.py": "82ed8abc28a1a51d17ddcdaeeabf9473468ef8474c172bb01e7bc5b66b067afa",
+        "api/src/jobs/consumers/workflow_execution.py": "b7006045e9db061a3719ef5ff5c4dd2a8d467c73e33418d402308b6b12a81711",
+        "api/src/models/orm/execution_lifecycle_events.py": "b5a7afbf03e0289642188f70ea540e9db1d625c9e419bbe0764aba963e0b534d",
+        "api/src/services/solutions/deployment_runtime.py": "3b1dd1102eb6e98ecd5758faf5d4f1c556e5a9c4893c724cefa6635a5cceb6a8",
+        "api/src/routers/executions.py": "6b9fe28a7bff39092d36898a994f4def16954ede02df499209f694d925860aa5"
+      }
+    },
+    "architecture": {
+      "sha": "93ec9421b23b0b4a1493ab45f15f55ded3377d2e",
+      "files": {
+        "docs/architecture/rust-core-mvp-runtime-authority-sequence.md": "0be50b12a706c0b8dea5b414d545a9de9fb09ae8e35e36201cbd30ce35338c26",
+        "docs/architecture/rust-core-mvp-runtime-freeze-audit.md": "c610e17f8b82085f06721094e4dcebb417d71273cb760bf526e2a996919fd20c"
+      }
+    },
+    "profile": {
+      "sha": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+      "files": {
+        "docs/architecture/runtime/implementation-slices.md": "2d5120b0c0d2d81dd11cb9332d61355a4636b286a323056ecb0e595701d052ce",
+        "docs/architecture/runtime/execution-profile.md": "e70450446b9f0fe92fdb685cc93e3e4c11ec9b8155282dbaf6a1c235c1973cea"
+      }
+    },
+    "private_grants": {
+      "sha": "6419069da195b053c885ab349f431ff4fae62098",
+      "files": {
+        "api/src/services/runtime_sdk_grants.py": "d422662896d7afc03c4635702754fe4dcf83a204f70954a16c9fddc0fe8d257c",
+        "api/src/models/orm/runtime_sdk_grants.py": "3e4a3f9481e836cc64594d8a01f96d9683b5b555cef4eee672c60f3b09d3bd1a",
+        "api/alembic/versions/20261001_runtime_sdk_grants.py": "3f69791bdd7ff5bd8ea52cbd260cae0c321ac7d3d5028cf820ea2b9637e3d8fd"
+      }
+    },
+    "rust_foundation": {
+      "sha": "a5e129ac3cbcb1f3098e7dd0923721fccc84cb16",
+      "files": {
+        "core-rs/crates/bifrost-core/src/lib.rs": "d88276780524264bbe065452b3f452c44e453ad1046f23f952b591613194d58a"
+      }
+    },
+    "rust_sql_characterization": {
+      "sha": "0fa18ddda7ce8ac101df76fe06c7e72b075a8803",
+      "files": {
+        "core-rs/crates/bifrost-db/src/workflow_parity.rs": "41362641ee0bd2928ea9fa23882c93273cddf05089936f339571984f13608569"
+      }
+    }
+  },
+  "workspace_main": "ce06a332e2256446a9a709357d04550239c97da4"
+}

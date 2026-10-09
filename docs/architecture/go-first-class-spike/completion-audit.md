@@ -295,3 +295,31 @@ artifact still lacks a conforming non-Rust supervisor executing it under the
 shared lifecycle. Rust remains the required authority, not a dependency of
 this Go codec. No PR, merge, production deployment or vendor mutation occurred.
 MTG package2026-10-09.1 and procedure versions recorded earlier remain in use.
+
+## Owner integration gate made concrete
+
+Fresh readback keeps #1011 at93ec9421 and #1132 at35daf020d; platform main is
+stillb031b9ca. Workspace main has advanced to
+`ce06a332e2256446a9a709357d04550239c97da4`; its Meraki/Halo fix is background,
+not a selected workflow or new runtime authority. Both primary checkouts and
+unrelated work remain preserved.
+
+The [isolated owner integration proposal](owner-integration-proposal.md) names
+candidate common records, transaction/commit boundaries, attempt-first/NOWAIT
+locking, launch guardian admission versus actual OS effects, a bounded private
+provision delivery candidate, existing durable/API projections and required race
+proof. Its [source inventory](owner-integration-source-evidence.json) binds actual
+platform, Rust foundation/SQL characterization, private grants and shared profile
+seams. It is a concrete review proposal, not installed DDL or executable authority.
+It also records the native-registration gap in the current Python function/path
+resolver and the workflow/generic-attempt FK mismatch that forbids reusing generic
+lifecycle event rows as report receipts.
+
+The specific external gate is #1132 Package4's human architecture release, plus
+#1011's reviewed schema/identity/lock-order requirement. No synthetic supervisor,
+oracle release flag, local provision or standalone SQL example can satisfy it.
+Independent proposed-profile Rust/Python codec and transcript work remains safe
+prerequisite work; this means the whole goal is not marked blocked solely because
+that authority decision is outstanding. No runtime, container, tenant initializer
+or database was executed on pve-t340 during this source/proposal audit. Historical
+performance and component CI evidence retain their prior exact source pins.
