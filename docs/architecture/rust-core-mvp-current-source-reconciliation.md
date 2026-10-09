@@ -146,3 +146,20 @@ The prior qualification failures and exhausted claim experiment remain
 recorded. Do not transfer passed subsets between changed candidates. Next work
 is the concrete admission/session/writer boundary contract and workflow owner,
 followed by agent ownership; another transport supervisor is not the product.
+
+
+## Boundary contract review frontier
+
+The [concrete interface proposal](rust-core-mvp-boundary-contract-proposal.md)
+records admission, immutable source, Prepared/Start/provision, live-session
+closure, durable receipts and workflow-first/agent-next packages. Independent
+review holds the initial SQL defaults; root corrected null uniqueness, native
+association and persistent Start requirements in the draft. DML guards cannot
+be presented as read/table-lock guards. The explicit coordinator read/ANY-lock
+disposition, exact writer/cascade catalog and reviewed migration/profile diff
+remain prerequisites. No additional SDK capability or implementation release
+is authorized by documenting these proposals.
+
+Fresh AUTH-P1 ARM64/reliability runs failed before product tests on Docker Hub
+unauthenticated pull-limit responses. Original logs are retained; both checks
+remain blocking. No retry was dispatched while the quota condition persisted.
