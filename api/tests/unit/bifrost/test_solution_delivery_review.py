@@ -175,7 +175,10 @@ def test_legacy_source_adapter_allows_body_only_and_rejects_declaration_change()
         "files": {"run.py": "run.py"}}
     old = {"run.py": b"from bifrost import workflow\n@workflow\nasync def run(count: int = 1):\n return 1\n"}
     changed = {"run.py": old["run.py"].replace(b"return 1", b"return 2")}
-    assert review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)["entrypoints"] == ["run.py::run"]
+    result = review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
+    assert result["entrypoints"] == ["run.py::run"]
+    assert result["workflow_removal_evidence_verified"] is False
+    assert result["removed_workflow_ids"] == [] and result["workflow_removal_evidence_digest"] is None
     changed["run.py"] = changed["run.py"].replace(b"count: int = 1", b"count: int = 2")
     with pytest.raises(WorkflowRecipeError, match="registration or signatures"):
         review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)

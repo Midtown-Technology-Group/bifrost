@@ -741,6 +741,8 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
         if current != signatures(previous_recipe_value, previous_files or {}, previous_resources or {}):
             raise WorkflowRecipeError("Legacy source delivery cannot revise workflow registration or signatures")
     return {"schema_version": DELIVERY_REVIEW_CONTRACT, "solution_id": recipe_value["solution_id"],
+        "workflow_removal_evidence_verified": False,
+        "removed_workflow_ids": [], "workflow_removal_evidence_digest": None,
         "source_paths": sorted(files), "resource_paths": [], "entrypoints": sorted(current),
         "previous_recipe_checked": previous_recipe_value is not None,
         "live_state_verified": False, "runtime_verified": False}
