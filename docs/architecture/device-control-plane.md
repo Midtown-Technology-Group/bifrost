@@ -216,7 +216,11 @@ Transitions and rules:
 - **Busy (feedback #5):** partial unique index — one row with status in
   (`pending`, `claimed`, `running`) per `device_id`. A second create fails
   with **409 `device_busy`** (include the active `job_id`); it is never
-  queued, never silently coalesced, and never handed to Ninja.
+  queued, never silently coalesced, and never handed to Ninja. Approved
+  additive delta (#1060): the `device_busy` envelope also carries
+  `cancel_url` — the absolute path of the cooperative cancel endpoint for
+  the blocking job — so a caller can recover from the error it just
+  received.
 - **Claim:** `FOR UPDATE SKIP LOCKED` (modeled on `worker_control_commands`);
   exactly one concurrent winner. Claimable: `pending`, or `claimed` whose
   `claimed_at` is older than the **60 s claim lease**. Each claim mints a new
@@ -232,7 +236,14 @@ Transitions and rules:
   `agent_session_id` renews `last_agent_activity_at`), or as a backstop when
   a `running` job passes `timeout_seconds + 60 s` with no terminal report —
   a healthy agent always posts `timeout` itself first, so the backstop only
-  fires when the agent is gone or wedged. `lost` is terminal; **explicit
+  fires when the agent is gone or wedged. A `claimed` row is released the
+  same way when the **device itself is dead** (#1059): if
+  `devices.last_seen_at` is older than **300 s** (10 × heartbeat), that
+  device's agent can never poll `claim_next`, so the sweep terminalizes the
+  claim as `lost` with reason
+  `agent device heartbeat lost; claim released (server watchdog)` — claims
+  on heartbeat-fresh devices stay reclaimable in place. `lost` is terminal;
+  **explicit
   retry creates a new job id** (audited like any create). No automatic
   re-execution, ever.
 - **Fencing:** logs and results require the current `claim_token` (sent as a
@@ -243,6 +254,13 @@ Transitions and rules:
   local execution best-effort, drops that job's spool, and never re-runs.
 - **Cancellation:** cooperative per the ownership table above. The agent
   observes `cancel_requested` on its heartbeat response for the job it owns.
+  Additive cancel observability (#1060): `pending`/`claimed` cancels return
+  the terminal `cancelled` row synchronously (no agent involvement);
+  cancelling an already-`cancelled` job is an idempotent replay of the same
+  success shape (other terminal outcomes still 409 `job_terminal`);
+  `DeviceJobPublic` exposes a derived `cancel_state` — `none`, `requested`
+  (cooperative cancel awaiting convergence: agent heartbeat ≤ ~60 s, then
+  the agent's terminal write), or `converged` (status is `cancelled`).
 - **Offline before accept:** `transport=direct` (and v1 `auto`) fails closed
   when the device is not healthy — `active` **and** `last_seen_at` within the
   **90 s** freshness window (3 × 30 s heartbeat). See

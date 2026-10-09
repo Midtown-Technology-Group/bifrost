@@ -57,6 +57,7 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
     assert set(jobs["test-e2e-gate"]["needs"]) == {
         "affected-test-plan",
         "lint",
+        "publish-ci-test-images",
         "test-e2e",
         "test-client-e2e",
         "test-client-unit",

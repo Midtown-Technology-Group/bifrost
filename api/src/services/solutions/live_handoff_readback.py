@@ -47,11 +47,12 @@ class LiveHandoffReadback:
         self.release = release
         self.lock = lock
         self.repository = SolutionDeploymentRepository(db)
-        self.solutions: dict[UUID, tuple[Any, Any, Any, dict[UUID, Workflow]]] = {}
+        self.solutions: dict[UUID, tuple[Any, Any, Any, dict[UUID, Workflow], bool]] = {}
         self.deployments: dict[UUID, tuple[Any, Any, Any]] = {}
 
     async def require(self, inherited: dict[str, Any]) -> None:
-        """Only the exact UUID with certified lineage may leave the loose cohort."""
+        """Only the exact UUID with certified lineage or verified active
+        coverage may leave the loose cohort."""
         workflow_id = UUID(inherited["workflow_id"])
         workflow = await self.db.scalar(
             select(Workflow).options(selectinload(Workflow.roles))
@@ -66,12 +67,18 @@ class LiveHandoffReadback:
         solution_id = workflow.solution_id
         if solution_id not in self.solutions:
             self.solutions[solution_id] = await self._solution(solution_id, scope)
-        _active_manifest, active_resolution, origin_resolution, rows = self.solutions[solution_id]
+        (_active_manifest, active_resolution, origin_resolution, rows,
+         certified_handoff) = self.solutions[solution_id]
         if workflow_id not in rows:
             raise UnprovenLiveHandoff("Inherited workflow is absent from the active runtime")
         origin = origin_resolution.resolve_workflow_id(workflow_id)
+        # A certified handoff freezes its origin bytes at the reviewed Live
+        # binding. Without recorded lineage the active runtime's own identity
+        # and exposure are the proof; source bytes then need not equal the
+        # inherited snapshot (loose keys are never byte-compared either).
         if (origin.source_ref != inherited["path"]
-                or origin.source_hash != f"sha256:{inherited['source_sha256']}"
+                or (certified_handoff
+                    and origin.source_hash != f"sha256:{inherited['source_sha256']}")
                 or any(origin.definition.get(field) != expected for field, expected in {
                     "path": inherited["path"], "function_name": inherited["function"],
                     "name": inherited["name"], "type": inherited["type"],
@@ -194,6 +201,7 @@ class LiveHandoffReadback:
         await self._dependencies(active, set(), set())
         visited: set[UUID] = set()
         origin, manifest, resolution = active, active_manifest, active_resolution
+        certified_handoff = False
         while True:
             if origin.id in visited:
                 raise UnprovenLiveHandoff("Reviewed handoff lineage cycle")
@@ -201,6 +209,19 @@ class LiveHandoffReadback:
             marker = origin.validation_result or {}
             schema = marker.get("schema_version")
             if schema == HANDOFF_MARKER:
+                certified_handoff = True
+                break
+            if not schema:
+                if origin.id != active.id:
+                    # A reviewed marker exists in this chain, so its recorded
+                    # base is required: a missing marker reached through a
+                    # reviewed revision is incoherent lineage, never coverage.
+                    raise UnprovenLiveHandoff("Solution revision has no reviewed handoff lineage")
+                # No reviewed lineage was recorded for the active deployment
+                # itself (ownership moved without a certified handoff receipt).
+                # Coverage is then proven against this closure-validated
+                # deployment by require(): existence, active pointer, storage,
+                # runtime bytes, contracts, dependencies, identity and exposure.
                 break
             if (schema not in {SOURCE_MARKER, WORKFLOW_REVISION_MARKER}
                     or not str(marker.get("preflight_evidence_id", "")).startswith("sha256:")
@@ -212,6 +233,11 @@ class LiveHandoffReadback:
                     or origin.parent_deployment_id != origin.base_deployment_id):
                 raise UnprovenLiveHandoff("Solution revision has no reviewed handoff lineage")
             origin, manifest, resolution = await self._deployment(origin.parent_deployment_id, solution_id, scope)
+        if not certified_handoff:
+            if origin.id != active.id:
+                await self._runtime_bytes(origin, manifest, resolution)
+            return (active_manifest, active_resolution, resolution,
+                    {row.id: row for row in rows}, False)
         source_paths = sorted(resolution.sources)
         workflow_ids = sorted((item.resolved_id for item in resolution.workflows.values()), key=str)
         expected_bundle = sha256_digest(canonical_json({
@@ -220,20 +246,29 @@ class LiveHandoffReadback:
             "shared_tables": {name: binding.model_dump(mode="json") for name, binding in manifest.shared_tables.items()},
             "source_hashes": {path: source.content_hash for path, source in resolution.sources.items()},
         }))
-        if (origin.parent_deployment_id is not None or origin.base_deployment_id is not None
+        # The receipt must bind to exactly one Live identity: either the
+        # current release (full recompute) or coherently to a predecessor
+        # release whose governed bytes still match the current release.
+        # A single mismatched identity field is tampering, not a handoff.
+        current_binding = (marker.get("release_row_id") == str(self.release.release_row_id)
+                           and marker.get("release_id") == self.release.release_id)
+        predecessor_binding = (marker.get("release_row_id") not in (None, str(self.release.release_row_id))
+                               and marker.get("release_id") not in (None, self.release.release_id))
+        if (not (current_binding or predecessor_binding)
+                or origin.parent_deployment_id is not None or origin.base_deployment_id is not None
                 or resolution.dependencies or not source_paths
                 or not set(source_paths).issubset(self.release.governed_paths)
                 or any(source.content_hash != f"sha256:{self.release.source_hashes[path]}"
                        for path, source in resolution.sources.items())
-                or manifest.bundle_hash != expected_bundle
-                or manifest.git.commit_sha != self.release.source_commit_sha
-                or marker.get("release_row_id") != str(self.release.release_row_id)
-                or marker.get("release_id") != self.release.release_id
                 or marker.get("workflow_ids") != [str(item) for item in workflow_ids]
                 or marker.get("verified_source_paths") != source_paths
-                or marker.get("preflight_evidence_id") != handoff_preflight_evidence_id(
-                    self.release, manifest, resolution, workflow_ids=workflow_ids)):
+                or (current_binding and (
+                    manifest.bundle_hash != expected_bundle
+                    or manifest.git.commit_sha != self.release.source_commit_sha
+                    or marker.get("preflight_evidence_id") != handoff_preflight_evidence_id(
+                        self.release, manifest, resolution, workflow_ids=workflow_ids)))):
             raise UnprovenLiveHandoff("Retained handoff receipt does not prove the current Live binding")
         if origin.id != active.id:
             await self._runtime_bytes(origin, manifest, resolution)
-        return active_manifest, active_resolution, resolution, {row.id: row for row in rows}
+        return (active_manifest, active_resolution, resolution,
+                {row.id: row for row in rows}, True)
