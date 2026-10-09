@@ -241,6 +241,28 @@ def test_identical_installed_baseline_compiles_once_and_still_reports_checked(mo
     assert reviewed == {**review_solution_recipe(recipe, files, resources), "previous_recipe_checked": True}
 
 
+def test_float_substituted_baseline_is_not_treated_as_current():
+    recipe, files, resources = fixture()
+    previous = deepcopy(recipe)
+    bounds = previous["workflows"][0]["runtime_bounds"]
+    bounds["max_duration_seconds"] = float(bounds["max_duration_seconds"])
+    assert previous == recipe  # plain dict equality hides the scalar type substitution
+    with pytest.raises(ValueError, match="max_duration_seconds"):
+        review_solution_recipe(recipe, files, resources,
+            previous_recipe_value=previous, previous_files=dict(files), previous_resources=dict(resources))
+
+
+def test_integer_substituted_boolean_baseline_is_not_treated_as_current():
+    recipe, files, resources = fixture()
+    recipe["workflows"][0]["controls"] = {"endpoint_enabled": False}
+    previous = deepcopy(recipe)
+    previous["workflows"][0]["controls"]["endpoint_enabled"] = 0
+    assert previous == recipe  # plain dict equality hides the scalar type substitution
+    with pytest.raises(ValueError, match="endpoint_enabled"):
+        review_solution_recipe(recipe, files, resources,
+            previous_recipe_value=previous, previous_files=dict(files), previous_resources=dict(resources))
+
+
 def test_changed_installed_baseline_still_compiles_twice_and_enforces_workflow_identity(monkeypatch):
     from bifrost import solution_delivery_review as review
     recipe, files, resources = fixture()

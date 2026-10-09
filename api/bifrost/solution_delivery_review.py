@@ -601,8 +601,13 @@ def _baseline_is_current(recipe_value: dict, files: dict[str, bytes], resources:
     the same recipe twice is otherwise the dominant cost of the offline delivery
     review for unchanged installations.
     """
-    return (previous_recipe_value is not None and previous_recipe_value == recipe_value
-        and (previous_files or {}) == files and (previous_resources or {}) == resources)
+    if previous_recipe_value is None or (previous_files or {}) != files or (previous_resources or {}) != resources:
+        return False
+    # Recipe equality must keep scalar types: plain dict equality treats 20 == 20.0
+    # and False == 0 as identical, which would skip the baseline's strict validation
+    # and certify a schema-invalid installed recipe as checked. JSON text separates
+    # those collisions while ignoring key order.
+    return json.dumps(previous_recipe_value, sort_keys=True) == json.dumps(recipe_value, sort_keys=True)
 
 
 def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes], *,
