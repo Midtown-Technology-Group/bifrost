@@ -18799,6 +18799,18 @@ export interface components {
             } | null;
             /** Result */
             result?: string | null;
+            /**
+             * Cancel State
+             * @description Derived from `status` + `cancel_requested_at` (never stored).
+             *
+             *     - ``none``: no cancel was requested.
+             *     - ``requested``: cooperative cancel recorded; a running job
+             *       converges when the agent observes it via heartbeat (≤ ~60 s)
+             *       and posts its terminal result.
+             *     - ``converged``: the job reached terminal ``cancelled``.
+             * @enum {string}
+             */
+            readonly cancel_state: "none" | "requested" | "converged";
         };
         /** DeviceJobLogPublic */
         DeviceJobLogPublic: {
@@ -18868,6 +18880,18 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Cancel State
+             * @description Derived from `status` + `cancel_requested_at` (never stored).
+             *
+             *     - ``none``: no cancel was requested.
+             *     - ``requested``: cooperative cancel recorded; a running job
+             *       converges when the agent observes it via heartbeat (≤ ~60 s)
+             *       and posts its terminal result.
+             *     - ``converged``: the job reached terminal ``cancelled``.
+             * @enum {string}
+             */
+            readonly cancel_state: "none" | "requested" | "converged";
         };
         /**
          * DeviceKeyResponse
