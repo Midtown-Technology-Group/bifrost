@@ -8,7 +8,6 @@ when ``context.org_id`` is falsy, silently letting the update through).
 """
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -69,7 +68,9 @@ async def _agent(
 
 
 def _ctx(*, user_id, org_id=None, is_platform_admin=False, is_provider_org=False):
-    return SimpleNamespace(
+    from src.services.mcp_server.server import MCPContext
+
+    return MCPContext(
         user_id=user_id,
         org_id=org_id,
         is_platform_admin=is_platform_admin,
@@ -101,7 +102,7 @@ async def test_non_owner_org_member_denied(db_session, monkeypatch):
     ctx = _ctx(user_id=uuid4(), org_id=org.id)
     result = await mcp_agents.update_agent(ctx, str(agent.id), name="hijacked")
 
-    assert "own your own private agents" in _error_text(result) or "only edit your own private agents" in _error_text(result)
+    assert "not found" in _error_text(result).lower() or "only update your own private agents" in _error_text(result)
 
 
 @pytest.mark.asyncio
@@ -150,7 +151,7 @@ async def test_caller_with_no_org_denied_for_org_owned_agent(db_session, monkeyp
     ctx = _ctx(user_id=uuid4(), org_id=None)
     result = await mcp_agents.update_agent(ctx, str(agent.id), name="hijacked-no-org")
 
-    assert "only edit your own private agents" in _error_text(result)
+    assert "Organization context is required" in _error_text(result)
     await db_session.refresh(agent)
     assert agent.name != "hijacked-no-org"
 
@@ -166,3 +167,16 @@ async def test_platform_admin_allowed_for_global_agent(db_session, monkeypatch):
 
     await db_session.refresh(agent)
     assert agent.name == "admin-renamed"
+
+
+@pytest.mark.asyncio
+async def test_non_admin_budget_update_denied_before_database_access(monkeypatch):
+    from unittest.mock import MagicMock
+
+    database = MagicMock(side_effect=AssertionError("denied requests must not access the database"))
+    monkeypatch.setattr(mcp_agents, "get_tool_db", database)
+    context = _ctx(user_id=uuid4(), org_id=uuid4())
+    result = await mcp_agents.update_agent(context, str(uuid4()), llm_max_tokens=1000)
+
+    assert "Only platform admins can set agent token budgets" in _error_text(result)
+    database.assert_not_called()

@@ -467,6 +467,9 @@ async def update_agent(
     if not agent_id:
         return error_result("agent_id is required")
 
+    if not context.is_platform_admin and llm_max_tokens is not None:
+        return error_result("Only platform admins can set agent token budgets.")
+
     # Validate agent_id is a valid UUID
     try:
         uuid_id = UUID(agent_id)
