@@ -23,6 +23,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 
+from src.services.operation_catalog import operation_route
 from shared.sdk_modules import (
     ModuleSourceError,
     ModuleSourceScope,
@@ -39,7 +40,7 @@ from src.core.security import decode_token
 router = APIRouter(prefix="/api/sdk", tags=["SDK Internals"])
 
 
-@router.get("/resources/{path:path}", response_class=Response)
+@router.get("/resources/{path:path}", response_class=Response, **operation_route("sdkmodules.read_deployment_resource"))
 async def read_deployment_resource(path: str, ctx: Context) -> Response:
     """Read only the reviewed resource in this active execution's pinned deployment."""
     from src.services.solutions.deployment_resources import DeploymentResourceDenied, read_execution_resource

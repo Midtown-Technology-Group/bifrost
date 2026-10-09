@@ -61,6 +61,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentEngineOrBypassUser, CurrentUser
 from src.core.principal import UserPrincipal
 from src.core.database import get_db
@@ -770,7 +771,7 @@ async def _request_slot_integration(
     return policy[0], policy[1], owner
 
 
-@router.post("/integrations/request-slot/acquire", response_model=SDKIntegrationRequestSlotResponse)
+@router.post("/integrations/request-slot/acquire", response_model=SDKIntegrationRequestSlotResponse, **operation_route("cli.sdk_integration_request_slot_acquire"))
 async def sdk_integration_request_slot_acquire(
     request: SDKIntegrationRequestSlotRequest,
     current_user: CurrentUser,
@@ -796,7 +797,7 @@ async def sdk_integration_request_slot_acquire(
     )
 
 
-@router.post("/integrations/request-slot/release", response_model=bool)
+@router.post("/integrations/request-slot/release", response_model=bool, **operation_route("cli.sdk_integration_request_slot_release"))
 async def sdk_integration_request_slot_release(
     request: SDKIntegrationRequestSlotRequest,
     current_user: CurrentUser,

@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context
 from src.services import workspace_admin as service
 
@@ -44,7 +45,8 @@ router = APIRouter(
 
 
 @router.get(
-    "/oauth/connections/{connection_name}/diagnostics", response_model=OAuthDiagnostics
+    "/oauth/connections/{connection_name}/diagnostics", response_model=OAuthDiagnostics,
+    **operation_route("workspaceadmin.inspect_oauth"),
 )
 async def inspect_oauth(
     connection_name: str, scope: Literal["global"] | UUID, ctx: Context
@@ -53,7 +55,8 @@ async def inspect_oauth(
 
 
 @router.post(
-    "/oauth/connections/{connection_name}/recover", response_model=OAuthRecoveryResult
+    "/oauth/connections/{connection_name}/recover", response_model=OAuthRecoveryResult,
+    **operation_route("workspaceadmin.recover_oauth"),
 )
 async def recover_oauth(
     connection_name: str, request: OAuthRecoveryRequest, ctx: Context
@@ -64,6 +67,7 @@ async def recover_oauth(
 @router.post(
     "/oauth/connections/{connection_name}/reconcile",
     response_model=OAuthReconciliationResult,
+    **operation_route("workspaceadmin.reconcile_oauth"),
 )
 async def reconcile_oauth(
     connection_name: str, request: ScopedAdminRequest, ctx: Context
@@ -76,6 +80,7 @@ async def reconcile_oauth(
 @router.post(
     "/executions/{execution_id}/redact-sensitive-fields",
     response_model=ExecutionRedactionResult,
+    **operation_route("workspaceadmin.redact_execution"),
 )
 async def redact_execution(
     execution_id: UUID, request: ExecutionRedactionRequest, ctx: Context

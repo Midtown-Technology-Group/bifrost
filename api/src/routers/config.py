@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 # Import existing Pydantic models for API compatibility
+from src.services.operation_catalog import operation_route
 from src.models import (
     ConfigResponse,
     SetConfigRequest,
@@ -39,6 +40,7 @@ router = APIRouter(tags=["Configuration"])
     response_model=list[ConfigResponse],
     summary="Get configuration values",
     description="Get configuration values for current scope (includes global configs)",
+    **operation_route("configs.list"),
 )
 async def get_config(
     ctx: Context,
@@ -78,6 +80,7 @@ async def get_config(
     status_code=status.HTTP_201_CREATED,
     summary="Set configuration value",
     description="Set a configuration value in the current scope",
+    **operation_route("configs.create"),
 )
 async def set_config(
     request: SetConfigRequest,
@@ -122,6 +125,7 @@ async def set_config(
     response_model=ConfigResponse,
     summary="Update configuration value by ID",
     description="Update an existing configuration value, including its organization scope",
+    **operation_route("configs.update"),
 )
 async def update_config(
     config_id: UUID,
@@ -185,6 +189,7 @@ async def update_config(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete configuration value",
     description="Delete a configuration value by ID",
+    **operation_route("configs.delete"),
 )
 async def delete_config(
     config_id: UUID,

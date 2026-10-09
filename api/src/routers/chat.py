@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
+from src.services.operation_catalog import operation_route
 from shared.scope_resolver import has_scope_bypass
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
@@ -69,7 +70,7 @@ class TeamsChatEventSubmit(BaseModel):
     event_id: UUID
 
 
-@router.post("/teams/events")
+@router.post("/teams/events", **operation_route("chat.submit_teams_event"))
 async def submit_teams_event(
     request: TeamsChatEventSubmit,
     db: DbSession,
