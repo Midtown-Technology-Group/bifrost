@@ -1198,14 +1198,16 @@ async def get_agent_tools(
     user: CurrentActiveUser,
 ) -> list[dict]:
     """Get tools assigned to an agent."""
-    # Check if user is platform admin
-    is_admin = user.is_platform_admin
+    scope_bypass = has_scope_bypass(
+        is_platform_admin=user.has_platform_admin_grant(),
+        is_provider_org=user.is_provider_org,
+    )
 
     repo = AgentRepository(
         session=db,
         org_id=user.organization_id,
         user_id=user.user_id,
-        is_superuser=is_admin,
+        is_superuser=scope_bypass,
         is_external=user.is_external,
     )
 
@@ -1216,6 +1218,15 @@ async def get_agent_tools(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    # Provider scope bypass must not bypass private-agent ownership.
+    access_level = getattr(agent.access_level, "value", agent.access_level)
+    if access_level == "private" and not user.has_platform_admin_grant():
+        if agent.owner_user_id != user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found",
+            )
 
     return [
         {
