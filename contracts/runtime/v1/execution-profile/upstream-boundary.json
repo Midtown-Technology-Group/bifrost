@@ -1,9 +1,10 @@
 {
   "status": "review tripwire; existing Python is NOT accepted as an extracted runtime",
-  "source": "5efefbcc296825c75cdeb3bf5d095e8eca8d72a6",
+  "source": "135a305811568362347e9d485ef992e9467f634f",
   "selector": "api/**/*.py; no exclusions",
   "fingerprint": {
-    "files": 2776,
-    "sha256": "2cd23d59d2f199a0ea0241c3e15d74648e70a42d377608edf6371b5d2d2f80b9"
-  }
+    "files": 2777,
+    "sha256": "0a995e6a199f684b1aa748a7fdc4e046944c5226416b52f3218c84024dc984f3"
+  },
+  "reconciliation": "Main #1129 adds offline signed workflow-removal evidence, SDK dependency and tests. No runtime extraction acceptance; immutable SDK/dependency custody remains held."
 }

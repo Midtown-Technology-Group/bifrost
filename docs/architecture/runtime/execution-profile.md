@@ -8,7 +8,10 @@ and [upstream compatibility](upstream-compatibility.md).
 
 ## Source reconciliation and scope
 
-Review starts at MTG main `5efefbcc296825c75cdeb3bf5d095e8eca8d72a6` (2026-10-09).
+Review starts at MTG main `5efefbcc296825c75cdeb3bf5d095e8eca8d72a6` (2026-10-09),
+reconciled to `135a305811568362347e9d485ef992e9467f634f` after #1129.
+The SDK dependency/source refresh is recorded in [review](review.md); it releases
+no adapter/dependency custody gate.
 [#1074](https://github.com/Midtown-Technology-Group/bifrost/pull/1074) merged the
 neutral documents as `91be1fce66048fffe27276e223af5b67022e6f32`. Unmerged references:
 [#1015](https://github.com/Midtown-Technology-Group/bifrost/pull/1015)

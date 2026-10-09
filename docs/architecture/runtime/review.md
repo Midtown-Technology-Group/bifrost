@@ -68,3 +68,12 @@ review of negotiation/receipt/binding and the explicit custody/ownership gates
 before Package1 ratification or any authority implementation. Deno is no longer
 a planned primary consumer. No workerd/celld substrate is selected. The historical
 foundation review above is retained as history; no freeze is claimed.
+
+Main refresh: `135a305811568362347e9d485ef992e9467f634f` (#1129) adds offline SDK workflow-removal
+evidence, its tests/docs and a cryptography dependency. Reviewed source changes
+introduce no runtime initialization/lifecycle writer path in this proposal. The
+Python tripwire baseline is refreshed to that exact main; this does not accept
+the changed installed dependency closure or an extracted adapter. Package2 must
+still prove immutable SDK/environment custody. Initial hosted pre-PR on
+`1ff14c5bcd8e` failed the latest-main ancestry gate (run37980996203), before tests;
+that stale candidate is superseded by a signed main-containing candidate.
