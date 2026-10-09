@@ -14,6 +14,14 @@ from datetime import datetime
 MAX_FRAME = 16 * 1024 * 1024
 MAX_SAFE = 9007199254740991
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
+UUID_FIELDS = {
+    "execution_id", "attempt_id", "session_id", "supervisor_incarnation_id",
+    "runtime_incarnation_id", "caller_id", "organization_id", "solution_id",
+    "deployment_id", "prepare_message_id", "committed_start_id", "grant_id",
+    "delivery_id", "start_message_id", "result_message_id", "cancel_id", "decision_id",
+}
+DIGEST_FIELDS = {"artifact_id", "image_digest", "digest", "input_schema_digest",
+                 "output_schema_digest", "operations_digest"}
 
 
 class Rejection(ValueError):
@@ -52,6 +60,24 @@ def tree(value, depth=0):
         reject("InvalidJson")
     elif isinstance(value, float) and not math.isfinite(value):
         reject("InvalidJson")
+
+
+def control_scalars(value):
+    """Canonical lexical identities throughout typed bodies, excluding opaque data."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ("input", "value", "details"):
+                continue
+            if item is not None:
+                pattern = (UUID if key in UUID_FIELDS else
+                           re.compile(r"sha256:[0-9a-f]{64}\Z") if key in DIGEST_FIELDS else
+                           re.compile(r"[0-9a-f]{64}\Z") if key.endswith("_sha256") else None)
+                if pattern is not None and (not isinstance(item, str) or pattern.fullmatch(item) is None):
+                    reject("InvalidFrame")
+            control_scalars(item)
+    elif isinstance(value, list):
+        for item in value:
+            control_scalars(item)
 
 
 def decode(data, validator):
@@ -97,6 +123,7 @@ def decode(data, validator):
         reject("UnsupportedFrame")
     if not validator.is_valid(value):
         reject("InvalidFrame")
+    control_scalars(value["body"])
     kind, body, corr = value["type"], value["body"], value["correlation_id"]
     correlation_field = {
         "Prepared": "prepare_message_id", "Start": "prepare_message_id",
