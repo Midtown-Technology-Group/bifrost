@@ -1,0 +1,111 @@
+{
+  "status": "isolated-local-authoring-and-reduced-ownership-proof-not-Rust-lifecycle",
+  "source": "d8e0c8e15e276a2d4f7bb334b599185cd19ef0a0",
+  "run": 37996851570,
+  "conclusion": "success",
+  "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "artifact_size_bytes": 9920235,
+  "source_sha256": "41e2f365b14366b28a2e5c40480ac680366bb63da54481bb4e64a32fa06c0272",
+  "module_graph_sha256": "6c65761e33efdb93797e9a45ec4ddd5601273fc2423ae4af13c06db91dc9538c",
+  "sdk_version": "0.0.0-spike.2",
+  "timings_ms": {
+    "module_download": 204.009408,
+    "cold_compile_warm_modules": 10667.948392,
+    "independent_cold_compile": 10914.56197,
+    "warm_source_edit_compile": 272.038859,
+    "restored_warm_compile": 235.201783,
+    "edit_to_artifact": 489.965261
+  },
+  "execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 2.734554,
+      "p95": 2.957509,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 3.1402695,
+      "p95": 3.328839,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 10960.0,
+      "p95": 10960,
+      "n": 20
+    }
+  },
+  "validation": {
+    "go_test": "pass",
+    "go_vet": "pass",
+    "gofmt": "pass",
+    "govulncheck": "pass",
+    "individual_tests_passed": 276
+  },
+  "go_named_tests": {
+    "github.com/midtown-technology-group/bifrost-go": 16,
+    "github.com/midtown-technology-group/bifrost-go/executionprofile": 99,
+    "github.com/midtown-technology-group/bifrost-go/internal/readiness": 5,
+    "github.com/midtown-technology-group/bifrost-go/internal/schema": 3,
+    "github.com/midtown-technology-group/bifrost-go/runtimecontrol": 144,
+    "github.com/midtown-technology-group/bifrost-go/internal/authoring": 9
+  },
+  "ownership": {
+    "ownership-evidence.json": {
+      "status": "candidate-fixture-only",
+      "checks": 41,
+      "sha256": "095050401eee21d79eec64d81d31c9534b5ede19f8a11dfe7bfa1e3494d8631d"
+    },
+    "ownership-pool-evidence.json": {
+      "status": "candidate-fixture-only",
+      "checks": 15,
+      "sha256": "d4e385a16d180a14e5f47e73b1ae84f0f91b3ee17b16182307600e1b8cfded65"
+    }
+  },
+  "descriptor_signature_readback": "verified using retained ephemeral experimental public key; not accepted deployment attestation",
+  "retained_files": {
+    "artifact.sha256": "f9fb2a0e7be8caea848fe3f2b1e988acf4d8a962d3a490750355689b0dd65800",
+    "attestation-public.pem": "8facde9f959b0c7ec9c31e0d0e87e3423ea5a7597f974b8eb0f7fb00b05e46aa",
+    "attestation-verification.txt": "0fd23954193f64e60f5b4b5f381cd1ea9d580aece00a6bbbc98e664302ce6b79",
+    "cold.txt": "322abd5f90a283570eba8b93a493ea34f88802a93725c8eb3ed586d66e6914f5",
+    "control-reference-sha.txt": "7e2984528d8609f5e40f9c142676d88e2effcf733daf5553737e1e636bb035a3",
+    "controlcheck": "1f46c1b3d1c76fb07ed3e553ae79a20c212957865ca5f556f6665e2eef5ea911",
+    "descriptor.json": "e3d5ffbf4df9f85117019b04227925eea71b9dc71c9645946f0ac47290aa6e7d",
+    "descriptor.sig": "1792bf31bf112a32a495c397c2f4447520b40c44dd5f33725d07eb75fc701dd6",
+    "edit-loop.txt": "d785e7a1291a32df0c20be77aac5267c00e36def336034f92eab5b4685623ca1",
+    "execution.json": "7c385e906edc630a826fc0497eb1d06147e6712b9bf4eb5ea15d09c5bd6f5f7b",
+    "generated-input.json": "e1982d493767796ccb17c0836a31cfad56d9f7d2313fa5fd3d34db291b386ab6",
+    "generated-output.json": "474fba3cb068a396356dabbbcadf2bdc4b35146aa964e9ec6319155182e27839",
+    "go-control-exchange.json": "bcbff3ed3ce9626eaa9132d551717175dd4281a8e4036640e6e37271eebe8c41",
+    "go-validates-python.txt": "cc97ac144d4a09cbd7bf4aa041f6bde70b35bebf04093cf7bb47361aa7195e50",
+    "go-validates-rust.txt": "cc97ac144d4a09cbd7bf4aa041f6bde70b35bebf04093cf7bb47361aa7195e50",
+    "govulncheck.jsonl": "4f44da5a96178423d06e57eb93e56e59f2fcd28e8b397b9355a83e80d789ab27",
+    "independent-cold.txt": "42935b741a9471a656814aaaea62c48a13679d835dc6d27b1bf632eb008cdc8b",
+    "module-download.txt": "4becfd490b1c1bb5abeee8f18659fc0226e0191080b6a6fca45fc79af0febcbd",
+    "module-graph.txt": "6c65761e33efdb93797e9a45ec4ddd5601273fc2423ae4af13c06db91dc9538c",
+    "probe": "817543a6dd26a22b083df26d3267b2391e64982855916a44068971f3d4260ef1",
+    "python-control-exchange.json": "fb3c746677ef8c8e2cfa89585f23f0efe24e37e9b304e542a561cc9c55cf0399",
+    "python-validates-go.txt": "cc97ac144d4a09cbd7bf4aa041f6bde70b35bebf04093cf7bb47361aa7195e50",
+    "restored-warm.txt": "66611884c11988f984e954e4473c9cb6d2d28c5673156d50aac666dad3736cec",
+    "rust-contract-tests.txt": "6b35dc01d9a53e6fba8fd0da2613ba85ecf007acaddc119b98a3c741a220e3c1",
+    "rust-control-exchange.json": "d42fb6f119176bc2da21f5703246784e8f221fc01abe267f00f9cc9f8776fa2c",
+    "rust-exchange-build.txt": "af11c4046d514fd9d90935dcab8c35f0f7912558c1be923f6896dc1e4c75d4d3",
+    "rust-fetch.txt": "48387e19a21db240bd619abd3d271a2e5402e409f3251e9a157a4389d3f35c25",
+    "rust-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+    "rust-validates-go.txt": "28db6d6ca25bc52b34ca499f9d3ce18a4ffe78bc3adbd1c054fd2be676806bde",
+    "scanner-image.txt": "024f1166c660bfb0b021d29c71bc31a5a3559f3b6b6e0ef956b85193e94a5e47",
+    "tests.jsonl": "aa89da019bf4a1d219c7e50ce0cec434833600a2ceb3d4d717f0b79438de0730",
+    "warm-artifact.sha256": "7c38c56757417463dff21de9310ffb4f632eadf5ac9eb45cb82f7cf19c2afb64",
+    "warm-edit.txt": "2e5bac164c7024b631dd7bed9e51facfa1e1ce34a48a32c4796e4e87a37f94b5",
+    "warm-execution.json": "8b586886ddfc8a0220e3b3587fbfcc7910a09827b5647ee821178408d012f927",
+    "warm-source.json": "c932b4a673064964eb301119f6903ea81e85b82534a9db6360c72aadd442f030",
+    "workflow": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "workflow-warm-edit": "6d9ad4d04965db46902fa4c7484055973deb99339aae4dc6d3c6bbc509e905c3"
+  },
+  "not_proven": [
+    "accepted native registration and immutable trusted adapter",
+    "real Rust admission, Start, cancellation, durable Result and Execution API readback",
+    "actual session/issuer/closed runtime ingress",
+    "whole-schema incumbent writer exclusion and common-profile supervisor execution"
+  ],
+  "cancellation_ms": 0.346913,
+  "first_execution_ms": 4.150821
+}

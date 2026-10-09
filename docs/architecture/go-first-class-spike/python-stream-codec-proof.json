@@ -1,0 +1,57 @@
+{
+  "status": "independent-python-stream-component-proof-not-owner-acceptance",
+  "reference_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+  "go_to_independent_python": 18,
+  "independent_python_to_go": 18,
+  "message_types": [
+    "Cancel",
+    "Heartbeat",
+    "LogBatch",
+    "Offer",
+    "Prepare",
+    "Prepared",
+    "Provision",
+    "Result",
+    "ResultReceipt",
+    "Select",
+    "Start",
+    "Stopped",
+    "Usage"
+  ],
+  "independent_python_semantic_drift_rejected": true,
+  "codec_source_sha256": "13bbc5efe0f310eae3e0b66b354eb7ba3f65962383606b00242b4dde0ba28586",
+  "exchange_sha256": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+  "limits": [
+    "Candidate stream codec, not a deployed/extracted Python runtime.",
+    "No session, Rust codec, lifecycle, provision or tenant execution."
+  ],
+  "source": "d8e0c8e15e276a2d4f7bb334b599185cd19ef0a0",
+  "diagnostic_run": 37996851627,
+  "conclusion": "success",
+  "python_named_tests": 101,
+  "go_named_tests": {
+    "github.com/midtown-technology-group/bifrost-go/runtimecontrol": 144,
+    "github.com/midtown-technology-group/bifrost-go/executionprofile": 99
+  },
+  "retained_files": {
+    "execution-peer-receipt.json": "4139d2bc1175f11b6bb5dee9c5a4c99aab8b6b1288c573884e7a49061ca25399",
+    "executioncheck": "d1abd53fca6407f649a4107f16ad382b82487b16e93ef4ab2456360fbd9bdf67",
+    "go-execution-exchange.json": "93237f9eda4673d6fd470ac78dbf2ec2f7c8c7fd906900551275591d126038e8",
+    "go-version.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+    "proposal-provenance.json": "ed3c1c52e7164d82b37413b5b579bf06d7a56a3659187684e188c0a6d91ba4eb",
+    "python-execution-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "python-stream-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "python-stream-peer-receipt.json": "8ef15dd562d158551ccf70f5ea34c7e7fd810db983afbb1e450239d620975d6c",
+    "python-stream-tests.txt": "8aa39cfc9ee8b7baaade0805b3fd058e7174ee9b095252051196fb12856ae9a0",
+    "scope.txt": "69aaa0d10d0898cb8e2633b5048c5a1496469a41441170c1e2dc1aade6296499",
+    "source-sha.txt": "392801a84a5b2febf61b8e5bab126b22f32d3a954fbf00415acc4daf287614d7",
+    "tests.jsonl": "3d60da9b261541c408ac26227b9bba312ea61a3dd9bfd80995d3ca77c5c21376"
+  },
+  "preceding_failure": {
+    "source": "d48c2421ea1a3d77f17707b9be85a84aefbbca18",
+    "run": 37996631818,
+    "failed_vector": "artifact-hash-trailing-newline",
+    "cause": "Referenced document dialect made jsonschema revert to default validator class, losing strict lexical overrides. Fixed in-memory dialect custody without changing shared schema files.",
+    "failure_log_sha256": "d148f746fdfedec0e363b2a34f682fca2a67000e467d4ac0c323096125282844"
+  }
+}

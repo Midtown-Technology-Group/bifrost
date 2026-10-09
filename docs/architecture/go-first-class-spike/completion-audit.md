@@ -323,3 +323,61 @@ prerequisite work; this means the whole goal is not marked blocked solely becaus
 that authority decision is outstanding. No runtime, container, tenant initializer
 or database was executed on pve-t340 during this source/proposal audit. Historical
 performance and component CI evidence retain their prior exact source pins.
+
+## Independent Python stream peer and refreshed native build
+
+Source `d8e0c8e15e276a2d4f7bb334b599185cd19ef0a0` now has an independent
+first-party Python stream codec in `spikes/go-native/peers/execution_codec.py`.
+It imports neither the oracle nor Rust/platform runtime code. It consumes the
+published schemas with local-only references, strict integer/string/UTC handling,
+bounded framed IO, and exact raw payload receipt hashes. It cannot validate a
+session, admit, provision or execute. The ordinary Go workflow/SDK are unchanged.
+
+Hosted [diagnostic run37996851627](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37996851627)
+succeeded:101 Python named tests (94 wire specimens and7 stream/reference/receipt
+checks),99 proposed Go codec and144 unchanged P0 named test/subtest passes,
+selected vet,18 encodings each direction between the independent Python codec
+and Go, plus the retained reference-oracle comparison. A shape-valid semantic
+Result alteration is rejected. [Exact proof](python-stream-codec-proof.json)
+binds source, exchange/test hashes and the preceding failed candidate: atd48c2421,
+the external schema dialect caused jsonschema to evolve back to default checking
+and accept a trailing-newline adapter digest. The corrected implementation retains
+its strict validator across references without altering published documents; a
+second regression covers lexical integer typing through binding references.
+This is an actual observed RED→GREEN fix, not an authority-release test.
+
+Full isolated [run37996851570](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37996851570)
+also succeeded at that same exact source, with the unchanged pinned container
+recipe and no new credentials or image substitutions. The prior infrastructure
+failures remain retained; the image-fetch failure is not present in this run.
+276 Go named test/subtest passes, build/static/security checks, normal Go schema
+extraction, restricted synthetic SDK use and local cancellation completed.
+The reduced ownership fixture passes41 direct and15 real-PgBouncer checks; this
+continues to be a reduced fixture, not actual full-schema writer exclusion.
+Existing P0 Go/Python/Rust interchange is green; proposed-profile Rust and shared
+transcript acceptance remain open.
+
+[Fresh native receipt](refreshed-native-proof.json) binds the descriptor, native
+binary, test/scan/measurement outputs and ownership evidence. Binary digest is
+`160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`,
+9,920,235bytes: the unchanged workload produces the same bytes as the historical
+artifact. Source/bundle identity is separately retained. Downloaded binary and
+module graph hashes match; the experimental descriptor signature verifies with
+its retained ephemeral public key. This is not accepted production signing or
+native registration. No downloaded executable was run on pve-t340.
+
+Measured module download is204.0ms. Cold compile with resolved modules is10.668s;
+a separate empty compiler cache yields10.915s. Warm source edit compile is272.0ms,
+restored warm compile235.2ms, and edit→artifact489.97ms. Across20 local executions,
+median run is3.140ms, p953.329ms, median startup→SDK2.735ms; local cancellation
+observation is0.347ms. These timings exclude genuine Rust lifecycle and durable
+API projection. Ordinary authoring and cached compilation remain promising; the
+shared lifecycle/local-supervisor experience is incomplete. No remote deployment
+latency or production overhead is claimed.
+
+The concrete authority proposal was presented for the human architecture release
+required by #1132 Package4. No answer or ratification is inferred from elapsed
+time. Only independent prerequisite work proceeded. Next is independent proposed-
+profile Rust/transcript proof and, after the actual authority release and required
+gates, the common trusted adapter/Rust owner integration. Decision CONTINUE SPIKE;
+the full goal remains active and unproved. SDK0.0.0-spike.2; MTG package2026-10-09.1.
