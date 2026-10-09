@@ -1,6 +1,7 @@
 """Hosted test-only Go/Python-oracle exchange. No workload/session/owner execution."""
 import hashlib
 import importlib.metadata
+import io
 import json
 import subprocess
 import sys
@@ -104,6 +105,47 @@ def main():
     if rejected.returncode != 1 or rejected.stderr != b"proposed profile exchange failed\n":
         raise ValueError("Go did not reject deliberate semantic drift")
     bad_path.unlink()
+    # Independent first-party stream codec; no oracle import in its module.
+    sys.path.insert(0, str(scripts.parent / "peers"))
+    from execution_codec import Codec
+    codec = Codec()
+
+    def stream_compare(exchange):
+        for entry in exchange["frames"]:
+            source = io.BytesIO(bytes.fromhex(entry["frame_hex"]))
+            decoded = codec.read(source)
+            if decoded is None or source.read(1) or canonical(decoded.frame) != canonical(golden[entry["name"]]):
+                raise PeerMismatch("independent Python stream value differs")
+
+    stream_compare(go_exchange)
+    stream_exchange = {"profile": profile, "frames": []}
+    for name in sorted(golden):
+        sink = io.BytesIO()
+        codec.write(sink, golden[name])
+        stream_exchange["frames"].append({"name": name, "frame_hex": sink.getvalue().hex()})
+    stream_path = output / "python-stream-exchange.json"
+    stream_path.write_text(json.dumps(stream_exchange, indent=2) + "\n")
+    subprocess.run([str(binary), str(corpus), "validate", str(stream_path)],
+                   env=environment, capture_output=True, check=True, timeout=30)
+    try:
+        stream_compare(altered(go_exchange))
+    except PeerMismatch:
+        pass
+    else:
+        raise ValueError("independent Python accepted deliberate semantic drift")
+    stream_receipt = {
+        "status": "independent-python-stream-component-proof-not-owner-acceptance",
+        "reference_head": head,
+        "go_to_independent_python": len(golden),
+        "independent_python_to_go": len(golden),
+        "message_types": sorted({frame["type"] for frame in golden.values()}),
+        "independent_python_semantic_drift_rejected": True,
+        "codec_source_sha256": hashlib.sha256((scripts.parent / "peers/execution_codec.py").read_bytes()).hexdigest(),
+        "exchange_sha256": hashlib.sha256(stream_path.read_bytes()).hexdigest(),
+        "limits": ["Candidate stream codec, not a deployed/extracted Python runtime.",
+                   "No session, Rust codec, lifecycle, provision or tenant execution."],
+    }
+    (output / "python-stream-peer-receipt.json").write_text(json.dumps(stream_receipt, indent=2) + "\n")
     receipt = {
         "status": "proposed-wire-peer-proof-not-runtime-authority",
         "reference_head": head,

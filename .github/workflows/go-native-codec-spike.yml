@@ -8,6 +8,7 @@ on:
       - spikes/go-native/cmd/executioncheck/**
       - spikes/go-native/scripts/execution-interchange.py
       - spikes/go-native/scripts/profile-peer-*
+      - spikes/go-native/peers/**
       - .github/workflows/go-native-codec-spike.yml
   workflow_dispatch:
 permissions:
@@ -57,6 +58,11 @@ jobs:
             --require-hashes -r spikes/go-native/scripts/profile-peer-requirements.lock
           env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
             "$RUNNER_TEMP/profile-python/bin/python" -m pip check
+      - name: Independent Python stream codec tests
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
+            "$RUNNER_TEMP/profile-python/bin/python" spikes/go-native/peers/test_execution_codec.py \
+            > "$RUNNER_TEMP/codec-evidence/python-stream-tests.txt" 2>&1
       - name: Actual Go and proposed Python-oracle peer encoding checks
         run: |
           env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
