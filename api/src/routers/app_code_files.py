@@ -718,12 +718,13 @@ async def get_bundle_manifest(
         manifest_bytes = None
 
     needs_rebuild = manifest_bytes is None
+    parsed = None
     if manifest_bytes is not None:
         try:
             parsed = _json.loads(manifest_bytes)
         except (ValueError, TypeError):
             parsed = None
-        if parsed is None:
+        if not isinstance(parsed, dict):
             needs_rebuild = True
         else:
             existing_version = parsed.get("schema_version")
@@ -741,9 +742,9 @@ async def get_bundle_manifest(
             )
 
         if not ctx.user.is_platform_admin:
-            if manifest_bytes is None:
+            if not isinstance(parsed, dict):
                 raise HTTPException(status_code=404, detail="Bundle manifest not built yet")
-            m = _json.loads(manifest_bytes)
+            m = parsed
             return {
                 "entry": m.get("entry"),
                 "css": m.get("css"),

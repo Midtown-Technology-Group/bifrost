@@ -86,3 +86,27 @@ class TestBundleManifestNonBypassNeverBuilds:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["entry"] == "STALE_SENTINEL.js"
+
+    @pytest.mark.parametrize("manifest_bytes", [b"{invalid", b"[]", b"null", b'"text"'])
+    def test_non_bypass_caller_gets_404_for_invalid_manifest_without_rebuild(
+        self, e2e_client, org1_user, inline_app, manifest_bytes
+    ):
+        import asyncio
+
+        from src.services.app_storage import AppStorageService
+
+        storage = AppStorageService()
+        asyncio.run(storage.write_preview_file(
+            inline_app["id"], "manifest.json", manifest_bytes
+        ))
+
+        resp = e2e_client.get(
+            f"/api/applications/{inline_app['id']}/bundle-manifest",
+            headers=org1_user.headers,
+            params={"mode": "draft"},
+        )
+
+        assert resp.status_code == 404, resp.text
+        assert asyncio.run(storage.read_file(
+            inline_app["id"], "preview", "manifest.json"
+        )) == manifest_bytes

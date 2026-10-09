@@ -89,9 +89,8 @@ async def resolve_executable_agent(
     """Resolve an agent by name and enforce solution execution availability.
 
     Case-insensitive name lookup; unknown names are 404. Once a candidate
-    row is found by name, access is verified through the exact same
-    ``AgentRepository.get_agent_with_access_check`` gate REST uses for
-    ``GET /api/agents/{id}`` — org cascade + role-based/private access
+    row is found by name, ``load_agent_by_name_for_user`` applies the shared
+    ``agent_access_conditions`` gate — org cascade + role-based/private access
     level — so a caller can never execute another org's or another
     user's private agent merely by guessing its name. An agent bound to
     a non-active Solution is 409 — the reinstall hint matches the
