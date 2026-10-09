@@ -1,10 +1,10 @@
 {
   "status": "review tripwire; existing Python is NOT accepted as an extracted runtime",
-  "source": "135a305811568362347e9d485ef992e9467f634f",
+  "source": "b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d",
   "selector": "api/**/*.py; no exclusions",
   "fingerprint": {
-    "files": 2777,
-    "sha256": "0a995e6a199f684b1aa748a7fdc4e046944c5226416b52f3218c84024dc984f3"
+    "files": 2778,
+    "sha256": "db4678f09e0177e69e066a6e5a38ba4d5cec5ee8d655c05030a9e7d70c88c384"
   },
-  "reconciliation": "Main #1129 adds offline signed workflow-removal evidence, SDK dependency and tests. No runtime extraction acceptance; immutable SDK/dependency custody remains held."
+  "reconciliation": "Main #1131 adds a no-CR normalization fast path in SDK CLI and shared sync hashing, plus boundary tests. When CR is absent, CRLF replacement is identity; binary and CR-containing behavior remains unchanged. No initialization, lifecycle writer, credential, finalization, mutable dependency or protocol change. Prior #1129 dependency custody remains held; no extracted adapter or process compatibility acceptance."
 }

@@ -77,3 +77,13 @@ the changed installed dependency closure or an extracted adapter. Package2 must
 still prove immutable SDK/environment custody. Initial hosted pre-PR on
 `1ff14c5bcd8e` failed the latest-main ancestry gate (run37980996203), before tests;
 that stale candidate is superseded by a signed main-containing candidate.
+
+Main refresh: `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d` (#1131) adds a no-CR
+normalization fast path in the SDK CLI and shared sync hashing, plus boundary
+tests. CRLF replacement is identity when CR is absent; binary and CR-containing
+inputs retain the existing path. Source review finds no new initialization,
+lifecycle writer, credential fallback, finalization, mutable installation or
+shared protocol field. The tripwire correctly blocked the PR's synthetic merge
+against this changed main in run37991136363. Refreshing its source pin does not
+accept an extracted adapter or waive the existing SDK/dependency custody gates;
+actual-process compatibility remains a Package2/Package3 acceptance requirement.
