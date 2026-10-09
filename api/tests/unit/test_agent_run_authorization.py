@@ -122,7 +122,9 @@ async def _make_authenticated_agent(db: AsyncSession, org: Organization) -> Agen
     return agent
 
 
-async def _make_run(db: AsyncSession, agent: Agent, org: Organization) -> AgentRun:
+async def _make_run(
+    db: AsyncSession, agent: Agent, org: Organization, *, caller_user_id=None
+) -> AgentRun:
     run = AgentRun(
         id=uuid4(),
         agent_id=agent.id,
@@ -130,6 +132,7 @@ async def _make_run(db: AsyncSession, agent: Agent, org: Organization) -> AgentR
         input={},
         status="completed",
         org_id=org.id,
+        caller_user_id=str(caller_user_id) if caller_user_id is not None else None,
         iterations_used=1,
         tokens_used=100,
         asked="Sensitive customer question",
@@ -165,7 +168,7 @@ async def test_list_agent_runs_hides_same_org_role_based_agent_without_role(
     org = await _make_org(db_session, "OrgA")
     user = await _make_user(db_session, org)
     agent, _role = await _make_role_based_agent(db_session, org)
-    await _make_run(db_session, agent, org)
+    await _make_run(db_session, agent, org, caller_user_id=user.id)
 
     response = await _list_runs_for_user(db_session, _principal(user.id, org.id))
 
@@ -248,11 +251,11 @@ async def test_execute_agent_run_blocks_cross_org_authenticated_agent(
     assert exc_info.value.status_code == 404
 
 
-async def test_user_with_agent_role_can_list_agent_run(db_session: AsyncSession):
+async def test_user_with_agent_role_can_list_own_agent_run(db_session: AsyncSession):
     org = await _make_org(db_session, "OrgA")
     user = await _make_user(db_session, org)
     agent, role = await _make_role_based_agent(db_session, org)
-    run = await _make_run(db_session, agent, org)
+    run = await _make_run(db_session, agent, org, caller_user_id=user.id)
     db_session.add(
         UserRole(user_id=user.id, role_id=role.id, assigned_by="test@example.com")
     )
