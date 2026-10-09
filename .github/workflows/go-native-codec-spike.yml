@@ -1,0 +1,47 @@
+name: Go proposed runtime codec diagnostic
+on:
+  push:
+    branches: [spike/go-first-class-g0]
+    paths:
+      - spikes/go-native/executionprofile/**
+      - spikes/go-native/runtimecontrol/**
+      - .github/workflows/go-native-codec-spike.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trusted-codec:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.27.1
+          cache: false
+      - name: Offline trusted codec tests and vet on disposable hosted VM
+        working-directory: spikes/go-native
+        run: |
+          mkdir -p "$RUNNER_TEMP/codec-evidence" "$RUNNER_TEMP/codec-home" "$RUNNER_TEMP/codec-cache"
+          git rev-parse HEAD > "$RUNNER_TEMP/codec-evidence/source-sha.txt"
+          go version > "$RUNNER_TEMP/codec-evidence/go-version.txt"
+          cp executionprofile/testdata/provenance.json "$RUNNER_TEMP/codec-evidence/proposal-provenance.json"
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" GOCACHE="$RUNNER_TEMP/codec-cache" \
+            GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
+            go test -mod=readonly -json -count=1 ./runtimecontrol ./executionprofile \
+            > "$RUNNER_TEMP/codec-evidence/tests.jsonl"
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" GOCACHE="$RUNNER_TEMP/codec-cache" \
+            GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
+            go vet -mod=readonly ./runtimecontrol ./executionprofile
+          printf '%s\n' 'Trusted codec diagnostic only: no tenant build/run, cross-language interchange, credentials or durable authority.' \
+            > "$RUNNER_TEMP/codec-evidence/scope.txt"
+      - name: Retain exact diagnostic evidence, including test failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-codec-diagnostic-${{ github.sha }}
+          path: ${{ runner.temp }}/codec-evidence
+          if-no-files-found: error
+          retention-days: 14
