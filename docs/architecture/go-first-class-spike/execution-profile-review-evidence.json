@@ -1,0 +1,44 @@
+{
+  "status": "static-source-review-not-profile-freeze",
+  "proposal_pr": 1132,
+  "proposal_head": "370230fb4d42f481c9fb94efc8cc9ca7f1185e8c",
+  "current_platform_main": "b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d",
+  "message_types": [
+    "Offer",
+    "Select",
+    "Prepare",
+    "Prepared",
+    "Start",
+    "Provision",
+    "Heartbeat",
+    "LogBatch",
+    "Usage",
+    "Result",
+    "ResultReceipt",
+    "Cancel",
+    "Stopped"
+  ],
+  "corpus_inventory_not_executed": {
+    "structural_documents": 68,
+    "raw_wire_specimens": 94,
+    "synthetic_session_cases": 68
+  },
+  "source_hashes": {
+    "docs/architecture/runtime/execution-profile.md": "e70450446b9f0fe92fdb685cc93e3e4c11ec9b8155282dbaf6a1c235c1973cea",
+    "docs/architecture/runtime/identity-binding.md": "10f0adbdfa287e6b8ccdc66704bd12157f17f4365b200e06a08638943f90bc80",
+    "docs/architecture/runtime/implementation-slices.md": "2d5120b0c0d2d81dd11cb9332d61355a4636b286a323056ecb0e595701d052ce",
+    "contracts/runtime/v1/execution-profile/profile.schema.json": "92809f3571f637c8bd639565396ab99a863e74444fd38059a3973071e3eb2279",
+    "contracts/runtime/v1/execution-profile/oracle.py": "97793ab443cc8903ac5130708d607ff0ab4f82e5685aef4b6301c819f780550c",
+    "contracts/runtime/v1/execution-profile/structural-vectors.json": "612bf1ef4b66b2cef5ce9f9934ee3f8b1ac419823209b2c2ff426b7c7131910f",
+    "contracts/runtime/v1/execution-profile/wire-vectors.json": "2cbf39883853d56938e9f00f15f5d035aabaaa75d1442f88577bd7d5812d4775",
+    "contracts/runtime/v1/execution-profile/session-vectors.json": "da9f664d12891f3384b28ccb9b7a7d72cfda0fd18c2ed08bb736f85f4727a47e",
+    "contracts/runtime/v1/execution-profile/references.json": "d271be79b0ec0855274f3a9d2157f941760fd7ece2528ed49dd4a5af2380d641",
+    "contracts/runtime/v1/language-neutral/binding.schema.json": "8e58776b42eef98df09e9a4c26e09b336c84e7049e813494a397234f6fc9c1f5",
+    "contracts/runtime/v1/language-neutral/artifact.schema.json": "5693ef0d4a82e7f53a6290b59b0726743bef58626b714f7206a71b51e20bb5bf"
+  },
+  "limits": [
+    "No oracle or runtime was executed in this static inspection.",
+    "No independent Go/Rust/Python execution-profile codec interchange is proved.",
+    "No new architecture approval, production authority or lifecycle owner is inferred."
+  ]
+}

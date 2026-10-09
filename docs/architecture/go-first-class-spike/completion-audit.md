@@ -181,3 +181,29 @@ remain missing. Next is the full common wire/provision/receipt decision named in
 the revised proposal, then supported generic Rust/runtime integration. No new
 production credentials, vendor mutations, PR, merge or deployment. Loaded MTG
 package2026-10-09.1, Engineering Flow2026-10-06.1 and PR Stewardship2026-10-06.1.
+
+## Proposed full profile discovered and reviewed
+
+Fresh open-PR inspection found #1132 at
+`370230fb4d42f481c9fb94efc8cc9ca7f1185e8c`: proposed
+`bifrost.runtime/v1/execution_profile/v1`. Current main is
+`b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`; shared document sources are
+unchanged from the preceding135a snapshot. The prior statement that no concrete
+full-profile proposal existed is now superseded; acceptance and actual codecs
+remain distinct.
+
+The [Go source review](execution-profile-review.md) finds the inspected candidate
+suitable for independent Go codec prototyping, with no Rust implementation
+dependency in its schema/prose. It does not ratify the shared profile or release
+authority integration. The [source-hash inventory](execution-profile-review-evidence.json)
+records13 closed envelopes and68 decoded/94 raw/68 synthetic session entries.
+These counts were inspected statically; no oracle, codec, process or database
+was executed in this review. No GitHub approval/comment was submitted.
+
+The next safe implementation is an independent candidate Go wire codec with
+P0 preservation and real stream/peer checks in supported CI. Three remaining
+integration decisions are now specific: actual fresh release/spawn custody,
+authenticated provision delivery plus dedicated ingress, and existing durable
+Result/Cancel/close receipt/projection transactions. They retain actual owner,
+writer-exclusion and Execution API proof. Existing SDK and performance evidence
+remain at the earlier exact tested source. No adoption claim follows.
