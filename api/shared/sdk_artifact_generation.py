@@ -95,7 +95,7 @@ async def sdk_render_document_artifact(
     """Render and store a trusted PDF or DOCX artifact.
 
     Workspace image references resolve through the caller's
-    (owner-or-org, admin-bypass) scope before rendering; a resolved
+    (owner-only, admin-bypass) scope before rendering; a resolved
     non-image raises transport-neutral 422, and an unresolvable path
     propagates as ``ArtifactAccessError`` (``ValueError`` → 422),
     exactly as the historical handler did.
@@ -117,10 +117,7 @@ async def sdk_render_document_artifact(
                     workspace_id,
                     image.path,
                     user_id=caller.user.user_id,
-                    bypass=has_scope_bypass(
-                        is_platform_admin=caller.user.is_superuser,
-                        is_provider_org=caller.user.is_provider_org,
-                    ),
+                    bypass=caller.user.is_platform_admin,
                 )
                 if not stored_image.content_type.startswith("image/"):
                     raise SdkArtifactError(
