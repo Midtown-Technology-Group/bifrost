@@ -8,6 +8,7 @@ import sys
 import tarfile
 from pathlib import Path
 from uuid import uuid4
+from typing import Any
 
 import pytest
 
@@ -287,7 +288,7 @@ def removal_fixture():
             **{name: deepcopy(inventory) for name in
                ("callers_dependencies", "event_sources", "subscriptions", "schedules")}}]}
     receipt = export_workflow_removal_evidence(payload, private_key=private.private_bytes_raw())
-    args = dict(previous_recipe_value=base, previous_files=base_files, previous_resources=resources,
+    args: dict[str, Any] = dict(previous_recipe_value=base, previous_files=base_files, previous_resources=resources,
                 workflow_removal_context=context, workflow_removal_evidence=receipt)
     return candidate, files, resources, args, private
 
