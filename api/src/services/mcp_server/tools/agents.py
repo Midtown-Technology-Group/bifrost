@@ -8,7 +8,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
-from uuid import uuid4
 
 from fastmcp.tools import ToolResult
 
