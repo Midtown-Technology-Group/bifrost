@@ -21,6 +21,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from src.services.operation_catalog import operation_route
+from shared.scope_resolver import has_scope_bypass
 from src.core.auth import CurrentActiveUser
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
@@ -739,13 +740,16 @@ async def get_agent(
     user: CurrentActiveUser,
 ) -> AgentPublic:
     """Get agent by ID."""
-    is_admin = user.has_platform_admin_grant()
+    scope_bypass = has_scope_bypass(
+        is_platform_admin=user.has_platform_admin_grant(),
+        is_provider_org=user.is_provider_org,
+    )
 
     repo = AgentRepository(
         session=db,
         org_id=user.organization_id,
         user_id=user.user_id,
-        is_superuser=is_admin,
+        is_superuser=scope_bypass,
         is_external=user.is_external,
     )
 
@@ -757,7 +761,7 @@ async def get_agent(
             detail=f"Agent {agent_id} not found",
         )
 
-    # `is_admin` (has_scope_bypass) short-circuits the repo's org/role check
+    # Scope bypass short-circuits the repo's org/role check
     # entirely, so a private agent's owner-only gate is never evaluated for
     # a provider-org non-admin. Private agents stay owner-only regardless —
     # only a true platform admin (narrow is_superuser) bypasses that,
