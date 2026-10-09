@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use axum::body::{Body, to_bytes};
+use axum::body::to_bytes;
 use axum::extract::{Extension, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -410,7 +410,7 @@ impl Server {
             .await
             .map_err(|_| Fault::Startup)?;
         let address = listener.local_addr().map_err(|_| Fault::Startup)?;
-        let (stop, mut stopped) = oneshot::channel();
+        let (stop, mut stopped) = oneshot::channel::<Instant>();
         let state = Arc::clone(&admission);
         let task = tokio::spawn(async move {
             let mut tasks = JoinSet::new();
@@ -581,6 +581,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
     use axum::http::Request as HttpRequest;
     use http_body_util::{BodyExt, Limited};
     use hyper::client::conn::http1::SendRequest;

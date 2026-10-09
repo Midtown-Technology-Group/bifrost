@@ -607,7 +607,7 @@ class Venue:
             "core-rs/Cargo.toml": "25b882aa69c5a4f83dd86091978f302cdd118edcae497b1a32d517d3165aa838",
             "core-rs/Cargo.lock": "9f6275d285d72fcc0a70573f2a0f3e0a4197920fb6060083440aff566a15ca52",
             "core-rs/crates/bifrost-core/Cargo.toml": "d6359485352834ed75ed3f2eb6f866dfa9eb020f807fbd5fbe12b4c8a0f2b020",
-            "core-rs/crates/bifrost-core/examples/admission_transport_prototype.rs": "981fac6c3dd5b3c98190e3bc35c6a6f750a0d3eb3489dc10c9c46fa8b377330b",
+            "core-rs/crates/bifrost-core/examples/admission_transport_prototype.rs": "ccc5bd31ae5c4aab3c366194d940d62d9e8c4eb3d84874d32b74313e42f11160",
         }
         require(all(self.source_pins.get(path) == digest for path, digest in frozen.items()), "frozen_prototype")
         require(
