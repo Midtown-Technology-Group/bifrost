@@ -14,6 +14,7 @@ from uuid import UUID
 
 from bifrost.solution_delivery_review import (
     PROTECTED_REGISTRATION_FIELDS,
+    compile_workflow_parameters,
 )
 from bifrost.solution_delivery_review import (
     require_compatible_parameters as _require_compatible_parameters,
@@ -65,6 +66,9 @@ from src.services.solutions.source_revision import (
     SolutionSourceRevisionService,
     _archive_files,
     _workflow_snapshot,
+    legacy_descriptor_evidence,
+    registration_runtime_timeout,
+    retain_legacy_registration_names,
 )
 from src.services.solutions.workflow_revision_recipe import (
     WORKFLOW_REVISION_MARKER,
@@ -81,6 +85,40 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
         raise SolutionSourceRevisionError(str(exc)) from exc
 
 
+def retain_legacy_descriptors(
+    entities: dict[str, RuntimeEntityDefinition], previous: dict[str, RuntimeEntityDefinition],
+) -> dict[str, RuntimeEntityDefinition]:
+    previous_by_id = {item.resolved_id: item for item in previous.values()}
+    result = dict(entities)
+    for ref, item in entities.items():
+        old = previous_by_id.get(item.resolved_id)
+        if old is not None and "legacy_descriptor_evidence" in old.definition:
+            payload = item.model_dump(mode="json")
+            payload["definition"]["legacy_descriptor_evidence"] = json.loads(
+                canonical_json(old.definition["legacy_descriptor_evidence"]))
+            result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
+
+
+def retain_installed_timeouts(
+    entities: dict[str, RuntimeEntityDefinition], rows: list[Workflow],
+) -> dict[str, RuntimeEntityDefinition]:
+    """Keep the runtime limit compatible with retained registry controls."""
+    by_id = {row.id: row for row in rows}
+    result = dict(entities)
+    for ref, item in entities.items():
+        row = by_id.get(item.resolved_id)
+        if row is not None:
+            payload = item.model_dump(mode="json")
+            timeout = registration_runtime_timeout(row, payload["definition"])
+            if payload["definition"]["timeout_seconds"] < timeout:
+                raise SolutionSourceRevisionError(
+                    "Recipe timeout conflicts with retained registry controls and Source runtime bounds")
+            payload["definition"]["timeout_seconds"] = timeout
+            result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
+
+
 async def project_workflow_registrations(
     db: AsyncSession, solution_id: UUID, entities: dict[str, RuntimeEntityDefinition],
     current_ids: set[UUID],
@@ -92,6 +130,23 @@ async def project_workflow_registrations(
         for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
                     "parameters_schema_contract"):
             definition.pop(key)
+        definition.pop("legacy_registration_name_evidence", None)
+        legacy = definition.pop("legacy_descriptor_evidence", None)
+        if legacy is not None:
+            if not isinstance(legacy, dict) or not isinstance(legacy.get("fields"), dict):
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence is invalid")
+            try:
+                expected = legacy_descriptor_evidence(legacy["fields"],
+                    extended=legacy.get("schema_version") == "bifrost.solution-legacy-descriptors/v2")
+            except (KeyError, TypeError) as exc:
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence is invalid") from exc
+            if legacy != expected:
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence changed")
+            definition.update(legacy["fields"])
+        if entity.resolved_id in current_ids:
+            # Runtime bounds stay in the immutable definition. Existing registry
+            # timeouts are controls, not the compiler's effective runtime limit.
+            definition.pop("timeout_seconds")
         values = {**definition, "is_active": True, "is_orphaned": False,
             "updated_at": datetime.now(UTC)}
         values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
@@ -121,9 +176,12 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         indexer = WorkflowIndexer(self.db)
         try:
             validate_resource_files(recipe, resources, files)
-            desired = compile_workflow_registrations(recipe, files, indexer)
+            desired = retain_installed_timeouts(retain_legacy_descriptors(retain_legacy_registration_names(
+                compile_workflow_registrations(recipe, files, indexer), dict(previous.workflows)),
+                dict(previous.workflows)), rows)
             closure = source_closure(files, {item.path for item in recipe.workflows},
-                has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources),
+                has_table_bindings=bool(recipe.shared_tables) or await self._has_owned_tables(solution_id),
+                has_resource_bindings=bool(recipe.resources),
                 has_root_file_bindings=bool(recipe.root_file_bindings))
         except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc
@@ -143,9 +201,11 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             # exposes them as unsupported instead of silently projecting them.
             if any(definition.get(key) != snapshot[key] for key in PROTECTED_REGISTRATION_FIELDS):
                 raise SolutionSourceRevisionError("Rename, scope, type, access, endpoint, mode, cache or retry changes require a reviewed caller/control-plane adapter")
-            old_schema = indexer.extract_parameters_from_source(base_files[snapshot["path"]], row.function_name, path=row.path)
-            if old_schema is None:
-                raise SolutionSourceRevisionError("Installed parameter contract cannot be inferred")
+            try:
+                old_schema = compile_workflow_parameters(base_files[snapshot["path"]], row.function_name,
+                    path=row.path, indexer=indexer)
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
             require_compatible_parameters(old_schema, definition["parameters_schema"])
         # Global UUID lookup is intentional in this deploy writer: a recipe must
         # never claim an existing Root registration or another Solution's UUID.
@@ -303,7 +363,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
     async def verify_current_workflows(self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest,
                                         recipe: ReviewedWorkflowRecipe) -> None:
         _solution, base, resolution = await self._base(solution_id, request, allow_resources=True)
-        await self._registrations(solution_id, resolution, lock=False)
+        rows = await self._registrations(solution_id, resolution, lock=False)
         files = await self._base_files(solution_id, base.id, resolution)
         resources = await read_deployment_resources(solution_id, base.id, resolution)
         storage = SolutionDeploymentStorage(solution_id, base.id)
@@ -314,7 +374,9 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                     raise SolutionSourceRevisionError("Current workflow runtime bytes differ from immutable source")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
         validate_resource_files(recipe, resources, files)
-        desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
+        desired = retain_installed_timeouts(retain_legacy_descriptors(retain_legacy_registration_names(
+            compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db)), dict(resolution.workflows)),
+            dict(resolution.workflows)), rows)
         if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
                 or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionConflict("Current registrations or table bindings differ from reviewed Git")

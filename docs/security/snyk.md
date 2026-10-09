@@ -1,4 +1,18 @@
-# Snyk Rollout
+# Snyk (retired)
+
+Snyk was retired from the MTG fork on 2026-10-05. The Snyk workflow has been
+removed; Snyk is no longer a merge or release prerequisite. Existing Dependabot,
+CodeQL, secret scanning, OpenSSF
+Scorecard, and other CI controls remain in place (see [SECURITY.md](../../SECURITY.md)).
+
+The rollout notes and dated findings below are retained as historical evidence,
+not current setup or promotion instructions. The root `.snyk` file remains the
+reviewed security-exception record. Repository tests independently enforce its
+approved scope and unchanged deadline, `2026-10-14T00:00:00.000Z`. Retiring the
+scanner does not extend or waive that exception.
+No Snyk account or credentials are required for the current release process.
+
+## Historical rollout notes
 
 Bifrost uses Snyk as an additional dependency, IaC, and container signal next
 to GitHub-native security controls. It does not replace Dependabot, CodeQL,

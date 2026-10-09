@@ -11,10 +11,46 @@ We aim for a positive, progress-oriented culture and presume best intent unless
 evidence says otherwise; maintainers hold one another accountable to that bar
 (see GOVERNANCE.md § Culture and maintainer standards).
 
+## Maintainer directed agent contributions
+
+Thomas Bray (`MTG-Thomas`, GitHub user ID `87775189`) may direct an agent to
+prepare and publish contributions to this repository. The maintainer remains
+the principal for that work. The agent may carry out the approved task and its
+normal supporting steps within the stated scope.
+
+A qualifying contribution uses an authorization and provenance record instead
+of a per-commit personal DCO trailer:
+
+- Identify the principal, the agent and its role, the actual authorized task,
+  the repository/PR, and the exact current head and contributed commit range.
+- Describe material third-party source and its license/provenance accurately.
+  Preserve existing authorship and license notices. Stop on unclear rights or
+  incompatible licensing; a generated declaration does not settle them.
+- Publish through an account the principal authorized for this work. Keep
+  verified GitHub signatures, required CI/security checks, source review,
+  native merge queue and any protected deployment controls.
+- Keep the record current when the contribution changes. A new head within the
+  same task needs fresh evidence and an updated record, not another generic
+  request to repeat the original authorization.
+
+For this route, a missing `Signed-off-by` trailer is reported honestly and is
+not itself a reason to request retrospective messages or another per-commit
+human action. The agent records that it acted under the principal's orders; it
+does not create a personal DCO certification in anyone else's name. A GitHub
+signature identifies the authenticated signing route and is not substituted for
+such a certification.
+
+This route applies only where the repository's maintainers have adopted it.
+It does not authorize additional scope, spending, security access, destructive
+changes, protected-environment approval, or statements that require a person's
+own attestation. Other contributors continue through the DCO route below.
+See [the contribution record](docs/dev/maintainer-directed-contributions.md)
+for the record format and acceptance boundaries.
+
 ## Developer Certificate of Origin (DCO)
 
-By contributing to `MTG-Thomas/bifrost`, you certify that your contribution
-complies with the [Developer Certificate of Origin, version 1.1](https://developercertificate.org/):
+For contributions using the DCO route, the contributor supplies their own
+certification under the [Developer Certificate of Origin, version 1.1](https://developercertificate.org/):
 
 ```text
 Developer Certificate of Origin
@@ -49,7 +85,8 @@ By making a contribution to this project, I certify that:
     involved.
 ```
 
-**Sign-off:** append a `Signed-off-by` line to each commit message:
+**Sign-off for the DCO route:** the contributor appends their own
+`Signed-off-by` line to each contribution commit message:
 
 ```text
 Signed-off-by: Your Name <your.email@example.com>
@@ -89,11 +126,14 @@ All work ships with tests. The full matrix of what goes where lives in [`CLAUDE.
 Some areas of the codebase need a higher bar — auth, execution engine, multi-tenancy filters, migrations, secrets, manifest round-trip, audit logging.
 
 If your change touches any of those, expect:
-- A manual review regardless of PR size.
+- Human review is recommended, with reviewers selected for the specific risk
+  ownership described in [delivery lane 3](docs/dev/delivery-lanes.md#lane-3-platform-or-live-operations).
 - A reviewer asking about tests for the specific failure mode, not just "does it compile."
 - Higher scrutiny on any code path that could cross tenant boundaries, leak secrets, or skip an audit.
 
 Call it out in the PR description so the reviewer doesn't have to rediscover it.
+This source-review recommendation does not waive required CI, protected
+deployment approvals, or explicit authorization for high-impact operations.
 
 ## Reviewer budget
 

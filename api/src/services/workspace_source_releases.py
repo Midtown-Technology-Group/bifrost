@@ -191,6 +191,7 @@ class WorkspaceSourceReleaseService:
         if existing is not None:
             _assert_compatible_replay(existing, request, paths)
             if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
                 await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
 
@@ -259,17 +260,25 @@ class WorkspaceSourceReleaseService:
                 raise
             _assert_compatible_replay(existing, request, paths)
             if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
                 await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
         await self._reconcile_solution_delivery(record.id)
+        # A bounded accounting fence may roll back and expire the caller's
+        # committed declaration. Reload scalars before synchronous DTO access.
+        await self.db.refresh(record)
         await self.db.refresh(record, attribute_names=["solution_deploy_obligations"])
         return source_release_response(record, now=now)
 
     async def _reconcile_solution_delivery(self, source_release_id: UUID) -> bool:
         from src.config import get_settings
-        if get_settings().solution_git_delivery_policy is None:
+        settings = get_settings()
+        if (settings.solution_git_delivery_policy is None
+                and getattr(settings, "solution_package_git_delivery_policy", None) is None):
             return False
         from src.services.solution_source_accountability import reconcile_solution_owned_source
+        from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+        await reconcile_native_solution_deploy_obligations(self.db, source_release_id=source_release_id)
         await reconcile_solution_owned_source(self.db, source_release_id=source_release_id)
         await self.db.commit()
         return True
@@ -351,6 +360,8 @@ class WorkspaceSourceReleaseService:
                     not in {
                         "bifrost.workspace-live-handoff/v1",
                         "bifrost.solution-source-revision/v1",
+                        "bifrost.repo-workflow-adoption/v1",
+                        "bifrost.solution-workflow-revision/v1",
                     }
                 ):
                     raise WorkspaceSourceReleaseConflict(
@@ -717,6 +728,8 @@ async def sweep_overdue_workspace_releases(
     """Turn missed source and history deadlines into durable attention state."""
     now = now or _utc_now()
     from src.services.solution_source_accountability import reconcile_solution_owned_source
+    from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+    await reconcile_native_solution_deploy_obligations(db)
     await reconcile_solution_owned_source(db)
     # Projection takes the Live release row before source-accountability rows.
     # Keep the scheduler in the same order so the two transactions cannot

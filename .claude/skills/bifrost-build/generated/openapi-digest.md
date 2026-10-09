@@ -104,6 +104,8 @@
 | DELETE | `/api/applications/{app_id}/files/{file_path}` |
 | GET | `/api/applications/{app_id}/files/{file_path}` |
 | PUT | `/api/applications/{app_id}/files/{file_path}` |
+| POST | `/api/applications/{app_id}/github-source` |
+| POST | `/api/applications/{app_id}/github-source/{job_id}/inspect` |
 | DELETE | `/api/applications/{app_id}/logo` |
 | GET | `/api/applications/{app_id}/logo` |
 | POST | `/api/applications/{app_id}/logo` |
@@ -463,6 +465,7 @@
 | GET | `/api/reports/roi/summary` |
 | GET | `/api/reports/roi/trends` |
 | GET | `/api/reports/usage` |
+| GET | `/api/reports/workflow-resources` |
 | GET | `/api/required-instructions` |
 | GET | `/api/roles` |
 | POST | `/api/roles` |
@@ -586,6 +589,9 @@
 | POST | `/api/solutions/{solution_id}/deployments` |
 | GET | `/api/solutions/{solution_id}/deployments/active` |
 | GET | `/api/solutions/{solution_id}/deployments/capabilities` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package/recover` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package/status` |
 | POST | `/api/solutions/{solution_id}/deployments/github-source` |
 | POST | `/api/solutions/{solution_id}/deployments/shared-tables/preview` |
 | GET | `/api/solutions/{solution_id}/deployments/{deployment_id}` |
@@ -597,6 +603,9 @@
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/candidate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/preflight` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/live-handoff/rollback` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/activate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/candidate` |
+| POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/repo-workflow-adoption/preflight` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/rollback` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/activate` |
 | POST | `/api/solutions/{solution_id}/deployments/{deployment_id}/source-revision/candidate` |
@@ -678,6 +687,7 @@
 | POST | `/api/workspace-promotions/drafts` |
 | GET | `/api/workspace-promotions/live` |
 | POST | `/api/workspace-promotions/live/retire` |
+| GET | `/api/workspace-promotions/live/retirement-inventory` |
 | POST | `/api/workspace-promotions/preview` |
 | POST | `/api/workspace-promotions/preview-jobs` |
 | GET | `/api/workspace-promotions/releases/{release_id}` |

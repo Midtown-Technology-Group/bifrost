@@ -24,7 +24,7 @@ from bifrost.workspace_release import canonical_digest
 from src.config import get_settings
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
 from src.models.enums import ExecutionStatus
-from src.models.orm.executions import Execution
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.execution_attempts import ExecutionAttempt
 from src.models.orm.operation_receipts import OperationReceipt
 from src.models.orm.solutions import Solution
@@ -42,6 +42,7 @@ from src.services.workspace_release_storage import WorkspaceReleaseStorage
 
 MAPPING_SCHEMA = "bifrost.solution-git-source-mapping/v1"
 COMPLETION_SCHEMA = "bifrost.solution-owned-source-completion/v1"
+PACKAGE_COMPLETION_SCHEMA = "bifrost.package-owned-source-completion/v1"
 UNRESOLVED = ("pending", "attention_required", "deferred")
 ACCEPTED = (ExecutionStatus.SCHEDULED, ExecutionStatus.PENDING, ExecutionStatus.RUNNING,
     ExecutionStatus.CANCELLING, ExecutionStatus.STUCK)
@@ -83,7 +84,87 @@ class SourceConsumer:
     admission: bool = True
 
 
-def completion_for_source(record: Any, consumers: list[SourceConsumer], *,
+@dataclass(frozen=True)
+class AppSourceConsumer:
+    """Published App bytes retain the original job, never a Solution identity."""
+
+    application_id: str
+    publication_job_id: str
+    organization_id: str | None
+    manifest_hash: str
+    runtime_pin_hash: str
+    output_hashes: dict[str, str]
+    sources: dict[str, dict[str, str]]
+    proof: dict[str, Any] = field(default_factory=dict)
+    admission: bool = True
+
+
+PackageSourceConsumer = SourceConsumer | AppSourceConsumer
+
+
+def _source_binding(consumer: PackageSourceConsumer, aliases: dict[str, str]) -> dict[str, Any]:
+    if isinstance(consumer, AppSourceConsumer):
+        return {"kind": "inline_app", "application_id": consumer.application_id,
+            "publication_job_id": consumer.publication_job_id,
+            "organization_id": consumer.organization_id, "manifest_hash": consumer.manifest_hash,
+            "runtime_pin_hash": consumer.runtime_pin_hash,
+            "authored_source_sha256": aliases, "compiled_output_sha256": consumer.output_hashes,
+            "admission": consumer.admission}
+    return {"deployment_id": consumer.deployment_id,
+        "solution_id": consumer.solution_id, "organization_id": consumer.organization_id,
+        "compiled_manifest_hash": consumer.manifest_hash, "runtime_sha256": aliases,
+        "admission": consumer.admission}
+
+
+def _source_anchor(consumer: PackageSourceConsumer) -> dict[str, Any]:
+    if isinstance(consumer, AppSourceConsumer):
+        return {"kind": "inline_app", "application_id": consumer.application_id,
+            "publication_job_id": consumer.publication_job_id,
+            "runtime_pin_hash": consumer.runtime_pin_hash,
+            "artifact_digest": consumer.proof["artifact_digest"]}
+    return {"deployment_id": consumer.deployment_id,
+        "receipt_id": consumer.proof["receipt_id"], "artifact_digest": consumer.proof["artifact_digest"]}
+
+
+def _registry_complete(registry: dict[str, Any], consumers: list[PackageSourceConsumer],
+                       record: Any, expected: str) -> bool:
+    """One shared registry needs both native deployment and App publication proof."""
+    path, target = registry["path"], registry["target"]
+
+    def registry_identity(value: dict[str, Any]) -> dict[str, Any]:
+        return {"path": value.get("path"), "target": value.get("target"),
+            "installations": {key: {"recipe_path": item["recipe_path"],
+                "organization_id": item["organization_id"]}
+                for key, item in value.get("installations", {}).items()},
+            "application_recipes": sorted(value.get("application_recipes", []))}
+
+    def current(other: PackageSourceConsumer) -> bool:
+        retained = other.proof.get("installation_registry") or other.proof.get("package_registry_requirements") or {}
+        return (other.admission and other.proof.get("commit_sha") == record.source_commit_sha
+            and other.proof.get("tree_sha") == record.source_tree_sha
+            and other.proof.get("control_hashes", {}).get(path) == expected
+            and retained.get("path") == path and retained.get("target") == target
+            and registry_identity(retained) == registry_identity(registry))
+
+    for identity, entry in registry["installations"].items():
+        if not any(isinstance(other, SourceConsumer) and current(other)
+                and other.solution_id == identity and other.organization_id == entry["organization_id"]
+                and other.proof.get("recipe_path") == entry["recipe_path"]
+                # Solution metadata also retains authored package associations;
+                # the App adapter proves target identity without claiming those.
+                and (not any("package_subpaths" in item for item in registry["installations"].values())
+                    or other.proof.get("installation_registry") == registry)
+                for other in consumers):
+            return False
+    for recipe in registry.get("application_recipes", []):
+        if not any(isinstance(other, AppSourceConsumer) and current(other)
+                and other.proof.get("recipe_path") == recipe
+                for other in consumers):
+            return False
+    return True
+
+
+def completion_for_source(record: Any, consumers: list[PackageSourceConsumer], *,
                           loose_hashes: dict[str, str], uncertain_loose: bool,
                           verified_at: datetime) -> dict[str, Any] | None:
     """Pure per-path decision after pointer, registration and byte readback.
@@ -104,6 +185,11 @@ def completion_for_source(record: Any, consumers: list[SourceConsumer], *,
             if path in consumer.proof.get("control_hashes", {})]
         if not matches and not controls:
             return None
+        if (path.startswith(("apps/", "config/app-delivery/"))
+                and not any(isinstance(item, AppSourceConsumer) and item.admission
+                    for item in [*matches, *controls])):
+            # A resource copy in a Solution is not publication of an inline App.
+            return None
         if path in loose_hashes and loose_hashes[path] != expected:
             return None
         anchors = []
@@ -112,42 +198,33 @@ def completion_for_source(record: Any, consumers: list[SourceConsumer], *,
             aliases = consumer.sources[path]
             if not aliases or any(digest != expected for digest in aliases.values()):
                 return None
-            bindings.append({"deployment_id": consumer.deployment_id,
-                "solution_id": consumer.solution_id, "organization_id": consumer.organization_id,
-                "compiled_manifest_hash": consumer.manifest_hash, "runtime_sha256": aliases,
-                "admission": consumer.admission})
+            bindings.append(_source_binding(consumer, aliases))
             proof = consumer.proof
             if (consumer.admission and proof.get("commit_sha") == record.source_commit_sha
                     and proof.get("tree_sha") == record.source_tree_sha):
-                anchors.append({"deployment_id": consumer.deployment_id,
-                    "receipt_id": proof["receipt_id"], "artifact_digest": proof["artifact_digest"]})
+                anchors.append(_source_anchor(consumer))
         for consumer in controls:
             proof = consumer.proof
             if (not consumer.admission or proof["control_hashes"][path] != expected
                     or proof.get("commit_sha") != record.source_commit_sha
                     or proof.get("tree_sha") != record.source_tree_sha):
                 return None
-            registry = proof.get("installation_registry")
+            registry = proof.get("installation_registry") or proof.get("package_registry_requirements")
             if registry and registry.get("path") == path:
-                installs = registry.get("installations", {})
-                for identity, entry in installs.items():
-                    if not any(other.admission and other.solution_id == identity
-                            and other.organization_id == entry["organization_id"]
-                            and other.proof.get("recipe_path") == entry["recipe_path"]
-                            and other.proof.get("commit_sha") == record.source_commit_sha
-                            and other.proof.get("tree_sha") == record.source_tree_sha
-                            and other.proof.get("control_hashes", {}).get(path) == expected
-                            and other.proof.get("installation_registry") == registry
-                            for other in consumers):
-                        return None
-            anchors.append({"deployment_id": consumer.deployment_id,
-                "receipt_id": proof["receipt_id"], "artifact_digest": proof["artifact_digest"]})
+                if not _registry_complete(registry, consumers, record, expected):
+                    return None
+            anchors.append(_source_anchor(consumer))
         if not anchors:
+            return None
+        if (path.startswith(("apps/", "config/app-delivery/"))
+                and not any(anchor.get("kind") == "inline_app" for anchor in anchors)):
             return None
         per_path[path] = {"sha256": expected, "consumers": bindings,
             "protected_git_anchors": anchors,
             "loose_runtime_sha256": loose_hashes.get(path)}
-    evidence: dict[str, Any] = {"schema_version": COMPLETION_SCHEMA,
+    includes_apps = any(anchor.get("kind") == "inline_app"
+        for item in per_path.values() for anchor in item["protected_git_anchors"])
+    evidence: dict[str, Any] = {"schema_version": PACKAGE_COMPLETION_SCHEMA if includes_apps else COMPLETION_SCHEMA,
         "source_release_id": str(record.id), "source_commit_sha": record.source_commit_sha,
         "source_tree_sha": record.source_tree_sha, "paths": per_path,
         "verified_at": verified_at.isoformat()}
@@ -155,7 +232,7 @@ def completion_for_source(record: Any, consumers: list[SourceConsumer], *,
     return evidence
 
 
-def supersession_for_source(record: Any, consumers: list[SourceConsumer], *,
+def supersession_for_source(record: Any, consumers: list[PackageSourceConsumer], *,
                             loose_hashes: dict[str, str], uncertain_loose: bool,
                             verified_at: datetime) -> dict[str, Any] | None:
     """A later protected descendant must prove replacement of every old path."""
@@ -188,11 +265,16 @@ def supersession_for_source(record: Any, consumers: list[SourceConsumer], *,
             loose_hashes=loose_hashes, uncertain_loose=uncertain_loose, verified_at=verified_at)
         if readback is None:
             continue
-        evidence = {"schema_version": "bifrost.solution-owned-source-supersession/v1",
+        evidence = {"schema_version": "bifrost.package-owned-source-supersession/v1"
+            if readback["schema_version"] == PACKAGE_COMPLETION_SCHEMA else "bifrost.solution-owned-source-supersession/v1",
             "source_release_id": str(record.id), "source_commit_sha": record.source_commit_sha,
             "source_tree_sha": record.source_tree_sha, "original_sha256": dict(record.paths),
-            "superseding_source_commit_sha": commit, "superseding_source_tree_sha": tree,
-            "ancestor_attestation_deployment_id": candidate.deployment_id, "readback": readback}
+            "superseding_source_commit_sha": commit, "superseding_source_tree_sha": tree, "readback": readback}
+        if isinstance(candidate, AppSourceConsumer):
+            evidence["ancestor_attestation_publication_job_id"] = candidate.publication_job_id
+            evidence["ancestor_attestation_runtime_pin_hash"] = candidate.runtime_pin_hash
+        else:
+            evidence["ancestor_attestation_deployment_id"] = candidate.deployment_id
         evidence["evidence_id"] = canonical_digest(evidence)
         return evidence
     return None
@@ -219,7 +301,7 @@ async def _verified_delivery_proof(db: AsyncSession, deployment: Any, manifest: 
             or any(not isinstance(value, str) for value in mapping.values())):
         raise UnprovenSourceConsumers("Protected repository mapping differs from deployment closure")
     try:
-        receipt = await db.get(OperationReceipt, UUID(proof["receipt_id"]))
+        receipt = await db.get(OperationReceipt, UUID(proof["receipt_id"]), populate_existing=True)
         identity = {"repository_id": policy.repository_id, "solution_id": str(deployment.solution_id),
             "source_commit_sha": proof["commit_sha"], "artifact_digest": proof["artifact_digest"],
             "ci_run_id": proof["ci_run_id"], "ci_run_attempt": proof["ci_run_attempt"],
@@ -234,14 +316,26 @@ async def _verified_delivery_proof(db: AsyncSession, deployment: Any, manifest: 
     return proof
 
 
-async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy) -> tuple[list[SourceConsumer], dict[str, str], bool]:
+async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy) -> tuple[list[PackageSourceConsumer], dict[str, str], bool]:
+    from src.services.application_source_accountability import prepare_app_accounting, verify_app_accounting
+
+    # Read immutable Git metadata before the aggregate admission fence. App
+    # rows, original jobs and actual published bytes are rechecked under it.
+    prepared_apps = await prepare_app_accounting(db, policy)
     # The delivery hook calls this AFTER releasing its install write lock. Take
     # the global Live fence, then all installs in stable UUID order, then source
     # rows. No one-install transaction may acquire this aggregate lock set.
     await acquire_workspace_release_lock(db, None)
-    release = await global_active_workspace_release_descriptor(db)
     solutions = list((await db.scalars(select(Solution).where(Solution.status == "active")
         .order_by(Solution.id).with_for_update().execution_options(populate_existing=True))).all())
+    # An unsupported install makes aggregate completion impossible regardless
+    # of the other installs' bytes. Detect it under the same admission fence
+    # before reading immutable bundles; UUID order must not decide how much
+    # storage work a known-incomplete accounting sweep performs.
+    if any(solution.execution_runtime_mode != "deployment-v1"
+            or solution.active_deployment_id is None for solution in solutions):
+        raise UnprovenSourceConsumers("Mutable Solution consumer remains")
+    release = await global_active_workspace_release_descriptor(db)
     repository = SolutionDeploymentRepository(db)
     consumers: dict[UUID, SourceConsumer] = {}
     visiting: set[UUID] = set()
@@ -331,8 +425,6 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
         visiting.remove(deployment_id)
 
     for solution in solutions:
-        if solution.execution_runtime_mode != "deployment-v1" or solution.active_deployment_id is None:
-            raise UnprovenSourceConsumers("Mutable Solution consumer remains")
         await visit(solution.active_deployment_id, admission=True, expected_solution=solution.id,
             expected_scope=solution.organization_id)
     # Superseded dependency/accepted pins remain real consumers until drained.
@@ -340,7 +432,10 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
         ExecutionAttempt.logical_job_type == "workflow",
         ExecutionAttempt.logical_job_id == Execution.id,
         ExecutionAttempt.completed_at.is_(None)))
-    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt)
+    accepted_workflow_attempt = exists(select(WorkflowExecutionAttempt.id).where(
+        WorkflowExecutionAttempt.execution_id == Execution.id,
+        WorkflowExecutionAttempt.completed_at.is_(None)))
+    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt, accepted_workflow_attempt)
     pins = (await db.scalars(select(Execution.solution_deployment_id).where(
         accepted_execution, Execution.solution_deployment_id.is_not(None)).distinct())).all()
     for identity in pins:
@@ -375,7 +470,8 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
     # cannot be inferred safe from an absence of active loose registrations.
     legacy = await db.scalar(select(Execution.id).where(accepted_execution,
         Execution.solution_deployment_id.is_(None)).limit(1))
-    return list(consumers.values()), loose_hashes, uncertain or legacy is not None
+    apps = await verify_app_accounting(db, prepared_apps)
+    return [*consumers.values(), *apps], loose_hashes, uncertain or legacy is not None
 
 
 async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
@@ -402,20 +498,28 @@ async def reconcile_solution_owned_source(db: AsyncSession, *, limit: int = 100,
     query = select(WorkspaceSourceRelease).where(
         WorkspaceSourceRelease.organization_id == accountability_organization_id,
         WorkspaceSourceRelease.disposition.in_(UNRESOLVED))
-    if await db.scalar(query.limit(1)) is None:
-        return []
-    try:
-        consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
-    except (UnprovenSourceConsumers, ValueError):
-        return []
     # Rotate unsupported records behind never/least-recently examined rows.
     # Exact declaration replay additionally targets its identity immediately.
     if source_release_id is not None:
         query = query.where(WorkspaceSourceRelease.id == source_release_id)
-    records = list((await db.scalars(query.order_by(
+    ordered = query.order_by(
         WorkspaceSourceRelease.accounting_checked_at.asc().nulls_first(),
         WorkspaceSourceRelease.created_at.asc(), WorkspaceSourceRelease.id)
-        .limit(min(max(limit, 1), 1000)).with_for_update().execution_options(populate_existing=True))).all())
+    # Select the bounded work set before the expensive aggregate readback, but
+    # acquire Source row locks only AFTER the collector's global/install locks.
+    # Re-read unresolved state under those locks before changing accounting.
+    identities = list((await db.scalars(ordered.with_only_columns(WorkspaceSourceRelease.id)
+        .limit(min(max(limit, 1), 1000)))).all())
+    if not identities:
+        return []
+    try:
+        consumers, loose_hashes, uncertain = await _collect_consumers(db, policy)
+    except (UnprovenSourceConsumers, ValueError):
+        # An unproven consumer prevents completion, not recovery rotation.
+        # Storage/infrastructure errors still propagate for the caller to retry.
+        consumers, loose_hashes, uncertain = [], {}, True
+    records = list((await db.scalars(ordered.where(WorkspaceSourceRelease.id.in_(identities))
+        .with_for_update().execution_options(populate_existing=True))).all())
     now = datetime.now(UTC)
     completed = []
     for record in records:

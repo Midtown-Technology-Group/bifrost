@@ -92,6 +92,30 @@ def test_upload_prefix_does_not_match_sibling_or_hidden_path():
     assert not grant.permits("cisco-secure-client/packages/installer.zip", "read")
 
 
+@pytest.mark.parametrize("size", [135419864, 256 * 1024 * 1024])
+def test_large_upload_download_is_bounded_without_granting_raw_reads(size):
+    grant = binding(
+        location="uploads", path="cisco-secure-client/packages",
+        directory_prefix=True, operations=["exists", "signed_get"],
+        expected_read_sha256=None, max_bytes=size,
+    )
+    assert grant.permits("cisco-secure-client/packages/installer.zip", "signed_get")
+    assert not grant.permits("cisco-secure-client/packages/installer.zip", "read")
+    assert not grant.permits("other-packages/installer.zip", "signed_get")
+
+
+@pytest.mark.parametrize("operations,size", [
+    (["exists", "signed_get"], 256 * 1024 * 1024 + 1),
+    (["read"], 128 * 1024 * 1024 + 1),
+    (["read", "signed_get"], 128 * 1024 * 1024 + 1),
+    (["exists"], 128 * 1024 * 1024 + 1),
+])
+def test_large_grant_cannot_expand_into_raw_reads_or_unbounded_downloads(operations, size):
+    with pytest.raises(ValidationError):
+        binding(location="uploads", path="packages/installer.zip",
+                operations=operations, expected_read_sha256=None, max_bytes=size)
+
+
 def backup_binding(**changes):
     return RootFileBinding.model_validate({
         "location": "workspace", "path": BACKUP_PREFIX,

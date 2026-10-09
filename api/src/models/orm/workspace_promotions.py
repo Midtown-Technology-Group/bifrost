@@ -442,7 +442,8 @@ class WorkspaceSourceRelease(Base):
             "disposition <> 'released' OR "
             "(completion_evidence IS NOT NULL AND resolved_at IS NOT NULL AND "
             "(release_row_id IS NOT NULL OR COALESCE("
-            "(completion_evidence->>'schema_version' = 'bifrost.solution-owned-source-completion/v1' "
+            "(completion_evidence->>'schema_version' IN ('bifrost.solution-owned-source-completion/v1', "
+            "'bifrost.package-owned-source-completion/v1') "
             "AND completion_evidence->>'source_commit_sha' = source_commit_sha "
             "AND completion_evidence->>'source_tree_sha' = source_tree_sha "
             "AND jsonb_typeof(completion_evidence->'paths') = 'object' "
@@ -572,9 +573,25 @@ class SolutionDeployObligation(Base):
         ),
         CheckConstraint(
             "disposition <> 'released' OR "
-            "(solution_id IS NOT NULL AND deploy_job_id IS NOT NULL AND "
+            "(solution_id IS NOT NULL AND "
             "candidate_id IS NOT NULL AND source_artifact_sha256 IS NOT NULL AND "
-            "completion_evidence IS NOT NULL AND resolved_at IS NOT NULL)",
+            "completion_evidence IS NOT NULL AND resolved_at IS NOT NULL AND "
+            "(deploy_job_id IS NOT NULL OR COALESCE(("
+            "completion_evidence->>'schema_version' = 'bifrost.native-solution-deploy-completion/v1' AND "
+            "completion_evidence->>'source_commit_sha' = source_commit_sha AND "
+            "completion_evidence->>'source_tree_sha' = source_tree_sha AND "
+            "completion_evidence->>'source_subtree_sha' = source_subtree_sha AND "
+            "completion_evidence->>'source_content_id' = source_content_id AND "
+            "completion_evidence->>'solution_id' = solution_id::text AND "
+            "completion_evidence->>'candidate_id' = candidate_id AND "
+            "completion_evidence->>'source_artifact_sha256' = source_artifact_sha256 AND "
+            "candidate_id = 'sha256:' || source_artifact_sha256 AND "
+            "source_artifact_sha256 ~ '^[0-9a-f]{64}$' AND "
+            "jsonb_typeof(completion_evidence->'target_installs') = 'object' AND "
+            "completion_evidence->'target_installs' <> '{}'::jsonb AND "
+            "jsonb_typeof(completion_evidence->'installations') = 'object' AND "
+            "completion_evidence->'installations' <> '{}'::jsonb"
+            "), FALSE)))",
             name="ck_solution_deploy_obligation_released_evidence",
         ),
         CheckConstraint(

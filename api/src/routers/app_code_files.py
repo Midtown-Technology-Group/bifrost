@@ -25,6 +25,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, status
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
@@ -643,21 +644,8 @@ async def get_bundle_manifest(
     # index.html.
     app_model = getattr(app, "app_model", "inline_v1")
     if app_model == "standalone_v2":
-        from html.parser import HTMLParser
         from src.services.solutions.app_build import SolutionAppBuilder
-
-        class _IndexAssetParser(HTMLParser):
-            def __init__(self) -> None:
-                super().__init__()
-                self.entry: str | None = None
-                self.css: str | None = None
-
-            def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-                attr_map = dict(attrs)
-                if tag == "script" and attr_map.get("type") == "module" and attr_map.get("src"):
-                    self.entry = attr_map["src"]
-                if tag == "link" and attr_map.get("rel") == "stylesheet" and attr_map.get("href"):
-                    self.css = attr_map["href"]
+        from src.services.solutions.app_runtime import compiled_index_assets
 
         # The entry chunk + CSS are whatever index.html references — Vite may emit
         # several .js chunks (vendor splits), so the <script type=module src> and
@@ -674,12 +662,7 @@ async def get_bundle_manifest(
                     deployment_id=app.active_deployment_id,
                 )
             ).decode()
-            parser = _IndexAssetParser()
-            parser.feed(html)
-            if parser.entry:
-                entry = parser.entry.split("/dist/")[-1].lstrip("/")
-            if parser.css:
-                css = parser.css.split("/dist/")[-1].lstrip("/")
+            entry, css = compiled_index_assets(html)
             runtime_contract = standalone_v2_runtime_contract(html)
         except Exception:  # noqa: BLE001 - missing/unbuilt dist → entry stays None, shell shows a clear error
             pass
@@ -860,11 +843,13 @@ async def get_bundle_asset(
     else:
         media_type = "application/octet-stream"
 
-    # Hashed filenames are immutable — cache aggressively.
+    # The manifest is a mutable publication pointer. Only hashed output
+    # filenames are immutable; browser readback must observe a fresh manifest.
     return Response(
         content=data,
         media_type=media_type,
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={"Cache-Control": "no-store" if filename == "manifest.json"
+                 else "public, max-age=31536000, immutable"},
     )
 
 
@@ -937,6 +922,7 @@ async def get_v2_dist_asset(
     "/dependencies",
     response_model=dict[str, str],
     summary="Get app dependencies",
+    **operation_route("apps.dependencies.get"),
 )
 async def get_dependencies(
     app_id: UUID = Path(..., description="Application UUID"),
@@ -953,6 +939,7 @@ async def get_dependencies(
     "/dependencies",
     response_model=dict[str, str],
     summary="Update app dependencies",
+    **operation_route("apps.dependencies.update"),
 )
 async def put_dependencies(
     deps: dict[str, str],

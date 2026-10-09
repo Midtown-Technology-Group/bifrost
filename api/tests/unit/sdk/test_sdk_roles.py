@@ -97,6 +97,10 @@ class _Client:
         self.responses = list(responses)
         self.calls = []
 
+    async def engine_request(self, method, path, **kwargs):
+        self.calls.append((method, path, kwargs))
+        return self.responses.pop(0)
+
     async def get(self, path, **kwargs):
         self.calls.append(("GET", path, kwargs))
         return self.responses.pop(0)

@@ -13,6 +13,15 @@ BASE = f"https://github.com/{REPO}"
 UPSTREAM_JSON = "https://www.bestpractices.dev/projects/12665.json"
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / ".bestpractices.json"
+DCO_JUSTIFICATION = (
+    "Unresolved: ordinary contributions retain contributor-provided DCO 1.1; "
+    "qualifying maintainer-directed agent contributions use an authorization "
+    "and provenance record instead of a personal Signed-off-by trailer. "
+    "The applicable OpenSSF legal mechanism and criterion basis remain to be "
+    "verified; no DCO equivalence or compliance is asserted. See "
+    f"{BASE}/blob/main/CONTRIBUTING.md and "
+    f"{BASE}/blob/main/docs/dev/maintainer-directed-contributions.md."
+)
 
 SUBSTITUTIONS = (
     ("github.com/jackmusick/bifrost", f"github.com/{REPO}"),
@@ -160,10 +169,6 @@ def main() -> None:
             f"CodeQL runs on every push to main, every PR, and weekly cron "
             f"({BASE}/blob/main/.github/workflows/codeql.yml)."
         ),
-        "dco_justification": (
-            f"Developer Certificate of Origin 1.1 and Signed-off-by requirements "
-            f"are documented in {BASE}/blob/main/CONTRIBUTING.md."
-        ),
         "governance_justification": (
             f"MTG fork governance (roles, decisions, continuity) is documented in "
             f"{BASE}/blob/main/GOVERNANCE.md."
@@ -198,6 +203,11 @@ def main() -> None:
         status_key = key.replace("_justification", "_status")
         output[status_key] = "Unmet" if status_key in release_pending_statuses else "Met"
         output[key] = value
+
+    # Fork adoption needs its own legal-basis review. Stale upstream answers
+    # must not turn the alternate contribution route into a DCO assurance.
+    output["dco_status"] = "?"
+    output["dco_justification"] = DCO_JUSTIFICATION
 
     OUTPUT.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Wrote {OUTPUT} ({len(output)} fields)")

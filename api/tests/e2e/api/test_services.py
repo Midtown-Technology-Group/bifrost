@@ -7,6 +7,7 @@ actively claims eligible services here — control-plane tests assert shapes
 and transitions, not the absence of attempts.
 """
 
+
 import pytest
 
 from tests.e2e.conftest import write_and_register

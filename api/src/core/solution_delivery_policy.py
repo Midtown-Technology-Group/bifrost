@@ -12,8 +12,41 @@ def delivery_path(value: str) -> str:
     return value
 
 
-class SolutionGitDeliveryPolicy(BaseModel):
-    """A producer may deliver only these exact installed Solution recipes."""
+def reviewed_package_registry(value: object) -> list[dict[str, str]]:
+    """Validate three adapter namespaces without borrowing their authority."""
+    if (not isinstance(value, dict) or set(value) != {"schema_version", "installations"}
+            or value["schema_version"] not in {"bifrost.solution-delivery-installations/v1",
+                "bifrost.package-delivery-installations/v1"}
+            or not isinstance(value["installations"], list)
+            or not 1 <= len(value["installations"]) <= 100):
+        raise ValueError("Invalid package registry")
+    tagged = value["schema_version"] == "bifrost.package-delivery-installations/v1"
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in value["installations"]:
+        if (not isinstance(row, dict) or set(row) != ({"kind", "target", "recipe"} if tagged else {"target", "recipe"})
+                or row["target"] not in {"production", "canary"}
+                or row.get("kind", "solution") not in {"solution", "solution_package", "inline_app"}
+                or not isinstance(row["recipe"], str)):
+            raise ValueError("Invalid package registry entry")
+        kind, path = row.get("kind", "solution"), delivery_path(row["recipe"])
+        prefix = {
+            "solution": "config/solution-delivery/",
+            "solution_package": "config/solution-package-delivery/",
+            "inline_app": "config/app-delivery/",
+        }[kind]
+        if not path.startswith(prefix) or not path.endswith(".json") or path == "config/solution-delivery/installations.json":
+            raise ValueError("Package recipe is outside its adapter namespace")
+        key = row["target"], path
+        if key in seen:
+            raise ValueError("Duplicate package registry entry")
+        seen.add(key)
+        result.append({"kind": kind, "target": row["target"], "recipe": path})
+    return result
+
+
+class ProtectedGitRepositoryPolicy(BaseModel):
+    """Pinned repository and producer identity shared by package adapters."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -23,15 +56,23 @@ class SolutionGitDeliveryPolicy(BaseModel):
     workflow_path: str
     ci_workflow_path: str
     ci_workflow_id: int = Field(gt=0)
+    @model_validator(mode="after")
+    def validate_workflows(self):
+        for path in (self.workflow_path, self.ci_workflow_path):
+            delivery_path(path)
+            if not path.startswith(".github/workflows/") or not path.endswith((".yml", ".yaml")):
+                raise ValueError("Delivery and CI workflows must be pinned workflow paths")
+        return self
+
+
+class SolutionGitDeliveryPolicy(ProtectedGitRepositoryPolicy):
+    """A producer may deliver only these exact installed Solution recipes."""
+
     solutions: dict[UUID, str] = Field(min_length=1, max_length=100)
     solution_organization_ids: dict[UUID, UUID | None] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def validate_paths(self):
-        for path in (self.workflow_path, self.ci_workflow_path):
-            delivery_path(path)
-            if not path.startswith(".github/workflows/") or not path.endswith((".yml", ".yaml")):
-                raise ValueError("Delivery and CI workflows must be pinned workflow paths")
         for path in self.solutions.values():
             delivery_path(path)
             if not path.startswith("config/solution-delivery/") or not path.endswith(".json"):

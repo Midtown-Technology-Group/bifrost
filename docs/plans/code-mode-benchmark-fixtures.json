@@ -1,0 +1,130 @@
+{
+  "benchmark_results": null,
+  "datasets": {
+    "integration_health": [
+      {
+        "healthy": true,
+        "integration_id": "one",
+        "tenant_id": "tenant-a"
+      },
+      {
+        "healthy": false,
+        "integration_id": "two",
+        "tenant_id": "tenant-a"
+      },
+      {
+        "healthy": true,
+        "integration_id": "FORBIDDEN-integration",
+        "tenant_id": "tenant-b"
+      }
+    ],
+    "inventory": [
+      {
+        "id": "device-1",
+        "online": true,
+        "patches_pending": 3,
+        "tenant_id": "tenant-a"
+      },
+      {
+        "id": "device-2",
+        "online": false,
+        "patches_pending": 2,
+        "tenant_id": "tenant-a"
+      },
+      {
+        "id": "device-3",
+        "online": true,
+        "patches_pending": 0,
+        "tenant_id": "tenant-a"
+      },
+      {
+        "id": "FORBIDDEN-device",
+        "online": true,
+        "patches_pending": 999,
+        "tenant_id": "tenant-b"
+      }
+    ],
+    "workflows": [
+      {
+        "agent_id": "agent-a",
+        "input_schema": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        },
+        "name": "inventory_summary",
+        "read_only": true,
+        "result": {
+          "devices": 3,
+          "online": 2
+        },
+        "tenant_id": "tenant-a",
+        "tool_ref": "workflow.execute_summary"
+      },
+      {
+        "agent_id": "agent-b",
+        "input_schema": {
+          "additionalProperties": false,
+          "description": "FORBIDDEN-schema",
+          "properties": {},
+          "type": "object"
+        },
+        "name": "FORBIDDEN-workflow",
+        "read_only": true,
+        "result": {
+          "devices": 999,
+          "online": 999,
+          "sentinel": "FORBIDDEN-result"
+        },
+        "tenant_id": "tenant-b",
+        "tool_ref": "FORBIDDEN-workflow"
+      }
+    ]
+  },
+  "fixture_version": 1,
+  "principal": {
+    "agent_id": "agent-a",
+    "tenant_id": "tenant-a",
+    "user_id": "user-a"
+  },
+  "security_assertions": [
+    "No FORBIDDEN sentinel appears in discovery, schemas, intermediate results, final output or audit data.",
+    "tenant-b and agent-b requests are denied before a fixture handler reads data.",
+    "workflow.execute_summary is a synthetic fixed handler, never the generic production workflow gateway."
+  ],
+  "synthetic_only": true,
+  "trusted_read_only_tools": [
+    "inventory.list",
+    "integration.health",
+    "workflow.discover",
+    "workflow.schema",
+    "workflow.execute_summary"
+  ],
+  "workloads": [
+    {
+      "expected": {
+        "device_count": 1,
+        "patches_pending": 3
+      },
+      "id": "inventory-filter",
+      "prompt": "Count my online devices with pending patches and sum their pending patches."
+    },
+    {
+      "expected": {
+        "unhealthy_ids": [
+          "two"
+        ]
+      },
+      "id": "integration-health",
+      "prompt": "Read health for integrations one and two in parallel and report the unhealthy IDs."
+    },
+    {
+      "expected": {
+        "devices": 3,
+        "online": 2
+      },
+      "id": "workflow-discovery",
+      "prompt": "Discover inventory_summary, inspect its schema, execute it with no arguments, and return its summary."
+    }
+  ]
+}

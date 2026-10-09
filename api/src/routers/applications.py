@@ -18,15 +18,21 @@ import logging
 import re
 import tempfile
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+import httpx
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
-from src.core.auth import Context, CurrentSuperuser, CurrentUser
+from src.services.operation_catalog import operation_route
+from src.config import get_settings
+from src.core.auth import Context, CurrentSuperuser, CurrentUser, bearer_scheme
+from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter
 from src.core.pubsub import publish_app_draft_update
@@ -41,6 +47,7 @@ from src.models.contracts.applications import (
     ApplicationSdkUpdateBatchResponse,
     ApplicationSdkUpdateSkipped,
     ApplicationPublishRequest,
+    ApplicationGitSourcePublicationRequest,
     ApplicationReplaceRequest,
     ApplicationRollbackRequest,
     ApplicationSwapSlugsRequest,
@@ -58,7 +65,7 @@ from src.jobs.platform.application_sdk_update import (
     APPLICATION_SDK_UPDATE_DEFINITION,
     ApplicationSdkUpdatePayload,
 )
-from src.models.contracts.platform_jobs import PlatformJobAccepted
+from src.models.contracts.platform_jobs import PlatformJobAccepted, PlatformJobPublic
 from src.models.orm.applications import Application
 from src.models.orm.file_index import FileIndex
 from src.models.orm.platform_jobs import PlatformJob
@@ -67,6 +74,7 @@ from src.services.platform_jobs import (
     enqueue_platform_job,
     ensure_platform_job_notification,
     publish_platform_job_update,
+    platform_job_to_public,
 )
 from src.services.application_deploy_storage import ApplicationDeployStorage
 from src.services.application_sdk_status import (
@@ -77,6 +85,10 @@ from src.services.application_sdk_status import (
     load_sdk_source_availability,
 )
 from src.services.application_source_artifact import ApplicationSourceArtifactStorage
+from src.services.application_git_delivery import AppGitPublicationNotFound, enqueue_app_git_publication, inspect_app_git_publication
+from src.services.application_source_accountability import read_app_source_accounting
+from src.services.application_git_source import authenticate_app_git_delivery
+from src.services.solutions.github_delivery_source import GitDeliverySourceError, ProtectedGitReader
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.core.exceptions import AccessDeniedError
 from shared.logo_processing import (
@@ -452,6 +464,7 @@ async def get_application_by_id_or_404(
     response_model=ApplicationPublic,
     status_code=status.HTTP_201_CREATED,
     summary="Create an application",
+    **operation_route("apps.create"),
 )
 async def create_application(
     data: ApplicationCreate,
@@ -505,6 +518,7 @@ async def create_application(
     "",
     response_model=ApplicationListResponse,
     summary="List applications",
+    **operation_route("apps.list"),
 )
 async def list_applications(
     ctx: Context,
@@ -628,6 +642,7 @@ async def batch_update_application_sdks(
     "/{slug}",
     response_model=ApplicationPublic,
     summary="Get application metadata",
+    **operation_route("apps.get"),
 )
 async def get_application(
     slug: str,
@@ -651,6 +666,7 @@ async def get_application(
     "/{app_id}",
     response_model=ApplicationPublic,
     summary="Update application metadata",
+    **operation_route("apps.update"),
 )
 async def update_application(
     app_id: UUID,
@@ -716,6 +732,7 @@ async def update_application(
     "/{app_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete application",
+    **operation_route("apps.delete"),
 )
 async def delete_application(
     app_id: UUID,
@@ -1044,11 +1061,87 @@ async def update_application_sdk(
     return accepted
 
 
+@router.post("/{app_id}/github-source", response_model=PlatformJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    **operation_route("applications.publish_github_app_source"),
+)
+async def publish_github_app_source(
+    app_id: UUID, body: ApplicationGitSourcePublicationRequest, db: DbSession, response: Response,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    github_token: Annotated[str, Header(alias="X-GitHub-Job-Token", min_length=1, max_length=4096)],
+) -> PlatformJobAccepted:
+    """Enqueue a source-scoped App publication; a reused job proves only its original source."""
+    policy = get_settings().inline_app_git_delivery_policy
+    if policy is None:
+        raise HTTPException(status_code=503, detail="Protected Git App publication is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="GitHub Actions delivery OIDC token is required")
+    try:
+        producer = await authenticate_app_git_delivery(credentials.credentials, policy=policy,
+            application_id=app_id, commit_sha=body.source_commit_sha, ci_run_id=body.ci_run_id,
+            ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+            job, reused = await enqueue_app_git_publication(db, policy=policy,
+                reader=ProtectedGitReader(policy, github_token, client), application_id=app_id,
+                request=body, producer=producer)
+        await db.commit()
+        await db.refresh(job)
+    except GitDeliverySourceError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="Inspect original App job and manifest before another request") from exc
+    response.headers["Location"] = f"/api/platform-jobs/{job.id}"
+    await publish_platform_job_update(job)
+    return PlatformJobAccepted(job_id=job.id, notification_id=job.notification_id, status=job.status, reused=reused)
+
+
+@router.post("/{app_id}/github-source/{job_id}/inspect", response_model=PlatformJobPublic, **operation_route("applications.inspect_github_app_publication"))
+async def inspect_github_app_publication(
+    app_id: UUID, job_id: UUID, body: ApplicationGitSourcePublicationRequest, db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> PlatformJobPublic:
+    """Scoped original-job readback, including a lost accepted/terminal response.
+
+    A newer request may observe an older deduplicated job; its original source
+    identity is retained. This route never enqueues, resumes or publishes work.
+    """
+    policy = get_settings().inline_app_git_delivery_policy
+    if policy is None:
+        raise HTTPException(status_code=503, detail="Protected Git App publication is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="GitHub Actions delivery OIDC token is required")
+    try:
+        await authenticate_app_git_delivery(credentials.credentials, policy=policy,
+            application_id=app_id, commit_sha=body.source_commit_sha, ci_run_id=body.ci_run_id,
+            ci_run_attempt=body.ci_run_attempt, artifact_digest=body.artifact_digest)
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    try:
+        job = await inspect_app_git_publication(db, policy=policy, application_id=app_id, job_id=job_id)
+    except AppGitPublicationNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GitDeliverySourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    public = platform_job_to_public(job)
+    if job.status == "succeeded":
+        # Keep the durable original job result immutable. This response adds
+        # fresh read-only accounting to the existing open result contract.
+        public.result = {**(public.result or {}), "accounting_readback":
+            await read_app_source_accounting(db, (job.result or {})["runtime_pin"])}
+    return public
+
+
 @router.post(
     "/{app_id}/publish",
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Publish draft to live",
+    **operation_route("apps.publish"),
 )
 async def publish_application(
     app_id: UUID,
@@ -1065,7 +1158,9 @@ async def publish_application(
     ``/api/platform-jobs/{id}`` or subscribe to the caller's notification
     WebSocket channel for progress. A repeated
     request while the same app is queued or running returns the existing
-    operation instead of launching a conflicting publish.
+    operation instead of launching a conflicting publish. If that operation
+    retained uncertain publication evidence, the same requester resumes exact
+    readback on the original job. It never builds or republishes that intent.
     """
     # Publishing a solution-managed app is a deploy-owned action.
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
@@ -1132,6 +1227,7 @@ async def publish_application(
     "/{app_id}/replace",
     response_model=ApplicationPublic,
     summary="Repoint application source directory",
+    **operation_route("apps.replace"),
 )
 async def replace_application_endpoint(
     app_id: UUID,
@@ -1240,6 +1336,7 @@ async def swap_application_slugs(
     "/{app_id}/validate",
     response_model=AppValidationResponse,
     summary="Validate application files",
+    **operation_route("apps.validate"),
 )
 async def validate_application(
     app_id: UUID,
