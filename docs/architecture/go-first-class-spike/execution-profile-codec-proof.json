@@ -1,0 +1,40 @@
+{
+  "status": "focused-codec-proof-not-full-runtime-acceptance",
+  "source": "45acf042767611983413fecb61ca626c3809d013",
+  "codec_source_commit": "dc5667d353d72208ce47c2aa8c18b09219115a9f",
+  "diagnostic_run": 37991893535,
+  "diagnostic_conclusion": "success",
+  "toolchain": "go version go1.27.1 linux/amd64",
+  "named_test_subtest_passes": {
+    "github.com/midtown-technology-group/bifrost-go/executionprofile": 99,
+    "github.com/midtown-technology-group/bifrost-go/runtimecontrol": 144
+  },
+  "retained_files": {
+    "go-version.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+    "proposal-provenance.json": "8f72cb3a26d3c13590d2e331dad2c4d07c00e8b2d2e61db7c4e0dee60d606518",
+    "scope.txt": "9fc18c6c893a45eac1f5752185fbcd19d15d0e3080e47eff28eb072565fa8769",
+    "source-sha.txt": "cf7706976082714d46e4ebfaf8f6b1feed2959db94904f45f3f7ed59c9cd702d",
+    "tests.jsonl": "2395e37cae03dd56573492f0c1e9edcee99f8328334111aa7cf99bf3cbf611cd"
+  },
+  "full_build_run": {
+    "id": 37991571295,
+    "source": "dc5667d353d72208ce47c2aa8c18b09219115a9f",
+    "attempts": [
+      1,
+      2
+    ],
+    "conclusion": "failure",
+    "classification": "Both attempts hit Docker Hub unauthenticated pull quota before compilation or DB tests. One bounded failed-job recovery used; no further unchanged retry.",
+    "workflow_sha256": "f16829a2a2add0faedd8bcbe00f2c9dcc2a7e5b2caecc4539367dbfd7c0fd0e8",
+    "failure_log_sha256": {
+      "attempt-2-failed-jobs.log": "c249cd5c984cf2c9f5cf6e75ea517b2a34eaea49bd2bfab3b6eedc73583732e6",
+      "failed-jobs.log": "67e3104f495f1d97eb05c0b0054429735b93b4688c21823904601cfe05509b86"
+    }
+  },
+  "not_proven": [
+    "Full build/test/scan/artifact run for this source",
+    "Execution-profile cross-language peer interoperability",
+    "Runtime session/custody enforcement or application execution through the profile",
+    "Rust admission, durable Result, Execution API readback, real grant ingress or writer exclusion"
+  ]
+}

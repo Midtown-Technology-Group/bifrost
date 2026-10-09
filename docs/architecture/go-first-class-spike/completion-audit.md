@@ -207,3 +207,43 @@ authenticated provision delivery plus dedicated ingress, and existing durable
 Result/Cancel/close receipt/projection transactions. They retain actual owner,
 writer-exclusion and Execution API proof. Existing SDK and performance evidence
 remain at the earlier exact tested source. No adoption claim follows.
+
+## Independent candidate Go wire codec executed
+
+Prototype code is committed at `dc5667d353d72208ce47c2aa8c18b09219115a9f`
+under `spikes/go-native/executionprofile`. It embeds exact #1132 shared schemas,
+uses ordinary Go/stdlib lexical parsing and a restricted private schema
+interpreter, and reads/writes framed streams without importing the Python oracle
+or any Rust implementation. P0 source and canonical fixtures are unchanged.
+No direction/session validator, actual provision, spawn or lifecycle authority
+is implemented by this codec. The authoring SDK/workflow are unchanged.
+
+Hosted diagnostic run37991893535 succeeded at exact
+`45acf042767611983413fecb61ca626c3809d013`, using Go1.27.1 on a disposable
+Ubuntu24.04 runner. Offline module settings and a clean test environment exercise
+only trusted first-party codec packages; no tenant workflow runs. All94 proposed
+raw specimens pass, including required invalid inputs; execution-profile has99
+named test/subtest passes and the unchanged P0 package144. Partial/interrupted
+stream IO, concatenated frames, exact raw payload digest and input/view mutation
+isolation pass; selected go vet passes. Encoder exercise is limited to the
+selected valid stream fixture; full peer encoding/interchange remains open.
+[Exact diagnostic receipt](execution-profile-codec-proof.json) binds retained
+outputs and producer source. No profile freeze or real supervisor proof follows.
+
+Full isolated build run37991571295 atdc5667d35 failed before compilation/DB tests
+on Docker Hub unauthenticated image-pull quota. One evidence-backed failed-job
+recovery also failed with that same cause. Both original logs are retained; no
+additional unchanged retry is released. A registry mirror HEAD looked usable,
+but manifest GET failed, so no alternate image fetch was accepted and pinned
+images remain unchanged. The focused diagnostic does not bypass or satisfy the
+full recipe, scan, immutable artifact or existing owner gates. Historical build/
+SDK/timing proof remains tied to8dbb5169, not this source or current main.
+
+The next independent protocol proof is encoder/peer interchange and then actual
+trusted adapter custody against a reviewed common profile. The three owner
+integration decisions in the review remain prerequisites for the genuine Rust
+vertical slice. Decision stays CONTINUE SPIKE; full requested completion remains
+unproved. No production mutation, new credentials, PR creation, merge or
+deployment. The reviewed #1132 is linked to this chat; no approval/comment or
+watch was submitted. Package/procedure versions are unchanged from the preceding
+2026-10-09 reconciliation.
