@@ -640,7 +640,7 @@ if HAS_FASTMCP:
                                     artifact = await artifact_service.get_authorized(
                                         UUID(ref.id),
                                         user_id=UUID(str(context.user_id)),
-                                        bypass=context.has_scope_bypass,
+                                        bypass=context.is_platform_admin,
                                     )
                                 except (ArtifactAccessError, ValueError):
                                     return error_result(
