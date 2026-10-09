@@ -1,11 +1,22 @@
 # Native execution contract revision for shared runtime review
 
 This is a concrete shared-contract proposal, not a runtime release or authority
-grant. Reconciled platform main is `01cadfe09710d293a40da14d6cf4056165289e31`; workspace main
-is `9941427941587d253540942b714c5e2b7abfc410`. Reconciled #1011 architecture head
-is `17fc6d510add8bddb7a7f29bd33c0d4dab3208a9`; the implemented C1-P0 reference
-is #1015 `9f35278f90ba3757318ac9f07895bda9957330de`. Neither is merged or full
-runtime acceptance. Private grant #1024 remains unwired and has no source grant.
+grant. Reconciliation on 2026-10-09 uses platform main
+`135a305811568362347e9d485ef992e9467f634f` and workspace main
+`5208ab06ad922638e992c32fea0b7e807d93fd1e`. Architecture #1011 is
+`93ec9421b23b0b4a1493ab45f15f55ded3377d2e`; P0 #1015 remains
+`9f35278f90ba3757318ac9f07895bda9957330de`. Private grant #1024 remains
+unwired at `6419069da195b053c885ab349f431ff4fae62098`.
+
+Main now contains the proposed language-neutral document foundation. Its
+[contract](https://github.com/Midtown-Technology-Group/bifrost/blob/135a305811568362347e9d485ef992e9467f634f/docs/architecture/runtime/contract.md)
+and [review](https://github.com/Midtown-Technology-Group/bifrost/blob/135a305811568362347e9d485ef992e9467f634f/docs/architecture/runtime/review.md)
+are authoritative over this spike's earlier artifact example. The foundation
+resolves document shapes, including native identity and success/error Result;
+it explicitly does not negotiate a full wire profile or release authority.
+[Repeatable retained-evidence reconciliation](shared-schema-reconciliation.json)
+checks the actual workflow and module-graph digests against the signed producer
+descriptor. It reports partial coverage, never a native registration document.
 
 ## Architectural dependency
 
@@ -24,21 +35,23 @@ initial deployment mechanism; the constrained AST extractor is optional and
 fails on unsupported shapes. Supported Go language features are not limited by
 that optional extractor: authors can supply explicit schemas for richer types.
 
-## Two specific contract gaps
+## Remaining contract and launch gaps
 
 1. P0 `RuntimeArtifact` requires an interpreter and a Python requirements-lock
-   field. Go must not report itself as an interpreter. A native artifact variant
-   belongs to the shared contract, including its independent schema and vectors.
+   field. Main now supplies a separate native document variant and structural
+   vectors. Negotiation/framing remain missing: never send that document as P0
+   Hello or report Go as an interpreter.
 2. Ordinary Go package initializers run before main. A linked application cannot
    send Hello/Prepared and await Start before those effects. Rewriting init,
    relying on Go runtime internals, or banning only `func init` would fail normal
    Go authoring and miss variable initializers and dependency hooks.
 
-## Proposed common artifact variant
+## Shared native document mapping
 
 Retain the existing interpreted observation unchanged for its existing profile.
-Add a closed native observation to the full common runtime contract, rather than
-modifying or widening the frozen P0 control-profile codec:
+Use the native document fields published on main, including toolchain and
+dependency evidence omitted by the original spike example. The following is
+schematic, with placeholders rather than accepted deployment claims:
 
 ```json
 {
@@ -50,7 +63,9 @@ modifying or widening the frozen P0 control-profile codec:
   "build_evidence_sha256": "<64 lowercase hex>",
   "platform": {"os": "linux", "architecture": "amd64"},
   "sdk": {"distribution": "bifrost-go", "version": "0.0.0-spike.2"},
-  "runtime_protocol": "bifrost.runtime/v1"
+  "runtime_protocol": "bifrost.runtime/v1",
+  "toolchain": {"implementation": "go", "version": "go1.27.1"},
+  "dependencies": {"kind": "go-module-graph", "digest": "sha256:<graph digest>"}
 }
 ```
 
@@ -148,7 +163,34 @@ ancillary metering/annotation/delete policy or mixed-owner rollback proof.
    separately implemented local supervisor. Compare semantic wire observations
    and output; remeasure the small edit loop and startup with the adapter included.
 
-The smallest architecture blocker is the unratified common native artifact and
-pre-Start launch/provision boundary. The smallest durable execution blocker is
+The native document shape is now supplied by shared main. The smallest
+architecture blocker is the still-unratified full-profile negotiation/framing
+and pre-Start launch/provision delivery boundary. The smallest durable execution blocker is
 the absent accepted session/Start/receipt authority backed by actual writer
 exclusion. Implementing Go-specific substitutes would not close either gate.
+
+## Concrete reconciliation and next implementation boundary
+
+Eight of eleven native fields can be mapped from retained build evidence or
+the documented family/classification. Three remain deliberately absent:
+accepted bundle `artifact_id`, actual trusted `adapter_sha256`, and an explicit
+accepted runtime-image/null choice. Builder/scanner images cannot fill runtime
+image identity, the local probe cannot fill adapter identity, and the application
+digest cannot fill bundle identity. The graph digest identifies observed module
+relationships, not complete artifact acceptance or trusted dependency closure.
+
+The signed local descriptor has no Start/session binding. Main's workload input,
+success/error Result, LogBatch and usage documents require the complete parent
+binding; Result/log/usage also require message and committed-Start correlation.
+Consequently stdout must not simply be wrapped as a valid runtime Result. Static
+provision metadata contains no bearer secret and proves no issuer, finite grant,
+closed-session denial or fresh SDK admission. Its caller_id cannot stand in for
+original/effective role/org authorization custody; that remains owner evidence.
+
+Next shared implementation needs exact profile negotiation, directional framing,
+Prepare/Prepared and authenticated provision delivery, plus receipt/fence/race
+semantics. Then the trusted adapter can consume those contracts, gate tenant
+launch and report observations. Do not invent a local lifecycle wrapper around
+these documents to call the real Rust vertical slice complete. Actual Rust
+Running/Cancel SQL proof is useful prerequisite evidence, but it does not supply
+Go deployment admission, runtime credential ingress or durable Result authority.

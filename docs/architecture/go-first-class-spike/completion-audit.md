@@ -62,7 +62,7 @@ parent-first-lock comment was incorrect and has been removed. Green evidence
 above proves this correction in the fixture, not a reviewed migration or the
 shared program's complete transaction/lock order.
 
-## Current external frontier
+## Historical external frontier (2026-10-02)
 
 Fresh source reconciliation after the executable proof:
 
@@ -139,3 +139,45 @@ vertical slice or an adoption decision. The next step is architecture acceptance
 of that reviewable common revision, then generic runtime implementation and
 existing Execution API readback under supported isolated execution. No external
 message, production mutation, credential expansion, PR or merge was performed.
+
+## Resumed reconciliation (2026-10-09)
+
+User authorized proceeding after refresh. Current fetched platform main is
+`135a305811568362347e9d485ef992e9467f634f`, workspace main
+`5208ab06ad922638e992c32fea0b7e807d93fd1e`, and architecture #1011
+`93ec9421b23b0b4a1493ab45f15f55ded3377d2e`. P0/private-S heads remain
+unchanged. The historical section above is not current-main evidence. No merge
+of main into the spike or runtime test execution was performed this turn.
+
+Main now publishes closed interpreted/native/managed artifact documents, workload
+input/success/error Result/log/usage documents and non-secret provision binding.
+The previous statement that no native/Result document shape existed is
+superseded. Its contract/review expressly retain full-profile negotiation,
+framing, directional ordering, authenticated provisioning, receipt storage,
+actual owner transactions and mechanical writer exclusion as follow-up gates.
+There is still no complete common workload wire profile to implement honestly.
+
+[Generated reconciliation](shared-schema-reconciliation.json) binds the shared
+native schema hash to the exact main SHA and maps eight of eleven fields. It
+checks retained executable size/digest and actual module-graph bytes against
+the producer descriptor; independent Ed25519 signature verification passed.
+A copied descriptor with an altered binary fails the checker. These are static
+evidence checks, not execution, schema conformance or admission. The checker
+creates no placeholder accepted bundle/adapter/image identity. The proposal is
+updated to include required toolchain/dependencies and consume shared main.
+
+Source readback of #1011 records Running/Cancel SQL39 cases/89 calls; run
+37112190135 is independently verified SUCCESS at `f9f2e50f6eaf3906d0b9c0a506db10287d102bc3`.
+Protocol interchange run37107289103 is independently verified SUCCESS at
+ad0803c9519169a13adc165282bd474b62ba8d80. Neither is Go admission or
+Result/finalization evidence. Our original run36962353236 remains SUCCESS at
+its exact `8dbb5169` source. Current platform main has materially changed, so that
+old run is not transferred to main. All performance numbers above remain
+historical prototype measurements.
+
+This turn advances the shared-contract reconciliation without weakening any
+authority gate. The decision remains CONTINUE SPIKE; requirements8/9/13/14/17
+remain missing. Next is the full common wire/provision/receipt decision named in
+the revised proposal, then supported generic Rust/runtime integration. No new
+production credentials, vendor mutations, PR, merge or deployment. Loaded MTG
+package2026-10-09.1, Engineering Flow2026-10-06.1 and PR Stewardship2026-10-06.1.

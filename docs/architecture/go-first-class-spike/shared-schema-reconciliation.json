@@ -1,0 +1,47 @@
+{
+  "status": "partial-evidence-not-native-registration",
+  "contract_commit": "135a305811568362347e9d485ef992e9467f634f",
+  "schema_path": "contracts/runtime/v1/language-neutral/artifact.schema.json",
+  "schema_sha256": "5693ef0d4a82e7f53a6290b59b0726743bef58626b714f7206a71b51e20bb5bf",
+  "producer_source": "8dbb5169bc3e90dd6d9f32d8c62d7fc350ca4ace",
+  "producer_run": "36962353236",
+  "descriptor_sha256": "770d9390d9825c6c859dd211f1264c478cc305d0c0462732d6c26331f6711b63",
+  "verified_retained_files": [
+    "workflow",
+    "module-graph.txt"
+  ],
+  "mapped_document_fields": {
+    "kind": "native-executable/v1",
+    "executable_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "build_evidence_sha256": "770d9390d9825c6c859dd211f1264c478cc305d0c0462732d6c26331f6711b63",
+    "platform": {
+      "os": "linux",
+      "architecture": "amd64"
+    },
+    "sdk": {
+      "distribution": "bifrost-go",
+      "version": "0.0.0-spike.2"
+    },
+    "toolchain": {
+      "implementation": "go",
+      "version": "go1.27.1"
+    },
+    "dependencies": {
+      "kind": "go-module-graph",
+      "digest": "sha256:6c65761e33efdb93797e9a45ec4ddd5601273fc2423ae4af13c06db91dc9538c"
+    },
+    "runtime_protocol": "bifrost.runtime/v1"
+  },
+  "missing_document_fields": {
+    "artifact_id": "No accepted deployment bundle; executable digest is not bundle identity.",
+    "adapter_sha256": "No trusted staged adapter binary; the local probe is not that adapter.",
+    "image_digest": "Builder/scanner images are not an accepted runtime image; null requires an explicit native launch choice."
+  },
+  "limitations": [
+    "Field reconciliation is not general JSON Schema validation or a negotiated wire codec.",
+    "Toolchain/SDK claims retain their producer evidence; these bytes are not re-executed.",
+    "Module graph evidence does not close all bundle/build/adapter/image inputs.",
+    "runtime_protocol names a proposed document family, not an implemented workload profile.",
+    "No accepted deployment, real runtime grant, Rust Start or durable Result is established."
+  ]
+}
