@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.services.operation_catalog import operation_route
 from shared.claims.registry import (
     claim_dependency_graph,
     find_cycle,
@@ -157,7 +158,7 @@ async def _tables_referencing_claim(
     return out
 
 
-@router.get("", response_model=ClaimsList, summary="List custom claims")
+@router.get("", response_model=ClaimsList, summary="List custom claims", **operation_route("claims.list"))
 async def list_claims(
     ctx: Context,
     user: CurrentSuperuser,
@@ -190,7 +191,7 @@ async def list_claims(
     return ClaimsList(claims=[ClaimDTO.model_validate(r) for r in rows])
 
 
-@router.get("/{name}", response_model=ClaimDTO, summary="Get a custom claim by name")
+@router.get("/{name}", response_model=ClaimDTO, summary="Get a custom claim by name", **operation_route("claims.get"))
 async def get_claim(
     name: str,
     ctx: Context,
@@ -220,6 +221,7 @@ async def get_claim(
     response_model=ClaimDTO,
     status_code=status.HTTP_201_CREATED,
     summary="Create a custom claim (admin only)",
+    **operation_route("claims.create"),
 )
 async def create_claim(
     body: CustomClaimCreate,
@@ -267,6 +269,7 @@ async def create_claim(
     "/{name}",
     response_model=ClaimDTO,
     summary="Update a custom claim (admin only)",
+    **operation_route("claims.update"),
 )
 async def update_claim(
     name: str,
@@ -318,6 +321,7 @@ async def update_claim(
     "/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a custom claim (admin only)",
+    **operation_route("claims.delete"),
 )
 async def delete_claim(
     name: str,

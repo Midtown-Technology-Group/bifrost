@@ -25,6 +25,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, status
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
@@ -959,6 +960,7 @@ async def get_v2_dist_asset(
     "/dependencies",
     response_model=dict[str, str],
     summary="Get app dependencies",
+    **operation_route("apps.dependencies.get"),
 )
 async def get_dependencies(
     app_id: UUID = Path(..., description="Application UUID"),
@@ -975,6 +977,7 @@ async def get_dependencies(
     "/dependencies",
     response_model=dict[str, str],
     summary="Update app dependencies",
+    **operation_route("apps.dependencies.update"),
 )
 async def put_dependencies(
     deps: dict[str, str],

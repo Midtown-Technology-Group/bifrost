@@ -11,6 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser, bearer_scheme
 from src.core.db_deps import DbSession
@@ -121,7 +122,7 @@ async def _authenticate_package(solution_id, body, credentials):
     return policy
 
 
-@router.post("/github-package", response_model=PlatformJobPublic)
+@router.post("/github-package", response_model=PlatformJobPublic, **operation_route("solutiondeployments.deliver_github_package"))
 async def deliver_github_package(
     solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -149,7 +150,7 @@ async def deliver_github_package(
         raise HTTPException(status_code=503, detail="Inspect the original package job before retrying") from exc
 
 
-@router.post("/github-package/status", response_model=PlatformJobPublic)
+@router.post("/github-package/status", response_model=PlatformJobPublic, **operation_route("solutiondeployments.inspect_github_package"))
 async def inspect_github_package(
     solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -176,7 +177,7 @@ async def inspect_github_package(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.post("/github-package/recover", response_model=SolutionPackageRecoveryResponse)
+@router.post("/github-package/recover", response_model=SolutionPackageRecoveryResponse, **operation_route("solutiondeployments.recover_github_package"))
 async def recover_github_package(
     solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -214,7 +215,7 @@ async def recover_github_package(
         raise HTTPException(status_code=503, detail="Original package recovery remains unresolved") from exc
 
 
-@router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse)
+@router.post("/github-source", response_model=SolutionGitSourceDeliveryResponse, **operation_route("solutiondeployments.deliver_github_source"))
 async def deliver_github_source(
     solution_id: UUID, body: SolutionGitSourceDeliveryRequest, db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -257,6 +258,7 @@ async def deliver_github_source(
     "/capabilities",
     response_model=SolutionDeploymentCapabilities,
     responses={404: {"description": "Solution not found"}},
+    **operation_route("solutiondeployments.deployment_capabilities"),
 )
 async def deployment_capabilities(
     solution_id: UUID, ctx: Context, user: CurrentSuperuser
@@ -273,7 +275,7 @@ async def _scope(ctx: Context, solution_id: UUID) -> UUID | None:
     return solution.organization_id
 
 
-@router.post("/shared-tables/preview", response_model=dict[str, SharedRootTableBinding])
+@router.post("/shared-tables/preview", response_model=dict[str, SharedRootTableBinding], **operation_route("solutiondeployments.preview_shared_table_bindings"))
 async def preview_shared_table_bindings(
     solution_id: UUID, body: SharedTableBindingPreviewRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -318,6 +320,7 @@ async def preview_shared_table_bindings(
     "/active",
     response_model=SolutionDeploymentRuntimeState,
     responses={404: {"description": "Solution not found"}},
+    **operation_route("solutiondeployments.inspect_active_deployment"),
 )
 async def inspect_active_deployment(
     solution_id: UUID, ctx: Context, user: CurrentSuperuser
@@ -379,6 +382,7 @@ async def _run_pointer_move(
         409: {"description": "Deployment registration conflict"},
         422: {"description": "Invalid deployment closure"},
     },
+    **operation_route("solutiondeployments.create_deployment"),
 )
 async def create_deployment(
     solution_id: UUID,
@@ -412,6 +416,7 @@ async def create_deployment(
     "/{deployment_id}",
     response_model=SolutionDeploymentPublic,
     responses={404: {"description": "Solution or deployment not found"}},
+    **operation_route("solutiondeployments.inspect_deployment"),
 )
 async def inspect_deployment(
     solution_id: UUID, deployment_id: UUID, ctx: Context, user: CurrentSuperuser
@@ -434,6 +439,7 @@ async def inspect_deployment(
         409: {"description": "Live or Solution state changed"},
         422: {"description": "Candidate cannot own the requested workflows"},
     },
+    **operation_route("solutiondeployments.preflight_live_handoff"),
 )
 async def preflight_live_handoff(
     solution_id: UUID,
@@ -463,6 +469,7 @@ async def preflight_live_handoff(
         422: {"description": "The Live source closure cannot be proven"},
         503: {"description": "Solution write lock was lost"},
     },
+    **operation_route("solutiondeployments.build_live_handoff_candidate"),
 )
 async def build_live_handoff_candidate(
     solution_id: UUID,
@@ -559,6 +566,7 @@ async def _commit_live_handoff(
         422: {"description": "Candidate is not safe to activate"},
         503: {"description": "Commit outcome needs readback after write-lock loss"},
     },
+    **operation_route("solutiondeployments.activate_live_handoff"),
 )
 async def activate_live_handoff(
     solution_id: UUID,
@@ -581,6 +589,7 @@ async def activate_live_handoff(
         422: {"description": "Live rollback source is not safe"},
         503: {"description": "Commit outcome needs readback after write-lock loss"},
     },
+    **operation_route("solutiondeployments.rollback_live_handoff"),
 )
 async def rollback_live_handoff(
     solution_id: UUID,
@@ -598,6 +607,7 @@ async def rollback_live_handoff(
 @router.post(
     "/{deployment_id}/source-revision/candidate",
     response_model=SolutionSourceRevisionInspectResponse,
+    **operation_route("solutiondeployments.stage_source_revision"),
 )
 async def stage_source_revision(
     solution_id: UUID,
@@ -640,6 +650,7 @@ async def stage_source_revision(
 @router.post(
     "/{deployment_id}/source-revision/preflight",
     response_model=SolutionSourceRevisionInspectResponse,
+    **operation_route("solutiondeployments.inspect_source_revision"),
 )
 async def inspect_source_revision(
     solution_id: UUID,
@@ -662,6 +673,7 @@ async def inspect_source_revision(
 @router.post(
     "/{deployment_id}/source-revision/activate",
     response_model=SolutionSourceRevisionInspectResponse,
+    **operation_route("solutiondeployments.activate_source_revision"),
 )
 async def activate_source_revision(
     solution_id: UUID,
@@ -768,7 +780,7 @@ async def _write_initial_workflow_install(
         raise
 
 
-@router.post("/{deployment_id}/initial-workflow/candidate", response_model=InitialWorkflowInstallInspectResponse)
+@router.post("/{deployment_id}/initial-workflow/candidate", response_model=InitialWorkflowInstallInspectResponse, **operation_route("solutiondeployments.stage_initial_workflow_install"))
 async def stage_initial_workflow_install(
     solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -783,7 +795,7 @@ async def stage_initial_workflow_install(
     return await _write_initial_workflow_install(ctx, solution_id, stage)
 
 
-@router.post("/{deployment_id}/initial-workflow/preflight", response_model=InitialWorkflowInstallInspectResponse)
+@router.post("/{deployment_id}/initial-workflow/preflight", response_model=InitialWorkflowInstallInspectResponse, **operation_route("solutiondeployments.inspect_initial_workflow_install"))
 async def inspect_initial_workflow_install(
     solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallInspectRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -797,7 +809,7 @@ async def inspect_initial_workflow_install(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.post("/{deployment_id}/initial-workflow/activate", response_model=InitialWorkflowInstallInspectResponse)
+@router.post("/{deployment_id}/initial-workflow/activate", response_model=InitialWorkflowInstallInspectResponse, **operation_route("solutiondeployments.activate_initial_workflow_install"))
 async def activate_initial_workflow_install(
     solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallCommitRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -811,7 +823,7 @@ async def activate_initial_workflow_install(
     ))
 
 
-@router.post("/{deployment_id}/repo-workflow-adoption/candidate", response_model=RepoWorkflowAdoptionInspectResponse)
+@router.post("/{deployment_id}/repo-workflow-adoption/candidate", response_model=RepoWorkflowAdoptionInspectResponse, **operation_route("solutiondeployments.stage_repo_workflow_adoption"))
 async def stage_repo_workflow_adoption(
     solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -825,7 +837,7 @@ async def stage_repo_workflow_adoption(
     return await _write_initial_workflow_install(ctx, solution_id, stage)
 
 
-@router.post("/{deployment_id}/repo-workflow-adoption/preflight", response_model=RepoWorkflowAdoptionInspectResponse)
+@router.post("/{deployment_id}/repo-workflow-adoption/preflight", response_model=RepoWorkflowAdoptionInspectResponse, **operation_route("solutiondeployments.inspect_repo_workflow_adoption"))
 async def inspect_repo_workflow_adoption(
     solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallInspectRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -839,7 +851,7 @@ async def inspect_repo_workflow_adoption(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.post("/{deployment_id}/repo-workflow-adoption/activate", response_model=RepoWorkflowAdoptionInspectResponse)
+@router.post("/{deployment_id}/repo-workflow-adoption/activate", response_model=RepoWorkflowAdoptionInspectResponse, **operation_route("solutiondeployments.activate_repo_workflow_adoption"))
 async def activate_repo_workflow_adoption(
     solution_id: UUID, deployment_id: UUID, body: InitialWorkflowInstallCommitRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -879,7 +891,7 @@ async def _write_workflow_revision(
         raise
 
 
-@router.post("/{deployment_id}/workflow-revision/candidate", response_model=SolutionSourceRevisionInspectResponse)
+@router.post("/{deployment_id}/workflow-revision/candidate", response_model=SolutionSourceRevisionInspectResponse, **operation_route("solutiondeployments.stage_workflow_revision"))
 async def stage_workflow_revision(
     solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -900,7 +912,7 @@ async def stage_workflow_revision(
     return await _write_workflow_revision(ctx, solution_id, stage)
 
 
-@router.post("/{deployment_id}/workflow-revision/preflight", response_model=SolutionSourceRevisionInspectResponse)
+@router.post("/{deployment_id}/workflow-revision/preflight", response_model=SolutionSourceRevisionInspectResponse, **operation_route("solutiondeployments.inspect_workflow_revision"))
 async def inspect_workflow_revision(
     solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionInspectRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -917,7 +929,7 @@ async def inspect_workflow_revision(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.post("/{deployment_id}/workflow-revision/activate", response_model=SolutionSourceRevisionInspectResponse)
+@router.post("/{deployment_id}/workflow-revision/activate", response_model=SolutionSourceRevisionInspectResponse, **operation_route("solutiondeployments.activate_workflow_revision"))
 async def activate_workflow_revision(
     solution_id: UUID, deployment_id: UUID, body: SolutionWorkflowRevisionCommitRequest,
     ctx: Context, user: CurrentSuperuser,
@@ -939,6 +951,7 @@ async def activate_workflow_revision(
         422: {"description": "Invalid activation request"},
         503: {"description": "Activation unavailable or write lock lost"},
     },
+    **operation_route("solutiondeployments.activate_deployment"),
 )
 async def activate_deployment(
     solution_id: UUID,
@@ -972,6 +985,7 @@ async def activate_deployment(
         422: {"description": "Invalid rollback request"},
         503: {"description": "Rollback unavailable or write lock lost"},
     },
+    **operation_route("solutiondeployments.rollback_deployment"),
 )
 async def rollback_deployment(
     solution_id: UUID,

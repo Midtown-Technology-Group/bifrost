@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentSuperuser
 from src.core.db_deps import DbSession
 from src.models.contracts.workspace_repo_changesets import (
@@ -76,7 +77,7 @@ def _translate(exc: Exception) -> HTTPException:
     raise exc
 
 
-@router.get("/state", response_model=WorkspaceRepoStateResponse)
+@router.get("/state", response_model=WorkspaceRepoStateResponse, **operation_route("workspacerepochangesets.workspace_repo_state"))
 async def workspace_repo_state(
     ctx: Context,
     db: DbSession,
@@ -111,6 +112,7 @@ async def workspace_repo_state(
     "",
     response_model=WorkspaceRepoChangesetResponse,
     status_code=status.HTTP_201_CREATED,
+    **operation_route("workspacerepochangesets.begin_workspace_repo_changeset"),
 )
 async def begin_workspace_repo_changeset(
     request: WorkspaceRepoChangesetBegin,
@@ -127,6 +129,7 @@ async def begin_workspace_repo_changeset(
 @router.get(
     "/recoverable-git-closures",
     response_model=list[WorkspaceRepoChangesetResponse],
+    **operation_route("workspacerepochangesets.list_recoverable_workspace_repo_git_closures"),
 )
 async def list_recoverable_workspace_repo_git_closures(
     ctx: Context,
@@ -145,6 +148,7 @@ async def list_recoverable_workspace_repo_git_closures(
 @router.post(
     "/git-convergence/preview",
     response_model=WorkspaceRepoGitConvergenceResponse,
+    **operation_route("workspacerepochangesets.preview_workspace_repo_git_convergence"),
 )
 async def preview_workspace_repo_git_convergence(
     request: WorkspaceRepoGitConvergencePreviewRequest,
@@ -163,6 +167,7 @@ async def preview_workspace_repo_git_convergence(
 @router.post(
     "/git-convergence/apply",
     response_model=WorkspaceRepoGitConvergenceResponse,
+    **operation_route("workspacerepochangesets.apply_workspace_repo_git_convergence"),
 )
 async def apply_workspace_repo_git_convergence(
     request: WorkspaceRepoGitConvergenceApplyRequest,
@@ -178,7 +183,7 @@ async def apply_workspace_repo_git_convergence(
         raise _translate(exc) from exc
 
 
-@router.get("/{changeset_id}", response_model=WorkspaceRepoChangesetResponse)
+@router.get("/{changeset_id}", response_model=WorkspaceRepoChangesetResponse, **operation_route("workspacerepochangesets.show_workspace_repo_changeset"))
 async def show_workspace_repo_changeset(
     changeset_id: UUID, ctx: Context, db: DbSession, user: CurrentSuperuser
 ):
@@ -188,7 +193,7 @@ async def show_workspace_repo_changeset(
         raise _translate(exc) from exc
 
 
-@router.post("/{changeset_id}/files", response_model=WorkspaceRepoChangesetResponse)
+@router.post("/{changeset_id}/files", response_model=WorkspaceRepoChangesetResponse, **operation_route("workspacerepochangesets.stage_workspace_repo_file"))
 async def stage_workspace_repo_file(
     changeset_id: UUID,
     request: WorkspaceRepoFileMutationRequest,
@@ -202,7 +207,7 @@ async def stage_workspace_repo_file(
         raise _translate(exc) from exc
 
 
-@router.get("/{changeset_id}/diff", response_model=WorkspaceRepoChangesetDiffResponse)
+@router.get("/{changeset_id}/diff", response_model=WorkspaceRepoChangesetDiffResponse, **operation_route("workspacerepochangesets.workspace_repo_changeset_diff"))
 async def workspace_repo_changeset_diff(
     changeset_id: UUID, ctx: Context, db: DbSession, user: CurrentSuperuser
 ):
@@ -212,7 +217,7 @@ async def workspace_repo_changeset_diff(
         raise _translate(exc) from exc
 
 
-@router.post("/{changeset_id}/validate", response_model=WorkspaceRepoValidationResponse)
+@router.post("/{changeset_id}/validate", response_model=WorkspaceRepoValidationResponse, **operation_route("workspacerepochangesets.validate_workspace_repo_changeset"))
 async def validate_workspace_repo_changeset(
     changeset_id: UUID, ctx: Context, db: DbSession, user: CurrentSuperuser
 ):
@@ -222,7 +227,7 @@ async def validate_workspace_repo_changeset(
         raise _translate(exc) from exc
 
 
-@router.post("/{changeset_id}/activate", response_model=WorkspaceRepoChangesetResponse)
+@router.post("/{changeset_id}/activate", response_model=WorkspaceRepoChangesetResponse, **operation_route("workspacerepochangesets.activate_workspace_repo_changeset"))
 async def activate_workspace_repo_changeset(
     changeset_id: UUID,
     request: WorkspaceRepoActivateRequest,
@@ -241,6 +246,7 @@ async def activate_workspace_repo_changeset(
 @router.post(
     "/{changeset_id}/retry-git-closure",
     response_model=WorkspaceRepoChangesetResponse,
+    **operation_route("workspacerepochangesets.retry_workspace_repo_git_closure"),
 )
 async def retry_workspace_repo_git_closure(
     changeset_id: UUID,
@@ -257,7 +263,7 @@ async def retry_workspace_repo_git_closure(
         raise _translate(exc) from exc
 
 
-@router.post("/{changeset_id}/abort", response_model=WorkspaceRepoChangesetResponse)
+@router.post("/{changeset_id}/abort", response_model=WorkspaceRepoChangesetResponse, **operation_route("workspacerepochangesets.abort_workspace_repo_changeset"))
 async def abort_workspace_repo_changeset(
     changeset_id: UUID, ctx: Context, db: DbSession, user: CurrentSuperuser
 ):

@@ -30,6 +30,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from shared.scope_resolver import has_scope_bypass
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser, CurrentUser, bearer_scheme
 from src.core.db_deps import DbSession
@@ -492,6 +493,7 @@ async def get_application_for_write_or_404(
     response_model=ApplicationPublic,
     status_code=status.HTTP_201_CREATED,
     summary="Create an application",
+    **operation_route("apps.create"),
 )
 async def create_application(
     data: ApplicationCreate,
@@ -553,6 +555,7 @@ async def create_application(
     "",
     response_model=ApplicationListResponse,
     summary="List applications",
+    **operation_route("apps.list"),
 )
 async def list_applications(
     ctx: Context,
@@ -676,6 +679,7 @@ async def batch_update_application_sdks(
     "/{slug}",
     response_model=ApplicationPublic,
     summary="Get application metadata",
+    **operation_route("apps.get"),
 )
 async def get_application(
     slug: str,
@@ -699,6 +703,7 @@ async def get_application(
     "/{app_id}",
     response_model=ApplicationPublic,
     summary="Update application metadata",
+    **operation_route("apps.update"),
 )
 async def update_application(
     app_id: UUID,
@@ -767,6 +772,7 @@ async def update_application(
     "/{app_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete application",
+    **operation_route("apps.delete"),
 )
 async def delete_application(
     app_id: UUID,
@@ -1096,7 +1102,9 @@ async def update_application_sdk(
 
 
 @router.post("/{app_id}/github-source", response_model=PlatformJobAccepted,
-    status_code=status.HTTP_202_ACCEPTED)
+    status_code=status.HTTP_202_ACCEPTED,
+    **operation_route("applications.publish_github_app_source"),
+)
 async def publish_github_app_source(
     app_id: UUID, body: ApplicationGitSourcePublicationRequest, db: DbSession, response: Response,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -1132,7 +1140,7 @@ async def publish_github_app_source(
     return PlatformJobAccepted(job_id=job.id, notification_id=job.notification_id, status=job.status, reused=reused)
 
 
-@router.post("/{app_id}/github-source/{job_id}/inspect", response_model=PlatformJobPublic)
+@router.post("/{app_id}/github-source/{job_id}/inspect", response_model=PlatformJobPublic, **operation_route("applications.inspect_github_app_publication"))
 async def inspect_github_app_publication(
     app_id: UUID, job_id: UUID, body: ApplicationGitSourcePublicationRequest, db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -1173,6 +1181,7 @@ async def inspect_github_app_publication(
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Publish draft to live",
+    **operation_route("apps.publish"),
 )
 async def publish_application(
     app_id: UUID,
@@ -1258,6 +1267,7 @@ async def publish_application(
     "/{app_id}/replace",
     response_model=ApplicationPublic,
     summary="Repoint application source directory",
+    **operation_route("apps.replace"),
 )
 async def replace_application_endpoint(
     app_id: UUID,
@@ -1368,6 +1378,7 @@ async def swap_application_slugs(
     "/{app_id}/validate",
     response_model=AppValidationResponse,
     summary="Validate application files",
+    **operation_route("apps.validate"),
 )
 async def validate_application(
     app_id: UUID,
