@@ -460,3 +460,68 @@ elapsed time. Independent transcript work remains available, so this turn does
 not mark the active goal blocked or complete. No production/vendor mutation,
 expanded credentials, PR creation, merge or deployment. SDK0.0.0-spike.2,
 MTG package2026-10-09.1; procedures retain their previously recorded versions.
+
+## Structural conformance and Go specification transcript model
+
+Tested source `869b9ebc5796fa1a2f41c579fb24ea204cc893d6` passed hosted
+[diagnostic run37999920905](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37999920905)
+and full [native run37999921003](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37999921003).
+[Retained proof](structural-session-conformance-proof.json) binds exact fixture,
+source/test/exchange hashes and both artifacts. Current platform main remains
+b031b9ca, workspace main e666a60b; #1132 remains open at35daf020d. Primary refs
+and unrelated work remain preserved; no current-main application acceptance follows.
+
+All three independent schema consumers now match68 published decoded structural
+documents (17 valid and51 invalid). That layer is intentionally separate from raw
+wire parsing, within-frame correlation and cross-frame legality. Exact structural
+and session vectors are copied from the reviewed proposal head; Go provenance
+checks all six schema/corpus files, and the peer harness verifies14 consumed
+reference files. No canonical fixture is edited or silently generated differently.
+
+`executionprofile/conformance_test.go` independently models the published Go
+session transcript as specification tests. All68 cases and695 steps including
+setups match both expected rejection and full after-snapshot. The model separates
+parent commands, adapter observation frontiers, actual raw receipt preimages and
+injected trusted decisions; rejected candidates leave state unchanged. Start and
+provision ordering, queued observations around cancellation, grant/deadline denial,
+late retained Result, duplicate/conflicting messages/receipts and independent
+transport/stop/cleanup facts are checked. Fixture literal JSON field order is
+preserved for its declared raw receipt preimage; a Go map re-encoding is not
+substituted for those bytes.
+
+This model is **compiled only into tests**. Its commit/grant/delivery/release/
+cleanup events are injected fixture assumptions; it has no SQL, SDK credential,
+workload callback, process launch or durable store. A passing `effects_permitted`
+fixture boolean authorizes nothing. This is not a Go control plane, production
+session implementation, real writer exclusion, issuer delivery or Rust ownership.
+Independent Rust/Python session conformance and complete Package1 acceptance
+remain open. Published schema legality alone does not make a transcript legal.
+
+Diagnostic named passes are237 in the proposed Go package and144 unchanged P0,
+169 Python and167 Rust. All six18-message encoding directions and deliberate
+semantic drift checks remain green. Fmt, Ruff, vet and Rust clippy with warnings
+denied retain their gates. The full native job has414 Go test/subtest passes and
+41 direct/15 pooled reduced ownership checks. P0 Go/Python/Rust interoperability
+is unchanged. Actual full-schema incumbent writer exclusion remains unproved.
+
+The same native workflow bytes remain
+`160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
+Downloaded binary, warm binary and module graph match their descriptor; the
+experimental signature verifies with its retained ephemeral public key. No
+executable, application test or container ran on pve-t340. This signature is not
+accepted deployment attestation. Fresh native observations are15.391s cold
+compile with resolved modules,15.338s independent empty cache,343.14ms warm edit,
+324.34ms restored warm compile and594.39ms edit→artifact. Local SDK/cancellation
+measurements and raw outputs are retained in the receipt, separate from genuine
+Rust lifecycle latency. The descriptor still records no Rust admission or durable
+projection. SDK version remains0.0.0-spike.2; MTG package2026-10-09.1.
+
+Decision CONTINUE SPIKE. The real end state still requires accepted native
+registration, immutable trusted adapter/init custody, authenticated provision/live
+session, Rust-owned admission/Start/cancellation/durable Result, existing Execution
+API readback and whole-schema writer exclusion. Conforming non-Rust supervisor
+execution of the complete same workflow artifact remains unproved. The pending
+owner interface proposal has not received the human architecture release required
+by #1132 Package4; goal continuation is not that approval. Independent session
+work remains available, so the goal stays active rather than blocked or complete.
+No production/vendor mutation, expanded credentials, PR creation, merge or deploy.

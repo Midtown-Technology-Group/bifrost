@@ -1,0 +1,158 @@
+{
+  "status": "structural-and-test-model-conformance-not-runtime-authority",
+  "source": "869b9ebc5796fa1a2f41c579fb24ea204cc893d6",
+  "proposal_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+  "diagnostic_run": 37999920905,
+  "diagnostic_conclusion": "success",
+  "structural": {
+    "languages": [
+      "Go",
+      "independent Python",
+      "Rust"
+    ],
+    "cases_per_language": 68,
+    "valid": 17,
+    "invalid": 51
+  },
+  "session": {
+    "implementation": "Go specification model compiled only into tests",
+    "cases": 68,
+    "steps_including_setup": 695,
+    "checks": "Each rejection and complete published after-snapshot; authority events are injected assumptions, not actual commits/delivery/stop.",
+    "Rust_Python_session_conformance": "not implemented or proved"
+  },
+  "named_test_passes": {
+    "Go": {
+      "github.com/midtown-technology-group/bifrost-go/runtimecontrol": 144,
+      "github.com/midtown-technology-group/bifrost-go/executionprofile": 237
+    },
+    "Python": 169,
+    "Rust": 167
+  },
+  "retained_diagnostic_files": {
+    "execution-peer-receipt.json": "b65b2f7485372cc3c33a9b92722ef43d80a852737192ceb4062cf635020a81b8",
+    "executioncheck": "d1abd53fca6407f649a4107f16ad382b82487b16e93ef4ab2456360fbd9bdf67",
+    "go-execution-exchange.json": "93237f9eda4673d6fd470ac78dbf2ec2f7c8c7fd906900551275591d126038e8",
+    "go-version.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+    "proposal-provenance.json": "54680654f80d5d44233b9f9a2b6ece11e635b91cbad0ace5b5f3033094d801e6",
+    "python-execution-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "python-stream-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "python-stream-peer-receipt.json": "72c367d49c80ece1d4fbcaa5c617a06a4cfec0ad88d543ce908a11f8b7ab67ec",
+    "python-stream-tests.txt": "773715ec62199b00e596cc362449d5938035d2ceacadbf13b12420589f186a4a",
+    "rust-dependency-provenance.json": "cf496117155765bb9ffec36ba9bce47a71ce9173021399b4de337f634607db78",
+    "rust-execution-Cargo.lock": "61b6735cd14842fc504e49ab332617dda30bcf9ad547218d034d61306d2b957e",
+    "rust-execution-build.txt": "bcc2bfd72dd5a71ce0660882e3b34fe11b4fd54580eddd3bb85b6b8ee1b31377",
+    "rust-execution-clippy.txt": "cc88bdfced50fb8b85e785b72782b2e1604bf7dc606d01ac0d47514b0a2e1e51",
+    "rust-execution-exchange.json": "1018da564101f54e337c561b9f15afa569276d2ee90a6d938a8c0b06370c1af0",
+    "rust-execution-fetch.txt": "b8af768f125e1fa2841549e4bb978de6b1c462b6420aa434b26d791e366f4112",
+    "rust-execution-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rust-execution-peer-receipt.json": "26817e210ceb1b101aa049b1e45ff2d57f2eb09c236ba2e8face70804f014ba6",
+    "rust-execution-tests.txt": "21886e65c1f45885bca2a3573a8090854d50ab3a5a5ff89a3ab5deaa8d498702",
+    "rust-execution-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+    "rust-executioncheck": "2946f1adfe695e297789976f5bc848f44533d780639d1e2411ffaab6b9b6edcf",
+    "rust-installed-components.txt": "e8831f6eab33b6dd0f72364237d8f7a00d762711a08608010877e0ce0b7f667b",
+    "rust-tools-build.txt": "7870da91ed298dbd41bf24c9d01f8f097e4cd3c54c750787ba832d905dc2606a",
+    "rust-tools-cleanup.txt": "01d3eb0d46d35458257996e3a7e09bfab8d2afcaf20d3b918c5038b53419279b",
+    "rust-tools-image.txt": "623a41275b33f379091df90b4d7304340e5b58d9752c47f3cfde5d5436bd90c3",
+    "scope.txt": "759ef0f51c7fd53f5d5481fbf2f4f7a72746f00f63dac844def4bda8eac131d4",
+    "source-sha.txt": "ce9c251583604600376092bad0ac29e33ea2dea571b8fa2cbda6d7388d6b54e3",
+    "tests.jsonl": "99e53497590f462e6c2c88e919d130966209aef6d78e6f4b44e60824cf8a4817"
+  },
+  "full_native_component": {
+    "run": 37999921003,
+    "conclusion": "success",
+    "named_go_tests": 414,
+    "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "artifact_size_bytes": 9920235,
+    "descriptor_sha256": "0442cc72911bc436c205cb94d47a735dfe479a85991f9971a062e48fa729215e",
+    "module_graph_sha256": "6c65761e33efdb93797e9a45ec4ddd5601273fc2423ae4af13c06db91dc9538c",
+    "sdk_version": "0.0.0-spike.2",
+    "timings_ms": {
+      "module_download": 75.649114,
+      "cold_compile_warm_modules": 15390.81416,
+      "independent_cold_compile": 15338.373931,
+      "warm_source_edit_compile": 343.144158,
+      "restored_warm_compile": 324.342278,
+      "edit_to_artifact": 594.391265
+    },
+    "execution_summary": {
+      "startup_to_sdk_ms": {
+        "median": 4.114848,
+        "p95": 4.669551,
+        "n": 20
+      },
+      "execution_ms": {
+        "median": 4.6653614999999995,
+        "p95": 5.25688,
+        "n": 20
+      },
+      "max_rss_kib": {
+        "median": 10968.0,
+        "p95": 10968,
+        "n": 20
+      }
+    },
+    "cancellation_ms": 0.511868,
+    "ownership": {
+      "ownership-evidence.json": {
+        "status": "candidate-fixture-only",
+        "checks": 41,
+        "sha256": "095050401eee21d79eec64d81d31c9534b5ede19f8a11dfe7bfa1e3494d8631d"
+      },
+      "ownership-pool-evidence.json": {
+        "status": "candidate-fixture-only",
+        "checks": 15,
+        "sha256": "d4e385a16d180a14e5f47e73b1ae84f0f91b3ee17b16182307600e1b8cfded65"
+      }
+    },
+    "rust_admission": false,
+    "durable_projection": false,
+    "retained_files": {
+      "artifact.sha256": "f9fb2a0e7be8caea848fe3f2b1e988acf4d8a962d3a490750355689b0dd65800",
+      "attestation-public.pem": "74e695c4e54fc9ebdd89f8bb669e69d4991cf95a1cf6260342c649752dc638e3",
+      "attestation-verification.txt": "0fd23954193f64e60f5b4b5f381cd1ea9d580aece00a6bbbc98e664302ce6b79",
+      "cold.txt": "698a8b6146794086393efb11ade2d3e395201e4f2082d55e8b55a4f33cd89be0",
+      "control-reference-sha.txt": "7e2984528d8609f5e40f9c142676d88e2effcf733daf5553737e1e636bb035a3",
+      "controlcheck": "1f46c1b3d1c76fb07ed3e553ae79a20c212957865ca5f556f6665e2eef5ea911",
+      "descriptor.json": "0442cc72911bc436c205cb94d47a735dfe479a85991f9971a062e48fa729215e",
+      "descriptor.sig": "dd3e81d7226f941349b2f774efd6266f8cb7bb2b023ef6fbd94a2f9737c7d192",
+      "edit-loop.txt": "5374b61478d0550733b64d879e4cc49b139d734628e1e16243f40b781f2f0317",
+      "execution.json": "e10b7b98c7591ca822ba0229b58b4b18a8d05ce09fdf49c1af48a4c405fd1806",
+      "generated-input.json": "e1982d493767796ccb17c0836a31cfad56d9f7d2313fa5fd3d34db291b386ab6",
+      "generated-output.json": "474fba3cb068a396356dabbbcadf2bdc4b35146aa964e9ec6319155182e27839",
+      "go-control-exchange.json": "bcbff3ed3ce9626eaa9132d551717175dd4281a8e4036640e6e37271eebe8c41",
+      "go-validates-python.txt": "cc97ac144d4a09cbd7bf4aa041f6bde70b35bebf04093cf7bb47361aa7195e50",
+      "go-validates-rust.txt": "cc97ac144d4a09cbd7bf4aa041f6bde70b35bebf04093cf7bb47361aa7195e50",
+      "govulncheck.jsonl": "ca039432fb8deb302b2302e5028c32eb07a9218fdd41ceeb87a65e92659f639f",
+      "independent-cold.txt": "aff01c49e3c2fd7c616bcce29e43f57c2a21dbe3aa789865e53857ad29d29fc3",
+      "module-download.txt": "1ed0e378d3f58c76e75d19876c1c20b75a9b60f7e7400152fc3ad3da3af3ebf8",
+      "module-graph.txt": "6c65761e33efdb93797e9a45ec4ddd5601273fc2423ae4af13c06db91dc9538c",
+      "probe": "817543a6dd26a22b083df26d3267b2391e64982855916a44068971f3d4260ef1",
+      "python-control-exchange.json": "fb3c746677ef8c8e2cfa89585f23f0efe24e37e9b304e542a561cc9c55cf0399",
+      "python-validates-go.txt": "cc97ac144d4a09cbd7bf4aa041f6bde70b35bebf04093cf7bb47361aa7195e50",
+      "restored-warm.txt": "35a2137ac5dd89f7d7d90945b0969a737461d700c4c409def64f7c250e0f048c",
+      "rust-contract-tests.txt": "ec22fbc0aa138fcd7a6b71dd07c09b2cbf48ced8237f8725a47e9e9ed0f3d1cc",
+      "rust-control-exchange.json": "d42fb6f119176bc2da21f5703246784e8f221fc01abe267f00f9cc9f8776fa2c",
+      "rust-exchange-build.txt": "c24b061301c6ffb0a351bb169b081e7874ed0ccb2c9674017e573e111339780c",
+      "rust-fetch.txt": "03b788c43001fca45d9a84958c660f4aebc011ea1612e8f59f25b5cb9a2e77b0",
+      "rust-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "rust-validates-go.txt": "0a4c57d5d57b62ea9ab56ff691e8c88f890959b6c8a51426522c0f5a4559b9d4",
+      "scanner-image.txt": "f01f7449660e3b035c4feac123ba98ded91456066bd37ea5841399b80fc7d662",
+      "tests.jsonl": "5705a441b2c4b4de105c448926b04d43cefd120eae9bf0bc141dd11bc0bede5a",
+      "warm-artifact.sha256": "45f5b2d927dc3ae8f927d675544f0e1eff3ab32913401fec9093e3fb3f17e804",
+      "warm-edit.txt": "5b891c64f546f5a0725463a589ebe903cb72796371d0cfa56eeeb4cd67981a0a",
+      "warm-execution.json": "0d6691b55a07334abe344c7f2d3b70948faa2e7289dd893417eeb56f9da50da3",
+      "warm-source.json": "4d05fe5262bf37f8be8bdc1ab0778d7882c5c694dfd5142c3b8a1f2488c83b9d",
+      "workflow": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+      "workflow-warm-edit": "6d9ad4d04965db46902fa4c7484055973deb99339aae4dc6d3c6bbc509e905c3"
+    },
+    "signature_readback": "Verified with retained ephemeral experimental public key; not accepted deployment signing."
+  },
+  "not_proven": [
+    "full independent session/adapter acceptance or profile freeze",
+    "actual authenticated provision, live session or trusted initializer/launch custody",
+    "Rust admission/Start/cancellation/durable result and existing Execution API readback",
+    "accepted native registration and full incumbent writer exclusion",
+    "conforming non-Rust supervisor executing the same artifact under common lifecycle"
+  ]
+}
