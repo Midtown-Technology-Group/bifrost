@@ -1,0 +1,71 @@
+{
+  "status": "proposed-wire-peer-proof-not-runtime-authority",
+  "reference_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+  "go_encoder_to_python_oracle_decoder": 18,
+  "python_oracle_encoder_to_go_decoder": 18,
+  "message_types": [
+    "Cancel",
+    "Heartbeat",
+    "LogBatch",
+    "Offer",
+    "Prepare",
+    "Prepared",
+    "Provision",
+    "Result",
+    "ResultReceipt",
+    "Select",
+    "Start",
+    "Stopped",
+    "Usage"
+  ],
+  "deliberate_shape_valid_drift_rejected": [
+    "Go",
+    "Python oracle"
+  ],
+  "python_version": "3.12.3",
+  "reference_dependencies": {
+    "attrs": "26.1.0",
+    "jsonschema": "4.26.0",
+    "jsonschema-specifications": "2025.9.1",
+    "referencing": "0.37.0",
+    "rpds-py": "0.30.0",
+    "typing-extensions": "4.15.0"
+  },
+  "binary_sha256": "d1abd53fca6407f649a4107f16ad382b82487b16e93ef4ab2456360fbd9bdf67",
+  "exchange_sha256": {
+    "go-execution-exchange.json": "93237f9eda4673d6fd470ac78dbf2ec2f7c8c7fd906900551275591d126038e8",
+    "python-execution-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99"
+  },
+  "limits": [
+    "Python peer is the proposal's test-only oracle, not an extracted production runtime.",
+    "Rust execution-profile codec interchange remains unproved.",
+    "Frames are independent specimens, not a legal session or workflow execution.",
+    "No Session/release/commit/delivery event, SDK credential or durable store was used."
+  ],
+  "source": "f7a3b27064f358f9cd32bbba63ddea6ee918b79c",
+  "diagnostic_run": 37993928045,
+  "diagnostic_conclusion": "success",
+  "named_test_subtest_passes": {
+    "github.com/midtown-technology-group/bifrost-go/runtimecontrol": 144,
+    "github.com/midtown-technology-group/bifrost-go/executionprofile": 99
+  },
+  "retained_files": {
+    "execution-peer-receipt.json": "4139d2bc1175f11b6bb5dee9c5a4c99aab8b6b1288c573884e7a49061ca25399",
+    "executioncheck": "d1abd53fca6407f649a4107f16ad382b82487b16e93ef4ab2456360fbd9bdf67",
+    "go-execution-exchange.json": "93237f9eda4673d6fd470ac78dbf2ec2f7c8c7fd906900551275591d126038e8",
+    "go-version.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+    "proposal-provenance.json": "ed3c1c52e7164d82b37413b5b579bf06d7a56a3659187684e188c0a6d91ba4eb",
+    "python-execution-exchange.json": "778d66b1d41892b8e4370609b3011197d998de2cd284113e21815564d6b7ed99",
+    "scope.txt": "69aaa0d10d0898cb8e2633b5048c5a1496469a41441170c1e2dc1aade6296499",
+    "source-sha.txt": "afeb40eae347b99f507a32f58498e147321ca6cdf08e7460e67c211872b8a1ea",
+    "tests.jsonl": "e91d203af5b3e92e37755fd7619c0867032891dcb8a3547e2a574162154e2c3e"
+  },
+  "full_build_run": {
+    "id": 37993928165,
+    "conclusion": "failure",
+    "proof_failure": "Pinned Go image fetch timed out contacting Docker Hub token endpoint before compilation.",
+    "ownership_failure": "PostgreSQL image fetch exceeded Docker Hub unauthenticated pull quota before tests.",
+    "failure_log_sha256": "432748826781e67035e55b7486e6e99227769b07244c672caa9a41757466f860",
+    "retry_released": false
+  }
+}

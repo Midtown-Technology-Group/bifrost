@@ -247,3 +247,51 @@ unproved. No production mutation, new credentials, PR creation, merge or
 deployment. The reviewed #1132 is linked to this chat; no approval/comment or
 watch was submitted. Package/procedure versions are unchanged from the preceding
 2026-10-09 reconciliation.
+
+## Proposed-profile encoder interoperability executed
+
+The limited encoder coverage above is superseded by this component proof.
+Current tested source is `f7a3b27064f358f9cd32bbba63ddea6ee918b79c`;
+hosted diagnostic [run37993928045](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37993928045)
+succeeded. The Go checker emits18 independent specimens spanning all13 message
+types; the proposal's original Python test oracle decodes them and checks their
+semantics. The oracle then encodes18 specimens for the Go decoder. Both peers
+reject deliberately changed, shape-valid Result values. The existing99 proposed
+codec and144 P0 named test/subtest passes remain green, with selected go vet.
+The helper's three Ruff findings at preceding471b726 were fixed at this tested
+head; the earlier push is not the acceptance candidate.
+
+The reference is #1132 head `35daf020d5e1286f82bdfed6bb3fc537bf3d78f6`.
+Consumed schemas, wire corpus and oracle are unchanged from the preceding370230
+review. Twelve reference files and the six-package wheel-only hash lock are
+verified by the peer harness. Python is the proposal's test oracle on3.12.3,
+not an extracted production Python adapter. No Session events, authorization,
+provision delivery, application code or durable store were used. These are
+standalone frames, not a legal session. Rust proposed-profile interchange
+remains unproved. No shared-profile freeze or owner acceptance is inferred.
+
+The [retained peer receipt](execution-profile-peer-proof.json) binds exact
+producer source, CLI binary and both exchange-file hashes, test output hashes,
+reference/dependency versions and negative controls. Files were downloaded and
+hashed on pve-t340 without executing the binary there. This checker is not the
+representative workflow deployment artifact. SDK0.0.0-spike.2 and historical
+workflow timing evidence at8dbb5169 remain unchanged.
+
+Full [run37993928165](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37993928165)
+failed before compilation or database tests: the pinned Go image fetch timed
+out at Docker Hub's token endpoint, and PostgreSQL image fetch hit the
+unauthenticated pull quota. The exact failure log is retained outside Git and
+hashed in the receipt. No retry, image substitution, credentials or authority
+were added. The focused success does not satisfy the full isolated recipe,
+scan, registration/admission or actual writer-exclusion gates. No new compile
+or workflow-execution timings are available for this source.
+
+Decision remains CONTINUE SPIKE. The next integration work must establish the
+common trusted adapter boundary and actual owner custody: fresh release/spawn
+fencing, authenticated private provision plus closed runtime SDK ingress, and
+existing durable Result/Cancel/close projection with Execution API readback.
+Independent Go wire implementation now has a Python oracle peer; the complete
+artifact still lacks a conforming non-Rust supervisor executing it under the
+shared lifecycle. Rust remains the required authority, not a dependency of
+this Go codec. No PR, merge, production deployment or vendor mutation occurred.
+MTG package2026-10-09.1 and procedure versions recorded earlier remain in use.
