@@ -1,14 +1,57 @@
 # First-class Go: bounded spike decision and G0 design
 
-Decision: **CONTINUE SPIKE**. Date: 2026-10-01 (America/Indiana/Indianapolis).
+Decision: **CONTINUE SPIKE**. Current checkpoint: 2026-10-09.
 The initial G0 design below is retained for its decisions and exact historical
 source pins. [Runnable G1/G2 results](results.md) now record actual artifacts, tests,
 SDK execution, cancellation and cold/warm timings. First-class acceptance and
 Rust-owned durable E2E remain unproved.
 No production deployment, vendor operation, C2/C3 acceptance or merge is included.
-Procedure: mtg-engineering-flow 2026-09-30.1; MTG skills package 2026-10-01.5;
-planning helper: mtg-grill-with-docs. Prototype/package version: **0.0.0-spike.1**, with executable Go workflow and
-local supervisor artifacts; see results for their exact tested source identity. The separately inspected Rust W0 foundation declares 0.1.0.
+Current SDK/package version: **0.0.0-spike.2**. MTG skills package2026-10-09.1;
+Engineering Flow/PR Stewardship2026-10-06.1. Historical G0 used Engineering Flow
+2026-09-30.1, package2026-10-01.5 and mtg-grill-with-docs. The separately inspected
+Rust W0 foundation declares0.1.0; it is not an execution owner.
+
+## Current verified outcome and exact remaining decision
+
+[Latest executed proof](rust-session-conformance-proof.json) binds candidate
+`ae9b76c18d2b097e53c0799391377e8149fdbe8c` to successful hosted diagnostic/native
+runs38001923899/38001923981. Go, Python and Rust independently match68 session
+scenarios and695 fixture steps per language. Structural/wire validation, all six
+peer encoding directions, receipt preimages and unchanged P0 also pass. This is
+specification conformance, not a supervisor or durable owner.
+
+The ordinary Go readiness application still uses one typed SDK capability and
+ordinary control flow, interfaces, errors and context. The native run passed414
+Go tests, build/static/security checks, synthetic HTTPS SDK use and cooperative
+cancellation. The same9,920,235-byte binary digest is retained across builds.
+Latest cold compile is12.474s, warm edit313.27ms, edit→artifact592.78ms and local
+execution median3.776ms (20 samples). There is no measured real Rust lifecycle
+latency or equivalent Python end-to-end baseline. The fast warm compile supports
+further investigation; isolated whole-source tests/scans remain separate build
+costs, and arbitrary hostile multi-tenant builder isolation is not accepted.
+
+Does Go depend on the BiFrost contract or Rust implementation? **The authored
+application and candidate adapter codec depend on BiFrost contracts**, with no
+Rust linkage, types, scheduler or database knowledge in the workload. Could
+another conforming supervisor execute the same complete artifact? **Not yet
+proved**: peer codecs are independently implementable, but the local application
+harness is not the complete profile. Does authoring feel like a Go application?
+**Yes for the implemented workload**; metadata extraction remains deliberately
+narrow and actual deployment registration is absent.
+
+The [common owner integration proposal](owner-integration-proposal.md) is the
+concrete pending decision. It now records completed independent conformance and
+build recovery, rather than stale blockers. Current #1011/#1132 still require
+reviewed schema/lock order and human architecture release before authority
+implementation. That release is not supplied by a passing test model or by an
+automatic goal continuation. Real native registration/trusted adapter custody,
+finite provision/live-session admission, Rust Start/cancel/durable Result and
+existing Execution API readback, actual-schema writer exclusion and cleanup all
+remain mandatory. No Go-specific owner or synthetic durable store is proposed.
+
+The sections below are the initial G0 design and historical observations, not
+current test counts, source heads or unresolved-contract status. The completion
+audit and current proof retain the later executable evidence and actual gaps.
 
 ## Initial G0 source and evidence
 

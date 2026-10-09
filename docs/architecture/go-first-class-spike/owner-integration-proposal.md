@@ -3,7 +3,7 @@
 Status: reviewable implementation proposal, not authority release or an accepted
 migration. SDK version remains0.0.0-spike.2. Platform main is
 `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`; workspace main refreshed to
-`ce06a332e2256446a9a709357d04550239c97da4`. No workspace asset was edited.
+`e666a60b614fc34022008dadfa734b1d970208c8`. No workspace asset was edited.
 [Source inventory](owner-integration-source-evidence.json) binds inspected seams.
 
 ## Decision required
@@ -147,9 +147,38 @@ Run unchanged Python-owned positives plus incumbent writer negatives through the
 real pool. The fake supervisor may exercise the same bundle only after the common
 adapter interface exists, and its observations never count as durable ownership.
 
-Before these authority paths are implemented, finish Package1's independent
-Rust/Python codec and transcript checks on the selected common profile. Current
-Go↔Python **test-oracle** interchange does not satisfy that full package. This is
-available independent work while the interface/release decision is reviewed.
-Full isolated build recovery also remains open; no quota workaround or broader
-credentials are proposed. Decision stays CONTINUE SPIKE; the goal is incomplete.
+## Verified inputs to the pending decision (2026-10-09)
+
+Independent Go, Python and Rust codecs now consume the pinned structural/wire
+corpora and all68 session scenarios (695 steps including fixture setup) without
+importing the proposal oracle's session implementation. Hosted diagnostic
+run38001923899 at `ae9b76c18d2b097e53c0799391377e8149fdbe8c` passed, including all
+six18-message encoding directions, raw-byte receipt identities and deliberate
+semantic-drift negatives. P0 remains unchanged. These are independently executed
+specification checks, not architecture ratification or accepted production seams.
+[Exact conformance and native proof](rust-session-conformance-proof.json).
+
+The full isolated build recovered with the same pinned images and credential
+restrictions. Hosted native run38001923981 at that same source passed414 Go tests,
+ordinary build/static/security checks, synthetic SDK execution and cancellation.
+The immutable workflow digest remains
+`160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`; it is9,920,235
+bytes. Latest cold compile is12.474s, warm edited compile313.27ms and median local
+fixture execution3.776ms (20 samples). These do not measure real Rust lifecycle
+latency or prove accepted native registration. No quota workaround, credential
+expansion or performance-based isolation exception was used.
+
+The remaining external decision is now specific: approve this common isolated
+owner/session/Start/provision/release/receipt interface proposal and its reviewed
+schema/lock-order implementation scope, retaining every acceptance test above.
+The shared architecture still requires human release for Package4 and explicitly
+does not authorize Packages2–4 from green static/conformance tests alone. A release
+would allow implementation; it would not accept the issuer, writer exclusion,
+process custody, durable projection or mixed-owner behavior without their proof.
+
+Actual runtime implementation still remains: native deployment association and
+trusted adapter, common live-session/finite provision/release admission, real Rust
+owner transactions and existing Execution API readback, actual-schema/pool writer
+exclusion, and process/source cleanup. There is no accepted Rust service that can
+already perform this slice. Do not satisfy it by promoting the test models or
+local harness to an owner. Decision stays CONTINUE SPIKE; the goal is incomplete.
