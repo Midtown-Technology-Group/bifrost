@@ -450,3 +450,17 @@ def test_evidence_cannot_be_embedded_in_recipe_or_used_by_legacy_adapter():
     legacy["schema_version"] = "bifrost.solution-source-delivery/v1"
     with pytest.raises(WorkflowRecipeError, match="reviewed workflow adapter"):
         review_solution_recipe(legacy, files, {}, workflow_removal_evidence=args["workflow_removal_evidence"])
+
+
+def test_nested_constructed_inventory_cannot_bypass_completeness_validation():
+    import base64
+    from bifrost.workflow_removal_evidence import RemovalInventory, canonical_bytes
+    candidate, files, resources, args, key = removal_fixture()
+    receipt = args["workflow_removal_evidence"]
+    inventory = receipt["observations"][0]["schedules"]
+    inventory["complete"] = False
+    receipt["signature"] = base64.b64encode(key.sign(canonical_bytes(
+        {k: v for k, v in receipt.items() if k != "signature"}))).decode()
+    receipt["observations"][0]["schedules"] = RemovalInventory.model_construct(**inventory)
+    with pytest.raises(WorkflowRecipeError):
+        review_solution_recipe(candidate, files, resources, **args)

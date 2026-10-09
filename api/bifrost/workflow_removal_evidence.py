@@ -22,7 +22,7 @@ Identity = Annotated[str, Field(min_length=1, max_length=255)]
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, revalidate_instances="always")
 
 
 class RemovalInventory(StrictModel):
