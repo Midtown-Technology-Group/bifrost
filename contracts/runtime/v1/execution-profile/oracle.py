@@ -140,6 +140,7 @@ class Session:
         self.committed_start = self.cancel = None
         self.committed_budget = None
         self.child_start = self.child_cancel = self.delivered = False
+        self.reported_start = self.reported_cancel = False
         self.effects = self.stopped = self.closed = self.revoked = False
         self.released = False
         self.winner = None
@@ -248,32 +249,45 @@ class Session:
                 if body["batch_sequence"] != self.log_seq + 1:
                     reject("InvalidTransition")
                 self.log_seq += 1
+            self.reported_start = True
         elif kind == "Heartbeat":
             if not self.prepared or body["monotonic_elapsed_ms"] < self.last_heartbeat:
                 reject("InvalidTransition")
             state = body["state"]
             if state == "prepared":
-                matches = not self.child_start and not self.child_cancel and body["start_message_id"] is None
+                matches = not self.reported_start and not self.reported_cancel and body["start_message_id"] is None
+            elif state == "cancelling":
+                matches = self.cancel and body["start_message_id"] == (
+                    self.start["message_id"] if self.start else None
+                )
             else:
                 matches = self.start and body["start_message_id"] == self.start["message_id"]
-                matches = matches and (self.released and not self.child_cancel
-                                       if state == "executing" else self.child_cancel)
+                matches = matches and self.released and not self.reported_cancel
             if not matches:
                 reject("InvalidTransition")
             self.last_heartbeat = body["monotonic_elapsed_ms"]
+            self.reported_start |= body["start_message_id"] is not None
+            self.reported_cancel |= state == "cancelling"
         elif kind == "Stopped":
             if not self.selection:
                 reject("InvalidTransition")
-            start_id = self.start["message_id"] if self.child_start else None
-            cancel_id = self.cancel["body"]["cancel_id"] if self.child_cancel else None
+            start_id = self.start["message_id"] if self.start else None
+            cancel_id = self.cancel["body"]["cancel_id"] if self.cancel else None
             result_id = self.result["message_id"] if self.result else None
-            if (body["start_message_id"], body["cancel_id"], body["result_message_id"]) != (start_id, cancel_id, result_id):
+            start_matches = body["start_message_id"] == start_id or (
+                not self.reported_start and body["start_message_id"] is None
+                and body["reason"] in ("prepare_rejected", "protocol_error")
+            )
+            cancel_matches = body["cancel_id"] == cancel_id or (
+                not self.reported_cancel and body["cancel_id"] is None
+            )
+            if not start_matches or not cancel_matches or body["result_message_id"] != result_id:
                 reject("InvalidBinding")
-            if body["reason"] == "completed" and (not self.result or self.child_cancel):
+            if body["reason"] == "completed" and (not self.result or self.reported_cancel):
                 reject("InvalidTransition")
-            if body["reason"] == "cancelled" and not self.child_cancel:
+            if body["reason"] == "cancelled" and (not self.cancel or body["cancel_id"] is None):
                 reject("InvalidTransition")
-            if body["reason"] == "prepare_rejected" and self.child_start:
+            if body["reason"] == "prepare_rejected" and body["start_message_id"] is not None:
                 reject("InvalidTransition")
             self.stopped = True
         if corr != expected:
