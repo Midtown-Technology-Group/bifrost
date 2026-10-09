@@ -34,3 +34,12 @@ transcript, both directional frontiers, rejection rollback and raw receipt
 preimages; its status remains unproved until supported CI passes the exact source.
 The same pinned structural documents are consumed by the independent Python and
 Rust components, distinct from their wire/correlation and session layers.
+
+The separate Python `peers/test_execution_session.py` specification checker uses
+the independent Python stream codec and the same published session fixtures.
+It imports neither the proposal oracle nor platform implementation code. Every
+step checks rejection and the expected snapshot; a rejected step must also leave
+all private model state unchanged. Like the Go test model, injected owner and
+custody events are assumptions, never executable authority. Supported hosted CI
+retains its transcript results separately from codec exchange and native workflow
+evidence. Rust session conformance and real supervisor integration remain open.
