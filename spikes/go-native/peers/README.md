@@ -13,7 +13,7 @@ lexical rules retain the incumbent P0 i64/u64 fallback, safe control range and
 negative-zero rejection. Schemas are local-only and integer/pattern/UTC checking
 is strict; business data remains opaque. This is not a general user-schema loader.
 
-Hosted diagnostic CI executes94 shared raw specimens plus five transport/receipt
+Hosted diagnostic CI executes94 shared raw specimens plus seven transport/receipt
 checks and18 Go encodings each direction, with a deliberate shape-valid semantic
 drift rejection. Until that exact run passes, these are test expectations, not
 proof. The older Python-oracle exchange remains a separate reference check.

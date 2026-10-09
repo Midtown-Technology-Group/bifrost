@@ -105,6 +105,22 @@ class StreamTests(unittest.TestCase):
             self.codec.write(sink, frame)
         self.assertEqual(sink.getvalue(), b"")
 
+    def test_referenced_artifact_retains_strict_digest_pattern(self):
+        raw = specimen(next(v for v in VECTORS if v["name"] == "valid-Prepare"))
+        frame = self.codec.read(io.BytesIO(raw)).frame
+        frame["body"]["artifact"]["adapter_sha256"] += "\n"
+        with self.assertRaises(CodecError) as caught:
+            self.codec.write(io.BytesIO(), frame)
+        self.assertEqual(caught.exception.code, "InvalidFrame")
+
+    def test_referenced_binding_retains_lexical_integer_type(self):
+        raw = specimen(next(v for v in VECTORS if v["name"] == "valid-Prepare"))
+        frame = self.codec.read(io.BytesIO(raw)).frame
+        frame["body"]["binding"]["attempt_number"] = 1.0
+        with self.assertRaises(CodecError) as caught:
+            self.codec.write(io.BytesIO(), frame)
+        self.assertEqual(caught.exception.code, "InvalidFrame")
+
     def test_nonprogress_and_os_errors(self):
         class Broken:
             def read(self, _size):

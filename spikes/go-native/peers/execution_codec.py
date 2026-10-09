@@ -17,6 +17,7 @@ from typing import BinaryIO
 
 from jsonschema import Draft202012Validator, FormatChecker, validators
 from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
 
 PROTOCOL = "bifrost.runtime/v1"
 MAX_FRAME = 16 * 1024 * 1024
@@ -112,8 +113,16 @@ def _schema_validator():
                  ("profile.schema.json", "binding.schema.json", "artifact.schema.json")]
     for document in documents:
         cls.check_schema(document)
+    # A referenced document's $schema would make jsonschema evolve back to its
+    # default class, dropping strict lexical overrides. Validate each original
+    # dialect above, then keep the explicit same dialect and our class through
+    # references without mutating the published schema files/global registry.
+    for document in documents:
+        if document.pop("$schema") != "https://json-schema.org/draft/2020-12/schema":
+            raise ValueError("unreviewed schema dialect")
     registry = Registry().with_resources(
-        (document["$id"], Resource.from_contents(document)) for document in documents
+        (document["$id"], Resource.from_contents(document, default_specification=DRAFT202012))
+        for document in documents
     )
     return cls(documents[0], registry=registry, format_checker=formats)
 
