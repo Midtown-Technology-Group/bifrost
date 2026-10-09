@@ -146,6 +146,48 @@ def main():
                    "No session, Rust codec, lifecycle, provision or tenant execution."],
     }
     (output / "python-stream-peer-receipt.json").write_text(json.dumps(stream_receipt, indent=2) + "\n")
+    rust_binary = Path(sys.argv[4]).resolve()
+    result = subprocess.run([str(rust_binary), str(corpus), "emit"],
+                            env=environment, capture_output=True, check=True, timeout=30)
+    rust_path = output / "rust-execution-exchange.json"
+    rust_path.write_bytes(result.stdout)
+    rust_exchange = json.loads(result.stdout)
+    validate_exchange(rust_exchange)
+    stream_compare(rust_exchange)
+    subprocess.run([str(binary), str(corpus), "validate", str(rust_path)],
+                   env=environment, capture_output=True, check=True, timeout=30)
+    rust_validates = {}
+    for peer_path in (output / "go-execution-exchange.json", stream_path):
+        result = subprocess.run([str(rust_binary), str(corpus), "validate", str(peer_path)],
+                                env=environment, capture_output=True, check=True, timeout=30)
+        report = json.loads(result.stdout)
+        if report["frames_validated"] != 18:
+            raise ValueError("wrong Rust peer count")
+        peer = json.loads(peer_path.read_text())
+        expected_hashes = {entry["name"]: hashlib.sha256(bytes.fromhex(entry["frame_hex"])[4:]).hexdigest()
+                           for entry in peer["frames"] if golden[entry["name"]]["type"] == "Result"}
+        if report["result_payload_sha256"] != expected_hashes:
+            raise ValueError("Rust raw Result receipt differs")
+        rust_validates[peer_path.name] = report
+    bad_path.write_text(json.dumps(altered(go_exchange)) + "\n")
+    rejected = subprocess.run([str(rust_binary), str(corpus), "validate", str(bad_path)],
+                              env=environment, capture_output=True, check=False, timeout=30)
+    if rejected.returncode != 1 or rejected.stderr != b"proposed Rust profile exchange failed\n":
+        raise ValueError("Rust accepted deliberate semantic drift")
+    bad_path.unlink()
+    rust_receipt = {
+        "status": "independent-rust-wire-peer-proof-not-owner-acceptance",
+        "reference_head": head,
+        "rust_encodings_to_go_and_independent_python": 18,
+        "go_and_independent_python_encodings_to_rust": 18,
+        "rust_semantic_drift_rejected": True,
+        "raw_result_receipt_hashes": rust_validates,
+        "rust_binary_sha256": hashlib.sha256(rust_binary.read_bytes()).hexdigest(),
+        "rust_exchange_sha256": hashlib.sha256(rust_path.read_bytes()).hexdigest(),
+        "limits": ["No session/transcript acceptance or supervisor authority.",
+                   "No tenant process, grant, durable Result or Execution API."],
+    }
+    (output / "rust-execution-peer-receipt.json").write_text(json.dumps(rust_receipt, indent=2) + "\n")
     receipt = {
         "status": "proposed-wire-peer-proof-not-runtime-authority",
         "reference_head": head,
