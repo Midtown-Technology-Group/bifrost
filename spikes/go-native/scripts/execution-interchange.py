@@ -2,9 +2,9 @@
 import hashlib
 import importlib.metadata
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 class PeerMismatch(ValueError):
@@ -18,7 +18,7 @@ def canonical(value):
 
 
 def main():
-    reference, binary, output = map(lambda arg: Path(arg).resolve(), sys.argv[1:4])
+    reference, binary, output = (Path(arg).resolve() for arg in sys.argv[1:4])
     scripts = Path(__file__).resolve().parent
     provenance = json.loads((scripts / "profile-peer-provenance.json").read_text())
     head = subprocess.check_output(["git", "-C", str(reference), "rev-parse", "HEAD"], text=True).strip()
@@ -100,7 +100,7 @@ def main():
     bad_path = output / "deliberate-drift-exchange.json"
     bad_path.write_text(json.dumps(altered(python_exchange)) + "\n")
     rejected = subprocess.run([str(binary), str(corpus), "validate", str(bad_path)],
-                              env=environment, capture_output=True, timeout=30)
+                              env=environment, capture_output=True, check=False, timeout=30)
     if rejected.returncode != 1 or rejected.stderr != b"proposed profile exchange failed\n":
         raise ValueError("Go did not reject deliberate semantic drift")
     bad_path.unlink()
