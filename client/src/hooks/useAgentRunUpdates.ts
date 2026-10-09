@@ -3,8 +3,8 @@
  *
  * The summarizer and execution worker publish `agent_run_update` messages on
  * the shared `agent-runs` channel and the per-run `agent-run:{id}` channel.
- * The server scopes list channels to the caller. Pass runId for a detail
- * view so its own run updates also invalidate the query cache.
+ * List channels require platform-admin authority. Pass runId for a detail
+ * view so authorized run updates also invalidate the query cache.
  */
 
 import { useEffect } from "react";

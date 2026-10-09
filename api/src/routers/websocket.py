@@ -967,6 +967,8 @@ async def can_access_cli_session(user: UserPrincipal, session_id: str) -> bool:
 
 
 def _agent_runs_channel_for_user(user: UserPrincipal) -> str | None:
+    if not user.is_superuser:
+        return None
     if user.is_superuser and user.organization_id is None:
         return f"{_AGENT_RUNS_CHANNEL_PREFIX}all"
     if user.organization_id:
@@ -975,6 +977,10 @@ def _agent_runs_channel_for_user(user: UserPrincipal) -> str | None:
 
 
 def _resolve_agent_runs_channel(user: UserPrincipal, channel: str) -> str | None:
+    # List broadcasts contain other callers' summaries. Regular users must
+    # subscribe to authorized per-run channels instead.
+    if not user.is_superuser:
+        return None
     if channel == _AGENT_RUNS_CHANNEL:
         return _agent_runs_channel_for_user(user)
     if channel in {

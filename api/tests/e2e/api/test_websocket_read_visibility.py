@@ -14,7 +14,9 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from websockets.asyncio.client import connect
 
+from src.models.enums import AgentAccessLevel
 from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agents import Agent
 from src.models.orm.cli import CLISession
 
 pytestmark = pytest.mark.asyncio
@@ -35,11 +37,22 @@ class TestAgentRunChannelVisibility:
         platform_admin,
         org1_user,
         org2_user,
+        bob_user,
         db_session: AsyncSession,
     ):
+        agent = Agent(
+            name=f"WS visibility {uuid4().hex}",
+            system_prompt="test",
+            organization_id=org1_user.organization_id,
+            access_level=AgentAccessLevel.AUTHENTICATED,
+            created_by="test",
+        )
+        db_session.add(agent)
+        await db_session.flush()
         run_id = uuid4()
         run = AgentRun(
             id=run_id,
+            agent_id=agent.id,
             trigger_type="api",
             status="completed",
             org_id=org1_user.organization_id,
@@ -59,14 +72,15 @@ class TestAgentRunChannelVisibility:
                 resp = await _subscribe(ws, f"agent-run:{run_id}")
                 assert resp["type"] == "subscribed", resp
 
-            # A different regular user (not the caller) is denied.
-            async with connect(
-                ws_url,
-                additional_headers={"Authorization": f"Bearer {org2_user.access_token}"},
-            ) as ws:
-                await asyncio.wait_for(ws.recv(), timeout=5)
-                resp = await _subscribe(ws, f"agent-run:{run_id}")
-                assert resp["type"] == "error", resp
+            # Other callers are denied, including another member of the org.
+            for other_user in (org2_user, bob_user):
+                async with connect(
+                    ws_url,
+                    additional_headers={"Authorization": f"Bearer {other_user.access_token}"},
+                ) as ws:
+                    await asyncio.wait_for(ws.recv(), timeout=5)
+                    resp = await _subscribe(ws, f"agent-run:{run_id}")
+                    assert resp["type"] == "error", resp
 
             # Bypass principal (platform admin) can subscribe to any run.
             async with connect(
@@ -78,6 +92,7 @@ class TestAgentRunChannelVisibility:
                 assert resp["type"] == "subscribed", resp
         finally:
             await db_session.execute(delete(AgentRun).where(AgentRun.id == run_id))
+            await db_session.execute(delete(Agent).where(Agent.id == agent.id))
             await db_session.commit()
 
     async def test_shared_agent_runs_channel_is_bypass_only(

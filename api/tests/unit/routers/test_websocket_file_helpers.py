@@ -146,9 +146,17 @@ class TestAgentRunChannels:
             is not None
         )
 
-    def test_org_user_is_limited_to_own_agent_runs_channel(self) -> None:
+    def test_org_user_cannot_subscribe_to_any_agent_runs_list_channel(self) -> None:
         org_id = uuid.uuid4()
         user = _user(org_id=org_id)
+
+        assert ws_mod._agent_runs_channel_for_user(user) is None
+        for channel in ("agent-runs", "agent-runs:all", "agent-runs:global", f"agent-runs:org:{org_id}"):
+            assert ws_mod._resolve_agent_runs_channel(user, channel) is None
+
+    def test_org_admin_is_limited_to_own_org_list_channel(self) -> None:
+        org_id = uuid.uuid4()
+        user = _user(org_id=org_id, is_superuser=True)
 
         assert ws_mod._agent_runs_channel_for_user(user) == f"agent-runs:org:{org_id}"
         assert (

@@ -340,7 +340,7 @@ async def test_publish_agent_run_update_uses_scoped_list_channels(
     assert "agent-runs" not in channels
 
 
-async def test_websocket_agent_runs_alias_subscribes_to_user_org_channel():
+async def test_websocket_agent_runs_alias_denied_for_regular_user():
     org_id = uuid4()
     user_id = uuid4()
     websocket = SimpleNamespace(state=SimpleNamespace())
@@ -359,7 +359,7 @@ async def test_websocket_agent_runs_alias_subscribes_to_user_org_channel():
 
     assert connect.await_args is not None
     subscribed_channels = connect.await_args.args[1]
-    assert f"agent-runs:org:{org_id}" in subscribed_channels
+    assert f"agent-runs:org:{org_id}" not in subscribed_channels
     assert "agent-runs" not in subscribed_channels
 
 
