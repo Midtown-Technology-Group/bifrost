@@ -30,20 +30,18 @@ class TestBundleManifestNonBypassNeverBuilds:
         yield app
         e2e_client.delete(f"/api/applications/{app['id']}", headers=platform_admin.headers)
 
-    def test_non_bypass_caller_gets_404_when_no_manifest_exists_yet(
+    @pytest.mark.asyncio
+    async def test_non_bypass_caller_gets_404_when_no_manifest_exists_yet(
         self, e2e_client, org1_user, inline_app
     ):
         """No manifest built yet (inline_v1 apps auto-scaffold+build on
         creation, so remove the auto-created one to reach this state): a
         regular user must 404, never trigger the build themselves."""
-        import asyncio
 
         from src.services.app_storage import AppStorageService
 
-        asyncio.run(
-            AppStorageService().delete_preview_file(
-                inline_app["id"], "manifest.json"
-            )
+        await AppStorageService().delete_preview_file(
+            inline_app["id"], "manifest.json"
         )
 
         resp = e2e_client.get(
@@ -53,12 +51,12 @@ class TestBundleManifestNonBypassNeverBuilds:
         )
         assert resp.status_code == 404, resp.text
 
-    def test_non_bypass_caller_gets_stale_manifest_as_is(
+    @pytest.mark.asyncio
+    async def test_non_bypass_caller_gets_stale_manifest_as_is(
         self, e2e_client, org1_user, inline_app
     ):
         """A stale-schema manifest already on disk is served unchanged —
         no rebuild triggered by the regular caller's GET."""
-        import asyncio
         import json
 
         from src.services.app_storage import AppStorageService
@@ -77,7 +75,7 @@ class TestBundleManifestNonBypassNeverBuilds:
                 json.dumps(stale_manifest).encode(),
             )
 
-        asyncio.run(_write_stale())
+        await _write_stale()
 
         resp = e2e_client.get(
             f"/api/applications/{inline_app['id']}/bundle-manifest",
@@ -88,17 +86,17 @@ class TestBundleManifestNonBypassNeverBuilds:
         assert resp.json()["entry"] == "STALE_SENTINEL.js"
 
     @pytest.mark.parametrize("manifest_bytes", [b"{invalid", b"[]", b"null", b'"text"'])
-    def test_non_bypass_caller_gets_404_for_invalid_manifest_without_rebuild(
+    @pytest.mark.asyncio
+    async def test_non_bypass_caller_gets_404_for_invalid_manifest_without_rebuild(
         self, e2e_client, org1_user, inline_app, manifest_bytes
     ):
-        import asyncio
 
         from src.services.app_storage import AppStorageService
 
         storage = AppStorageService()
-        asyncio.run(storage.write_preview_file(
+        await storage.write_preview_file(
             inline_app["id"], "manifest.json", manifest_bytes
-        ))
+        )
 
         resp = e2e_client.get(
             f"/api/applications/{inline_app['id']}/bundle-manifest",
@@ -107,6 +105,6 @@ class TestBundleManifestNonBypassNeverBuilds:
         )
 
         assert resp.status_code == 404, resp.text
-        assert asyncio.run(storage.read_file(
+        assert await storage.read_file(
             inline_app["id"], "preview", "manifest.json"
-        )) == manifest_bytes
+        ) == manifest_bytes

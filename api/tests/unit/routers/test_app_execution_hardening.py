@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from uuid import uuid4
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -15,9 +16,26 @@ from src.services.app_bundler import BundleManifest, BundleResult, SCHEMA_VERSIO
 def _user(*, is_platform_admin: bool = False) -> SimpleNamespace:
     return SimpleNamespace(
         is_platform_admin=is_platform_admin,
+        is_provider_org=False,
         user_id=uuid4(),
         email="user@example.com",
         name="User",
+    )
+
+
+def _ctx(user):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None  # An unmanaged application.
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+    return SimpleNamespace(db=db, org_id=uuid4(), user=user)
+
+
+@pytest.fixture(autouse=True)
+def accessible_application(monkeypatch):
+    monkeypatch.setattr(
+        applications, "get_application_by_id_or_404",
+        AsyncMock(return_value=SimpleNamespace()),
     )
 
 
@@ -27,11 +45,11 @@ async def test_non_admin_cannot_update_app_slug() -> None:
         await applications.update_application(
             uuid4(),
             ApplicationUpdate(slug="new-slug"),
-            ctx=SimpleNamespace(),
+            ctx=_ctx(_user()),
             user=_user(is_platform_admin=False),
         )
 
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -50,11 +68,11 @@ async def test_non_admin_cannot_update_app_control_plane_fields(
         await applications.update_application(
             uuid4(),
             update,
-            ctx=SimpleNamespace(),
+            ctx=_ctx(_user()),
             user=_user(is_platform_admin=False),
         )
 
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -74,11 +92,7 @@ async def test_admin_update_app_slug_proceeds_past_auth(
         await applications.update_application(
             uuid4(),
             ApplicationUpdate(slug="new-slug"),
-            ctx=SimpleNamespace(
-                db=None,
-                org_id=uuid4(),
-                user=SimpleNamespace(email="admin@example.com"),
-            ),
+            ctx=_ctx(_user(is_platform_admin=True)),
             user=_user(is_platform_admin=True),
         )
 
@@ -86,7 +100,7 @@ async def test_admin_update_app_slug_proceeds_past_auth(
 
 
 @pytest.mark.asyncio
-async def test_non_admin_can_update_non_sensitive_app_fields(
+async def test_non_admin_cannot_update_non_sensitive_app_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class FakeRepo:
@@ -94,7 +108,7 @@ async def test_non_admin_can_update_non_sensitive_app_fields(
             pass
 
         async def update_application(self, *args, **kwargs):
-            return None
+            raise AssertionError("Non-admin metadata writes must be denied")
 
     monkeypatch.setattr(applications, "ApplicationRepository", FakeRepo)
 
@@ -102,11 +116,7 @@ async def test_non_admin_can_update_non_sensitive_app_fields(
         await applications.update_application(
             uuid4(),
             ApplicationUpdate(title="Renamed App"),
-            ctx=SimpleNamespace(
-                db=None,
-                org_id=uuid4(),
-                user=SimpleNamespace(email="user@example.com"),
-            ),
+            ctx=_ctx(_user()),
             user=_user(is_platform_admin=False),
         )
 
@@ -124,7 +134,7 @@ async def test_non_admin_cannot_update_browser_dependencies(monkeypatch: pytest.
         await app_code_files.put_dependencies(
             {"date-fns": "4.1.0"},
             uuid4(),
-            ctx=SimpleNamespace(),
+            ctx=_ctx(_user()),
             user=_user(is_platform_admin=False),
         )
 
@@ -143,7 +153,7 @@ async def test_non_admin_cannot_write_app_code(monkeypatch: pytest.MonkeyPatch) 
             app_code_files.AppFileUpdate(source="export default function Page() { return null }"),
             uuid4(),
             "pages/index.tsx",
-            ctx=SimpleNamespace(),
+            ctx=_ctx(_user()),
             user=_user(is_platform_admin=False),
         )
 
@@ -161,7 +171,7 @@ async def test_non_admin_cannot_delete_app_code(monkeypatch: pytest.MonkeyPatch)
         await app_code_files.delete_app_file(
             uuid4(),
             "pages/index.tsx",
-            ctx=SimpleNamespace(),
+            ctx=_ctx(_user()),
             user=_user(is_platform_admin=False),
         )
 
@@ -273,8 +283,8 @@ async def test_preview_stale_manifest_can_rebuild(monkeypatch: pytest.MonkeyPatc
     manifest = await app_code_files.get_bundle_manifest(
         app_id,
         mode=FileMode.draft,
-        ctx=SimpleNamespace(),
-        _user=_user(is_platform_admin=False),
+        ctx=_ctx(_user(is_platform_admin=True)),
+        _user=_user(is_platform_admin=True),
     )
 
     assert manifest["entry"] == "entry-new.js"
