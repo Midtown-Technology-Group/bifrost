@@ -8,6 +8,7 @@ import sys
 import tarfile
 from pathlib import Path
 from uuid import uuid4
+from typing import Any
 
 import pytest
 
@@ -174,7 +175,10 @@ def test_legacy_source_adapter_allows_body_only_and_rejects_declaration_change()
         "files": {"run.py": "run.py"}}
     old = {"run.py": b"from bifrost import workflow\n@workflow\nasync def run(count: int = 1):\n return 1\n"}
     changed = {"run.py": old["run.py"].replace(b"return 1", b"return 2")}
-    assert review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)["entrypoints"] == ["run.py::run"]
+    result = review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
+    assert result["entrypoints"] == ["run.py::run"]
+    assert result["workflow_removal_evidence_verified"] is False
+    assert result["removed_workflow_ids"] == [] and result["workflow_removal_evidence_digest"] is None
     changed["run.py"] = changed["run.py"].replace(b"count: int = 1", b"count: int = 2")
     with pytest.raises(WorkflowRecipeError, match="registration or signatures"):
         review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
@@ -319,3 +323,220 @@ print(json.dumps(r))
     result = subprocess.run([sys.executable, "-I", "-c", program, str(destination), str(payload)],
         cwd=tmp_path, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, check=True, capture_output=True, text=True)
     assert json.loads(result.stdout)["workflow_ids"] == [recipe["workflows"][0]["id"]]
+
+
+def removal_fixture():
+    from datetime import datetime, timedelta, timezone
+    import base64
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from bifrost.workflow_removal_evidence import (
+        WorkflowRemovalReviewContext, export_workflow_removal_evidence, removal_binding,
+    )
+
+    candidate, files, resources = fixture()
+    base = deepcopy(candidate)
+    retired = deepcopy(base["workflows"][0])
+    retired.update(id=str(uuid4()), path="retired.py", function_name="retired")
+    base["workflows"].append(retired)
+    base["files"]["retired.py"] = "solutions/demo/retired.py"
+    base_files = {**files, "retired.py": b"from bifrost import workflow\n@workflow\nasync def retired():\n return 1\n"}
+    private = Ed25519PrivateKey.generate()
+    producer = {"contract": "bifrost.workflow-removal-observer/v1", "issuer": "test-observer",
+                "key_id": "test-key", "build_digest": "sha256:" + "a" * 64, "run_id": "scan-1"}
+    context = WorkflowRemovalReviewContext(solution_id=candidate["solution_id"],
+        instance_origin="https://test.example", recipe_path="config/demo.json", base_sha="b" * 40,
+        trusted_producers=[{**{k: producer[k] for k in ("issuer", "key_id", "build_digest")},
+            "public_key": base64.b64encode(private.public_key().public_bytes_raw()).decode()}])
+    binding = removal_binding(solution_id=context.solution_id, instance_origin=context.instance_origin,
+        recipe_path=context.recipe_path, base_sha=context.base_sha, base_recipe=base,
+        candidate_recipe=candidate, base_files=base_files, candidate_files=files,
+        base_resources=resources, candidate_resources=resources)
+    now = datetime.now(timezone.utc)
+    inventory = {"snapshot_revision": "revision-1", "complete": True,
+                 "pagination_exhausted": True, "includes_disabled": True,
+                 "remaining_references": [], "unresolved_references": []}
+    payload = {"schema_version": "bifrost.workflow-removal-evidence/v1", "binding": binding.model_dump(),
+        "producer": producer, "issued_at": (now - timedelta(seconds=1)).isoformat(),
+        "expires_at": (now + timedelta(minutes=5)).isoformat(),
+        "observations": [{"workflow_id": retired["id"], "phase": "post-reconciliation", "snapshot_revision": "revision-1",
+            "observed_at": (now - timedelta(seconds=2)).isoformat(),
+            **{name: deepcopy(inventory) for name in
+               ("callers_dependencies", "event_sources", "subscriptions", "schedules")}}]}
+    receipt = export_workflow_removal_evidence(payload, private_key=private.private_bytes_raw())
+    args: dict[str, Any] = dict(previous_recipe_value=base, previous_files=base_files, previous_resources=resources,
+                workflow_removal_context=context, workflow_removal_evidence=receipt)
+    return candidate, files, resources, args, private
+
+
+@pytest.mark.parametrize("reviewer", ["workflow", "solution"])
+def test_removal_requires_evidence_and_verifies_exact_signed_observations(reviewer):
+    from bifrost.solution_delivery_review import review_workflow_recipe
+    from bifrost.workflow_removal_evidence import digest
+
+    review = review_workflow_recipe if reviewer == "workflow" else review_solution_recipe
+    candidate, files, resources, args, _key = removal_fixture()
+    with pytest.raises(WorkflowRecipeError, match="^Workflow removal requires verified live caller and trigger reconciliation$"):
+        review(candidate, files, resources, **{**args, "workflow_removal_evidence": None})
+    result = review(candidate, files, resources, **args)
+    assert result["workflow_removal_evidence_verified"] is True
+    assert result["removed_workflow_ids"] == [args["workflow_removal_evidence"]["observations"][0]["workflow_id"]]
+    assert result["workflow_removal_evidence_digest"] == digest(args["workflow_removal_evidence"])
+    assert result["live_state_verified"] is False and result["runtime_verified"] is False
+
+
+@pytest.mark.parametrize("damage", ["solution_id", "instance_origin", "recipe_path", "base_sha",
+    "base_recipe_digest", "candidate_recipe_digest", "base_sources_digest", "candidate_sources_digest",
+    "base_resources_digest", "candidate_resources_digest", "missing_id", "extra_id", "duplicate_id",
+    "expired", "stale", "future", "naive_time", "snapshot", "issuer", "key", "build", "tampered",
+    "unknown_field", "unknown_schema", "missing_context", "wrong_context_solution", "untrusted_key",
+    "no_baseline", "noncanonical_signature"])
+def test_removal_evidence_fails_closed_for_wrong_stale_or_tampered_receipts(damage):
+    import base64
+    from bifrost.workflow_removal_evidence import canonical_bytes
+    candidate, files, resources, args, key = removal_fixture()
+    receipt = args["workflow_removal_evidence"]
+    if damage in receipt["binding"]:
+        receipt["binding"][damage] = (str(uuid4()) if damage == "solution_id" else
+            "https://other.example" if damage == "instance_origin" else
+            "config/other.json" if damage == "recipe_path" else "c" * 40 if damage == "base_sha" else
+            "sha256:" + "c" * 64)
+    elif damage == "missing_id":
+        receipt["observations"] = []
+    elif damage in {"extra_id", "duplicate_id"}:
+        receipt["observations"].append(deepcopy(receipt["observations"][0]))
+        if damage == "extra_id":
+            receipt["observations"][-1]["workflow_id"] = str(uuid4())
+    elif damage == "expired":
+        receipt["expires_at"] = "2000-01-01T00:00:00Z"
+    elif damage == "stale":
+        receipt["observations"][0]["observed_at"] = "2000-01-01T00:00:00Z"
+    elif damage == "future":
+        receipt["observations"][0]["observed_at"] = "2999-01-01T00:00:00Z"
+    elif damage == "naive_time":
+        receipt["issued_at"] = "2026-01-01T00:00:00"
+    elif damage == "snapshot":
+        receipt["observations"][0]["schedules"]["snapshot_revision"] = "other"
+    elif damage in {"issuer", "key", "build"}:
+        field = {"key": "key_id", "build": "build_digest"}.get(damage, damage)
+        receipt["producer"][field] = "sha256:" + "c" * 64 if damage == "build" else "other"
+    elif damage == "unknown_field":
+        receipt["verified"] = True
+    elif damage == "unknown_schema":
+        receipt["schema_version"] = "bifrost.workflow-removal-evidence/v99"
+    elif damage == "missing_context":
+        args["workflow_removal_context"] = None
+    elif damage == "wrong_context_solution":
+        args["workflow_removal_context"] = args["workflow_removal_context"].model_copy(update={"solution_id": str(uuid4())})
+    elif damage == "untrusted_key":
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        key = Ed25519PrivateKey.generate()
+    elif damage == "no_baseline":
+        args["previous_recipe_value"] = None
+    # Sign damaged semantics too: valid authentication must not excuse wrong bindings/scans.
+    if damage == "noncanonical_signature":
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        signature = receipt["signature"]
+        receipt["signature"] = signature[:85] + alphabet[alphabet.index(signature[85]) + 1] + "=="
+    elif damage != "tampered":
+        receipt["signature"] = base64.b64encode(key.sign(canonical_bytes(
+            {k: v for k, v in receipt.items() if k != "signature"}))).decode()
+    else:
+        receipt["producer"]["run_id"] = "edited-after-signing"
+    with pytest.raises(WorkflowRecipeError):
+        review_solution_recipe(candidate, files, resources, **args)
+
+
+@pytest.mark.parametrize("inventory", ["callers_dependencies", "event_sources", "subscriptions", "schedules"])
+@pytest.mark.parametrize("damage", ["missing", "incomplete", "pagination", "disabled", "remaining", "dynamic", "boolean_integer"])
+def test_every_removal_inventory_must_be_complete_and_empty(inventory, damage):
+    import base64
+    from bifrost.workflow_removal_evidence import canonical_bytes
+    candidate, files, resources, args, key = removal_fixture()
+    receipt = args["workflow_removal_evidence"]
+    observation = receipt["observations"][0]
+    if damage == "missing":
+        del observation[inventory]
+    else:
+        field, value = {"incomplete": ("complete", False), "pagination": ("pagination_exhausted", False),
+            "disabled": ("includes_disabled", False), "remaining": ("remaining_references", ["disabled-object"]),
+            "dynamic": ("unresolved_references", ["dynamic-caller"]), "boolean_integer": ("complete", 1)}[damage]
+        observation[inventory][field] = value
+    receipt["signature"] = base64.b64encode(key.sign(canonical_bytes(
+        {k: v for k, v in receipt.items() if k != "signature"}))).decode()
+    with pytest.raises(WorkflowRecipeError):
+        review_solution_recipe(candidate, files, resources, **args)
+
+
+def test_no_removal_keeps_existing_transition_controls_and_has_no_evidence_claim():
+    recipe, files, resources = fixture()
+    result = review_solution_recipe(recipe, files, resources, previous_recipe_value=recipe,
+                                   previous_files=files, previous_resources=resources)
+    assert result["workflow_removal_evidence_verified"] is False
+    assert result["removed_workflow_ids"] == []
+    assert result["workflow_removal_evidence_digest"] is None
+    candidate, files, resources, args, _key = removal_fixture()
+    candidate["workflows"][0]["controls"] = {"endpoint_enabled": True}
+    # A receipt cannot bypass protected controls even when it binds this candidate.
+    from bifrost.workflow_removal_evidence import canonical_bytes, removal_binding
+    import base64
+    args["workflow_removal_evidence"]["binding"] = removal_binding(
+        solution_id=candidate["solution_id"], instance_origin="https://test.example",
+        recipe_path="config/demo.json", base_sha="b" * 40,
+        base_recipe=args["previous_recipe_value"], candidate_recipe=candidate,
+        base_files=args["previous_files"], candidate_files=files,
+        base_resources=resources, candidate_resources=resources).model_dump()
+    receipt = args["workflow_removal_evidence"]
+    receipt["signature"] = base64.b64encode(_key.sign(canonical_bytes(
+        {k: v for k, v in receipt.items() if k != "signature"}))).decode()
+    with pytest.raises(WorkflowRecipeError, match="caller/control-plane adapter"):
+        review_solution_recipe(candidate, files, resources, **args)
+
+
+@pytest.mark.parametrize("content", ["base_source", "candidate_source", "base_resource", "candidate_resource"])
+def test_receipt_is_bound_to_exact_carried_content(content):
+    candidate, files, resources, args, _key = removal_fixture()
+    if content == "base_source":
+        args["previous_files"]["retired.py"] += b"\n# changed base\n"
+    elif content == "candidate_source":
+        files["run.py"] += b"\n# changed candidate\n"
+    elif content == "base_resource":
+        args["previous_resources"] = {"rates.json": b'{"changed": true}'}
+    else:
+        resources["rates.json"] = b'{"changed": true}'
+    with pytest.raises(WorkflowRecipeError, match="digests mismatch"):
+        review_solution_recipe(candidate, files, resources, **args)
+
+
+def test_constructed_evidence_models_cannot_bypass_strict_validation():
+    from bifrost.workflow_removal_evidence import WorkflowRemovalEvidence
+    candidate, files, resources, args, _key = removal_fixture()
+    valid = WorkflowRemovalEvidence.model_validate(args["workflow_removal_evidence"])
+    args["workflow_removal_evidence"] = valid.model_copy(update={"schema_version": "untrusted"})
+    with pytest.raises(WorkflowRecipeError):
+        review_solution_recipe(candidate, files, resources, **args)
+
+
+def test_evidence_cannot_be_embedded_in_recipe_or_used_by_legacy_adapter():
+    recipe, files, resources = fixture()
+    recipe["workflow_removal_evidence"] = {}
+    with pytest.raises(ValueError, match="Extra inputs"):
+        review_solution_recipe(recipe, files, resources)
+    candidate, files, _resources, args, _key = removal_fixture()
+    legacy = {k: candidate[k] for k in ("solution_id", "files")}
+    legacy["schema_version"] = "bifrost.solution-source-delivery/v1"
+    with pytest.raises(WorkflowRecipeError, match="reviewed workflow adapter"):
+        review_solution_recipe(legacy, files, {}, workflow_removal_evidence=args["workflow_removal_evidence"])
+
+
+def test_nested_constructed_inventory_cannot_bypass_completeness_validation():
+    import base64
+    from bifrost.workflow_removal_evidence import RemovalInventory, canonical_bytes
+    candidate, files, resources, args, key = removal_fixture()
+    receipt = args["workflow_removal_evidence"]
+    inventory = receipt["observations"][0]["schedules"]
+    inventory["complete"] = False
+    receipt["signature"] = base64.b64encode(key.sign(canonical_bytes(
+        {k: v for k, v in receipt.items() if k != "signature"}))).decode()
+    receipt["observations"][0]["schedules"] = RemovalInventory.model_construct(**inventory)
+    with pytest.raises(WorkflowRecipeError):
+        review_solution_recipe(candidate, files, resources, **args)

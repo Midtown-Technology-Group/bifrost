@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import case, func, or_, select
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser
 from src.models.contracts.platform_jobs import (
     PlatformJobCancelResponse,
@@ -103,6 +104,7 @@ async def list_platform_jobs(
     "/{job_id}",
     response_model=PlatformJobPublic,
     summary="Get durable platform-job status",
+    **operation_route("platform.jobs.get"),
 )
 async def get_platform_job_status(
     job_id: UUID,

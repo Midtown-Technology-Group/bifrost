@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import CurrentSuperuser, get_current_superuser
 from src.core.database import get_db, get_db_context
 from src.core.log_safety import log_safe
@@ -612,6 +613,7 @@ async def recycle_all_processes(
     "/commands/history",
     response_model=list[WorkerControlCommandPublic],
     summary="List audited worker controls",
+    **operation_route("workers.list_worker_control_commands"),
 )
 async def list_worker_control_commands(
     admin: CurrentSuperuser,

@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, status
 from starlette.responses import JSONResponse
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser
 from src.models.contracts.device_control_keys import (
     ControlKeyCreate,
@@ -38,6 +39,7 @@ router = APIRouter(prefix="/api/device-control-keys", tags=["Device Control Keys
     response_model=ControlKeyCreatedResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a device-scoped control key (raw returned once)",
+    **operation_route("devicecontrolkeys.create_control_key_route"),
 )
 async def create_control_key_route(
     body: ControlKeyCreate,
@@ -59,6 +61,7 @@ async def create_control_key_route(
     "",
     response_model=list[ControlKeyPublic],
     summary="List control keys in the caller's organization",
+    **operation_route("devicecontrolkeys.list_control_keys_route"),
 )
 async def list_control_keys_route(
     ctx: Context,
@@ -78,6 +81,7 @@ async def list_control_keys_route(
     "/{key_id}",
     response_model=ControlKeyPublic,
     summary="Get one control key",
+    **operation_route("devicecontrolkeys.get_control_key_route"),
 )
 async def get_control_key_route(
     key_id: UUID,
@@ -96,6 +100,7 @@ async def get_control_key_route(
     "/{key_id}/rotate",
     response_model=ControlKeyKeyResponse,
     summary="Rotate the control key (raw returned once, same row id)",
+    **operation_route("devicecontrolkeys.rotate_control_key_endpoint"),
 )
 async def rotate_control_key_endpoint(
     key_id: UUID,
@@ -114,6 +119,7 @@ async def rotate_control_key_endpoint(
     "/{key_id}/revoke",
     response_model=ControlKeyPublic,
     summary="Revoke a control key (idempotent)",
+    **operation_route("devicecontrolkeys.revoke_control_key_endpoint"),
 )
 async def revoke_control_key_endpoint(
     key_id: UUID,

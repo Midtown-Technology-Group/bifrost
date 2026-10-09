@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.admission_pause import admission_tracker
 from src.core.auth import CurrentSuperuser
@@ -70,7 +71,7 @@ async def _status(db: DbSession) -> dict:
     }
 
 
-@router.get("", summary="Get runtime maintenance and drain state")
+@router.get("", summary="Get runtime maintenance and drain state", **operation_route("runtimemaintenance.runtime_maintenance_status"))
 async def runtime_maintenance_status(
     _admin: CurrentSuperuser,
     db: DbSession,
@@ -83,7 +84,7 @@ async def runtime_maintenance_status(
         ) from exc
 
 
-@router.post("/enter", summary="Close admissions and begin a bounded drain")
+@router.post("/enter", summary="Close admissions and begin a bounded drain", **operation_route("runtimemaintenance.enter_maintenance"))
 async def enter_maintenance(
     admin: CurrentSuperuser,
     db: DbSession,
@@ -135,7 +136,7 @@ async def enter_maintenance(
         ) from exc
 
 
-@router.post("/{generation}/seal", summary="Seal claims after accepted work drains")
+@router.post("/{generation}/seal", summary="Seal claims after accepted work drains", **operation_route("runtimemaintenance.seal_maintenance"))
 async def seal_maintenance(
     generation: UUID,
     _admin: CurrentSuperuser,
@@ -168,7 +169,7 @@ async def seal_maintenance(
         ) from exc
 
 
-@router.post("/{generation}/exit", summary="Exit one owned maintenance generation")
+@router.post("/{generation}/exit", summary="Exit one owned maintenance generation", **operation_route("runtimemaintenance.exit_maintenance"))
 async def exit_maintenance(
     generation: UUID,
     _admin: CurrentSuperuser,

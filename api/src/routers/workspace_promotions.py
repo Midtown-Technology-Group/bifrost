@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser, bearer_scheme
 from src.core.constants import SYSTEM_USER_UUID
@@ -132,7 +133,7 @@ async def _service(
     return await build_workspace_promotion_preview_service(db, organization_id)
 
 
-@router.post("/preview", response_model=WorkspacePromotionPreviewResponse)
+@router.post("/preview", response_model=WorkspacePromotionPreviewResponse, **operation_route("workspacepromotions.preview_workspace_promotion"))
 async def preview_workspace_promotion(
     request: WorkspacePromotionPreviewRequest,
     ctx: Context,
@@ -163,6 +164,7 @@ async def preview_workspace_promotion(
     "/preview-jobs",
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
+    **operation_route("workspacepromotions.enqueue_workspace_promotion_preview"),
 )
 async def enqueue_workspace_promotion_preview(
     request: WorkspacePromotionPreviewRequest,
@@ -228,6 +230,7 @@ async def enqueue_workspace_promotion_preview(
     "/drafts",
     response_model=WorkspacePromotionDraftResponse,
     status_code=status.HTTP_201_CREATED,
+    **operation_route("workspacepromotions.upload_workspace_promotion_draft"),
 )
 async def upload_workspace_promotion_draft(
     request: WorkspacePromotionDraftRequest,
@@ -258,7 +261,8 @@ async def upload_workspace_promotion_draft(
 
 
 @router.get(
-    "/artifacts/{artifact_id}", response_model=WorkspacePromotionArtifactResponse
+    "/artifacts/{artifact_id}", response_model=WorkspacePromotionArtifactResponse,
+    **operation_route("workspacepromotions.get_workspace_promotion_artifact"),
 )
 async def get_workspace_promotion_artifact(
     artifact_id: UUID,
@@ -284,6 +288,7 @@ async def get_workspace_promotion_artifact(
     "/artifacts/{artifact_id}/canary",
     response_model=WorkspacePromotionCanaryAccepted,
     status_code=status.HTTP_202_ACCEPTED,
+    **operation_route("workspacepromotions.execute_workspace_promotion_canary"),
 )
 async def execute_workspace_promotion_canary(
     artifact_id: UUID,
@@ -335,6 +340,7 @@ async def execute_workspace_promotion_canary(
     "/artifacts/{artifact_id}/prepare",
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
+    **operation_route("workspacepromotions.prepare_workspace_release"),
 )
 async def prepare_workspace_release(
     artifact_id: UUID,
@@ -402,6 +408,7 @@ async def prepare_workspace_release(
 @router.post(
     "/releases/{release_id}/activate",
     response_model=WorkspaceReleaseStatusResponse,
+    **operation_route("workspacepromotions.activate_workspace_release"),
 )
 async def activate_workspace_release(
     release_id: UUID,
@@ -479,6 +486,7 @@ async def activate_workspace_release(
     "/releases/{release_id}/retry-history-lock",
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
+    **operation_route("workspacepromotions.retry_workspace_release_history_lock"),
 )
 async def retry_workspace_release_history_lock(
     release_id: UUID,
@@ -532,7 +540,7 @@ async def retry_workspace_release_history_lock(
     )
 
 
-@router.get("/live/retirement-inventory", response_model=WorkspaceLiveRetirementInventory)
+@router.get("/live/retirement-inventory", response_model=WorkspaceLiveRetirementInventory, **operation_route("workspacepromotions.inspect_workspace_release_retirement"))
 async def inspect_workspace_release_retirement(
     ctx: Context, db: DbSession, user: CurrentSuperuser,
 ) -> WorkspaceLiveRetirementInventory:
@@ -546,7 +554,7 @@ async def inspect_workspace_release_retirement(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.post("/live/retire", response_model=WorkspaceLiveRetireResponse)
+@router.post("/live/retire", response_model=WorkspaceLiveRetireResponse, **operation_route("workspacepromotions.retire_workspace_release"))
 async def retire_workspace_release(
     request: WorkspaceLiveRetireRequest,
     ctx: Context,
@@ -578,7 +586,7 @@ async def retire_workspace_release(
         ) from exc
 
 
-@router.get("/live", response_model=WorkspaceLiveStatusResponse)
+@router.get("/live", response_model=WorkspaceLiveStatusResponse, **operation_route("workspacepromotions.get_live_workspace_release"))
 async def get_live_workspace_release(
     ctx: Context,
     db: DbSession,
@@ -592,7 +600,7 @@ async def get_live_workspace_release(
     return await WorkspaceReleaseActivationService(db, ctx.org_id).get_live()
 
 
-@router.get("/releases/{release_id}", response_model=WorkspaceReleaseStatusResponse)
+@router.get("/releases/{release_id}", response_model=WorkspaceReleaseStatusResponse, **operation_route("workspacepromotions.get_workspace_release_status"))
 async def get_workspace_release_status(
     release_id: UUID,
     ctx: Context,
@@ -619,6 +627,7 @@ async def get_workspace_release_status(
     "/source-releases",
     response_model=WorkspaceSourceReleaseResponse,
     status_code=status.HTTP_201_CREATED,
+    **operation_route("workspacepromotions.declare_workspace_source_release"),
 )
 async def declare_workspace_source_release(
     request: WorkspaceSourceReleaseDeclareRequest,
@@ -651,6 +660,7 @@ async def declare_workspace_source_release(
     "/source-releases/github",
     response_model=WorkspaceSourceReleaseResponse,
     status_code=status.HTTP_201_CREATED,
+    **operation_route("workspacepromotions.declare_workspace_source_release_from_github"),
 )
 async def declare_workspace_source_release_from_github(
     request: WorkspaceSourceReleaseDeclareRequest,
@@ -686,6 +696,7 @@ async def declare_workspace_source_release_from_github(
 @router.get(
     "/source-releases",
     response_model=WorkspaceSourceReleaseListResponse,
+    **operation_route("workspacepromotions.list_workspace_source_releases"),
 )
 async def list_workspace_source_releases(
     ctx: Context,
@@ -708,6 +719,7 @@ async def list_workspace_source_releases(
 @router.get(
     "/solution-deploy-obligations",
     response_model=SolutionDeployObligationListResponse,
+    **operation_route("workspacepromotions.list_solution_deploy_obligations"),
 )
 async def list_solution_deploy_obligations(
     ctx: Context,
@@ -727,6 +739,7 @@ async def list_solution_deploy_obligations(
 @router.get(
     "/solution-deploy-obligations/{obligation_id}",
     response_model=SolutionDeployObligationResponse,
+    **operation_route("workspacepromotions.get_solution_deploy_obligation"),
 )
 async def get_solution_deploy_obligation(
     obligation_id: UUID,
@@ -751,6 +764,7 @@ async def get_solution_deploy_obligation(
 @router.get(
     "/source-releases/{source_release_id}",
     response_model=WorkspaceSourceReleaseResponse,
+    **operation_route("workspacepromotions.get_workspace_source_release"),
 )
 async def get_workspace_source_release(
     source_release_id: UUID,
@@ -777,6 +791,7 @@ async def get_workspace_source_release(
 @router.post(
     "/source-releases/{source_release_id}/disposition",
     response_model=WorkspaceSourceReleaseResponse,
+    **operation_route("workspacepromotions.set_workspace_source_release_disposition"),
 )
 async def set_workspace_source_release_disposition(
     source_release_id: UUID,
