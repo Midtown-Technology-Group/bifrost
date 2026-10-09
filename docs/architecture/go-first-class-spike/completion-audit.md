@@ -576,3 +576,67 @@ interface proposal still lacks #1132 Package4's required human architecture
 release. Next safe work is independent Rust session conformance; the full goal
 stays active. Decision CONTINUE SPIKE. No production/vendor mutation, expanded
 credentials, PR creation, merge or deployment was performed.
+
+## Independent Rust session specification checkpoint (2026-10-09)
+
+Candidate `ae9b76c18d2b097e53c0799391377e8149fdbe8c` adds a separate Rust
+test-only transcript checker against #1132's unchanged published profile and
+session fixtures at `35daf020d5e1286f82bdfed6bb3fc537bf3d78f6`. Current platform
+main remains `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`. The Rust crate remains
+an isolated first-party spike; no Go workload/SDK dependency on this crate exists.
+[Exact retained proof](rust-session-conformance-proof.json) records both hosted
+runs, downloaded output hashes and actual native developer-loop observations.
+
+Diagnostic run38001923899 passed on the first candidate. Independent Rust now
+matches all68 session scenarios and695 fixture steps including setup, with70
+named tests including inventory and byte-preserving compaction checks. Every
+step checks the expected error and complete published snapshot. Every rejected
+step preserves the entire private Rust test state, including observation
+frontiers, sequence, payload identity and pending receipt. Both parent/adapter
+directions are consumed through the independent Rust stream codec. No Python
+oracle or platform implementation is imported. Fixed UTC calendar/microsecond
+tuples compare fixture clocks; this is not trusted monotonic clock custody.
+
+The development-only `raw_value` feature on pinned serde_json1.0.151 retains
+literal fixture frame field order before compaction. It adds no registry package;
+Cargo.lock is unchanged and supported --locked fetch/test/build passed. Incoming
+raw Result payloads remain unchanged for SHA256 receipt identity. The whitespace
+receipt case and byte/string-order preservation test pass. Fmt and clippy with
+warnings denied pass. Normal Rust executable/library builds omit this model.
+
+All three languages now independently match the published session corpus in
+specification tests. Named diagnostic passes are237 Rust,169 Python codec plus69
+Python session/inventory,237 proposed Go and144 unchanged P0 Go. Structural and
+wire cases, six18-message peer encoding directions, raw receipt hashes and
+deliberate semantic-drift negatives remain green. This is independent conformance
+candidate evidence, not architecture ratification, profile freeze or production
+integration into the accepted Rust/Python seams.
+
+Full native run38001923981 passed414 Go test/subtests,41 direct reduced ownership
+checks and15 distinct pooled checks. The pooled log contains16 observations
+because a successful startup readiness probe repeats; it adds no writer coverage.
+Existing P0 Go/Python/Rust interchange, isolated ordinary Go tests/build/security
+checks, synthetic SDK execution and local cancellation pass. Downloaded native
+and warm binaries and module graph match the descriptor; its experimental
+signature independently verifies. Workflow bytes remain
+`160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
+
+Fresh observations:12.474s cold compile with resolved modules,12.136s independent
+empty compile cache,313.27ms warm edit,318.66ms restored warm compile,592.78ms
+edit→artifact,3.776ms median local execution (20 samples) and0.346ms cooperative
+local cancellation. These measure the synthetic authoring fixture, not actual
+Rust lifecycle overhead. SDK remains0.0.0-spike.2 and MTG package2026-10-09.1;
+Engineering Flow/PR Stewardship2026-10-06.1. No test, application or container ran
+on the physical pve-t340 host.
+
+All model owner/custody events remain injected assumptions. Passing a release
+boolean issues no credential, launches no tenant and commits no durable result.
+The actual remaining slice is accepted native registration and immutable trusted
+adapter custody; authenticated finite SDK provision/live session and fresh common
+release admission; actual Rust Start/cancel/Result/Receipt transactions and public
+Execution API readback; actual-schema writer exclusion and supervised cleanup.
+The same complete artifact under a conforming non-Rust supervisor also remains
+unproved. Package4's explicit human architecture release has not been received
+for the common owner integration proposal. Decision CONTINUE SPIKE; goal active,
+completion unproved. No production/vendor mutation, expanded credentials, PR
+creation, merge or deployment was performed.
