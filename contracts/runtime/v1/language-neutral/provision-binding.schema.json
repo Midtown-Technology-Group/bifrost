@@ -3,72 +3,7 @@
   "$id": "https://contracts.bifrost.invalid/runtime/v1/language-neutral/provision-binding.schema.json",
   "$defs": {
     "binding": {
-      "type": "object",
-      "properties": {
-        "execution_kind": {
-          "enum": [
-            "workflow",
-            "agent_run"
-          ]
-        },
-        "execution_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        },
-        "attempt_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        },
-        "attempt_number": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "session_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        },
-        "caller_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        },
-        "organization_id": {
-          "anyOf": [
-            {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "solution_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        },
-        "deployment_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        },
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
-        }
-      },
-      "required": [
-        "execution_kind",
-        "execution_id",
-        "attempt_id",
-        "attempt_number",
-        "session_id",
-        "caller_id",
-        "organization_id",
-        "solution_id",
-        "deployment_id",
-        "artifact_id"
-      ],
-      "additionalProperties": false
+      "$ref": "https://contracts.bifrost.invalid/runtime/v1/language-neutral/binding.schema.json#/$defs/legacy"
     }
   },
   "type": "object",

@@ -41,3 +41,30 @@ change the P0 codec, wire credentials, install language runtimes, implement
 workflow ownership, deploy, or redesign Ninja/Sopdet. Those are subsequent
 slices beneath the existing #1011 gates. The original document's “freeze” is an
 acceptance milestone, not a status achieved by writing these schemas.
+
+## Execution-profile proposal checkpoint (2026-10-09)
+
+Review starts from current MTG main `5efefbcc296825c75cdeb3bf5d095e8eca8d72a6`.
+#1074 is merged; the reference #1011/#1015/Go source pins above remain unchanged
+and unmerged. Current caller prerequisite #1018 is OPEN at
+`fe69d963dffc8057b07a9438cb547a6e4b906f9a`; private grant #1024 is OPEN at
+`6419069da195b053c885ab349f431ff4fae62098`; legacy characterization #1026 is OPEN
+at `e1f4c358efa08cbe8c1562dd8e409002aec9ee31`. These facts do not release their
+stopped/gated implementation cycles.
+
+[Execution profile](execution-profile.md) and [canonical binding](identity-binding.md)
+are the next additive design candidate. One shared definition preserves the old
+decoded document shapes, while the new adapter binding explicitly separates
+original caller org from effective scope and actual process incarnations. The
+profile chooses Offer/Select, input inside Prepare, separate actual provision
+custody and a durable ResultReceipt; P0 stays unchanged. A test-only wire oracle
+and synthetic owner/session vectors make proposed transitions executable without
+implementing SQL, credentials or process launch. The upstream source tripwire
+requires review of any changed Python bytes and does not certify current extraction.
+
+Architecture approval from #1074 covers that static foundation, not this new
+profile or its authority-bearing integrations. Obtain accountable architecture
+review of negotiation/receipt/binding and the explicit custody/ownership gates
+before Package1 ratification or any authority implementation. Deno is no longer
+a planned primary consumer. No workerd/celld substrate is selected. The historical
+foundation review above is retained as history; no freeze is claimed.

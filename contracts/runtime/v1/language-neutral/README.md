@@ -46,3 +46,10 @@ absent from output, errors, logs, history and serialized state.
 The package still needs an executable HTTP/security oracle and runtime runners. Each concrete
 case must contain its actual inputs, expected output/error and observed-effects
 expectations; the required roster must never be passed off as executed vectors.
+
+The additive [execution-profile proposal](../execution-profile/README.md) supplies
+a negotiated protocol candidate and layered conformance vectors. Canonical
+`binding.schema.json` now owns the legacy workload/provision binding and separate
+proposed adapter/tenant projections. Existing document shapes stay compatible.
+Deno is no longer a planned primary target; future JavaScript isolates remain
+possible consumers. None of these checks freezes or implements a runtime.
