@@ -1,5 +1,5 @@
 {
-  "proposal_head": "370230fb4d42f481c9fb94efc8cc9ca7f1185e8c",
+  "proposal_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
   "status": "proposed profile only; no authority release",
   "files": {
     "schemas/profile.schema.json": {
@@ -18,5 +18,6 @@
       "source_path": "contracts/runtime/v1/execution-profile/wire-vectors.json",
       "sha256": "2cbf39883853d56938e9f00f15f5d035aabaaa75d1442f88577bd7d5812d4775"
     }
-  }
+  },
+  "previous_proposal_head": "370230fb4d42f481c9fb94efc8cc9ca7f1185e8c"
 }

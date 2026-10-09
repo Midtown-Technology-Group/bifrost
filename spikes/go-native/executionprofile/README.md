@@ -1,7 +1,7 @@
 # Proposed common execution-profile codec
 
 Independent Go wire prototype against PR #1132 candidate
-`370230fb4d42f481c9fb94efc8cc9ca7f1185e8c`. Exact shared document/corpus
+`35daf020d5e1286f82bdfed6bb3fc537bf3d78f6`. Exact shared document/corpus
 hashes are retained in `testdata/provenance.json`. This is not a profile freeze,
 runtime launch adapter, authorization verifier, lifecycle state machine or
 durable receipt implementation.

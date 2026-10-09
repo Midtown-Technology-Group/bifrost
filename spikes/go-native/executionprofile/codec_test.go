@@ -210,7 +210,7 @@ func TestPinnedSchemaAndCorpusBytes(t *testing.T) {
 			SHA256 string `json:"sha256"`
 		} `json:"files"`
 	}
-	if json.Unmarshal(raw, &provenance) != nil || provenance.Head != "370230fb4d42f481c9fb94efc8cc9ca7f1185e8c" || len(provenance.Files) != 4 {
+	if json.Unmarshal(raw, &provenance) != nil || provenance.Head != "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6" || len(provenance.Files) != 4 {
 		t.Fatal("unreviewed proposal provenance")
 	}
 	for path, expected := range provenance.Files {

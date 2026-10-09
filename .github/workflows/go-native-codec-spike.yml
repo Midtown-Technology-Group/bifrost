@@ -5,6 +5,9 @@ on:
     paths:
       - spikes/go-native/executionprofile/**
       - spikes/go-native/runtimecontrol/**
+      - spikes/go-native/cmd/executioncheck/**
+      - spikes/go-native/scripts/execution-interchange.py
+      - spikes/go-native/scripts/profile-peer-*
       - .github/workflows/go-native-codec-spike.yml
   workflow_dispatch:
 permissions:
@@ -34,8 +37,32 @@ jobs:
             > "$RUNNER_TEMP/codec-evidence/tests.jsonl"
           env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" GOCACHE="$RUNNER_TEMP/codec-cache" \
             GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
-            go vet -mod=readonly ./runtimecontrol ./executionprofile
-          printf '%s\n' 'Trusted codec diagnostic only: no tenant build/run, cross-language interchange, credentials or durable authority.' \
+            go vet -mod=readonly ./runtimecontrol ./executionprofile ./cmd/executioncheck
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" GOCACHE="$RUNNER_TEMP/codec-cache" \
+            GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
+            go build -mod=readonly -trimpath -buildvcs=false \
+            -o "$RUNNER_TEMP/codec-evidence/executioncheck" ./cmd/executioncheck
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Midtown-Technology-Group/bifrost
+          ref: 35daf020d5e1286f82bdfed6bb3fc537bf3d78f6
+          path: .profile-reference
+          persist-credentials: false
+      - name: Install only the hashed reference-oracle wheel closure
+        run: |
+          python3 -m venv "$RUNNER_TEMP/profile-python"
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
+            "$RUNNER_TEMP/profile-python/bin/python" -m pip --isolated install \
+            --index-url https://pypi.org/simple --only-binary=:all: --no-deps \
+            --require-hashes -r spikes/go-native/scripts/profile-peer-requirements.lock
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
+            "$RUNNER_TEMP/profile-python/bin/python" -m pip check
+      - name: Actual Go and proposed Python-oracle peer encoding checks
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/codec-home" \
+            "$RUNNER_TEMP/profile-python/bin/python" spikes/go-native/scripts/execution-interchange.py \
+            .profile-reference "$RUNNER_TEMP/codec-evidence/executioncheck" "$RUNNER_TEMP/codec-evidence"
+          printf '%s\n' 'Trusted proposed-wire peer diagnostic only: Python test oracle, no Rust execution codec, tenant run, session authority or durable finalization.' \
             > "$RUNNER_TEMP/codec-evidence/scope.txt"
       - name: Retain exact diagnostic evidence, including test failure
         if: always()
