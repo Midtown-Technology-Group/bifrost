@@ -221,6 +221,13 @@ async def _execute_async(
 
     baseline_pss = _get_pss_bytes()
 
+    # Cold module-index/import checks may use the injected worker socket.
+    # Install the parent-owned token before those checks create an SDK client,
+    # while no Solution namespace hook is active.
+    from src.services.execution.worker import _set_process_engine_credentials
+
+    _set_process_engine_credentials(context)
+
     # Activate THIS execution's Solution import root, THEN evict workspace
     # modules — in that order. The cross-solution eviction in
     # _clear_workspace_modules keys off the active install (get_solution_context);
@@ -396,8 +403,12 @@ def _capture_failure_metrics(baseline_pss: int) -> dict[str, Any]:
         peak_memory_bytes: int | None = max(0, end_pss - baseline_pss)
     else:
         peak_memory_bytes = None
+    peak_process_rss_bytes = (
+        usage.ru_maxrss if sys.platform == 'darwin' else usage.ru_maxrss * 1024
+    )
     return {
         "peak_memory_bytes": peak_memory_bytes,
+        "peak_process_rss_bytes": peak_process_rss_bytes,
         "cpu_user_seconds": round(usage.ru_utime, 4),
         "cpu_system_seconds": round(usage.ru_stime, 4),
         "cpu_total_seconds": round(usage.ru_utime + usage.ru_stime, 4),
@@ -421,6 +432,7 @@ def _capture_resource_metrics() -> dict[str, Any]:
 
     return {
         "peak_memory_bytes": peak_memory_bytes,
+        "peak_process_rss_bytes": peak_memory_bytes,
         "cpu_user_seconds": round(usage.ru_utime, 4),
         "cpu_system_seconds": round(usage.ru_stime, 4),
         "cpu_total_seconds": round(usage.ru_utime + usage.ru_stime, 4),

@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bifrost.invalid/runtime/v1/language-neutral/artifact.schema.json",
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "properties": {
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "implementation",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "sdk": {
+      "type": "object",
+      "properties": {
+        "distribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "distribution",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "os",
+        "architecture"
+      ],
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "kind",
+        "digest"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "interpreted-runtime/v1"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "adapter_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "image_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sdk": {
+          "$ref": "#/$defs/sdk"
+        },
+        "runtime_protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "source_bundle_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "runtime": {
+          "$ref": "#/$defs/identity"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        }
+      },
+      "required": [
+        "kind",
+        "artifact_id",
+        "adapter_sha256",
+        "image_digest",
+        "sdk",
+        "runtime_protocol",
+        "source_bundle_sha256",
+        "runtime",
+        "dependencies"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "native-executable/v1"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "adapter_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "image_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sdk": {
+          "$ref": "#/$defs/sdk"
+        },
+        "runtime_protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "executable_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "build_evidence_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "platform": {
+          "$ref": "#/$defs/platform"
+        },
+        "toolchain": {
+          "$ref": "#/$defs/identity"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        }
+      },
+      "required": [
+        "kind",
+        "artifact_id",
+        "adapter_sha256",
+        "image_digest",
+        "sdk",
+        "runtime_protocol",
+        "executable_sha256",
+        "build_evidence_sha256",
+        "platform",
+        "toolchain",
+        "dependencies"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "managed-runtime/v1"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "adapter_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "image_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sdk": {
+          "$ref": "#/$defs/sdk"
+        },
+        "runtime_protocol": {
+          "const": "bifrost.runtime/v1"
+        },
+        "payload_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "runtime": {
+          "$ref": "#/$defs/identity"
+        },
+        "platform": {
+          "$ref": "#/$defs/platform"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        }
+      },
+      "required": [
+        "kind",
+        "artifact_id",
+        "adapter_sha256",
+        "image_digest",
+        "sdk",
+        "runtime_protocol",
+        "payload_sha256",
+        "runtime",
+        "platform",
+        "dependencies"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

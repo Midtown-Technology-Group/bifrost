@@ -1,7 +1,7 @@
 """Reviewed registration compilation never imports carried user source."""
 
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from pydantic import ValidationError
@@ -42,6 +42,31 @@ async def run(user: str = "system", *, count: int = 3):
     assert definition["effects"] == []
     assert definition["endpoint_enabled"] is False
     assert definition["role_ids"] == []
+
+
+def test_explicit_portable_id_resolves_to_the_same_install_owned_identity():
+    spec = recipe()
+    portable_id = uuid4()
+    installed_id = uuid5(UUID(spec["solution_id"]), str(portable_id))
+    spec["workflows"][0]["id"] = str(installed_id)
+    entity = compile_source(
+        f"from bifrost import workflow\n@workflow(id='{portable_id}', effects=[])\nasync def run(): pass",
+        spec,
+    )
+    assert entity.resolved_id == installed_id
+
+
+@pytest.mark.parametrize("wrong_namespace", [False, True])
+def test_portable_source_id_cannot_select_an_unrelated_or_other_install_identity(wrong_namespace):
+    spec = recipe()
+    portable_id = uuid4()
+    if wrong_namespace:
+        spec["workflows"][0]["id"] = str(uuid5(uuid4(), str(portable_id)))
+    with pytest.raises(WorkflowRecipeError, match="identity differs"):
+        compile_source(
+            f"from bifrost import workflow\n@workflow(id='{portable_id}', effects=[])\nasync def run(): pass",
+            spec,
+        )
 
 
 @pytest.mark.parametrize("decorator,kind", [("workflow", "workflow"), ("tool", "tool"), ("data_provider", "data_provider")])

@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { authorizeMergeQueue } from "./authorize-merge-queue.mjs";
+import { fileURLToPath } from "node:url";
+import { authorizeMergeQueue, githubRequestUrl } from "./authorize-merge-queue.mjs";
+
+test("permission lookups cannot escape the fixed GitHub API route", () => {
+  assert.equal(githubRequestUrl("/graphql").href, "https://api.github.com/graphql");
+  assert.equal(githubRequestUrl("/repos/Midtown-Technology-Group/bifrost/collaborators/MTG-Thomas/permission").hostname, "api.github.com");
+  for (const path of ["//other.example", "https://other.example", "/graphql?other=1", "/graphql\n", "/repos/Midtown-Technology-Group/bifrost/collaborators/../permission"]) {
+    assert.throws(() => githubRequestUrl(path), /Unexpected/);
+  }
+});
 
 function fixture() {
   const entry = {
     enqueuer: { __typename: "User", login: "MTG-Thomas", databaseId: 87775189 },
-    headCommit: { oid: "candidate" },
+    headCommit: { oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     pullRequest: { number: 714, baseRefName: "main" },
   };
   const queue = { data: { repository: { mergeQueue: { entries: {
@@ -14,8 +27,8 @@ function fixture() {
   const permission = { permission: "admin", user: { id: 87775189 } };
   const calls = [];
   const input = {
-    repo: "Midtown-Technology-Group/bifrost", sha: "candidate", eventName: "merge_group",
-    event: { action: "checks_requested", merge_group: { base_ref: "refs/heads/main", head_sha: "candidate" } },
+    repo: "Midtown-Technology-Group/bifrost", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", eventName: "merge_group",
+    event: { action: "checks_requested", merge_group: { base_ref: "refs/heads/main", head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
     request: async (path) => {
       calls.push(path);
       return path === "/graphql" ? queue : permission;
@@ -26,7 +39,7 @@ function fixture() {
 
 test("authorizes the administrator who queued the exact live candidate", async () => {
   const { input, calls } = fixture();
-  assert.match(await authorizeMergeQueue(input), /MTG-Thomas authorized PR #714 at candidate/);
+  assert.match(await authorizeMergeQueue(input), /MTG-Thomas authorized PR #714 at a{40}/);
   assert.deepEqual(calls, ["/graphql", "/repos/Midtown-Technology-Group/bifrost/collaborators/MTG-Thomas/permission"]);
 });
 
@@ -56,6 +69,15 @@ test("does not authorize bots", async () => {
   await assert.rejects(authorizeMergeQueue(input), /MTG administrator/);
 });
 
+for (const login of ["../other", "MTG-Thomas\nforged approval", "MTG-Thomas\n", "MTG-Thomas\r", "bad/user", "-option", ""] ) {
+  test(`rejects malformed actor ${JSON.stringify(login)} before permission lookup`, async () => {
+    const { input, entry, calls } = fixture();
+    entry.enqueuer.login = login;
+    await assert.rejects(authorizeMergeQueue(input), /Invalid merge queue/);
+    assert.deepEqual(calls, ["/graphql"]);
+  });
+}
+
 for (const [name, alter] of [
   ["stale queue candidate", ({ entry }) => { entry.headCommit.oid = "old"; }],
   ["removed queue entry", ({ queue }) => { queue.data.repository.mergeQueue.entries.nodes = []; }],
@@ -78,6 +100,32 @@ test("API failure fails the gate", async () => {
   const { input } = fixture();
   input.request = async () => { throw new Error("HTTP 403"); };
   await assert.rejects(authorizeMergeQueue(input), /HTTP 403/);
+});
+
+test("CLI fails closed without publishing malicious API errors or credentials", () => {
+  const directory = mkdtempSync(join(tmpdir(), "merge-queue-log-"));
+  try {
+    const { input } = fixture();
+    const eventPath = join(directory, "event.json");
+    writeFileSync(eventPath, JSON.stringify(input.event));
+    const bootstrap = `
+      import { pathToFileURL } from "node:url";
+      globalThis.fetch = async () => { throw new Error("forged approval\\ncredential: test-only"); };
+      await import(pathToFileURL(process.argv[1]).href);
+    `;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", bootstrap,
+      fileURLToPath(new URL("./authorize-merge-queue.mjs", import.meta.url))], {
+      encoding: "utf8",
+      env: { GITHUB_EVENT_PATH: eventPath, GITHUB_EVENT_NAME: input.eventName,
+        GITHUB_SHA: input.sha, GITHUB_REPOSITORY: input.repo, GH_TOKEN: "test-only" },
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.doesNotMatch(result.stderr, /forged approval|test-only/);
+    assert.equal(result.stderr.trim().split("\n").length, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("later waiting PRs do not block the authorized first candidate", async () => {

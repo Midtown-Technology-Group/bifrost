@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
+import tempfile
+import zipfile
 from pathlib import Path
 
 from sqlalchemy import select
@@ -29,14 +33,14 @@ async def read_active_source(
     db: AsyncSession,
     solution: Solution,
 ) -> tuple[dict[str, str], dict[str, bytes]]:
-    source, resources, _ = await _read_active_source(db, solution)
+    source, resources, _, _ = await _read_active_source(db, solution)
     return source, resources
 
 
 async def _read_active_source(
     db: AsyncSession,
     solution: Solution,
-) -> tuple[dict[str, str], dict[str, bytes], DeploymentResolutionMap]:
+) -> tuple[dict[str, str], dict[str, bytes], DeploymentResolutionMap, bytes | None]:
     deployment_id = solution.active_deployment_id
     if solution.execution_runtime_mode != "deployment-v1" or deployment_id is None:
         raise ImmutableSolutionExportError(
@@ -81,6 +85,27 @@ async def _read_active_source(
         raise ImmutableSolutionExportError(
             "Active deployment manifest or storage identity changed"
         )
+    if manifest.package_evidence is not None:
+        from src.services.solutions.package_runtime import readback_package_runtime
+
+        # Complete packages retain manifests, App source and binary assets as
+        # authored input. Use the same full runtime/control/pin verifier as
+        # publication recovery; do not reconstruct source from mutable captures.
+        source = manifest.package_evidence.get("source")
+        package = source.get("package") if isinstance(source, dict) else None
+        source_digest = package.get("source_archive_sha256") if isinstance(package, dict) else None
+        if not isinstance(source_digest, str):
+            raise ImmutableSolutionExportError("Complete package source evidence is missing")
+        await readback_package_runtime(db, solution.id, deployment_id,
+            expected_source_sha256=source_digest, expected_organization_id=solution.organization_id)
+        archive = await storage.read_source_artifact()
+        if sha256_digest(archive) != "sha256:" + source_digest:
+            raise ImmutableSolutionExportError("Complete package source archive changed during export")
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            source_files = {path: bundle.read(path).decode("utf-8")
+                for path in bundle.namelist() if path.endswith(".py")}
+            resource_files = {path: bundle.read(path) for path in resolution.resources}
+        return source_files, resource_files, resolution, archive
     python_files: dict[str, str] = {}
     total = 0
     for path, source in sorted(resolution.sources.items()):
@@ -112,7 +137,7 @@ async def _read_active_source(
                 f"Immutable resource hash differs: {path}"
             )
         resources[path] = content
-    return python_files, resources, resolution
+    return python_files, resources, resolution, None
 
 
 async def require_export_registration(
@@ -161,26 +186,46 @@ async def write_active_export(
 ) -> None:
     from src.services.solutions.capture import SolutionCaptureService
     from src.services.solutions.export import (
+        add_live_content_to_workspace_zip_file,
         add_source_resources,
         build_workspace_zip_for_export,
     )
 
     selected_deployment = solution.active_deployment_id
-    source_files, resources, resolution = await _read_active_source(db, solution)
+    source_files, resources, resolution, authored_archive = await _read_active_source(db, solution)
     await require_export_registration(db, solution, resolution)
-    bundle = await SolutionCaptureService(db).bundle_for(
-        solution,
-        source_files=source_files,
-        include_values=include_values,
-        include_data=include_data,
-        include_files=include_files,
-    )
-    if any(wf.get("path") not in source_files for wf in bundle.workflows):
-        raise ImmutableSolutionExportError(
-            "Owned workflow is absent from the active source closure"
+    if authored_archive is not None:
+        if include_values or include_data or include_files:
+            if not password:
+                raise ValueError("backup export requires a password")
+            from src.services.solutions.deploy import SolutionBundle
+
+            capture = SolutionCaptureService(db)
+            content = SolutionBundle(solution=solution,
+                config_values=await capture._config_values(solution) if include_values else {},
+                table_data=await capture._table_data(solution) if include_data else {},
+                solution_files=await capture._solution_file_entries(solution) if include_files else [])
+            with tempfile.TemporaryDirectory(prefix="bifrost-package-export-") as temporary:
+                source_path = Path(temporary) / "source.zip"
+                await asyncio.to_thread(source_path.write_bytes, authored_archive)
+                await add_live_content_to_workspace_zip_file(source_path, content, db, destination,
+                    password=password, preserve_source_readme=True)
+        else:
+            await asyncio.to_thread(destination.write_bytes, authored_archive)
+    else:
+        bundle = await SolutionCaptureService(db).bundle_for(
+            solution,
+            source_files=source_files,
+            include_values=include_values,
+            include_data=include_data,
+            include_files=include_files,
         )
-    await build_workspace_zip_for_export(bundle, db, destination, password=password)
-    add_source_resources(destination, resources)
+        if any(wf.get("path") not in source_files for wf in bundle.workflows):
+            raise ImmutableSolutionExportError(
+                "Owned workflow is absent from the active source closure"
+            )
+        await build_workspace_zip_for_export(bundle, db, destination, password=password)
+        add_source_resources(destination, resources)
     await require_export_registration(db, solution, resolution)
     await db.refresh(solution)
     if (

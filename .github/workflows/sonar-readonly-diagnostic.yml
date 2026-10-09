@@ -1,0 +1,332 @@
+name: Sonar Read-only Diagnostic
+
+# Direct dispatch requires this file on the default branch. Before that, an
+# existing registered manual workflow can call this file with a local ./ path;
+# GitHub loads that callee from the caller's exact commit, not a floating ref.
+# Review the exact signed workflow commit before dispatching that same ref.
+# No push/PR trigger, checkout, dependency install, artifact, or Sonar write.
+on:
+  workflow_call:
+    inputs:
+      reviewed_workflow_sha:
+        required: true
+        type: string
+      allow_visible_metadata:
+        required: true
+        type: boolean
+    secrets:
+      SONAR_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      reviewed_workflow_sha:
+        description: Exact 40-character SHA of the signed workflow commit you reviewed
+        required: true
+        type: string
+      allow_visible_metadata:
+        description: Allow selected project settings and counts in repository-visible Actions logs
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+jobs:
+  inspect:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      inputs.allow_visible_metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Bind the operator-reviewed workflow commit
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_workflow_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CALLEE_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          CALLEE_REPOSITORY: ${{ job.workflow_repository }}
+          CALLEE_PATH: ${{ job.workflow_file_path }}
+        run: |
+          python3 -I -B - <<'PY'
+          import os
+          import re
+          import sys
+          reviewed = os.environ['REVIEWED_SHA']
+          if not (re.fullmatch(r'[0-9a-f]{40}', reviewed)
+                  and reviewed == os.environ['WORKFLOW_SHA'] == os.environ['GITHUB_SHA']
+                  and reviewed == os.environ['CALLEE_WORKFLOW_SHA']
+                  and os.environ['CALLEE_REPOSITORY'] == 'Midtown-Technology-Group/bifrost'
+                  and os.environ['CALLEE_PATH'] == '.github/workflows/sonar-readonly-diagnostic.yml'):
+              sys.exit('The dispatched commit must match the reviewed workflow SHA.')
+          PY
+      - name: Read only the fixed Sonar project
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          python3 -I -B - <<'PY'
+          import collections
+          import hashlib
+          import http.client
+          import json
+          import math
+          import os
+          import ssl
+          import sys
+          import urllib.parse
+
+          # Official host/authentication: https://docs.sonarsource.com/sonarqube-cloud/appendices/web-api
+          # Each action's live reference is https://sonarcloud.io/web_api/<path>.
+          # Public API descriptors confirm GET semantics/parameters before authentication.
+          HOST = 'sonarcloud.io'
+          PROJECT = 'Midtown-Technology-Group_bifrost'
+          ENDPOINTS = {
+              'components/show', 'components/tree', 'project_branches/list',
+              'project_analyses/search', 'qualitygates/get_by_project',
+              'qualitygates/show', 'qualityprofiles/search', 'settings/values',
+          }
+          SETTINGS = (
+              'sonar.exclusions', 'sonar.inclusions', 'sonar.test.exclusions',
+              'sonar.test.inclusions', 'sonar.global.exclusions',
+              'sonar.global.test.exclusions', 'sonar.coverage.exclusions',
+              'sonar.cpd.exclusions', 'sonar.qualitygate.ignoreSmallChanges',
+          )
+          token = os.environ.pop('SONAR_TOKEN', '')
+          if not token:
+              sys.exit('The existing SONAR_TOKEN is unavailable. No credential was created.')
+
+          class DiagnosticError(Exception):
+              pass
+
+          def request(path, params, authenticated=True):
+              if path not in ENDPOINTS and path != 'webservices/list':
+                  raise DiagnosticError('Endpoint is outside the fixed allowlist.')
+              if any(token in str(value) for value in params.values()):
+                  raise DiagnosticError('A response-derived parameter matched the credential; request blocked.')
+              connection = http.client.HTTPSConnection(
+                  HOST, timeout=20, context=ssl.create_default_context())
+              headers = {'Accept': 'application/json', 'User-Agent': 'bifrost-readonly-diagnostic'}
+              if authenticated:
+                  headers['Authorization'] = 'Bearer ' + token
+              try:
+                  # HTTPSConnection does not follow redirects or environment proxies.
+                  connection.request('GET', '/api/' + path + '?' + urllib.parse.urlencode(params),
+                                     headers=headers)
+                  response = connection.getresponse()
+                  if response.status != 200:
+                      raise DiagnosticError('HTTP ' + str(response.status) + '; no redirect or retry.')
+                  if response.getheader('Content-Type', '').split(';')[0].strip() != 'application/json':
+                      raise DiagnosticError('Expected JSON content type.')
+                  limit = 4_000_000 if path == 'webservices/list' else 2_000_000
+                  body = response.read(limit + 1)
+                  if len(body) > limit:
+                      raise DiagnosticError('Response exceeded the bounded read limit.')
+                  value = json.loads(body)
+                  if not isinstance(value, dict):
+                      raise DiagnosticError('Expected a JSON object.')
+                  return value
+              finally:
+                  connection.close()
+
+          def string(value):
+              if type(value) is not str or len(value) > 4096:
+                  raise DiagnosticError('Metadata must contain bounded strings.')
+              return value
+
+          def count(value, maximum=10_000):
+              if type(value) is not int or not 0 <= value <= maximum:
+                  raise DiagnosticError('Metadata count must be a bounded nonnegative integer.')
+              return value
+
+          def items(value, maximum):
+              if type(value) is not list or len(value) > maximum:
+                  raise DiagnosticError('Metadata array has an unexpected type or size.')
+              return value
+
+          def pick(value, keys):
+              if type(value) is not dict:
+                  raise DiagnosticError('Expected a metadata object.')
+              selected = {}
+              for key in keys:
+                  if key not in value:
+                      continue
+                  item = value[key]
+                  if key in ('values', 'parentValues'):
+                      selected[key] = [string(entry) for entry in items(item, 256)]
+                  elif key in ('default', 'isDefault', 'isBuiltIn', 'inherited', 'isMain'):
+                      if type(item) is not bool:
+                          raise DiagnosticError('Metadata flag must be boolean.')
+                      selected[key] = item
+                  elif key in ('activeRuleCount', 'period'):
+                      selected[key] = count(item, 1_000_000)
+                  elif key == 'id' and type(item) is int:
+                      selected[key] = count(item, 2**63 - 1)
+                  elif key == 'error' and type(item) in (int, float):
+                      if not math.isfinite(item) or abs(item) > 1_000_000_000:
+                          raise DiagnosticError('Metadata threshold must be finite and bounded.')
+                      selected[key] = item
+                  elif key in (
+                      'key', 'organization', 'visibility', 'id', 'name', 'language',
+                      'metric', 'op', 'error', 'value', 'parentValue', 'type',
+                      'analysisDate', 'date', 'revision', 'detectedCI', 'path',
+                  ):
+                      selected[key] = string(item)
+                  else:
+                      raise DiagnosticError('Unexpected metadata field.')
+              return selected
+
+          result = {
+              'project_key': PROJECT,
+              'workflow_sha': os.environ['GITHUB_SHA'],
+              'limitations': [
+                  'Server settings can be inherited; missing keys are unknown, not empty.',
+                  'Scanner overrides and final effective analysis scope are not established here.',
+                  'Inventory covers source-file metadata on the current default branch; no source is read.',
+                  'No account, billing, plan, credential, or permission information is requested.',
+              ],
+          }
+          failed = []
+
+          def collect(name, operation):
+              try:
+                  result[name] = operation()
+                  return result[name]
+              except Exception as error:
+                  # Never print an HTTP body, request headers, or arbitrary exception text.
+                  reason = str(error) if isinstance(error, DiagnosticError) else type(error).__name__
+                  result[name] = {'unavailable': reason}
+                  failed.append(name)
+                  return None
+
+          def inspect():
+              descriptors = request('webservices/list', {}, authenticated=False)
+              actions = {
+                  service['path'].removeprefix('api/') + '/' + action['key']: action
+                  for service in descriptors['webServices']
+                  for action in service['actions']
+                  if service['path'].removeprefix('api/') + '/' + action['key'] in ENDPOINTS
+              }
+
+              def get(path, **params):
+                  action = actions.get(path, {})
+                  if action.get('post') is not False or action.get('internal') is True:
+                      raise DiagnosticError('Live public API descriptor does not confirm a GET action.')
+                  declared = {item['key']: item for item in action.get('params', [])}
+                  if set(params) - declared.keys():
+                      raise DiagnosticError('Parameters differ from the live API descriptor.')
+                  if any(item.get('required') and key not in params and 'defaultValue' not in item
+                         for key, item in declared.items()):
+                      raise DiagnosticError('Live API requires an additional parameter.')
+                  return request(path, params)
+
+              component = get('components/show', component=PROJECT)['component']
+              if component.get('key') != PROJECT or component.get('qualifier') != 'TRK':
+                  raise DiagnosticError('Returned project identity does not match.')
+              organization = component.get('organization')
+              result['project'] = pick(component, ('key', 'organization', 'visibility'))
+              if not isinstance(organization, str) or not organization:
+                  raise DiagnosticError('Project response did not establish the organization key.')
+
+              def scoped(path, **params):
+                  if any(item['key'] == 'organization' for item in actions.get(path, {}).get('params', [])):
+                      params['organization'] = organization
+                  return get(path, **params)
+
+              def gate():
+                  value = pick(scoped('qualitygates/get_by_project', project=PROJECT)['qualityGate'],
+                               ('id', 'name', 'default'))
+                  fields = {item['key'] for item in actions.get('qualitygates/show', {}).get('params', [])}
+                  identifier = {'id': value['id']} if 'id' in fields and 'id' in value else {'name': value['name']}
+                  detail = scoped('qualitygates/show', **identifier)
+                  return {
+                      'assignment': pick(value, ('id', 'name', 'default')),
+                      'definition': pick(detail, ('id', 'name', 'isBuiltIn')),
+                      'conditions': [pick(item, ('id', 'metric', 'op', 'error', 'period'))
+                                     for item in items(detail['conditions'], 100)],
+                  }
+
+              collect('quality_gate', gate)
+              collect('quality_profiles', lambda: [
+                  pick(item, ('key', 'name', 'language', 'isDefault', 'isBuiltIn', 'activeRuleCount'))
+                  for item in items(scoped('qualityprofiles/search', project=PROJECT)['profiles'], 100)
+              ])
+
+              def settings():
+                  values = items(get('settings/values', component=PROJECT, keys=','.join(SETTINGS))['settings'], 100)
+                  selected = [pick(item, ('key', 'value', 'values', 'inherited', 'parentValue', 'parentValues'))
+                              for item in values if item.get('key') in SETTINGS]
+                  return {'values': selected, 'not_returned': sorted(set(SETTINGS) - {item['key'] for item in selected})}
+
+              collect('server_settings', settings)
+              def main_branch():
+                  branches = [pick(item, ('name', 'isMain', 'type', 'analysisDate'))
+                              for item in items(get('project_branches/list', project=PROJECT)['branches'], 10_000)
+                              if item.get('isMain') is True]
+                  if len(branches) != 1:
+                      raise DiagnosticError('Expected exactly one default branch.')
+                  return branches[0]
+
+              collect('default_branch', main_branch)
+
+              def latest():
+                  return [pick(item, ('key', 'date', 'revision', 'detectedCI'))
+                          for item in items(get('project_analyses/search', project=PROJECT, ps=1)['analyses'], 1)]
+
+              before = collect('latest_default_analysis', latest)
+
+              def inventory():
+                  records = []
+                  component_keys = set()
+                  total = None
+                  for page in range(1, 21):
+                      response = get('components/tree', component=PROJECT, qualifiers='FIL',
+                                     strategy='all', ps=500, p=page)
+                      paging = response['paging']
+                      page_total = count(paging['total'])
+                      if count(paging['pageIndex'], 20) != page or count(paging['pageSize'], 500) != 500:
+                          raise DiagnosticError('Inventory pagination does not match the request.')
+                      if total is not None and total != page_total:
+                          raise DiagnosticError('Inventory changed during pagination.')
+                      total = page_total
+                      components = items(response['components'], 500)
+                      if len(components) != min(500, total - len(records)):
+                          raise DiagnosticError('Inventory page count does not match its declared total.')
+                      for raw in components:
+                          item = pick(raw, ('key', 'path', 'language'))
+                          key = item['key']
+                          if not key or key in component_keys:
+                              raise DiagnosticError('Inventory contains an empty or duplicate component key.')
+                          component_keys.add(key)
+                          records.append((key, item.get('path', ''), item.get('language', 'unknown')))
+                      if len(records) >= total:
+                          break
+                  unique = set(records)
+                  if len(records) != total or len(component_keys) != total or len(unique) != total:
+                      raise DiagnosticError('Inventory is incomplete or contains duplicate records.')
+                  roots = collections.Counter()
+                  languages = collections.Counter()
+                  for _, path, language in records:
+                      root = path.split('/')[0]
+                      roots[root if root in ('api', 'apps', 'client', 'scripts', '.github', '.claude') else 'other'] += 1
+                      languages[language] += 1
+                  return {
+                      'source_files': total, 'pages': page,
+                      'by_known_root': dict(roots), 'by_language': dict(languages),
+                      'inventory_sha256': hashlib.sha256(json.dumps(sorted(unique)).encode()).hexdigest(),
+                  }
+
+              collect('source_inventory', inventory)
+              after = collect('latest_default_analysis_recheck', latest)
+              result['analysis_stable_during_read'] = bool(before and before == after)
+              if not result['analysis_stable_during_read']:
+                  failed.append('analysis_stability')
+
+          collect('inspection', inspect)
+          result['unverified_sections'] = sorted(set(failed))
+          output = json.dumps(result, indent=2, sort_keys=True, ensure_ascii=True)
+          if len(output) > 60_000:
+              sys.exit('Selected metadata exceeded the log limit; no response data was printed.')
+          print(output.replace(token, '[REDACTED]'))
+          if failed:
+              sys.exit('Read-only diagnostic is incomplete; see the bounded unavailable sections.')
+          PY

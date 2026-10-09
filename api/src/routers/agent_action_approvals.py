@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException
+from src.services.operation_catalog import operation_route
 from shared.models import AgentActionApprovalResponse
 from sqlalchemy import select
 
@@ -34,7 +35,7 @@ def _response(row: AgentActionApproval) -> AgentActionApprovalResponse:
     return AgentActionApprovalResponse.model_validate(row, from_attributes=True)
 
 
-@router.get("", response_model=list[AgentActionApprovalResponse])
+@router.get("", response_model=list[AgentActionApprovalResponse], **operation_route("agentactionapprovals.list_approvals"))
 async def list_approvals(
     user: CurrentSuperuser, db: DbSession, status: str = "pending"
 ) -> list[AgentActionApprovalResponse]:
@@ -53,7 +54,7 @@ async def list_approvals(
     return [_response(row) for row in rows]
 
 
-@router.post("/{approval_id}/deny", response_model=AgentActionApprovalResponse)
+@router.post("/{approval_id}/deny", response_model=AgentActionApprovalResponse, **operation_route("agentactionapprovals.deny_approval"))
 async def deny_approval(
     approval_id: UUID, user: CurrentSuperuser, db: DbSession
 ) -> AgentActionApprovalResponse:
@@ -78,7 +79,7 @@ async def deny_approval(
     return _response(row)
 
 
-@router.post("/{approval_id}/approve", response_model=AgentActionApprovalResponse)
+@router.post("/{approval_id}/approve", response_model=AgentActionApprovalResponse, **operation_route("agentactionapprovals.approve_approval"))
 async def approve_approval(
     approval_id: UUID, user: CurrentSuperuser, db: DbSession
 ) -> AgentActionApprovalResponse:

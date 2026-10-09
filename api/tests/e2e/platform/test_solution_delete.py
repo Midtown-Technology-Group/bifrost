@@ -20,6 +20,7 @@ from src.models.orm.solutions import Solution as SolutionORM
 from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.services.solutions.deploy import solution_entity_id
+
 from tests.e2e.platform.conftest import wait_for_deploy
 
 pytestmark = pytest.mark.e2e

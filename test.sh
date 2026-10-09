@@ -41,10 +41,7 @@
 #   ./test.sh pre-pr                    Required local PR checks; --full is exhaustive.
 #   ./test.sh ci                        Full isolated run: up, all tests, down.
 #
-# Global flags (apply to most subcommands):
-#   --no-reset    Skip state reset before running tests.
-#   --coverage    Enable coverage reporting (backend only).
-#   --wait        On failure, pause before cleanup.
+# Pytest flags follow a test selector (for example, `./test.sh tests/unit/test_foo.py -v`).
 
 set -euo pipefail
 
@@ -329,7 +326,19 @@ stack_status() {
 # =============================================================================
 
 run_pytest() {
-    local runner_lock_fd runner_name runner_status
+    local runner_lock_fd runner_name runner_status target unit_only running_services
+    local stopped_services=()
+
+    unit_only="${BIFROST_TEST_UNIT_ONLY:-0}"
+    if [[ "${1:-}" == tests/unit/* ]]; then
+        unit_only=1
+        for target in "$@"; do
+            if [[ "$target" == tests/e2e/* ]]; then
+                unit_only=0
+                break
+            fi
+        done
+    fi
 
     # One worktree owns one mutable Docker test stack.  A second pytest process
     # against that stack can reset the database underneath the first process and
@@ -354,6 +363,10 @@ run_pytest() {
 
     cleanup_pytest_runner() {
         docker rm -f "$runner_name" > /dev/null 2>&1 || true
+        if [ "${#stopped_services[@]}" -gt 0 ]; then
+            docker compose -f "$COMPOSE_FILE" start "${stopped_services[@]}" > /dev/null
+            stopped_services=()
+        fi
     }
     trap cleanup_pytest_runner INT TERM
 
@@ -363,6 +376,20 @@ run_pytest() {
     # changed migrations they should run `./test.sh stack reset` once.
     require_stack_up
     prepare_test_state
+    if [[ "$unit_only" == "1" ]]; then
+        # Unit tests create committed service rows while exercising claim
+        # logic. A live scheduler/worker can claim those rows before the test
+        # loop does, making the result depend on an unrelated process tick.
+        running_services="$(docker compose -f "$COMPOSE_FILE" ps --status running --services)"
+        for target in worker scheduler; do
+            if grep -Fxq "$target" <<< "$running_services"; then
+                stopped_services+=("$target")
+            fi
+        done
+        if [ "${#stopped_services[@]}" -gt 0 ]; then
+            docker compose -f "$COMPOSE_FILE" stop "${stopped_services[@]}" > /dev/null
+        fi
+    fi
     # LOG_DIR is mkdir'd on the host as the runner/host user, then bind-mounted
     # into the test-runner container at /tmp/bifrost. The container runs as
     # uid 1000 (non-root, hardened), so it cannot write pytest's --junitxml file
@@ -379,9 +406,11 @@ run_pytest() {
         echo "BIFROST_SKIP_BUILD=1 — using pre-built test-runner image from local docker."
     fi
 
+    set +e
     docker compose -f "$COMPOSE_FILE" --profile test run "${build_args[@]}" --rm test-runner \
         pytest "$@" --durations=25 --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
     runner_status="${PIPESTATUS[0]}"
+    set -e
     trap - INT TERM
     cleanup_pytest_runner
     exec {runner_lock_fd}>&-
@@ -393,9 +422,9 @@ run_pytest() {
 # not the ms a unit test should cost). Those still run in `all` and nightly, so
 # no coverage is dropped — just moved off the per-PR critical path. A caller can
 # re-include them ad hoc with `./test.sh unit -m slow` or `-m ""`.
-cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -m "not slow" -v "$@"; }
-cmd_unit_targets() { run_pytest "$@" -m "not slow" -v; }
-cmd_unit_all() { run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -v "$@"; }
+cmd_unit() { BIFROST_TEST_UNIT_ONLY=1 run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -m "not slow" -v "$@"; }
+cmd_unit_targets() { BIFROST_TEST_UNIT_ONLY=1 run_pytest "$@" -m "not slow" -v; }
+cmd_unit_all() { BIFROST_TEST_UNIT_ONLY=1 run_pytest tests/ --ignore=tests/e2e/ --ignore=tests/parity/ -v "$@"; }
 cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
 cmd_parity() { run_pytest tests/parity/test_device_reference.py -v "$@"; }
 cmd_rust() {

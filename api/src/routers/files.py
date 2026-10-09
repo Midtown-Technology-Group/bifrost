@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.org_filter import resolve_target_org
 from src.core.principal import UserPrincipal
@@ -717,7 +718,7 @@ async def _test_principal(
 # =============================================================================
 
 
-@router.get("/policies", response_model=FilePolicyListResponse)
+@router.get("/policies", response_model=FilePolicyListResponse, **operation_route("files.policies.list"))
 async def list_file_policies(
     ctx: Context,
     user: CurrentSuperuser,
@@ -755,7 +756,7 @@ async def list_file_policies(
     return FilePolicyListResponse(policies=[_policy_public(row) for row in rows])
 
 
-@router.post("/policies/test", response_model=FilePolicyAccessTestResponse)
+@router.post("/policies/test", response_model=FilePolicyAccessTestResponse, **operation_route("files.policies.test"))
 async def test_file_policy_access(
     request: FilePolicyAccessTestRequest,
     ctx: Context,
@@ -814,7 +815,7 @@ async def test_file_policy_access(
     )
 
 
-@router.post("/structure", response_model=FileStructureResponse)
+@router.post("/structure", response_model=FileStructureResponse, **operation_route("files.structure.list"))
 async def list_file_structure(
     request: FileStructureRequest,
     ctx: Context,
@@ -846,7 +847,7 @@ async def list_file_structure(
     return FileStructureResponse(entries=[e.model_dump() for e in entries])
 
 
-@router.get("/policies/{policy_path:path}", response_model=FilePolicyPublic)
+@router.get("/policies/{policy_path:path}", response_model=FilePolicyPublic, **operation_route("files.policies.get"))
 async def get_file_policy(
     policy_path: str,
     ctx: Context,
@@ -886,7 +887,7 @@ async def get_file_policy(
     return _policy_public(row)
 
 
-@router.put("/policies/{policy_path:path}", response_model=FilePolicyPublic)
+@router.put("/policies/{policy_path:path}", response_model=FilePolicyPublic, **operation_route("files.policies.set"))
 async def set_file_policy(
     policy_path: str,
     request: FilePolicySetRequest,
@@ -943,7 +944,7 @@ async def set_file_policy(
     return _policy_public(row)
 
 
-@router.delete("/policies/{policy_path:path}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/policies/{policy_path:path}", status_code=status.HTTP_204_NO_CONTENT, **operation_route("files.policies.delete"))
 async def delete_file_policy(
     policy_path: str,
     ctx: Context,
@@ -1226,7 +1227,7 @@ async def _record_completed_signed_upload(
 # =============================================================================
 
 
-@router.post("/read", response_model=FileReadResponse)
+@router.post("/read", response_model=FileReadResponse, **operation_route("workspace.files.read"))
 async def read_file(
     request: FileReadRequest,
     ctx: Context,
@@ -1334,6 +1335,7 @@ async def read_file(
 @router.post(
     "/impact",
     summary="Preview a Workspace Python file's dependency impact",
+    **operation_route("files.preview_workspace_file_impact"),
 )
 async def preview_workspace_file_impact(
     request: WorkspaceFileImpactRequest,
@@ -1430,7 +1432,7 @@ async def preview_workspace_file_impact(
         ) from exc
 
 
-@router.post("/write", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/write", status_code=status.HTTP_204_NO_CONTENT, **operation_route("workspace.files.write"))
 async def write_file(
     request: FileWriteRequest,
     ctx: Context,
@@ -1664,7 +1666,7 @@ async def write_file(
         )
 
 
-@router.post("/delete", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/delete", status_code=status.HTTP_204_NO_CONTENT, **operation_route("workspace.files.delete"))
 async def delete_file(
     request: FileDeleteRequest,
     ctx: Context,
@@ -1869,7 +1871,7 @@ async def _get_file_stat(
     )
 
 
-@router.post("/list", response_model=FileListResponse)
+@router.post("/list", response_model=FileListResponse, **operation_route("workspace.files.list"))
 async def list_files_simple(
     request: FileListRequest,
     ctx: Context,
@@ -2086,7 +2088,7 @@ async def list_files_simple(
         )
 
 
-@router.post("/exists", response_model=FileExistsResponse)
+@router.post("/exists", response_model=FileExistsResponse, **operation_route("workspace.files.exists"))
 async def file_exists(
     request: FileExistsRequest,
     ctx: Context,
@@ -2167,7 +2169,7 @@ async def file_exists(
         )
 
 
-@router.post("/stat", response_model=FileStatResponse)
+@router.post("/stat", response_model=FileStatResponse, **operation_route("workspace.files.stat"))
 async def file_stat(
     request: FileReadRequest,
     ctx: Context,
@@ -2307,7 +2309,7 @@ async def get_signed_urls(
 # =============================================================================
 
 
-@router.post("/pull", response_model=FilePullResponse)
+@router.post("/pull", response_model=FilePullResponse, **operation_route("workspace.files.pull"))
 async def pull_files(
     request: FilePullRequest,
     ctx: Context,
@@ -2350,7 +2352,7 @@ async def pull_files(
     )
 
 
-@router.get("/manifest")
+@router.get("/manifest", **operation_route("workspace.files.manifest"))
 async def get_manifest(
     ctx: Context,
     user: CurrentSuperuser,
@@ -2369,7 +2371,7 @@ async def get_manifest(
 # =============================================================================
 
 
-@router.post("/watch")
+@router.post("/watch", **operation_route("workspace.files.watch"))
 async def manage_watch_session(
     request: WatchSessionRequest,
     user: CurrentSuperuser,
@@ -2410,7 +2412,7 @@ async def manage_watch_session(
     return {"ok": True}
 
 
-@router.get("/watchers")
+@router.get("/watchers", **operation_route("workspace.files.watchers"))
 async def list_active_watchers(user: CurrentSuperuser) -> dict:
     """List active CLI watch sessions."""
     from src.core.cache.redis_client import get_shared_redis
@@ -2437,6 +2439,7 @@ async def list_active_watchers(user: CurrentSuperuser) -> dict:
     "/editor",
     response_model=list[FileMetadata],
     summary="List directory contents (editor)",
+    **operation_route("workspace.files.editor.list"),
 )
 async def list_files_editor(
     ctx: Context,
@@ -2548,6 +2551,7 @@ async def list_files_editor(
     "/editor/content",
     response_model=FileContentResponse,
     summary="Read file content (editor)",
+    **operation_route("workspace.files.editor.read"),
 )
 async def get_file_content_editor(
     ctx: Context,
@@ -2604,6 +2608,7 @@ async def get_file_content_editor(
     response_model=FileContentResponse,
     summary="Write file content (editor)",
     responses={409: {"model": FileConflictResponse, "description": "File conflict"}},
+    **operation_route("workspace.files.editor.write"),
 )
 async def put_file_content_editor(
     request: FileContentRequest,
@@ -2770,6 +2775,7 @@ async def put_file_content_editor(
     response_model=FileMetadata,
     status_code=status.HTTP_201_CREATED,
     summary="Create folder (editor)",
+    **operation_route("workspace.files.editor.folder.create"),
 )
 async def create_folder_editor(
     ctx: Context,
@@ -2805,6 +2811,7 @@ async def create_folder_editor(
     "/editor",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete file or folder (editor)",
+    **operation_route("workspace.files.editor.delete"),
 )
 async def delete_file_editor(
     ctx: Context,
@@ -2868,6 +2875,7 @@ async def delete_file_editor(
     "/editor/rename",
     response_model=FileMetadata,
     summary="Rename or move file/folder (editor)",
+    **operation_route("workspace.files.editor.rename"),
 )
 async def rename_file_editor(
     ctx: Context,
@@ -2918,6 +2926,7 @@ async def rename_file_editor(
     "/search",
     response_model=SearchResponse,
     summary="Search file contents",
+    **operation_route("workspace.files.search"),
 )
 async def search_file_contents(
     request: SearchRequest,

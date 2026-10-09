@@ -134,7 +134,7 @@ configure_debug_storage() {
         return 0
     fi
 
-    local credential_dir secret_file
+    local credential_dir secret_file ancestor
     credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
     secret_file="$credential_dir/storage-secret"
     mkdir -p "$credential_dir"
@@ -145,6 +145,53 @@ configure_debug_storage() {
     chmod 600 "$secret_file"
     SEAWEEDFS_SECRET_KEY="$(<"$secret_file")"
     export SEAWEEDFS_SECRET_KEY
+}
+
+# Keep local database credentials private and stable for the owning worktree.
+# Existing volumes are never reset or assigned a different password implicitly.
+configure_debug_database() {
+    local credential_dir secret_file ancestor temporary_secret
+    credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
+    secret_file="$credential_dir/postgres-secret"
+    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+        ancestor="$credential_dir"
+        while [ "$ancestor" != / ] && [ "$ancestor" != . ]; do
+            if [ -L "$ancestor" ]; then
+                echo 'Debug database credential directory cannot contain symlinks' >&2
+                return 1
+            fi
+            ancestor="$(dirname "$ancestor")"
+        done
+        if [ -s "$secret_file" ] && [ ! -L "$secret_file" ]; then
+            chmod 600 "$secret_file"
+            POSTGRES_PASSWORD="$(<"$secret_file")"
+        else
+            if docker volume inspect "${COMPOSE_PROJECT_NAME}_postgres_data" >/dev/null 2>&1; then
+                echo 'Existing debug database: set POSTGRES_PASSWORD to its existing credential before continuing. No volume or password was changed.' >&2
+                return 1
+            fi
+            mkdir -p "$credential_dir"
+            chmod 700 "$credential_dir"
+            if [ -e "$secret_file" ] || [ -L "$secret_file" ]; then
+                echo 'Unsafe or empty debug database credential file' >&2
+                return 1
+            fi
+            temporary_secret="$(umask 077; mktemp "$credential_dir/.postgres-secret.XXXXXXXX")" || return 1
+            if ! openssl rand -hex 32 > "$temporary_secret"; then
+                rm -f "$temporary_secret"
+                return 1
+            fi
+            if ! ln "$temporary_secret" "$secret_file"; then
+                rm -f "$temporary_secret"
+                return 1
+            fi
+            rm -f "$temporary_secret"
+            POSTGRES_PASSWORD="$(<"$secret_file")"
+        fi
+    fi
+    export POSTGRES_PASSWORD
+    POSTGRES_PASSWORD_URLENCODED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["POSTGRES_PASSWORD"], safe=""))')"
+    export POSTGRES_PASSWORD_URLENCODED
 }
 
 # =============================================================================
@@ -396,6 +443,7 @@ print_login() {
 # =============================================================================
 
 cmd_up() {
+    configure_debug_database
     print_header
 
     if stack_is_running; then
@@ -469,6 +517,10 @@ cmd_up() {
 }
 
 cmd_down() {
+    # Compose validates interpolation even for teardown; these values are not
+    # sent to existing containers or used to change a database credential.
+    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-unused-for-teardown}"
+    export POSTGRES_PASSWORD_URLENCODED="${POSTGRES_PASSWORD_URLENCODED:-unused-for-teardown}"
     print_header
     echo "Tearing down stack..."
     docker compose -f "$COMPOSE_FILE" --profile netbird down -v
@@ -521,6 +573,8 @@ cmd_status() {
 }
 
 cmd_logs() {
+    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-unused-for-logs}"
+    export POSTGRES_PASSWORD_URLENCODED="${POSTGRES_PASSWORD_URLENCODED:-unused-for-logs}"
     if [ $# -gt 0 ]; then
         docker compose -f "$COMPOSE_FILE" logs -f "$@"
     else
@@ -529,6 +583,7 @@ cmd_logs() {
 }
 
 cmd_fixtures() {
+    configure_debug_database
     print_header
     if ! stack_is_running; then
         echo "ERROR: debug stack is not running. Run ./debug.sh up first." >&2

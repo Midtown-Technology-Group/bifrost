@@ -37,7 +37,10 @@ They remain in the retirement inventory until those adapters are verified.
   the resulting install in reviewed protected Source delivery, verify its
   repository mapping, runtime pin and obligation readback independently.
 
-Human review and protected deployment are required by delivery lane 3. This
+Human source review is recommended by
+[delivery lane 3](delivery-lanes.md#lane-3-platform-or-live-operations), with
+reviewers selected for the adoption and migration risk. Protected deployment
+and explicit authorization for the runtime migration remain required. This
 adapter alone does not authorize retirement of Workspace Live.
 
 ## Operator path and compatibility
@@ -74,6 +77,23 @@ Candidates staged by the earlier adoption implementation must be restaged with
 a fresh candidate UUID to obtain the complete descriptor evidence. Existing
 active deployments and their historical hashes are unchanged. No public DTO,
 SDK field, database migration or metadata PATCH is added.
+
+Captured source can also retain an author-time decorator UUID. Reviewed
+compilation accepts that UUID only when it equals the installed registration or
+resolves to it through the normal `uuid5(solution_id, str(author_time_id))`
+mapping. Other installs' namespaces and unrelated IDs remain conflicts. Source
+UUIDs and installed caller UUIDs are not rewritten during adoption.
+
+When captured tags or tool descriptions differ from the authored declaration,
+the native adapter seals those installed values alongside description/category
+under `bifrost.solution-legacy-descriptors/v2`. It selects v2 only for that
+difference; v1 artifacts retain their original shape and hashes. Both versions
+require exact fields, digest and freshly read installed values. Neither can
+contain identity, scope, authorization, parameter or runtime controls. Source
+tags/tool descriptions remain in the executable definition while installed
+registration metadata remains unchanged. Source-only successors retain the
+same evidence; ordinary reviewed registration delivery applies its normal
+projection and caller checks.
 
 ## Remaining cutover evidence
 

@@ -116,3 +116,47 @@ which upstream tag or commit range the MTG release incorporated.
 - `.github/workflows/release-tag.yml` — validates exact main CI and dispatches tag CI
 - `.github/workflows/ci.yml` — signed packaging and immutable release publication
 - `.claude/skills/bifrost-release/SKILL.md` — fork operator entry point
+
+
+## Stable package manifest and acceptance
+
+Stable MTG tag CI builds each final-version artifact once. It passes the actual
+API, client and worker build digests to `scripts/release/release_manifest.py`.
+The generator reads contracts and the complete migration graph from the exact
+tag commit, not from the pre-release source interval or mutable image tags.
+Malformed identities, inconsistent contracts, incomplete migration graphs and
+candidate/tag mismatches fail closed.
+
+Before publication, `accept_release_images.py` pulls and executes read-only
+content checks against those exact digests on `linux/amd64`: baked server/client
+version, server and bundled CLI contracts, bundled CLI version and migration
+heads. The manifest's `acceptance.kind = container-content-smoke` records this
+bounded evidence. It does **not** certify live-service readiness, migration
+execution, production deployment or arm64. The protected infrastructure lane
+still owns preview, migration, drain, canary and runtime readback.
+
+After acceptance, CI attests `release-manifest.json` using GitHub SLSA provenance
+and exports the verification bundle as `release-manifest.json.sigstore.json`.
+The immutable release must contain the manifest, its `.sha256` checksum and its
+bundle before publishing. The same three files are available for 90 days in the
+exact tag CI run's `release-manifest-vX.Y.Z-attempt-N` artifact. The immutable release
+assets are the durable copy. Attempt-qualified names preserve failed-attempt
+evidence while allowing only the failed publication job to be retried without
+rebuilding successful image jobs. Consumers must verify the bundle for this
+repository, CI workflow, exact tag ref and source commit, then compare the
+manifest's run/attempt and all three image digests before promotion.
+
+The format is defined in [the JSON schema](release-manifest.schema.json).
+`database.upgrade_required` compares the migration graph with the prior stable
+release, not a specific deployment's database. `rollback.supported = false`
+means automatic rollback has not been certified. Terminal workflow retirement
+history must survive application rollback; its schema downgrade refuses once
+retirement evidence exists. Release notes regenerate the actual CLI transition
+and this warning from source whenever the release PR refreshes. Reviewers still
+assess security findings and release-specific instructions on the final head.
+
+Manual CI on a branch also runs the unchanged `test.sh pre-pr` clean-candidate
+gate with read-only repository permissions. This supplies the required Docker
+lane when a local test VM is unavailable. It retains exact-candidate stage/plan
+logs and cleanup evidence; tags never run that preparation job. Required CI,
+human exact-head approval and administrator queue admission remain mandatory.
