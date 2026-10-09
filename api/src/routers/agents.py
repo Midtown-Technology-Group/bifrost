@@ -703,7 +703,7 @@ async def get_fleet_stats_endpoint(
 ) -> FleetStatsResponse:
     """Fleet-wide agent run stats over the last ``window_days``.
 
-    Bypass callers (platform admin / provider org) see cross-org totals;
+    Callers with a platform-admin grant see cross-org totals;
     regular users are scoped to their own org, their own runs/chats, and
     never see another user's private agent folded into the count. A
     regular caller with no org never falls through to the platform-wide

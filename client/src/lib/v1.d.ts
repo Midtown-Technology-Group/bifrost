@@ -6917,11 +6917,11 @@ export interface paths {
          * Get Fleet Stats Endpoint
          * @description Fleet-wide agent run stats over the last ``window_days``.
          *
-         *     Bypass callers (platform admin / provider org) see cross-org totals;
+         *     Callers with a platform-admin grant see cross-org totals;
          *     regular users are scoped to their own org, their own runs/chats, and
          *     never see another user's private agent folded into the count. A
          *     regular caller with no org never falls through to the platform-wide
-         *     view â they get an empty fleet instead.
+         *     view — they get an empty fleet instead.
          *     Route is registered before ``/{agent_id}`` so the literal ``stats``
          *     prefix is not parsed as a UUID.
          */
