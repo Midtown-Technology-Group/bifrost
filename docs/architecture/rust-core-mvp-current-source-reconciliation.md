@@ -5,7 +5,9 @@ acceptance, a new credential policy, or deployment authorization.
 
 ## Source authority
 
-Platform main: `135a305811568362347e9d485ef992e9467f634f`.
+Platform main: `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`.
+The latest main advance adds only the CRLF normalization fast path and its tests;
+it does not change runtime or authority interfaces.
 Workspace main: `ef3c41a0ceeb07fd61acfa9bcd2010d9921cc31a`.
 Architecture amendment #1011 remains provisional at
 `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`.
@@ -111,8 +113,31 @@ were preserved and are not claimed repaired by this change.
 
 The third changed Rust Core qualification is
 [run37988587464](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37988587464),
-on the exact candidate above. It is running, not accepted. Original transport
-remote remains e419; only the separate qualification ref was updated. No full
-pre-PR, lifecycle, C2/C3, merge or production-deployment acceptance follows.
-The prior two qualification failures and exhausted claim experiment remain
-recorded. Do not transfer their passed subsets to this changed candidate.
+on the exact candidate above, completed successfully in all four jobs. It ran
+locked formatting, all-target Clippy, the default 31 Rust tests, migrated-schema
+readiness through PostgreSQL/PgBouncer, container health/shutdown/configuration
+checks and dependency/security/license checks. The admission example compiled;
+its four runtime tests are not part of the default test command.
+
+The separately released second changed transport experiment,
+[run 37990005550](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37990005550),
+failed in the artifacts phase. Its safe receipt reports source_checks=true,
+suite=null and staging_disposal=null. This proves fresh source checks, not
+completion of the transport suite or staging cleanup. The concrete failure
+cause was not exported. Duplicate push run 37990006243 was cancelled before any
+jobs; it supplies no test evidence. Both authorized transport experiments are
+consumed. Keep transport acceptance on HOLD; do not launch a third experiment
+or retrieve private child captures to invent a cause.
+
+AUTH-P1 current-main integration is candidate
+`8292784e5c5014d7fba4eb78c18d84798064ff68`, incorporating the platform head
+above. The ten approved authority source/test paths are unchanged by that main
+advance. Static parsing, qualified scoped Ruff and whitespace checks pass;
+fresh supported CI and the literal pre-PR gate remain required. Historical
+AUTH-P1 CI does not qualify this candidate.
+
+No full lifecycle, C2/C3, merge or production-deployment acceptance follows.
+The prior qualification failures and exhausted claim experiment remain
+recorded. Do not transfer passed subsets between changed candidates. Next work
+is the concrete admission/session/writer boundary contract and workflow owner,
+followed by agent ownership; another transport supervisor is not the product.
