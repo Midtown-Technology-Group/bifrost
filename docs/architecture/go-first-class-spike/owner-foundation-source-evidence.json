@@ -261,5 +261,28 @@
     },
     "job_log_sha256": "96abd72b93a70fff5026f8688608421e1bbd9324175ae57bd9b2a2c8a2d2dc86",
     "new_source_run_required": true
+  },
+  "cancellation_candidate_format_failure": {
+    "source_sha": "3c9e308e1f3468c0d5627de18d6d46a7b2b38ce4",
+    "run": 38076169573,
+    "conclusion": "failure",
+    "diagnosis": "Rustfmt required exactly three line-wrapping corrections. No API stack or Rust/SQL case bodies executed.",
+    "correction": "Apply exact retained formatter diff; gates/limits/assertions unchanged.",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/3c9e308e1f3468c0d5627de18d6d46a7b2b38ce4/runtime-writer-guards-3c9e308e1f3468c0d5627de18d6d46a7b2b38ce4",
+    "artifact_file_sha256": {
+      "owner-evidence/owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-evidence/owner-fetch.txt": "086eaf02d5323850fa6b50aff08fe262bb9120bbbb4f5611a360046a3876cd96",
+      "owner-evidence/owner-fmt.txt": "c0781db2c1c134e7aaf5bf78dbf5f1e319dc61a00915d47d58576aea9ee8ebaa",
+      "owner-evidence/owner-image-cleanup.txt": "5d18e228209a9cf4f1eb82bf9538b321021c560203d30c024bdb42a44c7a71ab",
+      "owner-evidence/owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-evidence/owner-tools-build.txt": "e151a2ae0d48f6b1c01e1ac42ac429594c4aa84754abfb4c2661d5b05b8c45e4",
+      "owner-evidence/owner-tools-image.txt": "7999029361b3714abd143720fbba86e0c0b0d4eba6991ee0fb43b2a0c3375722",
+      "writer-guard-cleanup.log": "54622c6d9df2d280fff76ef8cf617d1fbd42cae7da6eb740b79be343022d4049",
+      "writer-guard-source-hashes.txt": "2018ec1f1a5e8b60ea91aeba66141c88cb683a36e7dd4575bae48faf64f316b2",
+      "writer-guard-source.txt": "5ca6b4192be111e757a9a66199e18d1499abc3511fbddacd868d40cd598a684e"
+    },
+    "job_log_sha256": "b17da4877572e3704cf1e8c7a216e38e75612faf51ee9351100276a656965ccb",
+    "cleanup": "verified empty task container/volume/network inventories",
+    "new_source_run_required": true
   }
 }

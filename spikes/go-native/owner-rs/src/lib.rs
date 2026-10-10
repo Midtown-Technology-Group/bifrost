@@ -151,9 +151,7 @@ async fn lock_session<'a>(
     .bind(&deployment)
     .fetch_optional(&mut *tx)
     .await?;
-    let execution_status: String = execution
-        .ok_or(ObserveError::Rejected)?
-        .try_get("status")?;
+    let execution_status: String = execution.ok_or(ObserveError::Rejected)?.try_get("status")?;
     let source = sqlx::query(
         "SELECT solution_id::text AS solution FROM solution_deployments \
          WHERE id=$1::text::uuid FOR UPDATE NOWAIT",

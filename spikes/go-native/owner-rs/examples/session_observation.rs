@@ -44,8 +44,8 @@ async fn run() -> &'static str {
     let Ok(fence) = read_fence(io::stdin().lock()) else {
         return "rejected";
     };
-    let operation = std::env::var("BIFROST_OWNER_TEST_ACTION")
-        .unwrap_or_else(|_| "observe".to_owned());
+    let operation =
+        std::env::var("BIFROST_OWNER_TEST_ACTION").unwrap_or_else(|_| "observe".to_owned());
     if !matches!(operation.as_str(), "observe" | "request-running-cancel") {
         return "rejected";
     }
@@ -58,7 +58,8 @@ async fn run() -> &'static str {
     // Independent backend sessions through the admitted transaction pool. No
     // prepared-statement or ambient connection/credential fallback is required.
     let options = options.statement_cache_capacity(0);
-    let options = if std::env::var("BIFROST_OWNER_TEST_DEFAULT_FLOAT_DIGITS").as_deref() == Ok("1") {
+    let options = if std::env::var("BIFROST_OWNER_TEST_DEFAULT_FLOAT_DIGITS").as_deref() == Ok("1")
+    {
         // Regression control: the exact SQLx default rejected by this pool.
         options
     } else {
