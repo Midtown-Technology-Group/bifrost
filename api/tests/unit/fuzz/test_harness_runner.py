@@ -5,6 +5,35 @@ import pytest
 from fuzz import cfl_entrypoint
 from fuzz.harnesses import HARNESS_TARGETS, run_harness
 from fuzz.runner import iter_corpus_cases
+from src.services.editor.search import _search_content
+
+
+def test_search_output_budget_corpus_preserves_resource_rejection():
+    case = next(case for case in iter_corpus_cases() if case.path.name == "output-budget.bin")
+    text = case.data.decode("utf-8", errors="replace")
+    with pytest.raises(ValueError, match="Search exceeded the output character budget"):
+        _search_content(text[64:], "fuzz.txt", text[:64], case_sensitive=False, is_regex=True)
+    run_harness(case.target, case.data)
+
+
+def test_search_harness_does_not_mask_unexpected_errors(monkeypatch):
+    def fail(*args, **kwargs):
+        raise ValueError("Unexpected search failure")
+
+    monkeypatch.setattr("fuzz.harnesses._search_content", fail)
+    with pytest.raises(ValueError, match="Unexpected search failure"):
+        run_harness("editor-search", b"payload")
+
+
+
+def test_search_harness_accepts_bounded_regex_timeout(monkeypatch):
+    def fail(*args, **kwargs):
+        if kwargs["is_regex"]:
+            raise TimeoutError("regex timed out")
+        return []
+
+    monkeypatch.setattr("fuzz.harnesses._search_content", fail)
+    run_harness("editor-search", b"payload")
 
 
 def test_registered_harnesses_have_seed_corpus_cases():
