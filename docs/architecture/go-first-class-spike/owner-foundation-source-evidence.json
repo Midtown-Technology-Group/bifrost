@@ -1,0 +1,37 @@
+{
+  "schema": "bifrost.spike.owner-foundation-source/v1",
+  "sdk_version": "0.0.0-spike.2",
+  "mtg_package_version": "2026-10-09.1",
+  "runtime_acceptance": false,
+  "bootstrap": {
+    "source_sha": "b8a9020e7f3ac8625a4254f773d29de4bb14df52",
+    "source_tree": "def74431abc5a7b5e0fca55ce6c7cfa21bd30d8f",
+    "run": 38073041614,
+    "job": 114274220583,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38073041614",
+    "conclusion": "failure",
+    "diagnosis": "Rustfmt required multiline commit error mapping; dependency generation and locked fetch succeeded, clippy/unit/database tests unrun.",
+    "correction": "Apply exactly retained rustfmt diff and commit the reviewed returned lockfile; new source proof required.",
+    "lockfile_sha256": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+    "registry_packages": 159,
+    "registry_policy": "Only crates.io registry sources with SHA256 checksums; direct SQLx0.9.0 and Tokio1.53.1 pins retained. No new nonregistry or Git dependency.",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/b8a9020e7f3ac8625a4254f773d29de4bb14df52/runtime-owner-foundation-b8a9020e7f3ac8625a4254f773d29de4bb14df52",
+    "artifact_file_sha256": {
+      "owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-fetch.txt": "95b057d6de5bf02e85f3074e94c7ed1d3bb84f51938e4da991f3388cca3b4393",
+      "owner-fmt.txt": "f38bb196adc6969bd4c14085347d0529c6c46e26533edd002b7917ba8a5ee3e3",
+      "owner-image-cleanup.txt": "d29d89bf18eb15c23fa8ebc46da70caca8b85ca3415b8c717c956769030b5398",
+      "owner-lock-bootstrap.txt": "c212df92b72f64d3bdebd1afd0bd3b160f0f9659caa5253091ee1aa40f10537e",
+      "owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-tools-build.txt": "c6d7453266b125046c9501c6a751d1ebf521bb5e3a1f6eeceb919235ff002fbb",
+      "owner-tools-image.txt": "ad5c282a502f48918a0549556897b8921a9b41bf68a5a5bc5cb0f69721a2c18c",
+      "source.txt": "5cdad7cbce81356f749015aea5587082a695e2e7430db9ed3930844b5853ac3d"
+    },
+    "job_log_sha256": "632d815941aae59b35ad18128f9a1ba05472a3cee5101b2d160a1c740ea5d0fb"
+  },
+  "unproved": [
+    "Actual Rust PostgreSQL transactions and full common lock races",
+    "Admission, issuer/ingress, Start/cancel/Result and guardian/process custody",
+    "Native registration and unchanged artifact authenticated API end-to-end proof"
+  ]
+}

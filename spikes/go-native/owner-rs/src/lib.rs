@@ -200,7 +200,9 @@ pub async fn observe_session(
     .await?
     .ok_or(ObserveError::Rejected)?;
     let closed: bool = session.try_get("closed")?;
-    tx.commit().await.map_err(|_| ObserveError::UncertainCommit)?;
+    tx.commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
     Ok(if closed {
         SessionObservation::Closed
     } else {
