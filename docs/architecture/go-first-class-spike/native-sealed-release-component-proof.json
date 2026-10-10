@@ -243,5 +243,54 @@
     "representative_path_changed_since_workspace_498e9f8a": false,
     "representative_imports_changed_helpers": false,
     "workspace_edits": false
+  },
+  "verified_start_compiler_component": {
+    "source_commit": "9ba87b2935815046ed37f6b9436727b74fabe6aa",
+    "workflow_run": 38086647157,
+    "conclusion": "success",
+    "source_inputs_verified": 21,
+    "rust_tests_passed": 11,
+    "rust_tests_failed": 0,
+    "rust_tests_ignored": 0,
+    "evidence_sha256": {
+      "source.txt": "f0102f8175a6901e84e828d16de8b32c909cc46051bafae9cd4387bef0f3883a",
+      "owner-source-hashes.txt": "46779b6e5a43e64d270517e82e441ec36c675d1235de49113b3fcd78a3b0e1b8",
+      "owner-tests.txt": "e9e670325d223c55ecceef2f0568532767e8c20563d6463148f7f79e9b157d14",
+      "owner-clippy.txt": "63c0fb8f5137432beb8d1ea04f01c8d06716be8854de0e591eefd6a6f127ba62",
+      "owner-build.txt": "d89ecfef2ba66de347e0527e6e315ef93160e38894460a725850a46a45206604",
+      "owner-tools-build.txt": "f657a811bff999bfb5157a3d4f638b3234367b0a8dbdea208d60e56b55e0a240",
+      "runtime-owner-start": "c9c112681134d0c2c0b8df216cd602099ec36b34841650affa5595b7939eba4d"
+    },
+    "runtime_acceptance": false,
+    "limits": "Compiler/unit component only; actual-schema Start race tests are pending. No accepted source admission, live Prepare custody, restricted issuer or physical spawn is proved."
+  },
+  "verified_result_report_component": {
+    "source_commit": "05786b702af6b4b78b292c2da5af897b3fa2d02d",
+    "workflow_run": 38086057034,
+    "conclusion": "success",
+    "source_inputs_verified": 99,
+    "go_tests_passed": 515,
+    "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "timings_ms": {
+      "module_download": 187.275388,
+      "cold_compile_warm_modules": 16302.475253,
+      "independent_cold_compile": 15962.844921,
+      "warm_source_edit_compile": 356.366275,
+      "restored_warm_compile": 343.912824,
+      "edit_to_artifact": 543.926206
+    },
+    "evidence_sha256": {
+      "descriptor.json": "961bb0f2cb26b829ab807385f0bac2dda75268e911228af688a081d035769bab",
+      "tests.jsonl": "21da603366c8cb6b6ad866721b680f2f651e1c2932238983389a0d02fc183672",
+      "sealed-execution.json": "2a0f288d33d284e7a3e868632baf53b7d5869937f93db8d69c9aa56e2f2462a7"
+    },
+    "runtime_acceptance": false,
+    "limits": "Protocol report helpers and existing local synthetic execution only; no real Rust guardian or restricted issuer connection."
+  },
+  "bundle_verifier_candidate": {
+    "source_commit": "77995fcaf20bd4d646054e1ee5354a8531207db0",
+    "workflow_run": 38088285313,
+    "observed_status": "queued",
+    "runtime_acceptance": false
   }
 }
