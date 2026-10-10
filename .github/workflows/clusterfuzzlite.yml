@@ -37,13 +37,17 @@ jobs:
           language: python
           sanitizer: address
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          bad-build-check: false
+          bad-build-check: true
+          # All three small targets run: coverage-artifact lookup previously
+          # stalled before fuzzing and no authoritative coverage corpus exists.
+          keep-unaffected-fuzz-targets: true
 
       - name: Run fuzzers
         id: run
         uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          language: python
           fuzz-seconds: 600
           mode: code-change
           sanitizer: address
