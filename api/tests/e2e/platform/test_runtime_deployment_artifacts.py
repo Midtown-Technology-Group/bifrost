@@ -322,6 +322,12 @@ async def test_owner_identity_and_closed_session_cannot_be_reassigned_or_erased(
         async with db_session.begin_nested():
             await db_session.execute(text(mutation), owner_session)
     assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert (
+        await db_session.execute(
+            text("SELECT close_reason FROM runtime_sessions WHERE id = :session"),
+            owner_session,
+        )
+    ).scalar_one() == "cancelled"
 
 
 async def test_grant_cannot_store_an_already_expired_access_window(
@@ -371,12 +377,6 @@ async def test_grant_operation_cannot_reference_another_install(
                 OPERATION_INSERT, {**grant_storage, "solution": uuid4()}
             )
     assert getattr(caught.value.orig, "sqlstate", None) == "23503"
-    assert (
-        await db_session.execute(
-            text("SELECT close_reason FROM runtime_sessions WHERE id = :session"),
-            owner_session,
-        )
-    ).scalar_one() == "cancelled"
 
 
 @pytest.mark.parametrize(
