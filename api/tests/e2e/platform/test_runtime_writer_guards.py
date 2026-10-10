@@ -917,6 +917,410 @@ async def test_existing_incumbent_source_write_path_is_unchanged(
 
 
 @pytest.fixture
+async def prepared_start_facts(db_session, association, request):
+    """Actual parent/FK graph and wire hashes; synthetic artifact/custody only."""
+    from datetime import timedelta
+    from hashlib import sha256
+    from sqlalchemy import text
+
+    artifact = {
+        **json.loads(association["artifact"]),
+        "adapter_sha256": "d" * 64,
+        "executable_sha256": "e" * 64,
+        "image_digest": None,
+        "sdk": {"distribution": "bifrost-go", "version": "synthetic-test"},
+        "platform": {"os": "linux", "architecture": "amd64"},
+        "toolchain": {"implementation": "go", "version": "synthetic-test"},
+        "dependencies": {"kind": "go-module-lock/v1", "digest": "sha256:" + "f" * 64},
+    }
+    input_schema = {
+        "type": "object",
+        "required": ["integration_name"],
+        "additionalProperties": False,
+        "properties": {"integration_name": {"type": "string", "minLength": 1}},
+    }
+    case = getattr(request, "param", "valid")
+    input_value = {
+        "integration_name": ""
+        if case == "invalid-input"
+        else "Synthetic readiness fixture"
+    }
+    statement = text(
+        ARTIFACT_INSERT.text.replace(
+            "'{}'::jsonb, '{}'::jsonb", "CAST(:input_schema AS jsonb), '{}'::jsonb"
+        )
+    )
+    await db_session.execute(
+        statement,
+        {
+            **association,
+            "artifact": json.dumps(artifact),
+            "input_schema": json.dumps(input_schema),
+        },
+    )
+    (
+        template,
+        execution,
+        attempt,
+        claim,
+        worker,
+        owner,
+        session,
+        supervisor,
+        runtime,
+        prepare_id,
+        prepared_id,
+        start,
+        message,
+    ) = [uuid4() for _ in range(13)]
+    db_session.add(
+        Execution(
+            id=template,
+            workflow_id=association["workflow"],
+            solution_deployment_id=association["deployment"],
+            workflow_name="Synthetic Start fixture",
+            executed_by_name="Synthetic",
+            status=ExecutionStatus.PENDING,
+            parameters=input_value,
+        )
+    )
+    await db_session.commit()
+    async with connection("wex_core") as conn:
+        org = await conn.fetchval(
+            "SELECT organization_id FROM solutions WHERE id=$1", association["solution"]
+        )
+        caller = {
+            "caller_user_id": str(association["reviewer"]),
+            "caller_organization_id": str(org),
+            "effective_organization_id": str(org),
+        }
+        binding = {
+            "kind": "execution-binding/v1",
+            "execution_kind": "workflow",
+            "execution_id": str(execution),
+            "attempt_id": str(attempt),
+            "attempt_number": 1,
+            "solution_id": str(association["solution"]),
+            "deployment_id": str(association["deployment"]),
+            "artifact_id": association["artifact_id"],
+            "session_id": str(session),
+            "supervisor_incarnation_id": str(supervisor),
+            "runtime_incarnation_id": str(runtime),
+            "original_caller": {
+                "caller_id": str(association["reviewer"]),
+                "organization_id": str(org),
+            },
+            "effective_scope": {"kind": "organization", "organization_id": str(org)},
+        }
+        context = {
+            key: binding[key]
+            for key in (
+                "execution_kind",
+                "execution_id",
+                "attempt_id",
+                "attempt_number",
+                "solution_id",
+                "deployment_id",
+                "artifact_id",
+                "effective_scope",
+            )
+        }
+        context.update(kind="tenant-context/v1", caller_id=str(association["reviewer"]))
+        prepare = {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Prepare",
+            "session_id": str(session),
+            "message_id": str(prepare_id),
+            "sequence": 2,
+            "correlation_id": str(uuid4()),
+            "body": {
+                "binding": binding,
+                "artifact": artifact,
+                "context": context,
+                "workload": {
+                    "input": input_value,
+                    "input_schema_digest": "sha256:"
+                    + sha256(
+                        json.dumps(input_schema, separators=(",", ":")).encode()
+                    ).hexdigest(),
+                    "output_schema_digest": "sha256:" + sha256(b"{}").hexdigest(),
+                    "deadline_utc": (datetime.now(UTC) + timedelta(seconds=10))
+                    .isoformat(timespec="microseconds")
+                    .replace("+00:00", "Z"),
+                },
+            },
+        }
+        prepared = {
+            "protocol": "bifrost.runtime/v1",
+            "type": "Prepared",
+            "session_id": str(session),
+            "message_id": str(prepared_id),
+            "sequence": 2,
+            "correlation_id": str(prepare_id),
+            "body": {"prepare_message_id": str(prepare_id), "artifact": artifact},
+        }
+        if case == "expired":
+            prepare["body"]["workload"]["deadline_utc"] = (
+                (datetime.now(UTC) - timedelta(seconds=1))
+                .isoformat(timespec="microseconds")
+                .replace("+00:00", "Z")
+            )
+        if case == "context":
+            prepare["body"]["context"]["caller_id"] = str(uuid4())
+        if case == "caller":
+            caller["caller_user_id"] = str(uuid4())
+        payload = json.dumps(prepare, separators=(",", ":")).encode()
+        binding_hash = sha256(
+            json.dumps(binding, separators=(",", ":")).encode()
+        ).hexdigest()
+        async with conn.transaction():
+            await clone(
+                conn,
+                "executions",
+                template,
+                {
+                    "id": execution,
+                    "isolated_owner": "coordinator",
+                    "runtime_mode": "deployment-v1",
+                },
+            )
+            await conn.execute(
+                "INSERT INTO runtime_execution_owners (execution_id,owner_incarnation_id,workflow_id,deployment_id,artifact_id,caller_snapshot,caller_sha256) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)",
+                execution,
+                owner,
+                association["workflow"],
+                association["deployment"],
+                association["artifact_id"],
+                json.dumps(caller),
+                association["source"],
+            )
+            await conn.execute(
+                "INSERT INTO workflow_execution_attempts (id,execution_id,attempt_number,status,phase,claim_token,worker_incarnation_id,published_at,claimed_at,runtime_mode,isolated_owner) "
+                "VALUES ($1,$2,1,'claimed','admission',$3,$4,clock_timestamp(),clock_timestamp(),'deployment-v1','coordinator')",
+                attempt,
+                execution,
+                claim,
+                worker,
+            )
+            await conn.execute(
+                "INSERT INTO runtime_sessions (id,execution_id,owner_incarnation_id,workflow_attempt_id,claim_token,worker_incarnation_id,supervisor_incarnation_id,runtime_incarnation_id,channel_custody_sha256,binding_sha256,prepare_id,prepare_sha256) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+                session,
+                execution,
+                owner,
+                attempt,
+                claim,
+                worker,
+                supervisor,
+                runtime,
+                "c" * 64,
+                binding_hash,
+                prepare_id,
+                sha256(payload).hexdigest(),
+            )
+    return {
+        "fence": [
+            str(execution),
+            str(owner),
+            str(attempt),
+            str(claim),
+            str(worker),
+            str(session),
+            str(supervisor),
+            str(runtime),
+            binding_hash,
+            "c" * 64,
+        ],
+        "execution": execution,
+        "attempt": attempt,
+        "session": session,
+        "start": start,
+        "message": message,
+        "prepare": payload,
+        "prepared": json.dumps(prepared).encode(),
+    }
+
+
+async def start_probe(
+    facts, operation="record", role="wex_core", exit_after_commit=False
+):
+    executable = Path("/app/scripts/runtime-owner-start")
+    assert executable.is_file(), "Required source-bound Rust Start artifact is missing"
+    process = await asyncio.create_subprocess_exec(
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test",
+            "BIFROST_OWNER_TEST_START_ACTION": operation,
+            "BIFROST_OWNER_TEST_EXIT_AFTER_START_COMMIT": "1"
+            if exit_after_commit
+            else "0",
+        },
+    )
+    try:
+        header = (
+            "\n".join([*facts["fence"], str(facts["start"]), str(facts["message"])])
+            + "\n"
+        ).encode()
+        payload = json.dumps(
+            [facts["prepare"].decode(), facts["prepared"].decode()]
+        ).encode()
+        out, err = await asyncio.wait_for(
+            process.communicate(header + payload), timeout=8
+        )
+        assert process.returncode == (73 if exit_after_commit else 0)
+        assert err == b"" and len(out) <= 512
+        if exit_after_commit:
+            assert out == b""
+            return "reply_lost"
+        response = out.decode().strip()
+        return json.loads(response) if response.startswith("{") else response
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def start_snapshot(facts):
+    async with connection("wex_core") as conn:
+        return await conn.fetchval(
+            "SELECT jsonb_build_object('execution',to_jsonb(e),'attempt',to_jsonb(a),'session',to_jsonb(s),'starts',"
+            "(SELECT jsonb_agg(to_jsonb(st) ORDER BY st.id) FROM runtime_starts st WHERE st.session_id=s.id))::text "
+            "FROM executions e JOIN workflow_execution_attempts a ON a.execution_id=e.id JOIN runtime_sessions s ON s.workflow_attempt_id=a.id "
+            "WHERE e.id=$1 AND a.id=$2 AND s.id=$3",
+            facts["execution"],
+            facts["attempt"],
+            facts["session"],
+        )
+
+
+async def test_rust_start_commits_running_and_exact_clock_once(prepared_start_facts):
+    facts = prepared_start_facts
+    before = await start_snapshot(facts)
+    assert await start_probe(facts, operation="observe") == "start_not_retained"
+    assert await start_snapshot(facts) == before
+    body = await start_probe(facts)
+    assert body["committed_start_id"] == str(facts["start"])
+    assert body["prepare_message_id"] == json.loads(facts["prepare"])["message_id"]
+    assert 0 < body["remaining_run_ms"] <= 10000
+    committed = await start_snapshot(facts)
+    retained = json.loads(committed)
+    assert retained["execution"]["status"] == "Running"
+    assert (
+        retained["attempt"]["status"] == "running"
+        and retained["attempt"]["phase"] == "execution"
+    )
+    assert (
+        retained["execution"]["started_at"]
+        == retained["attempt"]["started_at"]
+        == retained["starts"][0]["started_at"]
+    )
+    assert await start_probe(facts) == "rejected"
+    assert await start_probe(facts, operation="observe") == "start_retained"
+    assert await start_snapshot(facts) == committed
+
+
+async def test_rust_start_lost_reply_is_observed_without_repeating_write(
+    prepared_start_facts,
+):
+    facts = prepared_start_facts
+    assert await start_probe(facts, exit_after_commit=True) == "reply_lost"
+    before = await start_snapshot(facts)
+    assert await start_probe(facts, operation="observe") == "start_retained"
+    assert await start_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("field", range(10))
+async def test_rust_start_stale_fence_has_no_effects(prepared_start_facts, field):
+    facts = prepared_start_facts
+    changed = {**facts, "fence": list(facts["fence"])}
+    changed["fence"][field] = str(uuid4()) if field < 8 else "a" * 64
+    before = await start_snapshot(facts)
+    assert await start_probe(changed) == "rejected"
+    assert await start_snapshot(facts) == before
+
+
+async def test_rust_start_noncore_role_has_no_effects(prepared_start_facts):
+    facts = prepared_start_facts
+    before = await start_snapshot(facts)
+    assert await start_probe(facts, role="wex_incumbent") == "rejected"
+    assert await start_snapshot(facts) == before
+
+
+async def test_rust_start_concurrent_writers_have_one_committed_decision(
+    prepared_start_facts,
+):
+    facts = prepared_start_facts
+    responses = await asyncio.gather(start_probe(facts), start_probe(facts))
+    assert sum(isinstance(response, dict) for response in responses) == 1
+    assert responses.count("rejected") == 1
+    retained = json.loads(await start_snapshot(facts))
+    assert len(retained["starts"]) == 1
+
+
+@pytest.mark.parametrize(
+    "prepared_start_facts",
+    ["invalid-input", "expired", "context", "caller"],
+    indirect=True,
+)
+async def test_rust_start_rejects_invalid_retained_preparation_without_effects(
+    prepared_start_facts,
+):
+    facts = prepared_start_facts
+    before = await start_snapshot(facts)
+    assert await start_probe(facts) == "rejected"
+    assert await start_snapshot(facts) == before
+
+
+async def test_rust_start_close_before_decision_has_no_effects(prepared_start_facts):
+    facts = prepared_start_facts
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "UPDATE runtime_sessions SET closed_at=clock_timestamp(),close_reason='test_closed' WHERE id=$1",
+            facts["session"],
+        )
+    before = await start_snapshot(facts)
+    assert await start_probe(facts) == "rejected"
+    assert await start_snapshot(facts) == before
+
+
+async def test_rust_start_late_attempt_fault_rolls_back_start_and_running(
+    prepared_start_facts, db_session
+):
+    from sqlalchemy import text
+
+    facts = prepared_start_facts
+    await db_session.execute(
+        text(
+            "CREATE FUNCTION isolated_start_attempt_fault() RETURNS trigger LANGUAGE plpgsql AS $body$ "
+            "BEGIN RAISE EXCEPTION 'synthetic Start attempt fault' USING ERRCODE='42501'; END $body$"
+        )
+    )
+    await db_session.execute(
+        text(
+            "CREATE TRIGGER isolated_start_attempt_fault BEFORE UPDATE ON workflow_execution_attempts "
+            "FOR EACH ROW EXECUTE FUNCTION isolated_start_attempt_fault()"
+        )
+    )
+    await db_session.commit()
+    before = await start_snapshot(facts)
+    try:
+        assert await start_probe(facts) == "database_failure"
+        assert await start_snapshot(facts) == before
+    finally:
+        await db_session.execute(
+            text(
+                "DROP TRIGGER isolated_start_attempt_fault ON workflow_execution_attempts"
+            )
+        )
+        await db_session.execute(text("DROP FUNCTION isolated_start_attempt_fault()"))
+        await db_session.commit()
+
+
+@pytest.fixture
 async def running_cancel_facts(rows, session_fence, request):
     """Synthetic retained Start/grant metadata, not admission or token issuance."""
     import re
