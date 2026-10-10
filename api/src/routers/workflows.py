@@ -885,6 +885,13 @@ async def execute_workflow(
         validate_execution_identity_overrides,
     )
 
+    # Reject an unbound embed session before any immediate or scheduled dispatch.
+    if user.embed and not user.jti:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid embed session",
+        )
+
     try:
         effective_user = effective_execution_user(ctx.user, ctx.org_id)
     except DelegationAuthorizationError as exc:
@@ -1092,6 +1099,19 @@ async def execute_workflow(
                 detail=str(exc),
             ) from exc
         if recovered is not None:
+            # Embed sessions share a service subject. A matching durable retry
+            # still requires the initiating session's execution capability.
+            if user.embed:
+                from src.core.cache.keys import embed_execution_key
+                from src.core.cache.redis_client import get_redis
+
+                async with get_redis() as redis:
+                    owned = await redis.exists(embed_execution_key(user.jti, str(execution_request_id)))
+                if not owned:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied to this execution",
+                    )
             return recovered
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
@@ -1118,6 +1138,10 @@ async def execute_workflow(
             is_external=exec_is_external,
             execution_id=execution_request_id,
         )
+        if user.embed:
+            from src.core.embed_middleware import register_embed_execution
+
+            await register_embed_execution(user.jti, str(exec_id))
         return WorkflowExecutionResponse(
             execution_id=str(exec_id),
             workflow_id=str(workflow.id),
@@ -1214,6 +1238,10 @@ async def execute_workflow(
                 dispatch_metadata=dispatch_metadata,
                 org_id_override=request.org_id,
             )
+            if user.embed and not request.transient and result.execution_id:
+                from src.core.embed_middleware import register_embed_execution
+
+                await register_embed_execution(user.jti, result.execution_id)
             return WorkflowExecutionResponse(
                 execution_id=result.execution_id,
                 workflow_id=str(workflow.id),
@@ -1247,6 +1275,11 @@ async def execute_workflow(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Either workflow_id or code must be provided",
             )
+
+        if user.embed and not request.transient and result.execution_id:
+            from src.core.embed_middleware import register_embed_execution
+
+            await register_embed_execution(user.jti, result.execution_id)
 
         # If the result already has a terminal status (sync mode), mark as transient
         # so the frontend uses the inline result instead of waiting on WebSocket

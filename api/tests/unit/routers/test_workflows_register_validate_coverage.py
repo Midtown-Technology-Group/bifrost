@@ -1207,3 +1207,93 @@ def bypass_live_registration_authority(monkeypatch):
         "_guard_workflow_registration_mutation",
         AsyncMock(),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delay_seconds", [None, 60])
+async def test_embed_execution_requires_session_before_dispatch(delay_seconds) -> None:
+    """An unbound app embed cannot dispatch immediately or schedule work."""
+    user = _exec_user(embed=True, jti=None)
+    with patch("src.repositories.WorkflowRepository") as repo:
+        with pytest.raises(HTTPException) as exc:
+            await workflows.execute_workflow(
+                WorkflowExecutionRequest(workflow_id="missing", delay_seconds=delay_seconds),
+                _ctx(user),
+                _Db(),
+                user,
+            )
+    assert exc.value.status_code == status.HTTP_403_FORBIDDEN
+    assert exc.value.detail == "Invalid embed session"
+    repo.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("workflow_type,delay_seconds", [("workflow", None), ("workflow", 60), ("data_provider", None)])
+async def test_embed_session_is_linked_to_each_persisted_dispatch(workflow_type, delay_seconds) -> None:
+    """Bind immediate, scheduled and data-provider rows to the initiating session."""
+    user = _exec_user(embed=True, jti="owner-session")
+    workflow = _workflow(type=workflow_type)
+    execution_id = uuid4()
+    service_result = WorkflowExecutionResponse(
+        execution_id=str(execution_id),
+        workflow_id=str(workflow.id),
+        workflow_name=workflow.name,
+        status=ExecutionStatus.SUCCESS,
+    )
+    with (
+        patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow=workflow)),
+        patch("src.services.execution.service.get_workflow_for_execution", AsyncMock(return_value=_dispatch_metadata(workflow))),
+        patch("src.services.execution.service.run_workflow", AsyncMock(return_value=service_result)),
+        patch.object(workflows, "_insert_scheduled_execution", AsyncMock(return_value=execution_id)),
+        patch("src.core.embed_middleware.register_embed_execution", AsyncMock()) as register,
+    ):
+        result = await workflows.execute_workflow(
+            WorkflowExecutionRequest(workflow_id=str(workflow.id), delay_seconds=delay_seconds),
+            _ctx(user), _Db(), user,
+        )
+    assert result.execution_id == str(execution_id)
+    register.assert_awaited_once_with("owner-session", str(execution_id))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owned", [0, 1])
+async def test_embed_retry_requires_initiating_session_capability(owned) -> None:
+    """A shared service subject must not let another embed recover this run."""
+    from contextlib import asynccontextmanager
+    from src.core.cache.keys import embed_execution_key
+
+    user = _exec_user(embed=True, jti="retry-session")
+    workflow = _workflow()
+    execution_id = uuid4()
+    recovered = WorkflowExecutionResponse(
+        execution_id=str(execution_id), workflow_id=str(workflow.id),
+        workflow_name=workflow.name, status=ExecutionStatus.SUCCESS,
+    )
+    redis = SimpleNamespace(exists=AsyncMock(return_value=owned))
+
+    @asynccontextmanager
+    async def redis_context():
+        """Expose the session capability store without dispatching another job."""
+        yield redis
+
+    with (
+        patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow=workflow)),
+        patch("src.services.execution.submission_recovery.recover_execution_submission", AsyncMock(return_value=recovered)),
+        patch("src.core.cache.redis_client.get_redis", redis_context),
+        patch("src.services.execution.service.run_workflow", AsyncMock()) as dispatch,
+    ):
+        if owned:
+            result = await workflows.execute_workflow(
+                WorkflowExecutionRequest(workflow_id=str(workflow.id)),
+                _ctx(user), _Db(), user, execution_request_id=execution_id,
+            )
+            assert result is recovered
+        else:
+            with pytest.raises(HTTPException) as exc:
+                await workflows.execute_workflow(
+                    WorkflowExecutionRequest(workflow_id=str(workflow.id)),
+                    _ctx(user), _Db(), user, execution_request_id=execution_id,
+                )
+            assert exc.value.status_code == status.HTTP_403_FORBIDDEN
+    redis.exists.assert_awaited_once_with(embed_execution_key("retry-session", str(execution_id)))
+    dispatch.assert_not_awaited()
