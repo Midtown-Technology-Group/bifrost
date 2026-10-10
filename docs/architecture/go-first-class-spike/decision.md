@@ -58,7 +58,13 @@ and incumbent tests, followed by 53 passing tests with metadata introspection;
 both sources passed API quality and removed their disposable stacks. A third
 candidate passed 67 tests including Start/Receipt storage, metadata, byte-drift
 and conflict-update rejection, with API quality and verified teardown. These are
-storage proofs, not Rust owner admission or durable execution acceptance. Fresh
+storage proofs, not Rust owner admission or durable execution acceptance. The
+reconciled-main candidate `0c6fbf85721603239fabf58419b5168248906cd5` then passed
+13,657 backend unit tests and 68 scoped tests with zero skips, errors or failures,
+API quality and verified teardown (run38018221130). Three obsolete/inapplicable
+baseline skips were repaired: current Agents skill mirror checks replace the
+absent Codex mirror, and signed-URL HTTP transport is now exercised against the
+isolated SeaweedFS service instead of an in-memory adapter. Fresh
 checks remain required after source or dependency changes. The configured test
 pool still forces a shared backend login; it cannot qualify writer exclusion.
 

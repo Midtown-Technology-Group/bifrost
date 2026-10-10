@@ -47,6 +47,7 @@ from src.models import (  # noqa: F401
     Workflow,
 )
 from src.models.orm.runtime_execution import (  # noqa: F401 - internal Alembic metadata
+    RuntimeAdmission,
     RuntimeDeploymentArtifact,
     RuntimeExecutionOwner,
     RuntimeReportReceipt,

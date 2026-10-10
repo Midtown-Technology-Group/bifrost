@@ -685,3 +685,31 @@ at `160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`;
 SDK0.0.0-spike.2. Full platform suites/pre-PR and runtime acceptance remain unrun
 at this checkpoint. Decision CONTINUE SPIKE; implementation proceeds under the
 released scope.
+
+
+## Current isolated implementation checkpoint: zero-skip backend proof
+
+The human release above remains effective; it is not a new unresolved approval.
+Source `0c6fbf85721603239fabf58419b5168248906cd5`, containing platform main
+`b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01`, passed hosted run38018221130:
+13,657 backend unit tests and 68 scoped actual-platform tests, all with zero
+skips/errors/failures, plus API Pyright/Ruff and task stack teardown.
+[Exact retained proof](owner-session-schema-proof.json) distinguishes the earlier
+three-skip diagnostic and its repair from this qualifying test candidate. This
+does not supply Rust ownership, live restricted credentials, process custody,
+Result/Receipt projection or authenticated API readback. Those remain required.
+
+The next storage candidate adds provision/release identity to the current Alembic
+chain after private CRED-P1 grant storage reconciliation. A release references
+the exact provision, session, committed Start/message, grant, delivery, operation
+digest and finite expiry. One immutable admission per purpose prevents replacement
+of uncertain evidence. The retained frontier digest must eventually come from
+the Rust owner's fresh checks; a synthetic digest in storage tests is not
+eligibility, observed commit, a spawn authorization or physical custody.
+
+No lifecycle writer has been accepted. The actual test PgBouncer still forces the
+shared bootstrap login, so separate frontend names cannot prove backend authority.
+Before installing the writer, review the concrete storage graph, existing domain
+writers and common lock order together, then exercise distinct non-owner backend
+roles through a properly configured isolated pool. Python-owned execution and
+production dispatch remain unchanged.

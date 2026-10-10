@@ -341,6 +341,15 @@ class WorkflowRuntimeSDKGrant(Base):
         sa.Column("grant_digest", sa.String(64), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revocation_reason", sa.String(32), nullable=True),
+        sa.UniqueConstraint(
+            "id",
+            "runtime_session_id",
+            "committed_start_id",
+            "start_message_id",
+            "operations_digest",
+            "initial_access_expires_at",
+            name="uq_runtime_sdk_grant_admission_identity",
+        ),
         sa.UniqueConstraint("workflow_attempt_id", name="uq_runtime_sdk_grant_attempt"),
         sa.UniqueConstraint("runtime_session_id", name="uq_runtime_sdk_grant_session"),
         sa.UniqueConstraint(
@@ -516,5 +525,86 @@ class WorkflowRuntimeSDKGrantOperation(Base):
         sa.CheckConstraint(
             "octet_length(integration_name) BETWEEN 1 AND 255",
             name="ck_runtime_sdk_operation_name_bytes",
+        ),
+    )
+
+
+class RuntimeAdmission(Base):
+    __table__ = sa.Table(
+        "runtime_admissions",
+        Base.metadata,
+        sa.Column("id", postgresql.UUID(), primary_key=True),
+        sa.Column("purpose", sa.String(16), nullable=False),
+        sa.Column("session_id", postgresql.UUID(), nullable=False),
+        sa.Column("committed_start_id", postgresql.UUID(), nullable=False),
+        sa.Column("start_message_id", postgresql.UUID(), nullable=False),
+        sa.Column("grant_id", postgresql.UUID(), nullable=False),
+        sa.Column("delivery_id", postgresql.UUID(), nullable=False),
+        sa.Column("operations_digest", sa.String(64), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("provision_admission_id", postgresql.UUID()),
+        sa.Column("provision_purpose", sa.String(16)),
+        sa.Column("frontier_sha256", sa.String(64), nullable=False),
+        sa.Column("admitted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.UniqueConstraint(
+            "session_id", "purpose", name="uq_runtime_admission_purpose"
+        ),
+        sa.UniqueConstraint(
+            "id",
+            "purpose",
+            "session_id",
+            "grant_id",
+            "delivery_id",
+            name="uq_runtime_admission_delivery_identity",
+        ),
+        sa.ForeignKeyConstraint(
+            [
+                "grant_id",
+                "session_id",
+                "committed_start_id",
+                "start_message_id",
+                "operations_digest",
+                "expires_at",
+            ],
+            [
+                "workflow_runtime_sdk_grants.id",
+                "workflow_runtime_sdk_grants.runtime_session_id",
+                "workflow_runtime_sdk_grants.committed_start_id",
+                "workflow_runtime_sdk_grants.start_message_id",
+                "workflow_runtime_sdk_grants.operations_digest",
+                "workflow_runtime_sdk_grants.initial_access_expires_at",
+            ],
+            name="fk_runtime_admission_exact_grant",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            [
+                "provision_admission_id",
+                "provision_purpose",
+                "session_id",
+                "grant_id",
+                "delivery_id",
+            ],
+            [
+                "runtime_admissions.id",
+                "runtime_admissions.purpose",
+                "runtime_admissions.session_id",
+                "runtime_admissions.grant_id",
+                "runtime_admissions.delivery_id",
+            ],
+            name="fk_runtime_release_exact_provision",
+            ondelete="RESTRICT",
+        ),
+        sa.CheckConstraint(
+            "(purpose = 'provision' AND provision_admission_id IS NULL AND provision_purpose IS NULL) OR (purpose = 'release' AND provision_admission_id IS NOT NULL AND provision_purpose IS NOT NULL AND provision_purpose = 'provision')",
+            name="ck_runtime_admission_purpose",
+        ),
+        sa.CheckConstraint(
+            "frontier_sha256 ~ '^[0-9a-f]{64}$' AND operations_digest ~ '^[0-9a-f]{64}$'",
+            name="ck_runtime_admission_digests",
+        ),
+        sa.CheckConstraint(
+            "isfinite(admitted_at) AND isfinite(expires_at) AND admitted_at < expires_at",
+            name="ck_runtime_admission_finite_budget",
         ),
     )

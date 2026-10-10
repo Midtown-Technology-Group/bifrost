@@ -97,5 +97,51 @@
       "Immutable evidence rejects update, delete and ON CONFLICT mutation."
     ],
     "not_proved": "No Rust transaction, accepted Start, actual protocol Result or durable execution projection occurs in these synthetic storage fixtures."
+  },
+  "full_backend_and_skip_repair": {
+    "source": "0c6fbf85721603239fabf58419b5168248906cd5",
+    "platform_main": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
+    "workflow_run": 38018221130,
+    "conclusion": "success",
+    "unit_tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "13657",
+      "time": "421.745",
+      "timestamp": "2026-10-10T02:54:04.860140+00:00",
+      "hostname": "6d82482309d9"
+    },
+    "scoped_tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "68",
+      "time": "11.681",
+      "timestamp": "2026-10-10T03:02:14.233720+00:00",
+      "hostname": "7a6aecabcfab"
+    },
+    "retained_files": {
+      "home/runner/work/_temp/runtime-schema-cleanup.log": "e24e2befd05cc709ffbcd73d23f8456412d6f238883e618944b906291add7af3",
+      "home/runner/work/_temp/runtime-schema-quality.log": "a4b841488ce59b0a854a90ec5acbddafab706ce7a647c0428cad76fce4c9f7d4",
+      "home/runner/work/_temp/runtime-schema-source.txt": "6f9e66bb67889a2bae8e686bb09f9dadd57efd03e0940c32d8d91b659d97d122",
+      "home/runner/work/_temp/runtime-schema-tests.log": "a111818aae7c9927934b9a3731c0f959b121b0d6bd87faa21f2697b34b3deb08",
+      "home/runner/work/_temp/runtime-schema-unit-results.xml": "9ce364c8fa9bc92fc64c5ec8c9de0b8037188cf4248b13cc0f53f5b735ab62a9",
+      "home/runner/work/_temp/runtime-schema-unit-tests.log": "eb14e1834acc8b16ada14d33c88849f795b9b701ecfd0148961983c315b32824",
+      "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "cea1b4f65b3866345979260ef6f46cf98333cbeadec6068370758840e71bbab1"
+    },
+    "repair": "Two obsolete Codex-mirror tests now check the current Agents mirror without skips. Signed-URL HTTP transport moved from an in-memory fixture to actual isolated SeaweedFS; its reusable contract assertion is retained.",
+    "original_diagnostic": {
+      "source": "aaea90c1e2c8f440ede2aa44c805810c8edd5239",
+      "workflow_run": 38016157383,
+      "unit_tests": 13658,
+      "skipped": 3,
+      "disposition": "Diagnosed and repaired; retained as historical diagnostic, not zero-skip acceptance."
+    },
+    "quality": "API Pyright 0 errors/warnings/informations; Ruff all checks passed.",
+    "cleanup": "Task-created containers, volumes and network removed.",
+    "scope": "Full backend unit tests plus real schema/storage/API-history/attempt and signed-URL transport tests. No Rust owner transaction or runtime acceptance."
   }
 }

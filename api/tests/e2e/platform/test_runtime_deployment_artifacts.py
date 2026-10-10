@@ -17,6 +17,7 @@ from src.core.constants import PROVIDER_ORG_ID
 from src.models.enums import ExecutionStatus
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.runtime_execution import (
+    RuntimeAdmission,
     RuntimeDeploymentArtifact,
     RuntimeExecutionOwner,
     RuntimeReportReceipt,
@@ -412,6 +413,7 @@ async def test_duplicate_session_cannot_create_a_second_launch_identity(
 @pytest.mark.parametrize(
     "table_name",
     [
+        "runtime_admissions",
         "runtime_deployment_artifacts",
         "runtime_execution_owners",
         "runtime_sessions",
@@ -428,6 +430,7 @@ async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
     metadata = {
         model.__table__.name: model.__table__
         for model in (
+            RuntimeAdmission,
             RuntimeDeploymentArtifact,
             RuntimeExecutionOwner,
             RuntimeSession,
@@ -700,3 +703,210 @@ async def test_grant_expiry_identity_and_revocation_cannot_be_upgraded_or_erased
         async with db_session.begin_nested():
             await db_session.execute(text(mutation), grant_storage)
     assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+
+
+ADMISSION_INSERT = text("""
+    INSERT INTO runtime_admissions
+        (id, purpose, session_id, committed_start_id, start_message_id, grant_id,
+         delivery_id, operations_digest, expires_at, provision_admission_id,
+         provision_purpose, frontier_sha256, admitted_at)
+    VALUES (:admission, :purpose, :session, :start, :start_message, :grant,
+            :delivery, :source, :expires, :provision, :provision_purpose, :frontier, :issued)
+""")
+
+
+@pytest.fixture
+async def provision_storage(db_session, grant_storage):
+    """Retained metadata only; this does not authorize issuance or process spawn."""
+    facts = {
+        **grant_storage,
+        "admission": uuid4(),
+        "delivery": uuid4(),
+        "purpose": "provision",
+        "provision": None,
+        "provision_purpose": None,
+        "frontier": "d" * 64,
+    }
+    await db_session.execute(GRANT_INSERT, facts)
+    await db_session.execute(ADMISSION_INSERT, facts)
+    return facts
+
+
+async def test_release_binds_exact_preceding_provision_and_finite_grant(
+    db_session, provision_storage
+):
+    facts = {
+        **provision_storage,
+        "admission": uuid4(),
+        "purpose": "release",
+        "provision": provision_storage["admission"],
+        "provision_purpose": "provision",
+    }
+    await db_session.execute(ADMISSION_INSERT, facts)
+    row = (
+        await db_session.execute(
+            text("""
+        SELECT purpose, provision_admission_id, delivery_id, expires_at
+        FROM runtime_admissions WHERE id = :admission
+    """),
+            facts,
+        )
+    ).one()
+    assert tuple(row) == (
+        "release",
+        provision_storage["admission"],
+        facts["delivery"],
+        facts["expires"],
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value,code",
+    [
+        ("session", uuid4(), "23503"),
+        ("start", uuid4(), "23503"),
+        ("start_message", uuid4(), "23503"),
+        ("grant", uuid4(), "23503"),
+        ("source", "e" * 64, "23503"),
+        ("delivery", uuid4(), "23503"),
+        ("provision", uuid4(), "23503"),
+        ("provision", None, "23514"),
+        ("provision_purpose", None, "23514"),
+        ("provision_purpose", "release", "23514"),
+        ("purpose", "renewal", "23514"),
+        ("frontier", "BAD", "23514"),
+    ],
+)
+async def test_release_rejects_identity_or_purpose_drift(
+    db_session, provision_storage, field, value, code
+):
+    facts = {
+        **provision_storage,
+        "admission": uuid4(),
+        "purpose": "release",
+        "provision": provision_storage["admission"],
+        "provision_purpose": "provision",
+        field: value,
+    }
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(ADMISSION_INSERT, facts)
+    assert getattr(caught.value.orig, "sqlstate", None) == code
+    assert (
+        await db_session.execute(
+            text("SELECT count(*) FROM runtime_admissions WHERE session_id = :session"),
+            provision_storage,
+        )
+    ).scalar_one() == 1
+
+
+async def test_admission_cannot_extend_exact_grant_expiry(
+    db_session, provision_storage
+):
+    from datetime import timedelta
+
+    facts = {
+        **provision_storage,
+        "admission": uuid4(),
+        "purpose": "release",
+        "provision": provision_storage["admission"],
+        "provision_purpose": "provision",
+        "expires": provision_storage["expires"] + timedelta(seconds=1),
+    }
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(ADMISSION_INSERT, facts)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23503"
+
+
+async def test_admission_at_expiry_is_rejected(db_session, provision_storage):
+    facts = {
+        **provision_storage,
+        "admission": uuid4(),
+        "purpose": "release",
+        "provision": provision_storage["admission"],
+        "provision_purpose": "provision",
+        "issued": provision_storage["expires"],
+    }
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(ADMISSION_INSERT, facts)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+
+
+async def test_second_provision_is_not_a_replay(db_session, provision_storage):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                ADMISSION_INSERT, {**provision_storage, "admission": uuid4()}
+            )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE runtime_admissions SET delivery_id = gen_random_uuid() WHERE id = :admission",
+        "UPDATE runtime_admissions SET frontier_sha256 = repeat('e',64) WHERE id = :admission",
+        "DELETE FROM runtime_admissions WHERE id = :admission",
+    ],
+)
+async def test_admission_evidence_remains_immutable(
+    db_session, provision_storage, mutation
+):
+    with pytest.raises(DBAPIError, match="immutable"):
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), provision_storage)
+    assert (
+        await db_session.execute(
+            text("SELECT count(*) FROM runtime_admissions WHERE id = :admission"),
+            provision_storage,
+        )
+    ).scalar_one() == 1
+
+
+async def test_admission_rollback_leaves_no_release_evidence(
+    db_session, provision_storage
+):
+    facts = {
+        **provision_storage,
+        "admission": uuid4(),
+        "purpose": "release",
+        "provision": provision_storage["admission"],
+        "provision_purpose": "provision",
+    }
+    nested = await db_session.begin_nested()
+    await db_session.execute(ADMISSION_INSERT, facts)
+    await nested.rollback()
+    assert (
+        await db_session.execute(
+            text("SELECT count(*) FROM runtime_admissions WHERE id = :admission"), facts
+        )
+    ).scalar_one() == 0
+    assert (
+        await db_session.execute(
+            text("SELECT count(*) FROM runtime_admissions WHERE id = :admission"),
+            provision_storage,
+        )
+    ).scalar_one() == 1
+
+
+async def test_conflict_update_cannot_rebind_retained_delivery(
+    db_session, provision_storage
+):
+    statement = text(
+        str(ADMISSION_INSERT)
+        + " ON CONFLICT (session_id,purpose) DO UPDATE SET delivery_id = EXCLUDED.delivery_id"
+    )
+    with pytest.raises(DBAPIError, match="immutable"):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                statement,
+                {**provision_storage, "admission": uuid4(), "delivery": uuid4()},
+            )
+    assert (
+        await db_session.execute(
+            text("SELECT delivery_id FROM runtime_admissions WHERE id = :admission"),
+            provision_storage,
+        )
+    ).scalar_one() == provision_storage["delivery"]
