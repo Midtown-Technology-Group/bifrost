@@ -235,7 +235,7 @@ mod tests {
             let mut pipe = fixture.pipe();
             let mut reader = fixture.reader(&pipe);
             assert_eq!(pipe.deliver(&invalid), Err(MaterialError::Rejected));
-            assert_eq!(reader.read(&mut [0]), Ok(0));
+            assert!(matches!(reader.read(&mut [0]), Ok(0)));
             assert_eq!(pipe.deliver(b"fresh"), Err(MaterialError::Rejected));
             drop(reader);
             assert_eq!(pipe.retire(), Ok(()));
@@ -244,7 +244,7 @@ mod tests {
         let mut pipe = fixture.pipe();
         let mut reader = fixture.reader(&pipe);
         pipe.close();
-        assert_eq!(reader.read(&mut [0]), Ok(0));
+        assert!(matches!(reader.read(&mut [0]), Ok(0)));
         assert_eq!(pipe.deliver(b"fresh"), Err(MaterialError::Rejected));
         drop(reader);
         assert_eq!(pipe.retire(), Ok(()));
