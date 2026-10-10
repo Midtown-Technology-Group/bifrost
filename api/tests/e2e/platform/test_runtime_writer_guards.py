@@ -1550,31 +1550,26 @@ async def test_rust_release_stale_fence_has_no_effects(
 
 
 @pytest.fixture
-async def released_result_facts(running_cancel_facts):
-    """Synthetic immutable provision/release facts; no physical launch claim."""
-    facts = {**running_cancel_facts, "provision": uuid4(), "delivery": uuid4()}
+async def released_result_facts(provisioned_release_facts, session_fence):
+    """Real Rust release transaction; Start/grant/provision remain synthetic.
+
+    This composes the two owner transactions without claiming live material,
+    accepted source custody, physical launch or a Go-produced Result.
+    """
+    facts = provisioned_release_facts
+    assert await release_probe(session_fence, facts) == "newly_committed"
     async with connection("wex_core") as conn:
-        async with conn.transaction():
-            for purpose in ("provision", "release"):
-                await conn.execute(
-                    "INSERT INTO runtime_admissions "
-                    "(id,purpose,session_id,committed_start_id,start_message_id,grant_id,"
-                    "delivery_id,operations_digest,expires_at,provision_admission_id,"
-                    "provision_purpose,frontier_sha256,admitted_at) "
-                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$8,$12)",
-                    facts["provision"] if purpose == "provision" else uuid4(),
-                    purpose,
-                    facts["session"],
-                    facts["start"],
-                    facts["start_message"],
-                    facts["grant"],
-                    facts["delivery"],
-                    facts["source"],
-                    facts["expires"],
-                    None if purpose == "provision" else facts["provision"],
-                    None if purpose == "provision" else "provision",
-                    facts["issued"],
-                )
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM runtime_admissions "
+                "WHERE id=$1 AND purpose='release' AND session_id=$2 "
+                "AND provision_admission_id=$3",
+                facts["release"],
+                facts["session"],
+                facts["provision"],
+            )
+            == 1
+        )
     return facts
 
 
@@ -1691,6 +1686,41 @@ async def test_rust_result_commits_exact_receipt_and_existing_projection_once(
     assert body["status"] == "Success"
     assert body["result"] == {"ready": True, "missing_keys": []}
     assert await result_snapshot(facts) == committed
+
+
+async def test_rust_lost_release_ack_observed_before_result_and_api_readback(
+    provisioned_release_facts, session_fence, e2e_client, platform_admin
+):
+    facts = provisioned_release_facts
+    assert (
+        await release_probe(session_fence, facts, exit_after_commit=True)
+        == "reply_lost"
+    )
+    before = await release_snapshot(facts)
+    assert (
+        await release_probe(session_fence, facts, operation="observe")
+        == "already_retained"
+    )
+    assert await release_snapshot(facts) == before
+    payload = result_payload(facts)
+    receipt = await result_probe(session_fence, payload)
+    assert receipt["disposition"] == "accepted" and receipt["winner"] == "result"
+    committed = await release_snapshot(facts)
+    # Finalization changes projection/session/grant; the release admission is
+    # retained verbatim, without reissuing it or assigning a replacement owner.
+    assert committed[1] == before[1]
+    assert (
+        await release_probe(session_fence, facts, operation="observe")
+        == "already_retained"
+    )
+    assert await result_probe(session_fence, payload) == receipt
+    response = e2e_client.get(
+        f"/api/executions/{facts['execution']}", headers=platform_admin.headers
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "Success"
+    assert response.json()["result"] == {"ready": True, "missing_keys": []}
+    assert await release_snapshot(facts) == committed
 
 
 async def test_rust_result_lost_receipt_reads_same_decision_without_projection_replay(
