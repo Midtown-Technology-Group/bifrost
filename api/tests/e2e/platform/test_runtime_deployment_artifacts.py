@@ -5,6 +5,7 @@ no lifecycle owner is installed, and no workflow execution is dispatched here.
 """
 
 import json
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -12,6 +13,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.constants import PROVIDER_ORG_ID
+from src.models.enums import ExecutionStatus
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
@@ -164,3 +167,184 @@ async def test_wrong_identity_or_missing_binding_rejects_without_partial_record(
             association,
         )
     ).scalar_one() == 0
+
+
+OWNER_INSERT = text("""
+    INSERT INTO runtime_execution_owners
+        (execution_id, owner_incarnation_id, workflow_id, deployment_id, artifact_id,
+         caller_snapshot, caller_sha256)
+    VALUES (:execution, :owner, :workflow, :deployment, :artifact_id,
+            '{"fixture":"schema-only"}'::jsonb, :source)
+""")
+SESSION_INSERT = text("""
+    INSERT INTO runtime_sessions
+        (id, execution_id, owner_incarnation_id, workflow_attempt_id, claim_token,
+         worker_incarnation_id, supervisor_incarnation_id, runtime_incarnation_id,
+         channel_custody_sha256, binding_sha256, prepare_id, prepare_sha256)
+    VALUES (:session, :execution, :owner, :attempt, :claim, :worker, :supervisor,
+            :runtime, :source, :source, :prepare, :source)
+""")
+
+
+@pytest.fixture
+async def owner_session(db_session: AsyncSession, association):
+    """Synthetic identity records only; no Rust admission or actual channel."""
+    facts = {
+        **association,
+        **{
+            key: uuid4()
+            for key in (
+                "execution",
+                "owner",
+                "attempt",
+                "claim",
+                "worker",
+                "supervisor",
+                "runtime",
+                "session",
+                "prepare",
+            )
+        },
+    }
+    await db_session.execute(INSERT, facts)
+    db_session.add(
+        Execution(
+            id=facts["execution"],
+            workflow_id=facts["workflow"],
+            solution_deployment_id=facts["deployment"],
+            workflow_name="Schema-only native",
+            executed_by_name="Synthetic",
+            status=ExecutionStatus.PENDING,
+        )
+    )
+    await db_session.flush()
+    now = datetime.now(UTC)
+    db_session.add(
+        WorkflowExecutionAttempt(
+            id=facts["attempt"],
+            execution_id=facts["execution"],
+            attempt_number=1,
+            claim_token=facts["claim"],
+            worker_incarnation_id=facts["worker"],
+            status="claimed",
+            phase="admission",
+            published_at=now,
+            claimed_at=now,
+        )
+    )
+    await db_session.flush()
+    await db_session.execute(OWNER_INSERT, facts)
+    return facts
+
+
+async def test_session_binds_actual_platform_attempt_and_retains_close(
+    db_session, owner_session
+):
+    await db_session.execute(SESSION_INSERT, owner_session)
+    await db_session.execute(
+        text("""
+        UPDATE runtime_sessions SET closed_at = clock_timestamp(), close_reason = 'cancelled'
+        WHERE id = :session
+    """),
+        owner_session,
+    )
+    row = (
+        await db_session.execute(
+            text("""
+        SELECT s.execution_id, s.workflow_attempt_id, s.claim_token, s.close_reason,
+               s.closed_at IS NOT NULL, a.execution_id
+        FROM runtime_sessions s JOIN workflow_execution_attempts a ON a.id = s.workflow_attempt_id
+        WHERE s.id = :session
+    """),
+            owner_session,
+        )
+    ).one()
+    assert tuple(row) == (
+        owner_session["execution"],
+        owner_session["attempt"],
+        owner_session["claim"],
+        "cancelled",
+        True,
+        owner_session["execution"],
+    )
+
+
+@pytest.mark.parametrize("field", ["owner", "attempt", "claim", "worker"])
+async def test_session_rejects_cross_identity_without_partial_record(
+    db_session, owner_session, field
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(SESSION_INSERT, {**owner_session, field: uuid4()})
+    assert getattr(caught.value.orig, "sqlstate", None) == "23503"
+    assert (
+        await db_session.execute(
+            text("SELECT count(*) FROM runtime_sessions WHERE id = :session"),
+            owner_session,
+        )
+    ).scalar_one() == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE runtime_execution_owners SET owner_incarnation_id = gen_random_uuid() WHERE execution_id = :execution",
+        "DELETE FROM runtime_execution_owners WHERE execution_id = :execution",
+        "UPDATE runtime_sessions SET prepare_id = gen_random_uuid() WHERE id = :session",
+        "DELETE FROM runtime_sessions WHERE id = :session",
+        "UPDATE runtime_sessions SET closed_at = NULL, close_reason = NULL WHERE id = :session",
+        "UPDATE runtime_sessions SET close_reason = 'different' WHERE id = :session",
+    ],
+)
+async def test_owner_identity_and_closed_session_cannot_be_reassigned_or_erased(
+    db_session, owner_session, mutation
+):
+    await db_session.execute(SESSION_INSERT, owner_session)
+    await db_session.execute(
+        text("""
+        UPDATE runtime_sessions SET closed_at = clock_timestamp(), close_reason = 'cancelled'
+        WHERE id = :session
+    """),
+        owner_session,
+    )
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), owner_session)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert (
+        await db_session.execute(
+            text("SELECT close_reason FROM runtime_sessions WHERE id = :session"),
+            owner_session,
+        )
+    ).scalar_one() == "cancelled"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE workflow_execution_attempts SET claim_token = gen_random_uuid() WHERE id = :attempt",
+        "UPDATE workflow_execution_attempts SET worker_incarnation_id = gen_random_uuid() WHERE id = :attempt",
+        "UPDATE executions SET workflow_id = NULL WHERE id = :execution",
+        "DELETE FROM executions WHERE id = :execution",
+    ],
+)
+async def test_parent_fence_and_source_cannot_drift_under_retained_session(
+    db_session, owner_session, mutation
+):
+    await db_session.execute(SESSION_INSERT, owner_session)
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), owner_session)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23503"
+
+
+async def test_duplicate_session_cannot_create_a_second_launch_identity(
+    db_session, owner_session
+):
+    await db_session.execute(SESSION_INSERT, owner_session)
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                SESSION_INSERT, {**owner_session, "session": uuid4()}
+            )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"

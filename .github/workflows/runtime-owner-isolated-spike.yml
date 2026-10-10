@@ -4,6 +4,7 @@ on:
     branches: [spike/go-first-class-g0]
     paths:
       - api/alembic/versions/20261009_runtime_deployment_artifacts.py
+      - api/alembic/versions/20261010_runtime_owner_sessions.py
       - api/tests/e2e/platform/test_runtime_deployment_artifacts.py
       - .github/workflows/runtime-owner-isolated-spike.yml
   workflow_dispatch:
@@ -23,7 +24,10 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/runtime-schema-source.txt"
           trap 'bash test.sh stack down > "$RUNNER_TEMP/runtime-schema-cleanup.log" 2>&1' EXIT
           bash test.sh stack up > "$RUNNER_TEMP/runtime-schema-stack.log" 2>&1
-          bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py --durations=0 \
+          bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py \
+            tests/e2e/platform/test_execution_history_pagination.py \
+            tests/unit/models/test_execution_attempts_contract.py \
+            tests/unit/services/execution/test_attempts.py --durations=0 \
             > "$RUNNER_TEMP/runtime-schema-tests.log" 2>&1
           bash test.sh quality api > "$RUNNER_TEMP/runtime-schema-quality.log" 2>&1
       - name: Retain exact candidate evidence
