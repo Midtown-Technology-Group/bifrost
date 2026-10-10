@@ -111,6 +111,28 @@ async def test_optional_user_rejects_mcp_scoped_rest_token(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("actor_type", ["solution_app", "future_actor"])
+async def test_optional_user_rejects_actor_scoped_rest_token(
+    monkeypatch,
+    actor_type,
+):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(actor_type=actor_type),
+    )
+
+    assert (
+        await auth.get_current_user_optional(
+            _request(),
+            _credentials("actor-token"),
+            object(),
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("claim", ["engine_execution_id", "engine_attempt_token"])
 async def test_optional_user_rejects_malformed_engine_uuid_claim(monkeypatch, claim):
     monkeypatch.setattr(
@@ -280,6 +302,22 @@ async def test_websocket_auth_uses_header_and_rejects_mcp_token(monkeypatch):
 
     assert await auth.get_current_user_ws(websocket) is None
     assert calls == [("ws-token", "access")]
+
+
+@pytest.mark.asyncio
+async def test_websocket_auth_rejects_actor_scoped_token(monkeypatch):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(actor_type="solution_app"),
+    )
+
+    assert (
+        await auth.get_current_user_ws(
+            _request(headers={"authorization": "Bearer actor-token"})
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
