@@ -115,7 +115,28 @@ async def clone(conn, table, template, changes):
 @pytest.fixture
 async def rows(db_session, association):
     """Real parent/FK graph, synthetic descriptor; no deployment admission claim."""
-    await db_session.execute(ARTIFACT_INSERT, association)
+    from sqlalchemy import text
+
+    output_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["ready", "missing_keys"],
+        "properties": {
+            "ready": {"type": "boolean"},
+            "missing_keys": {"type": ["array", "null"], "items": {"type": "string"}},
+        },
+    }
+    # Same neutral type shape as the readiness example; still synthetic artifact
+    # metadata, not accepted registration or a compiled workload execution.
+    statement = text(
+        ARTIFACT_INSERT.text.replace(
+            "'{}'::jsonb, '{}'::jsonb", "'{}'::jsonb, CAST(:output_schema AS jsonb)"
+        )
+    )
+    await db_session.execute(
+        statement, {**association, "output_schema": json.dumps(output_schema)}
+    )
     execution = uuid4()
     db_session.add(
         Execution(
@@ -1623,3 +1644,48 @@ async def test_rust_result_transport_closed_session_cannot_restore_authority(
     before = await result_snapshot(facts)
     assert await result_probe(session_fence, result_payload(facts)) == "rejected"
     assert await result_snapshot(facts) == before
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        {"ready": "true", "missing_keys": []},
+        {"ready": True, "missing_keys": "key"},
+        {"ready": True, "missing_keys": [False]},
+        {"ready": True},
+        {"ready": True, "missing_keys": [], "extra": True},
+    ),
+)
+async def test_rust_result_retained_output_schema_rejects_invalid_value_without_writes(
+    released_result_facts, session_fence, value
+):
+    facts = released_result_facts
+    before = await result_snapshot(facts)
+    payload = result_payload(
+        facts,
+        body={
+            "start_message_id": str(facts["start_message"]),
+            "outcome": "success",
+            "value": value,
+        },
+    )
+    assert await result_probe(session_fence, payload) == "rejected"
+    assert await result_snapshot(facts) == before
+
+
+async def test_rust_result_retained_output_schema_allows_declared_nullable_array(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    value = {"ready": True, "missing_keys": None}
+    payload = result_payload(
+        facts,
+        body={
+            "start_message_id": str(facts["start_message"]),
+            "outcome": "success",
+            "value": value,
+        },
+    )
+    receipt = await result_probe(session_fence, payload)
+    assert isinstance(receipt, dict) and receipt["disposition"] == "accepted"
+    assert json.loads(await result_snapshot(facts))["execution"]["result"] == value

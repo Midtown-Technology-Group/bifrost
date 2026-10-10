@@ -2,6 +2,7 @@
 //! No production dispatch, grant issuance, admission or process spawning.
 use sqlx::{PgPool, Postgres, Row, Transaction};
 mod result;
+mod schema;
 pub use result::{ResultDecision, accept_result};
 
 /// Exact retained identity supplied by the trusted coordinator, never a tenant.
@@ -89,6 +90,7 @@ struct LockedSession<'a> {
     execution_status: String,
     attempt_status: String,
     attempt_completed: bool,
+    output_schema: String,
 }
 
 async fn lock_session<'a>(
@@ -181,7 +183,7 @@ async fn lock_session_state<'a>(
     }
     // Immutable association lookup, not acceptance of its staged bytes/evidence.
     let association = sqlx::query(
-        "SELECT workflow_id FROM runtime_deployment_artifacts \
+        "SELECT output_schema::text AS output_schema FROM runtime_deployment_artifacts \
          WHERE deployment_id=$1::text::uuid AND workflow_id=$2::text::uuid \
          AND solution_id=$3::text::uuid AND artifact_id=$4",
     )
@@ -191,9 +193,7 @@ async fn lock_session_state<'a>(
     .bind(&artifact)
     .fetch_optional(&mut *tx)
     .await?;
-    if association.is_none() {
-        return Err(ObserveError::Rejected);
-    }
+    let association = association.ok_or(ObserveError::Rejected)?;
     let session = sqlx::query(
         "SELECT closed_at IS NOT NULL AS closed, close_reason FROM runtime_sessions \
          WHERE id=$1::text::uuid AND execution_id=$2::text::uuid \
@@ -222,6 +222,7 @@ async fn lock_session_state<'a>(
         execution_status,
         attempt_status: attempt.try_get("status")?,
         attempt_completed: attempt.try_get("completed")?,
+        output_schema: association.try_get("output_schema")?,
     })
 }
 

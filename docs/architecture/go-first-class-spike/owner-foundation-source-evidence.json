@@ -450,5 +450,99 @@
       "source.txt": "a3e46546b926d373ac2850b7890c4e3ff31a7e9881fd6f662f67341a84e848c1"
     },
     "runtime_acceptance": false
+  },
+  "cancel_recovery_database_proof": {
+    "source_sha": "53a9080bdff5ef0d206aa14ddbed51384971d9de",
+    "source_tree": "ab38dad567256b9bf2729ec8d9b761bf4dc595c2",
+    "run": 38078012760,
+    "job": 114288957485,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38078012760",
+    "conclusion": "success",
+    "suites": {
+      "writer-guard-baseline.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "109",
+          "time": "15.326",
+          "timestamp": "2026-10-10T19:15:22.394195+00:00",
+          "hostname": "bd2a78df3137"
+        }
+      ],
+      "writer-guard-last-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "103",
+          "time": "26.437",
+          "timestamp": "2026-10-10T19:16:17.244706+00:00",
+          "hostname": "45694bef7673"
+        }
+      ],
+      "writer-guard-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "103",
+          "time": "26.437",
+          "timestamp": "2026-10-10T19:16:17.244706+00:00",
+          "hostname": "45694bef7673"
+        }
+      ],
+      "writer-guard-unit.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "13722",
+          "time": "426.582",
+          "timestamp": "2026-10-10T19:07:08.287325+00:00",
+          "hostname": "4bef7025cfea"
+        }
+      ]
+    },
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff passed",
+    "cleanup": "Verified empty task container/volume/network inventories",
+    "source_inputs_verified_against_exact_git_objects": true,
+    "scope": "Actual Rust read-only cancellation decision reconciliation, including a process exit after observed commit before reply, fresh same-fence process readback without repeating write, partial state and identity/backend denial. Not uncertain database commit, physical spawn recovery or terminal cancellation settlement.",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/53a9080bdff5ef0d206aa14ddbed51384971d9de/runtime-writer-guards-53a9080bdff5ef0d206aa14ddbed51384971d9de",
+    "artifact_file_sha256": {
+      "owner-evidence/owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-evidence/owner-build.txt": "8f15d41575b416e38321479c11812ec17ad52aa12283ced2582a2acc8615c5d1",
+      "owner-evidence/owner-clippy.txt": "84089284346d2c595289317f7605264ade1fd5e689059c32100b31659c298d8a",
+      "owner-evidence/owner-dependency-graph.json": "94d281d3f3565a0a3a7a3640d978e5e74d0e746ec1dd6c68004782c8bc598d51",
+      "owner-evidence/owner-fetch.txt": "199957bd3cf48c8ad76ee47aae6d8795f956d1ed662df868fdc1e461915130e1",
+      "owner-evidence/owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-evidence/owner-image-cleanup.txt": "0de4d865ddca4938eff8b67f7b0c6d386d7552f0a9663471feb61d1643057ca5",
+      "owner-evidence/owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-evidence/owner-source-hashes.txt": "0ce52f94924b9b97a0602389151c002e9361a086d007555e144923014f7ba61b",
+      "owner-evidence/owner-tests.txt": "0b64a58fe9596e5f69eba50897c683aa95f6e2fdcd0e9f3ee59ce335200badeb",
+      "owner-evidence/owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-evidence/owner-tools-build.txt": "2cce84f7c774fa419aaf460cf7f7b5c326ec4766d48777ca045f91771d602418",
+      "owner-evidence/owner-tools-image.txt": "6243ad6d22df21d7f838b14eb819c3934150130a3c625c07316fc8875bae9a3f",
+      "owner-evidence/runtime-owner-observation": "d0a34e8f34aaef9e26b4a2751f62f2cf9cfcf39b2ddf74d7400b4e8ed5462a03",
+      "writer-guard-baseline.xml": "6dc778e50c52a5da1124d6ef291a4e85d2825976ecd63ef2216d195c756fd7c9",
+      "writer-guard-cleanup.log": "2271278a97ffb747429ae12d4b38e41cb2300ff4ff1aaa675528783817761790",
+      "writer-guard-images.txt": "e3b8ce210ac0902a46541ed6a043487b053f24b7a93e345aa36f5e2469a23439",
+      "writer-guard-last-results.xml": "00e09ed748d1da512a2daaa7f02be122a57e74f8c753b315266f15cbb38ae270",
+      "writer-guard-owner-binary.txt": "f567403404bbb0649f4da1df2dfc014bae05aa4007dfb4c39735a062ece4cb2d",
+      "writer-guard-quality.log": "f96d1ac579cacc67bff6aad717cfc4dc9ab9910259bd64ef1ba08fc623bf5376",
+      "writer-guard-results.xml": "00e09ed748d1da512a2daaa7f02be122a57e74f8c753b315266f15cbb38ae270",
+      "writer-guard-source-hashes.txt": "e3a6a98a0948196f911ae56c4e333398ef2aa3c262b0fe4204f85a06bd334370",
+      "writer-guard-source.txt": "f1928501a0c9c54bed7ca85c8bc4cecf6af0e8c560977de86f72e00003a288ec",
+      "writer-guard-stack.log": "848aa400d81f61664b52402f49e309864ff7e6b06d294488e143bbd1f128089c",
+      "writer-guard-storage-baseline.log": "2df3a1f1eaf591cc7f7e60fee935cf7b26014bf3298959c6aad428a991d619a3",
+      "writer-guard-tests.log": "0a29982689e2e538cc94b42e2808403cb1d6720e06acae166594db9d0ba2b9d3",
+      "writer-guard-unit.log": "47d228a4313c899d5631760ae51f39342e7eea0a95ca00a5a15d09b1a001b02f",
+      "writer-guard-unit.xml": "4b01de943e15d842b40a91b32df07b049b78fdecc4265012891df0b16d40abd4"
+    },
+    "runtime_acceptance": false
   }
 }

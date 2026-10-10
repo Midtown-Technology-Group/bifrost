@@ -38,8 +38,7 @@ jobs:
           git rev-parse HEAD^{tree} >> "$RUNNER_TEMP/writer-guard-source.txt"
           sha256sum spikes/go-native/owner-rs/Cargo.toml \
             spikes/go-native/owner-rs/Cargo.lock \
-            spikes/go-native/owner-rs/src/lib.rs \
-            spikes/go-native/owner-rs/src/result.rs \
+            spikes/go-native/owner-rs/src/*.rs \
             spikes/go-native/owner-rs/examples/session_observation.rs \
             spikes/go-native/owner-rs/examples/result_report.rs \
             spikes/go-native/scripts/owner-foundation-check.sh \

@@ -44,6 +44,13 @@ pub async fn accept_result(
     // Exact terminal identity is allowed only so a retained byte-identical
     // receipt can be read after finalization. A new report cannot replay work.
     let mut locked = lock_session_state(pool, fence, true).await?;
+    if frame["body"]["outcome"] == "success" {
+        let schema: Value =
+            serde_json::from_str(&locked.output_schema).map_err(|_| ObserveError::Rejected)?;
+        if !crate::schema::matches(&schema, &frame["body"]["value"]) {
+            return Err(ObserveError::Rejected);
+        }
+    }
     let start = sqlx::query(
         "SELECT id::text AS id,start_message_id::text AS message, \
          deadline_utc IS NOT NULL AND deadline_utc <= clock_timestamp() AS expired \
