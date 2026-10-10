@@ -641,3 +641,47 @@ unproved. Package4's explicit human architecture release has not been received
 for the common owner integration proposal. Decision CONTINUE SPIKE; goal active,
 completion unproved. No production/vendor mutation, expanded credentials, PR
 creation, merge or deployment was performed.
+
+## Human release and first actual-platform storage implementation
+
+Thomas explicitly released the interfaces in `owner-integration-proposal.md` at
+`b8b44cbc01b1fb6be86f4fba050e93eb0da55924` for isolated implementation only.
+[Authorization](isolated-implementation-authorization.json) retains the exact
+conditions: complete unchanged-artifact Rust-owned slice, concrete schema/identity/
+immutability/writer/lock review before accepting a writer, and crash/uncertain
+commit/spawn/lost-ACK proof without replay or ownership reassignment. No production,
+merge/deploy, expanded credential authority, profile freeze, agents or renewal
+approval follows. The former human-release blocker is resolved; runtime acceptance
+is not granted.
+
+The worktree reconciles current platform main
+`f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2` using local signed Git merge
+`a48f8df0964000cd86d8ac95741f0e968b17b9ff`. This is no pull-request merge or
+production change. Current Alembic head was `20261006_mtg_upstream_sdk`.
+Candidate `fa344e32e53975a8ccbbecfed86cbd34cf8d4423` adds the first storage
+prerequisite at revision `20261009_runtime_artifacts`: an immutable native artifact
+association with composite FKs into actual existing workflow/Solution/deployment
+identity, required descriptor/digest binding, JSON schema-object storage and
+retained evidence on downgrade. No source-executing metadata discovery or Go
+lifecycle table is introduced.
+
+[Executed database proof](native-association-schema-proof.json) binds hosted
+run38013587209 to eight passing real migrated-platform tests, zero failures,
+errors or skips. The repository's supported test.sh lane exercised the actual API
+health boundary and PostgreSQL constraints/triggers. Mismatched identities and
+missing/bad descriptor/digest values reject without partial records; source/schema
+mutation and deletion reject. The full API quality command passed Ruff and Pyright
+with zero errors/warnings. Owned Compose project `bifrost-test-0b7397c6` containers,
+volumes and network were removed. No physical-host runtime tests or container ran.
+
+The descriptor is synthetic schema-test data, not staged trusted adapter or native
+deployment acceptance. The schema does not enable dispatch, credentials or a
+lifecycle writer. Remaining owner/session/Start/admission/receipt records, actual
+role/pool/incumbent-writer exclusion and common lock review remain required before
+writer acceptance. Rust admission, finite SDK provision/ingress, cancellation,
+durable Result/Receipt/API readback, process/source cleanup and no-replay recovery
+still need their actual end-to-end proof. The workflow binary remains unchanged
+at `160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`;
+SDK0.0.0-spike.2. Full platform suites/pre-PR and runtime acceptance remain unrun
+at this checkpoint. Decision CONTINUE SPIKE; implementation proceeds under the
+released scope.

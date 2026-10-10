@@ -1,0 +1,57 @@
+{
+  "status": "actual-platform-native-association-schema-proof-not-owner-acceptance",
+  "source": "fa344e32e53975a8ccbbecfed86cbd34cf8d4423",
+  "platform_main": "f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2",
+  "approval_proposal_commit": "b8b44cbc01b1fb6be86f4fba050e93eb0da55924",
+  "migration_revision": "20261009_runtime_artifacts",
+  "migration_parent": "20261006_mtg_upstream_sdk",
+  "workflow_run": 38013587209,
+  "conclusion": "success",
+  "lane": "hosted Ubuntu24.04, repository test.sh, real migrated platform tables and API health boundary",
+  "compose_project": "bifrost-test-0b7397c6",
+  "test_command": "bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py --durations=0",
+  "quality_command": "bash test.sh quality api",
+  "tests": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "8",
+    "time": "8.650",
+    "timestamp": "2026-10-10T01:36:36.214828+00:00",
+    "hostname": "5a75478c6400"
+  },
+  "test_cases": [
+    "test_actual_platform_association_preserves_deployment_and_descriptor",
+    "test_association_custody_is_immutable[UPDATE runtime_deployment_artifacts SET source_sha256 = repeat('d', 64) WHERE deployment_id = :deployment]",
+    "test_association_custody_is_immutable[UPDATE runtime_deployment_artifacts SET input_schema = '{\"type\":\"string\"}'::jsonb WHERE deployment_id = :deployment]",
+    "test_association_custody_is_immutable[DELETE FROM runtime_deployment_artifacts WHERE deployment_id = :deployment]",
+    "test_wrong_identity_or_missing_binding_rejects_without_partial_record[solution-value0-23503]",
+    "test_wrong_identity_or_missing_binding_rejects_without_partial_record[artifact_id-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd-23514]",
+    "test_wrong_identity_or_missing_binding_rejects_without_partial_record[artifact-{}-23514]",
+    "test_wrong_identity_or_missing_binding_rejects_without_partial_record[source-BAD-23514]"
+  ],
+  "retained_files": {
+    "home/runner/work/_temp/runtime-schema-cleanup.log": "fcf832e8f1c11f500e956c77ad337a0cf4c6935405a31b0ac7da59c152e80492",
+    "home/runner/work/_temp/runtime-schema-quality.log": "85ea253221fbad062de0657a969c805221988a8be320e0b65c65dbb120f327b6",
+    "home/runner/work/_temp/runtime-schema-source.txt": "85113d9bd3cb705916ecbbd438d777b868e3c630b695ae8d9249d609f16b41df",
+    "home/runner/work/_temp/runtime-schema-tests.log": "1111c7ee71bc167f084dd68dfb5874e6d0a3d96a514ca2d0b0ae812ba44e29c4",
+    "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "8c74e3a6d9c70b994d6709bbacd7eb087c81ce243492d5838ff1e3be1a236c5b"
+  },
+  "cleanup": "All task stack containers, task volumes and network removed; retained test evidence only.",
+  "scope": [
+    "Composite existing workflow/Solution/deployment identity and immutable artifact association.",
+    "Actual PostgreSQL constraint/trigger rejection, with no partial insertion on rejected bindings.",
+    "No API route, runtime dispatch, Rust lifecycle writer, grant issuance or vendor effect enabled.",
+    "The descriptor is synthetic schema-test data, not actual adapter/deployment acceptance."
+  ],
+  "remaining": [
+    "Common owner/session/Start/admission/receipt records and full identity/immutability/role/lock review.",
+    "Actual distinct runtime DB roles through the real pool and all incumbent writer negatives.",
+    "Trusted native adapter, finite session-bound SDK provision/ingress and source admission/cleanup.",
+    "Real Rust Start/cancel/Result transactions, existing authenticated Execution readback and no-replay crash/commit/spawn/lost-ACK proof."
+  ],
+  "unchanged_workflow_artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "sdk_version": "0.0.0-spike.2",
+  "mtg_package_version": "2026-10-09.1"
+}

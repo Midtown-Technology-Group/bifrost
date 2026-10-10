@@ -39,12 +39,13 @@ harness is not the complete profile. Does authoring feel like a Go application?
 **Yes for the implemented workload**; metadata extraction remains deliberately
 narrow and actual deployment registration is absent.
 
-The [common owner integration proposal](owner-integration-proposal.md) is the
-concrete pending decision. It now records completed independent conformance and
-build recovery, rather than stale blockers. Current #1011/#1132 still require
-reviewed schema/lock order and human architecture release before authority
-implementation. That release is not supplied by a passing test model or by an
-automatic goal continuation. Real native registration/trusted adapter custody,
+Thomas has explicitly released the [common owner integration interfaces](owner-integration-proposal.md)
+at `b8b44cbc0` for isolated implementation. [Exact approval](isolated-implementation-authorization.json)
+retains all security/race, schema/lock-order and uncertain-commit/recovery gates.
+The worktree now reconciles platform main `f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2`
+through local merge `a48f8df0964000cd86d8ac95741f0e968b17b9ff`; no PR was merged.
+Runtime acceptance is not supplied by the interface release. Real native
+registration/trusted adapter custody,
 finite provision/live-session admission, Rust Start/cancel/durable Result and
 existing Execution API readback, actual-schema writer exclusion and cleanup all
 remain mandatory. No Go-specific owner or synthetic durable store is proposed.

@@ -1,12 +1,14 @@
 # Proposed isolated Rust-owned Go slice
 
-Status: reviewable implementation proposal, not authority release or an accepted
-migration. SDK version remains0.0.0-spike.2. Platform main is
+Status: interfaces at `b8b44cbc01b1fb6be86f4fba050e93eb0da55924` explicitly released
+by Thomas for isolated implementation only. [Exact authorization and conditions](isolated-implementation-authorization.json).
+This is not runtime acceptance, a profile freeze or an accepted lifecycle writer.
+SDK version remains0.0.0-spike.2. Original proposal platform main is
 `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`; workspace main refreshed to
 `e666a60b614fc34022008dadfa734b1d970208c8`. No workspace asset was edited.
 [Source inventory](owner-integration-source-evidence.json) binds inspected seams.
 
-## Decision required
+## Approved isolated implementation scope
 
 Release the following common interfaces for **isolated local/synthetic workflow
 implementation and race testing only**, subject to independent proposed-profile
@@ -15,7 +17,7 @@ unchanged, and all credential, source, writer-exclusion and finalization accepta
 gates intact. This does not freeze the profile for production or accept agents,
 no-timeout renewal, provider access, a source SDK grant, merge or deployment.
 
-The specific external gate is #1132's `implementation-slices.md`, Package4:
+The released external gate is #1132's `implementation-slices.md`, Package4:
 “human architecture release required.” Its final instruction says Package1 only
 follows review; green static checks do not authorize Packages2–4. #1011's
 `runtime-authority-sequence.md` still labels its records semantic interfaces,
@@ -168,13 +170,14 @@ fixture execution3.776ms (20 samples). These do not measure real Rust lifecycle
 latency or prove accepted native registration. No quota workaround, credential
 expansion or performance-based isolation exception was used.
 
-The remaining external decision is now specific: approve this common isolated
-owner/session/Start/provision/release/receipt interface proposal and its reviewed
-schema/lock-order implementation scope, retaining every acceptance test above.
-The shared architecture still requires human release for Package4 and explicitly
-does not authorize Packages2–4 from green static/conformance tests alone. A release
-would allow implementation; it would not accept the issuer, writer exclusion,
-process custody, durable projection or mixed-owner behavior without their proof.
+Thomas explicitly approved this common isolated owner/session/Start/provision/
+release/receipt implementation scope at `b8b44cbc0`, retaining every acceptance
+test above. That release permits implementation; it does not accept the issuer,
+writer exclusion, process custody, durable projection or mixed-owner behavior
+without proof. Concrete schema, identity, immutability, role constraints and common
+lock order must be reviewed together before accepting a new lifecycle writer.
+Crash recovery must preserve uncertain commit/spawn/lost-ACK evidence without
+replay or ownership reassignment. Production dispatch remains disabled.
 
 Actual runtime implementation still remains: native deployment association and
 trusted adapter, common live-session/finite provision/release admission, real Rust
