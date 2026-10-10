@@ -47,5 +47,14 @@
       "byte_identical": false
     }
   },
-  "scope": "No application DSN, lifecycle DML, role owner, guard, runtime dispatch, production or credential-authority change."
+  "scope": "No application DSN, lifecycle DML, role owner, guard, runtime dispatch, production or credential-authority change.",
+  "current_platform_main": "0a4db3d55388db9a2297e1a3c195a8628884ed3c",
+  "local_source_merge": "6eff4029514351fb8db1d07cdc855d48f2440761",
+  "superseded_run": {
+    "run": 38066438528,
+    "candidate": "b3a6980eff93442f83087a46ea6f8e8fc704cd90",
+    "conclusion": "failure",
+    "classification": "Source-custody ancestry check: fetched main advanced beyond candidate before the results directory and Docker/provisioning stage. Git ancestry verified locally; artifact upload also failed because no results path was set.",
+    "recovery": "Current main incorporated into isolated branch, without a PR merge or role/probe/timeout change; fresh-source run required."
+  }
 }
