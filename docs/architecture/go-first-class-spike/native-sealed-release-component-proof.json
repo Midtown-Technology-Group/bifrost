@@ -290,8 +290,10 @@
   "bundle_verifier_candidate": {
     "source_commit": "77995fcaf20bd4d646054e1ee5354a8531207db0",
     "workflow_run": 38088285313,
-    "observed_status": "queued",
-    "runtime_acceptance": false
+    "observed_status": "completed",
+    "runtime_acceptance": false,
+    "conclusion": "cancelled",
+    "disposition": "Superseded while queued by source 8c747c6a08c5722e381606a3ce6cc795ac68081b, whose complete unchanged hosted lane includes these validations plus actual adapter protocol execution. No pass or acceptance is claimed for this cancelled candidate."
   },
   "verified_start_and_release_result_database_component": {
     "source_commit": "670382349b54fdf742cd5fb5f6e92385747f688b",
@@ -322,8 +324,25 @@
   "native_adapter_executable_candidate": {
     "source_commit": "3c9facaa0601ada6b3c358f7acd90b680197607a",
     "workflow_run": 38088790385,
+    "observed_status": "completed",
+    "runtime_acceptance": false,
+    "limits": "Candidate common protocol bridge; physical execution, Rust launch custody and full contract/recovery/cleanup remain unverified.",
+    "conclusion": "cancelled",
+    "disposition": "Superseded while queued by source 8c747c6a08c5722e381606a3ce6cc795ac68081b, whose complete unchanged hosted lane includes these validations plus actual adapter protocol execution. No pass or acceptance is claimed for this cancelled candidate."
+  },
+  "independent_local_supervisor_candidate": {
+    "source_commit": "8c747c6a08c5722e381606a3ce6cc795ac68081b",
+    "workflow_run": 38089134638,
     "observed_status": "queued",
     "runtime_acceptance": false,
-    "limits": "Candidate common protocol bridge; physical execution, Rust launch custody and full contract/recovery/cleanup remain unverified."
+    "cases": [
+      "success",
+      "success-again",
+      "missing",
+      "cancel-before-material",
+      "cancel-running"
+    ],
+    "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "limits": "Published executable and complete hosted gate only; no runtime pass yet. Start/receipt and TLS SDK credentials are synthetic local fixtures, never Rust authority or durable projection."
   }
 }
