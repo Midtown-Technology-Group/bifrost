@@ -691,6 +691,10 @@ async def rerun_agent_run(
         caller_user_id=str(user.user_id),
         caller_email=user.email,
         caller_name=getattr(user, "name", None),
+        caller_is_superuser=user.is_superuser,
+        caller_is_provider_org=user.is_provider_org,
+        caller_is_external=user.is_external,
+        caller_roles=user.roles,
         sync=False,
     )
 
@@ -1044,6 +1048,10 @@ async def enqueue_agent_run_request(
         caller_user_id=str(user.user_id),
         caller_email=user.email,
         caller_name=getattr(user, "name", None),
+        caller_is_superuser=user.is_superuser,
+        caller_is_provider_org=user.is_provider_org,
+        caller_is_external=user.is_external,
+        caller_roles=user.roles,
         sync=False,
     )
     return AgentRunEnqueueResponse(run_id=UUID(run_id))
@@ -1081,6 +1089,10 @@ async def execute_agent_run(
         caller_user_id=str(user.user_id),
         caller_email=user.email,
         caller_name=getattr(user, "name", None),
+        caller_is_superuser=user.is_superuser,
+        caller_is_provider_org=user.is_provider_org,
+        caller_is_external=user.is_external,
+        caller_roles=user.roles,
         sync=True,
     )
 

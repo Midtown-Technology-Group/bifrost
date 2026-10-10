@@ -367,7 +367,9 @@ class TestAutonomousAgentExecutor:
             "email": "person@example.com",
             "name": "Person",
             "organization_id": str(caller_org_id),
-            "is_platform_admin": True,
+            "is_superuser": True,
+            "is_provider_org": True,
+            "is_external": False,
         }
         executor._caller_is_platform_admin = True
         workflow = MagicMock()
@@ -409,6 +411,8 @@ class TestAutonomousAgentExecutor:
         assert dispatch["caller"].user_id == str(caller_user_id)
         assert dispatch["caller"].organization_id == caller_org_id
         assert dispatch["caller"].is_platform_admin is True
+        assert dispatch["caller"].is_provider_org is True
+        assert dispatch["caller"].is_external is False
 
     @pytest.mark.asyncio
     async def test_autonomous_workflow_without_caller_uses_system_identity(
@@ -459,6 +463,8 @@ class TestAutonomousAgentExecutor:
         assert dispatch["caller"].email == SYSTEM_USER_EMAIL
         assert dispatch["caller"].organization_id == mock_agent.organization_id
         assert dispatch["caller"].is_platform_admin is False
+        assert dispatch["caller"].is_provider_org is False
+        assert dispatch["caller"].is_external is False
 
     def test_global_caller_scope_does_not_fall_back_to_agent_org(
         self, mock_session, mock_agent
@@ -1882,3 +1888,83 @@ class TestAutonomousAgentExecutor:
         )
 
         assert result["status"] == "completed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("snapshot_admin", "current_admin", "provider", "external"),
+    [(False, False, True, False), (True, False, False, False),
+     (False, True, False, False), (False, False, False, True)],
+)
+async def test_autonomous_workflow_uses_original_flags_and_current_admin(
+    mock_session, mock_agent, snapshot_admin, current_admin, provider, external,
+):
+    workflow_id, user_id, caller_org = uuid4(), uuid4(), uuid4()
+    executor = AutonomousAgentExecutor(mock_session)
+    executor._tool_workflow_id_map = {"tool": workflow_id}
+    executor._caller_user_id = user_id
+    executor._caller = {
+        "user_id": str(user_id), "organization_id": str(caller_org),
+        "email": "caller@example.test", "name": "Caller",
+        "is_superuser": snapshot_admin, "is_platform_admin": snapshot_admin,
+        "is_provider_org": provider, "is_external": external,
+    }
+    # Simulate authority changing during the model wait after planning.
+    executor._caller_is_platform_admin = snapshot_admin
+    workflow = MagicMock(id=workflow_id, organization_id=mock_agent.organization_id)
+    db_user = MagicMock(id=user_id, is_superuser=current_admin)
+    mock_session._mock_session.get.side_effect = [workflow, db_user]
+    with (
+        patch("src.services.execution.autonomous_agent_executor.agent_workflow_granted", new=AsyncMock(return_value=True)),
+        patch("src.services.execution.autonomous_agent_executor.caller_can_access_workflow_tool", new=AsyncMock(return_value=True)),
+        patch("src.services.execution.autonomous_agent_executor.execute_agent_workflow_tool", new=AsyncMock(return_value=MagicMock(
+            execution_id=str(uuid4()), status=ExecutionStatus.SUCCESS, result={"ok": True},
+        ))) as execute,
+    ):
+        await executor._execute_tool(ToolCallRequest(id="call", name="tool", arguments={}), mock_agent)
+    caller = execute.await_args.kwargs["caller"]
+    assert caller.user_id == str(user_id)
+    assert caller.organization_id == caller_org
+    assert mock_session._mock_session.get.await_args.args == (User, user_id)
+    assert caller.is_platform_admin is current_admin
+    assert caller.is_provider_org is provider
+    assert caller.is_external is external
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("identity_changed", [False, True])
+async def test_external_actor_recheck_refreshes_only_validated_caller_authority(
+    mock_session, mock_agent, identity_changed,
+):
+    from src.core.principal import UserPrincipal
+    from src.services.events.external_actors import ExternalActorResolutionError
+
+    user_id, org_id, identity_id = uuid4(), uuid4(), uuid4()
+    principal = UserPrincipal(
+        user_id=user_id, organization_id=org_id, email="caller@example.test",
+        is_superuser=False, is_provider_org=True, is_external=False, roles=["Current Role"],
+    )
+    executor = AutonomousAgentExecutor(mock_session)
+    executor._caller_user_id = user_id
+    executor._caller_is_platform_admin = True
+    executor._caller = {"is_provider_org": False, "is_external": True, "roles": ["Old Role"]}
+    executor._external_actor = ({}, identity_id, org_id, mock_agent.id)
+    with (
+        patch("src.services.execution.autonomous_agent_executor.actor_from_record", return_value=object()),
+        patch("src.services.execution.autonomous_agent_executor.resolve_external_actor", new=AsyncMock(
+            return_value=(principal, uuid4() if identity_changed else identity_id),
+        )),
+        patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=mock_agent)),
+    ):
+        if identity_changed:
+            with pytest.raises(ExternalActorResolutionError, match="grant changed"):
+                await executor._external_caller_access(mock_session._mock_session)
+            assert executor._caller_is_platform_admin is True
+            assert executor._caller["is_provider_org"] is False
+        else:
+            access = await executor._external_caller_access(mock_session._mock_session)
+            assert access == (user_id, org_id, False)
+            assert executor._caller_is_platform_admin is False
+            assert executor._caller["is_provider_org"] is True
+            assert executor._caller["is_external"] is False
+            assert executor._caller["roles"] == ["Current Role"]

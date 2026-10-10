@@ -196,6 +196,12 @@ class AutonomousAgentExecutor:
         ):
             raise ExternalActorResolutionError("External actor grant changed during run")
         self._caller_is_platform_admin = principal.is_superuser
+        if self._caller is not None:
+            self._caller.update(
+                is_provider_org=principal.is_provider_org,
+                is_external=principal.is_external,
+                roles=principal.roles,
+            )
         return principal.user_id, organization_id, principal.is_superuser
 
     async def run(
@@ -704,6 +710,11 @@ class AutonomousAgentExecutor:
                 **({"caller_access": external_access} if external_access else {}),
             ):
                 raise ToolError(f"Unknown tool: {tool_call.name}")
+            if self._caller_user_id is not None and self._external_actor is None:
+                # Planning may precede a long model request. Preserve the
+                # dispatch-time database authority after an admin revocation.
+                caller = await db.get(User, self._caller_user_id)
+                self._caller_is_platform_admin = bool(caller and caller.is_superuser)
 
         response = await execute_agent_workflow_tool(
             workflow_id=workflow_id,
@@ -731,9 +742,15 @@ class AutonomousAgentExecutor:
                 ),
                 organization_id=self._execution_org_id(agent),
                 is_platform_admin=(
-                    bool(self._caller.get("is_platform_admin", False))
-                    if self._caller_user_id and self._caller
-                    else False
+                    self._caller_is_platform_admin if self._caller_user_id else False
+                ),
+                is_provider_org=(
+                    bool(self._caller.get("is_provider_org", False))
+                    if self._caller_user_id and self._caller else False
+                ),
+                is_external=(
+                    bool(self._caller.get("is_external", False))
+                    if self._caller_user_id and self._caller else False
                 ),
                 agent_id=agent.id,
                 agent_run_id=UUID(self._current_run_id) if self._current_run_id else None,
