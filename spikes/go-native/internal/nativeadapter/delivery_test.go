@@ -98,6 +98,7 @@ func TestMalformedPrivateDelivery(t *testing.T) {
 		"unknown-field":     deliveryWire(bytes.Replace(raw, []byte(`"version":`), []byte(`"authority":true,"version":`), 1)),
 		"wrong-scope":       deliveryWire(bytes.Replace(raw, []byte(`"organization_id":"00000000-0000-0000-0000-000000000001","solution_id"`), []byte(`"organization_id":"00000000-0000-0000-0000-000000000002","solution_id"`), 1)),
 		"wrong-origin":      deliveryWire(bytes.Replace(raw, []byte("https://sdk.fixture.invalid"), []byte("http://sdk.fixture.invalid"), 1)),
+		"header-control":    deliveryWire(bytes.Replace(raw, []byte("private-test-bearer"), []byte(`private\ttest`), 1)),
 		"invalid-unicode":   deliveryWire(bytes.Replace(raw, []byte("private-test-bearer"), []byte(`\ud800`), 1)),
 		"invalid-utf8":      deliveryWire(bytes.Replace(raw, []byte("private-test-bearer"), []byte{0xff}, 1)),
 		"trailing-json":     deliveryWire(append(bytes.Clone(raw), []byte("{}")...)),

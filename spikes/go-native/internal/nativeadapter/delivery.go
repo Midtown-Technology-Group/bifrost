@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -104,10 +103,22 @@ func decodeDelivery(raw []byte, expected executionprofile.Decoded, now time.Time
 	}
 	sdk := envelope.SDK
 	origin, err := url.Parse(sdk.Endpoint)
-	if err != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || origin.RawQuery != "" || origin.ForceQuery || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") || sdk.Bearer == "" || strings.ContainsAny(sdk.Bearer, "\r\n") || !x509.NewCertPool().AppendCertsFromPEM([]byte(sdk.TestCAPEM)) {
+	if err != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil || origin.RawQuery != "" || origin.ForceQuery || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") || !validBearer(sdk.Bearer) || !x509.NewCertPool().AppendCertsFromPEM([]byte(sdk.TestCAPEM)) {
 		return SDKConfiguration{}, DeliveryRejected
 	}
 	return sdk, nil
+}
+
+func validBearer(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, b := range []byte(value) {
+		if b < 33 || b > 126 {
+			return false
+		}
+	}
+	return true
 }
 
 func closedObject(raw []byte, names ...string) bool {

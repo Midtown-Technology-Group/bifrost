@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bifrost.invalid/runtime/v1/isolated/private-delivery.schema.json",
+  "description": "Isolated approved private delivery, not a public lifecycle message or issuer authentication. Four-byte big-endian length, at most 65536 bytes, one UTF-8 JSON delivery then EOF. Reject duplicate decoded keys, invalid Unicode, unknown keys and nesting above 16. Compare the entire Provision to the already observed common frame. Require live guardian custody, finite unexpired admission and release separately.",
+  "type": "object",
+  "required": ["version", "provision", "sdk_configuration"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": "runtime-private-delivery/v1"},
+    "provision": {
+      "allOf": [
+        {"$ref": "../../executionprofile/schemas/profile.schema.json"},
+        {"type": "object", "properties": {"type": {"const": "Provision"}}}
+      ]
+    },
+    "sdk_configuration": {
+      "type": "object",
+      "required": ["endpoint", "bearer", "organization_id", "solution_id", "test_ca_pem"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {"type": "string", "minLength": 1, "description": "Accepted HTTPS origin only: no userinfo, query, fragment or non-root path."},
+        "bearer": {"type": "string", "minLength": 1, "pattern": "^[!-~]+$", "description": "Dedicated finite opaque runtime SDK credential. Never an ordinary application token, lifecycle authority or renewal permission."},
+        "organization_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+        "solution_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+        "test_ca_pem": {"type": "string", "minLength": 1, "description": "Trusted isolated fixture CA; TLS certificate and hostname verification remain enabled."}
+      }
+    }
+  }
+}

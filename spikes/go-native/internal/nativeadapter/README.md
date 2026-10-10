@@ -33,3 +33,11 @@ The verified guardian, actual issuer/ingress, release transaction, native adapte
 entrypoint and accepted bundle remain required. No process is launched by this
 component; no runtime acceptance is claimed. The existing Go workflow and SDK
 remain unchanged. Tests run through the existing isolated Go CI lane.
+
+On the initial Linux/amd64 target, `SealExecutable` copies the supplied accepted
+child into a memfd, verifies the exact binary digest and applies irreversible
+write/grow/shrink/seal locks. The later authorized launch can use that retained
+handle rather than re-opening the source path. Empty, oversized, modified or
+unsealable bytes fail closed. This addresses byte replacement between validation
+and exec; it does not verify deployment acceptance, grant permission, guarantee
+descendant cleanup or execute the binary. No Rust type or tenant import is used.

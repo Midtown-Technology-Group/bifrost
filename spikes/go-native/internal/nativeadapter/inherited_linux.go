@@ -26,6 +26,15 @@ func (r *DeliveryReader) ReadInherited(fd uintptr, expected executionprofile.Dec
 			_ = syscall.Close(int(fd))
 		}
 	}()
+	body, ok := expected.Frame["body"].(map[string]any)
+	expiryText, expiryOK := body["expires_at"].(string)
+	expires, expiryErr := time.Parse(time.RFC3339Nano, expiryText)
+	if !ok || !expiryOK || expiryErr != nil {
+		return SDKConfiguration{}, DeliveryRejected
+	}
+	if expires.Before(deadline) {
+		deadline = expires
+	}
 	flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFL, 0)
 	if errno != 0 || flags&syscall.O_ACCMODE != syscall.O_RDONLY {
 		return SDKConfiguration{}, DeliveryRejected
@@ -55,5 +64,9 @@ func (r *DeliveryReader) ReadInherited(fd uintptr, expected executionprofile.Dec
 	if !deadline.After(time.Now()) || file.SetReadDeadline(deadline) != nil {
 		return SDKConfiguration{}, DeliveryRejected
 	}
-	return r.Read(file, expected, time.Now())
+	sdk, err := r.Read(file, expected, time.Now())
+	if err != nil || !deadline.After(time.Now()) {
+		return SDKConfiguration{}, DeliveryRejected
+	}
+	return sdk, nil
 }

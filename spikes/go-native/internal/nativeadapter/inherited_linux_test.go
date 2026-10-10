@@ -92,7 +92,16 @@ func TestInheritedRejectsWriter(t *testing.T) {
 }
 
 func TestInheritedTimeoutClosesDescriptor(t *testing.T) {
-	_, expected, _ := deliveryFixture(t)
+	raw, _, _ := deliveryFixture(t)
+	raw = bytes.Replace(raw, []byte("2026-10-10T20:00:00Z"), []byte("2099-10-10T20:00:00Z"), 1)
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := executionprofile.Decode(envelope["provision"])
+	if err != nil {
+		t.Fatal(err)
+	}
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
