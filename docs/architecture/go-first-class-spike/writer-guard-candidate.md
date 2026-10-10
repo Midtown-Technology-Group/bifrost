@@ -89,3 +89,13 @@ container/volume/network inventories. API quality was unrun after failure. The
 old workflow copied guard XML only on success; cleanup now independently retains
 the final JUnit on failures. This is a source correction requiring fresh hosted
 proof, not an accepted writer or an unchanged rerun.
+
+
+Run38070069167 at a04bfb973 repaired module loop scope and installed the actual
+schema guards. It passed13,722 unit and109 baseline tests (zero skips/errors/
+failures), then all51 cases failed while constructing a claimed workflow attempt
+without its required publication/claim timestamps. The existing state-shape
+constraint correctly rejected it before case bodies. The fixture now supplies
+those timestamps; no constraint was relaxed. Failed JUnit is retained and
+teardown again proves empty inventories. API quality was unrun. Source-bound
+logs/XML and corrections remain in the evidence JSON; fresh proof is required.

@@ -109,7 +109,7 @@
     "candidate_tree": "3d658b94c23eb1314bdca6fecb635784b2052b05",
     "run": 38070069167,
     "job": 114265486759,
-    "state": "in_progress at provider readback; source/schema/test step executing, results not available",
+    "state": "completed: failure",
     "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38070069167",
     "changes": [
       "Explicit module event-loop scope for module installer",
@@ -122,6 +122,62 @@
       "scripts/ci/writer-guards/pgbouncer.ini": "0ff442bc1a08cc507145bbd32b3a4d6aa33346fc9a5b8abdc930e9bbe0ec42ad",
       "scripts/ci/writer-primer/userlist.txt": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619",
       ".github/workflows/runtime-writer-guard-spike.yml": "d0f8585b8e684eb2601d5415a18f889bc8360d8b28912930420f943d42198529"
+    },
+    "result": {
+      "classification": "Claimed fixture omitted required published_at/claimed_at; existing state-shape CHECK correctly rejected it",
+      "suites": {
+        "writer-guard-unit.xml": {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "13722",
+          "time": "411.673",
+          "timestamp": "2026-10-10T17:08:41.968545+00:00",
+          "hostname": "23b263734707"
+        },
+        "writer-guard-baseline.xml": {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "109",
+          "time": "14.787",
+          "timestamp": "2026-10-10T17:16:40.155825+00:00",
+          "hostname": "29875df46ac2"
+        },
+        "writer-guard-last-results.xml": {
+          "name": "pytest",
+          "errors": "51",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "51",
+          "time": "37.875",
+          "timestamp": "2026-10-10T17:17:33.920199+00:00",
+          "hostname": "41f9b5c77877"
+        }
+      },
+      "guards_installed": true,
+      "guard_case_bodies_executed": false,
+      "api_quality": "unrun after setup failure",
+      "cleanup": "verified empty container/volume/network inventories",
+      "correction": "Populate ordinary claimed-attempt timestamps, preserving all existing constraints and guard assertions",
+      "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/a04bfb973b3423e4299d99742f366d8178fbfb16/runtime-writer-guards-a04bfb973b3423e4299d99742f366d8178fbfb16",
+      "artifact_file_sha256": {
+        "writer-guard-baseline.xml": "c5245ed272e48a5bb561a903207a3e02db860fe61bf2ee33cbf61db162c46d16",
+        "writer-guard-cleanup.log": "e9951c1cd0ac6c19e2fd8064d303b7696aad9b639c6ba2f8682a75fd8a24f01e",
+        "writer-guard-images.txt": "75d99b94770c6dd7e4cb3d3cd01ecb2cd4bbfde8f4ed25811ba3efcab6dd6dac",
+        "writer-guard-last-results.xml": "403d988653e0d365030a95351ba024ba13a55fea490d276ed9453c8c7245c418",
+        "writer-guard-source-hashes.txt": "955f62c425b906e9abdc11d02ee5575a40da4630c66bab5fddecb19e3ba0117b",
+        "writer-guard-source.txt": "189f1714124b9259e0f3e5755f330987adeed495775f373daaf387e42b9415c2",
+        "writer-guard-stack.log": "a4142a891c4ad6bcbe26d122dece458ec0e51c2a4ccf75b29c8ba67f5245ada7",
+        "writer-guard-storage-baseline.log": "37abe2b6cf6a71fd0a399d2a006175b343cc8af425de6e8cc185a2f39be581b4",
+        "writer-guard-tests.log": "7424a56cf1dedae9ac5619fb6246c9fff6e018fe4081c3bdd37927e0453df601",
+        "writer-guard-unit.log": "a7e87593eeb157471fe9241a2dec8a19435bdadd416d89e9fa609c1c10c8f3b8",
+        "writer-guard-unit.xml": "c543eb7bcbf70e21474fce8d6cbb7a438e1b18615cf2b01039d5f4878910e24e"
+      },
+      "job_log_sha256": "02e66605ad5d666ec33aa170b381903ef92449f1b6a0155361526c1576ab1cb3",
+      "new_source_run_required": true
     }
   },
   "native_registration_audit": {

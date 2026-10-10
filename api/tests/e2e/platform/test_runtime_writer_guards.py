@@ -6,6 +6,7 @@ The task's stack-down gate owns removal of the committed fixture and principals.
 
 import json
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 from unittest.mock import AsyncMock
@@ -138,6 +139,8 @@ async def rows(db_session, association):
             phase="admission",
             claim_token=uuid4(),
             worker_incarnation_id=uuid4(),
+            published_at=datetime.now(UTC),
+            claimed_at=datetime.now(UTC),
         )
     )
     log = ExecutionLog(execution_id=execution, level="info", message="incumbent")
