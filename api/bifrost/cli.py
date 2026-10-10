@@ -1222,9 +1222,8 @@ Browser (default): Native OAuth flow using your browser session and a local
                    instance.
 Device code: Pass --device-code for the legacy browser device-code flow.
 Password: When --email and --password are passed, performs an ephemeral
-          password-grant login that skips the persistent credential backend.
-          It writes BIFROST_ACCESS_TOKEN and BIFROST_REFRESH_TOKEN into the
-          current directory's .env; otherwise only BIFROST_API_URL is written.
+          password-grant login. Tokens are stored in the credential backend;
+          only BIFROST_API_URL is written to the current directory's .env.
           For isolated dev stacks only — refuses if MFA is enabled.
 
 Options:
@@ -1287,25 +1286,17 @@ Examples:
                 expires_at=expires_at.isoformat(),
             )
 
-            # Persist URL + tokens to CWD's .env as well so isolated scratch
-            # directories can carry unattended sessions without changing a
-            # user's active global CLI target.
+            # Keep the directory's target URL without copying bearer or refresh
+            # tokens into project files. Remove tokens left by older CLI runs.
             try:
                 _write_env_url(api_url)
-                _upsert_env_vars(
-                    {
-                        "BIFROST_ACCESS_TOKEN": data["access_token"],
-                        "BIFROST_REFRESH_TOKEN": data["refresh_token"],
-                    }
-                )
+                _remove_env_keys({"BIFROST_ACCESS_TOKEN", "BIFROST_REFRESH_TOKEN"})
             except OSError as e:
                 print(
                     f"Warning: could not update .env in current directory: {e}",
                     file=sys.stderr,
                 )
                 print(f"BIFROST_API_URL={api_url}")
-                print(f"BIFROST_ACCESS_TOKEN={data['access_token']}")
-                print(f"BIFROST_REFRESH_TOKEN={data['refresh_token']}")
         return rc
 
     resolved_url = _resolve_login_api_url(api_url)
