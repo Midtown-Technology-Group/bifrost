@@ -37,6 +37,7 @@ type PreparedNative struct {
 	prepareID      string
 	artifact       map[string]any
 	input          []byte
+	outputSchema   []byte
 	deadline       time.Time
 	binding        map[string]any
 	sessionID      string
@@ -177,5 +178,5 @@ func PrepareNative(received executionprofile.Decoded, accepted PreparationInputs
 		return nil, PreparationRejected
 	}
 	keep = true
-	return &PreparedNative{executable: executable, prepareID: validated.Frame["message_id"].(string), artifact: artifact, input: input, deadline: deadline, binding: binding, sessionID: validated.Frame["session_id"].(string), parentSequence: sequence}, nil
+	return &PreparedNative{executable: executable, prepareID: validated.Frame["message_id"].(string), artifact: artifact, input: input, outputSchema: append([]byte(nil), accepted.OutputSchema...), deadline: deadline, binding: binding, sessionID: validated.Frame["session_id"].(string), parentSequence: sequence}, nil
 }

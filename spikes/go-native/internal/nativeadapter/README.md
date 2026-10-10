@@ -118,3 +118,32 @@ validation remain in `PrepareNative`. This verifier proves byte identity only:
 reviewed registration, producer provenance, actual source closure, owner admission
 and guardian launch custody must still be established independently. It does not
 promote the existing design-only manifest or local fixture into accepted deployment.
+
+`cmd/adapter` is now a candidate executable, compiled separately from tenant code.
+Its guardian-pinned `session-bundle.json` delivery index has exactly `version`
+(`isolated-native-session-bundle/v1`), `binding`, `artifact`,
+`input_schema_sha256` and `output_schema_sha256`. Fixed staged objects are
+`workflow`, `build-evidence.json`, `module-graph.txt`, `input-schema.json` and
+`output-schema.json`; adapter identity is checked against `/proc/self/exe`.
+The index is a private delivery fixture, not public workflow registration or
+deployment acceptance. The guardian must verify producer provenance and source
+closure and stage the directory read-only before starting the adapter.
+
+The executable uses stdin/stdout only for common protocol frames and inherited
+FD3 only for one private delivery. It negotiates and prepares inertly, observes
+matching Start/Provision, launches the sealed unchanged workflow with its own
+SDK-only FD3, emits heartbeats and bounded Result bytes, waits for the matching
+receipt, then emits advisory Stopped. Parent Cancel while private material is
+withheld closes the material reader through the same owned `os.File`; it cannot
+initialize the tenant. Child stdout is bounded to 64KiB, stderr is discarded,
+and the child receives no ambient environment or guardian descriptors.
+
+This remains an unaccepted integration candidate. The real Rust guardian must
+withhold material until authenticated issuance and its release commit are
+unambiguously observed, supervise the actual process/cgroup and handle uncertain
+spawn without replay. The adapter's wait proves only its direct child, not
+descendant or source-consumer cleanup. Its current direct-child termination
+fallback is 100ms; negotiated Cancel grace and enclosing guardian drain still
+need integration. The command has a finite 30s outer limit for this isolated
+readiness slice. Logs, actual Rust dispatch, issuer/ingress, accepted registration,
+cleanup/recovery and full non-Rust supervisor execution remain to be proved.

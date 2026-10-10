@@ -57,6 +57,8 @@ def main() -> None:
         "source_sha256": source_digest, "source_files": files,
         "artifact_sha256": digest(artifact), "artifact_size_bytes": artifact.stat().st_size,
         "local_probe_sha256": digest(out / "probe"),
+        "native_adapter_sha256": digest(out / "adapter"),
+        "native_adapter_status": "candidate executable; live Rust guardian integration and runtime acceptance pending",
         "warm_artifact_sha256": digest(changed),
         "behavior_edit_observation": {"original_missing_keys": runtime["missing_keys_observation"],
                                       "edited_missing_keys": warm_runtime["missing_keys_observation"]},

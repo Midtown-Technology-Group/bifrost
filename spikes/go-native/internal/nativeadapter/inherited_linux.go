@@ -3,6 +3,7 @@
 package nativeadapter
 
 import (
+	"context"
 	"os"
 	"syscall"
 	"time"
@@ -15,6 +16,12 @@ import (
 // The caller must still establish that its verified guardian owns the writer;
 // kernel descriptor shape alone is not authenticated issuer custody.
 func (r *DeliveryReader) ReadInherited(fd uintptr, expected executionprofile.Decoded, deadline time.Time) (SDKConfiguration, error) {
+	return r.ReadInheritedContext(context.Background(), fd, expected, deadline)
+}
+
+// ReadInheritedContext also closes the owned pipe on cancellation. The same
+// os.File object owns both close paths, avoiding raw descriptor reuse races.
+func (r *DeliveryReader) ReadInheritedContext(ctx context.Context, fd uintptr, expected executionprofile.Decoded, deadline time.Time) (SDKConfiguration, error) {
 	if fd < 3 {
 		return SDKConfiguration{}, DeliveryRejected
 	}
@@ -61,7 +68,16 @@ func (r *DeliveryReader) ReadInherited(fd uintptr, expected executionprofile.Dec
 	}
 	ownedRaw = false
 	defer file.Close()
-	if !deadline.After(time.Now()) || file.SetReadDeadline(deadline) != nil {
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = file.Close()
+		case <-finished:
+		}
+	}()
+	if ctx.Err() != nil || !deadline.After(time.Now()) || file.SetReadDeadline(deadline) != nil {
 		return SDKConfiguration{}, DeliveryRejected
 	}
 	sdk, err := r.Read(file, expected, time.Now())

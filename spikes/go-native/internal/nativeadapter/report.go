@@ -94,7 +94,7 @@ func (r *ResultReport) Write(writer io.Writer) error {
 // PostgreSQL durability. Conflicting repeated decisions reject without repair.
 func (r *ResultReport) ObserveReceipt(received executionprofile.Decoded) (ReceiptEvidence, error) {
 	decoded, err := detachedFrame(received)
-	if err != nil || decoded.Frame["type"] != "ResultReceipt" || decoded.Frame["session_id"] != r.decoded.Frame["session_id"] {
+	if err != nil || decoded.Frame["type"] != "ResultReceipt" || decoded.Frame["session_id"] != r.decoded.Frame["session_id"] || decoded.Frame["correlation_id"] != r.MessageID() {
 		return ReceiptEvidence{}, ReportRejected
 	}
 	body := decoded.Frame["body"].(map[string]any)
