@@ -201,7 +201,7 @@ async def test_generate_embed_upload_uses_server_bounded_capability():
                 name="attachment",
                 type="file",
                 allowed_types=["application/pdf"],
-                max_size_mb=1,
+                max_size_mb=None,
             )
         ],
     )
@@ -246,6 +246,27 @@ async def test_generate_embed_upload_uses_server_bounded_capability():
     assert response.upload_headers["Content-Type"] == "application/pdf"
     assert response.upload_headers["Authorization"].startswith("Bearer ")
     storage.generate_presigned_upload_url.assert_not_awaited()
+
+    with (
+        patch.object(forms, "_authorize_form_runtime", AsyncMock()),
+        patch.object(forms, "_limit_embed_action", AsyncMock()),
+        pytest.raises(HTTPException) as exc,
+    ):
+        await forms.generate_upload_url(
+            form_id,
+            SimpleNamespace(),
+            FileUploadRequest(
+                file_name="too-large.pdf",
+                content_type="application/pdf",
+                file_size=forms.MAX_EMBED_UPLOAD_BYTES + 1,
+                field_name="attachment",
+            ),
+            ctx,
+            ctx.user,
+            db,
+        )
+    assert exc.value.status_code == 400
+    assert "public upload maximum" in exc.value.detail
 
 
 @pytest.mark.asyncio

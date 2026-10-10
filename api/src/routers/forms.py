@@ -29,6 +29,7 @@ from src.config import get_settings
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.rate_limit import RateLimiter, get_client_ip
+from src.core.security import create_form_upload_token, decode_token
 from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
 from src.repositories.workflows import WorkflowRepository
@@ -64,15 +65,20 @@ from shared.form_captcha import (
 )
 from shared.form_provider import FormProviderError, execute_form_field_provider
 from shared.form_runtime import (
+    MAX_EMBED_UPLOAD_BYTES,
     FormRuntimeValidationError,
+    FormUploadSizeError,
     accept_external_submission,
     clear_embed_upload_references,
     consume_startup_result,
+    enforce_form_upload_size,
     form_capability_fingerprint,
     load_startup_result,
     normalize_allowed_origins,
     release_external_submission,
-    register_embed_upload,
+    register_embed_upload_for_session,
+    release_form_upload_capability,
+    reserve_form_upload_capability,
     reserve_external_submission,
     store_startup_result,
     validate_embed_upload_references,
@@ -1878,8 +1884,11 @@ def _check_mime_type_allowed(content_type: str, allowed_types: list[str]) -> boo
 @router.post(
     "/{form_id}/upload",
     response_model=FileUploadResponse,
-    summary="Generate presigned URL for file upload",
-    description="Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.",
+    summary="Authorize a file upload",
+    description=(
+        "Authorize a bounded server upload for embed sessions or a direct "
+        "storage upload for authenticated users."
+    ),
 )
 async def generate_upload_url(
     form_id: UUID,
@@ -1890,7 +1899,7 @@ async def generate_upload_url(
     db: DbSession,
 ) -> FileUploadResponse:
     """
-    Generate a presigned S3 URL for direct file upload.
+    Authorize a form file upload.
 
     Path: uploads/{form_id}/{uuid}/{sanitized_filename}
     - Organized by form for easy association
@@ -1954,6 +1963,15 @@ async def generate_upload_url(
                         detail=f"File size {request.file_size} bytes exceeds maximum {field.max_size_mb}MB",
                     )
 
+    if ctx.user.embed and request.file_size > MAX_EMBED_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"File size {request.file_size} bytes exceeds the public upload "
+                f"maximum of {MAX_EMBED_UPLOAD_BYTES} bytes"
+            ),
+        )
+
     # Generate the upload's relative path. The full S3 key is built by the
     # unified files resolver: `uploads/{scope}/{relative_path}`. Scope is the
     # caller's effective org (matches what the workflow's SDK will resolve to
@@ -1970,6 +1988,48 @@ async def generate_upload_url(
     # location-relative path to callers so workflows can use
     # `files.read(blob_uri, location="uploads")` without prefix-stripping.
     storage = FileStorageService(db)
+    if ctx.user.embed:
+        assert request.field_name is not None
+        if not ctx.user.jti or not ctx.user.token_exp:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Embed session is missing upload capability claims",
+            )
+        now = datetime.now(timezone.utc)
+        capability_seconds = max(
+            1,
+            min(600, ctx.user.token_exp - int(now.timestamp())),
+        )
+        upload_token = create_form_upload_token(
+            form_id=str(form_id),
+            org_id=str(ctx.org_id) if ctx.org_id else None,
+            session_jti=ctx.user.jti,
+            session_exp=ctx.user.token_exp,
+            path=relative_path,
+            storage_key=s3_key,
+            field_name=request.field_name,
+            file_name=request.file_name,
+            content_type=request.content_type,
+            file_size=request.file_size,
+            expires_delta=timedelta(seconds=capability_seconds),
+        )
+        return FileUploadResponse(
+            upload_url=f"/api/forms/{form_id}/upload",
+            upload_headers={
+                "Authorization": f"Bearer {upload_token}",
+                "Content-Type": request.content_type,
+            },
+            blob_uri=relative_path,
+            expires_at=(now + timedelta(seconds=capability_seconds)).isoformat(),
+            file_metadata=UploadedFileMetadata(
+                name=request.file_name,
+                container="uploads",
+                path=relative_path,
+                content_type=request.content_type,
+                size=request.file_size,
+            ),
+        )
+
     try:
         upload_url = await storage.generate_presigned_upload_url(
             path=s3_key,
@@ -1986,16 +2046,6 @@ async def generate_upload_url(
     # Calculate expiration time
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat() + "Z"
 
-    if ctx.user.embed:
-        assert request.field_name is not None
-        await register_embed_upload(
-            ctx.user,
-            path=relative_path,
-            field_name=request.field_name,
-            content_type=request.content_type,
-            file_size=request.file_size,
-        )
-
     return FileUploadResponse(
         upload_url=upload_url,
         upload_headers=storage.presigned_upload_headers(request.content_type),
@@ -2009,3 +2059,131 @@ async def generate_upload_url(
             size=request.file_size,
         ),
     )
+@router.put(
+    "/{form_id}/upload",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Upload bounded public form content",
+)
+async def upload_embed_form_content(
+    form_id: UUID,
+    request: Request,
+    db: DbSession,
+) -> Response:
+    """Stream one embed upload while enforcing its signed byte count."""
+    from src.services.file_storage import FileStorageService
+
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Upload capability is required",
+        )
+    payload = decode_token(authorization[7:], expected_type="form_upload")
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Upload capability is invalid or expired",
+        )
+    if payload.get("form_id") != str(form_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Upload capability does not match this form",
+        )
+
+    expected_size = payload.get("file_size")
+    upload_jti = payload.get("jti")
+    expires_at = payload.get("exp")
+    required_text_claims = (
+        "session_jti",
+        "path",
+        "storage_key",
+        "field_name",
+        "content_type",
+    )
+    if (
+        not isinstance(expected_size, int)
+        or expected_size < 0
+        or expected_size > MAX_EMBED_UPLOAD_BYTES
+        or not isinstance(upload_jti, str)
+        or not isinstance(expires_at, int)
+        or any(not isinstance(payload.get(claim), str) for claim in required_text_claims)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Upload capability claims are invalid",
+        )
+
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_length = int(content_length)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Content-Length must be an integer",
+            ) from exc
+        if declared_length > expected_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Upload body exceeds its approved size",
+            )
+        if declared_length < expected_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Upload body is smaller than its approved size",
+            )
+
+    if not await reserve_form_upload_capability(upload_jti, expires_at):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Upload capability has already been used",
+        )
+
+    storage = FileStorageService(db)
+    storage_key = payload["storage_key"]
+    try:
+        _, stored_size = await storage.write_raw_chunks_to_s3(
+            storage_key,
+            enforce_form_upload_size(request.stream(), expected=expected_size),
+            content_type=payload["content_type"],
+        )
+        if stored_size != expected_size:
+            raise FormUploadSizeError(expected=expected_size, actual=stored_size)
+        await register_embed_upload_for_session(
+            session_jti=payload["session_jti"],
+            session_exp=payload.get("session_exp"),
+            path=payload["path"],
+            field_name=payload["field_name"],
+            content_type=payload["content_type"],
+            file_size=expected_size,
+        )
+    except FormUploadSizeError as exc:
+        await storage.delete_raw_from_s3(storage_key)
+        await release_form_upload_capability(upload_jti)
+        raise HTTPException(
+            status_code=(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                if exc.actual > exc.expected
+                else status.HTTP_400_BAD_REQUEST
+            ),
+            detail="Upload body does not match its approved size",
+        ) from exc
+    except asyncio.CancelledError:
+        await storage.delete_raw_from_s3(storage_key)
+        await release_form_upload_capability(upload_jti)
+        raise
+    except Exception as exc:
+        await storage.delete_raw_from_s3(storage_key)
+        await release_form_upload_capability(upload_jti)
+        logger.error(
+            "Failed to store bounded form upload for %s: %s",
+            log_safe(form_id),
+            log_safe(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store upload",
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

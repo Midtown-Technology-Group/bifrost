@@ -613,6 +613,13 @@ async def e2e_public_form_submit(
         )
         assert stored.status_code == 204, stored.text
 
+        replayed = e2e_client.put(
+            own_upload_data["upload_url"],
+            headers=own_upload_data["upload_headers"],
+            content=b"y" * 100,
+        )
+        assert replayed.status_code == 409, replayed.text
+
         oversized_upload = e2e_client.post(
             f"/api/forms/{form_id}/upload",
             headers=first_headers,
