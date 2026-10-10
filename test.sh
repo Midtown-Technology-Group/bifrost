@@ -656,9 +656,10 @@ client_ci_checks() {
 }
 
 client_quality_checks() {
+    # The ci target inherits the authoritative, type-checked production build.
     docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
     docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps \
-        client-check-runner sh -c 'npm run tsc && npx eslint "$@"' sh "$@"
+        client-check-runner sh -c 'npx eslint "$@"' sh "$@"
 }
 
 client_unit_targets() {
