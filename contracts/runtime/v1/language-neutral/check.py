@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
+from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parent
 FORMATS = FormatChecker()
@@ -50,11 +51,15 @@ def load(name):
 
 def main():
     validators = {}
+    schemas = [load(path.name) for path in sorted(ROOT.glob("*.schema.json"))]
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema)) for schema in schemas
+    )
     for path in sorted(ROOT.glob("*.schema.json")):
         schema = load(path.name)
         Draft202012Validator.check_schema(schema)
         validators[path.name.removesuffix(".schema.json")] = Draft202012Validator(
-            schema, format_checker=FORMATS
+            schema, format_checker=FORMATS, registry=registry
         )
     if load("workload.schema.json")["$defs"]["binding"] != load(
         "provision-binding.schema.json"

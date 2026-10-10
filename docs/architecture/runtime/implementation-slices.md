@@ -1,104 +1,124 @@
-# Runtime foundation implementation slices
+# Runtime execution-profile implementation map
 
-Issue-ready plan; no tracker issues created. Detailed decisions live in
-[contract](contract.md) and [review](review.md). This map separates implemented
-static documents from unimplemented runtime behavior and remaining acceptance.
+Status: proposed packages, no issues created or authority implementation released.
+The #1074 static artifact/workload foundation is merged; this PR adds a proposed
+negotiated profile, canonical binding, test-only oracle and vectors. It does not
+freeze that profile. Read [profile](execution-profile.md), [binding](identity-binding.md)
+and [review](review.md). Owners below name responsibilities, not assigned people.
 
-## Slice 1: Honest artifact evidence across Python and Go
+## Package 1: Independent Rust/Python codecs and interchange
 
-Scope: the closed artifact union and shared input/result/log/error documents,
-implemented first as offline schemas on current MTG main. Add Rust/Python
-native types and codecs only against the accepted Rust contract baseline;
-do not replace its existing crate or coerce Go into P0 interpreter fields.
+Owner: contract maintainers; accountable architecture reviewer ratifies semantics.
+Inputs: `contracts/runtime/v1/execution-profile/{profile.schema.json,wire-vectors.json,
+session-vectors.json,structural-vectors.json}`, shared
+`language-neutral/{binding,artifact}.schema.json`, and unchanged P0 at #1015.
 
-Acceptance criteria: Python, Go, Deno and .NET deployed artifact classes validate;
-unknown classes/authority fields and contradictory success/error fail. Actual
-Python/Go encoding interchange passes every incumbent P0 vector unchanged plus
-new artifact/document negatives. Same binding structure across workload and
-provision documents is mechanically checked.
+Target seams (unmerged reference paths; absent production paths stay absent here):
+`core-rs/crates/bifrost-contracts/src/runtime/` and its
+`tests/fixtures/runtime/v1/`; `api/src/runtime_protocol/{control,session}.py` gains
+isolated `execution.py` / `execution_session.py`; tests in
+`api/tests/runtime_protocol/` and Rust examples/tests. Choose the accepted
+reference base explicitly; do not transplant either unmerged stack onto main.
+The canonical vector owner remains `contracts/runtime/v1/execution-profile/`;
+container copies require identical hashes, never independently edited fixtures.
 
-Verification: offline check.py (implemented), existing supported Rust and Python
-container codec suites and both encoder-to-peer-decoder directions (remaining).
+Dependencies: architecture review of negotiation, lexical rules, receipt bytes,
+canonical identity and direction/correlation rules. No authority credentials.
+Acceptance: real encoders in each language feed the other real decoder in both
+directions; consume every new vector and every incumbent P0 wire/framing/session
+vector unchanged; compare exact error precedence. One-byte IO, interrupted/partial
+reads/writes, max-size/depth boundaries and deliberate codec drift must prove RED.
+A Rust/Python consumer must expand named JSON session fixtures without importing
+the Python oracle. This package certifies codecs/transitions, not execution.
 
-Depends on: selected reviewed Rust baseline and explicit full-profile negotiation.
+## Package 2: Trusted adapter interface and Python/Go initialization custody
 
-Stop/expand gate: static vectors do not authorize runtime execution. Do not
-import the unmerged runtime stack wholesale into main to satisfy a path target.
+Owner: supervisor/security owner with Python and Go adapter maintainers.
+Target seams: new private adapter interfaces beneath accepted Rust runtime
+supervision, plus an isolated Python adapter adjacent to `api/src/runtime_protocol/`.
+Current `api/src/services/execution/{process_pool,template_process,module_loader,
+worker,worker_sdk_http,requirements_setup_helper}.py` are compatibility inputs,
+not approved extraction points. Go reference `spikes/go-native/` and its
+`runtimecontrol/` are experiment evidence; reviewed production path TBD.
 
-## Slice 2: Python and Go obey one execution-permission boundary
+Interface: accepted immutable descriptor+binding/input/context; actual supervised
+process/channel handle; Prepare observations; committed Start; separately bound
+private provision delivery; refreshed release admission; observation channel;
+cooperative cancellation, bounded termination and verified descendant cleanup.
+Tenant code has no lifecycle interface. Use additive shims; retain existing
+Python authoring semantics only where characterized and permitted.
 
-Scope: trusted adapters consume accepted deployments and launch/evaluate tenant
-code only after durable Start and valid same-session capability delivery.
-No language-specific lifecycle states, broad credentials or mutable restoration.
+Dependencies: Package1 and #1011's explicit caller/source/dependency/custody,
+real session-close/issuer/ingress/renewal and mechanical writer-exclusion gates.
+Select immutable Python environment/adapter evidence independently; do not
+manufacture adapter hashes or silently accept mutable package installation.
+Existing stopped reference cycles remain stopped. No new credential or source
+permission follows from writing this interface.
 
-Acceptance criteria: malicious Python imports, Go variable/package initializers,
-wrong deployment/session/attempt/caller/scope, expired grants, cancelled sessions
-and failed provision delivery cannot cause pre-permission effects. Actual
-capability enforcement denies lifecycle/control-plane writes. Cancellation
-propagates through SDK waits and custody covers all descendants.
+Acceptance: actual Python import/site/default-expression and ordinary Go variable/
+package-initializer canaries stay inert for every missing/wrong/expired/revoked/
+cancelled Start/provision combination. Both valid arrival orders release the same
+unchanged workload. Bound raw HTTP/SQL/Redis negatives deny control-plane writes.
+Inspect actual environment/files/descriptors, role/pool identity, bytes and child
+process tree; crash the adapter and prove no descendant survives. Run upstream
+compatibility negatives with unchanged Go/profile. Mechanism evidence alone is
+not Rust-owned execution acceptance.
 
-Verification: supported isolated VM/CI actual adapter/process/HTTP tests with
-retained attempt/session/deployment correlation and secret-disclosure negatives.
+## Package 3: Executable shared Python/Go behavioral oracle
 
-Depends on: Slice 1 reviewed codec, #1011 owner/source/provision interfaces and
-mechanical writer exclusion. Mechanism tests cannot substitute for owner proof.
+Owner: compatibility/test maintainers plus selected workload/schema owner.
+Inputs: six retained `language-neutral/fixtures/` cases and pinned provenance,
+`compatibility.schema.json`, `required-scenarios.json`, selected original workspace
+workloads and Package2's actual adapters. Existing ordered-HTTP/result/error
+fixtures remain byte-for-byte; extend a separate executable case envelope only
+under oracle/schema review. No placeholder workload counts as actual behavior.
 
-Stop/expand gate: no production credentials, active routing, deployment or C2/C3
-acceptance from source-only checks. Existing stopped reference runs stay stopped.
+Target seams: new shared runtime conformance tests in
+`api/tests/runtime_protocol/` and supported Rust contract/adapter test lane;
+common immutable case fixtures under `contracts/runtime/v1/`; equivalent Go
+consumer in the reviewed adapter test package. Test-only HTTP/effect oracle owns
+ordered exchanges, capability selectors, no-network preparation, redaction,
+serialization/schema and time/cancel stimuli, not production lifecycle authority.
 
-## Slice 3: One behavioral oracle accepts Python and Go
+Dependencies: Packages1–2, accepted workload/context schemas, retained source pins,
+issuer/ingress proof and supported dedicated-VM/CI execution environment.
+Acceptance: identical ordered interactions and exact outcomes/errors across real
+Python/Go, including every roster case; deliberate output, permission, effect and
+secret-disclosure drift must fail. Keep raw observations distinct from durable
+owner decisions. Static JSON validation is not behavioral evidence.
 
-Scope: import actual workspace compatibility fixtures and executable workloads;
-complete the case envelope with ordered HTTP exchanges, integration bindings,
-secret references, schema/input/output identities and no-network preflight.
+## Package 4: Rust-owned durable Result/Receipt and Cancel integration
 
-Acceptance criteria: exact result/error and ordered interaction equivalence for
-both implementations. Run every required coverage-roster scenario, including
-capability denial, malformed responses, cancellation, deadlines, stale/wrong
-sessions and secret nondisclosure. Retain raw observation versus durable owner
-projection distinctly; do not normalize per-language differences away.
+Owner: #1011 lifecycle/security/data owner; human architecture release required.
+Target seams: accepted Rust workflow/agent owner transactions and supervised
+session registry; existing `api/src/services/execution/attempts.py`,
+`api/src/services/execution_attempts.py`, `api/src/jobs/consumers/workflow_execution.py`,
+workflow and agent attempt/domain projections, source accounting, event receipts
+and credential grant consumers are characterization/integration inputs. No new
+DML/schema writer is added here. Any additive storage must use Alembic's current
+history and separately reviewed ownership constraints, not new parallel jobs.
 
-Verification: same cases against both real adapters, deliberate output/security/
-interaction drift proves red, corrected implementations prove green.
+Dependencies: Packages1–3 plus #1011's source-accounting-first admission fence,
+final attempt/session/owner lock order, original-caller/credential prerequisites,
+non-owner runtime roles through the actual pool, hidden-writer negatives, installed
+schema custody, event/summary policies, source drain and coexistence/rollback.
+Do not bypass STOP gates with an oracle boolean or session UUID.
 
-Depends on: Slice 2 and accepted fixture oracle/schema extensions. Current
-required-scenarios.json is a roster; structural case examples are synthetic.
+Acceptance: real transactions prove Result-vs-Cancel in both orders, changed and
+identical duplicate receipt bytes, closed/wrong sessions, revoked/expired grants,
+rollback-before-publication and lost commit/Receipt. Exactly one existing domain
+projection wins; publication retries never launch/bill twice. Actual adapter death
+and supervisor recovery settle process/descendant/source custody independently.
+No automatic workload replay follows from any ambiguous Start, crash or lost ACK.
+Keep workflow dispatch settlement distinct from agent terminal delivery semantics.
 
-Stop/expand gate: no portability claim from schemas or scenario counts alone.
+## Independent future consumers
 
-## Slice 4: Result and cancellation have one durable outcome
+Managed .NET and Native AOT .NET consume these same interfaces after honest
+Python/Go acceptance and a separately reviewed freeze decision. Future JavaScript
+isolate runtimes remain possible consumers; Deno is not a planned primary target.
+No workerd/celld substrate decision or Ninja/Sopdet refactor is implied.
 
-Scope: reviewed owner integration for receipt correlation, result acceptance,
-cancellation serialization, fences, deadlines and replay decisions.
-
-Acceptance criteria: one durable final projection under concurrent Cancel/Result;
-late/closed/wrong-binding results never restore authority. Conflicting duplicates
-fail; ACK loss remains unknown and cannot replay effects. Stopped/process loss
-never claims durable completion. Mixed writers are mechanically excluded.
-
-Verification: supported real transaction/race/ambiguous-commit tests, owner
-identity evidence, effect oracle and cleanup inventory; all repo release gates.
-
-Depends on: Slices 1–3 and remaining #1011 owner/SQL/exclusion acceptance.
-
-Stop/expand gate: preserve the existing lifecycle authority and release approvals;
-reviewed source is not deployed or nominal workflow acceptance.
-
-## Slice 5: Independent runtimes validate the frozen foundation
-
-Scope: Deno first, .NET second, after Python/Go contract acceptance. Each uses
-idiomatic authoring and accepted immutable dependencies. .NET Native AOT follows
-native bytes; managed .NET follows its managed deployment descriptor.
-
-Acceptance criteria: same lifecycle state machine, capability semantics and
-behavioral oracle without language-specific authority. Deno permissions are
-additional containment; no runtime builds/restores or compiler installation.
-
-Verification: independent adapters run the same positive/negative cases and
-preserve Python/Go conformance. Changes requested to lifecycle/provisioning reopen
-the common contract review rather than creating runtime exceptions.
-
-Depends on: reviewed freeze following Slices 1–4.
-
-Stop/expand gate: no implementation or production adoption of Deno/.NET is
-included in the initial foundation package. Ninja/Sopdet remains separate.
+Smallest next step after this proposal: accountable architecture review of the
+profile/binding and custody/receipt gates, then Package1 only. Green static checks
+cannot authorize Packages2–4 or declare a freeze.
