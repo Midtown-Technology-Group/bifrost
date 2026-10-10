@@ -187,6 +187,11 @@ def decode_token(
         return None
 
 
+def is_actor_token(payload: dict[str, Any]) -> bool:
+    """Return whether a JWT carries a non-user actor identity marker."""
+    return payload.get("actor_type") is not None
+
+
 def decode_renewable_engine_token(token: str) -> dict[str, Any] | None:
     """Verify a no-timeout engine token for renewal after its access expiry."""
     settings = get_settings()

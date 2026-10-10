@@ -23,6 +23,7 @@ from src.core.security import (
     create_access_token,
     decode_renewable_engine_token,
     decode_token,
+    is_actor_token,
 )
 from src.models.orm.executions import WorkflowExecutionAttempt
 from shared.role_cache import get_user_roles
@@ -198,6 +199,9 @@ async def get_current_user_optional(
 
     if payload.get("mcp"):
         logger.warning("Rejecting MCP-scoped bearer token on REST auth path")
+        return None
+    if is_actor_token(payload):
+        logger.warning("Rejecting actor-scoped bearer token on REST auth path")
         return None
 
     # Extract user ID from token
@@ -648,6 +652,9 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         return None
     if payload.get("mcp"):
         logger.warning("Rejecting MCP-scoped bearer token on WebSocket auth path")
+        return None
+    if is_actor_token(payload):
+        logger.warning("Rejecting actor-scoped bearer token on WebSocket auth path")
         return None
 
     user_id_str = payload.get("sub")
