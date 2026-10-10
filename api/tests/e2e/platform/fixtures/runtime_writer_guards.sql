@@ -6,6 +6,12 @@ CREATE ROLE wex_incumbent LOGIN PASSWORD 'synthetic_primer_incumbent'
     NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE wex_core LOGIN PASSWORD 'synthetic_primer_core'
     NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+-- Server role defaults avoid unsupported PgBouncer startup parameters. Client
+-- commands also retain finite deadlines; no timeout/retry enlargement is used.
+ALTER ROLE wex_incumbent SET statement_timeout = '3s';
+ALTER ROLE wex_incumbent SET lock_timeout = '1s';
+ALTER ROLE wex_core SET statement_timeout = '3s';
+ALTER ROLE wex_core SET lock_timeout = '1s';
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 REVOKE TEMPORARY ON DATABASE bifrost_test FROM PUBLIC;
 GRANT CONNECT ON DATABASE bifrost_test TO wex_incumbent, wex_core;

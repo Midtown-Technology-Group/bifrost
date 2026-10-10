@@ -50,7 +50,7 @@ async def connection(role):
         password=PASSWORDS[role],
         timeout=5,
         command_timeout=5,
-        server_settings={"statement_timeout": "3000", "lock_timeout": "1000"},
+        statement_cache_size=0,
     )
     try:
         identity = await conn.fetchrow("SELECT session_user, current_user")

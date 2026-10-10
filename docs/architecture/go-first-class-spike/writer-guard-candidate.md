@@ -55,3 +55,10 @@ API durable readback; actual process/descendant custody and crash recovery. The
 current privileged application backend is not qualified by this separate-pool
 experiment. A SQL guard test cannot accept that application configuration or
 stand in for runtime evidence.
+
+The first queued run38068612875 at ebe12873a was cancelled before any job steps
+executed. Source review found client timeout startup parameters inconsistent with
+the pinned pool's admitted configuration. The correction retains the same finite
+limits as synthetic server-role defaults and uses the primer's disabled client
+statement cache. No runtime failure was waived and no timeout/retry was enlarged.
+A fresh source run is required; the cancelled candidate is not test evidence.
