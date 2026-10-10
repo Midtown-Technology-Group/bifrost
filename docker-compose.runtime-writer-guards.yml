@@ -1,0 +1,16 @@
+# Dedicated hosted test overlay; leaves the application's shared pool unchanged.
+include:
+  - path: docker-compose.test.yml
+services:
+  writer-guard-pool:
+    image: edoburu/pgbouncer@sha256:9c78945868a6a142c7fc40ccd843bbe5a606df163c7ffce4de70e0d628d696a2
+    platform: linux/amd64
+    volumes:
+      - ./scripts/ci/writer-guards/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./scripts/ci/writer-primer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    command: [/usr/bin/pgbouncer, /etc/pgbouncer/pgbouncer.ini]
+    healthcheck:
+      test: [CMD, pg_isready, -h, localhost, -p, "5432", -U, wex_incumbent, -d, bifrost_test]
+      interval: 2s
+      timeout: 5s
+      retries: 30

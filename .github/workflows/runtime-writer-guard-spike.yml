@@ -1,0 +1,93 @@
+name: Isolated actual-schema writer guard candidate
+on:
+  push:
+    branches: [spike/go-first-class-g0]
+    paths:
+      - api/tests/e2e/platform/test_runtime_writer_guards.py
+      - api/tests/e2e/platform/fixtures/runtime_writer_guards.sql
+      - docker-compose.runtime-writer-guards.yml
+      - scripts/ci/writer-guards/**
+      - .github/workflows/runtime-writer-guard-spike.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  guards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Source custody, actual schema and authenticated pool guard tests
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git -c credential.helper= -c http.extraheader= fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+          export COMPOSE_FILE=docker-compose.runtime-writer-guards.yml
+          source scripts/lib/test_helpers.sh
+          guard_project="$(compute_project_name .)"
+          git rev-parse HEAD > "$RUNNER_TEMP/writer-guard-source.txt"
+          git rev-parse HEAD^{tree} >> "$RUNNER_TEMP/writer-guard-source.txt"
+          sha256sum api/tests/e2e/platform/fixtures/runtime_writer_guards.sql \
+            api/tests/e2e/platform/test_runtime_writer_guards.py \
+            docker-compose.runtime-writer-guards.yml \
+            scripts/ci/writer-guards/pgbouncer.ini \
+            scripts/ci/writer-primer/userlist.txt \
+            .github/workflows/runtime-writer-guard-spike.yml \
+            > "$RUNNER_TEMP/writer-guard-source-hashes.txt"
+          for guard_kind in container volume network; do
+            case "$guard_kind" in
+              container) guard_found="$(docker ps -aq --filter "label=com.docker.compose.project=$guard_project")" ;;
+              volume) guard_found="$(docker volume ls -q --filter "label=com.docker.compose.project=$guard_project")" ;;
+              network) guard_found="$(docker network ls -q --filter "label=com.docker.compose.project=$guard_project")" ;;
+            esac
+            test -z "$guard_found"
+          done
+          cleanup_guard_stack() {
+            guard_original=$?
+            trap - EXIT
+            guard_cleanup=0
+            bash test.sh stack down > "$RUNNER_TEMP/writer-guard-cleanup.log" 2>&1 || guard_cleanup=1
+            for guard_kind in container volume network; do
+              case "$guard_kind" in
+                container) guard_found="$(docker ps -aq --filter "label=com.docker.compose.project=$guard_project")" ;;
+                volume) guard_found="$(docker volume ls -q --filter "label=com.docker.compose.project=$guard_project")" ;;
+                network) guard_found="$(docker network ls -q --filter "label=com.docker.compose.project=$guard_project")" ;;
+              esac
+              printf '%s=%s\n' "$guard_kind" "$guard_found" >> "$RUNNER_TEMP/writer-guard-cleanup.log"
+              test -z "$guard_found" || guard_cleanup=1
+            done
+            test "$guard_cleanup" = 0 || exit 1
+            exit "$guard_original"
+          }
+          trap cleanup_guard_stack EXIT
+          bash test.sh stack up > "$RUNNER_TEMP/writer-guard-stack.log" 2>&1
+          docker compose -p "$guard_project" -f "$COMPOSE_FILE" up -d --wait --wait-timeout 60 writer-guard-pool
+          docker compose -p "$guard_project" -f "$COMPOSE_FILE" images > "$RUNNER_TEMP/writer-guard-images.txt"
+          bash test.sh unit --durations=0 > "$RUNNER_TEMP/writer-guard-unit.log" 2>&1
+          cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-unit.xml"
+          bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py \
+            tests/e2e/platform/test_execution_history_pagination.py \
+            tests/unit/models/test_execution_attempts_contract.py \
+            tests/unit/services/execution/test_attempts.py --durations=0 \
+            > "$RUNNER_TEMP/writer-guard-storage-baseline.log" 2>&1
+          cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-baseline.xml"
+          bash test.sh tests/e2e/platform/test_runtime_writer_guards.py --durations=0 \
+            > "$RUNNER_TEMP/writer-guard-tests.log" 2>&1
+          cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-results.xml"
+          bash test.sh quality api > "$RUNNER_TEMP/writer-guard-quality.log" 2>&1
+      - name: Retain exact source and guard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-writer-guards-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/writer-guard-*.txt
+            ${{ runner.temp }}/writer-guard-*.xml
+            ${{ runner.temp }}/writer-guard-*.log
+          if-no-files-found: error
+          retention-days: 14
