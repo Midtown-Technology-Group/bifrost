@@ -98,3 +98,11 @@ Prepared write closes the sealed handle and returns no runnable preparation.
 Caller-owned transport deadlines/cancellation, custody and subsequent guardian
 launch remain required. Its stream tests use contract frames and synthetic ELF;
 no fake durable store or lifecycle authority is added.
+
+`ResultReport` validates bounded strict child JSON against the accepted output
+schema and retains the exact common Result payload/framing. A failed stream write
+is uncertain delivery, never permission to rerun the workflow. ResultReceipt
+observation checks session, Result ID, correlation, exact payload hash and stable
+decision; conflicting receipts reject. Error reports contain only fixed adapter
+text. These helpers do not prove execution, authenticate a coordinator or assert
+PostgreSQL durability; Rust remains the only projection/finalization authority.
