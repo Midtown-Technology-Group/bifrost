@@ -95,7 +95,7 @@ async def sdk_render_document_artifact(
     """Render and store a trusted PDF or DOCX artifact.
 
     Workspace image references resolve through the caller's
-    (owner-or-org, admin-bypass) scope before rendering; a resolved
+    (owner-only, admin-bypass) scope before rendering; a resolved
     non-image raises transport-neutral 422, and an unresolvable path
     propagates as ``ArtifactAccessError`` (``ValueError`` → 422),
     exactly as the historical handler did.
@@ -117,8 +117,7 @@ async def sdk_render_document_artifact(
                     workspace_id,
                     image.path,
                     user_id=caller.user.user_id,
-                    organization_id=caller.user.organization_id,
-                    is_platform_admin=caller.user.is_platform_admin,
+                    bypass=caller.user.is_platform_admin,
                 )
                 if not stored_image.content_type.startswith("image/"):
                     raise SdkArtifactError(
@@ -138,6 +137,7 @@ async def sdk_render_document_artifact(
         organization_id=caller.user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=caller.user.is_platform_admin,
     )
     return artifact_ref(artifact)
 
@@ -161,6 +161,7 @@ async def sdk_render_spreadsheet_artifact(
         organization_id=caller.user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=caller.user.is_platform_admin,
     )
     return artifact_ref(artifact)
 
@@ -184,6 +185,7 @@ async def sdk_render_text_artifact(
         organization_id=caller.user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=caller.user.is_platform_admin,
     )
     return artifact_ref(artifact)
 
@@ -225,6 +227,7 @@ async def sdk_generate_image_artifact(
         organization_id=caller.user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=caller.user.is_platform_admin,
     )
     await record_media_usage(
         caller.db,
