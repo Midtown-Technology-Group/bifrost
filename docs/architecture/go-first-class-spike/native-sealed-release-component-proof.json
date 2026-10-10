@@ -1,0 +1,77 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "status": "verified mechanics and compiler components; full isolated runtime remains unaccepted",
+  "runtime_acceptance": false,
+  "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
+  "workspace_main": "498e9f8a6213486516e70f29a66ccd7275781356",
+  "representative_workspace_path": "features/utilities/workflows/check_integration_readiness.py",
+  "representative_unchanged_since_workspace_main": "b06ccee81c0d104717c9d3aa19292e03e3b55cab",
+  "sealed_native_fixture": {
+    "source_commit": "5f8e5a5e19f06038260e9bd3c9018fb75200018c",
+    "workflow_run": 38082618559,
+    "proof_job": 114302478784,
+    "proof_job_conclusion": "success",
+    "whole_workflow_conclusion_at_observation": "pending ownership job",
+    "source_inputs_verified": 87,
+    "go_tests_passed": 450,
+    "same_binary_launches": 22,
+    "successful_timing_samples": 20,
+    "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "artifact_size_bytes": 9920235,
+    "measurements": {
+      "evidence": "sealed-execution.json",
+      "evidence_sha256": "1287c5b8dbdd320d357cea636aebac95ebeb38545e05ed9ef69d5be642c03a26",
+      "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+      "materialization_ms": 8.656098,
+      "execution_median_ms": 3.448793,
+      "cancellation_ms": 0.501047,
+      "runtime_acceptance": false
+    },
+    "baseline_build_timings_ms": {
+      "module_download": 214.111445,
+      "cold_compile_warm_modules": 10839.406339,
+      "independent_cold_compile": 10329.565557,
+      "warm_source_edit_compile": 276.69951,
+      "restored_warm_compile": 240.971065,
+      "edit_to_artifact": 519.315259
+    },
+    "evidence_sha256": {
+      "descriptor.json": "1d3c1769252507229cdf4fc1121678bc98a88d7e2551dba01873c5a1855f2cb3",
+      "tests.jsonl": "fb4fb3a9a56bb989d33216452931618a80e4a8892d214ad7bdb91f3ed4753f04",
+      "sealed-execution.json": "1287c5b8dbdd320d357cea636aebac95ebeb38545e05ed9ef69d5be642c03a26",
+      "artifact.sha256": "f9fb2a0e7be8caea848fe3f2b1e988acf4d8a962d3a490750355689b0dd65800",
+      "govulncheck.jsonl": "a552f40199200121c6c7898aa608608746249f6204d4c5e533960b5f6474753d"
+    },
+    "proves": "Actual sealed-handle launch, synthetic TLS SDK request, changed control-flow branch, same binary re-execution and SIGTERM cancellation in the existing restricted no-network runtime container.",
+    "does_not_prove": "Rust admission/release, restricted issuer/ingress, durable projection, full common adapter, accepted native registration or process/descendant/source recovery."
+  },
+  "release_compiler_component": {
+    "source_commit": "8d284879437025868e9218db77edbb822377acb9",
+    "workflow_run": 38083514463,
+    "job": 114305122587,
+    "provider_conclusion": "success",
+    "source_inputs_verified": 19,
+    "rust_tests_passed": 8,
+    "offline_locked_fmt_clippy_example_build": "pass",
+    "evidence_sha256": {
+      "owner-source-hashes.txt": "2c1703b15cc01dfc6b1f1adf13550fc796c6d8dfe5ca7274c12f823bf4604ac3",
+      "owner-Cargo.lock": "9cbbcb055599e79437e3032297fafc8f050b978c4035fd4cb331c7d03436d247",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-clippy.txt": "24337dff4232ac3ab9da863e12d11bc40be9cd392949ed88a94eac96369b3fbb",
+      "owner-tests.txt": "b2a392f4e1ef773f923269443757f7167749dcc4901c8dbb37ab6b8578a61c39",
+      "owner-build.txt": "824e9419d1627c03717e1fa18be9b1c2e1a41fb6420184ad0dbc25c962bd18ad",
+      "runtime-owner-release": "bd5d013743827f66403b30fdc653cae47f55f5eea2b1f0d96d7ce9289c5289ed"
+    },
+    "database_proof": false,
+    "does_not_prove": "SQL transaction behavior or real guardian release. Source 26a88ed7d has newer comment-only source and its own required CI; this compiler proof remains bound to 8d2848794."
+  },
+  "pending_database_component": {
+    "source_commit": "8d284879437025868e9218db77edbb822377acb9",
+    "workflow_run": 38083514464,
+    "job": 114305122625,
+    "new_release_cases": 21,
+    "expected_total_guard_cases": 157,
+    "status_at_observation": "in progress",
+    "retained_prerequisites": "synthetic Start, unsigned grant and provision; not authenticated issuer/material/live custody"
+  }
+}
