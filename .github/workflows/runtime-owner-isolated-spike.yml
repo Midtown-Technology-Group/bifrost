@@ -34,7 +34,29 @@ jobs:
         run: |
           set -euo pipefail
           git rev-parse HEAD > "$RUNNER_TEMP/runtime-schema-source.txt"
-          trap 'bash test.sh stack down > "$RUNNER_TEMP/runtime-schema-cleanup.log" 2>&1' EXIT
+          source scripts/lib/test_helpers.sh
+          task_project="$(compute_project_name .)"
+          cleanup_schema_stack() {
+            task_original_status=$?
+            trap - EXIT
+            if ! bash test.sh stack down > "$RUNNER_TEMP/runtime-schema-cleanup.log" 2>&1; then
+              exit 1
+            fi
+            task_containers="$(docker ps -a --filter "label=com.docker.compose.project=$task_project" --format '{{.ID}}')"
+            task_networks="$(docker network ls --filter "label=com.docker.compose.project=$task_project" --format '{{.ID}}')"
+            task_volumes="$(docker volume ls --filter "label=com.docker.compose.project=$task_project" --format '{{.Name}}')"
+            if [[ -n "$task_containers" || -n "$task_networks" || -n "$task_volumes" ]]; then
+              printf 'Residual task resources: containers=%s networks=%s volumes=%s\n' "$task_containers" "$task_networks" "$task_volumes" >> "$RUNNER_TEMP/runtime-schema-cleanup.log"
+              exit 1
+            fi
+            printf 'Verified empty container, network and volume inventories for %s\n' "$task_project" >> "$RUNNER_TEMP/runtime-schema-cleanup.log"
+            exit "$task_original_status"
+          }
+          task_initial_containers="$(docker ps -a --filter "label=com.docker.compose.project=$task_project" --format '{{.ID}}')"
+          task_initial_networks="$(docker network ls --filter "label=com.docker.compose.project=$task_project" --format '{{.ID}}')"
+          task_initial_volumes="$(docker volume ls --filter "label=com.docker.compose.project=$task_project" --format '{{.Name}}')"
+          [[ -z "$task_initial_containers" && -z "$task_initial_networks" && -z "$task_initial_volumes" ]]
+          trap cleanup_schema_stack EXIT
           bash test.sh stack up > "$RUNNER_TEMP/runtime-schema-stack.log" 2>&1
           bash test.sh unit --durations=0 > "$RUNNER_TEMP/runtime-schema-unit-tests.log" 2>&1
           cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/runtime-schema-unit-results.xml"
@@ -51,6 +73,7 @@ jobs:
         with:
           name: runtime-owner-schema-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/runtime-schema-stack.log
             ${{ runner.temp }}/runtime-schema-source.txt
             ${{ runner.temp }}/runtime-schema-unit-tests.log
             ${{ runner.temp }}/runtime-schema-unit-results.xml
