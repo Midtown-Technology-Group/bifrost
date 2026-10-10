@@ -301,26 +301,14 @@ async def test_package_subprocess_helpers_handle_timeout_and_local_parse(monkeyp
     assert timed_out.killed is True
     assert timed_out.waited is True
 
-    local_proc = _FakeProc(stdout=b'[{"name":"fastapi","version":"1.2.3"}]')
+    from src.core import package_inventory
 
-    async def passthrough(awaitable, timeout):
-        return await awaitable
-
-    monkeypatch.setattr(packages.asyncio, "wait_for", passthrough)
-    monkeypatch.setattr(
-        packages.asyncio,
-        "create_subprocess_exec",
-        AsyncMock(return_value=local_proc),
-    )
-
+    monkeypatch.setattr(package_inventory, "get_installed_packages", lambda: [
+        {"name": "fastapi", "version": "1.2.3"},
+    ])
     installed = await packages.get_installed_packages_local()
     assert [(pkg.name, pkg.version) for pkg in installed] == [("fastapi", "1.2.3")]
-
-    monkeypatch.setattr(
-        packages.asyncio,
-        "create_subprocess_exec",
-        AsyncMock(return_value=_FakeProc(stdout=b"not-json")),
-    )
+    monkeypatch.setattr(package_inventory, "get_installed_packages", lambda: [])
     assert await packages.get_installed_packages_local() == []
 
 
