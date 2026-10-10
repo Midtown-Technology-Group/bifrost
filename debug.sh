@@ -147,6 +147,52 @@ configure_debug_storage() {
     export SEAWEEDFS_SECRET_KEY
 }
 
+# JWTs issued by a debug stack must not use the published development key,
+# especially when NetBird exposes the client and API through public HTTPS.
+# Retain one private signing key per worktree so restarts do not invalidate
+# sessions unless the operator supplies an explicit non-default override.
+configure_debug_signing_key() {
+    local published_default credential_dir secret_file ancestor temporary_secret
+    published_default="dev-secret-key-change-in-production-must-be-32-chars"
+    if [ -n "${BIFROST_SECRET_KEY:-}" ] && [ "$BIFROST_SECRET_KEY" != "$published_default" ]; then
+        return 0
+    fi
+
+    credential_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bifrost/debug/$COMPOSE_PROJECT_NAME"
+    secret_file="$credential_dir/signing-secret"
+    ancestor="$credential_dir"
+    while [ "$ancestor" != / ] && [ "$ancestor" != . ]; do
+        if [ -L "$ancestor" ]; then
+            echo 'Debug signing credential directory cannot contain symlinks' >&2
+            return 1
+        fi
+        ancestor="$(dirname "$ancestor")"
+    done
+    if [ -s "$secret_file" ] && [ ! -L "$secret_file" ]; then
+        chmod 600 "$secret_file"
+        BIFROST_SECRET_KEY="$(<"$secret_file")"
+    else
+        mkdir -p "$credential_dir"
+        chmod 700 "$credential_dir"
+        if [ -e "$secret_file" ] || [ -L "$secret_file" ]; then
+            echo 'Unsafe or empty debug signing credential file' >&2
+            return 1
+        fi
+        temporary_secret="$(umask 077; mktemp "$credential_dir/.signing-secret.XXXXXXXX")" || return 1
+        if ! openssl rand -hex 32 > "$temporary_secret"; then
+            rm -f "$temporary_secret"
+            return 1
+        fi
+        if ! ln "$temporary_secret" "$secret_file"; then
+            rm -f "$temporary_secret"
+            return 1
+        fi
+        rm -f "$temporary_secret"
+        BIFROST_SECRET_KEY="$(<"$secret_file")"
+    fi
+    export BIFROST_SECRET_KEY
+}
+
 # Keep local database credentials private and stable for the owning worktree.
 # Existing volumes are never reset or assigned a different password implicitly.
 configure_debug_database() {
@@ -285,12 +331,49 @@ service_admin_password() {
         | awk -F= '$1 == "BIFROST_DEFAULT_USER_PASSWORD" {print substr($0, index($0, "=") + 1); exit}'
 }
 
+service_signing_key() {
+    local service="$1" cid
+    cid=$(docker ps -q \
+        --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
+        --filter "label=com.docker.compose.service=$service" 2>/dev/null \
+        | head -1)
+    [ -z "$cid" ] && return 0
+    docker inspect "$cid" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+        | awk -F= '$1 == "BIFROST_SECRET_KEY" {print substr($0, index($0, "=") + 1); exit}'
+}
+
 apply_netbird_secure_credentials() {
+    local service api_recreate="false" workers_recreate="false" needs_reconcile="false"
     if [ "$(service_admin_password api)" != "$BIFROST_DEFAULT_USER_PASSWORD" ]; then
-        echo "Applying the generated public-debug credential..."
+        api_recreate="true"
+        needs_reconcile="true"
+    fi
+    for service in api scheduler worker; do
+        if [ "$(service_signing_key "$service")" != "$BIFROST_SECRET_KEY" ]; then
+            needs_reconcile="true"
+            if [ "$service" = api ]; then
+                api_recreate="true"
+            else
+                workers_recreate="true"
+            fi
+        fi
+    done
+
+    if [ "$needs_reconcile" = "true" ] && [ -n "$(netbird_container_id)" ]; then
+        echo "Pausing public exposure while debug credentials are reconciled..."
+        docker compose -f "$COMPOSE_FILE" --profile netbird \
+            up -d --no-deps --force-recreate netbird
+    fi
+    if [ "$api_recreate" = "true" ]; then
+        echo "Applying the private debug signing key and public-debug credential to the API..."
         docker compose -f "$COMPOSE_FILE" --profile netbird \
             up -d --no-deps --force-recreate api
         wait_for_api_ready "$COMPOSE_FILE" 180
+    fi
+    if [ "$workers_recreate" = "true" ]; then
+        echo "Applying the private debug signing key to background services..."
+        docker compose -f "$COMPOSE_FILE" --profile netbird \
+            up -d --no-deps --force-recreate scheduler worker
     fi
 
     local api_cid
@@ -443,6 +526,7 @@ print_login() {
 # =============================================================================
 
 cmd_up() {
+    configure_debug_signing_key
     configure_debug_database
     print_header
 
@@ -521,6 +605,7 @@ cmd_down() {
     # sent to existing containers or used to change a database credential.
     export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-unused-for-teardown}"
     export POSTGRES_PASSWORD_URLENCODED="${POSTGRES_PASSWORD_URLENCODED:-unused-for-teardown}"
+    export BIFROST_SECRET_KEY="${BIFROST_SECRET_KEY:-unused-for-teardown-must-be-32-chars}"
     print_header
     echo "Tearing down stack..."
     docker compose -f "$COMPOSE_FILE" --profile netbird down -v
@@ -575,6 +660,7 @@ cmd_status() {
 cmd_logs() {
     export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-unused-for-logs}"
     export POSTGRES_PASSWORD_URLENCODED="${POSTGRES_PASSWORD_URLENCODED:-unused-for-logs}"
+    export BIFROST_SECRET_KEY="${BIFROST_SECRET_KEY:-unused-for-logs-must-be-32-chars}"
     if [ $# -gt 0 ]; then
         docker compose -f "$COMPOSE_FILE" logs -f "$@"
     else
@@ -583,6 +669,7 @@ cmd_logs() {
 }
 
 cmd_fixtures() {
+    configure_debug_signing_key
     configure_debug_database
     print_header
     if ! stack_is_running; then

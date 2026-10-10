@@ -155,6 +155,14 @@ SeaweedFS and its API/worker/scheduler clients receive the same credential;
 later boots reuse it. An explicit nonempty credential takes precedence. Preserve
 these user credential files when cleaning up disposable stacks.
 
+`debug.sh up` also retains a private JWT signing key at
+`${XDG_STATE_HOME:-~/.local/state}/bifrost/debug/<project>/signing-secret`.
+The published development key is never accepted for a debug stack, including
+when it arrives through a copied `.env`. An explicit non-default
+`BIFROST_SECRET_KEY` still takes precedence. Before enabling an existing
+NetBird public proxy, the launcher pauses exposure and recreates any API,
+scheduler, or worker container whose signing key does not match.
+
 ### Hot Reload is Automatic
 
 All services have hot reload - **DO NOT restart containers for code changes**:
