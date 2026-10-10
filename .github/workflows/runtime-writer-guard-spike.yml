@@ -39,8 +39,7 @@ jobs:
           sha256sum spikes/go-native/owner-rs/Cargo.toml \
             spikes/go-native/owner-rs/Cargo.lock \
             spikes/go-native/owner-rs/src/*.rs \
-            spikes/go-native/owner-rs/examples/session_observation.rs \
-            spikes/go-native/owner-rs/examples/result_report.rs \
+            spikes/go-native/owner-rs/examples/*.rs \
             spikes/go-native/scripts/owner-foundation-check.sh \
             spikes/go-native/peers/rust-execution/Dockerfile \
             spikes/go-native/peers/rust-execution/Cargo.toml \
@@ -86,7 +85,8 @@ jobs:
           bash spikes/go-native/scripts/owner-foundation-check.sh "$RUNNER_TEMP/owner-evidence"
           cp "$RUNNER_TEMP/owner-evidence/runtime-owner-observation" api/scripts/runtime-owner-observation
           cp "$RUNNER_TEMP/owner-evidence/runtime-owner-result" api/scripts/runtime-owner-result
-          sha256sum api/scripts/runtime-owner-observation api/scripts/runtime-owner-result > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
+          cp "$RUNNER_TEMP/owner-evidence/runtime-owner-release" api/scripts/runtime-owner-release
+          sha256sum api/scripts/runtime-owner-observation api/scripts/runtime-owner-result api/scripts/runtime-owner-release > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
           bash test.sh stack up > "$RUNNER_TEMP/writer-guard-stack.log" 2>&1
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" up -d --wait --wait-timeout 60 writer-guard-pool
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" images > "$RUNNER_TEMP/writer-guard-images.txt"

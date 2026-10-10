@@ -52,6 +52,7 @@ rust none cargo test --locked --offline --all-targets > "$evidence_dir/owner-tes
 rust none cargo build --locked --offline --examples > "$evidence_dir/owner-build.txt" 2>&1
 cp "$scratch/target/debug/examples/session_observation" "$evidence_dir/runtime-owner-observation"
 cp "$scratch/target/debug/examples/result_report" "$evidence_dir/runtime-owner-result"
+cp "$scratch/target/debug/examples/release_observation" "$evidence_dir/runtime-owner-release"
 rust none cargo metadata --locked --offline --format-version 1 > "$evidence_dir/owner-dependency-graph.json"
 # Dependency bootstrap may create a lockfile, never modify source/declarations.
 for input in owner-rs/Cargo.toml owner-rs/Cargo.lock owner-rs/src/*.rs \

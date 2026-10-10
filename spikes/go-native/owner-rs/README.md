@@ -9,6 +9,22 @@ outcome with an exact-byte durable receipt; this is not an accepted runtime. Pro
 Matching database custody digests are observations, never proof of a live channel.
 The SQL returns no portable launch authority.
 
+`record_release_candidate` adds the isolated common admission lock tail. It
+requires an open Running session/attempt, matching retained Start, one exact
+provision/grant/delivery and no result receipt. Grant/deadline expiry is checked
+at the actual INSERT clock after all locks. It inserts an immutable release only
+on a newly observed commit; a matching retained release returns `AlreadyRetained`
+without another write or delivery. Conflicts, closure and commit ambiguity deny
+fresh authorization. The private probe can exit73 after commit/before reply;
+recovery must observe that same row without treating it as a new launch.
+
+This is transaction evidence only, not an accepted release-to-spawn path. The
+synthetic fixtures still supply Start, unsigned grant and provision. Full accepted
+bundle/source/input checks, actual observed wire frontier, authenticated issuer
+material and live guardian/process/channel custody remain required together.
+There is no production caller, actual native adapter launch or credential issuer
+in this crate. These new paths require fresh database/race evidence.
+
 The separate crate deliberately imports no Go source or Rust control-plane
 implementation. SQLx0.9.0/Tokio1.53.1/toolchain1.98.1 match the existing Rust SQL
 characterization source0fa18ddda7ce8ac101df76fe06c7e72b075a8803. This is new source,

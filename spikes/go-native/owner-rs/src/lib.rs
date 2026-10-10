@@ -1,8 +1,10 @@
 //! Isolated owner foundation. Observation is not admission or launch authority.
 //! No production dispatch, grant issuance, admission or process spawning.
 use sqlx::{PgPool, Postgres, Row, Transaction};
+mod release;
 mod result;
 mod schema;
+pub use release::{ReleaseCommitObservation, ReleaseRequest, record_release_candidate};
 pub use result::{ResultDecision, accept_result};
 
 /// Exact retained identity supplied by the trusted coordinator, never a tenant.

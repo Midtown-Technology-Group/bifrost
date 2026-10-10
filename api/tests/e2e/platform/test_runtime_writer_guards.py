@@ -1274,6 +1274,245 @@ async def test_rust_cancel_readback_tail_contention_has_no_effects(
 
 
 @pytest.fixture
+async def provisioned_release_facts(running_cancel_facts):
+    """Synthetic provision and unsigned grant, never live custody/issuer evidence."""
+    facts = {
+        **running_cancel_facts,
+        "provision": uuid4(),
+        "delivery": uuid4(),
+        "release": uuid4(),
+    }
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "INSERT INTO runtime_admissions "
+            "(id,purpose,session_id,committed_start_id,start_message_id,grant_id,"
+            "delivery_id,operations_digest,expires_at,frontier_sha256,admitted_at) "
+            "VALUES ($1,'provision',$2,$3,$4,$5,$6,$7,$8,$7,$9)",
+            facts["provision"],
+            facts["session"],
+            facts["start"],
+            facts["start_message"],
+            facts["grant"],
+            facts["delivery"],
+            facts["source"],
+            facts["expires"],
+            facts["issued"],
+        )
+    return facts
+
+
+async def release_probe(fence, facts, role="wex_core", exit_after_commit=False):
+    executable = Path("/app/scripts/runtime-owner-release")
+    assert executable.is_file(), (
+        "Required source-bound Rust release artifact is missing"
+    )
+    process = await asyncio.create_subprocess_exec(
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": (
+                f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test"
+            ),
+            "BIFROST_OWNER_TEST_EXIT_AFTER_RELEASE_COMMIT": "1"
+            if exit_after_commit
+            else "0",
+        },
+    )
+    try:
+        fields = [
+            *fence,
+            str(facts["release"]),
+            str(facts["provision"]),
+            str(facts["grant"]),
+            str(facts["delivery"]),
+            facts["source"],
+            facts["source"],
+        ]
+        out, err = await asyncio.wait_for(
+            process.communicate(("\n".join(fields) + "\n").encode()), timeout=8
+        )
+        assert process.returncode == (73 if exit_after_commit else 0)
+        assert err == b"" and len(out) <= 32
+        if exit_after_commit:
+            assert out == b""
+            return "reply_lost"
+        return out.decode().strip()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def release_snapshot(facts):
+    async with connection("wex_core") as conn:
+        admissions = await conn.fetchval(
+            "SELECT jsonb_agg(to_jsonb(a) ORDER BY purpose,id)::text "
+            "FROM runtime_admissions a WHERE session_id=$1",
+            facts["session"],
+        )
+    return (await result_snapshot(facts), admissions)
+
+
+async def test_rust_release_observed_commit_and_no_replay(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    assert await release_probe(session_fence, facts) == "newly_committed"
+    before = await release_snapshot(facts)
+    async with connection("wex_core") as conn:
+        row = await conn.fetchrow(
+            "SELECT provision_admission_id,grant_id,delivery_id,frontier_sha256 "
+            "FROM runtime_admissions WHERE id=$1 AND purpose='release'",
+            facts["release"],
+        )
+    assert tuple(row) == (
+        facts["provision"],
+        facts["grant"],
+        facts["delivery"],
+        facts["source"],
+    )
+    assert await release_probe(session_fence, facts) == "already_retained"
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_commit_reply_loss_retains_same_release(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    assert (
+        await release_probe(session_fence, facts, exit_after_commit=True)
+        == "reply_lost"
+    )
+    before = await release_snapshot(facts)
+    assert await release_probe(session_fence, facts) == "already_retained"
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_conflicting_identity_has_no_replacement(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    assert await release_probe(session_fence, facts) == "newly_committed"
+    before = await release_snapshot(facts)
+    assert (
+        await release_probe(session_fence, {**facts, "release": uuid4()}) == "rejected"
+    )
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_closed_before_commit_has_no_release(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    assert (
+        await probe(session_fence, operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    before = await release_snapshot(facts)
+    assert await release_probe(session_fence, facts) == "rejected"
+    assert await release_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("running_cancel_facts", [20], indirect=True)
+async def test_rust_release_expired_grant_has_no_release(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    before = await release_snapshot(facts)
+    assert await release_probe(session_fence, facts) == "rejected"
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_incumbent_cannot_commit(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    before = await release_snapshot(facts)
+    assert await release_probe(session_fence, facts, role="wex_incumbent") == "rejected"
+    assert await release_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("field", ["provision", "grant", "delivery"])
+async def test_rust_release_wrong_material_reference_has_no_effects(
+    provisioned_release_facts,
+    session_fence,
+    field,
+):
+    facts = provisioned_release_facts
+    before = await release_snapshot(facts)
+    assert await release_probe(session_fence, {**facts, field: uuid4()}) == "rejected"
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_concurrent_commit_has_one_fresh_observation(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    responses = await asyncio.gather(
+        release_probe(session_fence, facts),
+        release_probe(session_fence, facts),
+    )
+    assert sorted(responses) == ["already_retained", "newly_committed"]
+    async with connection("wex_core") as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM runtime_admissions WHERE session_id=$1 AND purpose='release'",
+                facts["session"],
+            )
+            == 1
+        )
+
+
+async def test_rust_release_cancel_race_retains_winner_without_replay(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    release, cancel = await asyncio.gather(
+        release_probe(session_fence, facts),
+        probe(session_fence, operation="request-running-cancel"),
+    )
+    assert release in {"newly_committed", "rejected"}
+    assert cancel == "cancel_committed"
+    state = await cancel_snapshot(facts)
+    assert state["status"] == "Cancelling" and state["closed_at"] is not None
+    assert state["revoked_at"] is not None
+    async with connection("wex_core") as conn:
+        count = await conn.fetchval(
+            "SELECT count(*) FROM runtime_admissions WHERE session_id=$1 AND purpose='release'",
+            facts["session"],
+        )
+    assert count == (1 if release == "newly_committed" else 0)
+    before = await release_snapshot(facts)
+    assert await release_probe(session_fence, facts) == "rejected"
+    assert await release_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("index", range(10))
+async def test_rust_release_stale_fence_has_no_effects(
+    provisioned_release_facts,
+    session_fence,
+    index,
+):
+    facts = provisioned_release_facts
+    changed = list(session_fence)
+    changed[index] = str(uuid4()) if index < 8 else "f" * 64
+    before = await release_snapshot(facts)
+    assert await release_probe(changed, facts) == "rejected"
+    assert await release_snapshot(facts) == before
+
+
+@pytest.fixture
 async def released_result_facts(running_cancel_facts):
     """Synthetic immutable provision/release facts; no physical launch claim."""
     facts = {**running_cancel_facts, "provision": uuid4(), "delivery": uuid4()}
