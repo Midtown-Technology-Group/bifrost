@@ -68,6 +68,19 @@ isolated SeaweedFS service instead of an in-memory adapter. Fresh
 checks remain required after source or dependency changes. The configured test
 pool still forces a shared backend login; it cannot qualify writer exclusion.
 
+The next executed storage candidate at
+`e02337989c931143b848f143f7801af947691388` reconciles private CRED-P1 grant
+records with actual session/claim/supervisor, caller, attempt ordinal, Start clock
+and deployment identity, then adds immutable provision/release admissions.
+Run38020522305 passed13,657 full backend unit tests and110 scoped tests with
+zero skips/errors/failures, API quality and independent empty container/network/
+volume inventories after teardown. [Concrete schema/lock review](owner-schema-review.md)
+records the still-unproved writer, issuer, custody and finalization requirements.
+Earlier failures and their source fixes are retained in the proof; no waiver or
+unchanged retry supplied this result. The unchanged Go child was rehashed without
+execution. Current workspace main is9d12733e23482a691d65d23dc4b168f7244ffe9e;
+the selected readiness source is unchanged and its checkout was not edited.
+
 The sections below are the initial G0 design and historical observations, not
 current test counts, source heads or unresolved-contract status. The completion
 audit and current proof retain the later executable evidence and actual gaps.
