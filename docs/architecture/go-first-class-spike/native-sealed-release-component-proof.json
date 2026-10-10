@@ -232,5 +232,16 @@
       "writer-guard-cleanup.log": "10f3a9ebb378e1d250d3621851be75c9de3283342106ed02283221659e8135a3"
     },
     "runtime_acceptance": false
+  },
+  "latest_source_refresh": {
+    "platform_main": "1a96b79bae327be41934ef9331ab5471e075f792",
+    "workspace_main": "65855176c63fe14281d9ea50cd7ca2c8c337cd0d",
+    "runtime_architecture_1132": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+    "runtime_owner_1011": "93ec9421b23b0b4a1493ab45f15f55ded3377d2e",
+    "private_credential_1024": "6419069da195b053c885ab349f431ff4fae62098",
+    "representative_path": "features/utilities/workflows/check_integration_readiness.py",
+    "representative_path_changed_since_workspace_498e9f8a": false,
+    "representative_imports_changed_helpers": false,
+    "workspace_edits": false
   }
 }
