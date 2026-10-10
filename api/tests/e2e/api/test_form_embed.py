@@ -356,10 +356,10 @@ class TestEmbedFormCrossTenantBinding:
     in get_form / execute_form / execute_startup_workflow / generate_upload_url
     skipped access control for ANY embed token with no binding between the
     token's form_id/app_id and the path form. An embed token minted for one
-    resource in org H could READ and EXECUTE any form in any other org — a
-    workflow run as sentinel in the victim's org, output returned to the
-    attacker. The fix binds every embed short-circuit to the path form
-    (form_id match, or app-embed → same-org only).
+    resource in org H could READ and EXECUTE protected forms — a workflow run
+    as sentinel in the victim's org, output returned to the attacker. The fix
+    binds form embeds to their exact form and denies app embeds because there
+    is no persisted app-to-form capability grant.
 
     These tests exercise all four sites with both attack vectors (form-embed
     token and app-embed token) and confirm the legitimate paths still work.
