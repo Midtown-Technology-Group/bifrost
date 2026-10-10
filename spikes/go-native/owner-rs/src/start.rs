@@ -1,11 +1,83 @@
 //! Isolated common Start candidate; no tenant process or SDK material handling.
-use crate::{ObserveError, SessionFence, canonical_uuid, lock_session};
+use crate::{ObserveError, SessionFence, canonical_uuid, lock_session, lock_session_state};
 use bifrost_execution_wire_spike::Codec;
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 
 pub struct StartCommit {
     body: Value,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum StartObservation {
+    NotRetained,
+    Retained,
+}
+
+/// Read an uncertain Start decision under its original owner/session/IDs. This
+/// never creates Start, reopens a session or permits delivery/spawn/reassignment.
+pub async fn observe_start_candidate(
+    pool: &PgPool,
+    fence: &SessionFence,
+    start_id: &str,
+    start_message_id: &str,
+) -> Result<StartObservation, ObserveError> {
+    if !canonical_uuid(start_id) || !canonical_uuid(start_message_id) {
+        return Err(ObserveError::InvalidFence);
+    }
+    let mut locked = lock_session_state(pool, fence, true).await?;
+    let start = sqlx::query(
+        "SELECT s.id::text AS id,s.start_message_id::text AS message, \
+         e.started_at=s.started_at AND a.started_at=s.started_at AS clock_matches \
+         FROM runtime_starts s JOIN executions e ON e.id=s.execution_id \
+         JOIN workflow_execution_attempts a ON a.id=s.workflow_attempt_id \
+         WHERE s.session_id=$1::text::uuid FOR UPDATE OF s",
+    )
+    .bind(&fence.session_id)
+    .fetch_optional(&mut *locked.tx)
+    .await?;
+    for (table, column, order) in [
+        ("runtime_admissions", "session_id", "purpose,id"),
+        ("workflow_runtime_sdk_grants", "runtime_session_id", "id"),
+        ("runtime_report_receipts", "session_id", "result_message_id"),
+    ] {
+        let query = format!(
+            "SELECT 1 FROM {table} WHERE {column}=$1::text::uuid ORDER BY {order} FOR UPDATE"
+        );
+        let rows = sqlx::query(&query)
+            .bind(&fence.session_id)
+            .fetch_all(&mut *locked.tx)
+            .await?;
+        if start.is_none() && !rows.is_empty() {
+            return Err(ObserveError::Rejected);
+        }
+    }
+    let observation = if let Some(start) = start {
+        if start.try_get::<String, _>("id")? != start_id
+            || start.try_get::<String, _>("message")? != start_message_id
+            || start.try_get::<Option<bool>, _>("clock_matches")? != Some(true)
+            || locked.execution_status == "Pending"
+            || locked.attempt_status == "claimed"
+        {
+            return Err(ObserveError::Rejected);
+        }
+        StartObservation::Retained
+    } else {
+        if locked.closed
+            || locked.execution_status != "Pending"
+            || locked.attempt_status != "claimed"
+            || locked.attempt_completed
+        {
+            return Err(ObserveError::Rejected);
+        }
+        StartObservation::NotRetained
+    };
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(observation)
 }
 impl StartCommit {
     /// Returned after observed commit only. This is not a physical launch permit.

@@ -146,3 +146,12 @@ is insufficient: actual SQL, rejection/rollback/race and read-only uncertain-Sta
 recovery evidence are still required before this path can support runtime
 acceptance. Its input/context digests are internal owner bookkeeping, not wire
 receipt preimages; exact raw Prepare and Result hashes remain separately retained.
+
+`observe_start_candidate` reads the original Start ID/message under the same
+owner/session locks, checks root/attempt clock coherence and never inserts or
+updates. Missing Start is distinguished only for a coherent Pending/claimed/open
+session with no downstream admissions, grants or receipts. Retained evidence,
+including after later closure, is not a Start retransmission or spawn permit.
+The isolated private `start_commit` probe exposes record/observe modes and the
+exact postcommit/pre-reply exit73 window. Its binary is now retained and copied
+by the normal isolated owner/guard lane; actual SQL/recovery tests are still due.
