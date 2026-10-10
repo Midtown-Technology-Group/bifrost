@@ -8,6 +8,9 @@ import atheris
 with atheris.instrument_imports(include=["fuzz", "src"]):
     from fuzz.harnesses import fuzz_cron_parser
 
+    # Load only this target's application imports under instrumentation, before Setup.
+    fuzz_cron_parser(b"")
+
 
 def TestOneInput(data: bytes) -> None:
     fuzz_cron_parser(data)

@@ -8,6 +8,9 @@ import atheris
 with atheris.instrument_imports(include=["fuzz", "src"]):
     from fuzz.harnesses import fuzz_webhook_request
 
+    # Load only this target's application imports under instrumentation, before Setup.
+    fuzz_webhook_request(b"")
+
 
 def TestOneInput(data: bytes) -> None:
     fuzz_webhook_request(data)

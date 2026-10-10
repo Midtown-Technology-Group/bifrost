@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from src.services.cron_parser import cron_to_human_readable, validate_cron_expression
-from src.services.editor.search import _search_content
-from src.services.webhooks.protocol import WebhookRequest
-
 
 def fuzz_editor_search(data: bytes) -> None:
+    from src.services.editor.search import _search_content
+
     text = data.decode("utf-8", errors="replace")
     pivot = max(1, min(len(text), 64))
     query = text[:pivot] or "x"
@@ -28,6 +26,8 @@ def fuzz_editor_search(data: bytes) -> None:
 
 
 def fuzz_cron_parser(data: bytes) -> None:
+    from src.services.cron_parser import cron_to_human_readable, validate_cron_expression
+
     expression = data.decode("utf-8", errors="replace").strip()
     if not expression:
         expression = "* * * * *"
@@ -41,6 +41,8 @@ def fuzz_cron_parser(data: bytes) -> None:
 
 
 def fuzz_webhook_request(data: bytes) -> None:
+    from src.services.webhooks.protocol import WebhookRequest
+
     request = WebhookRequest(
         method="POST",
         path="/api/events/webhooks/fuzz",

@@ -8,6 +8,9 @@ import atheris
 with atheris.instrument_imports(include=["fuzz", "src"]):
     from fuzz.harnesses import fuzz_editor_search
 
+    # Load only this target's application imports under instrumentation, before Setup.
+    fuzz_editor_search(b"")
+
 
 def TestOneInput(data: bytes) -> None:
     fuzz_editor_search(data)
