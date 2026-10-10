@@ -123,7 +123,7 @@ services:
         BIFROST_VERSION: ${BIFROST_VERSION:-debug}
     environment:
       BIFROST_ENVIRONMENT: development
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@postgres:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@postgres:5432/bifrost
       BIFROST_REDIS_URL: redis://redis:6379/0
@@ -153,7 +153,7 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_DEBUG: "true"
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
@@ -225,7 +225,7 @@ services:
         BIFROST_VERSION: ${BIFROST_VERSION:-debug}
     environment:
       BIFROST_ENVIRONMENT: development
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
@@ -285,7 +285,7 @@ services:
         BIFROST_VERSION: ${BIFROST_VERSION:-debug}
     environment:
       BIFROST_ENVIRONMENT: development
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
