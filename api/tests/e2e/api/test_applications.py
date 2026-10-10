@@ -458,6 +458,91 @@ class TestApplicationAccess:
 
 
 @pytest.mark.e2e
+class TestApplicationWriteScope:
+    """A non-bypass org member can read a global app but not write it."""
+
+    def test_org_user_cannot_update_global_app(self, e2e_client, platform_admin, org1_user):
+        """A regular org member gets the same not-found response writing a
+        global app that they'd get for a genuinely missing app — reads stay
+        allowed, writes are bypass-only for global entities."""
+        create_response = e2e_client.post(
+            "/api/applications",
+            headers=platform_admin.headers,
+            json={
+                "name": "Global Write Scope App",
+                "slug": "global-write-scope-app",
+                "app_model": "standalone_v2",
+                "organization_id": None,
+            },
+        )
+        assert create_response.status_code == 201, create_response.text
+        app = create_response.json()
+
+        # Confirm the read path still works for the non-bypass org member.
+        read_response = e2e_client.get(
+            f"/api/applications/{app['slug']}",
+            headers=org1_user.headers,
+        )
+        assert read_response.status_code == 200, read_response.text
+
+        write_response = e2e_client.patch(
+            f"/api/applications/{app['id']}",
+            headers=org1_user.headers,
+            json={"description": "should be denied"},
+        )
+        assert write_response.status_code == 404, write_response.text
+        # Same detail template a genuinely missing app would get, with the
+        # same id substituted — a caller can't distinguish "no write access"
+        # from "doesn't exist".
+        assert write_response.json()["detail"] == f"Application '{app['id']}' not found"
+
+        # Cleanup
+        _delete_app(e2e_client, platform_admin.headers, app["id"], params={"scope": "global"})
+
+    def test_org_user_cannot_update_own_org_app(
+        self, e2e_client, platform_admin, org1_user, org1
+    ):
+        """A regular org member cannot write an app in their OWN org either —
+        write access is bypass-only, full stop. Reads stay allowed."""
+        app = _create_app(
+            e2e_client,
+            platform_admin.headers,
+            "own-org-write-scope-app",
+            organization_id=org1["id"],
+        )
+
+        read_response = e2e_client.get(
+            f"/api/applications/{app['slug']}",
+            headers=org1_user.headers,
+        )
+        assert read_response.status_code == 200, read_response.text
+
+        write_response = e2e_client.patch(
+            f"/api/applications/{app['id']}",
+            headers=org1_user.headers,
+            json={"description": "should be denied"},
+        )
+        assert write_response.status_code == 404, write_response.text
+        assert write_response.json()["detail"] == f"Application '{app['id']}' not found"
+
+        _delete_app(e2e_client, platform_admin.headers, app["id"])
+
+    def test_org_user_cannot_create_application(self, e2e_client, org1_user):
+        """Creating an application is bypass-only; a regular org member is
+        denied even when creating into their own org."""
+        response = e2e_client.post(
+            "/api/applications",
+            headers=org1_user.headers,
+            json={
+                "name": "Should Be Denied",
+                "slug": "org-user-create-denied-app",
+                "app_model": "standalone_v2",
+            },
+        )
+        assert response.status_code == 403, response.text
+
+
+@pytest.mark.e2e
 class TestApplicationScopeFiltering:
     """Test application scope filtering."""
 

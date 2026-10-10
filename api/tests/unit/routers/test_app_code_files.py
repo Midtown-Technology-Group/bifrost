@@ -102,6 +102,7 @@ async def test_list_app_files_unions_live_paths_and_overlays_stale_repo(monkeypa
 
 @pytest.mark.asyncio
 async def test_delete_app_file_rejects_governed_path_before_storage(monkeypatch):
+    """Reject deletion of Solution-governed app source before touching storage."""
     app = _app()
     ctx = _ctx()
     storage = MagicMock()
@@ -112,7 +113,7 @@ async def test_delete_app_file_rejects_governed_path_before_storage(monkeypatch)
         )
     )
 
-    monkeypatch.setattr(app_code_files, "get_application_or_404", AsyncMock(return_value=app))
+    monkeypatch.setattr(app_code_files, "get_application_for_write_or_404", AsyncMock(return_value=app))
     monkeypatch.setattr(
         app_code_files, "assert_entity_id_not_solution_managed", AsyncMock(return_value=None)
     )
@@ -130,6 +131,7 @@ async def test_delete_app_file_rejects_governed_path_before_storage(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_write_app_file_rejects_governed_path_before_storage(monkeypatch):
+    """Reject writes to Solution-governed app source before touching storage."""
     app = _app()
     ctx = _ctx()
     storage = MagicMock()
@@ -140,7 +142,7 @@ async def test_write_app_file_rejects_governed_path_before_storage(monkeypatch):
         )
     )
 
-    monkeypatch.setattr(app_code_files, "get_application_or_404", AsyncMock(return_value=app))
+    monkeypatch.setattr(app_code_files, "get_application_for_write_or_404", AsyncMock(return_value=app))
     monkeypatch.setattr(
         app_code_files, "assert_entity_id_not_solution_managed", AsyncMock(return_value=None)
     )

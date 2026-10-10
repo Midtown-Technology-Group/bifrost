@@ -371,7 +371,7 @@ class TestCreateEventSource:
 
     @pytest.mark.asyncio
     async def test_session_context_without_org_cannot_create_source(self):
-        """Session-backed non-admin contexts pass auth but still need org scope."""
+        """Session-backed callers cannot bypass the platform-admin gate."""
         from src.services.mcp_server.tools.events import create_event_source
 
         session_context = SimpleNamespace(
@@ -389,7 +389,7 @@ class TestCreateEventSource:
             result = await create_event_source(session_context, "no org", "webhook")
 
         assert is_error_result(result)
-        assert "without an organization scope" in result.structured_content["error"]
+        assert "Only platform admins" in result.structured_content["error"]
 
     @pytest.mark.asyncio
     async def test_unknown_webhook_adapter_returns_error(self, context):
@@ -737,6 +737,7 @@ class TestDeleteEventSource:
         mock_source.name = "Test source"
         mock_source.source_type = EventSourceType.INTERNAL
         mock_source.webhook_source = None
+        mock_source.organization_id = context.org_id
 
         mock_repo = MagicMock()
         mock_repo.get_by_id_with_details = AsyncMock(return_value=mock_source)
@@ -1110,6 +1111,7 @@ class TestDeleteEventSubscription:
         source_id = str(uuid4())
         subscription_id = str(uuid4())
         mock_subscription = MagicMock()
+        mock_subscription.event_source.organization_id = context.org_id
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_subscription
 

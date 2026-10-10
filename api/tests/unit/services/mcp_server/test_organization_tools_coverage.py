@@ -1,7 +1,5 @@
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -10,192 +8,77 @@ from src.services.mcp_server.tools import organizations
 
 
 def _context(*, admin: bool = True) -> SimpleNamespace:
-    return SimpleNamespace(
-        is_platform_admin=admin,
-        user_email="admin@example.test" if admin else "user@example.test",
-    )
-
-
-def _org(**overrides):
-    row = SimpleNamespace(
-        id=uuid4(),
-        name="Midtown",
-        domain="midtown",
-        is_active=True,
-        settings={"theme": "default"},
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        created_by="admin@example.test",
-        updated_at=None,
-    )
-    for key, value in overrides.items():
-        setattr(row, key, value)
-    return row
-
-
-class _RowsResult:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def scalars(self):
-        return self
-
-    def all(self):
-        return self._rows
-
-
-class _ScalarResult:
-    def __init__(self, value):
-        self._value = value
-
-    def scalar_one_or_none(self):
-        return self._value
-
-
-class _Db:
-    def __init__(self, results):
-        self._results = list(results)
-        self.added = []
-        self.committed = False
-
-    async def execute(self, _stmt):
-        if not self._results:
-            raise AssertionError("unexpected execute call")
-        return self._results.pop(0)
-
-    def add(self, row):
-        self.added.append(row)
-
-    async def commit(self):
-        self.committed = True
-
-
-class _RaisingDb:
-    async def execute(self, _stmt):
-        raise RuntimeError("database unavailable")
-
-
-def _tool_db(db):
-    @asynccontextmanager
-    async def fake_get_tool_db(_context):
-        yield db
-
-    return fake_get_tool_db
+    """Build the minimal principal used to test the organization tools' admin requirement."""
+    return SimpleNamespace(is_platform_admin=admin)
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_formats_rows_and_reports_errors():
-    org = _org(name="Alpha", domain="alpha", is_active=False)
-    db = _Db([_RowsResult([org])])
-
-    with patch.object(organizations, "get_tool_db", _tool_db(db)):
+async def test_list_organizations_formats_rest_rows_and_reports_errors():
+    """Map REST organization rows to MCP results and preserve REST failures."""
+    org = {"id": str(uuid4()), "name": "Alpha", "domain": "alpha", "is_active": False}
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(200, [org]))) as call:
         result = await organizations.list_organizations(_context())
-
-    assert result.structured_content["count"] == 1
-    assert result.structured_content["organizations"] == [
-        {
-            "id": str(org.id),
-            "name": "Alpha",
-            "domain": "alpha",
-            "is_active": False,
-        }
-    ]
-
-    with patch.object(organizations, "get_tool_db", _tool_db(_RaisingDb())):
+    assert result.structured_content == {"organizations": [org], "count": 1}
+    assert call.await_args.args[1:] == ("GET", "/api/organizations")
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(503, {"detail": "unavailable"}))):
         failed = await organizations.list_organizations(_context())
-
-    assert "Error listing organizations" in failed.structured_content["error"]
-    assert "database unavailable" in failed.structured_content["error"]
+    assert "HTTP 503" in failed.structured_content["error"]
+    assert failed.structured_content["body"] == {"detail": "unavailable"}
 
 
 @pytest.mark.asyncio
-async def test_get_organization_validates_identifiers_and_formats_details():
-    missing_lookup = await organizations.get_organization(_context())
-    assert "Either organization_id or domain is required" in (
-        missing_lookup.structured_content["error"]
-    )
-
-    db = _Db([_ScalarResult(_org())])
-    with patch.object(organizations, "get_tool_db", _tool_db(db)):
-        by_domain = await organizations.get_organization(_context(), domain="midtown")
-
-    assert by_domain.structured_content["name"] == "Midtown"
-    assert by_domain.structured_content["settings"] == {"theme": "default"}
-    assert by_domain.structured_content["created_at"] == "2026-01-01T00:00:00+00:00"
-    assert by_domain.structured_content["updated_at"] is None
-
-    org_id = uuid4()
-    db = _Db([_ScalarResult(_org(id=org_id, updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc)))])
-    with patch.object(organizations, "get_tool_db", _tool_db(db)):
-        by_id = await organizations.get_organization(_context(), organization_id=str(org_id))
-
-    assert by_id.structured_content["id"] == str(org_id)
-    assert by_id.structured_content["updated_at"] == "2026-01-02T00:00:00+00:00"
-
-    db = _Db([_ScalarResult(None)])
-    with patch.object(organizations, "get_tool_db", _tool_db(db)):
-        not_found = await organizations.get_organization(_context(), domain="missing")
-
-    assert "Organization not found: missing" in not_found.structured_content["error"]
-
-    db = _Db([])
-    with patch.object(organizations, "get_tool_db", _tool_db(db)):
-        bad_id = await organizations.get_organization(
-            _context(),
-            organization_id="not-a-uuid",
-        )
-
-    assert "Invalid organization_id format" in bad_id.structured_content["error"]
+async def test_get_organization_validates_identifiers_and_preserves_rest_details():
+    """Validate organization identifiers while preserving canonical REST response details."""
+    missing = await organizations.get_organization(_context())
+    bad = await organizations.get_organization(_context(), organization_id="bad")
+    assert "Either organization_id or domain" in missing.structured_content["error"]
+    assert "Invalid organization_id" in bad.structured_content["error"]
+    org = {"id": str(uuid4()), "name": "Midtown", "domain": "midtown", "settings": {"theme": "default"}}
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(200, [org]))):
+        found = await organizations.get_organization(_context(), domain="midtown")
+        absent = await organizations.get_organization(_context(), domain="missing")
+    assert found.structured_content == org
+    assert "Organization not found" in absent.structured_content["error"]
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(200, org))) as call:
+        found = await organizations.get_organization(_context(), organization_id=org["id"])
+    assert found.structured_content == org
+    assert call.await_args.args[1:] == ("GET", f"/api/organizations/{org['id']}")
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(404, {"detail": "missing"}))):
+        absent = await organizations.get_organization(_context(), organization_id=org["id"])
+    assert "Organization not found" in absent.structured_content["error"]
 
 
 @pytest.mark.asyncio
 async def test_create_organization_validates_and_generates_domain():
-    missing_name = await organizations.create_organization(_context(), "")
+    """Validate organization creation fields and derive a domain when none is supplied."""
+    missing = await organizations.create_organization(_context(), "")
     long_name = await organizations.create_organization(_context(), "x" * 256)
-    long_domain = await organizations.create_organization(
-        _context(),
-        "Valid",
-        domain="x" * 256,
-    )
-
-    assert missing_name.structured_content["error"] == "name is required"
+    long_domain = await organizations.create_organization(_context(), "Valid", domain="x" * 256)
+    assert missing.structured_content["error"] == "name is required"
     assert "255 characters" in long_name.structured_content["error"]
     assert "255 characters" in long_domain.structured_content["error"]
-
-    db = _Db([_ScalarResult(_org(domain="existing"))])
-    with patch.object(organizations, "get_tool_db", _tool_db(db)):
-        duplicate = await organizations.create_organization(
-            _context(),
-            "Existing",
-            domain="existing",
-        )
-
-    assert "already exists" in duplicate.structured_content["error"]
-
-    db = _Db([_ScalarResult(None)])
-    with (
-        patch.object(organizations, "get_tool_db", _tool_db(db)),
-        patch.object(organizations, "uuid4", return_value=uuid4()),
-    ):
-        created = await organizations.create_organization(
-            _context(),
-            "Midtown Technology Group",
-        )
-
-    assert db.committed is True
-    assert db.added[0].name == "Midtown Technology Group"
-    assert db.added[0].domain == "midtown-technology-group"
-    assert db.added[0].created_by == "admin@example.test"
-    assert created.structured_content["success"] is True
-    assert created.structured_content["domain"] == "midtown-technology-group"
+    org = {"id": str(uuid4()), "name": "Midtown Technology Group", "domain": "midtown-technology-group"}
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(201, org))) as call:
+        created = await organizations.create_organization(_context(), org["name"])
+    assert created.structured_content == {"success": True, **org}
+    assert call.await_args.kwargs["json_body"] == {"name": org["name"], "domain": org["domain"]}
+    with patch.object(organizations, "call_rest", AsyncMock(return_value=(409, {"detail": "already exists"}))):
+        duplicate = await organizations.create_organization(_context(), "Existing", domain="existing")
+    assert "HTTP 409" in duplicate.structured_content["error"]
+    assert duplicate.structured_content["body"]["detail"] == "already exists"
 
 
 @pytest.mark.asyncio
-async def test_create_organization_reports_database_errors():
-    with patch.object(organizations, "get_tool_db", _tool_db(_RaisingDb())):
-        result = await organizations.create_organization(_context(), "Midtown")
-
-    assert "Error creating organization" in result.structured_content["error"]
-    assert "database unavailable" in result.structured_content["error"]
+async def test_organization_tools_deny_regular_users_before_rest():
+    """Deny regular callers organization administration before dispatching to REST."""
+    with patch.object(organizations, "call_rest", AsyncMock()) as call:
+        for result in [
+            await organizations.list_organizations(_context(admin=False)),
+            await organizations.get_organization(_context(admin=False), domain="midtown"),
+            await organizations.create_organization(_context(admin=False), "Midtown"),
+        ]:
+            assert "Platform administrator privileges" in result.structured_content["error"]
+        call.assert_not_awaited()
 
 
 def test_ref_error_payload_shapes_known_ref_errors():

@@ -453,6 +453,7 @@ async def test_can_access_agent_run_rejects_bad_id_and_delegates_loader():
 
 @pytest.mark.asyncio
 async def test_websocket_connect_filters_initial_channels_without_accepting_file_or_table_queries():
+    """Filter initial subscriptions without accepting file or table query channels."""
     user = _user(is_superuser=True)
     ws = _QueuedWebSocket()
     manager = SimpleNamespace(
@@ -516,7 +517,7 @@ async def test_websocket_connect_filters_initial_channels_without_accepting_file
     assert f"agent-run:{run_id}" in connected_channels
     assert "agent-runs:org:" in " ".join(connected_channels)
     can_exec.assert_awaited_once_with(user, execution_id)
-    assert can_app.await_count == 2
+    can_app.assert_awaited_once_with(user, app_id)
     can_run.assert_awaited_once_with(user, run_id)
     ws.send_json.assert_any_await({
         "type": "connected",
@@ -528,6 +529,7 @@ async def test_websocket_connect_filters_initial_channels_without_accepting_file
 
 @pytest.mark.asyncio
 async def test_websocket_connect_handles_runtime_subscribe_errors_and_permission_denials():
+    """Return subscription errors and permission denials without dropping the WebSocket connection."""
     user = _user(is_superuser=False)
     ws = _QueuedWebSocket(
         [
@@ -572,8 +574,8 @@ async def test_websocket_connect_handles_runtime_subscribe_errors_and_permission
     assert {"type": "error", "channel": "agent-runs:all", "message": "Access denied"} in sent
     assert {"type": "error", "channel": "summary-backfill:job", "message": "Access denied"} in sent
     assert {"type": "error", "channel": "platform_workers", "message": "Access denied"} in sent
-    assert manager.connections["git:job-secret"] == {ws}
-    assert {"type": "subscribed", "channel": "git:job-secret"} in sent
+    assert "git:job-secret" not in manager.connections
+    assert {"type": "error", "channel": "git:job-secret", "message": "Access denied"} in sent
     manager.disconnect.assert_called_once_with(ws)
 
 
@@ -630,31 +632,28 @@ async def test_websocket_connect_unsubscribe_resolves_table_and_file_subscriptio
 
 
 @pytest.mark.asyncio
-async def test_can_access_app_handles_bad_missing_global_and_org_rows():
+async def test_can_access_app_rejects_invalid_ids_and_uses_repository_access():
+    """Reject malformed application IDs and defer valid IDs to canonical repository access checks."""
     user = _user()
 
     assert not await ws_mod.can_access_app(user, "not-a-uuid")
-    assert await ws_mod.can_access_app(_user(is_superuser=True), "not-a-uuid")
+    assert not await ws_mod.can_access_app(_user(is_superuser=True), "not-a-uuid")
 
-    with patch.object(ws_mod, "get_db_context", _db_context(_Db(_OneResult(None)))):
-        assert await ws_mod.can_access_app(user, str(uuid4()))
-
-    with patch.object(ws_mod, "get_db_context", _db_context(_Db(_OneResult((None,))))):
-        assert await ws_mod.can_access_app(user, str(uuid4()))
-
-    with patch.object(
-        ws_mod,
-        "get_db_context",
-        _db_context(_Db(_OneResult((user.organization_id,)))),
+    app_id = uuid4()
+    db = object()
+    repository = SimpleNamespace(can_access=AsyncMock(return_value=object()))
+    with (
+        patch.object(ws_mod, "get_db_context", _db_context(db)),
+        patch.object(ws_mod, "ApplicationRepository", return_value=repository) as repo_factory,
     ):
-        assert await ws_mod.can_access_app(user, str(uuid4()))
-
-    with patch.object(
-        ws_mod,
-        "get_db_context",
-        _db_context(_Db(_OneResult((uuid4(),)))),
-    ):
-        assert not await ws_mod.can_access_app(user, str(uuid4()))
+        assert await ws_mod.can_access_app(user, str(app_id))
+        repo_factory.assert_called_once_with(
+            session=db, org_id=user.organization_id, user_id=user.user_id,
+            is_superuser=False, is_external=False,
+        )
+        repository.can_access.assert_awaited_once_with(id=app_id)
+        repository.can_access.side_effect = ws_mod.AccessDeniedError()
+        assert not await ws_mod.can_access_app(user, str(app_id))
 
 
 @pytest.mark.asyncio
