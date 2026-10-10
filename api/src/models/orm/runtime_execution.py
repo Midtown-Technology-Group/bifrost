@@ -354,6 +354,9 @@ class WorkflowRuntimeSDKGrant(Base):
         sa.Column("grant_digest", sa.String(64), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revocation_reason", sa.String(32), nullable=True),
+        sa.Column("owner_incarnation_id", sa.Uuid(), nullable=False),
+        sa.Column("committed_start_id", sa.Uuid(), nullable=False),
+        sa.Column("start_message_id", sa.Uuid(), nullable=False),
         sa.ForeignKeyConstraint(
             ["execution_id", "owner_incarnation_id", "caller_snapshot_digest"],
             [
@@ -459,9 +462,6 @@ class WorkflowRuntimeSDKGrant(Base):
                 "revoked_at",
             )
         ],
-        sa.Column("owner_incarnation_id", sa.Uuid(), nullable=False),
-        sa.Column("committed_start_id", sa.Uuid(), nullable=False),
-        sa.Column("start_message_id", sa.Uuid(), nullable=False),
         sa.ForeignKeyConstraint(
             [
                 "runtime_session_id",

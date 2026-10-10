@@ -143,5 +143,36 @@
     "quality": "API Pyright 0 errors/warnings/informations; Ruff all checks passed.",
     "cleanup": "Task-created containers, volumes and network removed.",
     "scope": "Full backend unit tests plus real schema/storage/API-history/attempt and signed-URL transport tests. No Rust owner transaction or runtime acceptance."
+  },
+  "grant_candidate_failure": {
+    "source": "9928f998ed258dee388a33cff272a736cfbcc9b6",
+    "workflow_run": 38019447032,
+    "conclusion": "failure",
+    "scoped_tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "8",
+      "skipped": "0",
+      "tests": "84",
+      "time": "15.844",
+      "timestamp": "2026-10-10T03:21:02.710188+00:00",
+      "hostname": "53122d65b29c"
+    },
+    "retained_files": {
+      "home/runner/work/_temp/runtime-schema-cleanup.log": "b7e161b4c7ba597ceb136ab1cdcb00d9cd03bb18066091c110bcc95758a1084d",
+      "home/runner/work/_temp/runtime-schema-source.txt": "e1ccef418d900ab93df0183edb109e9fbbe44cf3ff9ef60fc07f9e01bde5e243",
+      "home/runner/work/_temp/runtime-schema-tests.log": "a67b57a6abc68e7f3909274fb2120142c7c6d9d6faca38b3239e85e9234ba589",
+      "home/runner/work/_temp/runtime-schema-unit-results.xml": "d013f178509a349f5566ae5eb63145566867c2fa1979f1aa3a75f5fc01f31694",
+      "home/runner/work/_temp/runtime-schema-unit-tests.log": "a9fb6d79869160fd0f64d3237f07fb1f201dce811b316567605b1da9672233fd",
+      "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "ab59ce04e1d63cbc0cedd379c5d4f590731c0974c033c9b19ee2842cee674260"
+    },
+    "classification": "Seven legitimate-close failures: BEFORE tombstone trigger compared an unavailable stored generated claim digest. One test harness failure: a session fixture assertion was misplaced in an operation test.",
+    "corrections": {
+      "trigger_source": "062faf7a2fc05bab7d00da80fbb69490d06317e8",
+      "test_fixture_source": "67400b53f"
+    },
+    "recovery": "New source candidate with explicit close/idempotent-close/claim-digest regression and original negatives retained; no unchanged retry or waiver.",
+    "quality": "Not reached after scoped test failure.",
+    "cleanup": "Original Compose down log retained; independent empty-inventory verification added to later workflow."
   }
 }
