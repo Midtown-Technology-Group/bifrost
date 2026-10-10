@@ -12,6 +12,7 @@ import asyncio
 import base64
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
@@ -390,7 +391,11 @@ async def list_agents(
         mcp_counts = {row[0]: row[1] for row in mcp_count_result.all()}
 
     stats_by_agent = (
-        await get_agent_stats_batch(agent_ids, db)
+        await get_agent_stats_batch(
+            agent_ids,
+            db,
+            caller_user_id=None if is_admin else user.user_id,
+        )
         if include_stats and agent_ids
         else {}
     )
@@ -603,7 +608,14 @@ async def get_accessible_tools(
     db: DbSession,
     user: CurrentActiveUser,
 ) -> list[AccessibleTool]:
-    """Get tools the current user can assign to their agents (via role intersection)."""
+    """Get tools the current user can assign to their agents (via role intersection).
+
+    Role membership alone isn't org scope: also require the tool workflow
+    to be in the caller's own org or global, so a role grant on another
+    org's tool-type workflow never surfaces here.
+    """
+    from sqlalchemy import or_
+
     from src.models.orm.users import UserRole
     from src.models.orm.workflow_roles import WorkflowRole
 
@@ -615,7 +627,7 @@ async def get_accessible_tools(
     if not role_ids:
         return []
 
-    result = await db.execute(
+    stmt = (
         select(Workflow)
         .join(WorkflowRole, WorkflowRole.workflow_id == Workflow.id)
         .where(Workflow.type == "tool")
@@ -623,6 +635,14 @@ async def get_accessible_tools(
         .where(WorkflowRole.role_id.in_(role_ids))
         .distinct()
     )
+    if not user.has_platform_admin_grant():
+        stmt = stmt.where(
+            or_(
+                Workflow.organization_id.is_(None),
+                Workflow.organization_id == user.organization_id,
+            )
+        )
+    result = await db.execute(stmt)
     tools = result.scalars().all()
 
     return [
@@ -636,7 +656,14 @@ async def get_accessible_knowledge(
     db: DbSession,
     user: CurrentActiveUser,
 ) -> list[AccessibleKnowledgeSource]:
-    """Get knowledge sources the current user can assign to their agents."""
+    """Get knowledge sources the current user can assign to their agents.
+
+    Role membership alone isn't org scope: also require the namespace-role
+    grant itself to be global or the caller's own org, so a role grant
+    scoped to another org's namespace assignment never surfaces here.
+    """
+    from sqlalchemy import or_
+
     from src.models.orm.users import UserRole
     from src.models.orm.knowledge_sources import KnowledgeNamespaceRole
 
@@ -648,11 +675,19 @@ async def get_accessible_knowledge(
     if not role_ids:
         return []
 
-    result = await db.execute(
+    stmt = (
         select(KnowledgeNamespaceRole.namespace)
         .where(KnowledgeNamespaceRole.role_id.in_(role_ids))
         .distinct()
     )
+    if not user.has_platform_admin_grant():
+        stmt = stmt.where(
+            or_(
+                KnowledgeNamespaceRole.organization_id.is_(None),
+                KnowledgeNamespaceRole.organization_id == user.organization_id,
+            )
+        )
+    result = await db.execute(stmt)
     accessible_namespaces = list(result.scalars().all())
 
     return [
@@ -669,12 +704,33 @@ async def get_fleet_stats_endpoint(
 ) -> FleetStatsResponse:
     """Fleet-wide agent run stats over the last ``window_days``.
 
-    Superusers see cross-org totals; org users are scoped to their org.
+    Callers with a platform-admin grant see cross-org totals;
+    regular users are scoped to their own org, their own runs/chats, and
+    never see another user's private agent folded into the count. A
+    regular caller with no org never falls through to the platform-wide
+    view — they get an empty fleet instead.
     Route is registered before ``/{agent_id}`` so the literal ``stats``
     prefix is not parsed as a UUID.
     """
-    org_id = None if user.is_superuser else user.organization_id
-    return await get_fleet_stats(db, org_id=org_id, window_days=window_days)
+    bypass = user.has_platform_admin_grant()
+    if bypass:
+        return await get_fleet_stats(db, org_id=None, window_days=window_days)
+
+    if user.organization_id is None:
+        return FleetStatsResponse(
+            total_runs=0,
+            avg_success_rate=0.0,
+            total_cost_7d=Decimal("0"),
+            active_agents=0,
+            needs_review=0,
+        )
+
+    return await get_fleet_stats(
+        db,
+        org_id=user.organization_id,
+        window_days=window_days,
+        caller_user_id=user.user_id,
+    )
 
 
 @router.get("/{agent_id}", **operation_route("agents.get"))
@@ -684,8 +740,8 @@ async def get_agent(
     user: CurrentActiveUser,
 ) -> AgentPublic:
     """Get agent by ID."""
-    is_admin = has_scope_bypass(
-        is_platform_admin=user.is_platform_admin,
+    scope_bypass = has_scope_bypass(
+        is_platform_admin=user.has_platform_admin_grant(),
         is_provider_org=user.is_provider_org,
     )
 
@@ -693,7 +749,7 @@ async def get_agent(
         session=db,
         org_id=user.organization_id,
         user_id=user.user_id,
-        is_superuser=is_admin,
+        is_superuser=scope_bypass,
         is_external=user.is_external,
     )
 
@@ -704,6 +760,19 @@ async def get_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    # Scope bypass short-circuits the repo's org/role check
+    # entirely, so a private agent's owner-only gate is never evaluated for
+    # a provider-org non-admin. Private agents stay owner-only regardless —
+    # only a true platform admin (narrow is_superuser) bypasses that,
+    # matching the write path's "private" semantics.
+    access_level = getattr(agent.access_level, "value", agent.access_level)
+    if access_level == "private" and not user.has_platform_admin_grant():
+        if agent.owner_user_id != user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found",
+            )
 
     return _agent_to_public(agent)
 
@@ -1101,7 +1170,25 @@ async def get_agent_stats_endpoint(
             detail=f"Agent {agent_id} not found",
         )
 
-    return await get_agent_stats(agent_id, db, window_days=window_days)
+    # Same private-agent owner-only gate as GET /{agent_id}: a bypass grant
+    # doesn't make someone else's private agent's stats visible.
+    access_level = getattr(agent.access_level, "value", agent.access_level)
+    if (
+        access_level == "private"
+        and not user.has_platform_admin_grant()
+        and agent.owner_user_id != user.user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    return await get_agent_stats(
+        agent_id,
+        db,
+        window_days=window_days,
+        caller_user_id=None if is_admin else user.user_id,
+    )
 
 
 @router.get("/{agent_id}/tools")
@@ -1111,14 +1198,16 @@ async def get_agent_tools(
     user: CurrentActiveUser,
 ) -> list[dict]:
     """Get tools assigned to an agent."""
-    # Check if user is platform admin
-    is_admin = user.is_platform_admin
+    scope_bypass = has_scope_bypass(
+        is_platform_admin=user.has_platform_admin_grant(),
+        is_provider_org=user.is_provider_org,
+    )
 
     repo = AgentRepository(
         session=db,
         org_id=user.organization_id,
         user_id=user.user_id,
-        is_superuser=is_admin,
+        is_superuser=scope_bypass,
         is_external=user.is_external,
     )
 
@@ -1129,6 +1218,15 @@ async def get_agent_tools(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    # Provider scope bypass must not bypass private-agent ownership.
+    access_level = getattr(agent.access_level, "value", agent.access_level)
+    if access_level == "private" and not user.has_platform_admin_grant():
+        if agent.owner_user_id != user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found",
+            )
 
     return [
         {
@@ -1172,8 +1270,16 @@ async def get_agent_delegations(
             detail=f"Agent {agent_id} not found",
         )
 
+    # The parent agent being accessible doesn't make every delegate
+    # accessible — a delegate can be private, role_based, or another org's.
+    # Re-check each one individually rather than trusting the raw
+    # relationship (which carries no access filter of its own).
     summaries = []
     for a in agent.delegated_agents:
+        if not is_admin:
+            in_scope = a.organization_id is None or a.organization_id == user.organization_id
+            if not in_scope or not await repo._can_access_entity(a):
+                continue
         s = AgentSummary.model_validate(a)
         s.logo = None
         s.logo_url = _agent_logo_url(a)

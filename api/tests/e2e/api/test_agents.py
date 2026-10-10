@@ -655,6 +655,11 @@ class TestAgentScopeFiltering:
         )
         assert response.status_code == 200, response.text
         assert response.json()["id"] == org2_agent_id
+        tools = e2e_client.get(
+            f"/api/agents/{org2_agent_id}/tools", headers=provider_org_user.headers,
+        )
+        assert tools.status_code == 200, tools.text
+        assert isinstance(tools.json(), list)
 
     def test_org_user_cannot_get_cross_org_agent(
         self, e2e_client, org1_user, scoped_agents
@@ -673,6 +678,70 @@ class TestAgentScopeFiltering:
             f"Org1 user should get 404 for Org2 agent {org2_agent_id}, "
             f"got {response.status_code}"
         )
+
+        tools = e2e_client.get(
+            f"/api/agents/{org2_agent_id}/tools", headers=org1_user.headers,
+        )
+        assert tools.status_code == 404, tools.text
+
+    @pytest.mark.parametrize("owner_fixture", ["org1_user", "provider_org_user"])
+    def test_provider_org_non_admin_cannot_get_other_users_private_agent(
+        self, e2e_client, request, owner_fixture, provider_org_user, platform_admin, bob_user
+    ):
+        """Private is owner-only regardless of org/provider scope bypass —
+        a provider-org non-admin's scope bypass does not extend to another
+        user's private agent."""
+        owner = request.getfixturevalue(owner_fixture)
+        create_resp = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"Private Owner Only {uuid4().hex[:8]}",
+                "system_prompt": "Private agent for owner-only test.",
+                "access_level": "private",
+            },
+            headers=owner.headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        agent_id = create_resp.json()["id"]
+
+        try:
+            own_read = e2e_client.get(
+                f"/api/agents/{agent_id}", headers=owner.headers
+            )
+            assert own_read.status_code == 200, own_read.text
+
+            own_tools = e2e_client.get(
+                f"/api/agents/{agent_id}/tools", headers=owner.headers,
+            )
+            assert own_tools.status_code == 200, own_tools.text
+            admin_tools = e2e_client.get(
+                f"/api/agents/{agent_id}/tools", headers=platform_admin.headers,
+            )
+            assert admin_tools.status_code == 200, admin_tools.text
+            other_tools = e2e_client.get(
+                f"/api/agents/{agent_id}/tools", headers=bob_user.headers,
+            )
+            assert other_tools.status_code == 404, other_tools.text
+
+            # A provider can read their own private agent; provider status
+            # grants no access to anyone else's private agent.
+            provider_status = 200 if owner.user_id == provider_org_user.user_id else 404
+            provider_read = e2e_client.get(
+                f"/api/agents/{agent_id}", headers=provider_org_user.headers
+            )
+            assert provider_read.status_code == provider_status, provider_read.text
+
+            provider_tools = e2e_client.get(
+                f"/api/agents/{agent_id}/tools", headers=provider_org_user.headers,
+            )
+            assert provider_tools.status_code == provider_status, provider_tools.text
+
+            provider_stats = e2e_client.get(
+                f"/api/agents/{agent_id}/stats", headers=provider_org_user.headers
+            )
+            assert provider_stats.status_code == provider_status, provider_stats.text
+        finally:
+            e2e_client.delete(f"/api/agents/{agent_id}", headers=owner.headers)
 
 
 # =============================================================================
