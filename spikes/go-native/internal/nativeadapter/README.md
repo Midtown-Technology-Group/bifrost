@@ -106,3 +106,15 @@ observation checks session, Result ID, correlation, exact payload hash and stabl
 decision; conflicting receipts reject. Error reports contain only fixed adapter
 text. These helpers do not prove execution, authenticate a coordinator or assert
 PostgreSQL durability; Rust remains the only projection/finalization authority.
+
+`VerifyBundle` consumes already-open artifact-store objects and checks the exact
+workflow, adapter, build-evidence, module-graph and independently pinned schema
+bytes. It retains private snapshots and can supply fresh preparation readers for
+another execution without compilation or reopening storage. The initial dependency
+evidence kind is explicitly `go-module-graph/v1`; a module-lock digest cannot be
+substituted for graph bytes. Replaced objects, missing evidence, malformed evidence
+JSON and unsupported schemas fail closed. Common artifact validation and inert ELF
+validation remain in `PrepareNative`. This verifier proves byte identity only:
+reviewed registration, producer provenance, actual source closure, owner admission
+and guardian launch custody must still be established independently. It does not
+promote the existing design-only manifest or local fixture into accepted deployment.
