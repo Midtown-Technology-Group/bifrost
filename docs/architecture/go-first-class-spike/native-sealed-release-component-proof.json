@@ -1,6 +1,6 @@
 {
   "sdk_version": "0.0.0-spike.2",
-  "status": "verified mechanics and compiler components; full isolated runtime remains unaccepted",
+  "status": "Verified atomic owner admission, finite credential/SDK components, immutable native bundle interchange and carrier build; full isolated runtime remains unaccepted",
   "runtime_acceptance": false,
   "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
   "workspace_main": "498e9f8a6213486516e70f29a66ccd7275781356",
@@ -670,5 +670,122 @@
       },
       "runtime_acceptance": false
     }
-  ]
+  ],
+  "verified_native_bundle_interchange": {
+    "source_commit": "be2f9dfc99322adf4fbf987201e5542177e5b4e0",
+    "workflow_run": 38093232488,
+    "conclusion": "success",
+    "source_inputs_verified": 120,
+    "go_tests_passed": 533,
+    "bundle_recipe_tests": 8,
+    "artifact_id": "sha256:777c0d6a0266ab7134da07ab803ec920db2206ce56efad5af329be1076573574",
+    "archive_size_bytes": 17018880,
+    "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "unchanged_workflow_size_bytes": 9920235,
+    "adapter_sha256": "bff6472be89abaf77f2fe1170c1c56005ab80dac7391b71d6b91be01448292a0",
+    "independent_rust_archive_consumer": "Six canonical entries, original workflow digest and exact archive/descriptor bindings verified. Compiler source/runtime acceptance remain separate.",
+    "experimental_attestation": "Existing ephemeral signature verification passed for build evidence and external archive descriptor; no production trust anchor.",
+    "build_timings_ms": {
+      "module_download": 73.336301,
+      "cold_compile_warm_modules": 16275.431596,
+      "independent_cold_compile": 16033.933383,
+      "warm_source_edit_compile": 376.981845,
+      "restored_warm_compile": 356.239974,
+      "edit_to_artifact": 573.168773
+    },
+    "runtime_acceptance": false,
+    "limits": "No live Rust/Go/HTTP/guardian execution, registration/source closure, cancellation/recovery/cleanup or current carrier acceptance.",
+    "evidence_sha256": {
+      "descriptor.json": "f77ac9bfca1c8f691daab430a8e68d28f5cf3b32f90aca6ee0bcca704d109568",
+      "native-bundle.tar": "777c0d6a0266ab7134da07ab803ec920db2206ce56efad5af329be1076573574",
+      "native-bundle-descriptor.json": "f6362a3b0a45502fa35f5e0cdcae5f44a7c0ae055dc589b0ceb3172ea0a98ca8",
+      "native-bundle-tests.txt": "d1737db24da81b3c3a0b18702ce65bfadfb6524254e681f8bc84ee0e82703fbb",
+      "native-bundle-rust-verification.json": "1e0fb274669ac2e672e4519af800a9540d0e1eb155b3d7db24ff4865a98da0da",
+      "native-bundle-attestation-verification.txt": "0fd23954193f64e60f5b4b5f381cd1ea9d580aece00a6bbbc98e664302ce6b79",
+      "tests.jsonl": "0cee59a6f0020d800c532b62a3f8337950994459a1c34968004f290de418b1a7",
+      "govulncheck.jsonl": "d58c2795d049be7d51a4273592eb1b655d376fefbed992a4e4e0d808ce4534e5"
+    }
+  },
+  "verified_native_archive_compiler": {
+    "source_commit": "be2f9dfc99322adf4fbf987201e5542177e5b4e0",
+    "workflow_run": 38093232458,
+    "conclusion": "success",
+    "source_inputs_verified": 29,
+    "rust_tests_passed": 17,
+    "locked_offline_checks": "fmt, Clippy, unit/all-target and example build passed",
+    "runtime_acceptance": false,
+    "limits": "Compiler and independent archive unit proof only; actual Python-produced archive interchange still pending. No carrier, live Rust/Go/HTTP slice or recovery/cleanup acceptance.",
+    "evidence_sha256": {
+      "source.txt": "d0798e8395b0892255aec4146a728517b9d185340c83c6b3516eb273135b411b",
+      "owner-source-hashes.txt": "c970a5c2543a3e77069b9618f772b299c01c4fac326595ee190f81a0d109d05d",
+      "owner-Cargo.lock": "886d65f4b698dffe4e6c889787db593a09bfee113497c297099e8a50879f2d98",
+      "owner-clippy.txt": "f152ae7c4aabda7b9ddde3bc02046e2bf7cc12bfc5691a8b72fb7edb67c4aa55",
+      "owner-tests.txt": "2eed000c13b9e0c3ff962f6383f429710a2ef676a65f3c7c5b00d922698e48cf",
+      "owner-build.txt": "bb326fc2cc8e57e9b2ee0873c1ec4d7cada7fed76a03491b466be25ca96cf6d8",
+      "runtime-native-bundle-verify": "f59c6ccdd6e8dcc50d10a536b619ba0a4b8354b66d776fdb0bd1a97b73c9654b"
+    }
+  },
+  "verified_atomic_admission_actual_schema": {
+    "source_commit": "df6a95c8277dc2cd0c94362622724c4b852cba3b",
+    "workflow_run": 38093698745,
+    "conclusion": "success",
+    "source_inputs_verified": 41,
+    "tests": {
+      "writer-guard-results.xml": 231,
+      "writer-guard-unit.xml": 13854,
+      "writer-guard-baseline.xml": 109
+    },
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "api_quality": "Pyright zero errors/warnings/informations; Ruff pass",
+    "teardown": "Empty container/volume/network inventories verified",
+    "runtime_acceptance": false,
+    "proves": "Actual Rust atomic root/owner/attempt/session admission, existing Start/grant/provision/release/SDK/readback/Result component behavior under migrated constraints and writer exclusion. Dedicated finite SDK ingress unit cases pass.",
+    "limits": "Source and custody are synthetic. No real Go/HTTP/guardian chain, source registration/cleanup or runtime crash/uncertain-spawn/lost-ACK acceptance.",
+    "evidence_sha256": {
+      "writer-guard-source.txt": "41ae98ca6183da5a60d565fa6d65f7a7cae978efceb86980f9bff3d95735eeeb",
+      "writer-guard-source-hashes.txt": "2100f912808668a30b9a3bdb7b498ffbff0bd8b9bd2acc77ec6642147f02e4ab",
+      "writer-guard-results.xml": "453abe0069f945ea6f11ed496f7fd58fbbaa3a9fc7ddd6c5cbdae246e7098c4e",
+      "writer-guard-unit.xml": "07c8407b4d7cd0ed2c838fc9c1293d654b5b17a6ace0206905845de2752a32d2",
+      "writer-guard-baseline.xml": "04a2927d02c42df9b7bef802ce83a1f95e75a1c8137320c7d5efcb374a8088cf",
+      "writer-guard-quality.log": "b128917c1cb95184cee6c8dc72e7cf0f1d13eceaa790544dc55df194fc53d3a5",
+      "writer-guard-cleanup.log": "6a3cc3ad45501c025ec354d54a6e0b2494a83f86ecc86b3c807c733757064bc8"
+    }
+  },
+  "verified_private_carrier_build_component": {
+    "source_commit": "8ad078882962ec79c5181f3469a707ff6ce25abd",
+    "workflow_run": 38094133411,
+    "conclusion": "success",
+    "source_inputs_verified": 123,
+    "go_tests_passed": 536,
+    "carrier_kernel_tests": 3,
+    "carrier": {
+      "kind": "isolated-docker-init/v1",
+      "launcher_sha256": "6ea8196281757bdccf4e336f8b102f6be72c15ed8044603938e8b5a0eeacc107",
+      "image_id": "sha256:fdc806173453d3015aeddf7d020ff759dce5e1b6e2e5553fac76710f626e2f0e",
+      "image_archive_sha256": "e2e6768a9cebc4e8dc390418c846d6996235264a0bbb7646d6d01c158b6ed980",
+      "status": "trusted launch carrier candidate; actual Rust guardian custody, restricted ingress and cleanup acceptance pending"
+    },
+    "carrier_root_files": [
+      "launcher"
+    ],
+    "carrier_image_environment": "Docker default public PATH only; adapter separately receives explicit nonexistent PATH/HOME.",
+    "carrier_cleanup": "Task image tag removed and image object deleted; no other tags targeted.",
+    "artifact_id": "sha256:4e298d45e74841ef639e9017e174d92be6fbd01e752f8f26ebaf1330b59fe5c7",
+    "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "native_archive_size_bytes": 17018880,
+    "bundle_recipe_tests": 8,
+    "independent_rust_bundle_consumer": "Actual archive verified",
+    "build_timings_ms": {
+      "module_download": 116.013995,
+      "cold_compile_warm_modules": 11187.896413,
+      "independent_cold_compile": 11007.91481,
+      "warm_source_edit_compile": 296.570258,
+      "restored_warm_compile": 321.000506,
+      "edit_to_artifact": 514.193628
+    },
+    "runtime_acceptance": false,
+    "limits": "Carrier compiled, kernel FIFO guards tested and scratch image bytes exported/verified. Carrier has not yet been launched under real Rust custody; HTTP/Go/lifecycle chain and physical descendant/source recovery remain unproved."
+  }
 }
