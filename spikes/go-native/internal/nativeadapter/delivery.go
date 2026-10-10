@@ -138,20 +138,24 @@ func closedObject(raw []byte, names ...string) bool {
 // invalid Unicode escapes before encoding/json can normalize them. Depth is
 // bounded independently of the larger public protocol limit.
 func strictJSON(raw []byte) bool {
+	return strictJSONDepth(raw, 16)
+}
+
+func strictJSONDepth(raw []byte, maximumDepth int) bool {
 	if !utf8.Valid(raw) || !validUnicodeEscapes(raw) {
 		return false
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.UseNumber()
-	if !walkJSON(d, 0) {
+	if !walkJSON(d, 0, maximumDepth) {
 		return false
 	}
 	_, err := d.Token()
 	return err == io.EOF
 }
 
-func walkJSON(d *json.Decoder, depth int) bool {
-	if depth > 16 {
+func walkJSON(d *json.Decoder, depth, maximumDepth int) bool {
+	if depth > maximumDepth {
 		return false
 	}
 	token, err := d.Token()
@@ -175,7 +179,7 @@ func walkJSON(d *json.Decoder, depth int) bool {
 			}
 			keys[name] = true
 		}
-		if !walkJSON(d, depth+1) {
+		if !walkJSON(d, depth+1, maximumDepth) {
 			return false
 		}
 	}

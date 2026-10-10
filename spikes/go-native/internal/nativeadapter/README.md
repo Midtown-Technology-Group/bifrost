@@ -48,3 +48,27 @@ control-flow branch and a cancelled SDK wait. `measure.sh` pins the original chi
 digest and retains `sealed-execution.json` separately from the unchanged baseline
 measurement path. Its synthetic SDK server has no real restricted issuer and its
 launch is local authoring only, never evidence of Rust admission or release.
+
+`PrepareNative` now handles inert common Prepare validation against the supplied
+bundle references: exact binding/context/artifact identity, finite deadline,
+schema byte digests, structured input, adapter digest, sealed child digest and
+Linux/amd64 ELF entrypoint. It returns a detached common Prepared body and retains
+the sealed handle; it has no launch operation and receives no SDK material.
+Supplying matching references still does not prove deployment acceptance or
+trusted guardian custody.
+
+The initial workload schema subset supports JSON types and nullable unions,
+object properties/required/closed objects, array items and string minLength.
+Unknown keywords fail even on absent optional properties. Schema bytes are
+bounded to 64KiB with strict duplicate/Unicode checks and depth 64; private
+material retains its independent depth-16 limit. Numeric validation preserves
+exact decimals and bounds exponent expansion to +/-65536 before allocation.
+This is an explicit subset, not a general JSON Schema implementation. The Rust
+input validator still needs matching minLength and exact numeric semantics
+before input admission can be accepted across implementations.
+
+Preparation tests use the published independent Prepare vector and the test
+executable as inert synthetic ELF bytes. They test identity/schema/deadline and
+byte drift plus detached retained state; they do not launch it or establish
+accepted bundle provenance. Full adapter dispatch and Rust guardian integration
+remain unfinished.
