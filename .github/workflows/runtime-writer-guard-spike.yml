@@ -4,7 +4,6 @@ on:
     branches: [spike/go-first-class-g0]
     paths:
       - api/tests/e2e/platform/test_runtime_writer_guards.py
-      - api/tests/e2e/platform/test_runtime_rust_owner_observation.py
       - spikes/go-native/owner-rs/**
       - spikes/go-native/scripts/owner-foundation-check.sh
       - api/tests/e2e/platform/fixtures/runtime_writer_guards.sql
@@ -41,7 +40,6 @@ jobs:
             spikes/go-native/owner-rs/examples/session_observation.rs \
             spikes/go-native/scripts/owner-foundation-check.sh \
             spikes/go-native/peers/rust-execution/Dockerfile \
-            api/tests/e2e/platform/test_runtime_rust_owner_observation.py \
             api/tests/e2e/platform/fixtures/runtime_writer_guards.sql \
             api/tests/e2e/platform/test_runtime_writer_guards.py \
             docker-compose.runtime-writer-guards.yml \
@@ -96,9 +94,6 @@ jobs:
           bash test.sh tests/e2e/platform/test_runtime_writer_guards.py --durations=0 \
             > "$RUNNER_TEMP/writer-guard-tests.log" 2>&1
           cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-results.xml"
-          bash test.sh tests/e2e/platform/test_runtime_rust_owner_observation.py --durations=0 \
-            > "$RUNNER_TEMP/writer-guard-rust-observation.log" 2>&1
-          cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-rust-observation.xml"
           bash test.sh quality api > "$RUNNER_TEMP/writer-guard-quality.log" 2>&1
       - name: Retain exact source and guard evidence
         if: always()

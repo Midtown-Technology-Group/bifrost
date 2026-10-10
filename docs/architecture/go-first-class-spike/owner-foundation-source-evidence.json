@@ -74,5 +74,100 @@
       "executed_steps": 0,
       "reason": "Review found imported rows fixture also requires explicit registration of its association dependency in the independently selected test module. Corrected before any runner step executed; no database result waived."
     }
-  ]
+  ],
+  "database_failure": {
+    "source_sha": "fca8ac08d2890f8ef58fe29ff68ac6ba300d70a7",
+    "source_tree": "1af0fa56f85249e6cf2a54177d50df2597dc5b6c",
+    "run": 38073887223,
+    "job": 114276718925,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38073887223",
+    "conclusion": "failure",
+    "suites": {
+      "writer-guard-baseline.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "109",
+          "time": "7.810",
+          "timestamp": "2026-10-10T18:08:21.842777+00:00",
+          "hostname": "02eb03f0df42"
+        }
+      ],
+      "writer-guard-last-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "19",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "19",
+          "time": "5.200",
+          "timestamp": "2026-10-10T18:09:34.328027+00:00",
+          "hostname": "e0765219b638"
+        }
+      ],
+      "writer-guard-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "51",
+          "time": "7.971",
+          "timestamp": "2026-10-10T18:08:58.161435+00:00",
+          "hostname": "7212228dab8b"
+        }
+      ],
+      "writer-guard-unit.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "13722",
+          "time": "284.860",
+          "timestamp": "2026-10-10T18:02:39.480302+00:00",
+          "hostname": "8dea716f3108"
+        }
+      ]
+    },
+    "diagnosis": "Each test.sh command resets the database, but PostgreSQL roles are cluster-wide. Second guard installer collided with retained isolated_writer_guard before all19 Rust case bodies; first51 guard cases passed.",
+    "correction": "Collect all70 cases in one module under one guard installation and one normal test.sh command; no role adoption, privilege reset, assertion suppression or retry added.",
+    "api_quality": "unrun after setup failure",
+    "cleanup": "verified empty task container/volume/network inventories",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/fca8ac08d2890f8ef58fe29ff68ac6ba300d70a7/runtime-writer-guards-fca8ac08d2890f8ef58fe29ff68ac6ba300d70a7",
+    "artifact_file_sha256": {
+      "owner-evidence/owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-evidence/owner-build.txt": "ac3831d93fe214ac941d7f5c9d8753199feff169c925775d9ab5ec724509c3b2",
+      "owner-evidence/owner-clippy.txt": "f2cbe02bc0ede8a3b4b594e308b1a2ee6ec50e565f2e271c1f850bfc9a2a23fc",
+      "owner-evidence/owner-dependency-graph.json": "94d281d3f3565a0a3a7a3640d978e5e74d0e746ec1dd6c68004782c8bc598d51",
+      "owner-evidence/owner-fetch.txt": "6e220093c42094ed746d965f016087d4b426dd4d4bff315805f62bc69b4fb14f",
+      "owner-evidence/owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-evidence/owner-image-cleanup.txt": "fc169c819fbe9da4705a4198482a31a81b1e33a6ad689e3712e4aaf311927186",
+      "owner-evidence/owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-evidence/owner-source-hashes.txt": "ef0ef3412e37dd0c824fdfc7716857634d8eec8e625b92111c0a5ce657ee0cfe",
+      "owner-evidence/owner-tests.txt": "d967017e69b2ec46b5c12a4e3800f63e5ed408c43b5253259a1decf0ea332d86",
+      "owner-evidence/owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-evidence/owner-tools-build.txt": "a9eee0dd60525ab29841295ec1005942b3ad40a88e2976dd0ed66e67c4f4cc03",
+      "owner-evidence/owner-tools-image.txt": "ed211e2df87a61edea8390cac6522aa7fccf0002bce70695ad0eb2b41061f859",
+      "owner-evidence/runtime-owner-observation": "c831c10a8ffad0c50303f3b25958d7af703e5ef6969b848d9dc4b2a889a35a49",
+      "writer-guard-baseline.xml": "4582827762a373802a501271ac0b35258c2e780a60dd7ed2cef19884be2e3310",
+      "writer-guard-cleanup.log": "0a08cfa40d61bbd68263b218bbf2ae45f0f3137144c3bc0a52e640b7ea43eb27",
+      "writer-guard-images.txt": "ca3a61b115df492075511c52f23b7121fd58d629daf92c78015cfe09e027cb01",
+      "writer-guard-last-results.xml": "69a1dcdc934c1882ceed0fe0818f92fee29cbb314dc387cd772a31381a4e7390",
+      "writer-guard-owner-binary.txt": "b838ce38415692adbb0af3391d0afe0dddc67c703ae06c9dcc6f55f54fe696e8",
+      "writer-guard-results.xml": "fabb0a9120df12d9b85b97717afb308575c711ae1a2c416578b814a694fcc81d",
+      "writer-guard-rust-observation.log": "5f8feda6fc9a9953e3178e4cc5e7102922cbc9136e3b0b8bd1934ce14ffc271c",
+      "writer-guard-source-hashes.txt": "6657b1c38c2b8b155f3fa4bd38088cb705c65932aff6d11573c83194f8f622cf",
+      "writer-guard-source.txt": "dd44a1dee788017b2c0823a5b4a38ac12a190740cd35c07550c84f572ed78f42",
+      "writer-guard-stack.log": "deff0682ea20132bc93cbd52a6fa9dfea474f65f85af55eda081e849dc8f2128",
+      "writer-guard-storage-baseline.log": "0afb971c50ededddeb8c3d5eb4cb037d7e1d9972640dc504f7caf2504d531bd7",
+      "writer-guard-tests.log": "283fdd12bfe659bca2c39277950f07747bf9a0c929687dec6a017b4dd784e6f8",
+      "writer-guard-unit.log": "7d3070c0f98a6e75a432b11099ea88c7a1e448159a62364d8ed9c2f29ae14222",
+      "writer-guard-unit.xml": "bf4084c950d120efd6211a238a508f39c2b40db23c3a2f1f13a2380792bde197"
+    },
+    "job_log_sha256": "65ccbc784119d9ed1d29c2b5122f0e4e2b376d6de9a23cf53c331473f9d814b0",
+    "new_source_run_required": true
+  }
 }

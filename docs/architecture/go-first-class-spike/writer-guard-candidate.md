@@ -122,10 +122,8 @@ two diagnosed fixture failures remain retained alongside the successful result.
 The separate Rust owner foundation at d3fcb82a4 passed its locked offline checks
 and two identity-encoding tests in run38073223134. That run executed no database
 transaction. The next candidate builds a private observation probe before starting
-the application test stack, retains its exact binary hash, then runs19 actual-schema
-Rust observation and lock/custody cases after the51 guard cases. Each repository
-`test.sh` command resets its own test database; guard installation is never applied
-twice to one database. The unchanged accepted Go workload is not rebuilt or launched
+the application test stack, retains its exact binary hash, then runs all70 actual-schema cases together:51 guard cases and19 Rust
+observation/lock/custody cases under one installation. The unchanged accepted Go workload is not rebuilt or launched
 by this observation lane.
 
 PostgreSQL16 requires UPDATE privilege on a column even for SELECT row locking.
@@ -137,3 +135,13 @@ changes. [PostgreSQL locking privilege requirement](https://www.postgresql.org/d
 This exercises the released source/attempt/NOWAIT secondary/session prefix of the
 common order. Start/admission/grant/receipt races, live custody and lifecycle writes
 remain outstanding. A successful observation grants no authority to spawn.
+
+
+Run38073887223 at fca8ac08d passed13,722 backend unit,109 baseline and51 guard
+cases, then all19 Rust cases failed during setup: PostgreSQL roles survived the
+per-command database reset, so a second installer collided with the retained
+guard role. No Rust database case body executed; API quality was unrun and actual
+teardown inventories were empty. The failed XML/logs and exact hashes are retained
+in the owner foundation evidence. All70 cases now share one module/install and one
+normal repository test command. No role is silently reused or recredentialed; all
+original assertions remain and fresh source proof is required.
