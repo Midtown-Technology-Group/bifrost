@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/MTG-Thomas/bifrost-workspace",
+  "commit": "e9be8f7ff6b3eb408af51f64d0c544cf9d46edcd",
+  "files": [
+    {
+      "path": "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios/inventory-invalid-limit.json",
+      "sha256": "a15a10f871249037b13dcbbeb890860ba4a8cc37352ed14fd4ffe7dbafbdf0d6"
+    },
+    {
+      "path": "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios/inventory-missing-mapping.json",
+      "sha256": "9e458440c3e49cb9b3a190b6b5901be7bbeb5ad4c9d0f652d61186163e089088"
+    },
+    {
+      "path": "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios/inventory-two-pages.json",
+      "sha256": "2fe8cbfb2f3bf3556d4182702aa5ea6261b6954eada497d40a41e47379086ad1"
+    },
+    {
+      "path": "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios/verify-active-token.json",
+      "sha256": "2c6358bfb9eb080ba4f09934293a9a2ba0e01e426efd1a069a6e41cdd80c15a2"
+    },
+    {
+      "path": "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios/verify-authorization-failure.json",
+      "sha256": "5283f4ed6fdd648c1c71f748f533f061ab42c28904dd40092d9d7443af999934"
+    },
+    {
+      "path": "solutions/cloudflare-zone-inventory/compatibility/wrangnarok/scenarios/verify-malformed-json.json",
+      "sha256": "b35e400787af2d096d4e2b41cf861ec4276929eb7deef042d634c4269c2932aa"
+    }
+  ],
+  "scope": "Unchanged credential-free fixture bytes; structural validation only. Source workflow execution is not exercised."
+}

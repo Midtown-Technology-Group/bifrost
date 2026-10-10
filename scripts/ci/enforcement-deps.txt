@@ -1,0 +1,43 @@
+# Enforcement dependency boundary
+#
+# Files that can influence CI test execution, test selection, report production
+# or scanner configuration. scripts/ci/enforce_closure.py audits this list
+# against .github/CODEOWNERS (report mode today; blocking once P0 lands, i.e.
+# once CODEOWNERS has owners and branch protection requires their approval).
+#
+# Matching is CODEOWNERS-shaped: bare names match at any depth, a pattern with
+# a slash is repo-root anchored, a trailing slash covers the directory, and '*'
+# never crosses a '/'.
+
+# GitHub-side enforcement and the gate wiring itself
+.github/workflows/**
+.github/actions/**
+.github/CODEOWNERS
+.github/sonar-ci.json
+
+# Scanner and coverage configuration
+sonar-project.properties
+api/.coveragerc*
+api/pytest.ini
+api/pyproject.toml
+
+# Test entry points and shared harness
+test.sh
+build.sh
+scripts/lib/**
+scripts/ci/**
+scripts/sonar/**
+
+# CI policy guards (they decide what CI may run and how it is pinned)
+api/scripts/check_mtg_ci_boundaries.py
+api/scripts/check_github_action_pins.py
+
+# Report producers and image/compose inputs
+api/scripts/ci/**
+api/scripts/filter_sonar_coverage.py
+api/scripts/combine_sonar_coverage.py
+docker-compose*.yml
+api/Dockerfile*
+client/Dockerfile*
+client/package.json
+client/playwright.config.ts

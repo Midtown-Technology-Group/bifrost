@@ -7,7 +7,7 @@ export default defineConfig({
 	plugins: [react()],
 	resolve: {
 		alias: {
-			"@": path.resolve(__dirname, "./src"),
+			"@": path.resolve(import.meta.dirname, "./src"),
 		},
 	},
 	test: {
@@ -21,6 +21,28 @@ export default defineConfig({
 		// several worktree test stacks at once. Keep an absolute cap so larger
 		// hosts do not turn that shared load into interaction-test timeouts.
 		maxWorkers: 2,
+		coverage: {
+			provider: "v8",
+			// Vitest 4 needs an explicit include to count unimported source files.
+			include: ["src/**/*.{ts,tsx}"],
+			exclude: [
+				// Declarations have no executable code; v1.d.ts is generated.
+				"src/**/*.d.ts",
+				"src/**/*.{test,spec}.{ts,tsx}",
+				// Test setup and test-only helpers are not application source.
+				"src/test/**",
+			],
+			reportsDirectory: "./coverage",
+			reporter: [
+				"text-summary",
+				// Sonar runs from the repository root, not the client directory.
+				[
+					"lcovonly",
+					{ projectRoot: path.resolve(import.meta.dirname, "..") },
+				],
+				"json-summary",
+			],
+		},
 		css: false,
 	},
 });

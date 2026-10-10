@@ -20,7 +20,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.orm.base import Base
 
@@ -60,6 +60,12 @@ MAX_OUTPUT_MAX_BYTES = 16 * 1024 * 1024
 CLAIM_LEASE_SECONDS = 60
 RUNNING_LOST_SECONDS = 90
 TIMEOUT_BACKSTOP_GRACE_SECONDS = 60
+# Dead-device watchdog bound (#1059): a `claimed` row whose device heartbeat
+# (`devices.last_seen_at`) is older than this can never progress — `claim_next`
+# only runs when that same device's agent polls again. 10x the agent's 30 s
+# heartbeat absorbs restarts/reboots/flaps before the sweep releases the claim
+# as `lost`.
+DEVICE_HEARTBEAT_LOST_SECONDS = 300
 
 
 class DeviceJob(Base):
@@ -137,6 +143,11 @@ class DeviceJob(Base):
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     log_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Watchdog join target: the sweep loads this eagerly to check the device
+    # heartbeat before releasing a stale claim (#1059). No back-reference —
+    # nothing on Device needs its jobs.
+    device = relationship("Device")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

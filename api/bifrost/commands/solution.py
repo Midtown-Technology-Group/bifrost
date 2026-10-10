@@ -87,6 +87,86 @@ def solution_group() -> None:
     pass
 
 
+@solution_group.command(
+    name="review-package",
+    help="Review a complete Solution package at an exact local Git commit; no deployment.",
+)
+@click.argument(
+    "recipe", type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path)
+)
+@click.option(
+    "--source-commit", required=True, help="Exact 40-character Git commit SHA."
+)
+@click.option(
+    "--repository-root",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=pathlib.Path),
+)
+def solution_review_package_cmd(
+    recipe: pathlib.Path, source_commit: str, repository_root: pathlib.Path
+) -> None:
+    from bifrost.solution_package_delivery import (
+        MAX_PACKAGE_BYTES,
+        MAX_PACKAGE_FILES,
+        load_solution_package_recipe,
+        review_solution_package_source,
+    )
+    import re
+
+    if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
+        raise click.ClickException("An exact source commit SHA is required")
+    deadline = time.monotonic() + 200
+
+    def git(*arguments: str) -> bytes:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("Package source review budget exhausted")
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+            timeout=remaining,
+        ).stdout
+
+    try:
+        contract = load_solution_package_recipe(recipe.read_bytes())
+        tree = git("rev-parse", f"{source_commit}^{{tree}}").decode().strip()
+        rows = git(
+            "ls-tree", "-r", "-l", "-z", f"{source_commit}:{contract.repo_subpath}"
+        )
+        entries = [entry for entry in rows.split(b"\0") if entry]
+        if not 1 <= len(entries) <= MAX_PACKAGE_FILES:
+            raise ValueError("Complete package inventory exceeds its file bound")
+        files, modes = {}, {}
+        size = 0
+        for entry in entries:
+            metadata, path = entry.split(b"\t", 1)
+            mode, kind, blob, length = metadata.split()
+            if kind != b"blob" or mode not in {b"100644", b"100755"}:
+                raise ValueError("Package source must contain only regular Git files")
+            size += int(length)
+            if size > MAX_PACKAGE_BYTES:
+                raise ValueError("Package source exceeds its byte bound")
+            relative = path.decode("utf-8")
+            if relative in files:
+                raise ValueError("Package inventory is ambiguous")
+            raw = git("cat-file", "blob", blob.decode("ascii"))
+            if len(raw) != int(length):
+                raise ValueError("Source blob size differs from its tree")
+            files[relative], modes[relative] = raw, mode.decode("ascii")
+        proof = review_solution_package_source(
+            contract.model_dump(mode="json"),
+            files,
+            modes,
+            source_commit_sha=source_commit,
+            source_tree_sha=tree,
+        )
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(proof, indent=2, sort_keys=True))
+
+
 def _write_solution_descriptor(
     workspace: pathlib.Path,
     slug: str,
@@ -531,9 +611,20 @@ def _workspace_from_path_arg(path: str) -> pathlib.Path:
 def _client_for_solution_workspace(
     workspace: pathlib.Path,
     api_url: str | None,
+    *,
+    require_explicit_url: bool = False,
 ) -> BifrostClient:
     """Use --url, the workspace selector, or the normal default profile."""
     selected_url = api_url or resolve_environment_url(workspace)
+    if require_explicit_url:
+        selected_url = (selected_url or "").strip().rstrip("/")
+    if require_explicit_url and not selected_url:
+        raise click.ClickException(
+            "Local development requires an explicit API target. "
+            "Set BIFROST_API_URL in the environment or this workspace's .env, "
+            "or pass --url <dev-api-url>. "
+            "Stored default profiles are not used by solution start."
+        )
     return BifrostClient.get_instance(require_auth=True, api_url=selected_url)
 
 
@@ -2242,7 +2333,8 @@ def _apps_manifest_with_prebuilt_dist(
     apps_file = _bifrost_manifest(workspace, "apps.yaml")
     if apps_file is None or not apps_file.is_file():
         raise click.ClickException("cannot add local builds: .bifrost/apps.yaml is missing")
-    data = yaml.safe_load(apps_file.read_text(encoding="utf-8")) or {}
+    original_manifest = apps_file.read_text(encoding="utf-8")
+    data = yaml.safe_load(original_manifest) or {}
     entries = data.get("apps") or {}
     if not isinstance(entries, dict):
         raise click.ClickException(".bifrost/apps.yaml: apps must contain an object")
@@ -2263,6 +2355,9 @@ def _apps_manifest_with_prebuilt_dist(
             "local build output has no apps.yaml entry for: "
             + ", ".join(sorted(remaining))
         )
+    # Accounting verifies this exact authored input against protected Git,
+    # then permits only dist_files/bin_dist_files changes in the build overlay.
+    data["authored_manifest"] = original_manifest
     return yaml.safe_dump(data, sort_keys=False)
 
 
@@ -3376,7 +3471,8 @@ def _vite_child_env(
 )
 @click.argument("app_slug", required=False)
 @click.option("--solution", "solution_ref", default=None, help="Install id or unique slug.")
-@click.option("--url", "api_url", default=None, help="Bifrost instance URL (default: current profile).")
+@click.option("--url", "api_url", default=None,
+              help="Explicit API target; otherwise BIFROST_API_URL in environment or workspace .env.")
 @click.option(
     "--port",
     default=3000,
@@ -3422,7 +3518,7 @@ def start_cmd(
         )
     descriptor = load_descriptor(workspace)
 
-    client = _client_for_solution_workspace(workspace, api_url)
+    client = _client_for_solution_workspace(workspace, api_url, require_explicit_url=True)
     binding = asyncio.run(
         _resolve_solution_install(client, workspace, descriptor, solution_ref)
     )

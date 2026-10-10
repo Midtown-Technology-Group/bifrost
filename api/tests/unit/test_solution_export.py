@@ -1,12 +1,14 @@
 """Unit tests for Solution export — ``build_workspace_zip`` must serialize a
 bundle into the SAME workspace shape the zip-install preview consumes, so an
 export is directly re-installable (round-trip proof, no DB/S3)."""
+
 from __future__ import annotations
 
 import base64
 import io
 import uuid
 import zipfile
+from unittest.mock import AsyncMock
 from pathlib import Path
 
 import pytest
@@ -18,7 +20,9 @@ from src.routers.solutions import export_solution
 from src.services.solutions.deploy import SolutionBundle
 from src.services.solutions.export import (
     add_encrypted_content_to_workspace_zip,
+    add_live_content_to_workspace_zip_file,
     build_workspace_zip,
+    copy_workspace_zip_with_readme,
 )
 from src.services.solutions.secrets_blob import SolutionContent, decode_secrets_blob
 from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
@@ -82,7 +86,11 @@ def _bundle() -> SolutionBundle:
                 "logo_b64": _PNG,
                 "logo_content_type": "image/png",
                 "src_files": {"src/App.tsx": "export default () => null;\n"},
-                "bin_files": {"public/font.woff2": base64.b64encode(b"\x00\x01binary").decode("ascii")},
+                "bin_files": {
+                    "public/font.woff2": base64.b64encode(b"\x00\x01binary").decode(
+                        "ascii"
+                    )
+                },
             }
         ],
         forms=[{"id": FORM_ID, "name": "Intake", "fields": [{"key": "email"}]}],
@@ -178,7 +186,9 @@ def test_export_python_source_verbatim() -> None:
         names = set(z.namelist())
         assert "workflows/main.py" in names
         assert "modules/helper.py" in names
-        assert z.read("workflows/main.py").decode() == "def run(sdk):\n    return 'ok'\n"
+        assert (
+            z.read("workflows/main.py").decode() == "def run(sdk):\n    return 'ok'\n"
+        )
         # Solution logo file present at the descriptor's path.
         assert "solution-logo.png" in names
 
@@ -260,25 +270,81 @@ def test_full_export_replaces_any_existing_encrypted_content() -> None:
     assert content.config_values == {"NEW": "value"}
 
 
+@pytest.mark.parametrize("current_readme", ["# Updated\n", None])
+def test_stored_source_export_uses_current_readme(tmp_path: Path, current_readme: str | None) -> None:
+    bundle = _bundle()
+    bundle.readme = "# Deploy-time\n"
+    source = tmp_path / "source.zip"
+    dest = tmp_path / "export.zip"
+    source.write_bytes(build_workspace_zip(bundle))
+
+    copy_workspace_zip_with_readme(source, dest, current_readme)
+
+    with zipfile.ZipFile(dest) as exported:
+        assert exported.read("workflows/main.py") == bundle.python_files["workflows/main.py"].encode()
+        if current_readme is None:
+            assert "README.md" not in exported.namelist()
+        else:
+            assert exported.namelist().count("README.md") == 1
+            assert exported.read("README.md") == current_readme.encode()
+
+
+async def test_full_stored_source_export_overlays_readme_and_runtime(tmp_path: Path) -> None:
+    bundle = _bundle()
+    bundle.readme = "# Updated\n"
+    bundle.config_values = {"API_KEY": "secret-value"}
+    source = tmp_path / "source.zip"
+    dest = tmp_path / "export.zip"
+    source_bundle = _bundle()
+    source_bundle.readme = "# Deploy-time\n"
+    source.write_bytes(build_workspace_zip(source_bundle))
+
+    await add_live_content_to_workspace_zip_file(source, bundle, None, dest, password="pw")
+
+    with zipfile.ZipFile(dest) as exported:
+        assert exported.namelist().count("README.md") == 1
+        assert exported.read("README.md") == b"# Updated\n"
+        content = decode_secrets_blob(exported.read(".bifrost/secrets.enc").decode(), password="pw")
+        assert content.config_values == {"API_KEY": "secret-value"}
+
+
 @pytest.mark.e2e
-async def test_shareable_export_returns_stored_source_artifact(db_session) -> None:
+@pytest.mark.parametrize("current_readme", ["# Current README\n", None])
+async def test_shareable_export_returns_stored_source_artifact(
+    db_session, current_readme: str | None,
+) -> None:
     sol = Solution(
         id=uuid.uuid4(),
         slug=f"stored-{uuid.uuid4().hex[:8]}",
         name="Stored Source",
+        readme=current_readme,
         organization_id=None,
+        execution_runtime_mode="repo-v1",
     )
     db_session.add(sol)
     await db_session.flush()
     source_bundle = _bundle()
-    source_bundle.python_files["workflows/main.py"] = "def run():\n    return 'artifact'\n"
+    source_bundle.readme = "# Deploy-time README\n"
+    source_bundle.python_files["workflows/main.py"] = (
+        "def run():\n    return 'artifact'\n"
+    )
     source_zip = build_workspace_zip(source_bundle)
     await SolutionSourceArtifactStorage(sol.id).write(source_zip)
 
     ctx, user = _admin(db_session)
     response = await export_solution(sol.id, ctx, user, mode="shareable")
 
-    assert _response_bytes(response) == source_zip
+    with zipfile.ZipFile(io.BytesIO(source_zip)) as stored, zipfile.ZipFile(
+        io.BytesIO(_response_bytes(response))
+    ) as exported:
+        source_names = set(stored.namelist()) - {"README.md"}
+        assert set(exported.namelist()) == source_names | (
+            {"README.md"} if current_readme else set()
+        )
+        for name in source_names:
+            assert exported.read(name) == stored.read(name)
+        if current_readme:
+            assert exported.read("README.md") == current_readme.encode()
 
 
 @pytest.mark.e2e
@@ -293,16 +359,23 @@ async def test_full_export_overlays_live_payload_on_stored_source(
         slug=f"full-{uuid.uuid4().hex[:8]}",
         name="Full Source",
         organization_id=None,
+        execution_runtime_mode="repo-v1",
     )
     db_session.add(sol)
     await db_session.flush()
     source_bundle = _bundle()
-    source_bundle.python_files["workflows/main.py"] = "def run():\n    return 'artifact'\n"
-    await SolutionSourceArtifactStorage(sol.id).write(build_workspace_zip(source_bundle))
+    source_bundle.python_files["workflows/main.py"] = (
+        "def run():\n    return 'artifact'\n"
+    )
+    await SolutionSourceArtifactStorage(sol.id).write(
+        build_workspace_zip(source_bundle)
+    )
 
     async def _fake_bundle_for(self, *_args, **_kwargs):  # noqa: ANN001
         live_bundle = _bundle()
-        live_bundle.python_files["workflows/main.py"] = "def run():\n    return 'live-db'\n"
+        live_bundle.python_files["workflows/main.py"] = (
+            "def run():\n    return 'live-db'\n"
+        )
         live_bundle.config_values = {"API_KEY": "secret-value"}
         live_bundle.table_data = {"things": [{"title": "row"}]}
         return live_bundle
@@ -320,8 +393,101 @@ async def test_full_export_overlays_live_payload_on_stored_source(
     )
 
     with zipfile.ZipFile(io.BytesIO(_response_bytes(response))) as z:
-        assert z.read("workflows/main.py").decode() == "def run():\n    return 'artifact'\n"
+        assert (
+            z.read("workflows/main.py").decode()
+            == "def run():\n    return 'artifact'\n"
+        )
         blob = z.read(".bifrost/secrets.enc").decode()
     content = decode_secrets_blob(blob, password="pw")
     assert content.config_values == {"API_KEY": "secret-value"}
     assert content.table_data == {"things": [{"title": "row"}]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["shareable", "full"])
+@pytest.mark.parametrize("pointer_drift", [False, True])
+async def test_immutable_export_uses_complete_active_source_not_legacy_artifact(
+    monkeypatch,
+    mode,
+    pointer_drift,
+) -> None:
+    from src.services.solutions.capture import SolutionCaptureService
+    from src.services.solutions import immutable_export
+
+    sol = Solution(
+        id=uuid.uuid4(),
+        slug="immutable-" + uuid.uuid4().hex[:8],
+        name="Immutable export",
+        organization_id=None,
+        execution_runtime_mode="deployment-v1",
+        active_deployment_id=uuid.uuid4(),
+    )
+    db_session = AsyncMock()
+    db_session.get.return_value = sol
+    legacy_read = AsyncMock(
+        side_effect=AssertionError("Legacy storage must not be read")
+    )
+    monkeypatch.setattr(SolutionSourceArtifactStorage, "copy_to_path", legacy_read)
+    source = {
+        "workflows/main.py": "from modules.pkg import run\n",
+        "modules/pkg/__init__.py": "from .helper import run\n",
+        "modules/pkg/helper.py": "def run():\n    return 'sealed'\n",
+    }
+    from src.services.solutions.deployment_manifest import DeploymentResolutionMap
+
+    monkeypatch.setattr(
+        immutable_export,
+        "_read_active_source",
+        AsyncMock(
+            return_value=(
+                source,
+                {"assets/schema.json": b"reviewed"},
+                DeploymentResolutionMap(),
+                None,
+            )
+        ),
+    )
+    monkeypatch.setattr(immutable_export, "require_export_registration", AsyncMock())
+
+    async def capture(self, solution, **options):
+        assert options["source_files"] == source
+        bundle = _bundle()
+        bundle.solution = solution
+        bundle.python_files = options["source_files"]
+        if options["include_values"]:
+            bundle.config_values = {"API_KEY": "still encrypted"}
+        return bundle
+
+    monkeypatch.setattr(SolutionCaptureService, "bundle_for", capture)
+    if pointer_drift:
+
+        async def drift(*_args):
+            sol.active_deployment_id = uuid.uuid4()
+
+        db_session.refresh.side_effect = drift
+        from fastapi import HTTPException
+
+        ctx, user = _admin(db_session)
+        with pytest.raises(HTTPException) as refused:
+            await export_solution(
+                sol.id, ctx, user, mode=mode, password="pw" if mode == "full" else None
+            )
+        assert refused.value.status_code == 409
+        db_session.commit.assert_not_awaited()
+        legacy_read.assert_not_awaited()
+        return
+    ctx, user = _admin(db_session)
+    response = await export_solution(
+        sol.id, ctx, user, mode=mode, password="pw" if mode == "full" else None
+    )
+    with zipfile.ZipFile(io.BytesIO(_response_bytes(response))) as archive:
+        assert {
+            p: archive.read(p).decode() for p in archive.namelist() if p.endswith(".py")
+        } == source
+        assert archive.read("assets/schema.json") == b"reviewed"
+        if mode == "full":
+            assert decode_secrets_blob(
+                archive.read(".bifrost/secrets.enc").decode(), password="pw"
+            ).config_values == {"API_KEY": "still encrypted"}
+        else:
+            assert ".bifrost/secrets.enc" not in archive.namelist()

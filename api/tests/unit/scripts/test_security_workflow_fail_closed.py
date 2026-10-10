@@ -6,7 +6,7 @@ import yaml
 
 def _repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
-        if (parent / ".github/workflows/snyk.yml").is_file() and (
+        if (parent / ".github/workflows/codeql.yml").is_file() and (
             parent / ".snyk"
         ).is_file():
             return parent
@@ -16,18 +16,7 @@ def _repo_root() -> Path:
 REPO_ROOT = _repo_root()
 
 
-def test_snyk_scan_failures_are_not_tolerated() -> None:
-    workflow = (REPO_ROOT / ".github/workflows/snyk.yml").read_text(encoding="utf-8")
-
-    assert "continue-on-error" not in workflow
-    assert "SNYK_TOKEN is required" in workflow
-    assert "exit 1" in workflow
-    assert '      - "requirements*.lock"' in workflow
-    assert '      - "k8s/**"' in workflow
-    assert "--policy-path=.snyk" in workflow
-
-
-def test_snyk_policy_allows_only_the_approved_dated_authlib_exception() -> None:
+def test_reviewed_exception_preserves_approved_scope_and_deadline() -> None:
     policy = yaml.safe_load((REPO_ROOT / ".snyk").read_text(encoding="utf-8"))
 
     assert set(policy) <= {"version", "ignore"}

@@ -36,6 +36,9 @@ class FakeClient:
     async def get_object(self, *, Key, **kwargs):
         return {"Body": SimpleNamespace(read=AsyncMock(return_value=self.objects[Key]))}
 
+    async def head_object(self, *, Key, **kwargs):
+        return {"ContentLength": len(self.objects[Key])}
+
 
 def make_storage(client: FakeClient):
     @asynccontextmanager
@@ -106,6 +109,88 @@ async def test_runtime_path_rejects_traversal():
 )
 def test_provider_duplicate_write_exceptions_are_classified(error):
     assert SolutionDeploymentStorage._is_already_exists(error)
+
+
+class S3InvalidRange(Exception):
+    def __init__(self):
+        self.response = {
+            "ResponseMetadata": {"HTTPStatusCode": 416},
+            "Error": {"Code": "InvalidRange"},
+        }
+
+
+class AzureInvalidRange(Exception):
+    status_code = 416
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_bytes", [0, 64])
+@pytest.mark.parametrize(
+    "error,metadata",
+    [(S3InvalidRange(), {"ContentLength": 0}),
+     (AzureInvalidRange(), SimpleNamespace(content_length=0))],
+)
+async def test_bounded_empty_source_requires_exact_provider_metadata(error, metadata, max_bytes):
+    client = FakeClient()
+    client.get_object = AsyncMock(side_effect=error)
+    client.head_object = AsyncMock(return_value=metadata)
+    storage = make_storage(client)
+    path = "modules/__init__.py"
+    assert await storage.read_runtime_file(path, max_bytes=max_bytes) == b""
+    client.get_object.assert_awaited_once_with(
+        Bucket="test", Key=storage.runtime_prefix + path, Range=f"bytes=0-{max_bytes}",
+    )
+    client.head_object.assert_awaited_once_with(Bucket="test", Key=storage.runtime_prefix + path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metadata", [
+    {"ContentLength": 1}, {}, {"ContentLength": False},
+    SimpleNamespace(content_length=1), SimpleNamespace(),
+])
+async def test_unsatisfiable_range_cannot_hide_nonempty_or_unknown_source(metadata):
+    client = FakeClient()
+    client.get_object = AsyncMock(side_effect=S3InvalidRange())
+    client.head_object = AsyncMock(return_value=metadata)
+    storage = make_storage(client)
+    with pytest.raises(DeploymentArtifactIntegrityError, match="verified empty object"):
+        await storage.read_runtime_file("modules/__init__.py", max_bytes=64)
+    assert client.get_object.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_source_metadata_failure_propagates_without_download_retry():
+    client = FakeClient()
+    client.get_object = AsyncMock(side_effect=S3InvalidRange())
+    client.head_object = AsyncMock(side_effect=PermissionError("metadata unavailable"))
+    storage = make_storage(client)
+    with pytest.raises(PermissionError, match="metadata unavailable"):
+        await storage.read_runtime_file("modules/__init__.py", max_bytes=64)
+    assert client.get_object.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_other_download_errors_do_not_use_empty_source_handling():
+    client = FakeClient()
+    client.get_object = AsyncMock(side_effect=PermissionError("download unavailable"))
+    client.head_object = AsyncMock()
+    storage = make_storage(client)
+    with pytest.raises(PermissionError, match="download unavailable"):
+        await storage.read_runtime_file("modules/__init__.py", max_bytes=64)
+    client.head_object.assert_not_awaited()
+    assert client.get_object.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_negative_source_bound_fails_before_any_storage_read():
+    client = FakeClient()
+    client.get_object = AsyncMock()
+    client.head_object = AsyncMock()
+    storage = make_storage(client)
+    with pytest.raises(DeploymentArtifactIntegrityError, match="total byte bound"):
+        await storage.read_runtime_file("modules/__init__.py", max_bytes=-1)
+    client.get_object.assert_not_awaited()
+    client.head_object.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -247,3 +332,29 @@ async def test_invalid_resource_contract_never_opens_storage(path, size):
     with pytest.raises(ValueError):
         await storage.read_resource(path, size)
     storage._client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content,limit", [(b"", 0), (b"complete", 8), (b"oversized", 4)])
+async def test_source_export_transport_is_bounded_and_accumulates_short_chunks(content, limit):
+    class Body:
+        offset = 0
+        closed = False
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): self.closed = True
+        async def read(self, size):
+            chunk = content[self.offset:self.offset+min(size, 2)]
+            self.offset += len(chunk)
+            return chunk
+    body = Body()
+    client = FakeClient()
+    client.get_object = AsyncMock(return_value={"Body": body})
+    storage = make_storage(client)
+    if len(content) > limit:
+        with pytest.raises(DeploymentArtifactIntegrityError, match="byte bound"):
+            await storage.read_runtime_file("helper.py", max_bytes=limit)
+    else:
+        assert await storage.read_runtime_file("helper.py", max_bytes=limit) == content
+    assert body.closed and body.offset <= limit+1
+    client.get_object.assert_awaited_once_with(Bucket="test",
+        Key=storage.runtime_prefix+"helper.py", Range=f"bytes=0-{limit}")

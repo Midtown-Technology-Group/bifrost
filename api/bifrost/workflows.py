@@ -1,8 +1,13 @@
 """
-bifrost/workflows.py - Workflows SDK (API-only)
+bifrost/workflows.py - Workflows SDK
 
 Provides Python API for workflow operations (list, get status, execute).
-All operations go through HTTP API endpoints.
+
+Every fixed operation sends the ordinary HTTP request through the shared
+``BifrostClient``: over the worker's private Unix socket when the engine
+injected one, and over the network API otherwise. The worker parent owns the
+pooled database and the queue; an engine child holds neither, and a local
+attempt never falls back to the network API.
 """
 
 from __future__ import annotations
@@ -37,7 +42,7 @@ class workflows:
                 - description: str | None - Human-readable description
                 - category: str - Category for organization
                 - tags: list[str] - Tags for categorization
-                - parameters: dict - Workflow parameters
+                - parameters: list[dict] - Workflow parameters
                 - execution_mode: str - Execution mode
                 - timeout_seconds: int - Max execution time
                 - retry_policy: dict - Infrastructure retry policy
@@ -61,7 +66,7 @@ class workflows:
             ...     print(f"{wf.name}: {wf.description}")
         """
         client = get_client()
-        response = await client.get("/api/workflows")
+        response = await client.engine_request("GET", "/api/workflows")
         raise_for_status_with_detail(response)
         data = response.json()
         return [WorkflowMetadata.model_validate(wf) for wf in data]
@@ -131,16 +136,17 @@ class workflows:
         if org_id is None:
             org_id = get_default_scope()
 
+        solution_id = get_effective_solution(solution)
+        caller = get_caller_solution()
+
         client = get_client()
         payload: dict[str, Any] = {
             "workflow_id": workflow,
             "input_data": input_data or {},
             "sync": False,
         }
-        solution_id = get_effective_solution(solution)
         if solution_id:
             payload["solution_id"] = str(solution_id)
-        caller = get_caller_solution()
         if caller:
             payload["caller_solution_id"] = str(caller)
         if org_id is not None:
@@ -152,8 +158,8 @@ class workflows:
         if delay_seconds is not None:
             payload["delay_seconds"] = delay_seconds
         execution_id = str(uuid4())
-        response = await client.post(
-            "/api/workflows/execute",
+        response = await client.engine_request(
+            "POST", "/api/workflows/execute",
             json=payload,
             headers={"X-Bifrost-Execution-ID": execution_id},
             retry_safe=True,
@@ -178,8 +184,8 @@ class workflows:
             >>> await workflows.cancel("exec-123")
         """
         client = get_client()
-        response = await client.post(
-            f"/api/workflows/executions/{execution_id}/cancel"
+        response = await client.engine_request(
+            "POST", f"/api/workflows/executions/{execution_id}/cancel"
         )
         raise_for_status_with_detail(response)
 

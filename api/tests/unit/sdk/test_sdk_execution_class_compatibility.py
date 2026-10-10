@@ -12,7 +12,7 @@ async def test_execution_alias_and_positional_filters(monkeypatch):
     assert module.executions is module.Executions
     response = MagicMock()
     response.json.return_value = {"executions": [], "continuation_token": "next"}
-    client = MagicMock(get=AsyncMock(return_value=response))
+    client = MagicMock(engine_request=AsyncMock(return_value=response))
     monkeypatch.setattr(module, "get_client", lambda: client)
     monkeypatch.setattr(module, "raise_for_status_with_detail", MagicMock())
 
@@ -21,7 +21,8 @@ async def test_execution_alias_and_positional_filters(monkeypatch):
     assert isinstance(rows, module.ExecutionList)
     assert rows == []
     assert rows.continuation_token == "next"
-    client.get.assert_awaited_once_with(
+    client.engine_request.assert_awaited_once_with(
+        "GET",
         "/api/executions",
         params={
             "workflow_name": "workflow", "status": "Success",

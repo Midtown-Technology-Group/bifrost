@@ -245,6 +245,76 @@ async def test_preview_omits_only_a_verified_handoff(handoff, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_predecessor_release_receipt_still_proves_the_handoff(handoff):
+    """A receipt coherently bound to an earlier Live release remains valid
+    while its coverage, verified paths and source hashes match the current
+    release's governed bytes (#1122)."""
+    handoff.deployment.validation_result['release_row_id'] = str(uuid4())
+    handoff.deployment.validation_result['release_id'] = 'sha256:' + 'e' * 64
+    await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
+async def test_active_coverage_proves_a_key_with_no_recorded_lineage(handoff):
+    """A solution-managed key whose deployment chain carries no reviewed
+    lineage marker is verified against its active covering deployment."""
+    handoff.deployment.validation_result = None
+    await handoff.guard.require(handoff.inherited)
+    assert handoff.workflow.solution_id == handoff.solution.id
+
+
+@pytest.mark.asyncio
+async def test_reviewed_revision_with_unrecorded_base_refuses_coverage(handoff):
+    """Active coverage only applies when the active deployment itself is the
+    unrecorded origin: a valid reviewed marker in the chain requires its
+    recorded base, and a missing marker reached through a reviewed revision
+    is incoherent lineage that fails closed (#1122)."""
+    _reviewed_successor(handoff, readback.SOURCE_MARKER)
+    handoff.deployment.validation_result = None
+    with pytest.raises(ValueError, match='no reviewed handoff lineage'):
+        await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
+async def test_preview_omits_a_key_proven_by_active_coverage(handoff, monkeypatch):
+    handoff.deployment.validation_result = None
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+    assert await service._current_registration_snapshot(handoff.release) == {}
+    handoff.workflow.public_endpoint = True
+    with pytest.raises(WorkspacePromotionInvalid, match='handoff could not be verified'):
+        await service._current_registration_snapshot(handoff.release)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('change', ['missing_pointer', 'wrong_pointer', 'legacy_runtime', 'scope', 'exposure'])
+async def test_active_coverage_still_fails_closed(handoff, change):
+    """Active coverage never substitutes for an active covering deployment or
+    an exact owner/exposure match (#1122)."""
+    handoff.deployment.validation_result = None
+    if change == 'missing_pointer':
+        handoff.solution.active_deployment_id = None
+    elif change == 'wrong_pointer':
+        handoff.solution.active_deployment_id = uuid4()
+    elif change == 'legacy_runtime':
+        handoff.solution.execution_runtime_mode = 'repo-v1'
+    elif change == 'scope':
+        handoff.workflow.organization_id = uuid4()
+    elif change == 'exposure':
+        handoff.workflow.public_endpoint = True
+    with pytest.raises((ValueError, KeyError)):
+        await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
+async def test_active_coverage_rejects_inherited_identity_drift(handoff):
+    handoff.deployment.validation_result = None
+    handoff.inherited['name'] = 'Renamed elsewhere'
+    with pytest.raises(ValueError, match='origin differs'):
+        await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
 async def test_shadow_loose_uuid_is_not_hidden_by_a_valid_solution(handoff, monkeypatch):
     shadow = SimpleNamespace(id=uuid4(), name='CIPP', type='workflow', is_active=True)
     monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=shadow))

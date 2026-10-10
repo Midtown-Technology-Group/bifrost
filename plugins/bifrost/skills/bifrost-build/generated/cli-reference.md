@@ -2220,6 +2220,7 @@ Commands:
   plan              Validate a Solution workspace without changing local...
   pull              Pull captured entities into the local .bifrost/...
   pull-manifests    Pull captured entities into the local .bifrost/...
+  review-package    Review a complete Solution package at an exact local...
   scaffold-app      Scaffold a standalone_v2 React app (package.json,...
   sdk               Manage the app's vendored Bifrost SDK.
   start             Run the app's dev server + local workflows on one...
@@ -2559,6 +2560,20 @@ Options:
   --help                          Show this message and exit.
 ```
 
+### `solution review-package`
+
+```
+Usage: solution review-package [OPTIONS] RECIPE
+
+  Review a complete Solution package at an exact local Git commit; no
+  deployment.
+
+Options:
+  --source-commit TEXT         Exact 40-character Git commit SHA.  [required]
+  --repository-root DIRECTORY  [required]
+  --help                       Show this message and exit.
+```
+
 ### `solution scaffold-app`
 
 ```
@@ -2634,7 +2649,8 @@ Usage: solution start [OPTIONS] [APP_SLUG]
 
 Options:
   --solution TEXT         Install id or unique slug.
-  --url TEXT              Bifrost instance URL (default: current profile).
+  --url TEXT              Explicit API target; otherwise BIFROST_API_URL in
+                          environment or workspace .env.
   --port INTEGER          Stable local proxy origin port; reuse it across
                           restarts.  [default: 3000]
   --host TEXT             Address for the local origin to bind.  [default:
