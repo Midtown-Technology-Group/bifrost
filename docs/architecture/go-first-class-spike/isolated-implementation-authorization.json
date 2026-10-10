@@ -1,0 +1,29 @@
+{
+  "status": "human-architecture-release-for-isolated-implementation-only",
+  "approved_by": "Thomas",
+  "approval_text": "Proceed, please, I agree with your recommendation.",
+  "proposal_commit": "b8b44cbc01b1fb6be86f4fba050e93eb0da55924",
+  "proposal_path": "docs/architecture/go-first-class-spike/owner-integration-proposal.md",
+  "sdk_version": "0.0.0-spike.2",
+  "scope": "Common owner/session/provision/receipt interfaces, existing thread and isolated worktree, after independent codec acceptance and subject to all existing dependencies and acceptance gates.",
+  "conditions": [
+    "Same unchanged accepted Go binary, real Rust owner transactions, restricted SDK, cancellation, durable Result/Receipt, existing authenticated Execution API readback and process/descendant/source cleanup.",
+    "Review concrete schema, identity, immutability, writer-exclusion constraints and common lock order together before accepting a new lifecycle writer.",
+    "Crash recovery and uncertain commit/spawn/lost-ACK handling without replay or ownership reassignment."
+  ],
+  "restrictions": [
+    "Python-owned executions unchanged; production dispatch disabled.",
+    "No production, merge, deployment, expanded credential authority, profile freeze, additional agents or renewal approval.",
+    "Green conformance is not runtime acceptance. No runtime or lifecycle goal completion until required evidence is accepted."
+  ],
+  "verified_independent_conformance": {
+    "source": "ae9b76c18d2b097e53c0799391377e8149fdbe8c",
+    "proposal_head": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+    "diagnostic_run": 38001923899,
+    "proof": "docs/architecture/go-first-class-spike/rust-session-conformance-proof.json"
+  },
+  "current_platform_main": "f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2",
+  "local_source_reconciliation_commit": "a48f8df0964000cd86d8ac95741f0e968b17b9ff",
+  "existing_accepted_migration_head": "20261006_mtg_upstream_sdk",
+  "note": "Source reconciliation is a local Git merge into the isolated spike branch, not a pull-request merge, deployment or runtime acceptance."
+}

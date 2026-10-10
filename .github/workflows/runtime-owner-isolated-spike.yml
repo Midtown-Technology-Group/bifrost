@@ -1,0 +1,41 @@
+name: Isolated runtime owner schema candidate
+on:
+  push:
+    branches: [spike/go-first-class-g0]
+    paths:
+      - api/alembic/versions/20261009_runtime_deployment_artifacts.py
+      - api/tests/e2e/platform/test_runtime_deployment_artifacts.py
+      - .github/workflows/runtime-owner-isolated-spike.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  schema:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Actual migrated platform database and scoped repository test lane
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > "$RUNNER_TEMP/runtime-schema-source.txt"
+          trap 'bash test.sh stack down > "$RUNNER_TEMP/runtime-schema-cleanup.log" 2>&1' EXIT
+          bash test.sh stack up > "$RUNNER_TEMP/runtime-schema-stack.log" 2>&1
+          bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py --durations=0 \
+            > "$RUNNER_TEMP/runtime-schema-tests.log" 2>&1
+          bash test.sh quality api > "$RUNNER_TEMP/runtime-schema-quality.log" 2>&1
+      - name: Retain exact candidate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-owner-schema-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/runtime-schema-source.txt
+            ${{ runner.temp }}/runtime-schema-tests.log
+            ${{ runner.temp }}/runtime-schema-quality.log
+            ${{ runner.temp }}/runtime-schema-cleanup.log
+            /tmp/bifrost-*/test-results.xml
+          if-no-files-found: error
+          retention-days: 14
