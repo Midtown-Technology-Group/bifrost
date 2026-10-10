@@ -6,6 +6,7 @@ on:
       - api/alembic/versions/20261009_runtime_deployment_artifacts.py
       - api/alembic/versions/20261010_runtime_owner_sessions.py
       - api/alembic/versions/20261010_runtime_starts_receipts.py
+      - api/alembic/versions/20261010_runtime_sdk_grants.py
       - api/tests/e2e/platform/test_runtime_deployment_artifacts.py
       - api/src/models/orm/runtime_execution.py
       - api/src/models/orm/executions.py

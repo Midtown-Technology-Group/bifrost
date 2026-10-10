@@ -22,6 +22,8 @@ from src.models.orm.runtime_execution import (
     RuntimeReportReceipt,
     RuntimeSession,
     RuntimeStart,
+    WorkflowRuntimeSDKGrant,
+    WorkflowRuntimeSDKGrantOperation,
 )
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
@@ -319,6 +321,55 @@ async def test_owner_identity_and_closed_session_cannot_be_reassigned_or_erased(
         async with db_session.begin_nested():
             await db_session.execute(text(mutation), owner_session)
     assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+
+
+async def test_grant_cannot_store_an_already_expired_access_window(
+    db_session, grant_storage
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                GRANT_INSERT, {**grant_storage, "expires": grant_storage["issued"]}
+            )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+
+
+OPERATION_INSERT = text("""
+    INSERT INTO workflow_runtime_sdk_grant_operations
+        (grant_id, ordinal, operation, integration_name, scope_kind, scope_organization_id,
+         resolved_organization_id, solution_install_id)
+    VALUES (:grant, 0, 'integration-get', 'SyntheticReadiness', 'organization', :org, :org, :solution)
+""")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE workflow_runtime_sdk_grant_operations SET integration_name = 'OtherIntegration' WHERE grant_id = :grant",
+        "DELETE FROM workflow_runtime_sdk_grant_operations WHERE grant_id = :grant",
+    ],
+)
+async def test_grant_operations_cannot_be_broadened_or_erased(
+    db_session, grant_storage, mutation
+):
+    await db_session.execute(GRANT_INSERT, grant_storage)
+    await db_session.execute(OPERATION_INSERT, grant_storage)
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), grant_storage)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+
+
+async def test_grant_operation_cannot_reference_another_install(
+    db_session, grant_storage
+):
+    await db_session.execute(GRANT_INSERT, grant_storage)
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                OPERATION_INSERT, {**grant_storage, "solution": uuid4()}
+            )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23503"
     assert (
         await db_session.execute(
             text("SELECT close_reason FROM runtime_sessions WHERE id = :session"),
@@ -366,6 +417,8 @@ async def test_duplicate_session_cannot_create_a_second_launch_identity(
         "runtime_sessions",
         "runtime_starts",
         "runtime_report_receipts",
+        "workflow_runtime_sdk_grants",
+        "workflow_runtime_sdk_grant_operations",
     ],
 )
 async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
@@ -380,6 +433,8 @@ async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
             RuntimeSession,
             RuntimeStart,
             RuntimeReportReceipt,
+            WorkflowRuntimeSDKGrant,
+            WorkflowRuntimeSDKGrantOperation,
         )
     }[table_name]
     connection = await db_session.connection()
@@ -533,3 +588,115 @@ async def test_a_session_cannot_receive_a_second_committed_start(
         async with db_session.begin_nested():
             await db_session.execute(START_INSERT, {**report_storage, "start": uuid4()})
     assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+
+
+GRANT_INSERT = text("""
+    INSERT INTO workflow_runtime_sdk_grants
+        (id, schema_version, workflow_attempt_id, execution_id, attempt_number,
+         claim_token_digest, worker_incarnation_id, supervisor_incarnation_id, runtime_session_id,
+         started_at, issued_at, timeout_seconds, credential_deadline, initial_access_expires_at,
+         caller_user_id, caller_organization_id, effective_organization_id, caller_email, caller_name,
+         caller_admin, caller_provider, caller_external, caller_snapshot_digest, workflow_id,
+         solution_install_id, source_kind, source_id, source_manifest_digest, source_resolution_digest,
+         source_global_permission, source_digest, operations_digest, grant_digest,
+         owner_incarnation_id, committed_start_id, start_message_id)
+    VALUES (:grant, 'cred-p1/v1', :attempt, :execution, 1, :claim_digest, :worker, :supervisor, :session,
+            :started, :issued, 10, :expires, :expires, :reviewer, :org, :org, 'schema@example.test',
+            'Synthetic schema', 1, 0, 0, :source, :workflow, :solution, 'solution-deployment', :deployment,
+            :manifest_digest, :resolution_digest, 0, :source, :source, :source, :owner, :start, :start_message)
+""")
+
+
+@pytest.fixture
+async def grant_storage(db_session, report_storage):
+    """Schema-test evidence only: no signing, token, live session or SDK operation."""
+    from datetime import timedelta
+
+    facts = {**report_storage, "grant": uuid4(), "org": PROVIDER_ORG_ID}
+    started = (
+        await db_session.execute(
+            text("SELECT started_at FROM runtime_starts WHERE id = :start"), facts
+        )
+    ).scalar_one()
+    facts.update(
+        started=started,
+        issued=started + timedelta(milliseconds=1),
+        expires=started + timedelta(seconds=10),
+        manifest_digest="sha256:" + "b" * 64,
+        resolution_digest="sha256:" + "c" * 64,
+        claim_digest=sha256(
+            b"16:cred-p1/claim/v1,36:" + str(facts["claim"]).encode("ascii") + b","
+        ).hexdigest(),
+    )
+    assert (
+        await db_session.execute(
+            text("SELECT claim_token_digest FROM runtime_sessions WHERE id = :session"),
+            facts,
+        )
+    ).scalar_one() == facts["claim_digest"]
+    return facts
+
+
+async def test_private_grant_storage_binds_real_session_start_and_finite_expiry(
+    db_session, grant_storage
+):
+    await db_session.execute(GRANT_INSERT, grant_storage)
+    row = (
+        await db_session.execute(
+            text("""
+        SELECT runtime_session_id, committed_start_id, initial_access_expires_at
+        FROM workflow_runtime_sdk_grants WHERE id = :grant
+    """),
+            grant_storage,
+        )
+    ).one()
+    assert tuple(row) == (
+        grant_storage["session"],
+        grant_storage["start"],
+        grant_storage["expires"],
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value,code",
+    [
+        ("claim_digest", "0" * 64, "23503"),
+        ("worker", uuid4(), "23503"),
+        ("supervisor", uuid4(), "23503"),
+        ("start", uuid4(), "23503"),
+        ("owner", uuid4(), "23503"),
+        ("solution", uuid4(), "23503"),
+    ],
+)
+async def test_grant_rejects_wrong_attempt_session_start_or_install_fence(
+    db_session, grant_storage, field, value, code
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(GRANT_INSERT, {**grant_storage, field: value})
+    assert getattr(caught.value.orig, "sqlstate", None) == code
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE workflow_runtime_sdk_grants SET initial_access_expires_at = initial_access_expires_at + interval '1 day' WHERE id = :grant",
+        "UPDATE workflow_runtime_sdk_grants SET revoked_at = NULL, revocation_reason = NULL WHERE id = :grant",
+        "DELETE FROM workflow_runtime_sdk_grants WHERE id = :grant",
+    ],
+)
+async def test_grant_expiry_identity_and_revocation_cannot_be_upgraded_or_erased(
+    db_session, grant_storage, mutation
+):
+    await db_session.execute(GRANT_INSERT, grant_storage)
+    await db_session.execute(
+        text("""
+        UPDATE workflow_runtime_sdk_grants SET revoked_at = :issued, revocation_reason = 'session_closed'
+        WHERE id = :grant
+    """),
+        grant_storage,
+    )
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), grant_storage)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"

@@ -52,6 +52,8 @@ from src.models.orm.runtime_execution import (  # noqa: F401 - internal Alembic 
     RuntimeReportReceipt,
     RuntimeSession,
     RuntimeStart,
+    WorkflowRuntimeSDKGrant,
+    WorkflowRuntimeSDKGrantOperation,
 )
 
 # Alembic Config object
