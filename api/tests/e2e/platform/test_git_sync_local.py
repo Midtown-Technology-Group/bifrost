@@ -3228,7 +3228,11 @@ class TestCrossInstanceManifestReconciliation:
         assert (await sync_service.desktop_sync(confirm_deletes=True)).success
 
         manifest = read_manifest_from_dir(sync_service._persistent_dir / ".bifrost")
-        keys = {config.key for config in manifest.configs.values()}
+        keys = {
+            config.key
+            for config in manifest.configs.values()
+            if config.integration_id == str(integration_id)
+        }
         assert keys == {"keep_this"}
 
     async def test_empty_repo_pull_imports_remote_state(
