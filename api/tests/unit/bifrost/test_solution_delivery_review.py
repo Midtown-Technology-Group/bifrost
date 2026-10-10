@@ -178,7 +178,8 @@ def test_legacy_source_adapter_allows_body_only_and_rejects_declaration_change()
     result = review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
     assert result["entrypoints"] == ["run.py::run"]
     assert result["workflow_removal_evidence_verified"] is False
-    assert result["removed_workflow_ids"] == [] and result["workflow_removal_evidence_digest"] is None
+    assert result["removed_workflow_ids"] == []
+    assert result["workflow_removal_evidence_digest"] is None
     changed["run.py"] = changed["run.py"].replace(b"count: int = 1", b"count: int = 2")
     with pytest.raises(WorkflowRecipeError, match="registration or signatures"):
         review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
@@ -381,7 +382,8 @@ def test_removal_requires_evidence_and_verifies_exact_signed_observations(review
     assert result["workflow_removal_evidence_verified"] is True
     assert result["removed_workflow_ids"] == [args["workflow_removal_evidence"]["observations"][0]["workflow_id"]]
     assert result["workflow_removal_evidence_digest"] == digest(args["workflow_removal_evidence"])
-    assert result["live_state_verified"] is False and result["runtime_verified"] is False
+    assert result["live_state_verified"] is False
+    assert result["runtime_verified"] is False
 
 
 @pytest.mark.parametrize("damage", ["solution_id", "instance_origin", "recipe_path", "base_sha",
